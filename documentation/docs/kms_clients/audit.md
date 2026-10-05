@@ -52,7 +52,9 @@ Defaults to the `ckms` binary's own version. Useful when merging exports from mu
 
 ### Output formats
 
-**`json`** — Emits one JSON object per line on stdout (JSONL). Same schema as the log file.
+**`json`** — Emits one JSON object per line on stdout (JSONL).
+File exports retain the stored JSONL schema.
+PostgreSQL exports add `instance_id` and `chain_generation` alongside the unchanged audit event fields.
 
 **`cef`** — Emits one CEF line per event on stdout, per the ArcSight CEF Implementation
 Standard v27:
@@ -60,6 +62,11 @@ Standard v27:
 ```text
 CEF:0|Cosmian|KMS|<version>|<operation>|<operation>|<severity>|rt=<epoch_ms> suser=<user> ...
 ```
+
+PostgreSQL CEF exports include `deviceExternalId` (instance ID) and `cn2` (chain generation),
+with `cn2Label=chainGeneration`.
+Their `externalId` is `<generation>:<id>`; identify an event by the pair `deviceExternalId` and `externalId`.
+File CEF exports retain the numeric event ID in `externalId` and have no instance metadata.
 
 See [CEF export](../configuration/cef-export.md) for the full field mapping and severity rules.
 

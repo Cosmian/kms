@@ -29,6 +29,29 @@ The KMS supports two integration models:
 > file from its last committed offset and forwards events with guaranteed delivery, surviving
 > restarts without event loss.
 
+### PostgreSQL source attribution
+
+PostgreSQL JSON exports include `instance_id` and `chain_generation` on every event.
+Use `(instance_id, chain_generation, id)` as the event identity: row IDs restart in each generation.
+These export fields leave the stored audit event and its hashes unchanged.
+
+CEF exports identify the instance through `deviceExternalId` and the generation through `cn2`,
+with `cn2Label=chainGeneration`.
+The `externalId` value is `<generation>:<id>`.
+Use `deviceExternalId` together with `externalId` when correlating or deduplicating events.
+
+For separate delivery cursors or destinations, export one instance at a time.
+Set `AUDIT_READ_URL` to the connection URL for your audit database's read-only collection role:
+
+```bash
+ckms audit export \
+  --audit-postgres-url "${AUDIT_READ_URL}" \
+  --audit-instance-id kms-eu-west-1a \
+  --format cef > kms-eu-west-1a.cef
+```
+
+File-backed events have no embedded instance ID; configure a source tag for each KMS in the collection agent.
+
 ### Model 1 — File tailing
 
 ```mermaid

@@ -21,7 +21,8 @@ use std::{
 
 use clap::{Parser, Subcommand, ValueEnum};
 use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
-    AuditEvent, AuditResult, sha256_file, to_cef_line, verify_chain_link, verify_event,
+    AuditEvent, AuditResult, sha256_file, to_cef_line, to_cef_line_with_source, verify_chain_link,
+    verify_event,
 };
 use cosmian_kms_server_database::{DbError, PgAuditReader};
 
@@ -159,6 +160,14 @@ pub struct ExportAuditAction {
     pub kms_version: String,
 }
 
+#[derive(serde::Serialize)]
+struct PostgresExportEvent<'event> {
+    instance_id: &'event str,
+    chain_generation: i64,
+    #[serde(flatten)]
+    event: &'event AuditEvent,
+}
+
 impl ExportAuditAction {
     /// Run the export, writing output to `stdout`.
     ///
@@ -283,13 +292,21 @@ impl ExportAuditAction {
                             }
                         }
                         let output_line = match self.format {
-                            ExportFormat::Json => serde_json::to_string(event).map_err(|e| {
+                            ExportFormat::Json => serde_json::to_string(&PostgresExportEvent {
+                                instance_id: instance,
+                                chain_generation: generation,
+                                event,
+                            }).map_err(|e| {
                                 crate::error::KmsCliError::Default(format!(
                                     "cannot serialize event id={}: {e}",
                                     event.id
                                 ))
                             })?,
-                            ExportFormat::Cef => to_cef_line(event, &self.kms_version),
+                            ExportFormat::Cef => to_cef_line_with_source(
+                                event,
+                                &self.kms_version,
+                                Some((instance, generation)),
+                            ),
                         };
                         writeln!(out, "{output_line}")
                             .map_err(crate::error::KmsCliError::IoError)?;
@@ -1268,6 +1285,26 @@ mod tests {
         args.resolve().unwrap();
     }
 
+    #[test]
+    fn postgres_export_json_preserves_event_and_source() {
+        let mut event = build_test_event(0, [0_u8; 32]);
+        event.row_hash = compute_row_hash(&event);
+        let original = serde_json::to_value(&event).expect("serialize original event");
+        for (instance_id, generation) in [("kms-a", 0), ("kms-b", 0), ("kms-a", 1)] {
+            let line = serde_json::to_string(&super::PostgresExportEvent {
+                instance_id,
+                chain_generation: generation,
+                event: &event,
+            }).expect("serialize source-tagged event");
+            let fields: serde_json::Value = serde_json::from_str(&line).expect("parse export");
+            assert_eq!(fields["instance_id"], instance_id);
+            assert_eq!(fields["chain_generation"], generation);
+            let restored: AuditEvent = serde_json::from_str(&line).expect("parse audit event");
+            assert_eq!(serde_json::to_value(&restored).expect("serialize event"), original);
+            assert!(super::verify_event(&restored));
+        }
+    }
+
     // ── PostgreSQL source (requires a live database) ─────────────────────────
 
     fn audit_pg_url() -> String {
@@ -1556,10 +1593,52 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let instance_id = rt.block_on(seed_postgres_chain(&url, 2));
 
+        let mut action = ExportAuditAction {
+            source: AuditSourceArgs {
+                audit_postgres_url: Some(url),
+                audit_instance_id: Some(instance_id.clone()),
+                ..Default::default()
+            },
+            since: None,
+            format: ExportFormat::Json,
+            kms_version: "test".to_owned(),
+        };
+        for format in [ExportFormat::Json, ExportFormat::Cef] {
+            action.format = format;
+            let mut out = Vec::new();
+            action.run_with_writer(&mut out).expect("export PostgreSQL events");
+            let text = String::from_utf8(out).expect("UTF-8 export");
+            let lines: Vec<&str> = text.lines().collect();
+            assert_eq!(lines.len(), 2, "got:\n{text}");
+            for line in &lines {
+                match format {
+                    ExportFormat::Json => {
+                        let event: AuditEvent = serde_json::from_str(line).expect("parse event");
+                        let fields: serde_json::Value = serde_json::from_str(line).expect("parse fields");
+                        assert_eq!(fields["instance_id"], instance_id);
+                        assert_eq!(fields["chain_generation"], 0);
+                        assert!(super::verify_event(&event));
+                    }
+                    ExportFormat::Cef => {
+                        assert!(line.contains(&format!("deviceExternalId={instance_id}")), "{line}");
+                        assert!(line.contains("cn2=0 cn2Label=chainGeneration"), "{line}");
+                        assert!(line.contains("externalId=0:"), "{line}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    fn export_postgres_source_tags_instances_and_generations() {
+        let url = audit_pg_url();
+        let runtime = tokio::runtime::Runtime::new().expect("create runtime");
+        let instance_a = runtime.block_on(seed_postgres_chain(&url, 2));
+        let instance_b = runtime.block_on(seed_postgres_sealed_instance(&url, 1, |_, _| {}));
         let action = ExportAuditAction {
             source: AuditSourceArgs {
                 audit_postgres_url: Some(url),
-                audit_instance_id: Some(instance_id),
                 ..Default::default()
             },
             since: None,
@@ -1567,12 +1646,21 @@ mod tests {
             kms_version: "test".to_owned(),
         };
         let mut out = Vec::new();
-        action.run_with_writer(&mut out).unwrap();
-        let text = String::from_utf8(out).unwrap();
-        let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 2, "got:\n{text}");
-        for line in &lines {
-            let _event: AuditEvent = serde_json::from_str(line).unwrap();
+        action.run_with_writer(&mut out).expect("export every instance");
+        let text = String::from_utf8(out).expect("UTF-8 export");
+        let mut seen = std::collections::HashSet::new();
+        for line in text.lines() {
+            let fields: serde_json::Value = serde_json::from_str(line).expect("parse export");
+            let instance = fields["instance_id"].as_str().expect("instance metadata");
+            if instance != instance_a && instance != instance_b {
+                continue;
+            }
+            let generation = fields["chain_generation"].as_i64().expect("generation metadata");
+            let id = fields["id"].as_i64().expect("event ID");
+            assert!(seen.insert((instance.to_owned(), generation, id)), "duplicate source identity");
+        }
+        for source in [(instance_a, 0), (instance_b.clone(), 0), (instance_b, 1)] {
+            assert!(seen.contains(&(source.0, source.1, 0)), "missing source's first event");
         }
     }
 }

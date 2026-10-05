@@ -67,3 +67,4 @@
 
 - Reject `--audit-instance-id` when a file source is used by `ckms audit export` or `ckms audit verify`.
 - Continue PostgreSQL audit verification after row-decoding errors.
+- Include instance and chain generation in PostgreSQL JSON and CEF audit exports.

@@ -39,6 +39,18 @@ const SEV_OTHER_FAILURE: u8 = 6;
 /// `devicePayloadId`   | devicePayloadId            | Request correlation ID (omitted if none) |
 #[must_use]
 pub fn to_cef_line(event: &AuditEvent, kms_version: &str) -> String {
+    to_cef_line_with_source(event, kms_version, None)
+}
+
+/// Adds optional `(instance_id, chain_generation)` source metadata to a CEF export.
+/// With a source, `deviceExternalId` identifies the instance, `cn2` the generation,
+/// and `externalId` is `<generation>:<id>`. Without one, file output is unchanged.
+#[must_use]
+pub fn to_cef_line_with_source(
+    event: &AuditEvent,
+    kms_version: &str,
+    source: Option<(&str, i64)>,
+) -> String {
     let severity = cef_severity(&event.result);
 
     // ── Header fields ────────────────────────────────────────────────────
@@ -96,8 +108,16 @@ pub fn to_cef_line(event: &AuditEvent, kms_version: &str) -> String {
         let _ = write!(ext, " cs3={} cs3Label=details", escape_ext_value(details));
     }
 
-    // Audit record ID → standard CEF `externalId` (unique ID from originating device)
-    let _ = write!(ext, " externalId={}", event.id);
+    if let Some((instance_id, generation)) = source {
+        let _ = write!(
+            ext,
+            " deviceExternalId={} cn2={generation} cn2Label=chainGeneration externalId={generation}:{}",
+            escape_ext_value(instance_id),
+            event.id,
+        );
+    } else {
+        let _ = write!(ext, " externalId={}", event.id);
+    }
 
     // Request correlation ID → standard CEF `devicePayloadId`
     if let Some(rid) = &event.request_id {
@@ -155,7 +175,7 @@ mod tests {
 
     use super::{
         super::event::{AuditEvent, AuditResult},
-        cef_severity, escape_ext_value, escape_header, to_cef_line,
+        cef_severity, escape_ext_value, escape_header, to_cef_line, to_cef_line_with_source,
     };
     use crate::audit::hash::compute_row_hash;
 
@@ -285,6 +305,29 @@ mod tests {
             line.contains("externalId=7"),
             "expected externalId in: {line}"
         );
+    }
+
+    #[test]
+    fn cef_line_scopes_event_ids_to_source_and_generation() {
+        let event = make_event(AuditResult::Success);
+        for (instance_id, generation) in [("kms-a", 0), ("kms-b", 0), ("kms-a", 1)] {
+            let line = to_cef_line_with_source(&event, "5.0.0", Some((instance_id, generation)));
+            assert!(line.contains(&format!("deviceExternalId={instance_id}")), "{line}");
+            assert!(line.contains(&format!("cn2={generation} cn2Label=chainGeneration")), "{line}");
+            assert!(line.contains(&format!("externalId={generation}:7")), "{line}");
+        }
+        let file_line = to_cef_line(&event, "5.0.0");
+        assert!(!file_line.contains("deviceExternalId="), "{file_line}");
+        assert!(!file_line.contains("cn2="), "{file_line}");
+    }
+
+    #[test]
+    fn cef_line_escapes_source_metadata() {
+        let event = make_event(AuditResult::Success);
+        let line = to_cef_line_with_source(&event, "5.0.0", Some(("kms=west\nnode\\1\r", 0)));
+        assert!(line.contains("deviceExternalId=kms\\=west\\nnode\\\\1\\r"), "{line}");
+        assert!(!line.contains('\n'), "{line}");
+        assert!(!line.contains('\r'), "{line}");
     }
 
     #[test]
@@ -474,10 +517,6 @@ mod tests {
         // This is a static assertion: parse the extension part of a CEF line and
         // verify each key.
         let ev = make_event(AuditResult::Success);
-        let line = to_cef_line(&ev, "5.0.0");
-
-        let ext_start = line.find("|rt=").expect("must have |rt=") + 1;
-        let ext = &line[ext_start..];
 
         // CEF v27 standard keys we use (subset of the full dictionary)
         let standard_keys: std::collections::HashSet<&str> = [
@@ -489,6 +528,8 @@ mod tests {
             "act",
             "cn1",
             "cn1Label",
+            "cn2",
+            "cn2Label",
             "cs1",
             "cs1Label",
             "cs2",
@@ -496,17 +537,24 @@ mod tests {
             "cs3",
             "cs3Label",
             "externalId",
+            "deviceExternalId",
             "devicePayloadId",
         ]
         .into_iter()
         .collect();
 
-        for pair in ext.split_whitespace() {
-            if let Some(key) = pair.split('=').next() {
-                assert!(
-                    standard_keys.contains(key),
-                    "extension key {key:?} is not in the CEF v27 dictionary"
-                );
+        for line in [
+            to_cef_line(&ev, "5.0.0"),
+            to_cef_line_with_source(&ev, "5.0.0", Some(("kms-a", 1))),
+        ] {
+            let ext_start = line.find("|rt=").expect("must have |rt=") + 1;
+            for pair in line[ext_start..].split_whitespace() {
+                if let Some(key) = pair.split('=').next() {
+                    assert!(
+                        standard_keys.contains(key),
+                        "extension key {key:?} is not in the CEF v27 dictionary"
+                    );
+                }
             }
         }
     }
