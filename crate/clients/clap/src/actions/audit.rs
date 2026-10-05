@@ -23,7 +23,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
     AuditEvent, AuditResult, sha256_file, to_cef_line, verify_chain_link, verify_event,
 };
-use cosmian_kms_server_database::PgAuditReader;
+use cosmian_kms_server_database::{DbError, PgAuditReader};
 
 use crate::error::result::KmsCliResult;
 
@@ -622,10 +622,15 @@ impl VerifyAuditAction {
         let mut count: u64 = 0;
 
         loop {
-            let page = reader
-                .events_page(instance_id, generation, after_id)
-                .await
-                .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            let page = match reader.events_page(instance_id, generation, after_id).await {
+                Ok(page) => page,
+                Err(DbError::ConversionError(error)) => {
+                    return Ok(Err(format!(
+                        "UNPARSABLE: instance_id={instance_id} generation={generation}: {error}"
+                    )));
+                }
+                Err(error) => return Err(crate::error::KmsCliError::Default(error.to_string())),
+            };
             if page.is_empty() {
                 return Ok(Ok(count));
             }

@@ -111,8 +111,9 @@ Checks that:
 Exits with code **0** when every chain is intact, or **1** when a broken link, tampered event,
 altered/missing sealed-evidence file, or an unknown `--audit-instance-id` (no events found) is
 detected.
-With `--audit-postgres-url`, every generation of every instance is checked even after one fails;
-the error lists each failing generation and names the generations that verified clean.
+With `--audit-postgres-url`, broken chains and row-decoding errors do not stop later generations or instances.
+The final error lists each failing generation and names the generations that verified clean.
+Connection or query failures still abort the run.
 
 ### Usage
 

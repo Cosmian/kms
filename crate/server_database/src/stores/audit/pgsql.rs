@@ -915,6 +915,7 @@ impl PgAuditReader {
     ///
     /// # Errors
     /// Returns an error if the query fails or a row cannot be decoded.
+    /// Row decoding failures use [`DbError::ConversionError`], distinct from query errors.
     pub async fn events_page(
         &self,
         instance_id: &str,
@@ -930,7 +931,10 @@ impl PgAuditReader {
             .await
             .map_err(DbError::from)?;
         rows.iter()
-            .map(|row| event_from_row(row).map_err(|e| DbError::DatabaseError(e.to_string())))
+            .map(|row| {
+                event_from_row(row)
+                    .map_err(|error| DbError::ConversionError(error.to_string().into()))
+            })
             .collect()
     }
 }
@@ -951,6 +955,7 @@ mod live_tests {
     use uuid::Uuid;
 
     use super::{AUDIT_PAGE_SIZE, PgAuditReader, PgAuditSink};
+    use crate::DbError;
 
     /// Live audit database URL. Defaults to the repository's dedicated `docker-compose`
     /// `postgres-audit` service (see `.mise/lib/test_slots.sh`'s `KMS_AUDIT_POSTGRES_URL`), so a
@@ -1097,6 +1102,32 @@ mod live_tests {
         let gen1_after = reader.events_page(instance_id, 1, -1).await.unwrap();
         assert_eq!(gen1_after.len(), 2);
         assert_eq!(gen1_after[1].prev_hash, reanchor.row_hash);
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_reader_reports_unparsable_rows_as_conversion_errors() {
+        let instance_id = unique_instance_id("reader_unparsable");
+        let url = audit_url();
+        drop(seed_generation_zero(&url, &instance_id).await);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET result = 'invalid-result' \
+             WHERE instance_id = $1 AND chain_generation = 0 AND id = 1",
+            &[&instance_id],
+        )
+        .await;
+
+        let reader = PgAuditReader::connect(&url)
+            .await
+            .expect("connect to the audit database");
+        let error = reader
+            .events_page(&instance_id, 0, -1)
+            .await
+            .expect_err("malformed result text must fail decoding");
+        let message = error.to_string();
+        assert!(matches!(error, DbError::ConversionError(_)), "{message}");
+        assert!(message.contains("unparsable result column"), "{message}");
     }
 
     #[tokio::test]
