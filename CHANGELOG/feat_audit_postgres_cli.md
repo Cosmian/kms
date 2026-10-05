@@ -60,3 +60,9 @@
   Corrected several inaccuracies along the way (the `--audit-instance-id`
   default, the CEF version reference, and stale wording that predated the
   `PostgreSQL` backend).
+
+## Bug Fixes
+
+### CLI
+
+- Reject `--audit-instance-id` when a file source is used by `ckms audit export` or `ckms audit verify`.

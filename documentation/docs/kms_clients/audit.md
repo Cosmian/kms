@@ -7,6 +7,9 @@ All `ckms audit` commands work **directly on the audit storage** — no running 
 connection needed. The subcommands are suitable for scripts, cron jobs, and SIEM export
 pipelines.
 
+`--audit-instance-id` applies only to PostgreSQL sources.
+Combining it with a file source (`--path` or `KMS_AUDIT_FILE_PATH`) is an error.
+
 ## Usage
 
 `ckms audit <subcommand>`

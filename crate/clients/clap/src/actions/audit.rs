@@ -96,8 +96,14 @@ impl AuditSourceArgs {
     ///
     /// # Errors
     /// Returns an error if both `--path` and `--audit-postgres-url` are set, or neither is.
+    /// A file source cannot be combined with `--audit-instance-id`.
     fn resolve(&self) -> KmsCliResult<AuditSource> {
         match (&self.path, &self.audit_postgres_url) {
+            (Some(_), None) if self.audit_instance_id.is_some() => {
+                Err(crate::error::KmsCliError::InvalidRequest(
+                    "--audit-instance-id is only valid with --audit-postgres-url".to_owned(),
+                ))
+            }
             (Some(path), None) => Ok(AuditSource::File(path.clone())),
             (None, Some(url)) => Ok(AuditSource::Postgres {
                 url: url.clone(),
@@ -854,6 +860,27 @@ mod tests {
     }
 
     // ── VerifyAuditAction ──────────────────────────────────────────────────────
+
+    #[test]
+    fn file_source_rejects_instance_filter() {
+        let path = temp_path("instance_filter");
+        let mut verify = verify_action(path.clone());
+        verify.source.audit_instance_id = Some("instance-1".to_owned());
+        let mut export = export_action(path, ExportFormat::Json);
+        export.source.audit_instance_id = Some("instance-1".to_owned());
+
+        for result in [
+            verify.run_with_writer(&mut Vec::new()),
+            export.run_with_writer(&mut Vec::new()),
+        ] {
+            let error = result.expect_err("file sources must reject an instance filter");
+            let message = error.to_string();
+            assert!(
+                message.contains("--audit-instance-id is only valid with --audit-postgres-url"),
+                "{message}"
+            );
+        }
+    }
 
     #[test]
     fn verify_ok_reports_n_events_verified() {
