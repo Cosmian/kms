@@ -61,6 +61,7 @@
   default, the CEF version reference, and stale wording that predated the
   `PostgreSQL` backend).
 - Document read-only collection accounts for file and PostgreSQL audit backends.
+- Document CEF export for both audit storage backends, with PostgreSQL examples and source fields.
 
 ## Bug Fixes
 

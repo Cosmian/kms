@@ -4,9 +4,10 @@ The KMS can export audit events in the **Common Event Format (CEF)** — a text-
 vendor-neutral log format widely ingested by SIEM products (ArcSight, Splunk, IBM QRadar,
 Microsoft Sentinel, and others) without a custom parser.
 
-CEF export is a **serialisation view** of the tamper-evident JSONL audit log (see
-[Audit logs](./audit-logs.md)). It does not replace the JSONL file, which remains the
-authoritative, hash-chain-verifiable record.
+CEF export is a **serialisation view** of the tamper-evident audit trail (see [Audit logs](./audit-logs.md)).
+The configured backend, either a JSONL file or a PostgreSQL audit database, remains the authoritative,
+hash-chain-verifiable record.
+CEF omits the hash-chain fields and cannot replace that record.
 
 The KMS produces **CEF version 0** (`CEF:0`) as defined by the
 [ArcSight CEF Implementation Standard, version 27](https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf)
@@ -34,7 +35,7 @@ CEF:0|Cosmian|KMS|<version>|<operation>|<operation>|<severity>|<extensions>
 
 ### Extension fields
 
-All extension keys below are **standard CEF v27 dictionary keys** — no custom labels are used.
+All extension keys below are **standard CEF v27 dictionary keys**.
 
 | CEF key           | CEF v27 full name       | Type       | Description                                        |
 | ----------------- | ----------------------- | ---------- | -------------------------------------------------- |
@@ -46,12 +47,19 @@ All extension keys below are **standard CEF v27 dictionary keys** — no custom 
 | `act`             | `deviceAction`          | String     | KMIP operation name.                               |
 | `cn1`             | `deviceCustomNumber1`   | Long       | Wall-clock operation duration in milliseconds.     |
 | `cn1Label`        | `deviceCustomNumber1Label` | String  | Always `"durationMs"`.                             |
+| `cn2`             | `deviceCustomNumber2`   | Long       | PostgreSQL chain generation. Omitted for file exports. |
+| `cn2Label`        | `deviceCustomNumber2Label` | String  | `"chainGeneration"` for PostgreSQL exports only. |
 | `cs1`             | `deviceCustomString1`   | String     | KMIP `UniqueIdentifier`. **Omitted** when `null`.  |
 | `cs1Label`        | `deviceCustomString1Label` | String  | Always `"objectUID"`.                              |
 | `cs2`             | `deviceCustomString2`   | String     | Cryptographic algorithm. **Omitted** when `null`.  |
 | `cs2Label`        | `deviceCustomString2Label` | String  | Always `"algorithm"`.                              |
-| `externalId`      | `externalId`            | String     | Audit record ID (monotonically increasing integer).|
+| `externalId`      | `externalId`            | String     | File: event ID. PostgreSQL: `<generation>:<id>`. |
+| `deviceExternalId` | `deviceExternalId`      | String     | PostgreSQL instance ID. Omitted for file exports. |
 | `devicePayloadId` | `devicePayloadId`       | String     | Request correlation UUID. **Omitted** when absent. |
+
+For PostgreSQL exports, use the pair `deviceExternalId` and `externalId` as the event identity.
+Event IDs restart in each chain generation and are not unique across instances.
+For file exports, supply the KMS instance identity through the collection agent's source tag.
 
 ---
 
@@ -127,6 +135,8 @@ CEF:0|Cosmian|KMS|5.25.0|Encrypt|Encrypt|5|rt=1784574156704 suser=admin src=127.
 
 Export audit events as CEF using the `ckms` CLI (works offline, no running server needed):
 
+### File backend
+
 ```bash
 # Export all events as CEF
 ckms audit export --path /var/log/cosmian-kms/audit.jsonl --format cef
@@ -138,6 +148,26 @@ ckms audit export --path /var/log/cosmian-kms/audit.jsonl \
 # Export events since a given date
 ckms audit export --path /var/log/cosmian-kms/audit.jsonl \
   --format cef --since 2026-01-01T00:00:00Z
+```
+
+### PostgreSQL backend
+
+Set `AUDIT_READ_URL` to your audit database's connection URL using a
+[read-only collection role](./siems.md#postgresql-collection).
+
+Export one KMS instance's events as CEF:
+
+```bash
+ckms audit export \
+  --audit-postgres-url "${AUDIT_READ_URL}" \
+  --audit-instance-id kms-eu-west-1a \
+  --format cef > kms-eu-west-1a.cef
+```
+
+Export every instance's events, retaining the source fields described above:
+
+```bash
+ckms audit export --audit-postgres-url "${AUDIT_READ_URL}" --format cef > fleet.cef
 ```
 
 For the full CLI reference, see [Audit log management](../kms_clients/audit.md).

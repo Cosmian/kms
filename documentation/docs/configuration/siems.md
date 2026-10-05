@@ -76,13 +76,13 @@ Supported agents: Filebeat, Fluent Bit, Splunk Universal Forwarder, rsyslog imfi
 
 ```mermaid
 sequenceDiagram
-    participant File as audit.jsonl
+  participant Source as Audit storage
     participant ckms as ckms audit export
     participant Transport as Transport (shell / nc / logger)
     participant Syslog as Syslog (rsyslog / SIEM listener)
 
-    Note over File,Transport: Run on demand or via cron
-    ckms->>File: read JSONL (optional --since range)
+  Note over Source,Transport: Run on demand or via cron
+  ckms->>Source: read events (optional --since range)
     ckms->>Transport: CEF lines on stdout
     Transport->>Syslog: forward frames over wire (TCP RFC 6587 or UDP)
     Note over Transport,Syslog: TCP uses RFC 6587 octet-counting framing
@@ -220,8 +220,9 @@ the agent to:
 
 ## CEF export (for SIEMs requiring CEF format)
 
-The `ckms audit export --format cef` command converts the JSONL audit store into
-[CEF v27](./cef-export.md) and prints it to stdout. This is useful for:
+The `ckms audit export --format cef` command converts events from either audit backend to
+[CEF v27](./cef-export.md) and prints them to stdout.
+This is useful for:
 
 - **Verification** — sending a sample of events to a CEF listener to confirm parsing
 - **Scripted pipelines** — wrapping the export in a cron job or log rotation hook
