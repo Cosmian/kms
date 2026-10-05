@@ -349,6 +349,32 @@ pub const fn init_openssl_providers_for_tests() {
     // No-op in FIPS mode
 }
 
+/// Resolve a fallible provider-load `result` into the `Option<T>` fallback semantics used by
+/// [`init_openssl_providers`]: a failure is tolerated (returns `Ok(None)`, invoking
+/// `log_warning` once) only when `dlopen_impossible` is `true`; on every other target the
+/// failure is propagated unchanged as `Err`.
+///
+/// Deliberately generic over `T`/`E` (not `Provider`/`ErrorStack`) and free of any `OnceLock`
+/// or real OpenSSL call, so this branching decision — the actual bug surface of the
+/// musl/crt-static fallback — can be unit-tested directly for both outcomes, without needing
+/// a real legacy-provider failure or a musl/crt-static build to reach it. See the `tests`
+/// module below.
+#[cfg(feature = "non-fips")]
+fn resolve_optional_provider<T, E>(
+    result: Result<T, E>,
+    dlopen_impossible: bool,
+    log_warning: impl FnOnce(&E),
+) -> Result<Option<T>, E> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(e) if dlopen_impossible => {
+            log_warning(&e);
+            Ok(None)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Initialize OpenSSL providers for production KMS server.
 ///
 /// For FIPS mode: loads the FIPS provider.
@@ -364,8 +390,11 @@ pub const fn init_openssl_providers_for_tests() {
 /// # Errors
 ///
 /// Returns an error if the FIPS provider (FIPS mode) or the default provider
-/// (non-FIPS mode, pre-3.0 OpenSSL) fails to load. In non-FIPS mode with OpenSSL >= 3.0,
-/// a *legacy* provider load failure does **not** propagate as an error — see below.
+/// (non-FIPS mode, pre-3.0 OpenSSL) fails to load. In non-FIPS mode with OpenSSL >= 3.0, a
+/// *legacy* provider load failure propagates as an error on every target **except** a fully
+/// static musl build (`target_env = "musl"` + `target_feature = "crt-static"`, i.e. the
+/// non-FIPS Alpine `.apk`), where `dlopen` can never succeed and the failure is instead
+/// logged as a warning — see below.
 pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
     use std::sync::OnceLock;
 
@@ -386,36 +415,38 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
     {
         use cosmian_logger::warn;
 
-        // `None` means the legacy provider failed to load (see below) rather than
-        // "not yet initialized".
+        // OpenSSL's "legacy" module is a separate shared object loaded via `dlopen`.
+        // That can never succeed on a fully static musl binary (the non-FIPS Alpine
+        // `.apk` package): musl's static libc has no dynamic linker at all, so `dlopen`
+        // always fails there, regardless of `OPENSSL_MODULES`. Every *other* target
+        // (glibc static/dynamic OpenSSL linking, dynamic musl, macOS, …) keeps a working
+        // dynamic linker, so a load failure there is a genuine misconfiguration (e.g. a
+        // broken `OPENSSL_MODULES` path) and must keep failing loudly at startup, as
+        // before — only this exact target combination gets the silent, logged fallback.
+        const LEGACY_PROVIDER_DLOPEN_IMPOSSIBLE: bool =
+            cfg!(all(target_env = "musl", target_feature = "crt-static"));
+
+        // `None` means the legacy provider failed to load on a target where that is
+        // expected (see `LEGACY_PROVIDER_DLOPEN_IMPOSSIBLE` above) rather than "not yet
+        // initialized".
         static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
         if PROVIDER.get().is_none() {
             let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
             let loaded = if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
-                // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats. Unlike
-                // the FIPS provider above, a failure here is deliberately **not**
-                // propagated with `?`: OpenSSL's "legacy" module is a separate shared
-                // object loaded via `dlopen`, which can never succeed on a fully static
-                // musl binary (the non-FIPS Alpine apk package — musl's
-                // static libc has no dynamic linker at all, so `dlopen` always fails
-                // there, regardless of `OPENSSL_MODULES`). The "default" provider
-                // (already active via openssl.cnf, and not dlopen'd — it's built into
-                // libcrypto) still covers every modern algorithm, including PQC and
-                // Covercrypt, so this is a narrow, clearly-logged capability loss
-                // (old PKCS#12/RC2 formats only) rather than a reason to abort startup.
+                // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats.
                 info!("Load legacy provider");
-                match Provider::try_load(None, "legacy", true) {
-                    Ok(provider) => Some(provider),
-                    Err(e) => {
+                resolve_optional_provider(
+                    Provider::try_load(None, "legacy", true),
+                    LEGACY_PROVIDER_DLOPEN_IMPOSSIBLE,
+                    |e| {
                         warn!(
                             "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 \
                              formats are unsupported on this build. All other algorithms \
                              (including PQC and Covercrypt) are unaffected."
                         );
-                        None
-                    }
-                }
+                    },
+                )?
             } else {
                 // OpenSSL < 3.0: load the default provider
                 info!("Load default provider");
@@ -428,16 +459,63 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
 }
 
 #[cfg(all(test, feature = "non-fips"))]
+// `clippy::expect_used` is `deny`d workspace-wide (see `Cargo.toml`'s
+// `[workspace.lints.clippy]`); `.expect("reason")` in test assertions is the sanctioned
+// exception called out in `rust.instructions.md`'s error-handling rules.
 #[expect(clippy::expect_used)]
 mod tests {
-    use super::init_openssl_providers;
+    use super::{init_openssl_providers, resolve_optional_provider};
 
     /// `init_openssl_providers` must never hard-fail in non-FIPS mode on a normal
     /// (dynamically-linked) test/dev target, and must be idempotent (safe to call more
     /// than once — e.g. once per Actix worker thread).
+    ///
+    /// This only exercises the success path (the legacy provider loads fine on a normal
+    /// dev/CI machine); it cannot reach the musl/crt-static fallback branch, nor the
+    /// propagate-the-error branch. Those are covered directly and deterministically by the
+    /// `resolve_optional_provider` tests below instead.
     #[test]
     fn test_init_openssl_providers_succeeds_and_is_idempotent() {
         init_openssl_providers().expect("first call must succeed");
         init_openssl_providers().expect("second call must also succeed (OnceLock guard)");
+    }
+
+    /// On every target *except* a fully static musl build, a failed load must propagate as
+    /// `Err` rather than being silently swallowed — this is the exact regression finding #1
+    /// of the alpine-branch review fixed (the fallback had no scoping at all).
+    #[test]
+    fn test_resolve_optional_provider_propagates_error_when_dlopen_not_impossible() {
+        let result: Result<u8, &str> = Err("legacy module not found");
+        let mut warned = false;
+        let resolved = resolve_optional_provider(result, false, |_| warned = true);
+        assert_eq!(resolved, Err("legacy module not found"));
+        assert!(
+            !warned,
+            "must not log a reassuring warning when the failure is actually being propagated"
+        );
+    }
+
+    /// On a fully static musl build (`dlopen_impossible = true`), a failed load must be
+    /// tolerated: turned into `Ok(None)` with the warning callback invoked exactly once.
+    #[test]
+    fn test_resolve_optional_provider_falls_back_when_dlopen_impossible() {
+        let result: Result<u8, &str> = Err("legacy module not found");
+        let mut warned = false;
+        let resolved = resolve_optional_provider(result, true, |_| warned = true);
+        assert_eq!(resolved, Ok(None));
+        assert!(warned, "must log a warning when tolerating the failure");
+    }
+
+    /// A successful load must always be returned as `Some(value)`, regardless of
+    /// `dlopen_impossible`, and must never invoke the warning callback.
+    #[test]
+    fn test_resolve_optional_provider_success_ignores_dlopen_impossible_flag() {
+        for dlopen_impossible in [false, true] {
+            let result: Result<u8, &str> = Ok(42);
+            let resolved = resolve_optional_provider(result, dlopen_impossible, |_| {
+                panic!("must not warn on a successful load")
+            });
+            assert_eq!(resolved, Ok(Some(42)));
+        }
     }
 }

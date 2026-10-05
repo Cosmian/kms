@@ -65,14 +65,21 @@
 
 ### Server
 
-- `openssl_providers.rs`: a legacy-OpenSSL-provider load failure (expected on fully
-  static musl, where `dlopen` can never succeed) no longer aborts server startup —
-  it is now logged as a warning and the server continues with the always-available
-  default provider. Previously this was a hard `?`-propagated error.
+- `openssl_providers.rs`: on a fully static musl build only (`target_env = "musl"` +
+  `target_feature = "crt-static"`, i.e. the non-FIPS Alpine `.apk`), a legacy-OpenSSL-provider
+  load failure — expected there, since `dlopen` can never succeed — no longer aborts server
+  startup; it is logged as a warning and the server continues with the always-available
+  default provider. On every other non-FIPS target (GLIBC static/dynamic, dynamic musl,
+  macOS, …) a legacy-provider load failure still aborts startup with a hard
+  `?`-propagated error, as before this branch — a load failure there signals a genuine
+  misconfiguration (e.g. a broken `OPENSSL_MODULES` path), not an expected limitation.
 - `openssl_providers.rs`: the non-FIPS provider `OnceLock` now also remembers a
   deliberate "legacy provider unavailable" outcome, so repeated calls to
   `init_openssl_providers()` (e.g. once per Actix worker thread) do not re-attempt
   the failing `dlopen` or re-log the warning on every call.
+- `openssl_providers.rs`: the legacy-provider fallback decision is extracted into a small,
+  OpenSSL-independent `resolve_optional_provider` helper with dedicated unit tests, so the
+  musl/crt-static scoping logic above is covered without requiring a musl build to exercise it.
 
 ## Documentation
 
