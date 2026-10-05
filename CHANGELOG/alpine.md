@@ -50,6 +50,19 @@
 
 ## Improvements
 
+### CI
+
+- `publish-apk` now `needs: [packages, test-alpine-musl]` and gates on
+  `needs.test-alpine-musl.result == 'success'`, instead of only `needs: packages`.
+  Previously the apk packages were published to `package.cosmian.com` / GitHub
+  Releases as soon as they were *built*, running concurrently with (not after)
+  `test-alpine-musl`'s real-Alpine-container smoke tests — a broken apk package
+  could have been published before the smoke test caught it. `publish-apk` stays
+  a standalone job (not folded into `publish-release`'s matrix) because GitHub
+  Actions `needs:`/`if:` gate a whole job, not individual matrix rows, and the
+  deb/rpm/dmg/pkcs11-zip packages in `publish-release` are not gated on a
+  smoke-test job.
+
 ### Server
 
 - `openssl_providers.rs`: a legacy-OpenSSL-provider load failure (expected on fully
