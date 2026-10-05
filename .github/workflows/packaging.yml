@@ -281,7 +281,7 @@ jobs:
       || startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
 
-    name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
+    name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}-${{ matrix.package-type }}
     needs: packages
     runs-on: [self-hosted, not-sgx]
     container:
@@ -296,7 +296,10 @@ jobs:
         features: [fips, non-fips]
         link: [static, dynamic]
         runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
-        package-type: [deb, rpm, dmg, pkcs11-zip]
+        # apk (Alpine, musl) is published here too — see the `apk`-specific
+        # branches below and the trailing excludes, rather than as a separate
+        # publish-apk job.
+        package-type: [deb, rpm, dmg, pkcs11-zip, apk]
         cpu-arch: [amd64, arm64]
         exclude:
           - runner: ubuntu-24.04
@@ -309,15 +312,28 @@ jobs:
             package-type: rpm
           - runner: macos-15
             package-type: pkcs11-zip
+          - runner: macos-15
+            package-type: apk
           - runner: ubuntu-24.04
             cpu-arch: arm64
           - runner: ubuntu-24.04-arm
             cpu-arch: amd64
           - runner: macos-15
             cpu-arch: amd64
+          # Alpine apk packages have no static/dynamic-OpenSSL axis (musl libc
+          # linkage is implied by --variant, not a free choice — see
+          # nix/kms-server-musl.nix): the `packages` job only builds/uploads the
+          # apk artifact once per (features, runner), under link == static.
+          - package-type: apk
+            link: dynamic
     steps:
       - name: Remove existing old artifacts
-        run: rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+        run: |
+          if [[ "${{ matrix.package-type }}" == "apk" ]]; then
+            rm -rf apk_${{ matrix.features }}_${{ matrix.runner }}
+          else
+            rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+          fi
 
       - name: Checkout repository (for public key file)
         uses: actions/checkout@v7
@@ -327,7 +343,8 @@ jobs:
       - name: Download packaged artifact for this matrix
         uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+          name: ${{ matrix.package-type == 'apk' && format('apk_{0}_{1}', matrix.features, matrix.runner) || format('{0}_{1}_{2}-release', matrix.features,
+            matrix.link, matrix.runner) }}
 
       - name: List downloaded assets
         run: |
@@ -346,6 +363,22 @@ jobs:
           fi
           DESTINATION_DIR=/mnt/package/kms/$BRANCH
           ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"
+
+          # Alpine apk packages have no static/dynamic-OpenSSL axis (musl libc
+          # linkage is implied by --variant, not a free choice — see
+          # nix/kms-server-musl.nix), so they use a flatter remote layout and a
+          # different artifact/source naming scheme than the deb/rpm/dmg/
+          # pkcs11-zip packages below.
+          if [[ "${{ matrix.package-type }}" == "apk" ]]; then
+            remote_dir="${DESTINATION_DIR}/apk/${{ matrix.cpu-arch }}/${{ matrix.features }}"
+            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
+            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+              ./nix/signing-keys/cosmian-kms-public.asc \
+              result-apk-server-${{ matrix.features }}/* \
+              result-apk-cli-${{ matrix.features }}/* \
+              cosmian@package.cosmian.com:"${remote_dir}/"
+            exit 0
+          fi
 
           # Upload artifacts from the known result directory
           RESULT_DIR="result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}"
@@ -396,7 +429,7 @@ jobs:
           fi
 
       - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type != 'pkcs11-zip'
+        if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type != 'pkcs11-zip' && matrix.package-type != 'apk'
         uses: softprops/action-gh-release@v3
         with:
           files: |
@@ -412,75 +445,8 @@ jobs:
             result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
             ./nix/signing-keys/cosmian-kms-public.asc
 
-  # Publishes the Alpine-compatible apk packages (server + CLI) built once per
-  # (features, runner) in the `packages` job (see "Upload Alpine apk packages" step there).
-  # Kept as its own job — rather than extending `publish-release`'s package-type
-  # matrix — because the musl artifacts don't share that matrix's static/dynamic-
-  # OpenSSL axis (musl libc linkage is implied by `features`, not a free choice).
-  publish-apk:
-    if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
-      || startsWith(github.ref, 'refs/tags/')
-      || github.event_name == 'workflow_dispatch'
-
-    name: Publish apk-${{ matrix.features }}-${{ matrix.runner }}
-    needs: packages
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
-
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        features: [fips, non-fips]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-        cpu-arch: [amd64, arm64]
-        exclude:
-          - runner: ubuntu-24.04
-            cpu-arch: arm64
-          - runner: ubuntu-24.04-arm
-            cpu-arch: amd64
-    steps:
-      - name: Remove existing old artifacts
-        run: rm -rf apk_${{ matrix.features }}_${{ matrix.runner }}
-
-      - name: Checkout repository (for public key file)
-        uses: actions/checkout@v7
-        with:
-          submodules: false
-
-      - name: Download apk artifact for this matrix
-        uses: actions/download-artifact@v8
-        with:
-          name: apk_${{ matrix.features }}_${{ matrix.runner }}
-
-      - name: List downloaded assets
-        run: |
-          set -ex
-          find . -maxdepth 2 -type f -print
-
-      - name: Push to package.cosmian.com (self-hosted)
-        shell: bash
-        run: |
-          set -ex
-          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          fi
-          remote_dir="/mnt/package/kms/$BRANCH/apk/${{ matrix.cpu-arch }}/${{ matrix.features }}"
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            ./nix/signing-keys/cosmian-kms-public.asc \
-            result-apk-server-${{ matrix.features }}/* \
-            result-apk-cli-${{ matrix.features }}/* \
-            cosmian@package.cosmian.com:"${remote_dir}/"
-
-      - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish GitHub Release assets (apk)
+        if: startsWith(github.ref, 'refs/tags/') && matrix.package-type == 'apk'
         uses: softprops/action-gh-release@v3
         with:
           files: |
