@@ -85,6 +85,19 @@
   public-key-conversion errors as real errors
   ([#1183](https://github.com/Cosmian/kms/issues/1183))
 
+### Server (`crate/server`)
+
+- Fix `SignatureVerify`'s crypto-oracle execution path resolving `data` and
+  `digested_data` inconsistently. The payload was taken from `data` when present, but
+  the "input is already a digest" flag passed to the oracle was derived independently
+  from `digested_data.is_some()`, so a request setting **both** fields had the raw bytes
+  of `data` verified as though they were a pre-computed digest — skipping the hash step
+  on input the caller fully controls, and letting it choose which question the KMS
+  actually answers. The two are now resolved together from a single match, and a request
+  setting both is rejected with `InvalidRequest`, matching what the local execution path,
+  the streaming path, and the `Sign` operation already did. Only the oracle path
+  (HSM-backed and other prefixed keys) was affected
+
 ### Nix dev environment
 
 - Fix `shell.nix`'s `WITH_HSM=1` runtime `LD_LIBRARY_PATH` (both FIPS and non-FIPS
