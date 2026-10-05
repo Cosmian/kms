@@ -126,9 +126,11 @@ while [ "${SECONDS}" -lt "${deadline}" ]; do
     >"${export_jsonl}" 2>/dev/null || true
   if python3 -c "
 import json
-for l in open('${export_jsonl}'):
-    if not l.strip(): continue
-    if isinstance(json.loads(l).get('result'), dict):
+for line in open('${export_jsonl}'):
+    if not line.strip(): continue
+    event = json.loads(line)
+    result = event.get('result')
+    if isinstance(result, dict) and 'Failure' in result and event.get('object_uid') == '${AUDIT_NONEXISTENT_UID}':
         raise SystemExit(0)
 raise SystemExit(1)
 " 2>/dev/null; then
