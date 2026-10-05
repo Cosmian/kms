@@ -44,6 +44,28 @@
     ckms --version
     ```
 
+=== "Alpine Linux (amd64)"
+
+    Download the package and install it (musl build, no `gcompat` shim required; the
+    package is GPG-signed out-of-band, so `--allow-untrusted` is expected):
+
+    ```console title="On local machine"
+    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/non-fips/cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk
+    apk add --allow-untrusted ./cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk
+    ckms --version
+    ```
+
+=== "Alpine Linux (arm64)"
+
+    Download the package and install it (musl build, no `gcompat` shim required; the
+    package is GPG-signed out-of-band, so `--allow-untrusted` is expected):
+
+    ```console title="On local machine"
+    wget https://package.cosmian.com/kms/5.28.0/apk/arm64/non-fips/cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk
+    apk add --allow-untrusted ./cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk
+    ckms --version
+    ```
+
 === "MacOS (Apple Silicon)"
 
     Download the DMG installer and install it:

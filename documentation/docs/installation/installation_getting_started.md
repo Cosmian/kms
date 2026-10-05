@@ -59,7 +59,7 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 ## Installation
 
 !!!info "KMS CLI"
-    The KMS CLI lets you interact with the KMS from the command line. Install it from [KMS CLI](https://package.cosmian.com/kms/) and [configure it](../kms_clients/index.md).
+    The KMS CLI lets you interact with the KMS from the command line. Install and configure it from [KMS CLI](../kms_clients/index.md).
 
 === "Docker"
 
@@ -149,33 +149,34 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
 === "Alpine Linux"
 
-    Eviden KMS publishes Alpine **`.apk`** packages (musl builds) that run natively on
-    Alpine — no `gcompat` shim required. The packages are GPG-signed out-of-band
-    (`.apk.asc`) rather than with an `abuild` key, so install them with
-    `--allow-untrusted` after verifying the signature:
+    Eviden KMS publishes an Alpine **`.apk`** server package (musl build) that runs
+    natively on Alpine — no `gcompat` shim required. The package is GPG-signed
+    out-of-band (`.apk.asc`) rather than with an `abuild` key, so install it with
+    `--allow-untrusted` after verifying the signature. The `ckms` CLI is packaged and
+    documented separately — see [KMS CLI](../kms_clients/index.md) for the Alpine CLI
+    package.
 
     ```sh
-    wget https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-server-fips_5.27.1-r0_x86_64.apk
-    wget https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-cli-fips_5.27.1-r0_x86_64.apk
-    apk add --allow-untrusted ./cosmian-kms-server-fips_5.27.1-r0_x86_64.apk ./cosmian-kms-cli-fips_5.27.1-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk
+    apk add --allow-untrusted ./cosmian-kms-server-fips_5.28.0-r0_x86_64.apk
     rc-update add cosmian_kms default
     rc-service cosmian_kms start
     ```
 
     The server package installs `/usr/sbin/cosmian_kms`, the configuration file
     `/etc/cosmian/kms.toml`, the web UI, and an OpenRC service (`/etc/init.d/cosmian_kms`,
-    options in `/etc/conf.d/cosmian_kms`). The CLI package installs `/usr/bin/ckms`.
+    options in `/etc/conf.d/cosmian_kms`).
 
     - **FIPS** (dynamically-linked musl): the package depends on `libgcc`, which `apk`
       installs automatically.
-    - **non-FIPS** (fully static musl): no dependencies. Use the `non-fips` path and package
-      names (`cosmian-kms-server-non-fips_…`, `cosmian-kms-cli-non-fips_…`).
+    - **non-FIPS** (fully static musl): no dependencies. Use the `non-fips` path and
+      package name (`cosmian-kms-server-non-fips_…`).
 
     In a Dockerfile:
 
     ```dockerfile
     FROM alpine:3.21
-    ADD https://package.cosmian.com/kms/5.27.1/apk/amd64/fips/cosmian-kms-server-fips_5.27.1-r0_x86_64.apk /tmp/kms.apk
+    ADD https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk /tmp/kms.apk
     RUN apk add --no-cache --allow-untrusted ca-certificates /tmp/kms.apk && rm /tmp/kms.apk
     ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
     ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules

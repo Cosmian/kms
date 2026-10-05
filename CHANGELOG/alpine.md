@@ -67,3 +67,10 @@
   linking modes, the `libgcc` requirement, and the HSM/legacy-PKCS#12 limitations.
 - `documentation/docs/installation/installation_getting_started.md`: new "Alpine
   Linux" install tab with Dockerfile examples for both variants.
+- Split the Alpine CLI (`ckms`) package install steps out of the server's "Alpine
+  Linux" tab in `installation_getting_started.md` into their own "Alpine Linux
+  (amd64)" / "Alpine Linux (arm64)" tabs in `documentation/docs/kms_clients/installation.md`,
+  matching the per-arch tab convention already used there for the Debian/Ubuntu and
+  RHEL/Rocky Linux packages. The server's "Alpine Linux" tab is now server-only and
+  links to the CLI page for the `ckms` package; both pages are bumped from the
+  `5.27.1` release that introduced the apk packages to the current `5.28.0`.
