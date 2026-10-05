@@ -76,7 +76,7 @@ pub struct AuditSourceArgs {
 
     /// Restrict a `--audit-postgres-url` source to a single KMS instance's chain.
     /// Omit to read every instance present in the database.
-    #[clap(long, env = "KMS_AUDIT_INSTANCE_ID")]
+    #[clap(long)]
     pub audit_instance_id: Option<String>,
 }
 
