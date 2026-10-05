@@ -189,7 +189,7 @@ services:
       POSTGRES_PASSWORD: kms
       POSTGRES_DB: kms
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: [CMD-SHELL, pg_isready -U kms -d kms]
       interval: 5s
