@@ -191,7 +191,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
                 data,
                 signature,
                 request.cryptographic_parameters.as_ref(),
-                input_is_digest,
+                request.digested_data.is_some(),
             )
             .await?;
         Ok(SignatureVerifyResponse {

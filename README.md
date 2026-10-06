@@ -132,7 +132,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 | SoftHSM2 (testing)                         | ✅      |
 | AWS CloudHSM                               | ✅      |
 | Azure Dedicated HSM                        | 🚧      |
-| GCP Cloud HSM                              | 🚧      |
+| GCP Cloud HSM                              | ✅      |
 
 ## 🔗 Integrations
 

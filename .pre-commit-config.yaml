@@ -606,7 +606,7 @@ repos:
           Syncs crate/test_kms_server/README.md with vector_runner.rs and
           test_data/vectors manifests. Exits 1 when the README is updated so
           the developer must re-stage the file before committing.
-        entry: mise docs:vector-readme
+        entry: mise docs:sync-vectors
         language: system
         pass_filenames: false
         files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme
