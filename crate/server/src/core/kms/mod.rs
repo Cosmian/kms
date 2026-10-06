@@ -14,7 +14,7 @@ use std::{
 #[cfg(target_os = "linux")]
 use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use azure_dedicated_hsm_pkcs11_loader::{AZURE_DEDICATED_HSM_PKCS11_LIB, AzureDedicatedHsm};
+use azure_cloud_hsm_pkcs11_loader::{AZURE_CLOUD_HSM_PKCS11_LIB, AzureCloudHsm};
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
@@ -492,11 +492,11 @@ impl KMS {
                 slot_passwords
             )),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            "azure_dedicated_hsm" => Ok(instantiate_hsm_with_env!(
-                AzureDedicatedHsm,
-                "AZURE_DEDICATED_HSM_PKCS11_LIB",
-                AZURE_DEDICATED_HSM_PKCS11_LIB,
-                "Azure Dedicated HSM",
+            "azure_cloud_hsm" => Ok(instantiate_hsm_with_env!(
+                AzureCloudHsm,
+                "AZURE_CLOUD_HSM_PKCS11_LIB",
+                AZURE_CLOUD_HSM_PKCS11_LIB,
+                "Azure Cloud HSM",
                 slot_passwords
             )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -509,7 +509,7 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, azure_dedicated_hsm, \
+                 proteccio, crypt2pay, smartcardhsm, aws_cloud_hsm, \
                  softhsm2, utimaco, kryoptic, other"
             ),
         }

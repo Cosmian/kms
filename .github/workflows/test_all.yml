@@ -50,6 +50,8 @@ jobs:
           - pki-revocation
           - siem
           - audit
+          # Azure Cloud HSM loader compilation does not require a live HSM.
+          - azure-cloud-hsm-build
         features: [fips, non-fips]
         exclude:
           # kryoptic-conformance only needs to be validated once (fips)

@@ -131,7 +131,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 | CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
 | SoftHSM2 (testing)                         | ✅      |
 | AWS CloudHSM                               | ✅      |
-| Azure Dedicated HSM                        | 🚧      |
+| Azure Cloud HSM                             | 🚧      |
 | GCP Cloud HSM                              | 🚧      |
 
 ## 🔗 Integrations
