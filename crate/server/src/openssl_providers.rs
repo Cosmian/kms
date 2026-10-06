@@ -512,10 +512,10 @@ mod tests {
     fn test_resolve_optional_provider_success_ignores_dlopen_impossible_flag() {
         for dlopen_impossible in [false, true] {
             let result: Result<u8, &str> = Ok(42);
-            let resolved = resolve_optional_provider(result, dlopen_impossible, |_| {
-                panic!("must not warn on a successful load")
-            });
+            let mut warned = false;
+            let resolved = resolve_optional_provider(result, dlopen_impossible, |_| warned = true);
             assert_eq!(resolved, Ok(Some(42)));
+            assert!(!warned, "must not warn on a successful load");
         }
     }
 }
