@@ -15,6 +15,7 @@ pub enum HsmModel {
     Smartcardhsm,
     Kryoptic,
     AwsCloudhsm,
+    GcpCloudHsm,
     Other,
 }
 
@@ -27,6 +28,7 @@ impl HsmModel {
         Self::Smartcardhsm,
         Self::Kryoptic,
         Self::AwsCloudhsm,
+        Self::GcpCloudHsm,
         Self::Other,
     ];
 
@@ -40,6 +42,7 @@ impl HsmModel {
             Self::Smartcardhsm => "smartcardhsm",
             Self::Kryoptic => "kryoptic",
             Self::AwsCloudhsm => "aws_cloudhsm",
+            Self::GcpCloudHsm => "gcp_cloud_hsm",
             Self::Other => "other",
         }
     }
@@ -68,6 +71,7 @@ pub struct HsmConfig {
             "softhsm2",
             "smartcardhsm",
             "aws_cloudhsm",
+            "gcp_cloud_hsm",
             "kryoptic",
             "other"
         ]),

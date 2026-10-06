@@ -298,6 +298,7 @@ impl KMS {
         )
         .await
     }
+
     /// Select a cached local key without deep-cloning its metadata.
     async fn select_unique_key_arc<Spec, F>(
         &self,

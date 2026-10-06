@@ -24,6 +24,8 @@ use cosmian_logger::trace;
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
+#[cfg(target_os = "linux")]
+use gcp_cloud_hsm_pkcs11_loader::{GCP_CLOUD_HSM_PKCS11_LIB, GcpCloudHsm};
 // SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use kryoptic_pkcs11_loader::{KRYOPTIC_PKCS11_LIB, Kryoptic};
@@ -495,6 +497,14 @@ impl KMS {
                 "AwsCloudhsm",
                 slot_passwords
             )),
+            #[cfg(target_os = "linux")]
+            "gcp_cloud_hsm" => Ok(instantiate_hsm_with_env!(
+                GcpCloudHsm,
+                "GCP_CLOUD_HSM_PKCS11_LIB",
+                GCP_CLOUD_HSM_PKCS11_LIB,
+                "GCP Cloud HSM",
+                slot_passwords
+            )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
@@ -505,7 +515,8 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, softhsm2, utimaco, kryoptic, other"
+                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
+                 softhsm2, utimaco, kryoptic, other"
             ),
         }
     }
