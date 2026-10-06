@@ -325,30 +325,5 @@ exercised with a live container.
 
 ## Access restriction
 
-Audit data contains actor identities, client IP addresses, object identifiers, and operation metadata.
-Use a dedicated service account for the collection agent and grant it read-only access.
-Use encrypted transport when forwarding audit data across untrusted networks.
-
-### File collection
-
-Keep file ownership and write access with the KMS process user.
-Grant the collection account read access to the audit file and traversal permission on its parent directories.
-Ensure these grants survive active-file creation and rotation.
-See [Protecting the file](./audit-file-backend.md#protecting-the-file) for retention and access restrictions.
-
-### PostgreSQL collection
-
-Create a separate, non-owner login for collection; do not reuse the KMS writer account or grant writer-role membership.
-After the audit schema exists, run these grants as a database administrator connected to the audit database,
-named `kms_audit` in this example:
-
-```sql
-CREATE ROLE kms_audit_collector LOGIN;
-GRANT CONNECT ON DATABASE kms_audit TO kms_audit_collector;
-GRANT USAGE ON SCHEMA public TO kms_audit_collector;
-GRANT SELECT ON TABLE public.kms_audit_events TO kms_audit_collector;
-```
-
-Configure authentication for this login through your deployment's credential management.
-Use its connection URL in the collection job.
-`ckms audit export` and `ckms audit verify` need no write privileges, DDL privileges, or access to `kms_audit_control`.
+See [Protecting the file](./audit-file-backend.md#protecting-the-file) for restricting access
+to the audit file. The same principle applies to the PostgreSQL backend's database.
