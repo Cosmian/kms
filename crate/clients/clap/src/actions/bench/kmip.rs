@@ -20,7 +20,7 @@ use cosmian_kms_client::{
         kmip_operations::{Decrypt, Encrypt, Operation, Sign, SignatureVerify},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-            RecommendedCurve,
+            RecommendedCurve, UniqueIdentifier,
         },
         requests::{
             create_ec_key_pair_request, create_rsa_key_pair_request, decrypt_request,
@@ -29,6 +29,7 @@ use cosmian_kms_client::{
     },
 };
 use criterion::{BenchmarkId, Criterion, Throughput};
+use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
 use zeroize::Zeroizing;
 
@@ -39,8 +40,10 @@ use super::helpers::{
 };
 use super::{
     helpers::{
-        aes_gcm_params, aes_xts_params, create_rsa_kp, create_sym_key, rsa_kwp_params,
-        rsa_oaep_params, try_create_ec_kp, with_fips_ec_masks, with_fips_rsa_masks,
+        aes_cbc_params, aes_gcm_params, aes_xts_params, create_rsa_kp, create_sym_key,
+        hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_kwp_params,
+        rsa_oaep_params, rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp,
+        try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks, with_fips_rsa_masks,
     },
     transport::{Transport, bench_message_id, bench_op, bench_op_id, timed_group},
     types::bench_ko,
@@ -139,6 +142,7 @@ pub(super) fn bench_encrypt_aes_gcm(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req)),
         );
@@ -156,6 +160,7 @@ pub(super) fn bench_encrypt_aes_gcm(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -262,6 +267,7 @@ fn bench_rsa_encrypt_family(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -281,6 +287,7 @@ fn bench_rsa_encrypt_family(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -323,6 +330,7 @@ pub(super) fn bench_encrypt_aes_xts(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encrypt", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -342,6 +350,7 @@ pub(super) fn bench_encrypt_aes_xts(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decrypt", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -381,6 +390,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -401,6 +411,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -444,6 +455,7 @@ pub(super) fn bench_encrypt_ecies(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encrypt", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -458,6 +470,7 @@ pub(super) fn bench_encrypt_ecies(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decrypt", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -693,6 +706,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encapsulate", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
         );
@@ -714,6 +728,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decapsulate", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -755,6 +770,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("encapsulate", label),
             Operation::Encrypt(Box::new(enc_req)),
         );
@@ -769,6 +785,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("decapsulate", label),
             Operation::Decrypt(Box::new(dec_req)),
         );
@@ -1268,6 +1285,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("sign", bits),
             Operation::Sign(sign_req),
         );
@@ -1276,6 +1294,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
             client,
             rt,
             transport,
+            bits.to_string(),
             BenchmarkId::new("verify", bits),
             Operation::SignatureVerify(verify_req),
         );
@@ -1329,6 +1348,7 @@ fn bench_pqc_sign(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("sign", label),
             Operation::Sign(sign_req),
         );
@@ -1337,11 +1357,430 @@ fn bench_pqc_sign(
             client,
             rt,
             transport,
+            label,
             BenchmarkId::new("verify", label),
             Operation::SignatureVerify(verify_req),
         );
     }
     group.finish();
+}
+
+// =============================================================================
+// HSM-RESIDENT BENCHMARKS
+// =============================================================================
+//
+// Ops executed against `hsm::`-prefixed keys are routed by the server to the
+// HSM's `CryptoOracle` (PKCS#11), instead of KMS software. Every algorithm
+// variant of `crate::interfaces::crypto_oracle::CryptoAlgorithm` (encrypt) and
+// `SigningAlgorithm` (sign) reachable via ordinary (non-prehashed-digest-only)
+// KMIP requests is covered:
+// - Encrypt: AES-GCM, AES-CBC, RSA-OAEP-SHA256, RSA-OAEP-SHA1, RSA-PKCS1v15.
+// - Sign: RSA-PSS, RSA-PKCS1v15 hash-and-sign (SHA1/256/384/512), ECDSA
+//   (P-256/P-384 — requires `digested_data`/prehashed input because SoftHSM2
+//   only implements raw `CKM_ECDSA`, not the combined `CKM_ECDSA_SHA*`
+//   mechanisms), EdDSA (Ed25519/Ed448, non-FIPS only — pure, un-hashed
+//   `CKM_EDDSA`, requires `cryptographic_algorithm` set to `Ed25519`/`Ed448`
+//   in the request with no `digital_signature_algorithm` and no
+//   `digested_data`, exactly mirroring `ckms ec sign`'s own request
+//   construction; omitting `cryptographic_parameters` entirely also works,
+//   since the server then falls back to the key's own stored curve).
+// - `Verify` is NOT implemented for HSM-resident keys at all yet (any
+//   algorithm), so it is intentionally omitted (unlike the software
+//   `sign-verify` benches, which cover both directions).
+// - P-521 key creation is NOT covered: `crate/crypto/src/crypto/
+//   elliptic_curves/operation.rs` derives `cryptographic_length` from the
+//   generated private scalar's serialized byte length rather than the
+//   curve's nominal bit length, which can under-count P-521 (66-byte keys
+//   occasionally serialize to 65 bytes) and makes `HSM::create_keypair`
+//   reject the resulting length ("valid values are 224, 256, 384, 521") —
+//   reproduced 3/3 attempts in this environment. Pre-existing bug unrelated
+//   to this benchmark; tracked as a follow-up rather than fixed here.
+// - The bare (un-hashed) `SigningAlgorithm::RsaPkcsV15` variant — a raw
+//   `CKM_RSA_PKCS` sign over a caller-supplied `DigestInfo` blob — is not
+//   reachable via ordinary `Sign` KMIP requests (`from_kmip` always infers a
+//   hash and returns `Sha*WithRsa` instead when `padding_method` is
+//   `PKCS1v15` without an explicit digest), so it has no bench entry either;
+//   the hash-and-sign variants above exercise the same PKCS#11 mechanism
+//   family end-to-end.
+//
+// Key creation cannot reuse `bench_op`'s pre-serialized-once-then-replay
+// model (unlike software Create/CreateKeyPair, which omit `unique_identifier`
+// and let the server assign a fresh UUID per call): the HSM has no
+// auto-generated ID, so every request must carry a *distinct* `hsm::` UID.
+// `bench_hsm_key_creation` therefore builds and serializes a fresh request
+// inside the timed closure for each iteration.
+
+pub(super) fn bench_hsm_encrypt(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    transport: Transport,
+    hsm_prefix: &str,
+) {
+    let slug = transport.slug();
+
+    // AES-GCM
+    if let Some(key_id) =
+        try_create_hsm_sym_key(rt, client, hsm_prefix, 256, CryptographicAlgorithm::AES)
+    {
+        let mut group = timed_group(c, format!("{slug}/encrypt/hsm-aes-gcm"));
+        let enc_req = Encrypt {
+            unique_identifier: Some(key_id),
+            cryptographic_parameters: Some(aes_gcm_params()),
+            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            ..Default::default()
+        };
+        bench_op(
+            &mut group,
+            client,
+            rt,
+            transport,
+            "encrypt/256",
+            Operation::Encrypt(Box::new(enc_req)),
+        );
+        group.finish();
+    } else {
+        eprintln!("[bench] HSM AES-GCM not available, skipping");
+        bench_ko(format!("{slug}/encrypt/hsm-aes-gcm"));
+    }
+
+    // AES-CBC
+    if let Some(key_id) =
+        try_create_hsm_sym_key(rt, client, hsm_prefix, 256, CryptographicAlgorithm::AES)
+    {
+        let mut group = timed_group(c, format!("{slug}/encrypt/hsm-aes-cbc"));
+        let enc_req = Encrypt {
+            unique_identifier: Some(key_id),
+            cryptographic_parameters: Some(aes_cbc_params()),
+            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            i_v_counter_nonce: Some(vec![0_u8; 16]),
+            ..Default::default()
+        };
+        bench_op(
+            &mut group,
+            client,
+            rt,
+            transport,
+            "encrypt/256",
+            Operation::Encrypt(Box::new(enc_req)),
+        );
+        group.finish();
+    } else {
+        eprintln!("[bench] HSM AES-CBC not available, skipping");
+        bench_ko(format!("{slug}/encrypt/hsm-aes-cbc"));
+    }
+
+    // RSA-OAEP-SHA256, RSA-OAEP-SHA1, RSA-PKCS1v15 (encrypt uses the public
+    // key). One RSA-2048 key pair is created and reused for all three
+    // variants — RSA key generation is comparatively slow, and `CryptoAlgorithm`
+    // does not vary by key size, so there is no benefit to separate key pairs.
+    if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+        for (label, params) in [
+            ("hsm-rsa-oaep", rsa_oaep_params()),
+            ("hsm-rsa-oaep-sha1", rsa_oaep_sha1_params()),
+            ("hsm-rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
+        ] {
+            let mut group = timed_group(c, format!("{slug}/encrypt/{label}"));
+            let enc_req = Encrypt {
+                unique_identifier: Some(pub_id.clone()),
+                cryptographic_parameters: Some(params),
+                data: Some(Zeroizing::new(vec![1_u8; 64])),
+                ..Default::default()
+            };
+            bench_op(
+                &mut group,
+                client,
+                rt,
+                transport,
+                "encrypt/2048",
+                Operation::Encrypt(Box::new(enc_req)),
+            );
+            group.finish();
+        }
+    } else {
+        eprintln!("[bench] HSM RSA encrypt not available, skipping");
+        bench_ko(format!("{slug}/encrypt/hsm-rsa-oaep"));
+        bench_ko(format!("{slug}/encrypt/hsm-rsa-oaep-sha1"));
+        bench_ko(format!("{slug}/encrypt/hsm-rsa-pkcs1v15"));
+    }
+}
+
+pub(super) fn bench_hsm_sign_verify(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    transport: Transport,
+    hsm_prefix: &str,
+) {
+    let slug = transport.slug();
+    let message = Zeroizing::new(vec![0x42_u8; 32]);
+
+    // RSA-PSS
+    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+        let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-rsa-pss"));
+        let sign_req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+                ..Default::default()
+            }),
+            data: Some(message.clone()),
+            ..Default::default()
+        };
+        bench_op(
+            &mut group,
+            client,
+            rt,
+            transport,
+            "sign/2048",
+            Operation::Sign(sign_req),
+        );
+        group.finish();
+    } else {
+        eprintln!("[bench] HSM RSA-PSS not available, skipping");
+        bench_ko(format!("{slug}/sign-verify/hsm-rsa-pss"));
+    }
+
+    // RSA PKCS#1 v1.5 hash-and-sign (SigningAlgorithm::Sha1WithRsa/
+    // Sha256WithRsa/Sha384WithRsa/Sha512WithRsa on the oracle). One RSA-2048
+    // key pair is reused for all four hash variants.
+    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+        for (label, dsa) in [
+            (
+                "hsm-rsa-pkcs1v15-sha1",
+                DigitalSignatureAlgorithm::SHA1WithRSAEncryption,
+            ),
+            (
+                "hsm-rsa-pkcs1v15-sha256",
+                DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+            ),
+            (
+                "hsm-rsa-pkcs1v15-sha384",
+                DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+            ),
+            (
+                "hsm-rsa-pkcs1v15-sha512",
+                DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+            ),
+        ] {
+            let mut group = timed_group(c, format!("{slug}/sign-verify/{label}"));
+            let sign_req = Sign {
+                unique_identifier: Some(priv_id.clone()),
+                cryptographic_parameters: Some(hsm_rsa_pkcs1v15_sign_params(dsa)),
+                data: Some(message.clone()),
+                ..Default::default()
+            };
+            bench_op(
+                &mut group,
+                client,
+                rt,
+                transport,
+                "sign/2048",
+                Operation::Sign(sign_req),
+            );
+            group.finish();
+        }
+    } else {
+        eprintln!("[bench] HSM RSA PKCS1v15 sign not available, skipping");
+        bench_ko(format!("{slug}/sign-verify/hsm-rsa-pkcs1v15-sha1"));
+        bench_ko(format!("{slug}/sign-verify/hsm-rsa-pkcs1v15-sha256"));
+        bench_ko(format!("{slug}/sign-verify/hsm-rsa-pkcs1v15-sha384"));
+        bench_ko(format!("{slug}/sign-verify/hsm-rsa-pkcs1v15-sha512"));
+    }
+
+    // ECDSA — prehashed only (SoftHSM2 lacks combined CKM_ECDSA_SHA*, see
+    // module docs above).
+    for (label, curve) in [
+        ("ecdsa-p256", RecommendedCurve::P256),
+        ("ecdsa-p384", RecommendedCurve::P384),
+    ] {
+        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve) else {
+            eprintln!("[bench] HSM {label} not available, skipping");
+            bench_ko(format!("{slug}/sign-verify/hsm-{label}"));
+            continue;
+        };
+        let digest = Sha256::digest(message.as_slice()).to_vec();
+        let sign_req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            }),
+            digested_data: Some(digest),
+            ..Default::default()
+        };
+        let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-{label}"));
+        bench_op(
+            &mut group,
+            client,
+            rt,
+            transport,
+            "sign",
+            Operation::Sign(sign_req),
+        );
+        group.finish();
+    }
+
+    // EdDSA (Ed25519/Ed448, non-FIPS) — pure, un-hashed CKM_EDDSA. Verified
+    // working end-to-end against a live SoftHSM2 2.6.1 token: the request
+    // must set `cryptographic_algorithm` to `Ed25519`/`Ed448` (mirroring
+    // `ckms ec sign`'s own request construction — see module docs above) with
+    // no `digital_signature_algorithm` and no `digested_data`.
+    #[cfg(feature = "non-fips")]
+    for (label, curve, algorithm) in [
+        (
+            "eddsa-ed25519",
+            RecommendedCurve::CURVEED25519,
+            CryptographicAlgorithm::Ed25519,
+        ),
+        (
+            "eddsa-ed448",
+            RecommendedCurve::CURVEED448,
+            CryptographicAlgorithm::Ed448,
+        ),
+    ] {
+        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve) else {
+            eprintln!("[bench] HSM {label} not available, skipping");
+            bench_ko(format!("{slug}/sign-verify/hsm-{label}"));
+            continue;
+        };
+        let sign_req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                cryptographic_algorithm: Some(algorithm),
+                ..Default::default()
+            }),
+            data: Some(message.clone()),
+            ..Default::default()
+        };
+        let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-{label}"));
+        bench_op(
+            &mut group,
+            client,
+            rt,
+            transport,
+            "sign",
+            Operation::Sign(sign_req),
+        );
+        group.finish();
+    }
+}
+
+pub(super) fn bench_hsm_key_creation(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    transport: Transport,
+    hsm_prefix: &str,
+) {
+    let slug = transport.slug();
+    let vid = client.config.vendor_id.clone();
+
+    // AES symmetric key
+    {
+        let mut group = timed_group(c, format!("{slug}/key-creation/hsm-aes-256"));
+        group.bench_function("create", |b| {
+            b.to_async(rt).iter(|| {
+                let vid = vid.clone();
+                let hsm_prefix = hsm_prefix.to_owned();
+                async move {
+                    let uid = hsm_uid(&hsm_prefix, "sym");
+                    let req = symmetric_key_create_request(
+                        &vid,
+                        Some(UniqueIdentifier::TextString(uid)),
+                        256,
+                        CryptographicAlgorithm::AES,
+                        Vec::<String>::new(),
+                        false,
+                        None,
+                    )
+                    .expect("HSM sym key request");
+                    drop(client.create(req).await);
+                }
+            });
+        });
+        group.finish();
+    }
+
+    // RSA key pair
+    {
+        let mut group = timed_group(c, format!("{slug}/key-creation/hsm-rsa-2048"));
+        group.bench_function("create", |b| {
+            b.to_async(rt).iter(|| {
+                let vid = vid.clone();
+                let hsm_prefix = hsm_prefix.to_owned();
+                async move {
+                    let uid = hsm_uid(&hsm_prefix, "rsa");
+                    let req = create_rsa_key_pair_request(
+                        &vid,
+                        Some(UniqueIdentifier::TextString(uid)),
+                        Vec::<String>::new(),
+                        2048,
+                        false,
+                        None,
+                    )
+                    .expect("HSM RSA kp request");
+                    drop(client.create_key_pair(req).await);
+                }
+            });
+        });
+        group.finish();
+    }
+
+    // EC key pair (P-256)
+    {
+        let mut group = timed_group(c, format!("{slug}/key-creation/hsm-ec-p256"));
+        group.bench_function("create", |b| {
+            b.to_async(rt).iter(|| {
+                let vid = vid.clone();
+                let hsm_prefix = hsm_prefix.to_owned();
+                async move {
+                    let uid = hsm_uid(&hsm_prefix, "ec");
+                    let req = create_ec_key_pair_request(
+                        &vid,
+                        Some(UniqueIdentifier::TextString(uid)),
+                        Vec::<String>::new(),
+                        RecommendedCurve::P256,
+                        false,
+                        None,
+                    )
+                    .expect("HSM EC kp request");
+                    drop(client.create_key_pair(req).await);
+                }
+            });
+        });
+        group.finish();
+    }
+
+    // EdDSA key pairs (Ed25519/Ed448, non-FIPS). Key creation succeeds
+    // unconditionally on SoftHSM2 (unlike P-521, see module docs above).
+    #[cfg(feature = "non-fips")]
+    for (label, curve) in [
+        ("hsm-ed25519", RecommendedCurve::CURVEED25519),
+        ("hsm-ed448", RecommendedCurve::CURVEED448),
+    ] {
+        let mut group = timed_group(c, format!("{slug}/key-creation/{label}"));
+        group.bench_function("create", |b| {
+            b.to_async(rt).iter(|| {
+                let vid = vid.clone();
+                let hsm_prefix = hsm_prefix.to_owned();
+                async move {
+                    let uid = hsm_uid(&hsm_prefix, "ed");
+                    let req = create_ec_key_pair_request(
+                        &vid,
+                        Some(UniqueIdentifier::TextString(uid)),
+                        Vec::<String>::new(),
+                        curve,
+                        false,
+                        None,
+                    )
+                    .expect("HSM EdDSA kp request");
+                    drop(client.create_key_pair(req).await);
+                }
+            });
+        });
+        group.finish();
+    }
 }
 
 // =============================================================================
@@ -1447,6 +1886,7 @@ pub(super) fn bench_batch_aes_bulk(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key encrypt"), &parameter_name),
                 Operation::Encrypt(Box::new(req)),
             );
@@ -1455,6 +1895,7 @@ pub(super) fn bench_batch_aes_bulk(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key decrypt"), &parameter_name),
                 Operation::Decrypt(Box::new(dec_req)),
             );
@@ -1551,6 +1992,7 @@ pub(super) fn bench_batch_rsa_message(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key encrypt"), &parameter_name),
                 &enc_msg,
             );
@@ -1587,6 +2029,7 @@ pub(super) fn bench_batch_rsa_message(
                 client,
                 rt,
                 transport,
+                bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key decrypt"), &parameter_name),
                 &dec_msg,
             );

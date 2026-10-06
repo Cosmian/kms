@@ -43,6 +43,7 @@ env \
   cargo test \
   -p kryoptic_pkcs11_loader \
   --features kryoptic \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_kryoptic_all --ignored --exact
 
 print_status "Kryoptic loader tests completed"

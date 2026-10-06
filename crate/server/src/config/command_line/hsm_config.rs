@@ -14,6 +14,8 @@ pub enum HsmModel {
     Softhsm2,
     Smartcardhsm,
     Kryoptic,
+    AwsCloudhsm,
+    GcpCloudHsm,
     Other,
 }
 
@@ -25,6 +27,8 @@ impl HsmModel {
         Self::Softhsm2,
         Self::Smartcardhsm,
         Self::Kryoptic,
+        Self::AwsCloudhsm,
+        Self::GcpCloudHsm,
         Self::Other,
     ];
 
@@ -37,6 +41,8 @@ impl HsmModel {
             Self::Softhsm2 => "softhsm2",
             Self::Smartcardhsm => "smartcardhsm",
             Self::Kryoptic => "kryoptic",
+            Self::AwsCloudhsm => "aws_cloudhsm",
+            Self::GcpCloudHsm => "gcp_cloud_hsm",
             Self::Other => "other",
         }
     }
@@ -53,12 +59,22 @@ impl fmt::Display for HsmModel {
 pub struct HsmConfig {
     /// The HSM model.
     /// `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-    /// `Smartcard HSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
+    /// `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
     /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
         verbatim_doc_comment,
         long,
-        value_parser(["proteccio", "crypt2pay", "utimaco", "softhsm2", "smartcardhsm", "kryoptic", "other"]),
+        value_parser([
+            "proteccio",
+            "crypt2pay",
+            "utimaco",
+            "softhsm2",
+            "smartcardhsm",
+            "aws_cloudhsm",
+            "gcp_cloud_hsm",
+            "kryoptic",
+            "other"
+        ]),
         default_value = "proteccio"
     )]
     pub hsm_model: String,

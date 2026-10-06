@@ -20,7 +20,6 @@ pub mod login;
 pub mod mac;
 pub mod opaque_object;
 pub mod pkcs11;
-pub(crate) mod pkcs11_verify;
 pub mod rng;
 pub mod rsa;
 pub mod secret_data;

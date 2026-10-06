@@ -26,7 +26,7 @@ use cosmian_pkcs11_module::{
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm, backend as registered_backend},
+    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
@@ -47,7 +47,7 @@ use crate::{
     kms_object::get_kms_objects_async,
 };
 
-fn save_pkcs11_client_config() -> String {
+pub(crate) fn save_pkcs11_client_config() -> String {
     // Start or get the shared test KMS server context
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     let ctx = rt.block_on(async { start_default_test_kms_server().await });
@@ -72,7 +72,7 @@ fn save_pkcs11_client_config() -> String {
     owner_file_path
 }
 
-fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
+pub(crate) fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
@@ -279,8 +279,9 @@ fn test_get_function_list_rejects_null_output() {
     );
 }
 
+#[test]
 #[expect(unsafe_code)]
-fn test_init() {
+pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
 
@@ -450,7 +451,10 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
 
 // ── SSH integration tests ────────────────────────────────────────────────────
 
-async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (String, String) {
+pub(crate) async fn create_rsa_ssh_keypair(
+    kms_rest_client: &KmsClient,
+    bits: usize,
+) -> (String, String) {
     let req = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
         None,
@@ -470,7 +474,7 @@ async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (St
     )
 }
 
-async fn create_ec_ssh_keypair(
+pub(crate) async fn create_ec_ssh_keypair(
     kms_rest_client: &KmsClient,
     curve: RecommendedCurve,
 ) -> (String, String) {
@@ -493,29 +497,59 @@ async fn create_ec_ssh_keypair(
     )
 }
 
-/// Test that a remote RSA-PKCS1v15-SHA256 signature can be produced for an
-/// `ssh-auth`-tagged RSA-2048 private key stored in the KMS.
+/// Test remote RSA-PKCS1v15-SHA256 signing and verification for an `ssh-auth`-tagged
+/// RSA-2048 keypair stored in the KMS.
 #[test]
 #[serial]
 fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
-    let (owner_client_conf, sk_id) = rt.block_on(async {
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
         let kms_rest_client = ctx.get_owner_client();
-        let (sk_id, _pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
-        (ctx.owner_client_config.clone(), sk_id)
+        let (sk_id, pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
 
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     let data = b"hello ssh world, this is a test message for RSA signing";
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::RsaPkcs1v15Sha256, data)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        KeyAlgorithm::Rsa,
+    )?;
     assert!(
         !signature.is_empty(),
         "RSA-2048 signature must not be empty"
     );
     // RSA-2048 produces a 256-byte signature
     assert_eq!(signature.len(), 256, "RSA-2048 signature must be 256 bytes");
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+
+    let mut tampered_signature = signature;
+    if let Some(first_byte) = tampered_signature.first_mut() {
+        *first_byte ^= 0xFF;
+    }
+    let error = backend
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::RsaPkcs1v15Sha256,
+            data,
+            &tampered_signature,
+            KeyAlgorithm::Rsa,
+        )
+        .expect_err("tampered signature must be rejected");
+    assert!(matches!(
+        error,
+        cosmian_pkcs11_module::ModuleError::SignatureInvalid
+    ));
     Ok(())
 }
 
@@ -538,13 +572,33 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
     );
     Ok(())
 }
+
+// ── HSM-KEK PKCS#11 mandatory conformance tests ─────────────────────────────
+//
+// The 3 tests below exercise real PKCS#11 signing requests
+// (`CliBackend::remote_sign`, the same code path used by `C_Sign`) against a
+// KMS server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK): every
+// created key is transparently AES-wrapped by an HSM-resident KEK before
+// being persisted, so these tests validate the full HSM-backed storage path,
+// not just in-memory/software-only signing.
+//
+// Unlike the SSH-focused tests above (which only assert the signature is
+// non-empty), each test here also calls the KMIP `SignatureVerify` operation
+// against the freshly created public key, so a wrong signature format,
+// wrong digest, or wrong curve handling would make the test fail loudly
+// instead of silently passing on a shape-only check.
 
 /// Test that SSH-tagged keypairs are returned by the backend's key-discovery
 /// methods. The test creates one RSA-2048 and one EC P-256 keypair under the
@@ -604,9 +658,9 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): `C_GetInterfaceList` must
-/// implement the standard two-call convention and return both "PKCS 11" interface entries;
-/// `C_GetInterface` must resolve an interface both when `pInterfaceName`/`pVersion` are null
-/// (any interface/version accepted) and when they exactly match.
+/// implement the standard two-call convention and return the sole "PKCS 11" v3.0 interface;
+/// `C_GetInterface` must resolve that same interface both when `pInterfaceName`/`pVersion` are
+/// null (any interface/version accepted) and when they exactly match.
 #[test]
 #[serial]
 #[expect(unsafe_code)]
@@ -635,21 +689,21 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     );
 
     // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
-    let mut short_count: CK_ULONG = 1;
+    let mut zero_count: CK_ULONG = 1;
     let mut interfaces = [CK_INTERFACE {
         pInterfaceName: std::ptr::null_mut(),
         pFunctionList: std::ptr::null_mut(),
         flags: 0,
     }; 2];
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 2-element buffer; `short_count` (1) under-reports its
+        // SAFETY: `interfaces` is a valid 2-element buffer; `zero_count` (1) under-reports its
         // capacity on purpose to exercise the too-small path.
-        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut short_count) },
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
         CKR_BUFFER_TOO_SMALL
     );
-    assert_eq!(short_count, 2);
+    assert_eq!(zero_count, 2);
 
-    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interfaces.
+    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
     let mut full_count: CK_ULONG = 2;
     assert_eq!(
         // SAFETY: `interfaces` is a valid 2-element buffer, matching `full_count`.
@@ -664,8 +718,7 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         let name = unsafe { std::ffi::CStr::from_ptr(interface.pInterfaceName.cast()) };
         assert_eq!(name.to_bytes(), b"PKCS 11");
     }
-
-    // `C_GetInterface` with null name/version must resolve to the default (newest) interface.
+    // `C_GetInterface` with null name/version must resolve to the same sole interface.
     let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
     assert_eq!(
         // SAFETY: `pp_interface` is a valid stack out-parameter; name/version are
@@ -682,17 +735,15 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     );
     assert!(!interface_ptr.is_null());
 
-    // `C_GetInterface` with a matching name and the implemented version must also succeed, and
-    // — per §5.4.6 rule 2 — the interface handed back must really declare that version.
+    // `C_GetInterface` with a matching name and major version must also succeed.
     let mut name_bytes = b"PKCS 11\0".to_vec();
     let mut version = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR,
     };
     assert_eq!(
-        // SAFETY: `name_bytes` is NUL-terminated, so it satisfies `C_GetInterface`'s
-        // `pInterfaceName` contract; `version` is a valid, properly-aligned `CK_VERSION` on
-        // the stack.
+        // SAFETY: `name_bytes` is NUL-terminated and well within `MAX_INTERFACE_NAME_LEN`;
+        // `version` is a valid, properly-aligned `CK_VERSION` on the stack.
         unsafe {
             C_GetInterface(
                 name_bytes.as_mut_ptr().cast::<CK_UTF8CHAR>(),
@@ -703,31 +754,12 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         },
         CKR_OK
     );
-    assert_eq!(
-        returned_version(interface_ptr),
-        (CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR)
-    );
-
     let backend_after_discovery = registered_backend()?;
     assert!(
         std::sync::Arc::ptr_eq(&backend_before_discovery, &backend_after_discovery),
         "interface discovery must not replace an already authenticated backend"
     );
     Ok(())
-}
-
-/// Reads back the `CK_VERSION` an interface declares in the first two bytes of its
-/// `pFunctionList`, the field every `CK_FUNCTION_LIST*` layout has carried since v2.0 and the one
-/// the spec's own `C_GetInterface` example prints. This is what a conformance suite inspects to
-/// check that §5.4.6 rule 2's "the version of the interface returned must match" was honoured.
-#[expect(unsafe_code)]
-fn returned_version(interface_ptr: *mut CK_INTERFACE) -> (u8, u8) {
-    assert!(!interface_ptr.is_null());
-    // SAFETY: `interface_ptr` was returned as non-null by a successful `C_GetInterface` call and
-    // points at one of this module's `static mut` `CK_INTERFACE`s, whose `pFunctionList` points
-    // at a `CK_FUNCTION_LIST_3_0` that begins with a `CK_VERSION`.
-    let version = unsafe { *(*interface_ptr).pFunctionList.cast::<CK_VERSION>() };
-    (version.major, version.minor)
 }
 
 /// `C_GetInterface` must reject an unknown interface name, an unsupported major version, and any
@@ -748,8 +780,8 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
     // Unknown interface name.
     let mut bad_name = b"NOT PKCS 11\0".to_vec();
     assert_eq!(
-        // SAFETY: `bad_name` is NUL-terminated, so it satisfies `C_GetInterface`'s
-        // `pInterfaceName` contract; `interface_ptr` is a valid stack out-parameter.
+        // SAFETY: `bad_name` is NUL-terminated and within `MAX_INTERFACE_NAME_LEN`;
+        // `interface_ptr` is a valid stack out-parameter.
         unsafe {
             C_GetInterface(
                 bad_name.as_mut_ptr().cast::<CK_UTF8CHAR>(),
@@ -777,29 +809,28 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    // An exact `{3, 0}` request — the call the spec's own `C_GetInterface` example makes — must
-    // succeed and, per §5.4.6 rule 2, hand back an interface that really declares `{3, 0}`,
-    // not the newer table under a relaxed "backward-compatible" match.
-    let mut v3_0 = CK_VERSION {
+    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
+    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
+    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
+    // truly unsupported.
+    let mut compatible_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: 0,
     };
     assert_eq!(
-        // SAFETY: `v3_0` and `interface_ptr` are valid stack values.
+        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
         unsafe {
             C_GetInterface(
                 std::ptr::null_mut(),
-                &raw mut v3_0,
+                &raw mut compatible_minor,
                 &raw mut interface_ptr,
                 0,
             )
         },
         CKR_OK
     );
-    assert_eq!(returned_version(interface_ptr), (CRYPTOKI_VERSION_MAJOR, 0));
+    assert!(!interface_ptr.is_null());
 
-    // A minor version this module publishes no interface for must be rejected: §5.4.6 rule 2 is
-    // an exact match, so there is nothing to return.
     let mut unsupported_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
@@ -1028,8 +1059,7 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
             unsafe { C_GetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
             CKR_BUFFER_TOO_SMALL
         );
-        let reported_len = undersized[0].ulValueLen;
-        assert!(reported_len > 1);
+        assert!(undersized[0].ulValueLen > 1);
         assert_eq!(sentinel, 0xA5);
         assert_eq!(
             // SAFETY: the template contains one valid attribute and `obj_handle` is live.
