@@ -1,11 +1,8 @@
 # SIEM integration
 
-The Eviden KMS produces audit events that can be ingested by any SIEM (Security Information
-and Event Management) system. This page describes the available integration models and
-provides configuration examples for common SIEM products.
+The Eviden KMS produces audit events that can be ingested by any SIEM (Security Information and Event Management) system. This page describes the available integration models and provides configuration examples for common SIEM products.
 
-For the CEF format itself (field mapping, severity rules, escaping, and specification
-reference), see [CEF export](./cef-export.md).
+For the CEF format itself (field mapping, severity rules, escaping, and specification reference), see [CEF export](./cef-export.md).
 
 ---
 
@@ -13,10 +10,10 @@ reference), see [CEF export](./cef-export.md).
 
 The KMS supports two integration models:
 
-| Model | How it works | Format | Continuous? |
-| ----- | ------------ | ------ | ----------- |
-| **File tailing** | SIEM agent tails the JSONL audit file directly | JSON | Yes |
-| **CEF export** | `ckms audit export` converts events to CEF on stdout | CEF v27 | Manual / scripted |
+| Model            | How it works                                         | Format  | Continuous?       |
+| ---------------- | ---------------------------------------------------- | ------- | ----------------- |
+| **File tailing** | SIEM agent tails the JSONL audit file directly       | JSON    | Yes               |
+| **CEF export**   | `ckms audit export` converts events to CEF on stdout | CEF v27 | Manual / scripted |
 
 > The audit trail itself is authoritative (see [Audit logs](./audit-logs.md)); CEF is a
 > serialisation view and does not include the hash-chain fields (`prev_hash`, `row_hash`).
@@ -136,7 +133,7 @@ Ship the JSONL file via Filebeat 8.x with the `filestream` input and `ndjson` pa
 
 ```yaml
 filebeat.inputs:
-  - type: filestream                       # replaces deprecated 'log' input in Filebeat 8.x
+  - type: filestream # replaces deprecated 'log' input in Filebeat 8.x
     id: kms-audit
     paths:
       - /var/log/cosmian-kms/audit.jsonl
@@ -155,10 +152,10 @@ processors:
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
   index: "kms-audit"
-  pipeline: "kms-audit-normalize"         # required — see ingest pipeline below
+  pipeline: "kms-audit-normalize" # required — see ingest pipeline below
 
-setup.template.enabled: false             # use your own index mapping
-setup.ilm.enabled: false                  # write to a plain index, not a data stream
+setup.template.enabled: false # use your own index mapping
+setup.ilm.enabled: false # write to a plain index, not a data stream
 ```
 
 #### The `result` field and the ingest pipeline
@@ -192,10 +189,10 @@ curl -X PUT "http://elasticsearch:9200/_ingest/pipeline/kms-audit-normalize" \
 
 After the pipeline runs, each indexed document has:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `result_status` | `keyword` | Always `"Success"` or `"Failure"` |
-| `result_error` | `text` | Error message — present only on `"Failure"` events |
+| Field           | Type      | Description                                        |
+| --------------- | --------- | -------------------------------------------------- |
+| `result_status` | `keyword` | Always `"Success"` or `"Failure"`                  |
+| `result_error`  | `text`    | Error message — present only on `"Failure"` events |
 
 ### JSONL field reference for SIEM mapping
 
@@ -258,11 +255,9 @@ while IFS= read -r line; do
 done < <(ckms audit export --format cef --path /var/log/cosmian-kms/audit.jsonl)
 ```
 
-!!! note "TCP vs UDP"
-    - **TCP with octet-counting**: reliable, ordered delivery — suitable for production
-      pipelines. Each frame carries its own length prefix (`<count> <message>`). Note that
-      `nc <host> 5514` can be used as an alternative to `/dev/tcp` if running outside Bash.
-    - **UDP**: no delivery guarantee — suitable only for ad hoc verification.
+!!! note "TCP vs UDP" - **TCP with octet-counting**: reliable, ordered delivery — suitable for production
+pipelines. Each frame carries its own length prefix (`<count> <message>`). Note that
+`nc <host> 5514` can be used as an alternative to `/dev/tcp` if running outside Bash. - **UDP**: no delivery guarantee — suitable only for ad hoc verification.
 
 ### Ad hoc export to a CEF listener (UDP)
 
@@ -302,28 +297,32 @@ These products ingest KMS **audit events** (JSONL file or CEF syslog).
 
 #### Tested against a live instance
 
-| Product | Role | What is proven |
-|---|---|---|
-| **rsyslog** | Syslog receiver | CEF lines delivered over TCP (RFC 6587 octet-counting); all events received intact |
-| **Fluent Bit 4.0** | Log shipper | JSONL audit file tailed continuously; all events forwarded; required fields present |
-| **Filebeat 8.17** | Log shipper | Audit JSONL shipped to Elasticsearch; ingest pipeline normalises `result`; all events indexed |
-| **Elasticsearch 8.17** | Log store / SIEM backend | Events indexed with correct field mapping for both Success and Failure outcomes |
+| Product                | Role                     | What is proven                                                                                |
+| ---------------------- | ------------------------ | --------------------------------------------------------------------------------------------- |
+| **rsyslog**            | Syslog receiver          | CEF lines delivered over TCP (RFC 6587 octet-counting); all events received intact            |
+| **Fluent Bit 4.0**     | Log shipper              | JSONL audit file tailed continuously; all events forwarded; required fields present           |
+| **Filebeat 8.17**      | Log shipper              | Audit JSONL shipped to Elasticsearch; ingest pipeline normalises `result`; all events indexed |
+| **Elasticsearch 8.17** | Log store / SIEM backend | Events indexed with correct field mapping for both Success and Failure outcomes               |
 
 #### Documented but not live-tested
 
 The underlying transport is proven above; only the product-specific connector has not been
 exercised with a live container.
 
-| Product | Integration model | Basis for confidence |
-|---|---|---|
-| **Splunk** (Universal Forwarder) | File tailing (`inputs.conf`) | Same JSONL format proven by Fluent Bit and Filebeat tests |
-| **Datadog** | File tailing (`datadog.yaml`) | Same JSONL format; config example in this page |
-| **ArcSight / QRadar** | CEF over TCP syslog | CEF format + TCP transport proven by rsyslog test; only destination endpoint differs |
-| **OpenSearch** | File tailing or Filebeat | Elasticsearch-compatible API; Filebeat test uses the same ingest pipeline |
+| Product                          | Integration model             | Basis for confidence                                                                 |
+| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------ |
+| **Splunk** (Universal Forwarder) | File tailing (`inputs.conf`)  | Same JSONL format proven by Fluent Bit and Filebeat tests                            |
+| **Datadog**                      | File tailing (`datadog.yaml`) | Same JSONL format; config example in this page                                       |
+| **ArcSight / QRadar**            | CEF over TCP syslog           | CEF format + TCP transport proven by rsyslog test; only destination endpoint differs |
+| **OpenSearch**                   | File tailing or Filebeat      | Elasticsearch-compatible API; Filebeat test uses the same ingest pipeline            |
 
 ---
 
 ## Access restriction
 
-See [Protecting the file](./audit-file-backend.md#protecting-the-file) for restricting access
-to the audit file. The same principle applies to the PostgreSQL backend's database.
+Give the collection service its own account with read-only access to the audit source.
+For file tailing, follow [Protecting the file](./audit-file-backend.md#protecting-the-file).
+
+For PostgreSQL exports, grant a separate role `SELECT` on `kms_audit_events` and required connection and schema access.
+Grant the collector no write or DDL privileges, and keep its credentials separate from the KMS writer credentials.
+See [PostgreSQL backend](./audit-postgresql-backend.md#prerequisites) for KMS writer permissions.

@@ -140,8 +140,9 @@ See [ckms audit](../kms_clients/audit.md) for the full CLI reference.
 ## Protecting the file
 
 - Use an append-only filesystem or object store (e.g. S3 with Object Lock) for the audit file.
-- Restrict read access to the KMS process user and auditors only; the file contains usernames
+- Restrict read access to the KMS process user, authorized auditors, and collection services; the file contains usernames
   and operation details.
+- Give collection services read-only access through their own service accounts.
 - Retain audit files for the compliance window required by your frameworkThis includes sealed 
 `*.corrupt.jsonl` files left behind by a seal-and-roll recovery: they are forensic evidence, 
 never deleted automatically, and need
