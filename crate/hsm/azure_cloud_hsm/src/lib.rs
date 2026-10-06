@@ -22,6 +22,7 @@ impl HsmProvider for AzureCloudHsmCapabilityProvider {
             supports_ec_sensitive_attribute: false,
             supports_aes_gcm_caller_iv: false,
             max_label_len: None,
+            skip_finalize_on_drop: true,
         }
     }
 }

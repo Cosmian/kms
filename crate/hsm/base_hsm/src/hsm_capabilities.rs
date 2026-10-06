@@ -37,6 +37,9 @@ pub struct HsmCapabilities {
     /// Maximum length allowed for `CKA_LABEL` on HSM objects.
     /// If `None`, there is no enforced limit.
     pub max_label_len: Option<usize>,
+
+    /// Whether the provider crashes when the PKCS#11 library is finalized during drop.
+    pub skip_finalize_on_drop: bool,
 }
 
 impl Default for HsmCapabilities {
@@ -49,6 +52,7 @@ impl Default for HsmCapabilities {
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
             max_label_len: None,
+            skip_finalize_on_drop: false,
         }
     }
 }

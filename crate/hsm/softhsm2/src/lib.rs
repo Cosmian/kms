@@ -43,6 +43,7 @@ impl HsmProvider for SofthsmCapabilityProvider {
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
             max_label_len: None,
+            skip_finalize_on_drop: false,
         }
     }
 }

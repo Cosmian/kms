@@ -94,7 +94,8 @@ const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 #[expect(dead_code)]
 #[expect(non_snake_case)]
 pub struct HsmLib {
-    _library: Library,
+    _library: Option<Library>,
+    skip_finalize_on_drop: bool,
     pub(crate) C_Initialize: CK_C_Initialize,
     pub(crate) C_Finalize: CK_C_Finalize,
 
@@ -200,7 +201,7 @@ pub struct HsmLib {
 }
 
 impl HsmLib {
-    pub(crate) fn instantiate<P>(path: P) -> HResult<Self>
+    pub(crate) fn instantiate_with_options<P>(path: P, skip_finalize_on_drop: bool) -> HResult<Self>
     where
         P: AsRef<std::ffi::OsStr>,
     {
@@ -250,6 +251,7 @@ impl HsmLib {
             }
 
             let hsm_lib = Self {
+                skip_finalize_on_drop,
                 C_Initialize: resolve!(b"C_Initialize", C_Initialize),
                 C_Finalize: resolve!(b"C_Finalize", C_Finalize),
                 C_OpenSession: resolve!(b"C_OpenSession", C_OpenSession),
@@ -344,7 +346,7 @@ impl HsmLib {
                     C_MessageVerifyFinal
                 ),
                 // we need to keep the library alive
-                _library: library,
+                _library: Some(library),
             };
 
             // At least the core v2.40 functions must have resolved through one of the
@@ -656,7 +658,13 @@ impl std::fmt::Display for Info {
 
 impl Drop for HsmLib {
     fn drop(&mut self) {
-        drop(self.finalize());
+        if !self.skip_finalize_on_drop {
+            drop(self.finalize());
+            drop(self._library.take());
+        } else {
+            // Azure's PKCS#11 client crashes while unloading its shared library.
+            std::mem::forget(self._library.take());
+        }
     }
 }
 
@@ -813,7 +821,7 @@ mod function_table_fallback_tests {
     #[test]
     fn function_table_only_library_loads_via_fallback() -> HResult<()> {
         let path = compile_minimal_pkcs11_shim()?;
-        let hsm_lib = HsmLib::instantiate(&path)?;
+        let hsm_lib = HsmLib::instantiate_with_options(&path, false)?;
 
         if !hsm_lib.supports_pkcs11_v3_interfaces() {
             return Err(HError::Default(
@@ -854,7 +862,7 @@ mod function_table_fallback_tests {
     #[test]
     fn eddsa_sign_gracefully_reports_unsupported_mechanism() -> HResult<()> {
         let path = compile_minimal_pkcs11_shim()?;
-        let hsm_lib = HsmLib::instantiate(&path)?;
+        let hsm_lib = HsmLib::instantiate_with_options(&path, false)?;
         let session = test_session(hsm_lib);
 
         let Err(err) = session.sign(1, crate::HsmSigningAlgorithm::Eddsa, b"data") else {
@@ -874,7 +882,7 @@ mod function_table_fallback_tests {
     #[test]
     fn eddsa_verify_gracefully_reports_unsupported_mechanism() -> HResult<()> {
         let path = compile_minimal_pkcs11_shim()?;
-        let hsm_lib = HsmLib::instantiate(&path)?;
+        let hsm_lib = HsmLib::instantiate_with_options(&path, false)?;
         let session = test_session(hsm_lib);
 
         let Err(err) = session.verify(1, crate::HsmSigningAlgorithm::Eddsa, b"data", b"sig") else {
@@ -896,7 +904,7 @@ mod function_table_fallback_tests {
     #[test]
     fn rsa_sign_succeeds_through_classic_mechanism() -> HResult<()> {
         let path = compile_minimal_pkcs11_shim()?;
-        let hsm_lib = HsmLib::instantiate(&path)?;
+        let hsm_lib = HsmLib::instantiate_with_options(&path, false)?;
         let session = test_session(hsm_lib);
 
         session.sign(1, crate::HsmSigningAlgorithm::Sha256WithRsa, b"data")?;
@@ -908,7 +916,7 @@ mod function_table_fallback_tests {
     #[test]
     fn hkdf_derive_gracefully_reports_unsupported_mechanism() -> HResult<()> {
         let path = compile_minimal_pkcs11_shim()?;
-        let hsm_lib = HsmLib::instantiate(&path)?;
+        let hsm_lib = HsmLib::instantiate_with_options(&path, false)?;
         let session = test_session(hsm_lib);
 
         let Err(err) = session.derive_hkdf_key(
@@ -939,7 +947,7 @@ mod function_table_fallback_tests {
     #[test]
     fn message_aead_gracefully_reports_unsupported_capability() -> HResult<()> {
         let path = compile_minimal_pkcs11_shim()?;
-        let hsm_lib = HsmLib::instantiate(&path)?;
+        let hsm_lib = HsmLib::instantiate_with_options(&path, false)?;
         if hsm_lib.supports_message_encrypt() {
             return Err(HError::Default(
                 "the minimal fixture must not report message-encrypt support".to_owned(),

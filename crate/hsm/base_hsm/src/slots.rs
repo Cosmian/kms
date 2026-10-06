@@ -8,8 +8,8 @@ use cosmian_logger::{debug, warn};
 use lru::LruCache;
 use pkcs11_sys::{
     CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
-    CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN,
-    CKU_USER,
+    CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_ARGUMENTS_BAD, CKR_OK,
+    CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
 
 use crate::{
@@ -120,6 +120,11 @@ pub struct SlotManager {
 }
 
 impl SlotManager {
+    /// Reports whether AES-GCM accepts an IV supplied by the caller.
+    pub(crate) const fn supports_aes_gcm_caller_iv(&self) -> bool {
+        self.hsm_capabilities.supports_aes_gcm_caller_iv
+    }
+
     /// Create a new `SlotManager` instance for the specified slot.
     /// If a login password is provided, the HSM will authenticate the slot.
     ///
@@ -350,7 +355,7 @@ impl SlotManager {
             let mut pwd_bytes = login_password.as_bytes().to_vec();
 
             #[expect(unsafe_code)]
-            let rv = unsafe {
+            let mut rv = unsafe {
                 hsm_lib
                     .C_Login
                     .ok_or_else(|| HError::Default("C_Login not available on library".to_owned()))?(
@@ -364,6 +369,35 @@ impl SlotManager {
                     CK_ULONG::try_from(pwd_bytes.len())?,
                 )
             };
+            if rv == CKR_ARGUMENTS_BAD {
+                if let (Some(login_user), Some((username, password))) =
+                    (hsm_lib.C_LoginUser, login_password.split_once(':'))
+                {
+                    let mut username_bytes = username.as_bytes().to_vec();
+                    let mut password_bytes = password.as_bytes().to_vec();
+                    #[expect(unsafe_code)]
+                    {
+                        rv = unsafe {
+                            login_user(
+                                session_handle,
+                                CKU_USER,
+                                if password_bytes.is_empty() {
+                                    ptr::null_mut()
+                                } else {
+                                    password_bytes.as_mut_ptr()
+                                },
+                                CK_ULONG::try_from(password_bytes.len())?,
+                                if username_bytes.is_empty() {
+                                    ptr::null_mut()
+                                } else {
+                                    username_bytes.as_mut_ptr()
+                                },
+                                CK_ULONG::try_from(username_bytes.len())?,
+                            )
+                        };
+                    }
+                }
+            }
             if rv == CKR_USER_ALREADY_LOGGED_IN {
                 warn!("user already logged in, ignoring logging");
             } else if rv != CKR_OK {
