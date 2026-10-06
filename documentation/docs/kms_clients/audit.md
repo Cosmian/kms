@@ -1,14 +1,27 @@
 # ckms audit
 
-Inspect and verify the KMS audit trail, reading directly from its storage backend — the
+Inspect and verify the KMS audit trail, reading directly from its storage backend: the
 JSONL file or a `PostgreSQL` database. No running KMS server is required.
 
-All `ckms audit` commands work **directly on the audit storage** — no running KMS server
-connection needed. The subcommands are suitable for scripts, cron jobs, and SIEM export
-pipelines.
+`export` and `verify` read from exactly one source: a JSONL file (`--path`) or a PostgreSQL
+database (`--audit-postgres-url`). The two are mutually exclusive.
 
-`--audit-instance-id` applies only to PostgreSQL sources.
-Combining it with a file source (`--path` or `KMS_AUDIT_FILE_PATH`) is an error.
+If any of `--path`, `--audit-postgres-url` or `--audit-instance-id` is given on the command line,
+the `KMS_AUDIT_FILE_PATH` and `KMS_AUDIT_POSTGRES_URL` environment variables are not read at all.
+
+
+```bash
+# In a KMS pod configured with KMS_AUDIT_POSTGRES_URL: verifies every instance
+ckms audit verify
+
+# Same pod, checking an exported file instead: the argument overrides the environment
+ckms audit verify --path /backup/audit.jsonl
+
+# For PostgreSQL, the default behavior is checking the full chain
+ckms audit verify --audit-postgres-url "$KMS_AUDIT_POSTGRES_URL"
+# Restricting to one instance needs the URL on the command line too
+ckms audit verify --audit-postgres-url "$KMS_AUDIT_POSTGRES_URL" --audit-instance-id kms-eu-west-1a
+```
 
 ## Usage
 
@@ -33,14 +46,14 @@ Export events from the audit log to stdout. Supports JSON (default) and CEF outp
 ### Arguments
 
 `--path [-p] <FILE>` Path to the JSONL audit log file. Alternative to `--audit-postgres-url` —
-exactly one is required. Can also be set via `KMS_AUDIT_FILE_PATH`.
+exactly one is required.
 
 `--audit-postgres-url <URL>` `PostgreSQL` connection URL for the audit database, as an
-alternative to `--path`. Can also be set via `KMS_AUDIT_POSTGRES_URL`.
+alternative to `--path`.
 
 `--audit-instance-id <ID>` With `--audit-postgres-url`, restricts the export to a single KMS
-instance's chain. Omit to export every instance present in the database. Can also be set via
-`KMS_AUDIT_INSTANCE_ID`.
+instance's chain. Omit to export every instance present in the database. An ID with no events
+in the database is an error, not an empty export.
 
 `--since <RFC3339>` Export only events whose `timestamp` is greater than or equal to this value.
 The value must be an RFC 3339 timestamp, e.g. `2026-05-01T00:00:00Z`.
@@ -134,15 +147,14 @@ more. A directory is scanned for every non-sealed `*.jsonl` file, each verified 
 **independent** chain. Sealed `*.corrupt.jsonl` evidence files are intentionally not verified
 as chains — their corruption is why they were sealed — but are SHA-256 checked through the live
 log's `audit:reanchor` record. Alternative to `--audit-postgres-url` — exactly one is required.
-Can also be set via `KMS_AUDIT_FILE_PATH`.
 
 `--audit-postgres-url <URL>` `PostgreSQL` connection URL for the audit database, as an
 alternative to `--path`. Verifies every instance's chain in the database, each as its own
-independent chain, unless `--audit-instance-id` restricts it to one. Can also be set via
-`KMS_AUDIT_POSTGRES_URL`.
+independent chain, unless `--audit-instance-id` restricts it to one. See
+[Choosing the audit source](#choosing-the-audit-source).
 
 `--audit-instance-id <ID>` With `--audit-postgres-url`, restricts verification to a single KMS
-instance's chain. Can also be set via `KMS_AUDIT_INSTANCE_ID`.
+instance's chain.
 
 `--verbose` Print a summary line for every event even when the chain is valid.
 _Default: false._
