@@ -30,12 +30,11 @@ use pkcs11_sys::{
     CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS,
 };
 
+use super::session_impl::is_signing_algorithm_supported;
 use crate::{
     HError, HResult, hsm_call,
     session::{HsmSigningAlgorithm, Session},
 };
-
-use super::session_impl::is_signing_algorithm_supported;
 
 impl Session {
     /// Initialize a message-based signing operation
