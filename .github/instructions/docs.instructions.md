@@ -83,6 +83,6 @@ Do not rely on training-data recall for spec section numbers or OID values.
 
 - Use ATX headings (`#`, `##`, `###`).
 - Code blocks with language specifier (` ```bash `, ` ```json `, etc.).
-- One sentence per line (for clean git diffs).
+- Do not hard-wrap Markdown prose; keep each paragraph on one physical line and rely on editor soft wrapping.
 
 > For deeper guidance on documentation pages, run `/docs-writer`.
