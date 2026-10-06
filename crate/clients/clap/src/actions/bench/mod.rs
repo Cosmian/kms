@@ -20,6 +20,6 @@ pub(crate) mod kmip;
 pub(crate) mod load;
 pub(crate) mod output;
 pub(crate) mod transport;
-mod types;
+pub(crate) mod types;
 
-pub use types::BenchAction;
+pub use types::{BenchAction, BenchFilter, BenchMode};

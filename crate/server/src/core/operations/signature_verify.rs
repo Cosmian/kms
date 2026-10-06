@@ -175,15 +175,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
         uid: &str,
         prefix: &str,
     ) -> KResult<Self::Response> {
-        let data: &[u8] = request
-            .data
-            .as_deref()
-            .or(request.digested_data.as_deref())
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "SignatureVerify: must provide data or digested_data".to_owned(),
-                )
-            })?;
+        let (data, input_is_digest) = resolve_oracle_verify_input(request)?;
         let signature = request.signature_data.as_deref().ok_or_else(|| {
             KmsError::InvalidRequest("SignatureVerify: missing signature_data".to_owned())
         })?;
@@ -199,6 +191,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
                 data,
                 signature,
                 request.cryptographic_parameters.as_ref(),
+                input_is_digest,
             )
             .await?;
         Ok(SignatureVerifyResponse {
@@ -229,6 +222,31 @@ pub(crate) async fn signature_verify(
     }
 
     Box::pin(kms.perform_crypto_operation::<SignatureVerifyOp>(request, user)).await
+}
+
+/// Resolve the payload a crypto oracle should verify, together with whether that
+/// payload is already a digest.
+///
+/// `data` and `digested_data` are mutually exclusive, and both the local
+/// execution path and `Sign` reject a request that sets both. Resolving them
+/// independently — taking the payload from one field and the "already digested"
+/// flag from the other — would let a caller that sets both have the raw bytes of
+/// `data` verified as though they were a pre-computed digest, skipping the hash
+/// step on input it fully controls and so choosing which question the KMS
+/// actually answers. The two are therefore resolved together, from a single
+/// match, so the payload and the flag can never disagree.
+fn resolve_oracle_verify_input(request: &SignatureVerify) -> KResult<(&[u8], bool)> {
+    match (&request.data, &request.digested_data) {
+        (Some(data), None) => Ok((data.as_slice(), false)),
+        (None, Some(digested_data)) => Ok((digested_data.as_slice(), true)),
+        (Some(_), Some(_)) => Err(KmsError::InvalidRequest(
+            "SignatureVerify request must not set both 'data' and 'digested_data' simultaneously"
+                .to_owned(),
+        )),
+        (None, None) => Err(KmsError::InvalidRequest(
+            "SignatureVerify: must provide data or digested_data".to_owned(),
+        )),
+    }
 }
 
 /// Extract the verification key from a managed object.
@@ -462,5 +480,52 @@ mod tests {
 
         let v = super::verify_signature(&pkey, &data, &sig, &cp, false).unwrap();
         assert!(matches!(v, ValidityIndicator::Valid));
+    }
+
+    /// Build a `SignatureVerify` carrying only the two mutually exclusive payload
+    /// fields; every other field is irrelevant to input resolution.
+    fn request_with(data: Option<&[u8]>, digested_data: Option<&[u8]>) -> SignatureVerify {
+        SignatureVerify {
+            data: data.map(<[u8]>::to_vec),
+            digested_data: digested_data.map(<[u8]>::to_vec),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_resolve_oracle_verify_input_plain_data_is_not_a_digest() {
+        let request = request_with(Some(b"message"), None);
+        let resolved = resolve_oracle_verify_input(&request).unwrap();
+        assert_eq!(resolved, (b"message".as_slice(), false));
+    }
+
+    #[test]
+    fn test_resolve_oracle_verify_input_digested_data_is_a_digest() {
+        let request = request_with(None, Some(b"digest"));
+        let resolved = resolve_oracle_verify_input(&request).unwrap();
+        assert_eq!(resolved, (b"digest".as_slice(), true));
+    }
+
+    #[test]
+    fn test_resolve_oracle_verify_input_rejects_both_fields() {
+        // Setting both must be refused outright: resolving the payload from `data`
+        // while taking the "already digested" flag from `digested_data` would have
+        // the oracle verify raw attacker-chosen bytes as if they were a digest.
+        let request = request_with(Some(b"message"), Some(b"digest"));
+        let message = resolve_oracle_verify_input(&request)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            message.contains("must not set both"),
+            "a request setting both data and digested_data must be rejected, got: {message:?}"
+        );
+    }
+
+    #[test]
+    fn test_resolve_oracle_verify_input_rejects_neither_field() {
+        let request = request_with(None, None);
+        let rejected = resolve_oracle_verify_input(&request).is_err();
+        assert!(rejected, "a request setting neither field must be rejected");
     }
 }

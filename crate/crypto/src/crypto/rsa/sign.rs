@@ -91,6 +91,11 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             h
         } else {
             match digital_signature_algorithm {
+                // Only rejected in FIPS builds (checked below, once
+                // `effective_hash` is known); non-FIPS builds support
+                // SHA-1 RSA-PKCS1v1.5 signing, matching
+                // `sign_rsa_digest_with_algorithm`'s "SHA1withRSA" support.
+                DigitalSignatureAlgorithm::SHA1WithRSAEncryption => KmipHash::SHA1,
                 DigitalSignatureAlgorithm::RSASSAPSS
                 | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => KmipHash::SHA256,
                 DigitalSignatureAlgorithm::SHA384WithRSAEncryption => KmipHash::SHA384,
