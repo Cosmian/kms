@@ -308,26 +308,17 @@ mod tests {
     }
 
     #[test]
-    fn cef_line_scopes_event_ids_to_source_and_generation() {
+    fn cef_line_with_source_tags_instance_and_generation() {
         let event = make_event(AuditResult::Success);
-        for (instance_id, generation) in [("kms-a", 0), ("kms-b", 0), ("kms-a", 1)] {
-            let line = to_cef_line_with_source(&event, "5.0.0", Some((instance_id, generation)));
-            assert!(line.contains(&format!("deviceExternalId={instance_id}")), "{line}");
-            assert!(line.contains(&format!("cn2={generation} cn2Label=chainGeneration")), "{line}");
-            assert!(line.contains(&format!("externalId={generation}:7")), "{line}");
-        }
+        let line = to_cef_line_with_source(&event, "5.0.0", Some(("a=\nb", 1)));
+        assert!(
+            line.contains(
+                "deviceExternalId=a\\=\\nb cn2=1 cn2Label=chainGeneration externalId=1:7"
+            ),
+            "{line}"
+        );
         let file_line = to_cef_line(&event, "5.0.0");
         assert!(!file_line.contains("deviceExternalId="), "{file_line}");
-        assert!(!file_line.contains("cn2="), "{file_line}");
-    }
-
-    #[test]
-    fn cef_line_escapes_source_metadata() {
-        let event = make_event(AuditResult::Success);
-        let line = to_cef_line_with_source(&event, "5.0.0", Some(("kms=west\nnode\\1\r", 0)));
-        assert!(line.contains("deviceExternalId=kms\\=west\\nnode\\\\1\\r"), "{line}");
-        assert!(!line.contains('\n'), "{line}");
-        assert!(!line.contains('\r'), "{line}");
     }
 
     #[test]

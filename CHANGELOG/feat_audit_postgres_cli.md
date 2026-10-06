@@ -60,6 +60,9 @@
   Corrected several inaccuracies along the way (the `--audit-instance-id`
   default, the CEF version reference, and stale wording that predated the
   `PostgreSQL` backend).
+- Document CEF export for both audit storage backends, with PostgreSQL examples
+  and source fields.
+- Document read-only collection accounts for the audit file and PostgreSQL database.
 
 ## Bug Fixes
 
@@ -68,3 +71,6 @@
 - Reject `--audit-instance-id` when a file source is used by `ckms audit export` or `ckms audit verify`.
 - Continue PostgreSQL audit verification after row-decoding errors.
 - Include instance and chain generation in PostgreSQL JSON and CEF audit exports.
+- `ckms audit export` fails on an `--audit-instance-id` with no events, like `verify`.
+- `ckms audit` no longer reads `KMS_AUDIT_INSTANCE_ID`. `KMS_AUDIT_FILE_PATH` and
+  `KMS_AUDIT_POSTGRES_URL` are only used when no source option is given.

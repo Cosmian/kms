@@ -3,24 +3,27 @@
 Inspect and verify the KMS audit trail, reading directly from its storage backend: the
 JSONL file or a `PostgreSQL` database. No running KMS server is required.
 
+## Choosing the audit source
+
 `export` and `verify` read from exactly one source: a JSONL file (`--path`) or a PostgreSQL
 database (`--audit-postgres-url`). The two are mutually exclusive.
 
-If any of `--path`, `--audit-postgres-url` or `--audit-instance-id` is given on the command line,
-the `KMS_AUDIT_FILE_PATH` and `KMS_AUDIT_POSTGRES_URL` environment variables are not read at all.
+With none of `--path`, `--audit-postgres-url` or `--audit-instance-id`, the source comes from
+`KMS_AUDIT_POSTGRES_URL` or `KMS_AUDIT_FILE_PATH`; PostgreSQL wins if both are set. Any of the three
+options turns this fallback off, so `--audit-instance-id` always needs the URL on the command line.
 
+On a KMS host, `KMS_AUDIT_POSTGRES_URL` holds the writer's credentials. Pass a
+[read-only role](../configuration/siems.md#access-restriction) with `--audit-postgres-url` instead.
 
 ```bash
-# In a KMS pod configured with KMS_AUDIT_POSTGRES_URL: verifies every instance
-ckms audit verify
+# Verify every instance in the database
+ckms audit verify --audit-postgres-url "${AUDIT_READ_URL}"
 
-# Same pod, checking an exported file instead: the argument overrides the environment
+# Verify a single instance
+ckms audit verify --audit-postgres-url "${AUDIT_READ_URL}" --audit-instance-id kms-eu-west-1a
+
+# Verify an exported file
 ckms audit verify --path /backup/audit.jsonl
-
-# For PostgreSQL, the default behavior is checking the full chain
-ckms audit verify --audit-postgres-url "$KMS_AUDIT_POSTGRES_URL"
-# Restricting to one instance needs the URL on the command line too
-ckms audit verify --audit-postgres-url "$KMS_AUDIT_POSTGRES_URL" --audit-instance-id kms-eu-west-1a
 ```
 
 ## Usage

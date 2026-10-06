@@ -153,7 +153,7 @@ ckms audit export --path /var/log/cosmian-kms/audit.jsonl \
 ### PostgreSQL backend
 
 Set `AUDIT_READ_URL` to your audit database's connection URL using a
-[read-only collection role](./siems.md#postgresql-collection).
+[read-only collection role](./siems.md#access-restriction).
 
 Export one KMS instance's events as CEF:
 

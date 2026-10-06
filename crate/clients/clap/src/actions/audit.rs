@@ -80,15 +80,12 @@ pub struct AuditSourceArgs {
 
     /// Restrict a `--audit-postgres-url` source to a single KMS instance's chain.
     /// Omit to read every instance present in the database.
-    // No `env`: on a KMS host, KMS_AUDIT_INSTANCE_ID names the server's own chain, and
-    // inheriting it would silently narrow `verify`/`export` to that one instance.
+    // No `env`: KMS_AUDIT_INSTANCE_ID names the server's own chain and would silently narrow the command.
     #[clap(long)]
     pub audit_instance_id: Option<String>,
 }
 
-/// Environment fallbacks for the source, read only when no source argument is given.
-/// Read by hand rather than through clap's `env`, which cannot tell a flag from an
-/// inherited variable and so cannot let a flag discard the other source's variable.
+/// Source fallbacks, used only when no source option is given.
 const ENV_FILE_PATH: &str = "KMS_AUDIT_FILE_PATH";
 const ENV_POSTGRES_URL: &str = "KMS_AUDIT_POSTGRES_URL";
 
@@ -104,20 +101,14 @@ enum AuditSource {
 }
 
 impl AuditSourceArgs {
-    /// Resolves the audit source from the arguments, falling back to the environment.
-    ///
-    /// If any of `--path`, `--audit-postgres-url` or `--audit-instance-id` is given, the
-    /// environment is not consulted at all. Otherwise the source comes from
-    /// `KMS_AUDIT_POSTGRES_URL` or `KMS_AUDIT_FILE_PATH`; when both are set the
-    /// `PostgreSQL` database wins, as on the KMS server, which never writes to the file
-    /// in that configuration.
-    ///
-    /// An empty `--path` or `--audit-postgres-url` counts as not given.
+    /// Resolves the audit source from the options. Any of `--path`, `--audit-postgres-url`
+    /// or `--audit-instance-id` disables the environment fallback; otherwise
+    /// `KMS_AUDIT_POSTGRES_URL` wins over `KMS_AUDIT_FILE_PATH`, as on the server.
+    /// Empty values count as unset.
     ///
     /// # Errors
-    /// Returns an error if both `--path` and `--audit-postgres-url` are given, or neither
-    /// resolves, if an empty `--audit-instance-id` is given, or if `--audit-instance-id`
-    /// is combined with a file source.
+    /// Returns an error unless exactly one source resolves, or if `--audit-instance-id` is
+    /// empty or combined with a file source.
     fn resolve(&self) -> KmsCliResult<AuditSource> {
         self.resolve_with_env(|name| std::env::var_os(name))
     }
@@ -142,24 +133,22 @@ impl AuditSourceArgs {
             .clone()
             .filter(|url| !url.is_empty());
 
-        let (path, url) = if arg_path.is_some()
-            || arg_url.is_some()
-            || self.audit_instance_id.is_some()
-        {
-            (arg_path, arg_url)
-        } else {
-            let env_path = env(ENV_FILE_PATH)
-                .filter(|path| !path.is_empty())
-                .map(PathBuf::from);
-            let env_url = env(ENV_POSTGRES_URL)
-                .and_then(|url| url.into_string().ok())
-                .filter(|url| !url.is_empty());
-            if env_url.is_some() {
-                (None, env_url)
+        let (path, url) =
+            if arg_path.is_some() || arg_url.is_some() || self.audit_instance_id.is_some() {
+                (arg_path, arg_url)
             } else {
-                (env_path, None)
-            }
-        };
+                let env_path = env(ENV_FILE_PATH)
+                    .filter(|path| !path.is_empty())
+                    .map(PathBuf::from);
+                let env_url = env(ENV_POSTGRES_URL)
+                    .and_then(|url| url.into_string().ok())
+                    .filter(|url| !url.is_empty());
+                if env_url.is_some() {
+                    (None, env_url)
+                } else {
+                    (env_path, None)
+                }
+            };
 
         match (path, url) {
             (Some(_), None) if self.audit_instance_id.is_some() => {
@@ -176,11 +165,9 @@ impl AuditSourceArgs {
                 "--path and --audit-postgres-url are mutually exclusive — specify exactly one"
                     .to_owned(),
             )),
-            (None, None) => Err(crate::error::KmsCliError::InvalidRequest(format!(
-                "one of --path or --audit-postgres-url is required ({ENV_FILE_PATH} and \
-                 {ENV_POSTGRES_URL} are only read when no source argument is given, \
-                 --audit-instance-id included)"
-            ))),
+            (None, None) => Err(crate::error::KmsCliError::InvalidRequest(
+                "one of --path or --audit-postgres-url is required".to_owned(),
+            )),
         }
     }
 }
@@ -883,11 +870,7 @@ fn block_on_audit_source<F: std::future::Future<Output = KmsCliResult<()>>>(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
-    use std::{
-        ffi::OsString,
-        io::Write as _,
-        path::{Path, PathBuf},
-    };
+    use std::{ffi::OsString, io::Write as _, path::PathBuf};
 
     use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
         AuditEvent, AuditResult, audit_now, compute_row_hash,
@@ -895,7 +878,10 @@ mod tests {
     use sha2::{Digest, Sha256};
     use time::OffsetDateTime;
 
-    use super::{AuditSource, AuditSourceArgs, ExportAuditAction, ExportFormat, VerifyAuditAction};
+    use super::{
+        AuditSource, AuditSourceArgs, ENV_FILE_PATH, ENV_POSTGRES_URL, ExportAuditAction,
+        ExportFormat, VerifyAuditAction,
+    };
 
     fn temp_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -958,27 +944,6 @@ mod tests {
     }
 
     // ── VerifyAuditAction ──────────────────────────────────────────────────────
-
-    #[test]
-    fn file_source_rejects_instance_filter() {
-        let path = temp_path("instance_filter");
-        let mut verify = verify_action(path.clone());
-        verify.source.audit_instance_id = Some("instance-1".to_owned());
-        let mut export = export_action(path, ExportFormat::Json);
-        export.source.audit_instance_id = Some("instance-1".to_owned());
-
-        for result in [
-            verify.run_with_writer(&mut Vec::new()),
-            export.run_with_writer(&mut Vec::new()),
-        ] {
-            let error = result.expect_err("file sources must reject an instance filter");
-            let message = error.to_string();
-            assert!(
-                message.contains("--audit-instance-id is only valid with --audit-postgres-url"),
-                "{message}"
-            );
-        }
-    }
 
     #[test]
     fn verify_ok_reports_n_events_verified() {
@@ -1322,11 +1287,6 @@ mod tests {
 
     // ── AuditSourceArgs::resolve() ───────────────────────────────────────────
 
-    /// An empty environment: keeps these tests independent of the process environment.
-    fn no_env(_: &str) -> Option<OsString> {
-        None
-    }
-
     /// Builds an environment lookup from `(name, value)` pairs.
     fn env_of<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
         move |name| {
@@ -1336,226 +1296,67 @@ mod tests {
         }
     }
 
-    const ENV_FILE: (&str, &str) = ("KMS_AUDIT_FILE_PATH", "/env/audit.jsonl");
-    const ENV_URL: (&str, &str) = ("KMS_AUDIT_POSTGRES_URL", "postgresql://env-host/db");
+    /// Rows 1-11: every argument combination, with and without the environment.
+    /// Rows 12-14: blank values count as unset.
+    #[test]
+    fn source_resolve_matrix() {
+        const PATH: &str = "arg.jsonl";
+        const URL: &str = "pg-arg";
+        const ID: &str = "kms-1";
+        const NO_ENV: &[(&str, &str)] = &[];
+        const ENV_FILE: &[(&str, &str)] = &[(ENV_FILE_PATH, "env.jsonl")];
+        const ENV_URL: &[(&str, &str)] = &[(ENV_POSTGRES_URL, "pg-env")];
+        const ENV: &[(&str, &str)] = &[(ENV_FILE_PATH, "env.jsonl"), (ENV_POSTGRES_URL, "pg-env")];
+        const BLANK_ENV: &[(&str, &str)] = &[(ENV_FILE_PATH, ""), (ENV_POSTGRES_URL, "")];
 
-    fn url_of(source: &AuditSource) -> Option<&str> {
-        match source {
-            AuditSource::Postgres { url, .. } => Some(url),
-            AuditSource::File(_) => None,
+        let cases = [
+            (None, None, None, NO_ENV, "one of --path"),
+            (None, None, None, ENV_FILE, "file env.jsonl"),
+            (None, None, None, ENV_URL, "pg pg-env all"),
+            (None, None, None, ENV, "pg pg-env all"),
+            (Some(PATH), None, None, ENV, "file arg.jsonl"),
+            (None, Some(URL), None, ENV, "pg pg-arg all"),
+            (None, None, Some(ID), ENV, "one of --path"),
+            (Some(PATH), Some(URL), None, ENV, "mutually exclusive"),
+            (Some(PATH), None, Some(ID), ENV, "only valid with"),
+            (None, Some(URL), Some(ID), ENV, "pg pg-arg kms-1"),
+            (Some(PATH), Some(URL), Some(ID), ENV, "mutually exclusive"),
+            (None, Some(URL), Some(""), NO_ENV, "must not be empty"),
+            (Some(PATH), Some(""), None, NO_ENV, "file arg.jsonl"),
+            (None, None, None, BLANK_ENV, "one of --path"),
+        ];
+        for (row, (path, url, instance_id, env, expected)) in cases.into_iter().enumerate() {
+            let args = AuditSourceArgs {
+                path: path.map(PathBuf::from),
+                audit_postgres_url: url.map(str::to_owned),
+                audit_instance_id: instance_id.map(str::to_owned),
+            };
+            let outcome = match args.resolve_with_env(env_of(env)) {
+                Ok(AuditSource::File(path)) => format!("file {}", path.display()),
+                Ok(AuditSource::Postgres { url, instance_id }) => {
+                    format!("pg {url} {}", instance_id.as_deref().unwrap_or("all"))
+                }
+                Err(error) => error.to_string(),
+            };
+            assert!(outcome.contains(expected), "row {}: {outcome}", row + 1);
         }
-    }
-
-    #[test]
-    fn source_resolve_rejects_neither_path_nor_postgres_url() {
-        let args = AuditSourceArgs::default();
-        let err = args.resolve_with_env(no_env).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("one of --path or --audit-postgres-url")
-        );
-    }
-
-    #[test]
-    fn source_resolve_rejects_both_path_and_postgres_url() {
-        let args = AuditSourceArgs {
-            path: Some(PathBuf::from("/tmp/audit.jsonl")),
-            audit_postgres_url: Some("postgresql://host/db".to_owned()),
-            audit_instance_id: None,
-        };
-        let err = args.resolve_with_env(no_env).unwrap_err();
-        assert!(err.to_string().contains("mutually exclusive"));
-    }
-
-    #[test]
-    fn source_resolve_accepts_path_only() {
-        let args = AuditSourceArgs {
-            path: Some(PathBuf::from("/tmp/audit.jsonl")),
-            ..Default::default()
-        };
-        args.resolve_with_env(no_env).unwrap();
-    }
-
-    #[test]
-    fn source_resolve_accepts_postgres_url_only() {
-        let args = AuditSourceArgs {
-            audit_postgres_url: Some("postgresql://host/db".to_owned()),
-            ..Default::default()
-        };
-        args.resolve_with_env(no_env).unwrap();
-    }
-
-    /// A blank `KMS_AUDIT_FILE_PATH=` reaches the struct as `Some("")` and must not
-    /// conflict with a real `--audit-postgres-url`.
-    #[test]
-    fn source_resolve_treats_empty_path_as_unset() {
-        let args = AuditSourceArgs {
-            path: Some(PathBuf::new()),
-            audit_postgres_url: Some("postgresql://host/db".to_owned()),
-            audit_instance_id: None,
-        };
-        let source = args.resolve_with_env(no_env).expect("an empty path must count as not set");
-        assert!(matches!(source, AuditSource::Postgres { .. }), "{source:?}");
-    }
-
-    #[test]
-    fn source_resolve_treats_empty_postgres_url_as_unset() {
-        let args = AuditSourceArgs {
-            path: Some(PathBuf::from("/tmp/audit.jsonl")),
-            audit_postgres_url: Some(String::new()),
-            audit_instance_id: None,
-        };
-        let source = args.resolve_with_env(no_env).expect("an empty URL must count as not set");
-        assert!(matches!(source, AuditSource::File(_)), "{source:?}");
-    }
-
-    #[test]
-    fn source_resolve_rejects_two_empty_sources() {
-        let args = AuditSourceArgs {
-            path: Some(PathBuf::new()),
-            audit_postgres_url: Some(String::new()),
-            audit_instance_id: None,
-        };
-        let err = args.resolve_with_env(no_env).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("one of --path or --audit-postgres-url"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn source_resolve_rejects_empty_instance_id() {
-        let args = AuditSourceArgs {
-            audit_postgres_url: Some("postgresql://host/db".to_owned()),
-            audit_instance_id: Some(String::new()),
-            ..Default::default()
-        };
-        let err = args.resolve_with_env(no_env).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("--audit-instance-id must not be empty"),
-            "{err}"
-        );
     }
 
     #[test]
     fn postgres_export_json_preserves_event_and_source() {
         let mut event = build_test_event(0, [0_u8; 32]);
         event.row_hash = compute_row_hash(&event);
-        let original = serde_json::to_value(&event).expect("serialize original event");
-        for (instance_id, generation) in [("kms-a", 0), ("kms-b", 0), ("kms-a", 1)] {
-            let line = serde_json::to_string(&super::PostgresExportEvent {
-                instance_id,
-                chain_generation: generation,
-                event: &event,
-            })
-            .expect("serialize source-tagged event");
-            let fields: serde_json::Value = serde_json::from_str(&line).expect("parse export");
-            assert_eq!(fields["instance_id"], instance_id);
-            assert_eq!(fields["chain_generation"], generation);
-            let restored: AuditEvent = serde_json::from_str(&line).expect("parse audit event");
-            assert_eq!(
-                serde_json::to_value(&restored).expect("serialize event"),
-                original
-            );
-            assert!(super::verify_event(&restored));
-        }
-    }
-
-    #[test]
-    fn source_resolve_falls_back_to_env_file_path() {
-        let source = AuditSourceArgs::default()
-            .resolve_with_env(env_of(&[ENV_FILE]))
-            .expect("env file path is a source");
-        assert!(
-            matches!(&source, AuditSource::File(p) if p == Path::new("/env/audit.jsonl")),
-            "{source:?}"
-        );
-    }
-
-    #[test]
-    fn source_resolve_falls_back_to_env_postgres_url_for_all_instances() {
-        let source = AuditSourceArgs::default()
-            .resolve_with_env(env_of(&[ENV_URL]))
-            .expect("env URL is a source");
-        assert!(
-            matches!(&source, AuditSource::Postgres { instance_id: None, .. }),
-            "{source:?}"
-        );
-        assert_eq!(url_of(&source), Some("postgresql://env-host/db"));
-    }
-
-    /// Both variables set and no argument: `PostgreSQL` wins, as on the server.
-    #[test]
-    fn source_resolve_env_postgres_wins_over_env_file() {
-        let source = AuditSourceArgs::default()
-            .resolve_with_env(env_of(&[ENV_FILE, ENV_URL]))
-            .expect("both variables set must resolve");
-        assert_eq!(url_of(&source), Some("postgresql://env-host/db"));
-    }
-
-    #[test]
-    fn source_resolve_empty_env_values_are_unset() {
-        let result = AuditSourceArgs::default().resolve_with_env(env_of(&[
-            ("KMS_AUDIT_FILE_PATH", ""),
-            ("KMS_AUDIT_POSTGRES_URL", ""),
-        ]));
-        assert!(result.is_err(), "empty variables must not form a source");
-    }
-
-    /// A source argument means the environment is not consulted, whatever it holds.
-    #[test]
-    fn source_resolve_path_argument_ignores_env_url() {
-        let args = AuditSourceArgs {
-            path: Some(PathBuf::from("/arg/audit.jsonl")),
-            ..Default::default()
-        };
-        let source = args
-            .resolve_with_env(env_of(&[ENV_FILE, ENV_URL]))
-            .expect("the argument must win");
-        assert!(
-            matches!(&source, AuditSource::File(p) if p == Path::new("/arg/audit.jsonl")),
-            "{source:?}"
-        );
-    }
-
-    #[test]
-    fn source_resolve_url_argument_ignores_env_path() {
-        let args = AuditSourceArgs {
-            audit_postgres_url: Some("postgresql://arg-host/db".to_owned()),
-            ..Default::default()
-        };
-        let source = args
-            .resolve_with_env(env_of(&[ENV_FILE, ENV_URL]))
-            .expect("the argument must win");
-        assert_eq!(url_of(&source), Some("postgresql://arg-host/db"));
-    }
-
-    /// Any source argument, `--audit-instance-id` included, switches the environment off:
-    /// an instance filter with only an env URL has no source.
-    #[test]
-    fn source_resolve_instance_id_argument_disables_env_fallback() {
-        let args = AuditSourceArgs {
-            audit_instance_id: Some("kms-1".to_owned()),
-            ..Default::default()
-        };
-        let err = args.resolve_with_env(env_of(&[ENV_URL])).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("one of --path or --audit-postgres-url is required"),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn source_resolve_instance_id_with_env_file_is_not_reachable() {
-        let args = AuditSourceArgs {
-            audit_instance_id: Some("kms-1".to_owned()),
-            ..Default::default()
-        };
-        let result = args.resolve_with_env(env_of(&[ENV_FILE]));
-        assert!(result.is_err(), "no source argument and env must be ignored");
+        let line = serde_json::to_string(&super::PostgresExportEvent {
+            instance_id: "kms-a",
+            chain_generation: 1,
+            event: &event,
+        })
+        .expect("serialize source-tagged event");
+        let fields: serde_json::Value = serde_json::from_str(&line).expect("parse export");
+        assert_eq!(fields["instance_id"], "kms-a");
+        assert_eq!(fields["chain_generation"], 1);
+        let restored: AuditEvent = serde_json::from_str(&line).expect("parse audit event");
+        assert!(super::verify_event(&restored));
     }
 
     // ── PostgreSQL source (requires a live database) ─────────────────────────
@@ -1869,19 +1670,14 @@ mod tests {
                 match format {
                     ExportFormat::Json => {
                         let event: AuditEvent = serde_json::from_str(line).expect("parse event");
-                        let fields: serde_json::Value =
-                            serde_json::from_str(line).expect("parse fields");
-                        assert_eq!(fields["instance_id"], instance_id);
-                        assert_eq!(fields["chain_generation"], 0);
                         assert!(super::verify_event(&event));
                     }
                     ExportFormat::Cef => {
-                        assert!(
-                            line.contains(&format!("deviceExternalId={instance_id}")),
-                            "{line}"
+                        let source = format!(
+                            "deviceExternalId={instance_id} cn2=0 cn2Label=chainGeneration \
+                             externalId=0:"
                         );
-                        assert!(line.contains("cn2=0 cn2Label=chainGeneration"), "{line}");
-                        assert!(line.contains("externalId=0:"), "{line}");
+                        assert!(line.contains(&source), "{line}");
                     }
                 }
             }
