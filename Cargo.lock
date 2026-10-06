@@ -1323,8 +1323,7 @@ dependencies = [
 [[package]]
 name = "cosmian_cover_crypt"
 version = "16.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99ba2fcbf4ba83c30eefbeb61dbd3e6b64c478feaf2e9a67928921ed66bc5abc"
+source = "git+https://github.com/Cosmian/cover_crypt.git?branch=tbz%2Fremove-mandatory-openssl-dep#7f6b0aea47599abc2b035feecaad1754fee75886"
 dependencies = [
  "cosmian_crypto_core",
  "cosmian_openssl_provider",
