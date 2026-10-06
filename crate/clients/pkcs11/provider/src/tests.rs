@@ -497,18 +497,18 @@ pub(crate) async fn create_ec_ssh_keypair(
     )
 }
 
-/// Test that a remote RSA-PKCS1v15-SHA256 signature can be produced for an
-/// `ssh-auth`-tagged RSA-2048 private key stored in the KMS.
+/// Test remote RSA-PKCS1v15-SHA256 signing and verification for an `ssh-auth`-tagged
+/// RSA-2048 keypair stored in the KMS.
 #[test]
 #[serial]
 fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
-    let (owner_client_conf, sk_id) = rt.block_on(async {
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
         let kms_rest_client = ctx.get_owner_client();
-        let (sk_id, _pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
-        (ctx.owner_client_config.clone(), sk_id)
+        let (sk_id, pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
 
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
@@ -525,6 +525,31 @@ fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
     );
     // RSA-2048 produces a 256-byte signature
     assert_eq!(signature.len(), 256, "RSA-2048 signature must be 256 bytes");
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+
+    let mut tampered_signature = signature;
+    if let Some(first_byte) = tampered_signature.first_mut() {
+        *first_byte ^= 0xFF;
+    }
+    let error = backend
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::RsaPkcs1v15Sha256,
+            data,
+            &tampered_signature,
+            KeyAlgorithm::Rsa,
+        )
+        .expect_err("tampered signature must be rejected");
+    assert!(matches!(
+        error,
+        cosmian_pkcs11_module::ModuleError::SignatureInvalid
+    ));
     Ok(())
 }
 

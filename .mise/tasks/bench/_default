@@ -70,18 +70,19 @@ if [ "${HSM_MODEL}" != "softhsm2" ]; then
   run_bench "bench:pkcs11 --delegated --hsm-model ${HSM_MODEL}" \
     "${TASK_DIR}/pkcs11" "${COMMON_ARGS[@]}" --delegated --hsm-model "${HSM_MODEL}"
 else
-  # 1. mise bench:load --criterion
-  run_bench "bench:load" "${TASK_DIR}/load" "${COMMON_ARGS[@]}"
-
-  # 2-5. HSM and PKCS#11 tasks only run in LOCAL mode (not with remote --server-url)
+  # 1-5. Run the default suite in the documented order. HSM and PKCS#11 tasks
+  # require local HSM control and are skipped when --server-url is provided.
   if [ "${REMOTE_MODE}" = "false" ]; then
-    run_bench "bench:hsm" "${TASK_DIR}/hsm" "${COMMON_ARGS[@]}"
-    run_bench "bench:hsm --delegated" "${TASK_DIR}/hsm" "${COMMON_ARGS[@]}" --delegated
     run_bench "bench:pkcs11" "${TASK_DIR}/pkcs11" "${COMMON_ARGS[@]}"
     run_bench "bench:pkcs11 --delegated" "${TASK_DIR}/pkcs11" "${COMMON_ARGS[@]}" --delegated
+    run_bench "bench:hsm" "${TASK_DIR}/hsm" "${COMMON_ARGS[@]}"
+    run_bench "bench:hsm --delegated" "${TASK_DIR}/hsm" "${COMMON_ARGS[@]}" --delegated
   else
     print_warning "Skipping bench:hsm / bench:pkcs11 (require local HSM control)"
   fi
+
+  run_bench "bench:load" "${TASK_DIR}/load" "${COMMON_ARGS[@]}"
+
 fi
 
 echo ''

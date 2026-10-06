@@ -28,7 +28,7 @@
 //!   └─ Phase 2: Database selection + uniqueness enforcement
 //! ```
 
-use std::collections::HashSet;
+use std::{borrow::Borrow, collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -260,7 +260,7 @@ enum ResolvedKey {
     Oracle { uid: String, prefix: String },
     /// Key is in the local database: selected, Active, lifecycle-validated.
     /// NOT yet unwrapped — `perform_crypto_operation` handles unwrapping.
-    Local(Box<ObjectWithMetadata>),
+    Local(Arc<ObjectWithMetadata>),
     /// A keyset chain: ordered list of UIDs from newest to oldest.
     Keyset(Vec<String>),
 }
@@ -290,12 +290,54 @@ impl KMS {
         Spec: KeySelectionSpec,
         F: Fn(&ObjectWithMetadata) -> KResult<()>,
     {
-        let mut eligible: Vec<ObjectWithMetadata> = Vec::new();
+        self.select_unique_key_candidates::<Spec, F, ObjectWithMetadata>(
+            candidates,
+            uid_display,
+            user,
+            extra_validation,
+        )
+        .await
+    }
+    /// Select a cached local key without deep-cloning its metadata.
+    async fn select_unique_key_arc<Spec, F>(
+        &self,
+        candidates: Vec<Arc<ObjectWithMetadata>>,
+        uid_display: &str,
+        user: &UserId,
+        extra_validation: F,
+    ) -> KResult<Arc<ObjectWithMetadata>>
+    where
+        Spec: KeySelectionSpec,
+        F: Fn(&ObjectWithMetadata) -> KResult<()>,
+    {
+        self.select_unique_key_candidates::<Spec, F, Arc<ObjectWithMetadata>>(
+            candidates,
+            uid_display,
+            user,
+            extra_validation,
+        )
+        .await
+    }
+
+    async fn select_unique_key_candidates<Spec, F, Candidate>(
+        &self,
+        candidates: Vec<Candidate>,
+        uid_display: &str,
+        user: &UserId,
+        extra_validation: F,
+    ) -> KResult<Candidate>
+    where
+        Spec: KeySelectionSpec,
+        F: Fn(&ObjectWithMetadata) -> KResult<()>,
+        Candidate: Borrow<ObjectWithMetadata>,
+    {
+        let mut eligible: Vec<Candidate> = Vec::new();
         let mut found_but_no_permission = false;
         // Track state mismatches so we can surface a useful error instead of "not found".
         let mut wrong_state: Option<(String, State)> = None;
 
-        for owm in candidates {
+        for candidate in candidates {
+            let owm = candidate.borrow();
             // 1. State filter
             let effective = owm.effective_state();
             if !Spec::accepted_states().contains(&effective) {
@@ -310,13 +352,13 @@ impl KMS {
             // 2. Permission check
             let authorized = if Spec::strict_permission_check() {
                 // Strict: only exact operation grant (no Get wildcard)
-                self.user_can_perform_operation(&owm, user, &Spec::KMIP_OP)
+                self.user_can_perform_operation(owm, user, &Spec::KMIP_OP)
                     .await?
             } else {
                 // Lenient: Get grant also authorizes (standard for crypto ops).
                 // `owm` is already loaded (object-cache hit on the hot path), so
                 // use the owner-aware check to skip a redundant ownership query.
-                self.is_owm_authorized_with_get_wildcard(&owm, user, Spec::KMIP_OP)
+                self.is_owm_authorized_with_get_wildcard(owm, user, Spec::KMIP_OP)
                     .await?
             };
             if !authorized {
@@ -325,14 +367,14 @@ impl KMS {
             }
 
             // 3. Eligibility (object type + usage mask)
-            if !Spec::is_key_eligible(&owm, self.vendor_id()) {
+            if !Spec::is_key_eligible(owm, self.vendor_id()) {
                 continue;
             }
 
             // 4. Extra validation (hard error on failure — not skipped)
-            extra_validation(&owm)?;
+            extra_validation(owm)?;
 
-            eligible.push(owm);
+            eligible.push(candidate);
         }
 
         match eligible.len() {
@@ -361,7 +403,10 @@ impl KMS {
                 ))
             }),
             n => {
-                let ids: Vec<&str> = eligible.iter().map(ObjectWithMetadata::id).collect();
+                let ids: Vec<&str> = eligible
+                    .iter()
+                    .map(|candidate| candidate.borrow().id())
+                    .collect();
                 Err(KmsError::InvalidRequest(format!(
                     "{}: identifier '{uid_display}' resolves to {n} valid keys {ids:?}; \
                      use a unique identifier",
@@ -503,7 +548,7 @@ impl KMS {
         let mut last_err: Option<KmsError> = None;
 
         for (depth, uid) in chain.iter().enumerate() {
-            let Some(owm) = self.database.retrieve_object(uid).await? else {
+            let Some(owm) = self.database.retrieve_object_arc(uid).await? else {
                 continue;
             };
 
@@ -756,12 +801,16 @@ impl KMS {
                 KeysetVersion::Latest | KeysetVersion::First | KeysetVersion::Generation(_) => {
                     if let Some(uid) = resolve_keyset_to_single_uid(&keyset_ref, self, user).await?
                     {
-                        let owm = self.database.retrieve_object(&uid).await?.ok_or_else(|| {
-                            KmsError::ItemNotFound(format!(
-                                "{}: keyset key not found: {uid}",
-                                Op::OP_NAME
-                            ))
-                        })?;
+                        let owm =
+                            self.database
+                                .retrieve_object_arc(&uid)
+                                .await?
+                                .ok_or_else(|| {
+                                    KmsError::ItemNotFound(format!(
+                                        "{}: keyset key not found: {uid}",
+                                        Op::OP_NAME
+                                    ))
+                                })?;
                         owm.check_process_window()?;
                         // KMIP §4.57: enforce state requirements for keyset-addressed keys
                         let effective = owm.effective_state();
@@ -776,7 +825,7 @@ impl KMS {
                                 ),
                             ));
                         }
-                        return Ok(ResolvedKey::Local(Box::new(owm)));
+                        return Ok(ResolvedKey::Local(owm));
                     }
                     // Not a keyset → fall through to normal UID resolution
                 }
@@ -785,13 +834,14 @@ impl KMS {
                         if let Some(uid) =
                             resolve_keyset_to_single_uid(&keyset_ref, self, user).await?
                         {
-                            let owm =
-                                self.database.retrieve_object(&uid).await?.ok_or_else(|| {
+                            let owm = self.database.retrieve_object_arc(&uid).await?.ok_or_else(
+                                || {
                                     KmsError::ItemNotFound(format!(
                                         "{}: keyset key not found: {uid}",
                                         Op::OP_NAME
                                     ))
-                                })?;
+                                },
+                            )?;
                             owm.check_process_window()?;
                             // KMIP §4.57: enforce state requirements for keyset-addressed keys
                             let effective = owm.effective_state();
@@ -806,7 +856,7 @@ impl KMS {
                                     ),
                                 ));
                             }
-                            return Ok(ResolvedKey::Local(Box::new(owm)));
+                            return Ok(ResolvedKey::Local(owm));
                         }
                         // Not a keyset → fall through to normal path
                     }
@@ -840,20 +890,20 @@ impl KMS {
             if ObjectHandle::from(uid).is_hsm() {
                 continue;
             }
-            if let Some(owm) = self.database.retrieve_object(uid).await? {
+            if let Some(owm) = self.database.retrieve_object_arc(uid).await? {
                 candidates.push(owm);
             }
         }
         let uid_display = unique_identifier.to_string();
         let owm = self
-            .select_unique_key::<Op, _>(candidates, &uid_display, user, |_| Ok(()))
+            .select_unique_key_arc::<Op, _>(candidates, &uid_display, user, |_| Ok(()))
             .await
             .map_err(|e| Op::map_selection_error(e, unique_identifier, user))?;
 
         // Lifecycle enforcement: always check process window.
         owm.check_process_window()?;
 
-        Ok(ResolvedKey::Local(Box::new(owm)))
+        Ok(ResolvedKey::Local(owm))
     }
 }
 
