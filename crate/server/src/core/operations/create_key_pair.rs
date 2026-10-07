@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{cosmian_kms_crypto::crypto::{
 use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
     cover_crypt::master_keys::create_master_keypair
 }};
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
@@ -105,7 +106,7 @@ pub(crate) async fn create_key_pair(
                 .and_then(|att| att.activation_date)
         });
 
-    let key_pair = generate_key_pair(kms.vendor_id(), request, &sk_uid, &pk_uid)?;
+    let key_pair = generate_key_pair(kms.vendor_id(), request, &sk_uid, &pk_uid, &kms.rng)?;
 
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
@@ -224,6 +225,7 @@ pub(super) fn generate_key_pair(
     request: CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
+    rng: &KmsRng,
 ) -> KResult<KeyPair> {
     trace!("Internal create key pair");
 
@@ -446,6 +448,7 @@ pub(super) fn generate_key_pair(
             common_attributes,
             request.private_key_attributes,
             request.public_key_attributes,
+            Some(rng),
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::MLDSA_44
@@ -458,6 +461,7 @@ pub(super) fn generate_key_pair(
             common_attributes,
             request.private_key_attributes,
             request.public_key_attributes,
+            Some(rng),
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::X25519MLKEM768 | CryptographicAlgorithm::X448MLKEM1024 => {
@@ -469,6 +473,7 @@ pub(super) fn generate_key_pair(
                 common_attributes,
                 request.private_key_attributes,
                 request.public_key_attributes,
+                Some(rng),
             )
         }
         #[cfg(feature = "non-fips")]
@@ -491,6 +496,7 @@ pub(super) fn generate_key_pair(
             common_attributes,
             request.private_key_attributes,
             request.public_key_attributes,
+            Some(rng),
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::ConfigurableKEM => kem_keygen(

@@ -54,6 +54,8 @@ const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
+
 use crate::{
     config::{AuditBackendParams, OpenTelemetryConfig, ServerParams},
     core::{OtelMetrics, audit::AuditStore},
@@ -119,6 +121,9 @@ pub struct KMS {
     /// across server restarts.  The `fetch_add` ensures uniqueness even when
     /// two CRLs are generated within the same second.
     pub(crate) crl_counter: Arc<AtomicU64>,
+
+    /// Unified cryptographic RNG for all KMS operations.
+    pub(crate) rng: Arc<KmsRng>,
 }
 
 impl KMS {
@@ -127,7 +132,6 @@ impl KMS {
         &self.params.vendor_identification
     }
 
-    /// Instantiate a new KMS instance with the given server parameters.
     /// # Arguments
     /// * `server_params` - The server parameters built from the configuration file or command line arguments.
     /// # Returns
@@ -303,6 +307,9 @@ impl KMS {
             Arc::new(AtomicU64::new(ts_seed.max(db_max + 1)))
         };
 
+        // Instantiate the unified KMS RNG.
+        let rng = Arc::new(KmsRng::new()?);
+
         Ok(Self {
             params: server_params.clone(),
             database,
@@ -312,6 +319,7 @@ impl KMS {
             metrics,
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,
+            rng,
         })
     }
 

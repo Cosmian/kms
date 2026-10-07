@@ -33,6 +33,7 @@ use super::{issuer::Issuer, rfc9608, subject::Subject};
 #[cfg(feature = "non-fips")]
 use super::{rfc9881, rfc9909, rfc9935};
 use crate::{
+    core::KMS,
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -40,6 +41,7 @@ use crate::{
 const X509_VERSION3: i32 = 2;
 
 pub(crate) fn build_and_sign_certificate(
+    kms: &KMS,
     vendor_id: &str,
     issuer: &Issuer,
     subject: &Subject,
@@ -130,7 +132,7 @@ pub(crate) fn build_and_sign_certificate(
 
     // Set the issuer name and private key
     x509_builder.set_issuer_name(issuer.subject_name())?;
-    x509_builder.set_serial_number(generate_serial_number()?.as_ref())?;
+    x509_builder.set_serial_number(generate_serial_number(kms)?.as_ref())?;
     x509_builder.sign(issuer.private_key(), digest)?;
 
     let x509 = x509_builder.build();
@@ -446,9 +448,11 @@ fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> Messa
 /// certificates by serial, so revoking one silently revoked (or masked) the other.
 /// 159 random bits (high bit cleared so the INTEGER stays positive and fits in
 /// 20 octets) also satisfy the CA/Browser Forum ≥ 64-bit entropy requirement.
-fn generate_serial_number() -> KResult<Asn1Integer> {
+fn generate_serial_number(kms: &KMS) -> KResult<Asn1Integer> {
     let mut serial_number_bytes = [0_u8; 20];
-    openssl::rand::rand_bytes(&mut serial_number_bytes)?;
+    kms.rng
+        .fill_bytes(&mut serial_number_bytes)
+        .map_err(|e| KmsError::InvalidRequest(format!("KMS RNG failed: {e}")))?;
     // Clear the high bit (positive INTEGER) and set the lowest one so the encoding
     // keeps the full 20 octets and the serial can never be zero.
     if let Some(first) = serial_number_bytes.first_mut() {

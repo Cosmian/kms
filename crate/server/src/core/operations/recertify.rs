@@ -195,6 +195,7 @@ impl RekeyOperation for CertificateRekey {
         let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
         // Build and sign the new certificate
         let (certificate_object, tags, attributes) = build_and_sign_certificate(
+            kms,
             kms.vendor_id(),
             &issuer,
             &subject,

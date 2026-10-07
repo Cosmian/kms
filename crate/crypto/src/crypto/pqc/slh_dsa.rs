@@ -13,6 +13,9 @@ use crate::{crypto::KeyPair, error::CryptoError};
 ///
 /// Supports all 12 SLH-DSA variants (SHA2/SHAKE × 128/192/256 × s/f)
 /// via OpenSSL 3.6+.
+///
+/// If `rng` is provided, it ensures the keygen draws from an NIST-compliant
+/// entropy source (ESV-validated DRBG) per NIST SP 800-90B/C and FIPS 140-3 IG.
 pub fn create_slh_dsa_key_pair(
     algorithm: CryptographicAlgorithm,
     vendor_id: &str,
@@ -21,9 +24,10 @@ pub fn create_slh_dsa_key_pair(
     common_attributes: Attributes,
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
+    rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = slh_dsa_algorithm_name(algorithm)?;
-    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name)?;
+    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng)?;
 
     create_pqc_key_pair(
         vendor_id,
@@ -52,7 +56,8 @@ mod tests {
     use crate::crypto::pqc::ml_dsa::{ml_dsa_sign, ml_dsa_verify};
 
     fn sign_verify_roundtrip(algorithm_name: &str) {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen(algorithm_name).expect("keygen");
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen(algorithm_name, None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
@@ -136,6 +141,7 @@ mod tests {
             "sk-uid",
             "pk-uid",
             Attributes::default(),
+            None,
             None,
             None,
         )

@@ -24,9 +24,9 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
     kms.enforce_create_permission(owner).await?;
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
-        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::SymmetricKey => kms.create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
-        ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::SecretData => kms.create_secret_data_and_tags(&request)?,
         ObjectType::PGPKey => {
             // OpenPGP key generation is CPU-bound (pure-Rust RSA takes tens of seconds in
             // unoptimized builds). Run it on the blocking pool: on the HTTP worker thread it

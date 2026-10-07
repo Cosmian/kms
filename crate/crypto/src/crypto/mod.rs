@@ -26,11 +26,14 @@ pub mod openpgp;
 pub mod password_derivation;
 #[cfg(feature = "non-fips")]
 pub mod pqc;
+pub mod rng;
 pub mod rsa;
 pub mod secret;
 pub mod split_key;
 pub mod symmetric;
 pub mod wrap;
+
+pub use rng::KmsRng;
 
 pub trait EncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError>;

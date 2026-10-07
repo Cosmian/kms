@@ -3,11 +3,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operatio
 };
 use cosmian_logger::trace;
 
-use crate::{
-    core::{KMS, rng::global_rng},
-    middlewares::UserId,
-    result::KResult,
-};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// `RNGSeed` operation implementation
 ///
@@ -16,18 +12,18 @@ use crate::{
 /// of seed data consumed. The optional RNG Parameters are accepted but
 /// not used in the current implementation.
 pub(crate) async fn rng_seed(
-    _kms: &KMS,
+    kms: &KMS,
     request: RNGSeed,
     _user: &UserId,
 ) -> KResult<RNGSeedResponse> {
     trace!("{request}");
 
-    // Best-effort: record the provided seed into our global OpenSSL-backed RNG facade.
-    // OpenSSL's RAND APIs are managed internally; we simply acknowledge the seed here.
+    // Incorporate seed data into the unified KMS RNG.
+    // OpenSSL's RAND_add is called via kms.rng.reseed().
     if !request.data.is_empty() {
-        if let Ok(mut rng) = global_rng().try_lock() {
-            rng.reseed(&request.data);
-        }
+        kms.rng
+            .reseed(&request.data)
+            .map_err(|e| KmsError::InvalidRequest(format!("KmsRng reseed failed: {e}")))?;
     }
 
     // Report how much seed data was consumed (as per KMIP vectors expectations).

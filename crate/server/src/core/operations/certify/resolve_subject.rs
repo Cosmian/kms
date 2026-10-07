@@ -257,6 +257,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
+        &kms.rng,
     )?;
     info!("Key pair created for certification");
 

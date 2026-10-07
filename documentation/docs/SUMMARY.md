@@ -138,6 +138,7 @@
   - [Cryptographic algorithms]()
     - [Algorithms](certifications_and_compliance/cryptographic_algorithms/algorithms.md)
     - [KMIP algorithm policy](certifications_and_compliance/cryptographic_algorithms/kmip_policy.md)
+    - [PQC Entropy Source Validation (ESV) Compliance](certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md)
   - [Zeroization](certifications_and_compliance/zeroization.md)
   - [Audit]()
     - [SBOM](certifications_and_compliance/audit/sbom.md)

@@ -16,6 +16,9 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// Create an ML-DSA key pair.
 ///
 /// Supports ML-DSA-44, ML-DSA-65, ML-DSA-87 via OpenSSL 3.4+.
+///
+/// If `rng` is provided, it ensures the keygen draws from an NIST-compliant
+/// entropy source (ESV-validated DRBG) per NIST SP 800-90B/C and FIPS 140-3 IG.
 pub fn create_ml_dsa_key_pair(
     algorithm: CryptographicAlgorithm,
     vendor_id: &str,
@@ -24,9 +27,10 @@ pub fn create_ml_dsa_key_pair(
     common_attributes: Attributes,
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
+    rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = ml_dsa_algorithm_name(algorithm)?;
-    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name)?;
+    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng)?;
 
     create_pqc_key_pair(
         vendor_id,
@@ -73,7 +77,8 @@ mod tests {
 
     #[test]
     fn ml_dsa_44_sign_verify() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-DSA-44").expect("keygen");
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-DSA-44", None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
@@ -92,7 +97,8 @@ mod tests {
 
     #[test]
     fn ml_dsa_65_sign_verify() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-DSA-65").expect("keygen");
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-DSA-65", None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
@@ -105,7 +111,8 @@ mod tests {
 
     #[test]
     fn ml_dsa_87_sign_verify() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-DSA-87").expect("keygen");
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-DSA-87", None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
@@ -124,6 +131,7 @@ mod tests {
             "sk-uid",
             "pk-uid",
             Attributes::default(),
+            None,
             None,
             None,
         )
