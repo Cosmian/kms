@@ -58,6 +58,14 @@ Additional heuristic checks:
 - If `crate/clients/ckms/src/commands.rs` changed → add **4.15**
 - If `crate/server/src/start_kms_server.rs` changed → verify 4.1, 4.2, 4.8, 4.9 as applicable
 - If any changed file is in `crate/server/src/middlewares/`, `crate/server/src/core/operations/`, or `crate/crypto/src/` **and** the change fixes a security bug → remind: **update `SECURITY.md`** with a `COSMIAN-YYYY-NNN` entry (run `/security-review` to generate it)
+- Changed path matches no pattern in the table above and `omp-jev-tools` is
+  installed (OMP only — not available in VS Code Copilot Chat, Copilot CLI,
+  or Copilot Cloud Agent): call `jev_route` with `options` set to the
+  sub-rule numbers from the table (one short description per rule) to get a
+  candidate rule plus an ACT/CONFIRM/ESCALATE gate. Treat ACT as a candidate
+  to verify manually before emitting it; treat CONFIRM or ESCALATE as a
+  reason to ask the user which rule applies instead of guessing. Without the
+  tool, ask the user directly.
 
 ## Step 3 — Emit the Applicable Checklist
 

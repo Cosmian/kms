@@ -1,11 +1,13 @@
 ---
 name: rust-patterns
-description: 'KMS-specific Rust design patterns: newtype wrappers, builder config, command pattern for KMIP ops, trait-based HSM/DB abstraction, key lifecycle state machine. Use as a reference for Rust patterns in this codebase.'
+description: 'KMS-specific Rust design patterns: newtype wrappers, builder config, command pattern for KMIP ops, trait-based HSM/DB abstraction, key lifecycle state machine. Authoritative patterns in `.github/instructions/rust-server.instructions.md` and this reference.'
 ---
 
 # Rust Design Patterns for the KMS Codebase
 
-Reference for KMS-specific Rust patterns. Apply these when implementing new features or refactoring existing code.
+For **KMS server architecture patterns** (operations, routes, config, testing), refer to [`.github/instructions/rust-server.instructions.md`](../../instructions/rust-server.instructions.md).
+
+This skill documents **additional design patterns** beyond server structure:
 
 ## Pattern 1 — Newtype Wrappers for Identifiers
 

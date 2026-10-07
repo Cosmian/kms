@@ -1,5 +1,5 @@
 [package]
-name = "kryoptic_pkcs11_loader"
+name = "gcp_cloud_hsm_pkcs11_loader"
 version.workspace = true
 authors.workspace = true
 categories.workspace = true
@@ -8,7 +8,7 @@ keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Kryoptic HSM PKCS#11 loader"
+description = "GCP Cloud HSM PKCS#11 loader"
 
 [lints]
 workspace = true
@@ -19,12 +19,6 @@ doctest = false
 [dependencies]
 cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.28.0" }
 
-[dev-dependencies]
-libloading = { workspace = true }
-pkcs11-sys = { workspace = true }
-
 [features]
-# Enable this feature to run kryoptic tests (they require an initialized kryoptic token)
-kryoptic = []
-# Enable HSM-delegated non-FIPS algorithms in the shared base HSM implementation.
+gcp_cloud_hsm = []
 non-fips = ["cosmian_kms_base_hsm/non-fips"]
