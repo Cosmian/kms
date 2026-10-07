@@ -1128,6 +1128,16 @@ mod live_tests {
         let message = error.to_string();
         assert!(matches!(error, DbError::ConversionError(_)), "{message}");
         assert!(message.contains("unparsable result column"), "{message}");
+
+        // Restore the row: the database is shared, and an unparsable row would fail every
+        // unfiltered export of all instances (e.g. the CLI export tests).
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET result = 'Success' \
+             WHERE instance_id = $1 AND chain_generation = 0 AND id = 1",
+            &[&instance_id],
+        )
+        .await;
     }
 
     #[tokio::test]
