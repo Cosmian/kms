@@ -12,7 +12,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
-    crypto_oracle::EncryptedContent,
+    SigningKeyMetadata, crypto_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms
@@ -435,41 +435,62 @@ pub trait HSM: Send + Sync {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>>;
 
-    /// Sign data using the given private key in the HSM.
+    /// Sign data using the given private key in the HSM, resolving the HSM-specific signing
+    /// mechanism from the key's own on-HSM metadata within the SAME checked-out PKCS#11
+    /// session as the sign operation itself — a single session checkout for the whole KMIP
+    /// `Sign`, instead of a separate `get_key_metadata` call followed by a separate `sign`
+    /// call.
+    ///
     /// # Arguments
     /// * `slot_id` - the slot ID of the HSM
     /// * `key_id` - the ID of the private key to use for signing
-    /// * `algorithm` - the signing algorithm to use
+    /// * `resolve_algorithm` - called once, synchronously, with the key's on-HSM metadata
+    ///   (`SigningKeyMetadata`) resolved during this call's own session checkout; must select the
+    ///   concrete `SigningAlgorithm` (or return an `Err`, which aborts the sign before any
+    ///   `C_SignInit` call and is propagated to the caller)
     /// * `data` - the data to sign
     /// # Returns
     /// * `InterfaceResult<Vec<u8>>` - the signature bytes
-    async fn sign(
+    async fn sign_with_metadata(
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: SigningAlgorithm,
+        resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>>;
 
-    /// Verify a signature using the given public (or private, for the imported-key
-    /// case where no paired public key object exists) key in the HSM.
+    /// Verify a signature using the given key in the HSM, resolving the HSM-specific signing
+    /// mechanism from the key's own on-HSM metadata within the SAME checked-out PKCS#11
+    /// session as the verify operation itself. See `sign_with_metadata` for the rationale.
     ///
     /// # Arguments
     /// * `slot_id` - the slot ID of the HSM
     /// * `key_id` - the ID of the key to use for verification
-    /// * `algorithm` - the signing algorithm the signature was produced with
+    /// * `resolve_algorithm` - called once, synchronously, with the key's `SigningKeyMetadata`
+    ///   resolved during this call's own session checkout; must select the concrete
+    ///   `SigningAlgorithm` the signature was produced with (or return an `Err`, which aborts
+    ///   the verify before any `C_VerifyInit` call)
     /// * `data` - the data that was signed
     /// * `signature` - the signature to verify
     /// # Returns
     /// * `InterfaceResult<bool>` - `true` if the signature is valid, `false` for a
-    ///   cryptographically invalid signature. Returns `Err` for any other failure,
-    ///   including an unsupported mechanism (e.g. `CKM_EDDSA` on a v2.40-only
-    ///   library).
-    async fn verify(
+    ///   cryptographically invalid signature. Returns `Err` for any other failure, including
+    ///   an unsupported mechanism or an error returned by `resolve_algorithm`.
+    async fn verify_with_metadata(
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: SigningAlgorithm,
+        resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
         data: &[u8],
         signature: &[u8],
     ) -> InterfaceResult<bool>;
