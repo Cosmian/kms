@@ -219,18 +219,15 @@ Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justifica
 
 ---
 
-## AI skill triggers — automatically invoke for Rust code
+## AI audit routing — one mechanical pass, scoped reasoning
 
-Agents editing Rust files **must** invoke the following skills at the relevant moments:
-
-| Trigger | Skill | When |
-|---------|-------|------|
-| Any code change | `/rust-panic-audit` | When new `unwrap`/`expect`/`panic!`/`todo!` is added |
-| Error handling change | `/rust-error-propagation` | When modifying `Result` chains, adding new error types |
-| Async code change | `/rust-async-refactor` | When modifying `.await` chains or `tokio::spawn` calls |
-| Code simplification | `/rust-simplify` | When functions grow beyond 60 lines or nesting exceeds 3 levels |
-| New pattern / duplication | `/rust-refactor` | When a similar code block already exists elsewhere |
-| Before PR | `/rust-review-all` | Full Rust quality gate — runs all review skills sequentially |
-| Crypto code | `/cryptography-review` | Any change in `crate/crypto/` |
-| Security concern | `/security-review` | Any auth, key handling, or FFI change |
-| KMIP operation | `/kmip-compliance` | Any change in `crate/server/src/core/operations/` |
+- Before deeper Rust audits, run `/kms-caveman` once on the scoped Rust changes. Reuse its findings; it is read-only mechanical triage, not a substitute for semantic or security review.
+- Run `/rust-panic-audit` for a dedicated panic-only request. `/rust-review-all` uses the KMS Caveman phase and must not duplicate the standalone panic audit.
+- Run `/rust-error-propagation` when changed code affects fallible operations or error handling; run `/rust-async-refactor` when changed code or affected callers touch async/blocking paths.
+- Run `/rust-refactor` and `/rust-simplify` for full audits or when the scoped change affects duplication or complexity. A negative text search does not prove these concerns are absent.
+- Run `/cryptography-review` for `crate/crypto/` changes and for algorithm selection, key lifecycle/policy, provider initialization, or FIPS-gate changes wherever they occur.
+- Run `/security-review` for security-sensitive flows, auth, externally reachable data paths, FFI, or user-controlled rendering.
+  Skip only a confirmed static presentation-only UI change with no dynamic data, auth/session, API, or sensitive-data behavior.
+  A clean mechanical scan is never grounds to skip security review.
+- Run `/kmip-compliance` for changed KMIP operations or protocol behavior. Run `/threat-model` when a trust boundary or security-relevant data flow changes; skip only in a confirmed incremental review with no such change.
+- Explicit full, release, and pre-release gates override focused-scope skips. Report each inapplicable skill and its evidence; never claim measured token savings without usage data.

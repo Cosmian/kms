@@ -13,6 +13,12 @@ description = "Windows CNG Key Storage Provider (KSP) for Cosmian KMS"
 [lints]
 workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["winresource"]
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 # Build a DLL that Windows CNG can load as a Key Storage Provider
 [lib]
 name = "cosmian_cng"
@@ -26,7 +32,7 @@ non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 [dependencies]
 base64 = { workspace = true }
 bitflags = { workspace = true }
-ckms = { path = "../ckms", version = "5.27.1" }
+ckms = { path = "../ckms", version = "5.28.0" }
 cosmian_logger = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }

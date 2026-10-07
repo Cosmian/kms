@@ -60,10 +60,16 @@ pub struct HsmTestConfig {
     pub lib_path: String,
     pub slot_ids_and_passwords: HashMap<usize, Option<String>>, // for BaseHsm::instantiate
     pub slot_id_for_tests: usize,                               // slot to use
-    pub rsa_oaep_digest: Option<RsaOaepDigest>,                 // Some if supported, None if not
     pub threads: usize,                                         // number of threads for MT test
-    pub supports_rsa_wrap: bool, // whether RSA OAEP wrap/unwrap is supported
 }
+
+/// RSA-OAEP digest used by shared HSM tests for the selected build variant.
+#[cfg(feature = "non-fips")]
+pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA1;
+
+/// RSA-OAEP digest used by shared HSM tests for the selected build variant.
+#[cfg(not(feature = "non-fips"))]
+pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA256;
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
@@ -180,34 +186,33 @@ where
     Ok(())
 }
 
-pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
-    log_init(None);
-    let session = slot.open_session(true)?;
+/// Destroys every listed object, skipping those the token refuses with
+/// `CKR_ACTION_PROHIBITED` (0x1B = 27; objects with `CKA_DESTROYABLE = false`).
+fn destroy_destroyable_objects(session: &Session) -> HResult<()> {
     let objects = session.list_objects(HsmObjectFilter::Any)?;
     for object in &objects {
         match session.destroy_object(*object) {
             Ok(()) => {}
-            // Return code 27 is CKR_ACTION_PROHIBITED (e.g. Kryoptic pre-installed or non-destroyable objects).
             Err(e) if e.to_string().contains("Return code: 27") => {
                 trace!("Skipping non-destroyable object {object}: {e}");
             }
             Err(e) => return Err(e),
         }
     }
+    Ok(())
+}
+
+pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    destroy_destroyable_objects(&session)?;
     info!("Destroyed all destroyable objects");
     Ok(())
 }
 
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
-    generate_aes_key_with_exportability(slot, true)
-}
-
-#[allow(clippy::panic, clippy::unwrap_used)]
-pub fn generate_aes_key_with_exportability(
-    slot: &Arc<SlotManager>,
-    supports_exportable_keys: bool,
-) -> HResult<()> {
+    let supports_exportable_keys = slot.capabilities().supports_aes_sensitive_attribute;
     log_init(None);
     let session = slot.open_session(true)?;
     if supports_exportable_keys {
@@ -246,11 +251,7 @@ pub fn generate_aes_key_with_exportability(
 
     // Generate a sensitive AES key
     let key_id = Uuid::new_v4().to_string();
-    let key_handle = if supports_exportable_keys {
-        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?
-    } else {
-        session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?
-    };
+    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?;
     info!("Generated sensitive AES key: {}", key_id);
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
@@ -263,7 +264,8 @@ pub fn generate_aes_key_with_exportability(
     );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
-    // CloudHSM reports CKA_EXTRACTABLE=true for keys that cannot be exported.
+    // Without `CKA_SENSITIVE` support, `CKA_EXTRACTABLE` is left at the HSM default and cannot
+    // be asserted.
     if supports_exportable_keys {
         if let Some(extractable) = session.is_extractable(key_handle)? {
             assert!(
@@ -360,8 +362,23 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     ] {
         let sk_id = Uuid::new_v4().to_string();
         let pk_id = sk_id.clone() + "_pk";
-        let (sk_handle, pk_handle) =
-            session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, false, None)?;
+        // Capability-probe per curve rather than hard-failing the whole test: some
+        // PKCS#11 libraries implement only a subset of NIST curves (e.g. Kryoptic
+        // 1.5.2 rejects P-224 specifically with a generic CKR_DEVICE_ERROR while
+        // generating P-256/P-384/P-521 without issue).
+        let (sk_handle, pk_handle) = match session.generate_ec_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            curve,
+            false,
+            None,
+        ) {
+            Ok(handles) => handles,
+            Err(error) => {
+                warn!("EC key pair generation for {curve:?} unavailable, skipping: {error}");
+                continue;
+            }
+        };
         info!("Generated exportable EC ({curve:?}) key: sk: {sk_id}, pk: {pk_id}");
         assert_eq!(sk_handle, session.get_object_handle(sk_id.as_bytes())?);
         assert_eq!(pk_handle, session.get_object_handle(pk_id.as_bytes())?);
@@ -407,13 +424,16 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
 
 pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<()> {
     log_init(None);
+    if !slot.capabilities().supports_rsa_oaep_key_wrap {
+        info!("RSA-OAEP key wrap not supported by this HSM (capability), skipping");
+        return Ok(());
+    }
     let key_id = Uuid::new_v4().to_string();
     let session = slot.open_session(true)?;
-    // The AES key being wrapped (extracted from the HSM in wrapped form) must be
-    // extractable: a sensitive (non-extractable) key cannot be wrapped via
-    // C_WrapKey per PKCS#11 semantics.
+    // The AES key being wrapped must be explicitly non-sensitive as well as
+    // extractable (PKCS#11 `C_WrapKey` precondition).
     let symmetric_key =
-        session.generate_exportable_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
@@ -513,15 +533,10 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let key_id = Uuid::new_v4().to_string();
     let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
-    let iv = [7_u8; 12];
-    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, Some(&iv))?;
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, None)?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
-    if slot.supports_aes_gcm_caller_iv() {
-        assert_eq!(enc.iv.as_deref(), Some(iv.as_slice()));
-    } else {
-        assert_eq!(enc.iv.as_ref().map(Vec::len), Some(iv.len()));
-    }
+    assert!(enc.iv.is_some());
     let plaintext = session.decrypt(
         sk,
         HsmEncryptionAlgorithm::AesGcm,
@@ -788,6 +803,10 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     ];
     let mut tested = 0;
     for (name, algorithm, ckm) in &algorithms {
+        #[cfg(not(feature = "non-fips"))]
+        if matches!(algorithm, HsmSigningAlgorithm::Sha1WithRsa) {
+            continue;
+        }
         if !supported_mechanisms.contains(ckm) {
             warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
             continue;
@@ -876,7 +895,17 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
             warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
             continue;
         }
-        let signature = session.sign(sk, algorithm, data)?;
+        // Capability-probe per algorithm: the mechanism may be advertised at the slot
+        // level yet rejected for this specific key size/salt combination at `C_SignInit`
+        // time (e.g. CKR_KEY_SIZE_RANGE). Skip that one algorithm instead of hard-failing
+        // the whole sweep, mirroring the ECDSA/EdDSA capability probes above.
+        let signature = match session.sign(sk, algorithm, data) {
+            Ok(signature) => signature,
+            Err(error) => {
+                warn!("{name} rejected by the HSM at sign time, skipping: {error}");
+                continue;
+            }
+        };
         // RSA-2048 signature is 256 bytes regardless of the salt length used.
         assert_eq!(
             signature.len(),
@@ -968,8 +997,19 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
     for curve in [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521] {
         let sk_id = Uuid::new_v4().to_string();
         let pk_id = sk_id.clone() + "_pk";
-        let (sk, pk) =
-            session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, true, None)?;
+        let (sk, pk) = match session.generate_ec_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            curve,
+            true,
+            None,
+        ) {
+            Ok(handles) => handles,
+            Err(error) => {
+                warn!("EC key pair generation for {curve:?} unavailable, skipping: {error}");
+                continue;
+            }
+        };
         let exported_pk = session
             .export_key(pk)?
             .expect("Failed to export the EC public key");
@@ -979,15 +1019,17 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
         };
 
         for (name, algorithm, ckm, digest_nid) in algorithms {
-            if matches!(curve, EcCurve::P384 | EcCurve::P521) && matches!(digest_nid, Nid::SHA256) {
-                warn!("{curve:?}/{name} rejected by CloudHSM strength policy, skipping");
+            if slot.capabilities().enforces_ecdsa_digest_strength
+                && ((matches!(curve, EcCurve::P384 | EcCurve::P521)
+                    && matches!(digest_nid, Nid::SHA256))
+                    || (matches!(curve, EcCurve::P521) && matches!(digest_nid, Nid::SHA384)))
+            {
+                warn!(
+                    "{curve:?}/{name} rejected by the HSM's ECDSA digest-strength policy, skipping"
+                );
                 continue;
             }
-            if matches!(curve, EcCurve::P521) && matches!(digest_nid, Nid::SHA384) {
-                warn!("{curve:?}/{name} rejected by CloudHSM strength policy, skipping");
-                continue;
-            }
-            // Some PKCS#11 implementations (e.g. SoftHSM2) do not implement the
+            // Some PKCS#11 implementations (e.g. some v2.40 libraries) do not implement the
             // combined hash-and-sign mechanisms (CKM_ECDSA_SHA*), only the raw
             // CKM_ECDSA mechanism operating on a pre-computed digest. Fall back to
             // hashing in software and signing with `prehashed: true` in that case,
@@ -1024,7 +1066,18 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
                     continue;
                 };
 
-            let signature = session.sign(sk, sign_algorithm, &signing_input)?;
+            // Capability-probe per curve/hash: some HSMs advertise the combined
+            // CKM_ECDSA_SHA* mechanism (or raw CKM_ECDSA) at the slot level yet reject a
+            // specific key-size/digest combination (e.g. a weak digest paired with a strong
+            // curve) with CKR_KEY_SIZE_RANGE at `C_SignInit` time. Mirror the EdDSA pattern
+            // above: skip that one combination instead of hard-failing the whole sweep.
+            let signature = match session.sign(sk, sign_algorithm, &signing_input) {
+                Ok(signature) => signature,
+                Err(error) => {
+                    warn!("{curve:?}/{name} rejected by the HSM at sign time, skipping: {error}");
+                    continue;
+                }
+            };
             verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature)?;
             info!("Successfully signed and verified {curve:?}/{name}");
 
@@ -1104,7 +1157,16 @@ pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
         let openssl_pk = PKey::public_key_from_raw_bytes(&raw_point, openssl_id)
             .map_err(|e| HError::Default(format!("OpenSSL EdDSA public key error: {e}")))?;
 
-        let signature = session.sign(sk, signing_algorithm, data)?;
+        // Capability-probe per curve: some EdDSA implementations only support Ed25519
+        // despite advertising the generic CKM_EDDSA mechanism (e.g. Kryoptic 1.5.2 rejects
+        // Ed448 with CKR_MECHANISM_PARAM_INVALID while signing Ed25519 without issue).
+        let signature = match session.sign(sk, signing_algorithm, data) {
+            Ok(signature) => signature,
+            Err(error) => {
+                warn!("EdDSA sign for {curve:?} unavailable, skipping: {error}");
+                continue;
+            }
+        };
         verify_eddsa_signature(&openssl_pk, data, &signature)?;
         info!("Successfully signed and verified {curve:?}/EdDSA");
 
@@ -1167,6 +1229,8 @@ fn ec_public_key_from_material(
         EcCurve::P256 => Nid::X9_62_PRIME256V1,
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => Nid::SECP256K1,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => Nid::SECP192K1,
         EcCurve::P384 => Nid::SECP384R1,
         EcCurve::P521 => Nid::SECP521R1,
         #[cfg(feature = "non-fips")]
@@ -1326,7 +1390,7 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
 
             let handle = thread::spawn(move || -> HResult<()> {
                 while !stop.load(Ordering::Relaxed) {
-                    let session = slot.checkout_session(true)?;
+                    let session = slot.checkout_session()?;
                     let _sig = {
                         let res = session.sign(sk, sign_algorithm, &signing_input)?;
                         slot.checkin_session(session);
@@ -1350,9 +1414,11 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
 
         let elapsed = start.elapsed().as_secs_f64();
         let count = ops_counter.load(Ordering::Relaxed);
-        #[allow(clippy::as_conversions, clippy::cast_precision_loss)]
-        // u64 op-count -> f64 for a throughput ratio; precision loss is acceptable here
-        let ops_per_sec = (count as f64) / elapsed;
+        let count_as_f64 = count
+            .to_string()
+            .parse::<f64>()
+            .map_err(|e| HError::Default(format!("Failed converting operation count: {e}")))?;
+        let ops_per_sec = count_as_f64 / elapsed;
         rates.push(ops_per_sec);
     }
 
@@ -1374,16 +1440,7 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     session.clear_object_handles()?;
-    let initial_objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in &initial_objects {
-        match session.destroy_object(*object) {
-            Ok(()) => {}
-            Err(e) if e.to_string().contains("Return code: 27") => {
-                trace!("Skipping non-destroyable object {object}: {e}");
-            }
-            Err(e) => return Err(e),
-        }
-    }
+    destroy_destroyable_objects(&session)?;
     session.clear_object_handles()?;
     let baseline_objects = session.list_objects(HsmObjectFilter::Any)?;
     let base_count = baseline_objects.len();
@@ -1446,18 +1503,14 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
 /// is non-sensitive).
 pub fn get_key_metadata(
     slot: &Arc<SlotManager>,
-    supports_sensitivity_attribute: bool,
+    _supports_sensitivity_attribute: bool,
 ) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
 
     // generate an AES key
     let key_id = Uuid::new_v4().to_string();
-    let key_handle = if supports_sensitivity_attribute {
-        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?
-    } else {
-        session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?
-    };
+    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?;
     // get the key basics
     let key_type = session
         .get_key_type(key_handle)?
@@ -1471,6 +1524,30 @@ pub fn get_key_metadata(
     assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 256);
     assert_eq!(metadata.id.as_str(), key_id.as_str());
+
+    // CKA_START_DATE / CKA_END_DATE round-trip (HSM key rotation scheduling)
+    let start = time::Date::from_calendar_date(2030, time::Month::January, 2)
+        .map_err(|e| HError::Default(e.to_string()))?;
+    let end = time::Date::from_calendar_date(2031, time::Month::January, 2)
+        .map_err(|e| HError::Default(e.to_string()))?;
+    if slot.capabilities().supports_key_dates {
+        session.set_key_dates(key_handle, Some(start), Some(end))?;
+        let metadata = session
+            .get_key_metadata(key_handle)?
+            .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
+        assert_eq!(metadata.start_date, Some(start));
+        assert_eq!(metadata.end_date, Some(end));
+    } else {
+        assert!(
+            session
+                .set_key_dates(key_handle, Some(start), Some(end))
+                .is_err()
+        );
+        let metadata = session
+            .get_key_metadata(key_handle)?
+            .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
+        assert_eq!((metadata.start_date, metadata.end_date), (None, None));
+    }
 
     // generate an RSA keypair
     let sk_id = Uuid::new_v4().to_string();

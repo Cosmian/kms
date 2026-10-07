@@ -12,16 +12,14 @@ use pkcs11_sys::{
 
 use crate::{
     pkcs11::{
-        C_CopyObject, C_DecryptDigestUpdate, C_DecryptMessage, C_DecryptMessageBegin,
-        C_DecryptMessageNext, C_DecryptVerifyUpdate, C_DeriveKey, C_Digest, C_DigestEncryptUpdate,
-        C_DigestFinal, C_DigestInit, C_DigestKey, C_DigestUpdate, C_EncryptFinal, C_EncryptMessage,
-        C_EncryptMessageBegin, C_EncryptMessageNext, C_EncryptUpdate, C_GenerateKeyPair,
-        C_GetObjectSize, C_GetOperationState, C_MessageDecryptFinal, C_MessageDecryptInit,
-        C_MessageEncryptFinal, C_MessageEncryptInit, C_MessageVerifyFinal, C_MessageVerifyInit,
-        C_SessionCancel, C_SetOperationState, C_SignEncryptUpdate, C_SignMessageBegin,
-        C_SignMessageNext, C_SignRecover, C_SignRecoverInit, C_UnwrapKey, C_VerifyMessage,
-        C_VerifyMessageBegin, C_VerifyMessageNext, C_VerifyRecover, C_VerifyRecoverInit,
-        C_WaitForSlotEvent, C_WrapKey,
+        C_CopyObject, C_DecryptDigestUpdate, C_DecryptMessageBegin, C_DecryptMessageNext,
+        C_DecryptVerifyUpdate, C_DeriveKey, C_Digest, C_DigestEncryptUpdate, C_DigestFinal,
+        C_DigestInit, C_DigestKey, C_DigestUpdate, C_EncryptFinal, C_EncryptMessageBegin,
+        C_EncryptMessageNext, C_EncryptUpdate, C_GenerateKeyPair, C_GetObjectSize,
+        C_GetOperationState, C_MessageVerifyFinal, C_MessageVerifyInit, C_SessionCancel,
+        C_SetOperationState, C_SignEncryptUpdate, C_SignMessageBegin, C_SignMessageNext,
+        C_SignRecover, C_SignRecoverInit, C_UnwrapKey, C_VerifyMessage, C_VerifyMessageBegin,
+        C_VerifyMessageNext, C_VerifyRecover, C_VerifyRecoverInit, C_WaitForSlotEvent, C_WrapKey,
     },
     traits::KeyAlgorithm,
 };
@@ -198,53 +196,15 @@ fn test_unsupported_functions_return_function_not_supported() {
     );
     assert_eq!(C_SessionCancel(0, 0), CKR_FUNCTION_NOT_SUPPORTED);
 
-    // Unsupported v3.0 message-based bulk crypto functions remain conformant
-    // non-null stubs. One-shot EdDSA message signing
-    // (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`) is implemented
-    // and tested separately.
-    assert_eq!(
-        C_MessageEncryptInit(0, null_mut(), 0),
-        CKR_FUNCTION_NOT_SUPPORTED
-    );
-    assert_eq!(
-        C_EncryptMessage(
-            0,
-            null_mut(),
-            0,
-            null_mut(),
-            0,
-            null_mut(),
-            0,
-            null_mut(),
-            null_mut()
-        ),
-        CKR_FUNCTION_NOT_SUPPORTED
-    );
+    // One-shot AES-GCM message encrypt/decrypt is tested through the module's
+    // message round-trip test. Multipart message operations remain conformant
+    // non-null stubs; one-shot EdDSA message signing is tested separately.
     assert_eq!(
         C_EncryptMessageBegin(0, null_mut(), 0, null_mut(), 0),
         CKR_FUNCTION_NOT_SUPPORTED
     );
     assert_eq!(
         C_EncryptMessageNext(0, null_mut(), 0, null_mut(), 0, null_mut(), null_mut(), 0),
-        CKR_FUNCTION_NOT_SUPPORTED
-    );
-    assert_eq!(C_MessageEncryptFinal(0), CKR_FUNCTION_NOT_SUPPORTED);
-    assert_eq!(
-        C_MessageDecryptInit(0, null_mut(), 0),
-        CKR_FUNCTION_NOT_SUPPORTED
-    );
-    assert_eq!(
-        C_DecryptMessage(
-            0,
-            null_mut(),
-            0,
-            null_mut(),
-            0,
-            null_mut(),
-            0,
-            null_mut(),
-            null_mut()
-        ),
         CKR_FUNCTION_NOT_SUPPORTED
     );
     assert_eq!(
@@ -255,7 +215,6 @@ fn test_unsupported_functions_return_function_not_supported() {
         C_DecryptMessageNext(0, null_mut(), 0, null_mut(), 0, null_mut(), null_mut(), 0),
         CKR_FUNCTION_NOT_SUPPORTED
     );
-    assert_eq!(C_MessageDecryptFinal(0), CKR_FUNCTION_NOT_SUPPORTED);
     assert_eq!(
         C_SignMessageBegin(0, null_mut(), 0),
         CKR_FUNCTION_NOT_SUPPORTED

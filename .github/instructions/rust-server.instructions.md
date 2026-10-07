@@ -46,3 +46,4 @@ cargo test -p cosmian_kms_server --features non-fips  # non-FIPS
 ```
 
 > For KMIP operation compliance, run `/kmip-compliance`. For new endpoints, run `/openapi-endpoint`.
+> Use `/threat-model` when a server change affects trust boundaries or security-relevant data flows; skip only in a confirmed incremental review when none are affected. `/security-review` is not skipped because a mechanical scan is clean.

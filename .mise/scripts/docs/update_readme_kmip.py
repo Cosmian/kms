@@ -1672,19 +1672,23 @@ The following table shows transparent key structure support across all KMIP vers
     implemented_structures = {
         name: (name in transp_in_code) for name in key_structures_list
     }
-    # Mirror EC implementation for ECDSA variants; leave ECDH/ECMQV as unimplemented unless tokens are present (they won't be)
+    # Mirror EC implementation for ECDSA and ECDH variants; leave ECMQV as unimplemented unless tokens are present (they won't be)
     if 'EC Private Key' in implemented_structures:
         implemented_structures['ECDSA Private Key'] = implemented_structures[
+            'EC Private Key'
+        ]
+        implemented_structures['ECDH Private Key'] = implemented_structures[
             'EC Private Key'
         ]
     if 'EC Public Key' in implemented_structures:
         implemented_structures['ECDSA Public Key'] = implemented_structures[
             'EC Public Key'
         ]
-    # Ensure defaults for ECDH/ECMQV are False if not explicitly detected
+        implemented_structures['ECDH Public Key'] = implemented_structures[
+            'EC Public Key'
+        ]
+    # Ensure defaults for ECMQV are False if not explicitly detected
     for alias_name in [
-        'ECDH Private Key',
-        'ECDH Public Key',
         'ECMQV Private Key',
         'ECMQV Public Key',
     ]:
@@ -1722,7 +1726,7 @@ The following table shows transparent key structure support across all KMIP vers
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """\nNote: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+    md += """\nNote: EC/ECDSA/ECDH support is present; DH/DSA/ECMQV are not implemented.
 
 ### Attributes
 

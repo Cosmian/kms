@@ -42,7 +42,7 @@ def _is_symmetric(algorithm: str) -> bool:
     """Return True if the algorithm name suggests a symmetric cipher.
 
     Strips an optional 'hsm-' prefix first: HSM-delegated benchmarks (see
-    `bench/load-hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
+    `bench/hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
     etc. so the criterion group's op_type still parses correctly (a bare 'hsm/'
     path segment would shift `bench_id_to_parts`'s op_type/algorithm split).
     """
@@ -98,90 +98,6 @@ _PROTOCOL_ORDER: dict[str, int] = {
     'ttlv-bytes': 1,
     'jose': 2,
     'pkcs11': 3,
-}
-
-_PKCS11_OVERHEAD_TIERS: list[tuple[str, str, str | None]] = [
-    ('request-build', 'Request construction', None),
-    ('ttlv-json-serialize', 'TTLV + JSON serialization', None),
-    (
-        'published-full-message-raw-http',
-        'Published-equivalent full-message raw HTTP',
-        None,
-    ),
-    (
-        'bare-sign-raw-http',
-        'Bare Sign raw HTTP',
-        'published-full-message-raw-http',
-    ),
-    ('response-parse', 'Response JSON + TTLV parsing', None),
-    ('typed-kms-client-sign', 'Typed KMS client Sign', 'bare-sign-raw-http'),
-    (
-        'published-full-message-binary-http',
-        'Full-message binary TTLV HTTP + KMIP validation',
-        None,
-    ),
-    ('binary-response-parse', 'Binary TTLV response parsing', None),
-    (
-        'typed-binary-message-sign-bracketed',
-        'Typed binary-TTLV message Sign (bracketed mean)',
-        'published-full-message-binary-http',
-    ),
-    ('runtime-block-on-ready', 'Tokio block_on control', None),
-    (
-        'pkcs11-one-call-bracketed',
-        'PKCS#11 v3 C_SignMessage (bracketed mean)',
-        'typed-binary-message-sign-bracketed',
-    ),
-    (
-        'pkcs11-two-call-fixed-query',
-        'Legacy C_Sign API (fixed length query)',
-        None,
-    ),
-]
-_PKCS11_TIER_LABELS = {
-    name: (label, baseline) for name, label, baseline in _PKCS11_OVERHEAD_TIERS
-}
-
-_PKCS11_PHASE_ORDER = [
-    'c-sign-body',
-    'session-map-lookup',
-    'session-lock-wait',
-    'session-callback',
-    'private-key-sign',
-    'backend-lookup',
-    'backend-remote-sign',
-    'request-build',
-    'runtime-block-on',
-    'kms-client-sign',
-    'signature-copy',
-]
-_PKCS11_PHASE_LABELS = {
-    'c-sign-body': 'C_SignMessage body',
-    'session-map-lookup': 'Session map lookup',
-    'session-lock-wait': 'Per-session lock wait',
-    'session-callback': 'Session callback',
-    'private-key-sign': 'Private-key Sign',
-    'backend-lookup': 'Backend lookup',
-    'backend-remote-sign': 'Backend remote Sign',
-    'request-build': 'Request construction',
-    'runtime-block-on': 'Tokio block_on',
-    'kms-client-sign': 'Typed KMS client Sign',
-    'signature-copy': 'Signature copy',
-}
-_PKCS11_INCLUSIVE_PHASES = {
-    'c-sign-body',
-    'session-callback',
-    'private-key-sign',
-    'backend-remote-sign',
-    'runtime-block-on',
-    'kms-client-sign',
-}
-_PKCS11_LEAF_PHASES = {
-    'session-map-lookup',
-    'session-lock-wait',
-    'backend-lookup',
-    'request-build',
-    'signature-copy',
 }
 
 
@@ -367,92 +283,6 @@ def _optional_measurements(
         if value is not None:
             measurements[name] = value
     return measurements
-
-
-def parse_pkcs11_overhead_json(path: Path) -> dict[str, object]:
-    """Parse the versioned PKCS#11 Ed25519 overhead schema.
-
-    Invalid top-level documents are ignored. Within a valid schema, malformed
-    tier or phase records are skipped independently so a partial benchmark run
-    can still produce the useful portions of the report.
-    """
-    if not path.exists():
-        return {}
-    try:
-        raw = json.loads(path.read_text(encoding='utf-8'))
-    except (json.JSONDecodeError, OSError, ValueError):
-        return {}
-    if (
-        not isinstance(raw, dict)
-        or type(raw.get('schema_version')) is not int
-        or raw.get('schema_version') != 1
-        or raw.get('algorithm') != 'eddsa-ed25519'
-    ):
-        return {}
-
-    tiers: list[dict[str, object]] = []
-    raw_tiers = raw.get('tiers', [])
-    if isinstance(raw_tiers, list):
-        for record in raw_tiers:
-            if not isinstance(record, dict):
-                continue
-            name = record.get('name')
-            mean_ns = _finite_number(record.get('mean_ns'), positive=True)
-            if not isinstance(name, str) or not name or mean_ns is None:
-                continue
-            tier: dict[str, object] = {'name': name, 'mean_ns': mean_ns}
-            tier.update(
-                _optional_measurements(record, ('median_ns', 'lower_ns', 'upper_ns'))
-            )
-            tiers.append(tier)
-
-    phases: list[dict[str, object]] = []
-    raw_phases = raw.get('phases', [])
-    if isinstance(raw_phases, list):
-        for record in raw_phases:
-            if not isinstance(record, dict):
-                continue
-            name = record.get('name')
-            count = record.get('count')
-            mean_ns = _finite_number(record.get('mean_ns'), positive=True)
-            if (
-                not isinstance(name, str)
-                or not name
-                or isinstance(count, bool)
-                or not isinstance(count, int)
-                or count < 0
-                or mean_ns is None
-            ):
-                continue
-            phase: dict[str, object] = {
-                'name': name,
-                'count': count,
-                'mean_ns': mean_ns,
-            }
-            phase.update(
-                _optional_measurements(record, ('p50_ns', 'p95_ns', 'p99_ns', 'max_ns'))
-            )
-            phases.append(phase)
-
-    parsed: dict[str, object] = {
-        'schema_version': 1,
-        'algorithm': 'eddsa-ed25519',
-        'tiers': tiers,
-        'phases': phases,
-    }
-    for name in (
-        'payload_bytes',
-        'request_bytes',
-        'response_bytes',
-        'binary_request_bytes',
-        'binary_response_bytes',
-    ):
-        value = raw.get(name)
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-            parsed[name] = value
-    if isinstance(raw.get('varying_payload'), bool):
-        parsed['varying_payload'] = raw['varying_payload']
-    return parsed
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -840,177 +670,6 @@ def _fmt_signed_time(ns: float) -> str:
     return f"{prefix}{_fmt_time(abs(ns))}"
 
 
-def _render_pkcs11_overhead_section(
-    overhead_data: dict[str, dict[str, object]], versions: list[str]
-) -> list[str]:
-    """Render valid PKCS#11 Ed25519 overhead tiers and internal phases."""
-    available: dict[str, dict[str, object]] = {}
-    for version in versions:
-        data = overhead_data.get(version, {})
-        if data.get('tiers') or data.get('phases'):
-            available[version] = data
-    if not available:
-        return []
-
-    lines = [
-        '## PKCS#11 Ed25519 signing overhead',
-        '',
-        'These differential micro-benchmarks use the same Ed25519 key, payload,'
-        ' server, runtime, and Criterion configuration. The JSON tiers target'
-        ' `/kmip/2_1`; binary TTLV and the full PKCS#11 path target `/kmip`.'
-        ' The typed binary and PKCS#11 values are A/B/A/B bracketed means (one'
-        ' measurement before and one after each other) to reduce temporal drift.'
-        ' Component-only rows'
-        ' intentionally have no incremental delta; end-to-end rows compare with'
-        ' the nearest lower-level path named in the **Compared with** column.',
-        '',
-        '> **Public reference:** the software benchmark report records'
-        ' `ttlv-json` `eddsa-ed25519/sign` at'
-        ' [87.0 µs](https://docs.cosmian.com/key_management_system/benchmarks/'
-        'ckms_bench/report.html). That measurement uses a pre-serialized full'
-        ' `RequestMessage` sent over raw HTTP and only collects then drops the'
-        ' response. It is therefore not directly comparable with typed'
-        ' `KmsClient::sign` or the full PKCS#11 path. The machine-local'
-        ' **Published-equivalent full-message raw HTTP** tier below is the fair'
-        ' reference for incremental comparisons.',
-        '',
-    ]
-    tier_order = {
-        name: index for index, (name, _, _) in enumerate(_PKCS11_OVERHEAD_TIERS)
-    }
-    phase_order = {name: index for index, name in enumerate(_PKCS11_PHASE_ORDER)}
-
-    for version, data in available.items():
-        ver_tag = f"v{version}" if version[:1].isdigit() else version
-        lines += [f"### Version {ver_tag}", '']
-
-        metadata = []
-        for key, label in (
-            ('payload_bytes', 'payload'),
-            ('request_bytes', 'JSON request'),
-            ('response_bytes', 'JSON response'),
-            ('binary_request_bytes', 'binary request'),
-            ('binary_response_bytes', 'binary response'),
-        ):
-            value = data.get(key)
-            if isinstance(value, int):
-                metadata.append(f'{label}: **{value} bytes**')
-        if metadata:
-            payload_mode = (
-                'varying payloads'
-                if data.get('varying_payload') is True
-                else 'fixed payload'
-            )
-            lines += [f"Ed25519; {payload_mode}; {'; '.join(metadata)}.", '']
-
-        raw_tiers = data.get('tiers', [])
-        tiers = (
-            [tier for tier in raw_tiers if str(tier.get('name')) in tier_order]
-            if isinstance(raw_tiers, list)
-            else []
-        )
-        if tiers:
-            lines += [
-                '#### Tier comparison',
-                '',
-                '| Protocol | Tier | Mean | Median | Mean 95% CI | Compared with |'
-                ' Incremental delta | Incremental change |',
-                '|---|---|---:|---:|---:|---|---:|---:|',
-            ]
-            tiers = sorted(
-                tiers,
-                key=lambda tier: (
-                    tier_order.get(str(tier.get('name')), len(tier_order)),
-                    str(tier.get('name')),
-                ),
-            )
-            by_name = {str(tier['name']): tier for tier in tiers}
-            for tier in tiers:
-                name = str(tier['name'])
-                mean_ns = float(tier['mean_ns'])
-                label, baseline_name = _PKCS11_TIER_LABELS.get(
-                    name, (f'`{name}`', None)
-                )
-                median = tier.get('median_ns')
-                median_text = _fmt_time(float(median)) if median is not None else '—'
-                lower = tier.get('lower_ns')
-                upper = tier.get('upper_ns')
-                ci_text = (
-                    f"{_fmt_time(float(lower))}–{_fmt_time(float(upper))}"
-                    if lower is not None and upper is not None
-                    else '—'
-                )
-                baseline = by_name.get(baseline_name) if baseline_name else None
-                if baseline is None:
-                    compared_with = '—'
-                    delta_text = '—'
-                    percent_text = '—'
-                else:
-                    baseline_mean = float(baseline['mean_ns'])
-                    delta = mean_ns - baseline_mean
-                    compared_with = _PKCS11_TIER_LABELS[baseline_name][0]
-                    delta_text = _fmt_signed_time(delta)
-                    percent_text = f"{delta / baseline_mean:+.1%}"
-                lines.append(
-                    f'| `pkcs11` | {label} | {_fmt_time(mean_ns)} | {median_text} |'
-                    f' {ci_text} | {compared_with} | {delta_text} |'
-                    f' {percent_text} |'
-                )
-            lines.append('')
-
-        raw_phases = data.get('phases', [])
-        phases = raw_phases if isinstance(raw_phases, list) else []
-        if phases:
-            phases = sorted(
-                phases,
-                key=lambda phase: (
-                    phase_order.get(str(phase.get('name')), len(phase_order)),
-                    str(phase.get('name')),
-                ),
-            )
-            lines += [
-                '#### Internal phase boundaries',
-                '',
-                'Boundary timings are nested and inclusive: `C_SignMessage` body → session'
-                ' callback → private-key Sign → backend remote Sign → Tokio `block_on`'
-                ' → typed KMS client Sign. They are **not exclusive components and'
-                ' must not be summed**. Session map lookup, per-session lock wait,'
-                ' backend lookup, request construction, and signature copy are leaf'
-                ' timings.',
-                '',
-                'The p50/p95/p99 values are approximate upper bounds from log2'
-                ' histogram buckets. Mean and maximum values are exact.',
-                '',
-                '| Phase | Semantics | Mean (exact) | p50 upper bound |'
-                ' p95 upper bound | p99 upper bound | Max (exact) | Samples |',
-                '|---|---|---:|---:|---:|---:|---:|---:|',
-            ]
-            for phase in phases:
-                name = str(phase['name'])
-                mean_ns = float(phase['mean_ns'])
-
-                def measurement(field: str) -> str:
-                    value = phase.get(field)
-                    return _fmt_time(float(value)) if value is not None else '—'
-
-                if name in _PKCS11_INCLUSIVE_PHASES:
-                    semantics = 'Inclusive boundary'
-                elif name in _PKCS11_LEAF_PHASES:
-                    semantics = 'Leaf timing'
-                else:
-                    semantics = 'Unclassified'
-                label = _PKCS11_PHASE_LABELS.get(name, f'`{name}`')
-                lines.append(
-                    f'| {label} | {semantics} | {_fmt_time(mean_ns)} |'
-                    f" {measurement('p50_ns')} | {measurement('p95_ns')} |"
-                    f" {measurement('p99_ns')} | {measurement('max_ns')} |"
-                    f" {phase['count']} |"
-                )
-            lines.append('')
-
-    return lines
-
-
 def _render_architecture_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
@@ -1105,7 +764,7 @@ def _render_architecture_section(
                 '',
             ]
     elif is_hsm:
-        # HSM-resident keys (bench:load-hsm --delegated)
+        # HSM-resident keys (bench:hsm --delegated)
         return [
             '## Architecture',
             '',
@@ -1146,7 +805,7 @@ def _render_architecture_section(
             '',
         ]
     elif is_hsm_kek:
-        # HSM KEK-wrapped keys (bench:load-hsm without --delegated)
+        # HSM KEK-wrapped keys (bench:hsm without --delegated)
         return [
             '## Architecture',
             '',
@@ -1228,6 +887,7 @@ def _render_architecture_section(
             '',
             '',
         ]
+
 
 def _render_protocol_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
@@ -1381,11 +1041,7 @@ def _render_methodology_section(
     *, is_hsm: bool = False, is_hsm_kek: bool = False, is_pkcs11: bool = False
 ) -> list[str]:
     """Render the static ## Benchmark Methodology section."""
-    pkcs11_task = (
-        '`mise bench:load-pkcs11 --delegated`'
-        if is_hsm
-        else '`mise bench:load-pkcs11`'
-    )
+    pkcs11_task = '`mise bench:pkcs11 --delegated`' if is_hsm else '`mise bench:pkcs11`'
     if is_pkcs11:
         return [
             '## Benchmark Methodology',
@@ -1545,7 +1201,7 @@ def _render_methodology_section(
             '',
             '- Load-test key-creation concurrency is capped at 4 regardless of the'
             ' requested sweep (`PreparedLoadOp::max_concurrency`).',
-            '- The `bench/load-hsm --delegated` task runs `key-creation`, `encrypt`, and'
+            '- The `bench/hsm --delegated` task runs `key-creation`, `encrypt`, and'
             ' `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh'
             ' token) when `--mode all` (the default), so key-creation load never'
             ' contaminates the encrypt/sign token; results are merged into this single'
@@ -1679,7 +1335,6 @@ def generate_report(
     load_charts: list[str],
     crit_charts: list[str],
     env_data: dict[str, dict] | None = None,
-    pkcs11_overhead_data: dict[str, dict[str, object]] | None = None,
     *,
     is_hsm: bool = False,
     is_hsm_kek: bool = False,
@@ -1708,7 +1363,6 @@ def generate_report(
     if arch_lines:
         lines += arch_lines
         lines += sep
-
 
     # ── Protocols ─────────────────────────────────────────────────────────────
     lines += _render_protocol_section(
@@ -1926,7 +1580,6 @@ def main() -> None:
         load_charts,
         crit_charts,
         env_data=env_data or None,
-        pkcs11_overhead_data=pkcs11_overhead_data or None,
         is_hsm=is_hsm,
         is_hsm_kek=is_hsm_kek,
         is_pkcs11=is_pkcs11,

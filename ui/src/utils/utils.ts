@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | undefined;
+export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | "SPIFFE" | undefined;
 
 /** Root of the Cosmian docs site (not the KMS-specific book — see `docsUrl`). */
 export const DOCS_BASE_URL = "https://docs.cosmian.com";

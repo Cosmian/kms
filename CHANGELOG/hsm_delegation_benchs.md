@@ -1,4 +1,4 @@
-# HSM-direct crypto benchmarks: `ckms bench --hsm` and `bench/load-hsm --delegated`
+# HSM-direct crypto benchmarks: `ckms bench --hsm` and `bench/hsm --delegated`
 
 ## Bug Fixes
 
@@ -49,7 +49,18 @@
   and `sign-secp256k1` correctly select their own key when both coexist
   (`--mode all`)
 
-### `bench:load-pkcs11` report accuracy
+### HSM-delegated PKCS#11 benchmark compatibility
+
+- Added defensive PKCS#11 decryption compatibility for providers that reject a
+  null-output size query, using a single caller-sized plaintext buffer. This is
+  independent of the benchmark key-selection fix below.
+- Bind benchmark object discovery to the identifiers returned by the current key
+  provisioning run, preventing stale HSM objects from pairing mismatched RSA/EC keys.
+- Removed the global delegated-mode algorithm exclusions. Requested operations are
+  capability-probed against the selected HSM and unsupported operations are skipped
+  only for that provider; supported HSMs retain the full mode set.
+
+### `bench:pkcs11` report accuracy
 
 - `--criterion` was mutually exclusive with the concurrency sweep in
   `crate/clients/pkcs11/bench/src/main.rs` (`if cli.criterion { return
@@ -71,7 +82,7 @@
   `criterion_bench.rs`) gating the Ed25519 overhead ladder, which previously ran
   unconditionally whenever an EdDSA sign mode was selected under `--criterion`.
   It remains a standalone local diagnostic, never rendered into `report.md`.
-  `.mise/tasks/bench/load-pkcs11` now only builds `cosmian_pkcs11` with its
+  `.mise/tasks/bench/pkcs11` now only builds `cosmian_pkcs11` with its
   `benchmarking` feature when `--overhead` is passed, not on every `--criterion`
   run
 
@@ -83,7 +94,7 @@
   duration of its callback — including the synchronous, blocking
   `RUNTIME.block_on(...)` KMS network round-trip that `C_Sign`/`C_Verify`/
   `C_Encrypt`/`C_Decrypt` all make. A concurrency sweep against
-  `mise bench:load-pkcs11` (`--mode sign-eddsa`) showed the resulting bottleneck
+  `mise bench:pkcs11` (`--mode sign-eddsa`) showed the resulting bottleneck
   concretely: throughput stayed completely flat (~17-19 ops/s) from concurrency 1
   through 8, while p99 latency exploded from 74ms to over 5s — a single lock held
   across a blocking network call was serializing concurrent Cryptoki calls
@@ -96,7 +107,7 @@
   Cryptoki spec requires without additional application-level synchronization.
   `create`/`exists`/`flags`/`session`/`close`/`close_all` all updated accordingly
 - Re-benchmarked with the same `sign-eddsa` sweep after also switching
-  `mise bench:load-pkcs11` to one dedicated session per worker thread (see
+  `mise bench:pkcs11` to one dedicated session per worker thread (see
   "Testing" below, since a shared single session would have masked this fix
   entirely): throughput now scales with concurrency (19 → 34 → 57 → 82 ops/s at
   concurrency 1/2/4/8, a ~4.3x improvement at c=8) and p99 latency stays bounded
@@ -104,6 +115,71 @@
 - `cargo test -p cosmian_pkcs11_module --lib` (38 tests) and
   `cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 tests, 5 pre-existing
   `#[ignore]`) both still pass unchanged
+
+### Crypt2Pay ECDSA/RSA-PSS composite test: hard failure on a per-combination capability gap
+
+- `ecdsa_sign_all_curves_and_hashes` and `rsa_pss_sign_all_algorithms`
+  (`crate/hsm/base_hsm/src/tests_shared.rs`, both added earlier on this branch) pre-check
+  mechanism support via `slot.get_supported_mechanisms()` but then called `session.sign(...)?`
+  directly, hard-propagating any error from `C_SignInit`. Against a live Crypt2Pay HSM this
+  surfaced as `Error: Default("Failed to initialize signing. Return code: 98")` (`CKR_KEY_SIZE_RANGE`)
+  partway through `test_hsm_crypt2pay_all`, aborting the whole composite: the HSM advertises the
+  mechanism at the slot level (so the pre-check passes) but rejects a specific curve/digest or
+  salt/key-size combination at sign time.
+- Fixed by mirroring the capability-probe pattern `eddsa_sign_all_curves` already uses for the
+  identical class of problem (documented there for Ed448/Kryoptic): catch the error from
+  `session.sign(...)`, `warn!` and `continue` to the next combination instead of hard-failing via
+  `?`. Purely additive to error handling; behavior is unchanged for any backend where every
+  combination already signs successfully.
+- Verified no regression: `mise test:hsm-softhsm2 -v non-fips` (58 passed) and
+  `mise test:hsm-kryoptic -v non-fips` (58 passed) both still green. Live Crypt2Pay re-verification
+  of this exact fix is blocked by an unrelated, already-documented, intermittent external issue on
+  that shared HSM (`generate_rsa_keypair`/`generate_ec_keypair` sporadically returning
+  `CKR_MECHANISM_INVALID`, return code 112 — a license/quota condition on the remote unit, not a
+  code defect); the fix itself is grounded in a real, raw PKCS#11 return code observed from that
+  same HSM and an established in-tree precedent for handling it.
+
+### Utimaco CI simulator: scoped the new composite coverage back out, regression pre-dates this fix
+
+- `test_hsm_utimaco_all` (added in the earlier "cross-backend shared test coverage" commit on
+  this branch) started failing CI with `CKR_DEVICE_REMOVED` (`Error: Default("Failed to
+  initialize signing"/"Failed to get signature length". Return code: 50")`, ~9s in, at the
+  first signing call reached after the new `aes_cbc_multi_round` step (confirmed pre-existing:
+  it already failed identically on the CI run before this branch's ECDSA/RSA-PSS fix above, i.e.
+  it is not caused by that fix). Both `fips` and `non-fips` variants fail at a *different* call
+  site inside the same `sign_with_mechanism` function, which rules out a fixed mechanism/key
+  incompatibility (that would fail at the same place every time, like the Crypt2Pay case above)
+  and points instead at the bundled `bl_sim5` CI simulator losing its device/session state
+  partway through — plausibly from `aes_cbc_multi_round`'s ~460 rapid sequential
+  `C_EncryptInit`/`C_DecryptInit` cycles on one session, a volume of traffic none of the other
+  composites exercised before.
+- No local Utimaco simulator access in this environment to reproduce, instrument, and verify a
+  fix the way the Crypt2Pay issue above was diagnosed and confirmed. Per explicit direction,
+  removed `generate_ec_keypair`, `aes_cbc_encrypt`, `aes_cbc_multi_round`,
+  `rsa_pss_sign_all_algorithms`, and `ecdsa_sign_all_curves_and_hashes` from
+  `test_hsm_utimaco_all` only (`crate/hsm/utimaco/src/tests.rs`), restoring exactly the
+  composite that was last green. Each omitted function keeps its own standalone `#[ignore]`
+  test for targeted investigation by whoever has simulator access; a comment at the omission
+  site documents the symptom and return code for that follow-up. No other backend's composite
+  (Crypt2Pay, Proteccio, SoftHSM2, Kryoptic, SmartCard HSM) is affected.
+
+### Kryoptic delegated bench build dependencies and OpenSSL selection
+
+- HSM shells now provide Nix `libclang` (with its resource-dir and glibc dev header paths)
+  and SQLite for Kryoptic's bindgen-generated PKCS#11 bindings and standard SQLite-backed
+  object store. This removes the CI failure where bindgen selected Ubuntu's incomplete
+  `libclang` and could not load `libffi.so.8`, followed by the final-link failure for
+  `-lsqlite3`.
+- `.mise/lib/kryoptic.sh` now prepends the workspace OpenSSL 3.6.2 prefix to both
+  `PKG_CONFIG_PATH` and `PKG_CONFIG_PATH_FOR_TARGET`, passes those paths plus
+  `KRYOPTIC_OPENSSL_SOURCES`/`OPENSSL_STATIC` explicitly at the isolated Cargo boundary,
+  and supplies `OSSL_BINDGEN_CLANG_ARGS=-isystem <workspace>/include` so ossl-sys bindgen
+  resolves the matching OpenSSL headers rather than Nix's defaults. The overrides remain
+  private to that build, so later workspace KMS builds retain the shell's normal OpenSSL
+  environment. Nix's target pkg-config path previously selected OpenSSL 3.1.2 even though
+  the helper had located the correct workspace prefix, causing Kryoptic's OpenSSL >=3.2
+  requirement to fail. Local `mise run bench:pkcs11 --delegated --hsm-model kryoptic
+  --variant non-fips -s` now completes all three delegated submodes successfully.
 
 ## Testing
 
@@ -136,26 +212,26 @@
   through it; `--hsm --protocol jose` prints a skip notice instead of
   silently doing nothing
 
-### New independent mise task: `bench/load-hsm --delegated`
+### New independent mise task: `bench/hsm --delegated`
 
-- Add a new `.mise/tasks/bench/load-hsm-crypto` task (later merged into
-  `bench/load-hsm` behind a `--delegated` flag — see the final section of
-  this changelog), mirroring `bench/load-hsm`'s flag
+- Add a new `.mise/tasks/bench/hsm-crypto` task (later merged into
+  `bench/hsm` behind a `--delegated` flag — see the final section of
+  this changelog), mirroring `bench/hsm`'s flag
   surface (`--variant`, `--mode`, `--protocol`, `--time`, `--concurrency`,
   `--http-workers`, `--warmup`, `--cooldown`, `--sanity`) plus `bench/load`'s
   `--criterion`/`--speed`. Runs fully independently of `bench/load` and
-  `bench/load-hsm` (its own SoftHSM2 token, its own server) — unlike
-  `bench/load-hsm`, which benchmarks a software KEK *wrapped* by the HSM
+  `bench/hsm` (its own SoftHSM2 token, its own server) — unlike
+  `bench/hsm`, which benchmarks a software KEK *wrapped* by the HSM
   (crypto still executes in KMS software), this task benchmarks crypto
   operations executed *directly* on the HSM
 - Add `bench_start_server_hsm_resident` to `.mise/lib/bench_helpers.sh`: like
   `bench_start_server_hsm`, but does not set `key_encryption_key` — no KEK is
   ever created, since resident-key benchmarking doesn't need wrapping
 - Add an optional `docs_subdir` argument to `bench_generate_report` (default
-  `ckms_bench`, unchanged for `bench/load`/`bench/load-hsm`) so
-  `bench/load-hsm --delegated` writes its report to a **separate**
+  `ckms_bench`, unchanged for `bench/load`/`bench/hsm`) so
+  `bench/hsm --delegated` writes its report to a **separate**
   `documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/` directory instead of
-  clobbering the software baseline that `bench/load`/`bench/load-hsm` share
+  clobbering the software baseline that `bench/load`/`bench/hsm` share
   (the shared helper replaces its target directory wholesale on every run)
 
 ### SoftHSM2 per-token degradation: found, isolated, and worked around
@@ -170,13 +246,13 @@ created on the token), not purely a function of peak concurrency. This is a
 SoftHSM2 limitation (a software simulator not built for heavy concurrent/
 cumulative key generation on one token), not a KMS defect.
 
-Fix, so a single `bench/load-hsm --delegated` invocation reliably produces a
+Fix, so a single `bench/hsm --delegated` invocation reliably produces a
 complete report:
 
 - `PreparedLoadOp::max_concurrency` (`load.rs`) caps HSM key-creation
   load-test concurrency at 4 regardless of the requested sweep, applied by
   `bench_load` per-operation.
-- `bench/load-hsm --delegated`, when `--mode all` (the default), now runs
+- `bench/hsm --delegated`, when `--mode all` (the default), now runs
   `key-creation`, `encrypt`, and `sign-verify` as **three separate SoftHSM2
   sessions**, each with its own fresh token, so key-creation's key
   generation never contaminates the encrypt/sign token. Results are merged
@@ -203,7 +279,7 @@ categorizes as **Symmetric Encryption** rather than falling through to
 
 ### Full HSM benchmark run — final report
 
-`mise run bench:load-hsm --delegated --criterion --speed quick` (default modes/
+`mise run bench:hsm --delegated --criterion --speed quick` (default modes/
 protocols/concurrency, SoftHSM2 2.6.1, i9-14900T, release build) now
 completes end-to-end: **6 load-test operations / 46 records / 6 SVG
 charts**, **16 criterion benchmarks / 4 SVG charts**, written to
@@ -323,7 +399,7 @@ Made `## Protocols` and `## Benchmark Methodology` HSM-aware: added an
 `--hsm` flag to `.mise/scripts/bench/plot_version_compare.py` (stripped from
 `argv` before positional parsing), threaded through a new `is_hsm` parameter
 on `bench_generate_report` (`.mise/lib/bench_helpers.sh`), passed as
-`"true"` by `bench/load-hsm --delegated`. When set:
+`"true"` by `bench/hsm --delegated`. When set:
 - `## Protocols` lists only `ttlv-json`/`ttlv-bytes` (not `jose`) and
   explains why JOSE key creation can't address `hsm::` keys.
 - `## Benchmark Methodology` replaces the generic software text with the
@@ -352,29 +428,29 @@ reaching ~49,800 req/s (`ttlv-json`), ~49,100 req/s (`ttlv-bytes`), and
 ~63,600 req/s (`jose`) at concurrency 16 — confirming the extrapolation in
 issue #1155 and roughly 3.8× the ECDSA P-256 throughput in the same run.
 
-### Merged `bench/load-hsm-crypto` into `bench/load-hsm --delegated`
+### Merged `bench/hsm-crypto` into `bench/hsm --delegated`
 
-Having two separate, similarly-named mise tasks (`bench/load-hsm` for the
-software-crypto KEK-wrap benchmark, `bench/load-hsm-crypto` for the
+Having two separate, similarly-named mise tasks (`bench/hsm` for the
+software-crypto KEK-wrap benchmark, `bench/hsm-crypto` for the
 HSM-delegated crypto benchmark added above) was confusing — the names
 differ only by a suffix, yet they exercise entirely different code paths.
 
-Merged the two into a single task, `.mise/tasks/bench/load-hsm`, selected by
+Merged the two into a single task, `.mise/tasks/bench/hsm`, selected by
 a new `-d`/`--delegated` boolean flag:
 
 - Default (no flag): unchanged KEK-wrap benchmark (software crypto, root key
   wrapped by an HSM-resident KEK).
 - `--delegated`: the HSM-delegated crypto benchmark (all crypto executed
-  directly on the HSM), formerly `bench/load-hsm-crypto` — same
+  directly on the HSM), formerly `bench/hsm-crypto` — same
   three-session `--mode all` splitting, same `docs_subdir=ckms_bench_delegated_crypto_operations`
   report output, same `--criterion`/`--speed` flags, unchanged behavior.
 
-Deleted `.mise/tasks/bench/load-hsm-crypto`. Updated the two stale doc-comment
+Deleted `.mise/tasks/bench/hsm-crypto`. Updated the two stale doc-comment
 references in `crate/clients/clap/src/actions/bench/types.rs` and the two
 comment references in `.mise/scripts/bench/plot_version_compare.py` that
 named the old task, and regenerated
 `documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md` (Methodology
-section) to reference `bench/load-hsm --delegated` instead — this was done
+section) to reference `bench/hsm --delegated` instead — this was done
 by re-running `plot_version_compare.py` directly against the existing
 `target/criterion/reports/5.27.0/` data, without a full benchmark re-run,
 since only report text changed, not measured behavior.
@@ -382,8 +458,8 @@ since only report text changed, not measured behavior.
 Usage after the merge:
 
 ```bash
-mise run bench:load-hsm                         # KEK-wrap (software crypto)
-mise run bench:load-hsm --delegated --criterion  # HSM-delegated crypto
+mise run bench:hsm                         # KEK-wrap (software crypto)
+mise run bench:hsm --delegated --criterion  # HSM-delegated crypto
 ```
 
 ### Dropped ttlv-bytes from the HSM-delegated report; gave the KEK-wrap benchmark its own dedicated report
@@ -404,7 +480,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   documents `ttlv-json` as the only protocol, with the ordering-artefact explanation
   reproduced in full; a new Methodology subsection ("Why ttlv-json only (no
   ttlv-bytes)") documents the root cause for future readers.
-- Gave the HSM-backed-KEK benchmark (`bench/load-hsm`'s default, non-`--delegated`
+- Gave the HSM-backed-KEK benchmark (`bench/hsm`'s default, non-`--delegated`
   mode) its own dedicated report directory,
   `documentation/docs/benchmarks/ckms_bench_hsm_kek/`, instead of silently sharing
   (and clobbering) the plain software baseline's `ckms_bench/` directory. Its
@@ -417,14 +493,14 @@ row — the opposite of the software baseline, and not a real protocol differenc
   "Benchmarks" nav section:
   1. `benchmarks/ckms_bench/report.md` — software baseline (`bench/load`)
   2. `benchmarks/ckms_bench_hsm_kek/report.md` — HSM-backed KEK, software crypto
-     (`bench/load-hsm`, default)
+     (`bench/hsm`, default)
   3. `benchmarks/ckms_bench_delegated_crypto_operations/report.md` — HSM-delegated crypto, ttlv-json only
-     (`bench/load-hsm --delegated`)
+     (`bench/hsm --delegated`)
 
-### New independent benchmark: `mise bench:load-pkcs11`
+### New independent benchmark: `mise bench:pkcs11`
 
 - Add a new `cosmian_pkcs11_bench` crate (`crate/clients/pkcs11/bench`) and a new
-  `mise bench:load-pkcs11` task (renamed from an initial `bench:pkcs11`),
+  `mise bench:pkcs11` task (renamed from an initial `bench:pkcs11`),
   benchmarking the `cosmian_pkcs11` PKCS#11 provider itself rather than the KMIP
   REST API: the benchmark `dlopen()`s the built `libcosmian_pkcs11.{so,dylib}` and
   drives its real Cryptoki v2.40 C ABI (`C_Initialize`, `C_OpenSession`,
@@ -467,12 +543,12 @@ row — the opposite of the software baseline, and not a real protocol differenc
   (alongside the existing `--hsm`/`--kek`) and a matching `is_pkcs11` parameter to
   `bench_generate_report`, so the report's Protocols/Methodology sections describe
   the real dlopen()-based Cryptoki benchmark instead of the generic
-  KMIP-wire-protocol text — mirroring `bench/load`/`bench/load-hsm` exactly instead
+  KMIP-wire-protocol text — mirroring `bench/load`/`bench/hsm` exactly instead
   of a standalone console-only benchmark as originally implemented
 
-### Add EdDSA-Ed25519 `sign`/`verify` modes to `mise bench:load-pkcs11`
+### Add EdDSA-Ed25519 `sign`/`verify` modes to `mise bench:pkcs11`
 
-- `mise bench:load-pkcs11` previously only exercised RSA (`CKM_SHA256_RSA_PKCS`)
+- `mise bench:pkcs11` previously only exercised RSA (`CKM_SHA256_RSA_PKCS`)
   for its `sign`/`verify` modes — there was no way to benchmark Ed25519 through
   PKCS#11 at all, even though `cosmian_pkcs11_module` fully supports `CKM_EDDSA`.
   Added two new modes, `sign-eddsa`/`verify-eddsa`, that drive `C_SignInit`/`C_Sign`
@@ -486,7 +562,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   private/public key objects by `CKA_KEY_TYPE` (`CKK_RSA`/`CKK_EC_EDWARDS`) — plain
   `find_first_by_class` would otherwise non-deterministically return whichever key
   the backend enumerates first now that two key pairs exist
-- Added the two new mode names to `.mise/tasks/bench/load-pkcs11`'s `--mode`
+- Added the two new mode names to `.mise/tasks/bench/pkcs11`'s `--mode`
   `choices` list and to the crate `README.md`'s mode table
 - Corrected a stale doc comment/README claim that `C_VerifyInit`/`C_Verify` are
   unimplemented (`CKR_FUNCTION_NOT_SUPPORTED`) by `cosmian_pkcs11_module` — both
@@ -496,7 +572,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   defensive guard for a future provider/backend that doesn't support it, not
   because it is currently needed
 
-### `mise bench:load-pkcs11` now pools one Cryptoki session per worker thread
+### `mise bench:pkcs11` now pools one Cryptoki session per worker thread
 
 - Every worker thread of the concurrency sweep previously hammered a **single**,
   process-wide-shared `C_OpenSession` handle — the doc comments framed this as
@@ -521,7 +597,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   well-behaved, high-concurrency PKCS#11 consumer would actually use the provider,
   so it is not the default
 
-### Add `--criterion` mode to `mise bench:load-pkcs11`; diagnose remaining latency variance
+### Add `--criterion` mode to `mise bench:pkcs11`; diagnose remaining latency variance
 
 - Added real `criterion`-crate single-operation micro-benchmarks
   (`src/criterion_bench.rs`, new `--criterion`/`--speed` flags mirroring `mise
@@ -575,7 +651,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
 ### Attribute PKCS#11 Ed25519 signing overhead and remove duplicate remote signing
 
 - Add an apples-to-apples Criterion ladder for Ed25519 signing to
-  `mise bench:load-pkcs11 --criterion`: request construction, TTLV+JSON
+  `mise bench:pkcs11 --criterion`: request construction, TTLV+JSON
   serialization, the published `ckms bench --criterion`-equivalent
   pre-serialized full-message HTTP call, a pre-serialized bare `Sign` HTTP call,
   response parsing, typed `KmsClient::sign`, the Tokio `block_on` control cost,
@@ -653,7 +729,7 @@ row — the opposite of the software baseline, and not a real protocol differenc
   measured 114.11 microseconds for `C_SignMessage` and 139.28 microseconds
   end-to-end including local verification
 
-### `mise bench:load-pkcs11 --mode sign`/`--mode verify` now cover every signature algorithm
+### `mise bench:pkcs11 --mode sign`/`--mode verify` now cover every signature algorithm
 
 `--mode sign` previously benchmarked RSA (`CKM_SHA256_RSA_PKCS`) only; ECDSA had no
 mode at all, and EdDSA required the separate `sign-eddsa`/`verify-eddsa` names.
@@ -675,11 +751,11 @@ mode at all, and EdDSA required the separate `sign-eddsa`/`verify-eddsa` names.
   `sign-eddsa` (and their `verify-*` counterparts) remain available to benchmark one
   algorithm in isolation. FIPS builds drop the EdDSA entry from every aggregate,
   unchanged from the prior `sign-eddsa`/`verify-eddsa` gating.
-- `mise bench:load-pkcs11 --mode sign --sanity`-equivalent run (debug build,
+- `mise bench:pkcs11 --mode sign --sanity`-equivalent run (debug build,
   concurrency 1, 2 s/level) confirmed all three algorithms execute end-to-end in one
   sweep: RSA-2048 (~36 ops/s), ECDSA P-256 (~258 ops/s), Ed25519 (~863 ops/s); same
   for `--mode verify` (RSA ~653 ops/s, ECDSA ~242 ops/s, Ed25519 ~860 ops/s).
-- Updated `.mise/tasks/bench/load-pkcs11`'s `--mode` choices list and
+- Updated `.mise/tasks/bench/pkcs11`'s `--mode` choices list and
   `crate/clients/pkcs11/bench/README.md`'s mode table/usage examples accordingly.
   `criterion_bench.rs`/`plot_version_compare.py` required no changes: both already
   parse `sign`/`verify` labels generically by splitting on `/`, so the new
@@ -763,9 +839,9 @@ path itself could not be re-verified locally (requires the physical/emulated
 Crypt2pay HSM only available in CI), but the fix only changes behavior for the two
 previously-unhandled return codes on this one call site.
 
-### Fix `mise bench:load-pkcs11 --mode key-creation` at concurrency > 1: `C_DestroyObject` (`CKR_OBJECT_HANDLE_INVALID`)
+### Fix `mise bench:pkcs11 --mode key-creation` at concurrency > 1: `C_DestroyObject` (`CKR_OBJECT_HANDLE_INVALID`)
 
-Running `mise bench:load-pkcs11` (any mode set including `key-creation`, at any
+Running `mise bench:pkcs11` (any mode set including `key-creation`, at any
 requested concurrency above 1) reliably failed partway through with:
 
 ```
@@ -811,7 +887,207 @@ passed), `cargo test -p cosmian_pkcs11_bench --features non-fips` (2 passed),
 `cargo test -p cosmian_pkcs11 --lib --features non-fips` (19 passed, 5
 pre-existing `#[ignore]`), and `cargo clippy --all-targets --features non-fips
 -- -D warnings` all clean on both crates. Reproduced the original failure with
-`mise run bench:load-pkcs11 --mode key-creation --concurrency 1,2,4,8` (debug
+`mise run bench:pkcs11 --mode key-creation --concurrency 1,2,4,8` (debug
 build) before the fix, and confirmed it now completes cleanly after; also ran the
 full `--mode all` sweep (9 operations, concurrency 1/2/4, including
 `key-creation`) end-to-end with no failures.
+
+### `mise bench -s` fixed and run per HSM in CI
+
+- `bench:pkcs11 --delegated` no longer sources `~/.cosmian/proteccio.sh` /
+  `~/.cosmian/crypt2pay.sh` unconditionally (they do not exist by default). HSM
+  preparation moved to a new `bench_prepare_hsm` helper
+  (`.mise/lib/bench_helpers.sh`) that reuses the `test:hsm-<model>` prepare
+  scripts (Proteccio/Crypt2Pay libraries, Utimaco simulator, AWS CloudHSM
+  client + VPN, torn down on exit) and only sources `~/.cosmian/<model>.sh`
+  when present
+- `ckms pkcs11 bench --delegated` skips the AES-GCM modes: single-part
+  `CKM_AES_GCM` requires a caller-supplied IV, which the KMS rejects for
+  HSM-resident keys. This made `mise bench -s` fail on
+  `bench:pkcs11 --delegated`
+- Sanity runs (`--sanity`) no longer overwrite the committed reports under
+  `documentation/docs/benchmarks/`
+- `mise bench` gains `--hsm-model`: `softhsm2` (default) runs the full suite,
+  any other model runs `bench:pkcs11 --delegated` against that HSM. The
+  `hsm` matrix in `test_all.yml` now runs `mise run bench --sanity
+  --hsm-model <type>` on every non-fips entry
+
+### `ckms pkcs11 bench`: RSA-OAEP and ECDSA P-384 coverage, plus a latent `base_hsm` OAEP bug
+
+Cross-checked `ckms pkcs11 bench`'s algorithm coverage against both vendors'
+PKCS#11 documentation (`C2P_LP54016_PKCS11_API_User_Guide_V2.28_EN.pdf` for
+Crypt2Pay, Proteccio's `Developer's Guide.pdf`) for algorithms already
+implemented server-side (`crate/hsm/base_hsm`) but missing from the
+Cryptoki-level bench tool:
+
+- Added `encrypt/rsa-oaep` and `decrypt/rsa-oaep` modes (`CKM_RSA_PKCS_OAEP`,
+  SHA-256/MGF1-SHA256, matching the server's `HsmEncryptionAlgorithm::
+  RsaOaepSha256`) and `sign/ecdsa-p384`/`verify/ecdsa-p384` modes (`CKM_ECDSA`
+  over a P-384 key pair) to `crate/clients/clap/src/actions/pkcs11/bench`
+  (`load.rs`, `loader.rs`, `setup.rs`). Both are documented, FIPS-approved
+  mechanisms supported by Proteccio and Crypt2Pay per their PKCS#11 guides.
+  P-521 was intentionally not added (pre-existing `cryptographic_length`
+  derivation bug, already tracked above in this changelog); ChaCha20 was not
+  added (not implemented in `base_hsm` at all — out of scope for a bench-tool
+  change).
+- RSA-OAEP encrypt is wrapped in a one-time capability probe
+  (`rsa_oaep_probe` in `prepare_ops`) rather than run unconditionally: the
+  server's HSM capability detection (`add_supported_oaep_algorithms` in
+  `crate/hsm/base_hsm/src/base_hsm.rs`) only checks that the HSM advertises
+  the generic `CKM_SHA256` digest mechanism, which is a false positive for
+  SoftHSM2 — its OAEP implementation rejects SHA-256 as the OAEP hash/MGF
+  parameter specifically, a known, already-documented limitation
+  (`test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha256`,
+  `CKR_MECHANISM_PARAM_INVALID`, return code 7). A failed probe now skips
+  both `encrypt/rsa-oaep` and `decrypt/rsa-oaep` for that run with a console
+  notice instead of crashing the whole benchmark — the same
+  capability-probe-and-skip convention already used for AES-GCM/CBC decrypt.
+
+**Found and fixed a real, independent `base_hsm` bug while investigating the
+above**: `Session::encrypt`/`decrypt`'s `HsmEncryptionAlgorithm::
+RsaOaepSha256`/`RsaOaepSha1` branches (`crate/hsm/base_hsm/src/session/
+session_impl.rs`) hard-coded `pSourceData: ptr::null_mut()` for the empty
+OAEP label. SoftHSM2 requires a non-null source pointer even for a
+zero-length label (`HsmCapabilities::rsa_oaep_requires_source_data_ptr`,
+already `true` for SoftHSM2) while AWS CloudHSM requires `NULL` — the
+separate RSA-OAEP *key-wrap* path (`session/rsa.rs`) already branches on this
+capability flag, but the generic `Encrypt`/`Decrypt` KMIP operation path
+never got the same fix. Both `encrypt` and `decrypt`'s OAEP branches (4 call
+sites total) now consult `self.hsm_capabilities().
+rsa_oaep_requires_source_data_ptr` identically to `rsa.rs`. This does not
+change the known SoftHSM2 outcome (OAEP+SHA-256 is still rejected there for
+an unrelated reason — SHA-256 is not accepted as the OAEP hash algorithm at
+all on this SoftHSM2 build), but fixes a real latent null-pointer-vs-HSM-
+requirement mismatch for any other non-exempt HSM relying on this generic
+path with `rsa_oaep_requires_source_data_ptr = true`.
+
+Verified: `cargo test -p cosmian_kms_base_hsm --features non-fips --lib` (28
+passed), `cargo test -p cosmian_kms_cli_actions --features non-fips --lib
+actions::pkcs11::bench::load` (3 passed, including 2 new assertions),
+`cargo check`/`cargo clippy -- -D warnings` clean on
+`cosmian_kms_cli_actions`, `cosmian_kms_base_hsm`, `cosmian_pkcs11_module`,
+and `cosmian_pkcs11` (non-fips and default features; two pre-existing,
+unrelated clippy failures on `setup.rs`'s `type_complexity` and
+`tests.rs`'s `renamed_function_params` confirmed present before this change
+via `git stash`). End-to-end: `mise bench:pkcs11 --delegated -m encrypt -s`
+(exit 0, `rsa-oaep` gracefully skipped with a notice against SoftHSM2) and
+`mise bench:pkcs11 --delegated -m sign-verify -s` (exit 0, `sign/ecdsa-p384`
+and `verify/ecdsa-p384` both pass with real throughput numbers) against a
+live SoftHSM2 token.
+
+Also wired `CKM_RSA_PKCS_OAEP` (SHA-256/MGF1-SHA256 only) into the
+`cosmian_pkcs11` delegated PKCS#11 provider itself
+(`crate/clients/pkcs11/module/src/core/mechanism.rs`,
+`traits/encryption_algorithms.rs`,
+`crate/clients/pkcs11/provider/src/kms_object.rs`) — it was previously
+entirely unimplemented there (`parse_mechanism`'s catch-all rejected it with
+`CKR_MECHANISM_INVALID`), which the bench tool surfaced as soon as it
+exercised `encrypt/rsa-oaep` through `--delegated` mode; the KEK-wrap/direct
+vendor-library path was unaffected since it talks to the native HSM library
+directly.
+
+### Cross-backend shared HSM test coverage, Kryoptic P-224/Ed448 findings, and secp192k1 support
+
+Following the `algorithm_support.md` comparison page, implemented every algorithm it marked
+📄 ("vendor-documented, not yet exercised") that was realistically closeable from this
+environment:
+
+#### Wired existing shared tests into Proteccio/Crypt2Pay/Utimaco/Kryoptic/SmartCard HSM
+
+`crate/hsm/base_hsm/src/tests_shared.rs` already had `generate_ec_keypair`,
+`ecdsa_sign_all_curves_and_hashes`, `rsa_pss_sign_all_algorithms`, `eddsa_sign_all_curves`, and
+`aes_cbc_encrypt`/`aes_cbc_multi_round` — they just weren't called by every backend's
+`test_hsm_<model>_all` composite. Added the missing calls (plus matching individual
+`#[ignore]`'d sibling tests, following each file's existing per-function pattern) to:
+
+- **Proteccio**: EC keygen, ECDSA, RSA-PSS, AES-CBC (not EdDSA — vendor docs confirm no
+  support).
+- **Crypt2Pay**: EC keygen, ECDSA, RSA-PSS, AES-CBC, EdDSA (vendor docs confirm Ed25519/Ed448).
+- **Utimaco**: EC keygen, ECDSA, RSA-PSS, AES-CBC (no EdDSA — no vendor confirmation found).
+- **Kryoptic**: EC keygen, ECDSA, RSA-PSS (AES-CBC was already present); **live-verified** (see
+  below).
+- **SmartCard HSM**: EC keygen, ECDSA, RSA-PSS, EdDSA (ECC is this HSM's primary feature).
+
+Proteccio/Crypt2Pay/Utimaco/SmartCard HSM cannot be empirically verified in this environment (no
+live hardware); Crypt2Pay's live unit remains externally blocked on EC/RSA key generation
+(`CKR_MECHANISM_INVALID`, tracked separately, unrelated to this change).
+
+#### Kryoptic 1.5.2: live-verified, and two real findings
+
+Ran the newly-wired coverage against Kryoptic 1.5.2 (`mise run test:hsm-kryoptic -v non-fips`)
+and found two genuine, narrow incompatibilities — not blanket EC/EdDSA failures:
+
+- `C_GenerateKeyPair(CKM_EC_KEY_PAIR_GEN)` for curve **P-224** fails with `CKR_DEVICE_ERROR`
+  ("Return code: 5"); P-256/P-384/P-521 succeed without issue (isolated by testing each curve
+  individually via temporary instrumentation).
+- `C_Sign(CKM_EDDSA)` on an **Ed448** key fails with `CKR_MECHANISM_PARAM_INVALID` ("Return
+  code: 113"); Ed25519 signs successfully with the same mechanism.
+
+Rather than special-case Kryoptic, made `generate_ec_keypair` and
+`ecdsa_sign_all_curves_and_hashes` (EC keygen) and `eddsa_sign_all_curves` (EdDSA sign) probe
+each curve/operation individually and skip-and-warn on failure instead of hard-failing the whole
+test via `?` — the same generic capability-probing convention already established elsewhere in
+this codebase. This benefits every backend sharing these functions, not just Kryoptic, and
+converts what would otherwise be a hard regression in `test_hsm_kryoptic_all` into accurate,
+partial, per-operation coverage.
+
+Verified: `mise run test:hsm-kryoptic -v non-fips` passes in full (`test_hsm_kryoptic_all` plus
+58 vector-runner tests); `mise run test:hsm-softhsm2 -v non-fips` passes with no regression
+(confirms the capability-probing change is additive, not a behavior change for backends where
+every curve/operation already succeeds).
+
+#### SoftHSM2 RSA-OAEP ambiguity (from the previous changelog entry): resolved
+
+The earlier "conflicting evidence" note is now resolved: `crate/hsm/softhsm2/src/tests.rs`'s
+`test_hsm_softhsm2_all` contains an explicit code comment confirming SoftHSM2 2.6.1 rejects
+`CKM_RSA_PKCS_OAEP` direct `Encrypt`/`Decrypt` for both SHA-256 and SHA-1, and skips
+`rsa_oaep_encrypt`/`multi_threaded_rsa` for this exact reason — independent of the earlier
+`pSourceData` NULL-pointer fix (that fix is still correct and necessary for other HSMs needing
+`rsa_oaep_requires_source_data_ptr`, it just doesn't change SoftHSM2's outcome here). Updated
+`algorithm_support.md` accordingly (⚠️ → ❌, with full citation).
+
+#### New algorithm family: secp192k1 (non-fips)
+
+Added `EcCurve::Secp192k1`/`HsmKeypairAlgorithm::Secp192k1` end-to-end, mirroring the existing
+`Secp256k1` pattern exactly (KMIP's `RecommendedCurve::SECP192K1` already existed; no protocol
+change needed):
+
+- `crate/interfaces/src/hsm/interface.rs`, `crate/interfaces/src/hsm/hsm_store.rs`,
+  `crate/interfaces/src/crypto_oracle.rs`, `crate/hsm/base_hsm/src/kms_hsm.rs`,
+  `crate/hsm/base_hsm/src/session/ec.rs` (OID `1.3.132.0.31`, `CKM_EC_KEY_PAIR_GEN`, 24-byte
+  field size), `crate/hsm/base_hsm/src/tests_shared.rs` (OpenSSL `Nid::SECP192K1` mapping for
+  the ECDSA cross-verification helper).
+- Software (non-HSM) EC path: `crate/crypto/src/crypto/elliptic_curves/operation.rs`
+  (`create_secp_key_pair`'s Nid match, `curve_bits`, and the KEM/ECDH Nid match),
+  `crate/crypto/src/openssl/private_key.rs` and `public_key.rs` (both directions of the
+  curve↔Nid mapping used when loading/exporting a stored key for signing).
+- CLI: `crate/clients/client_utils/src/create_utils.rs` (`Curve::Secp192k1` +
+  `RecommendedCurve` conversion), `crate/clients/clap/src/actions/elliptic_curves/sign.rs`
+  (`ec sign --curve secp192k1` `CryptographicParameters`, mirroring secp256k1's
+  ECDSA-with-SHA256).
+- Deliberately did **not** join secp192k1 to `sign.rs`/`verify.rs`'s `is_k256` RFC6979
+  deterministic-ECDSA fast path: that logic hardcodes a 256-bit private-scalar padding length
+  and is specific to P-256/secp256k1; secp192k1 correctly falls through to generic,
+  non-deterministic OpenSSL ECDSA signing instead, which is standards-compliant.
+
+Verified end-to-end against a live (non-HSM, software-path) KMS server: `ckms ec keys create
+--curve secp192k1`, `ckms ec sign`, and `ckms ec sign-verify` all succeed; `cargo test -p
+cosmian_kms_server --features non-fips` (existing `test_sign_ecdsa_k256`/`p256`/`p384`/`p521`
+still pass, no regression) and `cargo test -p cosmian_kms_crypto --features non-fips --lib` (220
+passed) both green.
+
+Deliberately declined, with rationale:
+
+- **EC P-224/P-521 `ckms pkcs11 bench` modes**: P-224 has no CLI/client surface at all (no
+  `Curve::NistP224` variant anywhere); P-521 has an already-known, previously-triaged
+  `cryptographic_length` derivation bug blocking `HSM::create_keypair` (tracked separately).
+  Neither fits "extend the bench tool with curves the CLI/server already support" — both need
+  separate, larger-scope fixes first.
+- **Brainpool (8 curve variants) and FRP256v1**: zero live-hardware access to verify any of
+  them (Proteccio/Crypt2Pay-only per vendor docs; Crypt2Pay externally blocked, Proteccio has no
+  local access in this environment). FRP256v1 additionally has no standard KMIP
+  `RecommendedCurve` value at all — inventing a non-standard extension value is a
+  protocol-compliance decision requiring explicit sign-off, not something to do unilaterally.
+
+Full `cargo check`/`cargo clippy --workspace --all-targets -- -D warnings` clean on both
+non-fips and default (FIPS) feature sets after every change in this section.

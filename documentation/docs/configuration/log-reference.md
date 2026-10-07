@@ -56,9 +56,8 @@ Crate path: `crate/server`
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
-| `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
-| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
+| `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | ×2 in this file |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
 | `warn` | `{status} - {}` | `src/routes/jose/error.rs` | `status`: HTTP response status | - |
 | `info` | `AUTHENTICATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
@@ -153,7 +152,6 @@ Crate path: `crate/server`
 | `debug` | `create_user_decryption_key_: Access Policy: {access_policy:?}` | `src/core/cover_crypt/create_user_decryption_key.rs` | `access_policy`: Covercrypt access policy expression | - |
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
-| `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
@@ -163,8 +161,6 @@ Crate path: `crate/server`
 | `debug` | `Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long` | `src/core/operations/decrypt.rs` | `prefix`: decryption oracle prefix bytes | - |
 | `debug` | `DeriveKey operation completed successfully` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey operation starting` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `DeriveKey: activation_date={:?} <= now, setting state to Active` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `DeriveKey: no activation_date or future date, setting state to PreActive` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey: No derivation data (info) provided for HKDF` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `DeriveKey: No iteration count provided for PBKDF2, using default` | `src/core/operations/derive_key.rs` | - | - |
 | `debug` | `EKM Error: {:?}` | `src/routes/azure_ekm/error.rs` | - | - |
@@ -719,7 +715,6 @@ Crate path: `crate/server`
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
-| `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
 | `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
@@ -749,8 +744,17 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
+| `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
+| `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
 | `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
+| `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
+| `warn` | `JWKS refresh failed while validating a JWT-SVID: {error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | JWKS endpoint unreachable |
+| `warn` | `JWT-SVID for {sub} rejected: missing or empty 'aud' claim` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID of the rejected SVID | Possible cross-service SVID replay attempt |
+| `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
+| `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -770,7 +774,6 @@ Crate path: `crate/server_database`
 | `trace` | `find: tags: {tags:?}` | `src/stores/redis/redis_with_findex.rs` | `tags` — … | — |
 | `trace` | `find: uids before permissions: {:?}` | `src/stores/redis/redis_with_findex.rs` | — | — |
 | `trace` | `find: user must be owner` | `src/stores/redis/redis_with_findex.rs` | — | — |
-| `trace` | `find_: {:?}` | `src/stores/sql/mysql.rs` | — | — |
 | `trace` | `Insert read access right in DB: {uid} / {userid}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`userid` — … | — |
 | `trace` | `Invalidating the cache for {}` | `src/core/unwrapped_cache.rs` | — | — |
 | `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
@@ -788,13 +791,15 @@ Crate path: `crate/server_database`
 | `warn` | `PostgreSQL transaction body failed — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `debug` | `[redis-scan-all] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PG find_all query: {}` | `src/stores/sql/pgsql.rs` | - | - |
-| `trace` | `find_all_: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to                                      deserialize` | `src/stores/sql/sqlite.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
+| `trace` | `find: {:?}` | `src/stores/sql/mysql.rs` | - | - |
+| `trace` | `find_all: {:?}` | `src/stores/sql/mysql.rs` | - | - |
+| `warn` | `RotateNameCache: predicate invalidation failed ({e}); clearing cache` | `src/core/rotate_name_cache.rs` | `e` | - |
 
 ### `cosmian_kms_crypto`
 
@@ -828,7 +833,6 @@ Crate path: `crate/crypto`
 | `debug` | `wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}`                                                                                                                                                                        | `src/crypto/wrap/wrap_key.rs`                       | `hashing_fn`: hash function                                                       | -               |
 | `trace` | `Access Policy: {access_policy:?}`                                                                                                                                                                                                     | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
 | `trace` | `authenticated_encryption_additional_data: {ad:?}`                                                                                                                                                                                     | `src/crypto/cover_crypt/encryption.rs`              | `ad` — …                                                                          | —               |
-| `trace` | `bytes len: {:?}, bits: {}`                                                                                                                                                                                                            | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | ×2 in this file |
 | `trace` | `bytes len: {}, bits: {}`                                                                                                                                                                                                              | `src/crypto/rsa/operation.rs`                       | —                                                                                 | ×2 in this file |
 | `trace` | `ChaCha20 (pure) encryption: key_len={}, nonce_len={}, pt_len={}`                                                                                                                                                                      | `src/crypto/symmetric/symmetric_ciphers.rs`         | —                                                                                 | —               |
 | `trace` | `Created user decryption key with access policy: {access_policy:?}`                                                                                                                                                                    | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
@@ -863,6 +867,7 @@ Crate path: `crate/crypto`
 | `warn` | `` ignored `basicConstraints` extension's value: {value} `` | `src/openssl/x509_extensions.rs` | `value` | - |
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 | `warn` | `` Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck`              extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may              attempt to recursively check this certificate's own revocation status via CDP,              AIA, or local policy instead. `` | `src/openssl/ocsp.rs` | - | - |
+| `trace` | `bytes len: {}, bits: {}, curve_bits: {:?}` | `src/crypto/elliptic_curves/operation.rs` | - | ×2 in this file |
 
 ### `cosmian_kmip`
 
@@ -1226,9 +1231,7 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn`  | `create_symmetric_key_from_id: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping`                                                                                                                                                        | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `create_symmetric_key_object: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping`                                                                                                                                                         | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `find_all_data_objects: failed to build DataObject for disk-encryption                          key: {e}, skipping`                                                                                                                                                        | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
-| `warn`  | `find_all_data_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list`                                                                                                                                                          | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
 | `warn`  | `find_all_objects: failed to build DataObject for disk-encryption key:                          {e}, skipping`                                                                                                                                                             | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
-| `warn`  | `find_all_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list`                                                                                                                                                               | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
 | `trace` | `find_all_objects: total {} objects (including disk-encryption DataObjects)`                                                                                                                                                                                               | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects`                                                                                                                                                                                                | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag:              {disk_encryption_tag}`                                                                                                                                                    | `src/kms_object.rs`         | `disk_encryption_tag`                                                                                 | —                                                                                               |
@@ -1239,8 +1242,8 @@ Crate path: `crate/clients/pkcs11/provider`
 | `debug` | `remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
 | `warn` | `find_all_objects: failed to build Certificate object: {e}, skipping` | `src/backend.rs` | `e` | - |
 | `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e` | - |
-| `warn` | `create_public_key_from_id: unsupported key {id}: {error}, skipping` | `src/backend.rs` | `id`, `error` | - |
-| `warn` | `create_public_key_from_id: {id} has type {:?} (expected PublicKey), skipping` | `src/backend.rs` | `id` | - |
+| `warn` | `create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
+| `warn` | `create_public_key_from_id: failed to export public key {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
 
 ### `cosmian_pkcs11_module`
 

@@ -94,6 +94,41 @@ impl ObjectHandlesCache {
     }
 }
 
+/// A checked-out HSM session that is returned to its slot pool only after a
+/// successful operation.
+///
+/// Dropping the guard without calling [`Self::checkin`] drops the underlying
+/// session, which closes it instead of returning a potentially failed session
+/// to the pool.
+pub(crate) struct SessionGuard<'a> {
+    slot: &'a SlotManager,
+    session: Option<Session>,
+}
+
+impl<'a> SessionGuard<'a> {
+    /// Wrap a session checked out from `slot`.
+    pub(crate) const fn new(slot: &'a SlotManager, session: Session) -> Self {
+        Self {
+            slot,
+            session: Some(session),
+        }
+    }
+
+    /// Borrow the checked-out session while it remains owned by this guard.
+    pub(crate) fn session(&self) -> HResult<&Session> {
+        self.session
+            .as_ref()
+            .ok_or_else(|| HError::Default("HSM session guard is empty".to_owned()))
+    }
+
+    /// Return a successfully used session to its slot pool.
+    pub(crate) fn checkin(mut self) {
+        if let Some(session) = self.session.take() {
+            self.slot.checkin_session(session);
+        }
+    }
+}
+
 /// A manager for a specific PKCS#11 slot in a Hardware Security Module (HSM).
 ///
 /// This structure maintains the connection to a specific slot within an HSM,
@@ -120,11 +155,6 @@ pub struct SlotManager {
 }
 
 impl SlotManager {
-    /// Reports whether AES-GCM accepts an IV supplied by the caller.
-    pub(crate) const fn supports_aes_gcm_caller_iv(&self) -> bool {
-        self.hsm_capabilities.supports_aes_gcm_caller_iv
-    }
-
     /// Create a new `SlotManager` instance for the specified slot.
     /// If a login password is provided, the HSM will authenticate the slot.
     ///
@@ -183,6 +213,12 @@ impl SlotManager {
                 hsm_capabilities,
             })
         }
+    }
+
+    /// Get the HSM capabilities configured for this slot manager.
+    #[must_use]
+    pub const fn capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
     }
 
     /// Retrieve the list of supported cryptographic mechanisms for this HSM slot.
@@ -294,8 +330,11 @@ impl SlotManager {
         )
     }
 
-    /// Check out a pooled session if available, otherwise open a new one.
-    pub fn checkout_session(&self, read_write: bool) -> HResult<Session> {
+    /// Check out a pooled read-write session if available, otherwise open a new one.
+    ///
+    /// The pool only ever holds read-write sessions, so callers can never receive a
+    /// session with different access rights than the ones it was opened with.
+    pub fn checkout_session(&self) -> HResult<Session> {
         let pooled = {
             let mut pool = self
                 .session_pool
@@ -303,7 +342,7 @@ impl SlotManager {
                 .map_err(|e| HError::Default(format!("Failed to lock session pool: {e}")))?;
             pool.pop()
         };
-        pooled.map_or_else(|| self.open_session(read_write), Ok)
+        pooled.map_or_else(|| self.open_session(true), Ok)
     }
 
     /// Return a healthy session to the pool for reuse.

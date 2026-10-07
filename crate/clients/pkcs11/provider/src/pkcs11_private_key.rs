@@ -64,7 +64,7 @@ impl PrivateKey for Pkcs11PrivateKey {
         let backend = backend()?;
         drop(backend_lookup);
         backend
-            .remote_sign(&self.remote_id, algorithm, data)
+            .remote_sign(&self.remote_id, algorithm, data, self.algorithm)
             .map_err(|e| {
                 error!(
                     "remote_sign failed for Pkcs11PrivateKey with remote_id {}: {e}",

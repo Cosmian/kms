@@ -106,9 +106,6 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
 /// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
 async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
-    // CRL content is public information (RFC 5280 §3) — no special role required.
-    let signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
-
     // Enumerate all issuer IDs stored in the `crls` table.
     let issuers = match kms.database.list_crl_issuers().await {
         Ok(ids) => ids,
@@ -138,9 +135,11 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
              (expires within {overlap_hours}h)"
         );
 
-        if let Err(e) =
-            crate::core::operations::generate_crl::generate_crl(kms, &issuer_id, None, &signer)
-                .await
+        // Sign as the CA owner: `default_username` usually cannot read the CA key.
+        if let Err(e) = Box::pin(
+            crate::core::operations::generate_crl::regenerate_crl_as_issuer_owner(kms, &issuer_id),
+        )
+        .await
         {
             warn!(
                 issuer_id = issuer_id.as_str(),
@@ -149,6 +148,12 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
         }
     }
 }
+/// Spawns the metrics cron thread: refreshes the uptime gauge every second,
+/// reconciles backend object counters every 5 minutes, and re-syncs the
+/// `kms.keys.active.count` and `kms.objects.total` gauges every
+/// `metrics_count_interval_secs`. The COUNT refresh is skipped entirely when
+/// `metrics_count_interval_secs == 0`.
+///
 /// Returns a oneshot Sender that, when sent, cleanly stops the cron thread.
 ///
 /// # Errors
@@ -156,6 +161,7 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
 /// it logs the failure and no thread is spawned.
 pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let count_interval_secs = kms.params.metrics_count_interval_secs;
 
     std::thread::spawn(move || {
         // Dedicated single-thread Tokio runtime for the cron loop
@@ -171,13 +177,15 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
         };
 
         rt.block_on(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            // `tokio::time::interval` panics on a zero period; the arm is disabled when 0.
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(count_interval_secs.max(1)));
             let mut uptime_interval = tokio::time::interval(std::time::Duration::from_secs(1));
             let mut reconcile_interval = tokio::time::interval(std::time::Duration::from_secs(300));
             let mut shutdown_rx = shutdown_rx;
             loop {
                 tokio::select! {
-                    _ = interval.tick() => {
+                    _ = interval.tick(), if count_interval_secs > 0 => {
                         if let Some(ref metrics) = kms.metrics {
                             // ── Non-destroyed key objects count ────────────────────────────────
                             // Privileged backend count: no ACL filtering, covers all backends.

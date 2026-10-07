@@ -1,6 +1,6 @@
 //! Real `criterion`-crate micro-benchmarks for the PKCS#11 provider, giving
 //! single-operation statistical latency (mean/median/`CI`) for each mode — the fast
-//! counterpart to `load.rs`'s concurrency sweep (`mise bench:load-pkcs11
+//! counterpart to `load.rs`'s concurrency sweep (`mise bench:pkcs11
 //! --criterion` skips the sweep entirely and only runs these).
 //!
 //! Mirrors `mise bench:load --criterion`'s own `Criterion::default()` construction
@@ -9,16 +9,14 @@
 
 use std::{cell::Cell, time::Duration};
 
-use cosmian_kms_client::{KmsClient, cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier};
+use cosmian_kms_base_hsm::Session;
 use criterion::Criterion;
-use tokio::runtime::Runtime;
 
 use super::{
     error::{BenchError, BenchResult},
     load::{ConcreteMode, PreparedOp, prepare_ops},
-    loader::Pkcs11Session,
-    overhead::add_overhead_benchmarks,
     report,
+    setup::BenchSetup,
 };
 
 /// How long/thorough a criterion run should be — identical semantics to
@@ -35,24 +33,9 @@ pub(crate) enum BenchSpeed {
     Normal,
 }
 
-#[derive(Clone, Copy, Debug, clap::ValueEnum, PartialEq, Eq)]
-pub(crate) enum PayloadMode {
-    Fixed,
-    Varying,
-}
-
 pub(crate) struct CriterionRunConfig {
     pub(crate) speed: BenchSpeed,
     pub(crate) measurement_time: Duration,
-    pub(crate) overhead_payload_size: usize,
-    pub(crate) overhead_payload_mode: PayloadMode,
-    /// Explicit opt-in for the Ed25519-specific differential overhead ladder
-    /// (`overhead.rs`). Previously this ran automatically whenever
-    /// `ConcreteMode::SignEdDsa` was selected, forcing every default
-    /// `--criterion --mode all`/`--mode sign` run to pay for and emit a 12-benchmark
-    /// diagnostic group that is specific to one algorithm. It is now a standalone
-    /// local diagnostic, never part of the standard report pipeline.
-    pub(crate) overhead: bool,
 }
 
 /// Runs every mode in `modes` as a single-operation criterion benchmark (using only
@@ -65,10 +48,9 @@ pub(crate) struct CriterionRunConfig {
 /// diverge in what it actually calls.
 pub(crate) fn run_criterion(
     modes: &[ConcreteMode],
-    pool: &[Pkcs11Session<'_>],
-    runtime: &Runtime,
-    client: &KmsClient,
-    ed25519_private_key_id: Option<&UniqueIdentifier>,
+    pool: &[Session],
+    hsm_prefix: Option<&str>,
+    setup: &BenchSetup,
     config: &CriterionRunConfig,
 ) -> BenchResult<()> {
     let session = pool
@@ -90,39 +72,16 @@ pub(crate) fn run_criterion(
             .warm_up_time(Duration::from_secs(3)),
     };
 
-    let overhead_metadata = if config.overhead && modes.contains(&ConcreteMode::SignEdDsa) {
-        let private_key_id = ed25519_private_key_id.ok_or_else(|| {
-            BenchError::Setup(
-                "Ed25519 overhead benchmark requires a provisioned private key".to_owned(),
-            )
-        })?;
-        Some(add_overhead_benchmarks(
-            &mut c,
-            runtime,
-            client,
-            private_key_id,
-            session,
-            config.overhead_payload_size,
-            config.overhead_payload_mode == PayloadMode::Varying,
-        )?)
-    } else {
-        None
-    };
-
-    for PreparedOp { label, setup, op } in prepare_ops(modes, pool)? {
-        // `sign/eddsa-ed25519` used to be skipped here and aliased from the
-        // `pkcs11-one-call-bracketed` tier in the overhead ladder above. That tier
-        // is an A/B/A/B bracketed mean measured *inside* a differential benchmark
-        // group alongside ~12 unrelated micro-benchmarks (request construction,
-        // TTLV serialization, raw HTTP tiers, ...), so it is not a clean,
-        // standalone sample series like every other algorithm in the Sign/Verify
-        // table. Always run a dedicated, non-interleaved benchmark for it here —
-        // identical in kind to `ecdsa-p256/sign` and `rsa-pkcs-sha256/sign` below —
-        // so every row in that table is measured the same way.
-        if let Some(setup) = setup {
-            setup(pool)?;
+    for PreparedOp {
+        label,
+        setup: operation_setup,
+        op,
+    } in prepare_ops(modes, pool, setup, hsm_prefix)?
+    {
+        if let Some(operation_setup) = operation_setup {
+            operation_setup(pool)?;
         }
-        eprintln!("[bench:load-pkcs11] criterion: {label}");
+        eprintln!("[bench:pkcs11] criterion: {label}");
         // `label` is e.g. "encrypt/aes-cbc" or "sign/eddsa-ed25519" (see
         // `ConcreteMode::label`). A flat `c.bench_function(label, ...)` gets
         // criterion-sanitized into a single directory (`encrypt_aes-cbc`), which
@@ -177,11 +136,5 @@ pub(crate) fn run_criterion(
     c.final_summary();
 
     report::write_criterion_json()?;
-    if config.overhead {
-        report::append_bracket_averaged_entries()?;
-    }
-    if let Some(metadata) = overhead_metadata {
-        report::write_overhead_json(&metadata)?;
-    }
     Ok(())
 }

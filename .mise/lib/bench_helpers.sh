@@ -13,11 +13,13 @@
 #   bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
 #   bench_write_ckms_tls_conf <out_path> <server_url> <accept_invalid_certs> <ca_cert_path> <client_pem_cert> <client_pem_key> <client_pkcs12> <client_pkcs12_password>
 #   bench_register_cleanup
+#   bench_prepare_hsm <hsm_model>
 #   bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
 # Globals set:
 #   CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN, KMS_PID, TMP_DIR
 #   BENCH_DEB_BINARY, BENCH_DEB_OSSL_MODS  (after bench_download_server)
 #   OPENSSL_MODULES_DIR                    (set by caller for deb-based server)
+#   BENCH_HSM_SLOT, BENCH_HSM_PASSWORD      (after bench_prepare_hsm)
 
 # ── Guard ─────────────────────────────────────────────────────────────────────
 [ -n "${_MISE_BENCH_HELPERS_SH_LOADED:-}" ] && return 0
@@ -36,6 +38,8 @@ TMP_DIR=""
 BENCH_DEB_BINARY=""
 BENCH_DEB_OSSL_MODS=""
 OPENSSL_MODULES_DIR=""
+BENCH_HSM_PASSWORD=""
+BENCH_VPN_PID_FILES=()
 
 # Build only the ckms CLI (no server).
 # Usage: bench_build_ckms [release|debug]
@@ -142,7 +146,7 @@ bench_download_server() {
 #
 # The load-average check exists because of a concrete, reproduced false alarm: on
 # a shared (non-dedicated) development host, the exact same single-operation
-# criterion benchmark (`mise bench:load-pkcs11 --criterion`) measured 400-700us in
+# criterion benchmark (`mise bench:pkcs11 --criterion`) measured 400-700us in
 # two back-to-back runs and ~70ms (a ~100x outlier) in a third — not a code
 # regression, just unrelated processes (IDE background indexing, etc.) briefly
 # saturating the CPU during that one run. A load-average warning up front makes
@@ -303,6 +307,12 @@ _bench_cleanup() {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   }
+  local pid_file
+  for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
+    [ -f "${pid_file}" ] || continue
+    sudo kill "$(cat "${pid_file}")" 2>/dev/null || true
+    sudo rm -f "${pid_file}"
+  done
   rm -rf "${TMP_DIR:-}"
 }
 
@@ -311,124 +321,18 @@ bench_register_cleanup() {
   trap '_bench_cleanup' EXIT
 }
 
-# Start a KMS server backed by a SoftHSM2 token with a key_encryption_key.
+# Resolves per-`--hsm-model` PKCS#11 library env vars, slot id, and password
+# shared by both bench_start_server_hsm (KEK-wrap) and
+# bench_start_server_hsm_resident (HSM-resident keys) — factored out so the
+# two server-startup paths can never diverge on how a given --hsm-model is
+# wired up, and so neither benchmark mode is restricted to a subset of HSMs.
 #
-# Sets up a fresh SoftHSM2 token, writes a kms.toml with the HSM instance and
-# key_encryption_key pointing at the new token, starts the server, then creates
-# the KEK via ckms so the server is immediately usable.
-#
-# Prerequisites:
-#   - softhsm2.sh must already be sourced by the caller.
-#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
-#     CKMS_BIN are set.
-#
-# Usage: bench_start_server_hsm <port> <tmp_dir> [http_workers]
-# Sets:  KMS_PID, HSM_KEK_UID
-bench_start_server_hsm() {
-  local port="$1" tmp_dir="$2" http_workers="${3:-}"
-  local sqlite_path="${tmp_dir}/kms-data"
-  local kms_conf="${tmp_dir}/kms.toml"
-  local kms_log="${tmp_dir}/kms.log"
-
-  require_cmd softhsm2-util \
-    "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
-
-  # Initialize a fresh single-token SoftHSM2 environment.
-  softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
-  local init_out
-  init_out=$(softhsm2_init_token "bench_kek" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
-  HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_kek")
-  export HSM_SLOT_ID
-  SOFTHSM2_HSM_SLOT_ID="${HSM_SLOT_ID}"
-  export SOFTHSM2_HSM_SLOT_ID
-
-  HSM_KEK_UID="hsm::${HSM_SLOT_ID}::bench_kek"
-  export HSM_KEK_UID
-
-  mkdir -p "$sqlite_path"
-
-  # Write kms.toml with HSM + key_encryption_key.
-  # The server will not start wrapping until the KEK is created (see below).
-  cat >"${kms_conf}" <<EOF
-key_encryption_key = "${HSM_KEK_UID}"
-
-hsm_model    = "softhsm2"
-hsm_admin    = ["admin"]
-hsm_slot     = [${HSM_SLOT_ID}]
-hsm_password = ["${HSM_USER_PASSWORD}"]
-
-[db]
-database_type = "sqlite"
-sqlite_path   = "${sqlite_path}"
-
-[http]
-hostname = "0.0.0.0"
-port     = ${port}
-EOF
-
-  if [ -n "${http_workers}" ]; then
-    printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
-  fi
-
-  echo "Starting KMS server (HSM-backed) on port ${port}..."
-  local lib_path_var
-  lib_path_var=$(softhsm2_lib_path_var)
-  local lib_path
-  lib_path=$(softhsm2_lib_search_path)
-
-  env \
-    "${lib_path_var}=${lib_path}" \
-    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
-    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-    "${KMS_BIN}" --config "${kms_conf}" \
-    >"${kms_log}" 2>&1 &
-  KMS_PID=$!
-  export KMS_PID
-
-  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
-
-  # Create the KEK on the HSM now that the server is running.
-  # The server's kek_bootstrap logic allows creating an object whose UID equals
-  # key_encryption_key even when it does not yet exist.
-  echo "Creating KEK on HSM (UID: ${HSM_KEK_UID})..."
-  env \
-    "${lib_path_var}=${lib_path}" \
-    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
-    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-    "${CKMS_BIN}" \
-    --url "http://127.0.0.1:${port}" \
-    sym keys create \
-    --algorithm aes \
-    --number-of-bits 256 \
-    "${HSM_KEK_UID}"
-  echo "KEK created: ${HSM_KEK_UID}"
-}
-
-# Start a KMS server with an HSM backend registered for HSM-*resident* key
-# benchmarking (`ckms bench --hsm`): unlike bench_start_server_hsm, this does
-# NOT set key_encryption_key — no KEK is created, no software key is ever
-# wrapped. The HSM is only used to route `hsm::softhsm2::<slot>::<uuid>`
-# unique identifiers to the CryptoOracle, so both key generation and
-# Encrypt/Sign for those keys execute directly on the HSM (PKCS#11).
-#
-# Requires:
-#   - softhsm2.sh must already be sourced by the caller.
-#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
-#     CKMS_BIN are set.
-#
-# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers] [hsm_model] [hsm_slot] [hsm_password]
-# Sets:  KMS_PID, HSM_SLOT_ID
-bench_start_server_hsm_resident() {
-  local port="$1" tmp_dir="$2" http_workers="${3:-}"
-  local hsm_model="${4:-softhsm2}"
-  local custom_slot="${5:-}"
-  local custom_password="${6:-}"
-  local sqlite_path="${tmp_dir}/kms-data"
-  local kms_conf="${tmp_dir}/kms.toml"
-  local kms_log="${tmp_dir}/kms.log"
-  local env_vars=()
-
-  mkdir -p "$sqlite_path"
+# Usage: _bench_resolve_hsm_model_env <hsm_model> <tmp_dir> [custom_slot] [custom_password] [token_label]
+# Sets:  HSM_SLOT_ID (exported), _BENCH_HSM_PASSWORD, _BENCH_HSM_ENV_VARS (array)
+_bench_resolve_hsm_model_env() {
+  local hsm_model="$1" tmp_dir="$2" custom_slot="${3:-}" custom_password="${4:-}"
+  local token_label="${5:-bench}"
+  _BENCH_HSM_ENV_VARS=()
 
   if [ "${hsm_model}" = "kryoptic" ]; then
     source "${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/lib/kryoptic.sh"
@@ -493,23 +397,23 @@ assert fns.C_Finalize(None) == 0
 
     HSM_SLOT_ID="${KRYOPTIC_HSM_SLOT_ID}"
     export HSM_SLOT_ID
-    env_vars+=(
+    _BENCH_HSM_ENV_VARS+=(
       "KRYOPTIC_PKCS11_LIB=${KRYOPTIC_PKCS11_LIB}"
       "KRYOPTIC_CONF=${KRYOPTIC_CONF}"
     )
-    hsm_password="${HSM_USER_PASSWORD}"
+    _BENCH_HSM_PASSWORD="${HSM_USER_PASSWORD}"
   elif [ "${hsm_model}" = "proteccio" ]; then
     HSM_SLOT_ID="${custom_slot:-${PROTECCIO_SLOT:-5}}"
     export HSM_SLOT_ID
-    hsm_password="${custom_password:-${PROTECCIO_PASSWORD:-}}"
-    env_vars+=(
+    _BENCH_HSM_PASSWORD="${custom_password:-${PROTECCIO_PASSWORD:-}}"
+    _BENCH_HSM_ENV_VARS+=(
       "PROTECCIO_PKCS11_LIB=${PROTECCIO_PKCS11_LIB:-/lib/libnethsm.so}"
     )
   elif [ "${hsm_model}" = "crypt2pay" ]; then
     HSM_SLOT_ID="${custom_slot:-${CRYPT2PAY_SLOT_ID:-1}}"
     export HSM_SLOT_ID
-    hsm_password="${custom_password:-${CRYPT2PAY_PASSWORD:-}}"
-    env_vars+=(
+    _BENCH_HSM_PASSWORD="${custom_password:-${CRYPT2PAY_PASSWORD:-}}"
+    _BENCH_HSM_ENV_VARS+=(
       "CRYPT2PAY_PKCS11_LIB=${CRYPT2PAY_PKCS11_LIB:-/lib/libpkcs11c2p.so}"
       "C2P_CONF=${C2P_CONF:-/etc/c2p/c2p.xml}"
     )
@@ -518,23 +422,195 @@ assert fns.C_Finalize(None) == 0
       "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
     softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
     local init_out
-    init_out=$(softhsm2_init_token "bench_resident" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
-    HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_resident")
+    init_out=$(softhsm2_init_token "${token_label}" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+    HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "${token_label}")
     export HSM_SLOT_ID
+    SOFTHSM2_HSM_SLOT_ID="${HSM_SLOT_ID}"
+    export SOFTHSM2_HSM_SLOT_ID
     local lib_path_var lib_path
     lib_path_var=$(softhsm2_lib_path_var)
     lib_path=$(softhsm2_lib_search_path)
-    env_vars+=(
+    _BENCH_HSM_ENV_VARS+=(
       "${lib_path_var}=${lib_path}"
       "SOFTHSM2_PKCS11_LIB=${SOFTHSM2_PKCS11_LIB_PATH}"
       "SOFTHSM2_CONF=${SOFTHSM2_CONF}"
     )
-    hsm_password="${HSM_USER_PASSWORD}"
+    _BENCH_HSM_PASSWORD="${HSM_USER_PASSWORD}"
   else
     HSM_SLOT_ID="${custom_slot:-1}"
     export HSM_SLOT_ID
-    hsm_password="${custom_password}"
+    _BENCH_HSM_PASSWORD="${custom_password}"
   fi
+}
+
+# Start a KMS server backed by a `<hsm_model>` token with a key_encryption_key.
+#
+# Sets up the chosen HSM model's token/slot (the same per-model dispatch as
+# bench_start_server_hsm_resident, via _bench_resolve_hsm_model_env), writes a
+# kms.toml with the HSM instance and key_encryption_key pointing at that
+# token, starts the server, then creates the KEK via ckms so the server is
+# immediately usable. Works with any --hsm-model — SoftHSM2 is only the
+# default, not the only supported option: KEK-wrap and delegated crypto
+# operations support every HSM model symmetrically.
+#
+# Prerequisites:
+#   - bench_prepare_hsm <hsm_model> must already have run (library install,
+#     simulator/VPN setup) for non-SoftHSM2/non-Kryoptic models.
+#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
+#     CKMS_BIN are set.
+#
+# Usage: bench_start_server_hsm <port> <tmp_dir> [http_workers] [hsm_model] [hsm_slot] [hsm_password]
+# Sets:  KMS_PID, HSM_KEK_UID, HSM_SLOT_ID
+bench_start_server_hsm() {
+  local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local hsm_model="${4:-softhsm2}"
+  local custom_slot="${5:-}"
+  local custom_password="${6:-}"
+  local sqlite_path="${tmp_dir}/kms-data"
+  local kms_conf="${tmp_dir}/kms.toml"
+  local kms_log="${tmp_dir}/kms.log"
+
+  _bench_resolve_hsm_model_env "${hsm_model}" "${tmp_dir}" "${custom_slot}" "${custom_password}" "bench_kek"
+
+  HSM_KEK_UID="hsm::${HSM_SLOT_ID}::bench_kek"
+  export HSM_KEK_UID
+
+  mkdir -p "$sqlite_path"
+
+  # Write kms.toml with HSM + key_encryption_key.
+  # The server will not start wrapping until the KEK is created (see below).
+  cat >"${kms_conf}" <<EOF
+key_encryption_key = "${HSM_KEK_UID}"
+
+hsm_model    = "${hsm_model}"
+hsm_admin    = ["admin"]
+hsm_slot     = [${HSM_SLOT_ID}]
+hsm_password = ["${_BENCH_HSM_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path   = "${sqlite_path}"
+
+[http]
+hostname = "0.0.0.0"
+port     = ${port}
+EOF
+
+  if [ -n "${http_workers}" ]; then
+    printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
+  fi
+
+  echo "Starting KMS server (HSM-backed [${hsm_model}]) on port ${port}..."
+
+  env \
+    ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
+    "${KMS_BIN}" --config "${kms_conf}" \
+    >"${kms_log}" 2>&1 &
+  KMS_PID=$!
+  export KMS_PID
+
+  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
+
+  # Create the KEK on the HSM now that the server is running.
+  # The server's kek_bootstrap logic allows creating an object whose UID equals
+  # key_encryption_key even when it does not yet exist.
+  echo "Creating KEK on HSM (UID: ${HSM_KEK_UID})..."
+  env \
+    ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
+    "${CKMS_BIN}" \
+    --url "http://127.0.0.1:${port}" \
+    sym keys create \
+    --algorithm aes \
+    --number-of-bits 256 \
+    "${HSM_KEK_UID}"
+  echo "KEK created: ${HSM_KEK_UID}"
+}
+
+# Prepare the host once for HSM-resident benchmarks on <hsm_model>, reusing the
+# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm-<model>`
+# tasks (library install, simulator start, VPN tunnel). Call it after
+# bench_register_cleanup so any VPN it opens is torn down on exit.
+#
+# Credentials come from the environment (CI secrets) or, locally, from an
+# optional ~/.cosmian/<hsm_model>.sh (e.g. PROTECCIO_PASSWORD, CRYPT2PAY_SLOT_ID).
+#
+# Usage: bench_prepare_hsm <hsm_model>
+# Sets:  BENCH_HSM_SLOT (unless already set), BENCH_HSM_PASSWORD
+bench_prepare_hsm() {
+  local hsm_model="$1"
+  local scripts_dir
+  # shellcheck disable=SC2119
+  scripts_dir="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.github/reusable_scripts"
+  BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-}"
+  BENCH_HSM_PASSWORD="${BENCH_HSM_PASSWORD:-}"
+  if [ -f "${HOME}/.cosmian/${hsm_model}.sh" ]; then
+    # shellcheck source=/dev/null
+    source "${HOME}/.cosmian/${hsm_model}.sh"
+  fi
+
+  case "${hsm_model}" in
+    softhsm2)
+      source "${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/lib/softhsm2.sh"
+      ;;
+    kryoptic)
+      # Built and initialised per server by bench_start_server_hsm_resident.
+      ;;
+    proteccio)
+      bash "${scripts_dir}/prepare_proteccio.sh"
+      ;;
+    crypt2pay)
+      BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+      bash "${scripts_dir}/prepare_crypt2pay.sh"
+      ;;
+    utimaco)
+      # Starts the simulator and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG;
+      # the token is initialised on slot 0 with user PIN 12345678.
+      # shellcheck source=/dev/null
+      source "${scripts_dir}/prepare_utimaco.sh"
+      BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-0}"
+      BENCH_HSM_PASSWORD="12345678"
+      ;;
+    aws_cloudhsm)
+      BENCH_VPN_PID_FILES+=("${CLOUDHSM_OPENVPN_PID_FILE:-/tmp/cloudhsm-openvpn.pid}")
+      # Exports AWS_CLOUDHSM_PKCS11_LIB, HSM_USER_PASSWORD and (optionally) HSM_SLOT_ID.
+      # shellcheck source=/dev/null
+      source "${scripts_dir}/prepare_aws_cloudhsm.sh"
+      BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-${HSM_SLOT_ID:-}}"
+      BENCH_HSM_PASSWORD="${HSM_USER_PASSWORD}"
+      ;;
+    *)
+      # smartcardhsm / other: the caller provides the library env and --hsm-slot.
+      ;;
+  esac
+  export BENCH_HSM_SLOT BENCH_HSM_PASSWORD
+}
+
+# Start a KMS server with an HSM backend registered for HSM-*resident* key
+# benchmarking (`ckms bench --hsm`): unlike bench_start_server_hsm, this does
+# NOT set key_encryption_key — no KEK is created, no software key is ever
+# wrapped. The HSM is only used to route `hsm::softhsm2::<slot>::<uuid>`
+# unique identifiers to the CryptoOracle, so both key generation and
+# Encrypt/Sign for those keys execute directly on the HSM (PKCS#11).
+#
+# Requires:
+#   - softhsm2.sh must already be sourced by the caller.
+#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
+#     CKMS_BIN are set.
+#
+# Usage: bench_start_server_hsm_resident <port> <tmp_dir> [http_workers] [hsm_model] [hsm_slot] [hsm_password]
+# Sets:  KMS_PID, HSM_SLOT_ID
+bench_start_server_hsm_resident() {
+  local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local hsm_model="${4:-softhsm2}"
+  local custom_slot="${5:-}"
+  local custom_password="${6:-}"
+  local sqlite_path="${tmp_dir}/kms-data"
+  local kms_conf="${tmp_dir}/kms.toml"
+  local kms_log="${tmp_dir}/kms.log"
+  mkdir -p "$sqlite_path"
+
+  _bench_resolve_hsm_model_env "${hsm_model}" "${tmp_dir}" "${custom_slot}" "${custom_password}" "bench_resident"
+  local hsm_password="${_BENCH_HSM_PASSWORD}"
 
   cat >"${kms_conf}" <<EOF
 default_username = "admin"
@@ -560,7 +636,7 @@ EOF
   echo "Starting KMS server (HSM-resident [${hsm_model}], no KEK) on port ${port}..."
 
   env \
-    ${env_vars[@]+"${env_vars[@]}"} \
+    ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
     "${KMS_BIN}" --config "${kms_conf}" \
     >"${kms_log}" 2>&1 &
   KMS_PID=$!
@@ -807,7 +883,12 @@ bench_generate_report() {
 
   # Mirror the freshly generated report into the documentation tree so the
   # checked-in docs always reflect the latest run (committed by the CI job or
-  # the developer's local run).
+  # the developer's local run). Sanity runs (2 s/level, debug build) only
+  # smoke-test the pipeline: never let them overwrite the published reports.
+  if [ "${BENCH_SANITY:-}" = "true" ]; then
+    echo "Sanity run: leaving documentation/docs/benchmarks/${docs_subdir} untouched."
+    return 0
+  fi
   local docs_bench_dir
   # shellcheck disable=SC2119
   docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/${docs_subdir}"

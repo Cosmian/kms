@@ -29,6 +29,9 @@ pub enum HsmKeypairAlgorithm {
     /// secp256k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
     #[cfg(feature = "non-fips")]
     Secp256k1,
+    /// secp192k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp192k1,
     /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed25519,
@@ -50,6 +53,9 @@ pub enum EcCurve {
     /// secp256k1, used for non-FIPS ECDSA signing.
     #[cfg(feature = "non-fips")]
     Secp256k1,
+    /// secp192k1, used for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp192k1,
     /// Edwards curve used for `EdDSA` signing.
     #[cfg(feature = "non-fips")]
     Ed25519,
@@ -65,13 +71,11 @@ impl EcCurve {
     /// Select a FIPS-approved NIST curve from a requested key length in bits.
     pub fn from_key_length_in_bits(key_length_in_bits: usize) -> InterfaceResult<Self> {
         match key_length_in_bits {
-            224 => Ok(Self::P224),
             256 => Ok(Self::P256),
             384 => Ok(Self::P384),
             521 => Ok(Self::P521),
             x => Err(InterfaceError::Default(format!(
-                "Invalid key length: {x} bits, for an HSM EC key (valid values are 224, 256, \
-                 384, 521)"
+                "Invalid key length: {x} bits, for an HSM EC key (valid values are 256, 384, 521)"
             ))),
         }
     }
@@ -86,6 +90,8 @@ impl EcCurve {
             Self::P521 => 521,
             #[cfg(feature = "non-fips")]
             Self::Secp256k1 | Self::Ed25519 | Self::X25519 => 256,
+            #[cfg(feature = "non-fips")]
+            Self::Secp192k1 => 192,
             #[cfg(feature = "non-fips")]
             Self::Ed448 => 456,
         }

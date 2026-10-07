@@ -305,8 +305,8 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
         );
     }
 
-    // The legacy v2.40 and v3.0 function tables are reported separately, but
-    // together they must account for all 92 C_* functions.
+    // Every C_* function is reported exactly once, split between the legacy
+    // v2.40 ABI and v3.x extension tables.
     assert_section_total(&stdout, "PKCS#11 v2.40 API function coverage", 68);
     assert_section_total(&stdout, "PKCS#11 v3.x API extension coverage", 24);
     // The mechanism section has more *rows* than 442 whenever a mechanism is

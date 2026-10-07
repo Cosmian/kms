@@ -4,7 +4,7 @@
 # less accurate dataset (get_fallback_version_data), which produces
 # different (flaky) KMIP support tables in README.md / support.md depending
 # on whether the running environment has this package installed.
-# Always install this before running `mise run docs:generate` or
+# Always install this before running `mise run docs:sync-all` or
 # `python3 .mise/scripts/docs/update_readme_kmip.py` to keep generated
 # documentation deterministic.
 beautifulsoup4>=4.12

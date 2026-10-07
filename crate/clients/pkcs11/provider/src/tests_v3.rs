@@ -55,7 +55,7 @@ use crate::{
     C_GetInterface, C_GetInterfaceList,
     backend::CliBackend,
     error::{Pkcs11Error, result::Pkcs11Result},
-    kms_object::key_algorithm_from_attributes,
+    kms_object::{ecdsa_raw_to_der, key_algorithm_from_attributes},
     tests::{
         create_ec_ssh_keypair, create_rsa_ssh_keypair, initialize_backend,
         save_pkcs11_client_config, test_init,
@@ -121,11 +121,21 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
     );
+
+    // `remote_sign` returns the raw PKCS#11 r||s format (matching real C_Sign output);
+    // convert back to DER since the KMIP `SignatureVerify` operation below is a raw,
+    // backend-bypassing server call that expects the KMS's native DER encoding.
+    let der_signature = ecdsa_raw_to_der(&signature, 32)?;
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(assert_signature_valid(
@@ -137,7 +147,7 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
         }),
         None,
         Some(prehash.to_vec()),
-        signature,
+        der_signature,
     ));
     Ok(())
 }
@@ -167,11 +177,20 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x24_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::Secp256k1,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA secp256k1 signature must not be empty"
     );
+    // `remote_sign` returns the raw PKCS#11 r||s format (matching real C_Sign output);
+    // convert back to DER since the KMIP `SignatureVerify` operation below is a raw,
+    // backend-bypassing server call that expects the KMS's native DER encoding.
+    let der_signature = ecdsa_raw_to_der(&signature, 32)?;
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(assert_signature_valid(
@@ -183,7 +202,7 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
         }),
         None,
         Some(prehash.to_vec()),
-        signature,
+        der_signature,
     ));
     Ok(())
 }
@@ -210,7 +229,12 @@ fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
     let backend = CliBackend::instantiate(kms_rest_client.clone());
     let data = b"hello HSM-KEK world, this is a test message for Ed25519 signing".to_vec();
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::EdDsa, &data)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::EdDsa,
+        &data,
+        KeyAlgorithm::Ed25519,
+    )?;
     assert_eq!(signature.len(), 64, "Ed25519 signature must be 64 bytes");
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -635,9 +659,9 @@ fn test_get_mechanism_info_aes_gcm_reports_encrypt_decrypt() -> Pkcs11Result<()>
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): `C_GetInterfaceList` must
-/// implement the standard two-call convention and return the sole "PKCS 11" v3.0 interface;
-/// `C_GetInterface` must resolve that same interface both when `pInterfaceName`/`pVersion` are
-/// null (any interface/version accepted) and when they exactly match.
+/// implement the standard two-call convention and return both "PKCS 11" interface entries;
+/// `C_GetInterface` must resolve an interface both when `pInterfaceName`/`pVersion` are null
+/// (any interface/version accepted) and when they exactly match.
 #[test]
 #[serial]
 #[expect(unsafe_code)]
@@ -660,38 +684,43 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
         CKR_OK
     );
-    assert_eq!(count, 1, "this module exposes exactly one interface");
+    assert_eq!(
+        count, 2,
+        "this module exposes the same function table under two interface versions"
+    );
 
     // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
-    let mut zero_count: CK_ULONG = 0;
+    let mut short_count: CK_ULONG = 1;
     let mut interfaces = [CK_INTERFACE {
         pInterfaceName: std::ptr::null_mut(),
         pFunctionList: std::ptr::null_mut(),
         flags: 0,
-    }; 1];
+    }; 2];
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer; `zero_count` (0) under-reports its
+        // SAFETY: `interfaces` is a valid 2-element buffer; `short_count` (1) under-reports its
         // capacity on purpose to exercise the too-small path.
-        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut short_count) },
         CKR_BUFFER_TOO_SMALL
     );
-    assert_eq!(zero_count, 1);
+    assert_eq!(short_count, 2);
 
-    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
-    let mut full_count: CK_ULONG = 1;
+    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interfaces.
+    let mut full_count: CK_ULONG = 2;
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer, matching `full_count`.
+        // SAFETY: `interfaces` is a valid 2-element buffer, matching `full_count`.
         unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut full_count) },
         CKR_OK
     );
-    assert_eq!(full_count, 1);
-    assert!(!interfaces[0].pInterfaceName.is_null());
-    // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
-    // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
-    let name = unsafe { std::ffi::CStr::from_ptr(interfaces[0].pInterfaceName.cast()) };
-    assert_eq!(name.to_bytes(), b"PKCS 11");
+    assert_eq!(full_count, 2);
+    for interface in &interfaces {
+        assert!(!interface.pInterfaceName.is_null());
+        // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
+        // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
+        let name = unsafe { std::ffi::CStr::from_ptr(interface.pInterfaceName.cast()) };
+        assert_eq!(name.to_bytes(), b"PKCS 11");
+    }
 
-    // `C_GetInterface` with null name/version must resolve to the same sole interface.
+    // `C_GetInterface` with null name/version must resolve to the default (newest) interface.
     let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
     assert_eq!(
         // SAFETY: `pp_interface` is a valid stack out-parameter; name/version are
@@ -708,7 +737,8 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     );
     assert!(!interface_ptr.is_null());
 
-    // `C_GetInterface` with a matching name and major version must also succeed.
+    // `C_GetInterface` with a matching name and the implemented version must also succeed, and
+    // — per §5.4.6 rule 2 — the interface handed back must really declare that version.
     let mut name_bytes = b"PKCS 11\0".to_vec();
     let mut version = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
@@ -926,7 +956,8 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
             unsafe { C_GetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
             CKR_BUFFER_TOO_SMALL
         );
-        assert!(undersized[0].ulValueLen > 1);
+        let reported_len = undersized[0].ulValueLen;
+        assert!(reported_len > 1);
         assert_eq!(sentinel, 0xA5);
         assert_eq!(
             // SAFETY: the template contains one valid attribute and `obj_handle` is live.
@@ -1080,7 +1111,7 @@ fn test_hsm_kek_rsa_pss_sign() -> Pkcs11Result<()> {
         mask_generation_function: DigestType::Sha256,
         salt_length: 32,
     };
-    let signature = backend.remote_sign(&sk_id, &algorithm, &digest)?;
+    let signature = backend.remote_sign(&sk_id, &algorithm, &digest, KeyAlgorithm::Rsa)?;
     assert_eq!(
         signature.len(),
         256,
@@ -1132,12 +1163,23 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
     let backend = CliBackend::instantiate(kms_rest_client);
     let prehash = [0x77_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
 
     // Positive case: a genuine signature must verify successfully through the same
     // `Backend::remote_verify` path used by the real `C_VerifyInit`/`C_Verify` functions.
     backend
-        .remote_verify(&pk_id, &SignatureAlgorithm::Ecdsa, &prehash, &signature)
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::Ecdsa,
+            &prehash,
+            &signature,
+            KeyAlgorithm::EccP256,
+        )
         .expect("a genuine ECDSA P-256 signature must verify successfully via C_Verify");
 
     // Negative case: a tampered signature must be rejected with CKR_SIGNATURE_INVALID,
@@ -1152,6 +1194,7 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
             &SignatureAlgorithm::Ecdsa,
             &prehash,
             &tampered_signature,
+            KeyAlgorithm::EccP256,
         )
         .expect_err("a tampered signature must be rejected, not silently accepted");
     assert!(

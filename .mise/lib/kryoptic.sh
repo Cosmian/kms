@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # .mise/lib/kryoptic.sh — Out-of-tree build helper for the published `kryoptic`
 # PKCS#11 v3.0 software token (https://github.com/latchset/kryoptic), used
-# exclusively as a v3.0 conformance-test oracle by
-# crate/hsm/base_hsm/tests/kryoptic_conformance.rs.
+# as the PKCS#11 v3.0 test token by crate/hsm/kryoptic
+# (`mise run test:hsm-kryoptic`).
 #
 # `kryoptic` is deliberately NOT a [dev-dependencies] entry in
 # crate/hsm/base_hsm/Cargo.toml: its `kryoptic-lib` dependency requires
@@ -111,13 +111,14 @@ if not already built"
 build layout may have changed (see crate/crypto/build.rs)"
   fi
 
-  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs), so
-  # request static linking explicitly — the `pkg-config` crate honors
-  # `OPENSSL_STATIC` the same way `openssl-sys` does.
-  PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
-  export PKG_CONFIG_PATH
-  OPENSSL_STATIC=1
-  export OPENSSL_STATIC
+  # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs). Keep
+  # these values in private helper variables: shellHook exports such as PKG_CONFIG_PATH
+  # and OPENSSL_STATIC must not be mutated, or later workspace builds inherit Kryoptic's
+  # static-prefix settings and fail to link libssl/libcrypto.
+  KRYOPTIC_BUILD_PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+  KRYOPTIC_BUILD_PKG_CONFIG_PATH_FOR_TARGET="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH_FOR_TARGET:+:${PKG_CONFIG_PATH_FOR_TARGET}}"
+  KRYOPTIC_BUILD_OPENSSL_SOURCES="${prefix}"
+  KRYOPTIC_BUILD_OPENSSL_STATIC=1
   print_status "kryoptic will build against this workspace's OpenSSL at ${prefix}"
 }
 
@@ -153,12 +154,23 @@ kryoptic_build_cdylib() {
   # (incl. hkdf) + rsa + hotp — i.e. every v3.0 mechanism family exercised by
   # the conformance tests. This build is fully isolated (its own Cargo.lock),
   # so the `rusqlite` conflict that blocks a normal workspace dependency does
-  # not apply here. `PKG_CONFIG_PATH`/`OPENSSL_STATIC` (set by
-  # `_kryoptic_ensure_repo_openssl` above) steer `ossl/dynamic`'s pkg-config
-  # probe at this workspace's own OpenSSL 3.6.2 instead of the ambient system
-  # one.
+  # not apply here. Pass the overrides explicitly at the Cargo boundary. This avoids
+  # relying on shell function/subshell export behavior when `env -u CARGO_TARGET_DIR`
+  # launches the isolated Kryoptic workspace build.
+  # `KRYOPTIC_OPENSSL_SOURCES` is consumed by ossl-sys; the pkg-config variables steer
+  # both host and target discovery, and the bindgen override keeps workspace headers
+  # ahead of Nix's system include defaults.
   print_status "Building kryoptic cdylib (cargo build --release --features standard)"
-  (cd "$src_dir" && env -u CARGO_TARGET_DIR cargo build --release --features standard)
+  (
+    cd "$src_dir" || exit
+    env -u CARGO_TARGET_DIR \
+      PKG_CONFIG_PATH="$KRYOPTIC_BUILD_PKG_CONFIG_PATH" \
+      PKG_CONFIG_PATH_FOR_TARGET="$KRYOPTIC_BUILD_PKG_CONFIG_PATH_FOR_TARGET" \
+      KRYOPTIC_OPENSSL_SOURCES="$KRYOPTIC_BUILD_OPENSSL_SOURCES" \
+      OSSL_BINDGEN_CLANG_ARGS="-isystem ${KRYOPTIC_BUILD_OPENSSL_SOURCES}/include" \
+      OPENSSL_STATIC="$KRYOPTIC_BUILD_OPENSSL_STATIC" \
+      cargo build --release --features standard
+  )
 
   local cdylib_name artifact
   cdylib_name="$(_kryoptic_cdylib_filename)"

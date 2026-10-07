@@ -88,6 +88,23 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 
+## Feature rollout order & PR cascade
+
+For any feature spanning server + CLI/UI: implement and PR the **server** side first
+(`crate/server/`, `crate/kmip/`), then the **CLI** (`crate/clients/`) in its own PR, then
+the **Web UI** (`ui/`) in its own PR. Never bundle server and CLI/UI changes for the same
+feature in one PR. When branches must exist before the server PR merges, stack them
+(each branch based on the previous one); use `gh stack view`/`gh stack submit` to manage
+the stack, but never `gh stack sync` (or any rebase-then-force-push flow) — update
+downstream branches with a regular merge instead, per the force-push prohibition below.
+
+## Force-push prohibition
+
+Agents must **never** force-push, under any circumstance — no `git push --force`/
+`--force-with-lease`, no delete-and-recreate of a remote branch, and no rewriting a
+remote ref via the GitHub web UI or REST/GraphQL API. If history diverges, merge or
+branch again; never rewrite shared history. Applies to every branch.
+
 ---
 
 ## Skills (slash commands in Copilot Chat)
@@ -95,10 +112,11 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | Command | When to use |
 |---------|-------------|
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
-| `/rust-review-all` | **Full Rust quality gate** — all review skills + reports in `./review/` |
+| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review/` |
+| `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
 | `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
-| `/security-review` | Before any PR |
+| `/security-review` | Before PRs affecting security-sensitive flows; only verified static UI/assets or documentation may use the incremental skip gate |
 | `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
 | `/standards-review` | Verify code against exact text of applicable standards |
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
@@ -109,3 +127,10 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |
+
+## Credit-Saving Strategies
+
+- Run `/kms-caveman` once before deeper Rust audits and reuse its findings; do not repeat overlapping mechanical scans.
+- Gate specialized reviews on inspected diff scope and affected callers. A clean mechanical scan does not justify skipping security, crypto, or protocol reasoning.
+- Full, release, and pre-release gates override focused-scope skips. State why any skill was inapplicable.
+- Skills cannot select a model or guarantee latency. Do not claim token/percentage savings without observed usage data.

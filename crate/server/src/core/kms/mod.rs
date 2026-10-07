@@ -13,8 +13,6 @@ use std::{
 // AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
 #[cfg(target_os = "linux")]
 use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use azure_cloud_hsm_pkcs11_loader::{AZURE_CLOUD_HSM_PKCS11_LIB, AzureCloudHsm};
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
@@ -248,15 +246,20 @@ impl KMS {
         //
         // This ensures the metric starts at the correct absolute value rather
         // than 0.  Without this seed, the gauge would only reach the right count
-        // after the first periodic cron sync (up to 30 s later), giving a
-        // misleading reading immediately after server restart.
-        if let Some(ref m) = metrics {
+        // after the first periodic cron sync (within one `metrics_count_interval_secs`
+        // period), giving a misleading reading immediately after server restart.
+        // Skipped when `metrics_count_interval_secs == 0` (COUNT queries disabled).
+        if let Some(m) = metrics
+            .as_ref()
+            .filter(|_| server_params.metrics_count_interval_secs > 0)
+        {
             match database.count_all_non_destroyed_objects().await {
                 Ok(count) => {
                     m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period.
                     cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
@@ -266,7 +269,8 @@ impl KMS {
                     m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s, but a
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period, but a
                     // persistently failing query (e.g. a backend-specific SQL bug)
                     // should be visible without enabling debug logging.
                     cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
@@ -491,14 +495,6 @@ impl KMS {
                 "AwsCloudhsm",
                 slot_passwords
             )),
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            "azure_cloud_hsm" => Ok(instantiate_hsm_with_env!(
-                AzureCloudHsm,
-                "AZURE_CLOUD_HSM_PKCS11_LIB",
-                AZURE_CLOUD_HSM_PKCS11_LIB,
-                "Azure Cloud HSM",
-                slot_passwords
-            )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
@@ -509,8 +505,7 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, aws_cloud_hsm, \
-                 softhsm2, utimaco, kryoptic, other"
+                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, softhsm2, utimaco, kryoptic, other"
             ),
         }
     }

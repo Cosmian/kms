@@ -25,10 +25,16 @@ description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 a
 [lints]
 workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["winresource"]
+
 [[bin]]
 name = "cosmian_kms"
 path = "src/main.rs"
 test = false
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [lib]
 # doc test linking as a separate binary is extremely slow
@@ -48,7 +54,6 @@ non-fips = [
   "cosmian_kms_client_utils/non-fips",
   "cosmian_kms_server_database/non-fips",
   "aws_cloudhsm_pkcs11_loader/non-fips",
-  "azure_cloud_hsm_pkcs11_loader/non-fips",
   "crypt2pay_pkcs11_loader/non-fips",
   "proteccio_pkcs11_loader/non-fips",
   "smartcardhsm_pkcs11_loader/non-fips",
@@ -68,7 +73,6 @@ actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 async-recursion = { workspace = true }
 aws_cloudhsm_pkcs11_loader = { path = "../hsm/aws_cloudhsm", version = "5.27.1" }
-azure_cloud_hsm_pkcs11_loader = { path = "../hsm/azure_cloud_hsm", version = "5.27.1" }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
@@ -81,12 +85,12 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 clap-config-fallback = { workspace = true }
-cosmian_kms_access = { path = "../access", version = "5.27.1" }
-cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.27.1" }
+cosmian_kms_access = { path = "../access", version = "5.28.0" }
+cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.28.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.25.0" }
-cosmian_kms_server_database = { path = "../server_database", version = "5.27.1" }
+cosmian_kms_server_database = { path = "../server_database", version = "5.28.0" }
 cosmian_logger = { workspace = true }
-crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.27.1" }
+crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.28.0" }
 dashmap = { workspace = true }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
@@ -112,7 +116,7 @@ opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
-proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.27.1" }
+proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.28.0" }
 reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
   "json",
   "native-tls",
@@ -125,8 +129,8 @@ serde_ignored = { workspace = true }
 serde_json = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
-smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.27.1" }
-softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.27.1" }
+smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.28.0" }
+softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.28.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 subtle = { workspace = true }
 thiserror = { workspace = true }
@@ -135,7 +139,7 @@ tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.27.1" }
+utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.28.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
@@ -145,8 +149,8 @@ windows-service = "0.8"
 
 [dev-dependencies]
 actix-http = { workspace = true }
-cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.27.1" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.27.1" }
+cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.28.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.28.0" }
 native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }

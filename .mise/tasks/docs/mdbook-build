@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Build the KMS documentation book (mdBook)"
+#MISE description="Build the KMS documentation site with mdBook"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

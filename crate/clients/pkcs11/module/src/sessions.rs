@@ -32,6 +32,7 @@ use pkcs11_sys::{
     CK_ULONG, CK_ULONG_PTR, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
     CKP_PUBLIC_CERTIFICATES_TOKEN,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     MResultHelper, ModuleError, ModuleResult,
@@ -43,8 +44,8 @@ use crate::{
     objects_store::{OBJECTS_STORE, ObjectsStore},
     profiling::{self, SignPhase},
     traits::{
-        DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, SignOperation,
-        VerifyContext, backend, use_pin_as_access_token,
+        DecryptContext, EncryptContext, KeyAlgorithm, MessageEncryptionOutput, PendingSignature,
+        SearchOptions, SignContext, SignOperation, VerifyContext, backend, use_pin_as_access_token,
     },
 };
 
@@ -142,6 +143,10 @@ pub(crate) struct Session {
     pub verify_ctx: Option<VerifyContext>,
     pub decrypt_ctx: Option<DecryptContext>,
     pub encrypt_ctx: Option<EncryptContext>,
+    /// Whether the active encrypt context came from `C_MessageEncryptInit`.
+    pub message_encrypt_active: bool,
+    /// Whether the active decrypt context came from `C_MessageDecryptInit`.
+    pub message_decrypt_active: bool,
 }
 
 impl Session {
@@ -260,16 +265,24 @@ impl Session {
         if let Ok(search_class) = search_class {
             self.load_find_context_by_class(attributes, search_class)
         } else {
-            let label = attributes.get_label()?;
-            let label = Self::map_oracle_tde_security_to_mk(&label)?;
+            // Try CKA_LABEL first (legacy), then CKA_ID (new generic API)
+            let label_or_id = attributes
+                .get_label()
+                .map(|label| String::from_utf8_lossy(&label.into_bytes()).into_owned())
+                .or_else(|_| {
+                    attributes
+                        .get_id()
+                        .map(|id| String::from_utf8_lossy(&id).into_owned())
+                })?;
+            let label_or_id = Self::map_oracle_tde_security_to_mk(&label_or_id)?;
             let find_ctx = OBJECTS_STORE.read()?;
             debug!(
-                "load_find_context: loading for label: {label:?} and attributes: {attributes:?}"
+                "load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}"
             );
             debug!("load_find_context: display current store: {find_ctx}");
-            if let Some((object, handle)) = find_ctx.get_using_id(&label) {
+            if let Some((object, handle)) = find_ctx.get_using_id(&label_or_id) {
                 debug!(
-                    "load_find_context: search by id: {label} -> handle: {} -> object: {}: {}",
+                    "load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}",
                     handle,
                     object.name(),
                     object.remote_id()
@@ -277,7 +290,7 @@ impl Session {
                 self.clear_find_objects_ctx();
                 self.add_to_find_objects_ctx(handle);
             } else {
-                warn!("load_find_context: id {label} not found in store");
+                warn!("load_find_context: id {label_or_id} not found in store");
                 self.clear_find_objects_ctx();
                 return Ok(());
             }
@@ -665,7 +678,12 @@ impl Session {
         // length reported by an earlier query call inconsistent with the bytes
         // actually produced later - causing a spurious CKR_BUFFER_TOO_SMALL on
         // the caller's second, real-buffer call.
-        let signature = if let Some(cached) = sign_ctx.pending_signature.clone() {
+        let cached = sign_ctx
+            .pending_signature
+            .as_ref()
+            .filter(|pending| pending.data == data)
+            .map(|pending| pending.signature.clone());
+        let signature = if let Some(cached) = cached {
             cached
         } else {
             let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
@@ -684,7 +702,10 @@ impl Session {
                 }
             };
             drop(private_key_sign);
-            sign_ctx.pending_signature = Some(signature.clone());
+            sign_ctx.pending_signature = Some(PendingSignature {
+                data: data.to_vec(),
+                signature: signature.clone(),
+            });
             signature
         };
         if pSignature.is_null() {
@@ -838,14 +859,12 @@ impl Session {
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
+        // SAFETY: pulEncryptedDataLen is non-null (checked by C_Encrypt); pEncryptedData,
+        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes. The caller's
+        // size must be read before it is overwritten, or the check below is vacuous.
         unsafe {
-            if pEncryptedData.is_null() {
-                *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
-            } else {
+            if !pEncryptedData.is_null() {
                 if (usize::try_from(*pulEncryptedDataLen)?) < ciphertext.len() {
-                    // Per the PKCS#11 spec, the caller's output-length variable must still be
-                    // updated with the required size on `CKR_BUFFER_TOO_SMALL` so a retry with a
-                    // correctly-sized buffer can succeed.
                     *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                     return Err(ModuleError::BufferTooSmall);
                 }
@@ -854,7 +873,55 @@ impl Session {
                 *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                 self.encrypt_ctx = None;
             }
+            *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
         }
+        Ok(())
+    }
+
+    /// Encrypt one PKCS#11 v3 AES-GCM message with a KMS-generated nonce.
+    pub(crate) fn encrypt_message(
+        &self,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        let encrypt_ctx = self
+            .encrypt_ctx
+            .as_ref()
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        backend()?.encrypt_message(encrypt_ctx, cleartext)
+    }
+
+    /// Decrypt one PKCS#11 v3 AES-GCM message with caller-supplied message artifacts.
+    pub(crate) fn decrypt_message(
+        &self,
+        ciphertext_and_tag: Vec<u8>,
+    ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        if !self.message_decrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        let decrypt_ctx = self
+            .decrypt_ctx
+            .as_ref()
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        backend()?.decrypt(decrypt_ctx, ciphertext_and_tag)
+    }
+
+    /// Finish a PKCS#11 v3 message encryption operation.
+    pub(crate) fn finish_message_encrypt(&mut self) -> ModuleResult<()> {
+        if !self.message_encrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.encrypt_ctx = None;
+        self.message_encrypt_active = false;
+        Ok(())
+    }
+
+    /// Finish a PKCS#11 v3 message decryption operation.
+    pub(crate) fn finish_message_decrypt(&mut self) -> ModuleResult<()> {
+        if !self.message_decrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.decrypt_ctx = None;
+        self.message_decrypt_active = false;
         Ok(())
     }
 
@@ -1179,6 +1246,126 @@ mod tests {
         assert_eq!(signature_len, 64);
         assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
         assert!(session.sign_ctx.is_none());
+    }
+
+    /// Variable-length (ECDSA) test key whose "signature" is the signed data itself, so a
+    /// test can tell which data a returned signature was computed over.
+    #[derive(Debug)]
+    struct EchoEcdsaPrivateKey {
+        sign_calls: Arc<AtomicUsize>,
+    }
+
+    impl crate::traits::PrivateKey for EchoEcdsaPrivateKey {
+        fn remote_id(&self) -> &'static str {
+            "echo-ecdsa"
+        }
+
+        fn sign(
+            &self,
+            _algorithm: &crate::traits::SignatureAlgorithm,
+            data: &[u8],
+        ) -> ModuleResult<Vec<u8>> {
+            self.sign_calls.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(data.to_vec())
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::EccP256
+        }
+
+        fn key_size(&self) -> usize {
+            256
+        }
+
+        fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+    }
+
+    #[test]
+    fn variable_length_cached_signature_is_bound_to_its_data() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(EchoEcdsaPrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let first = [0x11_u8; 8];
+        let second = [0x22_u8; 8];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: the data slice and output-length pointer remain valid for the call;
+        // a null signature pointer is the standard PKCS#11 length-query convention.
+        unsafe {
+            session
+                .sign(Some(&first), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 8);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
+
+        // The follow-up call changes the data: the signature cached for `first` must not
+        // be returned for `second`.
+        let mut signature = [0_u8; 8];
+        // SAFETY: `signature` has the queried capacity and both pointers remain valid.
+        unsafe {
+            session
+                .sign(
+                    Some(&second),
+                    signature.as_mut_ptr(),
+                    &raw mut signature_len,
+                )
+                .unwrap();
+        }
+        assert_eq!(signature, second);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 2);
+        assert!(session.sign_ctx.is_none());
+    }
+
+    #[test]
+    fn variable_length_cached_signature_is_reused_for_the_same_data() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(EchoEcdsaPrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x33_u8; 8];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: see `variable_length_cached_signature_is_bound_to_its_data`.
+        unsafe {
+            session
+                .sign(Some(&data), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        let mut signature = [0_u8; 8];
+        // SAFETY: `signature` has the queried capacity and both pointers remain valid.
+        unsafe {
+            session
+                .sign(Some(&data), signature.as_mut_ptr(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature, data);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
     }
 
     #[test]

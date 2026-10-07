@@ -1,12 +1,11 @@
 ---
 name: rust-review-all
-description: 'Hardcore Rust code review gate: orchestrates ALL Rust review skills in sequence (panic audit, error propagation, async refactor, simplify, refactor, patterns, security, cryptography). Each skill writes its report to ./review/. Produces a unified go/no-go verdict. Use before submitting any significant Rust PR or after large code generation.'
+description: 'Hardcore Rust code review gate: runs one KMS Caveman pass first, then error propagation, simplify, async, refactor, patterns, security, cryptography, and standards reviews as applicable, plus Clippy. Each phase writes to ./review/. Use before significant Rust PRs or large code generation.'
 ---
 
 # Rust Review All — Full Rust Quality Gate
 
-Runs every Rust-focused review skill in the correct order and collects all findings
-into `./review/`. Produces a unified `./review/SUMMARY.md` with a go/no-go verdict.
+Runs KMS Caveman once, then the applicable Rust review phases in order, and collects all findings into `./review/`. Produces a unified `./review/SUMMARY.md` with a go/no-go verdict.
 
 **Usage**: `/rust-review-all` (full diff) or `/rust-review-all crate/server/src/core/`
 
@@ -27,13 +26,13 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 1 — Panic & Brutal-Exit Audit
+## Phase 1 — KMS Caveman
 
-**Invoke**: `/rust-panic-audit [path]`
+**Invoke**: `/kms-caveman [path]`
 
-- Detects all `panic!`, `.unwrap()`, `.expect()`, `todo!`, `unimplemented!`, `unreachable!`, `process::exit/abort`, unchecked indexing.
-- Report: `./review/rust-panic-audit.md`
-- **BLOCKER** if any CRITICAL or HIGH findings remain unpatched.
+- Scans the scoped Rust changes once for confirmed panic hazards, new lint suppressions, observed compiler diagnostics, and structural candidates.
+- Report: `./review/kms-caveman.md`
+- **BLOCKER** for confirmed CRITICAL or HIGH findings. Reuse these findings in later phases; do not invoke `/rust-panic-audit` again in this orchestrator. The standalone skill remains available for a dedicated panic audit.
 
 ---
 
@@ -57,12 +56,12 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 4 — Async Correctness
+## Phase 4 — Async Correctness (conditional)
 
-**Invoke**: `/rust-async-refactor [path]`
+**Invoke**: `/rust-async-refactor [path]` when changed code or affected callers are on async paths or may block an async runtime.
 
-- Detects sequential `.await` chains that could be parallelized with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`.
-- Report: `./review/rust-async-refactor.md`
+- If the inspected focused diff has no async/blocking relevance, mark the phase **SKIPPED** with that evidence; do not infer this from a search miss alone.
+- Report: `./review/rust-async-refactor.md` when run.
 - **WARNING** for parallelism; **BLOCKER** for blocking calls inside an async task.
 
 ---
@@ -97,22 +96,22 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 8 — Cryptographic Review (if `crate/crypto/` in scope)
+## Phase 8 — Cryptographic Review (conditional)
 
-**Invoke**: `/cryptography-review [path]`  ← only if the path includes `crate/crypto/` or algorithm selection code.
+**Invoke**: `/cryptography-review [path]` when crypto primitives, algorithm selection, key lifecycle or policy, provider initialization, or FIPS feature gates are affected.
 
-- Checks: FIPS 140-3, BSI TR-02102, ANSSI, NIST SP 800-series algorithm allow-list, key sizes, OpenSSL provider init, key lifecycle.
-- Report: `./review/cryptography-review.md`
-- **BLOCKER** if any non-FIPS-approved algorithm used in default build.
+- Skip only for a confirmed focused diff that affects none of those areas; file-path checks alone are insufficient. Full/release gates must follow their own no-skip rules.
+- Report: `./review/cryptography-review.md` when run.
+- **BLOCKER** if any non-FIPS-approved algorithm is used in the default build.
 
 ---
 
-## Phase 9 — Standards Compliance (if KMIP/protocol code in scope)
+## Phase 9 — Standards Compliance (conditional)
 
-**Invoke**: `/standards-review [path]`  ← only if the path includes `crate/kmip/` or `crate/server/src/core/operations/`.
+**Invoke**: `/standards-review [path]` when a governing protocol or standards requirement may be affected.
 
-- Verifies code against KMIP 2.1 spec, FIPS, NIST SP, RFC citations.
-- Report: `./review/standards-review.md`
+- For a focused diff, skip only after confirming no protocol/standards semantics changed; full/release gates follow their own applicability rules.
+- Report: `./review/standards-review.md` when run.
 - **BLOCKER** if any spec-violating protocol behaviour.
 
 ---
@@ -129,19 +128,9 @@ cargo fmt --all -- --check 2>&1 | tee ./review/fmt.txt
 - **BLOCKER** if Clippy emits any warnings.
 - **BLOCKER** if `cargo fmt --check` exits non-zero.
 
-### 10b — Scan for all new lint suppressions (`#[allow]` / `#[expect]`)
+### 10b — Classify KMS Caveman lint-suppression findings
 
-Covers every lint — not just Clippy. Uses a single diff-based pass:
-
-```bash
-# Detect all newly added #[allow(...)] and #[expect(...)] on any lint
-git diff origin/develop...HEAD -- '*.rs' \
-  | grep '^+' \
-  | grep -v '^+++' \
-  | grep -E '#\[(allow|expect)\(' \
-  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive' \
-  | tee -a ./review/clippy.txt
-```
+Reuse the changed-diff `#[allow(...)]` and `#[expect(...)]` findings from Phase 1; do not repeat the scan. Classify each observed finding using the severity rules below and append evidence to `./review/clippy.txt`.
 
 Severity classification:
 
@@ -167,10 +156,10 @@ Append to `./review/SUMMARY.md`:
 
 | Phase | Skill | Status | Blockers | Warnings |
 |-------|-------|--------|----------|----------|
-| 1 | rust-panic-audit | ✅/❌ | N | N |
+| 1 | kms-caveman | ✅/❌/— | N | N |
 | 2 | rust-error-propagation | ✅/❌ | N | N |
 | 3 | rust-simplify | ✅/⚠️ | 0 | N |
-| 4 | rust-async-refactor | ✅/⚠️ | N | N |
+| 4 | rust-async-refactor | ✅/⚠️/— | N | N |
 | 5 | rust-refactor | ✅/⚠️ | 0 | N |
 | 6 | rust-patterns | ✅/⚠️ | 0 | N |
 | 7 | security-review | ✅/❌ | N | N |
@@ -196,7 +185,7 @@ Print the verdict to chat with the count of total blockers and a link to `./revi
 
 | File | Source skill |
 |------|-------------|
-| `./review/rust-panic-audit.md` | `/rust-panic-audit` |
+| `./review/kms-caveman.md` | `/kms-caveman` |
 | `./review/rust-error-propagation.md` | `/rust-error-propagation` |
 | `./review/rust-simplify.md` | `/rust-simplify` |
 | `./review/rust-async-refactor.md` | `/rust-async-refactor` |

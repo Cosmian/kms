@@ -9,13 +9,15 @@ use std::{
 use cosmian_logger::log_init;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_C_INITIALIZE_ARGS_PTR, CK_FALSE, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INVALID_HANDLE, CK_MECHANISM, CK_MECHANISM_INFO,
-    CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SESSION_INFO,
-    CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKF_MESSAGE_SIGN,
-    CKF_SERIAL_SESSION, CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
-    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_MECHANISM_INVALID,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
+    CK_FUNCTION_LIST_PTR_PTR, CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE,
+    CK_MECHANISM, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
+    CK_SESSION_HANDLE, CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG,
+    CK_UNAVAILABLE_INFORMATION, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
+    CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKG_NO_GENERATE,
+    CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
+    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
     CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
@@ -29,14 +31,17 @@ use crate::{
     },
     objects_store::OBJECTS_STORE,
     pkcs11::{
-        C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_GetAttributeValue, C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo,
-        C_GetMechanismList, C_GetSessionInfo, C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo,
-        C_Initialize, C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_CloseSession, C_DecryptMessage, C_Encrypt, C_EncryptInit, C_EncryptMessage, C_Finalize,
+        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
+        C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo,
+        C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageDecryptFinal,
+        C_MessageDecryptInit, C_MessageEncryptFinal, C_MessageEncryptInit, C_OpenSession,
+        C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
     },
     traits::{
-        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version, register_backend,
+        Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
+        KeyAlgorithm, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
+        SignatureAlgorithm, SymmetricKey, Version, register_backend,
     },
 };
 
@@ -215,11 +220,45 @@ impl Backend for TestBackend {
         Ok(vec![0; cleartext.len() + AES_IV_SIZE])
     }
 
+    fn encrypt_message(
+        &self,
+        encrypt_ctx: &EncryptContext,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        if !matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm)
+            || encrypt_ctx.iv.is_some()
+            || encrypt_ctx.aad.as_deref() != Some(b"aad")
+        {
+            return Err(ModuleError::Cryptography(
+                "message encryption did not preserve the generated-nonce contract".to_owned(),
+            ));
+        }
+        Ok(MessageEncryptionOutput {
+            ciphertext: cleartext,
+            iv: vec![0xA1; 12],
+            tag: vec![0xB2; 16],
+        })
+    }
+
     fn decrypt(
         &self,
-        _decrypt_ctx: &DecryptContext,
-        _data: Vec<u8>,
+        ctx: &DecryptContext,
+        ciphertext: Vec<u8>,
     ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        if matches!(ctx.algorithm, EncryptionAlgorithm::AesGcm) {
+            if ctx.iv.as_deref() != Some(&[0xA1; 12])
+                || ctx.aad.as_deref() != Some(b"aad")
+                || !ciphertext.ends_with(&[0xB2; 16])
+            {
+                return Err(ModuleError::Cryptography(
+                    "message decryption did not preserve AES-GCM artifacts".to_owned(),
+                ));
+            }
+            let cleartext_len = ciphertext.len().checked_sub(16).ok_or_else(|| {
+                ModuleError::Cryptography("message ciphertext omitted its AES-GCM tag".to_owned())
+            })?;
+            return Ok(Zeroizing::new(ciphertext[..cleartext_len].to_vec()));
+        }
         Ok(Zeroizing::new(vec![0; 32]))
     }
 
@@ -228,6 +267,7 @@ impl Backend for TestBackend {
         _remote_id: &str,
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         Err(ModuleError::FunctionNotSupported)
     }
@@ -238,6 +278,7 @@ impl Backend for TestBackend {
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
         _signature: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         Err(ModuleError::FunctionNotSupported)
     }
@@ -812,6 +853,298 @@ fn module_test_generate_key_encrypt_decrypt() -> ModuleResult<()> {
     Ok(())
 }
 
+/// PKCS#11 v3 AES-GCM message encryption must return the KMS-owned nonce and tag.
+#[test]
+#[serial]
+fn message_encrypt_returns_kms_generated_artifacts() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session = CK_INVALID_HANDLE;
+    // SAFETY: session output is a valid mutable handle, with standard serial-session arguments.
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session,
+            )
+        },
+        CKR_OK
+    );
+    let key = test_generate_key(session);
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_GCM,
+        pParameter: ptr::null_mut(),
+        ulParameterLen: 0,
+    };
+    // SAFETY: the mechanism and key handle remain valid through initialization.
+    assert_eq!(
+        unsafe { C_MessageEncryptInit(session, &raw mut mechanism, key) },
+        CKR_OK
+    );
+
+    let mut iv = [0_u8; 12];
+    let mut tag = [0_u8; 16];
+    let mut params = CK_GCM_MESSAGE_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: iv.len() as CK_ULONG,
+        ulIvFixedBits: 0,
+        ivGenerator: CKG_GENERATE_RANDOM,
+        pTag: tag.as_mut_ptr(),
+        ulTagBits: (tag.len() * 8) as CK_ULONG,
+    };
+    let mut plaintext = b"plaintext".to_vec();
+    let mut aad = b"aad".to_vec();
+    let mut ciphertext = vec![0_u8; plaintext.len()];
+    let mut ciphertext_len = ciphertext.len() as CK_ULONG;
+    // SAFETY: every pointer addresses a writable or readable buffer matching its declared length.
+    assert_eq!(
+        unsafe {
+            C_EncryptMessage(
+                session,
+                (&raw mut params).cast::<std::ffi::c_void>(),
+                std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                aad.as_mut_ptr(),
+                aad.len() as CK_ULONG,
+                plaintext.as_mut_ptr(),
+                plaintext.len() as CK_ULONG,
+                ciphertext.as_mut_ptr(),
+                &raw mut ciphertext_len,
+            )
+        },
+        CKR_OK
+    );
+    assert_eq!(ciphertext_len, plaintext.len() as CK_ULONG);
+    assert_eq!(ciphertext, plaintext);
+    assert_eq!(iv, [0xA1; 12]);
+    assert_eq!(tag, [0xB2; 16]);
+    assert_eq!(C_MessageEncryptFinal(session), CKR_OK);
+
+    // SAFETY: the mechanism and key handle remain valid through initialization.
+    assert_eq!(
+        unsafe { C_MessageDecryptInit(session, &raw mut mechanism, key) },
+        CKR_OK
+    );
+    let mut decrypt_params = CK_GCM_MESSAGE_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: iv.len() as CK_ULONG,
+        ulIvFixedBits: 0,
+        ivGenerator: CKG_NO_GENERATE,
+        pTag: tag.as_mut_ptr(),
+        ulTagBits: (tag.len() * 8) as CK_ULONG,
+    };
+    let mut decrypted = vec![0_u8; ciphertext.len()];
+    let mut decrypted_len = decrypted.len() as CK_ULONG;
+    // SAFETY: every pointer addresses a writable or readable buffer matching its declared length.
+    assert_eq!(
+        unsafe {
+            C_DecryptMessage(
+                session,
+                (&raw mut decrypt_params).cast::<std::ffi::c_void>(),
+                std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                aad.as_mut_ptr(),
+                aad.len() as CK_ULONG,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len() as CK_ULONG,
+                decrypted.as_mut_ptr(),
+                &raw mut decrypted_len,
+            )
+        },
+        CKR_OK
+    );
+    decrypted.truncate(decrypted_len as usize);
+    assert_eq!(decrypted, plaintext);
+    assert_eq!(C_MessageDecryptFinal(session), CKR_OK);
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// `C_GetAttributeValue` must not write past the caller-declared `ulValueLen`:
+/// a too-small buffer yields `CKR_BUFFER_TOO_SMALL`, `CK_UNAVAILABLE_INFORMATION`
+/// and untouched memory (PKCS#11 v2.40 §5.7).
+#[test]
+#[serial]
+fn get_attribute_value_buffer_too_small_does_not_overflow() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session_h = CK_INVALID_HANDLE;
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session_h,
+            )
+        },
+        CKR_OK
+    );
+    let key_handle = test_generate_key(session_h);
+
+    // "Symmetric Key" is 13 bytes; declare only 4 and keep guard bytes after them.
+    let mut buffer = [0xAA_u8; 32];
+    let mut template = vec![CK_ATTRIBUTE {
+        type_: CKA_LABEL,
+        pValue: buffer.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulValueLen: 4,
+    }];
+    assert_eq!(
+        unsafe {
+            C_GetAttributeValue(
+                session_h,
+                key_handle,
+                template.as_mut_ptr(),
+                template.len() as CK_ULONG,
+            )
+        },
+        CKR_BUFFER_TOO_SMALL
+    );
+    let reported_len = template[0].ulValueLen;
+    assert_eq!(reported_len, CK_UNAVAILABLE_INFORMATION);
+    assert!(buffer.iter().all(|b| *b == 0xAA), "buffer was written");
+
+    // Size query then a correctly sized buffer still work.
+    template[0].pValue = ptr::null_mut();
+    assert_eq!(
+        unsafe { C_GetAttributeValue(session_h, key_handle, template.as_mut_ptr(), 1) },
+        CKR_OK
+    );
+    let query_len = template[0].ulValueLen;
+    assert_eq!(query_len, 13);
+    template[0].pValue = buffer.as_mut_ptr().cast::<std::ffi::c_void>();
+    assert_eq!(
+        unsafe { C_GetAttributeValue(session_h, key_handle, template.as_mut_ptr(), 1) },
+        CKR_OK
+    );
+    assert_eq!(&buffer[..13], b"Symmetric Key");
+    assert!(buffer[13..].iter().all(|b| *b == 0xAA));
+
+    assert_eq!(C_CloseSession(session_h), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// `C_Encrypt` must compare the caller's buffer size before overwriting it:
+/// a too-small output buffer yields `CKR_BUFFER_TOO_SMALL` and untouched memory.
+#[test]
+#[serial]
+fn encrypt_buffer_too_small_does_not_overflow() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session_h = CK_INVALID_HANDLE;
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session_h,
+            )
+        },
+        CKR_OK
+    );
+    let key_handle = test_generate_key(session_h);
+
+    let mut iv = [0_u8; AES_IV_SIZE];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_CBC_PAD,
+        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+    };
+    assert_eq!(
+        unsafe { C_EncryptInit(session_h, &raw mut mechanism, key_handle) },
+        CKR_OK
+    );
+    // The test backend returns plaintext.len() + 16 bytes; offer only 16.
+    let mut plaintext = [0_u8; 16];
+    let mut output = [0xAA_u8; 64];
+    let mut output_len: CK_ULONG = 16;
+    assert_eq!(
+        unsafe {
+            C_Encrypt(
+                session_h,
+                plaintext.as_mut_ptr(),
+                plaintext.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        },
+        CKR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(output_len, 32);
+    assert!(
+        output.iter().all(|b| *b == 0xAA),
+        "output buffer was written"
+    );
+
+    assert_eq!(C_CloseSession(session_h), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// `C_GenerateKey` must reject a null `phKey` instead of writing through it.
+#[test]
+#[serial]
+fn generate_key_null_handle_pointer_is_rejected() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session_h = CK_INVALID_HANDLE;
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session_h,
+            )
+        },
+        CKR_OK
+    );
+    let mut parameter = [0_u8; 16];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_KEY_GEN,
+        pParameter: parameter.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulParameterLen: 16,
+    };
+    // A complete, valid template so the call reaches the phKey write.
+    let value_len: CK_ULONG = 16;
+    let mut template = vec![
+        CK_ATTRIBUTE {
+            type_: CKA_KEY_TYPE,
+            pValue: std::ptr::from_ref(&CKK_AES) as CK_VOID_PTR,
+            ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: b"k".as_ptr().cast_mut().cast::<std::ffi::c_void>(),
+            ulValueLen: 1,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_VALUE_LEN,
+            pValue: std::ptr::from_ref(&value_len) as CK_VOID_PTR,
+            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+        },
+    ];
+    assert_eq!(
+        unsafe {
+            C_GenerateKey(
+                session_h,
+                &raw mut mechanism,
+                template.as_mut_ptr(),
+                template.len() as CK_ULONG,
+                ptr::null_mut(),
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+    assert_eq!(C_CloseSession(session_h), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
 // ── Regression tests for issue #1076 ──────────────────────────────────────
 // OpenSSH resolves the paired private key from a public key's `CKA_ID`
 // (`<base>_pk`) before `C_SignInit`. The private key is stored under the base
@@ -1204,6 +1537,7 @@ impl Backend for FallbackBackend {
         _remote_id: &str,
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         Err(ModuleError::FunctionNotSupported)
     }
@@ -1214,6 +1548,7 @@ impl Backend for FallbackBackend {
         _algorithm: &SignatureAlgorithm,
         _data: &[u8],
         _signature: &[u8],
+        _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         Err(ModuleError::FunctionNotSupported)
     }

@@ -207,7 +207,7 @@ async fn generate_ec_key_pair(
     } else {
         &[]
     };
-    let create_req = create_ec_key_pair_request(
+    let mut create_req = create_ec_key_pair_request(
         kms.vendor_id(),
         None, // auto-generate UID
         tags,
@@ -216,6 +216,29 @@ async fn generate_ec_key_pair(
         None,  // no wrapping key
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // `create_ec_key_pair_request` defaults P-curve keys to a combined
+    // Sign|Verify|ECDH usage mask (suitable for the ES256/384/512 signature
+    // algorithms). For ECDH-ES* key-agreement algorithms this is wrong: it
+    // would let JWKS publishing treat the key as a signature key (`use=sig`,
+    // `alg=ES256/384`) instead of a pure encryption/key-agreement key. Override
+    // the usage mask on every attribute set to the KeyAgreement-only mask in
+    // that case.
+    if let Some(alg) = alg {
+        if matches!(alg, "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW") {
+            let key_agreement_mask = usage_mask_from_alg(alg);
+            for attrs in [
+                create_req.common_attributes.as_mut(),
+                create_req.private_key_attributes.as_mut(),
+                create_req.public_key_attributes.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
+            }
+        }
+    }
 
     let resp = kms
         .create_key_pair(create_req, user)
@@ -312,6 +335,25 @@ async fn generate_okp_key_pair(
     let crv = body.crv.as_deref().unwrap_or("Ed25519");
     let alg = body.alg.as_deref();
 
+    // X25519 is a key-agreement-only curve: it cannot sign, so an `alg` must be
+    // provided and must be an ECDH-ES* variant (never left to the Sign/Verify default).
+    if crv == "X25519" && !matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        return Err(CryptoApiError::BadRequest(
+            "Field 'alg' must be one of ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW for X25519 OKP \
+             keys."
+                .to_owned(),
+        ));
+    }
+    // Conversely, Ed25519 is a signature-only curve: it cannot perform ECDH key
+    // agreement, so generating it with an ECDH-ES* `alg` would silently create a
+    // KeyAgreement-usage key that the decrypt path (which only accepts stored
+    // X25519 keys) can never actually use.
+    if crv == "Ed25519" && matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        return Err(CryptoApiError::BadRequest(
+            "ECDH-ES algorithms require X25519 OKP keys, not Ed25519.".to_owned(),
+        ));
+    }
+
     let recommended_curve = curve_from_crv(crv)?;
 
     let tags: &[&str] = if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
@@ -319,9 +361,30 @@ async fn generate_okp_key_pair(
     } else {
         &[]
     };
-    let create_req =
+    let mut create_req =
         create_ec_key_pair_request(kms.vendor_id(), None, tags, recommended_curve, false, None)
             .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // `create_ec_key_pair_request` assigns CryptographicUsageMask::Unrestricted to
+    // both keys on the non-FIPS path (see build_mask_from_curve), which would leave
+    // a generated X25519 key authorized for arbitrary operations (e.g. generic
+    // encrypt/decrypt) even though the validation above only permits it to be used
+    // for ECDH-ES key agreement. Restrict it to KeyAgreement explicitly.
+    if crv == "X25519" {
+        if let Some(alg) = alg {
+            let key_agreement_mask = usage_mask_from_alg(alg);
+            for attrs in [
+                create_req.common_attributes.as_mut(),
+                create_req.private_key_attributes.as_mut(),
+                create_req.public_key_attributes.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
+            }
+        }
+    }
 
     let resp = kms
         .create_key_pair(create_req, user)
@@ -694,8 +757,14 @@ async fn import_ec_key(
 
     let kid = resp.unique_identifier.to_string();
 
-    // Derive and import the public key alongside the private key
-    let pub_usage = CryptographicUsageMask::Verify;
+    // Derive and import the public key alongside the private key.
+    // Match the public key's usage to the private key's usage class: key-agreement
+    // (ECDH-ES*) keys need a KeyAgreement public key, signature keys need Verify.
+    let pub_usage = if matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        CryptographicUsageMask::KeyAgreement
+    } else {
+        CryptographicUsageMask::Verify
+    };
     let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
 
     let key_ops = alg.map_or_else(
@@ -897,22 +966,45 @@ async fn import_okp_key(
     let crv = body.crv.as_deref().unwrap_or("Ed25519");
     let alg = body.alg.as_deref();
 
-    if crv != "Ed25519" {
+    if crv != "Ed25519" && crv != "X25519" {
         return Err(CryptoApiError::BadRequest(format!(
-            "Unsupported OKP curve '{crv}' for import. Supported: Ed25519."
+            "Unsupported OKP curve '{crv}' for import. Supported: Ed25519, X25519."
         )));
     }
 
     let d_bytes = b64_decode("d", d_str)?;
     if d_bytes.len() != 32 {
         return Err(CryptoApiError::BadRequest(format!(
-            "Ed25519 private key must be exactly 32 bytes, got {}.",
+            "{crv} private key must be exactly 32 bytes, got {}.",
             d_bytes.len()
         )));
     }
 
-    let pkey = PKey::private_key_from_raw_bytes(&d_bytes, openssl::pkey::Id::ED25519)
-        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid Ed25519 private key: {e}")))?;
+    let okp_id = if crv == "X25519" {
+        openssl::pkey::Id::X25519
+    } else {
+        openssl::pkey::Id::ED25519
+    };
+    // X25519 is a key-agreement-only curve: it cannot sign, so an `alg` must be
+    // provided and must be an ECDH-ES* variant (never left to the Sign/Verify default).
+    if crv == "X25519" && !matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        return Err(CryptoApiError::BadRequest(
+            "Field 'alg' must be one of ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW for X25519 OKP \
+             keys."
+                .to_owned(),
+        ));
+    }
+    // Conversely, Ed25519 is a signature-only curve: it cannot perform ECDH key
+    // agreement, so importing it with an ECDH-ES* `alg` would silently create a
+    // KeyAgreement-usage key that the decrypt path (which only accepts stored
+    // X25519 keys) can never actually use.
+    if crv == "Ed25519" && matches!(alg, Some("ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")) {
+        return Err(CryptoApiError::BadRequest(
+            "ECDH-ES algorithms require X25519 OKP keys, not Ed25519.".to_owned(),
+        ));
+    }
+    let pkey = PKey::private_key_from_raw_bytes(&d_bytes, okp_id)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid {crv} private key: {e}")))?;
     let pkcs8_der = pkey
         .private_key_to_der()
         .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
@@ -960,8 +1052,13 @@ async fn import_okp_key(
 
     let kid = resp.unique_identifier.to_string();
 
-    // Derive and import the public key alongside the private key
-    let pub_usage = CryptographicUsageMask::Verify;
+    // Derive and import the public key alongside the private key.
+    // X25519 keys are key-agreement-only (never Verify).
+    let pub_usage = if crv == "X25519" {
+        CryptographicUsageMask::KeyAgreement
+    } else {
+        CryptographicUsageMask::Verify
+    };
     let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
 
     let key_ops = alg.map_or_else(
@@ -986,7 +1083,7 @@ async fn import_okp_key(
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
 /// Map a JOSE `crv` string to an OpenSSL NID.
-fn nid_from_crv(crv: &str) -> Result<Nid, CryptoApiError> {
+pub(crate) fn nid_from_crv(crv: &str) -> Result<Nid, CryptoApiError> {
     match crv {
         "P-256" => Ok(Nid::X9_62_PRIME256V1),
         "P-384" => Ok(Nid::SECP384R1),
@@ -1004,6 +1101,9 @@ fn key_ops_from_alg(alg: &str) -> Vec<String> {
         | "EdDSA" | "MLDSA44" | "HS256" | "HS384" | "HS512" => {
             vec!["sign".to_owned(), "verify".to_owned()]
         }
+        // ECDH-ES* key management — the static key is used to derive bits, not to
+        // encrypt/decrypt data directly (RFC 7517 §4.3 key_ops registry).
+        "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW" => vec!["deriveBits".to_owned()],
         // Encryption algorithms
         _ => vec!["encrypt".to_owned(), "decrypt".to_owned()],
     }
@@ -1019,12 +1119,18 @@ fn validate_alg_kty_consistency(alg: &str, kty: &str) -> Result<(), CryptoApiErr
             alg,
             "HS256" | "HS384" | "HS512" | "A128GCM" | "A192GCM" | "A256GCM" | "dir"
         ),
-        "EC" => matches!(alg, "ES256" | "ES384" | "ES512"),
+        "EC" => matches!(
+            alg,
+            "ES256" | "ES384" | "ES512" | "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW"
+        ),
         "RSA" => matches!(
             alg,
             "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512" | "RSA-OAEP" | "RSA-OAEP-256"
         ),
-        "OKP" => matches!(alg, "EdDSA" | "MLDSA44"),
+        "OKP" => matches!(
+            alg,
+            "EdDSA" | "MLDSA44" | "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW"
+        ),
         _ => false, // Unknown kty will be rejected downstream
     };
     if !valid {

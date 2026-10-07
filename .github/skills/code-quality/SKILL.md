@@ -1,28 +1,24 @@
 ---
 name: code-quality
-description: 'Orchestrate all AI quality skills (Rust + MISE Bash) in a smart, efficient order — Clippy, error propagation, duplication, simplification, design patterns, async optimization, MISE script conventions, and CI efficiency — deduplicating findings into a single ranked report. Use before a PR or when you want to improve code quality.'
+description: 'Run a scoped code-quality audit: one KMS Caveman pass first, followed by applicable Rust review skills, Clippy, MISE conventions, and CI-efficiency review. Deduplicates findings into a ranked report. Use before a PR or when improving code quality.'
 ---
 
 # Code Quality Audit
 
-Orchestrates **all 5 Rust-focused AI skills** plus the MISE Bash skill, Clippy,
-and CI efficiency in a single pass, deduplicating overlapping findings and
-producing one consolidated, ranked report.
+Orchestrates six Rust-focused audit skills, MISE Bash checks, Clippy, and CI efficiency in one ranked report. The read-only KMS Caveman pass runs first; findings from deeper reviews are deduplicated.
 
 **Usage**: `/code-quality` (full workspace) or `/code-quality crate/server/src/`
 
 ## Orchestration rationale
 
-The five Rust skills have deliberate overlap. Running them naively produces
-duplicate findings. This orchestrator:
+The Rust review skills overlap; this orchestrator orders them and deduplicates findings.
 
 1. **Orders for efficiency** — cheap, high-signal scans first; expensive
    analysis later; skips irrelevant skills.
 2. **Deduplicates findings** — when two skills flag the same issue (e.g. a long
    function), it appears once under the highest-severity category.
-3. **Conditions execution** — `mise` runs when `.mise/` files are in scope;
-   `rust-async-refactor` only runs when async code exists in scope; CI audit
-   only for full-workspace runs.
+3. **Conditions execution** — KMS Caveman runs once first. `mise` runs only when `.mise/` changed.
+   Async review runs only when changed code or call paths are relevant; CI review runs only for full-workspace audits.
 
 ### Skill overlap map
 
@@ -47,33 +43,31 @@ report it under the *first* skill in pipeline order (Clippy > err-prop > refacto
 
 ---
 
-## Step 1 — Scope & eligibility
+## Step 1 — Scope, KMS Caveman First & Eligibility
 
-If a path was provided, restrict all steps to that path.
-If no path, audit the full workspace.
+If a path was provided, restrict all steps to that path. Otherwise use the changed-file scope, including
+branch changes, staged and unstaged files, and untracked files. If the base diff is unavailable or the
+scope is empty, state that fact; never treat a failed or empty diff command as proof of a clean audit.
 
-```bash
-git diff --name-only origin/develop...HEAD 2>/dev/null || git diff --name-only HEAD~1
-```
+If Rust files are in scope, invoke `/kms-caveman` once before the other Rust review skills. Reuse its
+verified findings and do not repeat them. KMS Caveman is triage, not a substitute for semantic,
+security, crypto, or protocol review; a clean result does not prove those areas are clean.
 
-Note which crates were recently changed — these drive conditional decisions below.
+Determine eligibility from the actual changed code and relevant callers, not merely from whether a
+whole path contains a matching token. Full-workspace audits run every applicable skill. For focused
+diffs, use these conservative gates and state every skip in the report:
 
-**Determine which skills to run:**
+|Skill|Run when|Skip only when|
+|---|---|---|
+|`/mise`|`.mise/` files in scope|No `.mise/` files changed|
+|`/rust-async-refactor`|Changed code/callers async or may block runtime|Inspected changes and callers have no async/blocking relevance|
+|`/rust-error-propagation`|Changed code affects fallible operations/errors|Inspected changes cannot affect error paths|
+|`/rust-simplify`|Full audit or focused structural change|Inspected changes do not affect complexity|
+|`/rust-refactor`|Full audit or focused code has repeated behavior|Inspected code unrelated to duplication; regex misses are insufficient|
+|`/ci-efficiency`|Full-workspace audit|Focused sub-path is the complete requested scope|
 
-```bash
-# Check for MISE files in scope (decides mise eligibility)
-git diff --name-only origin/develop...HEAD 2>/dev/null | grep '^\.mise/' | head -1
-
-# Check for async code in scope (decides rust-async-refactor eligibility)
-rg -l "async fn|\.await" --type rust <path> 2>/dev/null | head -1
-```
-
-- If `.mise/` files are in scope → run Step 2 (mise)
-- If no `.mise/` files → skip Step 2
-- If async code found → run Step 7 (rust-async-refactor)
-- If no async code → skip Step 7
-- If full workspace → run Step 8 (ci-efficiency)
-- If sub-path → skip Step 8
+This skill does not replace security, cryptographic, or standards reviews. Run those when their
+dedicated scope rules apply; a clean mechanical pass is never evidence to skip them.
 
 ---
 
@@ -135,12 +129,17 @@ Checklist against `/mise` conventions:
 
 ---
 
-## Step 3 — Clippy hygiene (always run first)
+## Step 3 — Clippy hygiene (after KMS Caveman)
 
-Fastest scan (~5 s), catches cardinal rule violations immediately.
+Run Clippy after the KMS Caveman pass. Use `cargo clippy-all` for a full-workspace audit; for a focused
+Rust change, run Clippy on the affected crate rather than compiling the whole workspace.
 
 ```bash
-cargo clippy-all 2>&1 | grep -E "^error|^warning" | head -60
+# Full workspace
+cargo clippy-all
+
+# Focused crate
+cargo clippy -p <crate> --all-targets --all-features -- -D warnings
 ```
 
 Categorize every warning:
@@ -161,9 +160,13 @@ too_many_arguments.
 
 ---
 
-## Step 4 — Error propagation audit (always run)
+## Step 4 — Error propagation audit (conditional)
 
-Invoke `/rust-error-propagation` logic on the scoped path:
+For a full-workspace audit, run `/rust-error-propagation`. For a focused diff, run it when the
+changed code or affected callers modify fallible operations, `Result` propagation, error conversion,
+or error context. Skip only after inspecting the changes and confirming none of those paths are
+affected; record the reason. Do not infer irrelevance from the absence of the word `Result` in a
+search of the entire containing file.
 
 ### Pass A — Missed `?`
 
@@ -192,8 +195,9 @@ line, append "(also flagged by Clippy)" instead of duplicating.
 
 ## Step 5 — Structural analysis: duplication + simplification
 
-Run `rust-refactor` and `rust-simplify` scans. These overlap on function length
-and nesting — merge before reporting.
+For a full-workspace audit, run both skills. For a focused diff, use the scope gate in Step 1;
+`/kms-caveman` can identify literal duplicate candidates but cannot rule out semantically duplicated
+behavior. Do not skip `/rust-refactor` based only on a negative regex/search result.
 
 ### 4a — Duplication scan (rust-refactor)
 
@@ -336,11 +340,11 @@ deduplicated:**
 ```markdown
 ## Code Quality Report — <scope> — <date>
 
-> Skills run: Clippy, rust-error-propagation, rust-refactor, rust-simplify,
+> Skills run: KMS Caveman, Clippy, rust-error-propagation, rust-refactor, rust-simplify,
 > rust-patterns[, mise][, rust-async-refactor][, ci-efficiency]
 > Scope: <path or "full workspace">
-> MISE files detected: yes/no → mise [ran/was skipped]
-> Async code detected: yes/no → rust-async-refactor [ran/was skipped]
+> KMS Caveman: [PASS / BLOCK / NOT APPLICABLE / INCOMPLETE]; verified findings are not repeated below
+> Async / MISE / CI eligibility: [run or skipped, with reason]
 
 ### BLOCKING — Must fix before merge
 
@@ -431,9 +435,8 @@ Do **not** implement any changes until the user confirms scope.
 
 ## Execution rules
 
-1. **Never skip a skill silently.** If a skill is inapplicable, state why in
-   the report header (e.g. "mise was skipped — no .mise/ files in scope",
-   "rust-async-refactor was skipped — no async code in scope").
+1. **Never skip a skill silently.** State the evidence-based scope reason in the report; do not use
+   a negative mechanical scan as proof that a semantic audit is unnecessary.
 2. **Dedup always.** Before adding a finding to the report, check if the same
    file:line already appears. If yes, merge under the more severe category and
    add a cross-reference.

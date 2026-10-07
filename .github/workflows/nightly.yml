@@ -18,6 +18,10 @@ on:
   schedule:
     - cron: 0 1 * * * # Daily at 1 AM
 
+# All jobs are restricted to the upstream repository: they need secrets
+# (e.g. PAT_TOKEN to push commits, signing credentials) that forks do not
+# have, so on a fork `actions/checkout` fails immediately on the missing token.
+
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # Non-tag refs (branches, schedule, workflow_dispatch):
@@ -29,7 +33,7 @@ jobs:
   # so this workflow does NOT call packaging.yml directly for the branch case.
   # ─────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
-    if: "!startsWith(github.ref, 'refs/tags/')"
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/nix-update-hashes.yml
     with:
       ref: ${{ github.ref_name }}
@@ -41,7 +45,7 @@ jobs:
   # commit the result (tag refs are already in sync via release.yml).
   # ─────────────────────────────────────────────────────────────────────────
   update-log-index:
-    if: "!startsWith(github.ref, 'refs/tags/')"
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/update-log-index.yml
     with:
       ref: ${{ github.ref_name }}
@@ -53,7 +57,7 @@ jobs:
   #   and go straight to packaging.
   # ─────────────────────────────────────────────────────────────────────────
   packaging:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.repository == 'Cosmian/kms' && startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:

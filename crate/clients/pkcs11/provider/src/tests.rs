@@ -26,7 +26,7 @@ use cosmian_pkcs11_module::{
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm, backend as registered_backend},
+    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
@@ -279,6 +279,7 @@ fn test_get_function_list_rejects_null_output() {
     );
 }
 
+#[test]
 #[expect(unsafe_code)]
 pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
@@ -496,29 +497,59 @@ pub(crate) async fn create_ec_ssh_keypair(
     )
 }
 
-/// Test that a remote RSA-PKCS1v15-SHA256 signature can be produced for an
-/// `ssh-auth`-tagged RSA-2048 private key stored in the KMS.
+/// Test remote RSA-PKCS1v15-SHA256 signing and verification for an `ssh-auth`-tagged
+/// RSA-2048 keypair stored in the KMS.
 #[test]
 #[serial]
 fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
-    let (owner_client_conf, sk_id) = rt.block_on(async {
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
         let kms_rest_client = ctx.get_owner_client();
-        let (sk_id, _pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
-        (ctx.owner_client_config.clone(), sk_id)
+        let (sk_id, pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
 
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     let data = b"hello ssh world, this is a test message for RSA signing";
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::RsaPkcs1v15Sha256, data)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        KeyAlgorithm::Rsa,
+    )?;
     assert!(
         !signature.is_empty(),
         "RSA-2048 signature must not be empty"
     );
     // RSA-2048 produces a 256-byte signature
     assert_eq!(signature.len(), 256, "RSA-2048 signature must be 256 bytes");
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+
+    let mut tampered_signature = signature;
+    if let Some(first_byte) = tampered_signature.first_mut() {
+        *first_byte ^= 0xFF;
+    }
+    let error = backend
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::RsaPkcs1v15Sha256,
+            data,
+            &tampered_signature,
+            KeyAlgorithm::Rsa,
+        )
+        .expect_err("tampered signature must be rejected");
+    assert!(matches!(
+        error,
+        cosmian_pkcs11_module::ModuleError::SignatureInvalid
+    ));
     Ok(())
 }
 
@@ -541,7 +572,12 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
@@ -647,37 +683,41 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
         unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
         CKR_OK
     );
-    assert_eq!(count, 1, "this module exposes exactly one interface");
+    assert_eq!(
+        count, 2,
+        "this module exposes the same function table under two interface versions"
+    );
 
     // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
-    let mut zero_count: CK_ULONG = 0;
+    let mut zero_count: CK_ULONG = 1;
     let mut interfaces = [CK_INTERFACE {
         pInterfaceName: std::ptr::null_mut(),
         pFunctionList: std::ptr::null_mut(),
         flags: 0,
-    }; 1];
+    }; 2];
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer; `zero_count` (0) under-reports its
+        // SAFETY: `interfaces` is a valid 2-element buffer; `zero_count` (1) under-reports its
         // capacity on purpose to exercise the too-small path.
         unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
         CKR_BUFFER_TOO_SMALL
     );
-    assert_eq!(zero_count, 1);
+    assert_eq!(zero_count, 2);
 
     // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
-    let mut full_count: CK_ULONG = 1;
+    let mut full_count: CK_ULONG = 2;
     assert_eq!(
-        // SAFETY: `interfaces` is a valid 1-element buffer, matching `full_count`.
+        // SAFETY: `interfaces` is a valid 2-element buffer, matching `full_count`.
         unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut full_count) },
         CKR_OK
     );
-    assert_eq!(full_count, 1);
-    assert!(!interfaces[0].pInterfaceName.is_null());
-    // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
-    // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
-    let name = unsafe { std::ffi::CStr::from_ptr(interfaces[0].pInterfaceName.cast()) };
-    assert_eq!(name.to_bytes(), b"PKCS 11");
-
+    assert_eq!(full_count, 2);
+    for interface in &interfaces {
+        assert!(!interface.pInterfaceName.is_null());
+        // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
+        // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
+        let name = unsafe { std::ffi::CStr::from_ptr(interface.pInterfaceName.cast()) };
+        assert_eq!(name.to_bytes(), b"PKCS 11");
+    }
     // `C_GetInterface` with null name/version must resolve to the same sole interface.
     let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
     assert_eq!(
@@ -769,26 +809,28 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
         CKR_ARGUMENTS_BAD
     );
 
-    // Backward-compatible v3.0 request: this 3.1 implementation must still satisfy a caller
-    // explicitly requesting exactly {major: 3, minor: 0} (see the `C_GetInterface` doc comment).
-    let mut v3_0_request = CK_VERSION {
+    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
+    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
+    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
+    // truly unsupported.
+    let mut compatible_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: 0,
     };
     assert_eq!(
-        // SAFETY: `v3_0_request` and `interface_ptr` are valid stack values.
+        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
         unsafe {
             C_GetInterface(
                 std::ptr::null_mut(),
-                &raw mut v3_0_request,
+                &raw mut compatible_minor,
                 &raw mut interface_ptr,
                 0,
             )
         },
         CKR_OK
     );
+    assert!(!interface_ptr.is_null());
 
-    // A minor version newer than the one implemented must still be rejected.
     let mut unsupported_minor = CK_VERSION {
         major: CRYPTOKI_VERSION_MAJOR,
         minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),

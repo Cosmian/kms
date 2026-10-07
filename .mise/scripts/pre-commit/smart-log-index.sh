@@ -20,14 +20,14 @@ fi
 # Check for Rust log macros
 if echo "$DIFF" | grep -qE '^\+.*\b(tracing|log)::(info|debug|warn|error|trace)!\s*\('; then
   echo "  [log-index] log macro changes detected in Rust — updating index"
-  mise run docs:log-index
+  mise run docs:sync-logs
   exit $?
 fi
 
 # Check for TypeScript console methods
 if echo "$DIFF" | grep -qE '^\+.*\bconsole\.(log|info|warn|error|debug)\s*\('; then
   echo "  [log-index] console method changes detected in TypeScript — updating index"
-  mise run docs:log-index
+  mise run docs:sync-logs
   exit $?
 fi
 

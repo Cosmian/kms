@@ -158,6 +158,16 @@ pkgs.mkShell {
         softhsmDrv
         pkgs.openvpn
         pkgs.wget
+        # Kryoptic's standard feature includes its SQLite-backed object store;
+        # provide the native library explicitly for its final link step.
+        pkgs.sqlite
+        # kryoptic-lib's build.rs uses bindgen to generate PKCS#11 header bindings,
+        # which needs libclang. Without this, bindgen falls back to scanning the host
+        # system and can find a broken/incomplete install there (e.g. Ubuntu's
+        # llvm-18 package shipping a libclang.so whose libffi.so.8 dependency is
+        # missing), failing with "Unable to find libclang". Providing Nix's own,
+        # correctly-linked libclang avoids depending on the host's LLVM install.
+        pkgs.llvmPackages.libclang
       ]
       # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys
       # have CKA_ID set and do not trigger pkcs11-tool warnings (#745).
@@ -199,6 +209,14 @@ pkgs.mkShell {
     # Add softhsm2 binaries to PATH when WITH_HSM=1
     if [ "''${WITH_HSM:-}" = "1" ]; then
       export PATH="${softhsmDrv}/bin:$PATH"
+      export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
+      # bindgen's clang invocation does not automatically find clang's own builtin
+      # resource-dir headers (stdarg.h, stddef.h, ...) from a standalone libclang;
+      # point it at the one Nix provides alongside libclang.
+      CLANG_RESOURCE_INCLUDE="$(echo "${pkgs.llvmPackages.libclang.lib}"/lib/clang/*/include)"
+      # Clang's resource-dir headers (e.g. inttypes.h) in turn `#include_next` the real
+      # libc headers; without glibc's dev include dir on the search path those fail too.
+      export BINDGEN_EXTRA_CLANG_ARGS="-isystem $CLANG_RESOURCE_INCLUDE -isystem ${pkgs.glibc.dev}/include"
     fi
 
     # Configure OpenSSL based on requested variant

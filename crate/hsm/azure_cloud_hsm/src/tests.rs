@@ -13,9 +13,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         lib_path: shared::lib_path("AZURE_CLOUD_HSM_PKCS11_LIB", AZURE_CLOUD_HSM_PKCS11_LIB),
         slot_ids_and_passwords: HashMap::from([(slot, Some(password))]),
         slot_id_for_tests: slot,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        supports_rsa_wrap: true,
     })
 }
 
@@ -29,7 +27,7 @@ fn test_hsm_azure_cloud_hsm_all() -> HResult<()> {
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(config.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
-    shared::generate_aes_key_with_exportability(&slot, false)?;
+    shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
     shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;

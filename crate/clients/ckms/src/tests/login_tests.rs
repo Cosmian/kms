@@ -140,3 +140,64 @@ server_url = "http://127.0.0.1:1"
         "error message should mention 'AppRole login', got: {stderr}"
     );
 }
+
+/// `ckms login spire --help` must succeed and print help text without
+/// contacting any server or SPIRE Agent.
+#[test]
+pub(crate) fn test_ckms_login_spire_help() {
+    let mut cmd = ckms_bin();
+    cmd.arg("login").arg("spire").arg("--help");
+    cmd.assert().success();
+}
+
+/// `ckms login spire` without `--audience` must fail with clap's required argument error.
+#[test]
+pub(crate) fn test_ckms_login_spire_fails_without_audience() {
+    let mut cmd = ckms_bin();
+    cmd.arg("login").arg("spire");
+
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(
+        !output.status.success(),
+        "ckms login spire should fail without --audience"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("audience"),
+        "error message should mention 'audience', got: {stderr}"
+    );
+}
+
+/// `ckms login spire` with an unreachable SPIRE Agent Workload API must fail cleanly
+/// (not panic) with an informative error mentioning the SPIRE Agent.
+#[tokio::test]
+pub(crate) async fn test_ckms_login_spire_fails_without_reachable_agent() {
+    let conf_path = env::temp_dir().join("ckms_login_spire_unreachable_test.toml");
+    fs::write(
+        &conf_path,
+        r#"
+[http_config]
+server_url = "http://127.0.0.1:9998"
+"#,
+    )
+    .expect("failed to write test config");
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .env_remove("SPIFFE_ENDPOINT_SOCKET")
+        .arg("login")
+        .arg("spire")
+        .arg("--audience")
+        .arg("test-audience");
+
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(
+        !output.status.success(),
+        "ckms login spire should fail when SPIRE Agent is unreachable"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("SPIRE Agent"),
+        "error message should mention 'SPIRE Agent', got: {stderr}"
+    );
+}

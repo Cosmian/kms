@@ -37,7 +37,7 @@ The **Eviden KMS** has extensive online [documentation](https://docs.cosmian.com
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.27.1/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.28.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start an Eviden KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -131,7 +131,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 | CardContact SmartCard-HSM / Nitrokey HSM 2 | ✅      |
 | SoftHSM2 (testing)                         | ✅      |
 | AWS CloudHSM                               | ✅      |
-| Azure Cloud HSM                             | 🚧      |
+| Azure Dedicated HSM                        | 🚧      |
 | GCP Cloud HSM                              | 🚧      |
 
 ## 🔗 Integrations
@@ -429,12 +429,12 @@ The following table shows transparent key structure support across all KMIP vers
 | EC Public Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | ECDSA Private Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | ECDSA Public Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
-| ECDH Private Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
-| ECDH Public Key          |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
+| ECDH Private Key         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
+| ECDH Public Key          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | ECMQV Private Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 | ECMQV Public Key         |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |   N/A   |   N/A   |
 
-Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+Note: EC/ECDSA/ECDH support is present; DH/DSA/ECMQV are not implemented.
 
 #### Attributes
 

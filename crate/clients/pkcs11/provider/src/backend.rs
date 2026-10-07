@@ -17,8 +17,9 @@ use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     core::object::Object,
     traits::{
-        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version,
+        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm,
+        MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm,
+        SymmetricKey, Version,
     },
 };
 use zeroize::Zeroizing;
@@ -27,8 +28,8 @@ use crate::{
     kms_object::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
+        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_import_object,
+        kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -367,8 +368,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &[SYSTEM_TAG_PUBLIC_KEY.to_owned()],
-        )
-        .unwrap_or_default();
+        )?;
         Ok(ids
             .into_iter()
             .filter_map(|id| self.create_public_key_from_id(&id))
@@ -401,14 +401,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_data_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -495,8 +488,7 @@ impl Backend for CliBackend {
             SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         ] {
             let kms_ids =
-                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])
-                    .unwrap_or_default();
+                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])?;
             for id in kms_ids {
                 if seen_ids.insert(id.clone()) {
                     if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
@@ -556,14 +548,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_data_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -635,6 +620,15 @@ impl Backend for CliBackend {
         kms_encrypt(&self.kms_rest_client, ctx, cleartext).map_err(Into::into)
     }
 
+    fn encrypt_message(
+        &self,
+        ctx: &EncryptContext,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        debug!("encrypt_message: ctx: {ctx:?}");
+        kms_encrypt_message(&self.kms_rest_client, ctx, cleartext).map_err(Into::into)
+    }
+
     fn decrypt(
         &self,
         ctx: &DecryptContext,
@@ -649,13 +643,20 @@ impl Backend for CliBackend {
         remote_id: &str,
         algorithm: &SignatureAlgorithm,
         data: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
         let remote_sign = cosmian_pkcs11_module::profiling::phase(
             cosmian_pkcs11_module::profiling::SignPhase::BackendRemoteSign,
         );
-        let result =
-            kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into);
+        let result = kms_sign(
+            &self.kms_rest_client,
+            remote_id,
+            algorithm,
+            data,
+            key_algorithm,
+        )
+        .map_err(Into::into);
         drop(remote_sign);
         result
     }
@@ -666,8 +667,17 @@ impl Backend for CliBackend {
         algorithm: &SignatureAlgorithm,
         data: &[u8],
         signature: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
-        kms_verify(&self.kms_rest_client, remote_id, algorithm, data, signature).map_err(Into::into)
+        kms_verify(
+            &self.kms_rest_client,
+            remote_id,
+            algorithm,
+            data,
+            signature,
+            key_algorithm,
+        )
+        .map_err(Into::into)
     }
 }

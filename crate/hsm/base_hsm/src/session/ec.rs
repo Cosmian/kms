@@ -12,7 +12,7 @@ use pkcs11_sys::{
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN, CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
 };
 
-use super::serialize_tagged_label;
+use super::{serialize_tagged_label, utf8_label};
 use crate::{HError, HResult, hsm_call, session::Session};
 
 /// PKCS#11 `CKA_EC_PARAMS` value for each curve supported for HSM-delegated EC key generation.
@@ -34,6 +34,8 @@ pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A],
         #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => &[0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x1F],
+        #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => &[
             0x13, 0x0C, 0x65, 0x64, 0x77, 0x61, 0x72, 0x64, 0x73, 0x32, 0x35, 0x35, 0x31, 0x39,
         ],
@@ -52,7 +54,12 @@ pub(crate) const fn curve_der_oid(curve: EcCurve) -> &'static [u8] {
 #[must_use]
 const fn curve_der_named_curve_oid(curve: EcCurve) -> Option<&'static [u8]> {
     match curve {
-        EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 | EcCurve::Secp256k1 => None,
+        EcCurve::P224
+        | EcCurve::P256
+        | EcCurve::P384
+        | EcCurve::P521
+        | EcCurve::Secp256k1
+        | EcCurve::Secp192k1 => None,
         EcCurve::X25519 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x6E]),
         EcCurve::Ed25519 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x70]),
         EcCurve::Ed448 => Some(&[0x06, 0x03, 0x2B, 0x65, 0x71]),
@@ -66,6 +73,8 @@ pub(crate) const fn curve_key_pair_gen_mechanism(curve: EcCurve) -> CK_MECHANISM
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => CKM_EC_KEY_PAIR_GEN,
         #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => CKM_EC_KEY_PAIR_GEN,
+        #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 | EcCurve::Ed448 => CKM_EC_EDWARDS_KEY_PAIR_GEN,
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => CKM_EC_MONTGOMERY_KEY_PAIR_GEN,
@@ -78,6 +87,8 @@ pub(crate) const fn curve_key_type(curve: EcCurve) -> CK_KEY_TYPE {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => CKK_EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => CKK_EC,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => CKK_EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 | EcCurve::Ed448 => CKK_EC_EDWARDS,
         #[cfg(feature = "non-fips")]
@@ -95,6 +106,7 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
         EcCurve::P384,
         EcCurve::P521,
         EcCurve::Secp256k1,
+        EcCurve::Secp192k1,
         EcCurve::Ed25519,
         EcCurve::Ed448,
         EcCurve::X25519,
@@ -139,6 +151,8 @@ pub(crate) const fn curve_byte_size(curve: EcCurve) -> usize {
         EcCurve::P256 => 32,
         #[cfg(feature = "non-fips")]
         EcCurve::Secp256k1 => 32,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => 24,
         EcCurve::P384 => 48,
         EcCurve::P521 => 66,
         #[cfg(feature = "non-fips")]
@@ -153,7 +167,7 @@ pub(crate) const fn curve_is_montgomery(curve: EcCurve) -> bool {
     match curve {
         EcCurve::P224 | EcCurve::P256 | EcCurve::P384 | EcCurve::P521 => false,
         #[cfg(feature = "non-fips")]
-        EcCurve::Secp256k1 | EcCurve::Ed25519 | EcCurve::Ed448 => false,
+        EcCurve::Secp256k1 | EcCurve::Ed25519 | EcCurve::Ed448 | EcCurve::Secp192k1 => false,
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => true,
     }
@@ -196,12 +210,10 @@ impl Session {
             CKA_VERIFY
         };
         let priv_usage_attribute_type = if is_montgomery { CKA_DERIVE } else { CKA_SIGN };
-        let tagged_sk_label =
-            serialize_tagged_label(sk_id, tags, self.hsm_capabilities.max_label_len)?;
-        let sk_label = tagged_sk_label.as_deref().unwrap_or(sk_id);
-        let tagged_pk_label =
-            serialize_tagged_label(pk_id, tags, self.hsm_capabilities.max_label_len)?;
-        let pk_label = tagged_pk_label.as_deref().unwrap_or(pk_id);
+        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities().max_label_len)?
+            .unwrap_or_else(|| utf8_label(sk_id));
+        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities().max_label_len)?
+            .unwrap_or_else(|| utf8_label(pk_id));
 
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {

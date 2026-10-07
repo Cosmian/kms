@@ -2,6 +2,9 @@
 
 In addition to managing its keys, Eviden KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
 
+See [Algorithm support by model](algorithm_support.md) for a per-vendor PKCS#11 algorithm and
+capability comparison.
+
 ## HSM keys
 
 HSM keys are prefixed keys. They are created with a unique identifier that is prefixed by the `hsm` keyword and the
@@ -777,56 +780,45 @@ RSA `SignatureVerify`** — EdDSA/HKDF/message-AEAD are implemented and unit-tes
 requires expanding the `KeyType`/`HsmKeypairAlgorithm` enums (today limited to
 AES/RSA) — tracked as a dedicated follow-up ([#1182](https://github.com/Cosmian/kms/issues/1182)).
 
-#### Validating v3.0 mechanisms: the Kryoptic conformance suite
+#### Validating v3.0 mechanisms: the Kryoptic test token
 
 No vendor HSM currently supported by Eviden KMS (SoftHSM2, Utimaco, Proteccio, Crypt2Pay,
 SmartCard HSM, AWS CloudHSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
 SoftHSM2's own v3 probe test only confirms the "not supported" degrade path.
 
-To actually validate this code against a real v3.0 implementation, `crate/hsm/base_hsm`
-includes an opt-in, dev-only test suite (`tests/kryoptic_conformance.rs`) built against
+The v3.0 code paths are validated against
 [`kryoptic`](https://github.com/latchset/kryoptic) — a Rust PKCS#11 v3.0 software token
-maintained by Red Hat's identity team (`latchset`), used here purely as a **conformance-test
-oracle**, not as a supported production HSM backend (no wizard step, no `HSM_MODEL` entry).
-`kryoptic` is fetched and built out-of-tree from its published crates.io release, in its own
-isolated build/lockfile — it is never added to this workspace's dependency graph (its
-`rusqlite` pin conflicts with `crate/server_database`'s; see the `NOTE` in
-`crate/hsm/base_hsm/Cargo.toml`). The fetch/build step is owned entirely by
+maintained by Red Hat's identity team (`latchset`) — through the `crate/hsm/kryoptic` loader
+crate (`HSM_MODEL=kryoptic`). `kryoptic` is fetched and built out-of-tree from its published
+crates.io release, in its own isolated build/lockfile — it is never added to this workspace's
+dependency graph (its `rusqlite` pin conflicts with `crate/server_database`'s; see the header of
+`.mise/lib/kryoptic.sh`). The fetch/build step is owned entirely by
 `.mise/lib/kryoptic.sh::kryoptic_build_cdylib` (mirroring how `.mise/lib/softhsm2.sh` builds
-and locates the SoftHSM2 library) — no Rust code in this crate builds `kryoptic`. The mise
-task exports the resulting cdylib path as `KRYOPTIC_PKCS11_LIB`, which the test reads directly
-from the environment, exactly like `SOFTHSM2_PKCS11_LIB`. Like every other vendor HSM suite in
-this workspace (SoftHSM2/Utimaco/Proteccio/Crypt2Pay/AWS CloudHSM), the test always compiles and is opt-in
-purely via `#[ignore]` — no Cargo feature is needed since `kryoptic` is never a real
-dependency.
+and locates the SoftHSM2 library). The mise task exports the resulting cdylib path as
+`KRYOPTIC_PKCS11_LIB`, which the tests read from the environment, exactly like
+`SOFTHSM2_PKCS11_LIB`.
 
 `kryoptic`'s own `standard` feature (EdDSA, HKDF, etc.) requires OpenSSL >= 3.2.0, which is
 newer than the system OpenSSL on some CI runners/dev machines (e.g. Ubuntu 22.04/24.04 ship
 3.0.x). Rather than depend on whatever OpenSSL happens to be installed, `kryoptic_build_cdylib`
 first builds this workspace's own OpenSSL 3.6.2 (`crate/crypto/build.rs`, if not already built)
 and points `kryoptic`'s pkg-config-based OpenSSL discovery at it via `PKG_CONFIG_PATH` — so the
-suite always builds against the exact same, known-good OpenSSL version this workspace already
+token always builds against the exact same, known-good OpenSSL version this workspace already
 uses, on every machine.
 
 Run it locally with:
 
 ```shell
-mise run test:hsm-kryoptic-conformance
+mise run test:hsm-kryoptic --variant fips
 ```
 
-or, once `KRYOPTIC_PKCS11_LIB` has been built and exported (e.g. by sourcing
-`.mise/lib/kryoptic.sh` and calling `kryoptic_build_cdylib` yourself), directly:
-
-```shell
-cargo test -p cosmian_kms_base_hsm --test kryoptic_conformance -- --ignored
-```
-
-This suite provisions a fresh Kryoptic token (`C_InitToken`/`C_InitPIN`) and exercises, against
-real v3.0 crypto: a populated `C_GetInterfaceList` result, an EdDSA sign/verify round trip, an
-HKDF key derivation, and a message-based AES-GCM round trip. It runs in CI as the
-`hsm-kryoptic-conformance` entry of the `test-nix` job's matrix in
-`.github/workflows/test_all.yml` (fips only — no hardware/secrets required, so it does not need
-the `hsm` job's concurrency-limited vendor matrix).
+`crate/hsm/kryoptic/src/tests.rs::test_hsm_kryoptic_all` provisions a fresh Kryoptic token
+(`C_InitToken`/`C_InitPIN`) and runs the shared HSM test suite
+(`crate/hsm/base_hsm/src/tests_shared.rs`) against it, including the v3.0 checks: a populated
+`C_GetInterfaceList` result, an EdDSA sign/verify round trip, an HKDF key derivation, and a
+message-based AES-GCM round trip. The task then runs the KMS server HSM tests against the same
+token. It runs in CI as the `kryoptic` entry of the `hsm` job's matrix in
+`.github/workflows/test_all.yml`, for both the fips and non-fips variants.
 
 Craton HSM (`craton-co/craton-hsm-core`) was also evaluated as a candidate v3.0 conformance
 oracle: it is a pure-Rust PKCS#11 v3.0 library with post-quantum algorithm support, but as of

@@ -10,8 +10,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, UserId,
+    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
@@ -32,8 +32,8 @@ use crate::{
         sql::{
             database::SqlDatabase,
             locate_query::{
-                MySqlPlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
-                query_all_from_attributes, query_from_attributes,
+                LocateParam, LocateQuery, MySqlPlaceholder, find_by_rotate_name_query,
+                find_due_for_rotation_query, query_all_from_attributes, query_from_attributes,
             },
         },
     },
@@ -328,6 +328,7 @@ impl MySqlPool {
                 "idx_objects_wrapping_key_id",
                 "create-index-objects-wrapping-key-id",
             ),
+            ("tags", "idx_tags_tag_id", "create-index-tags-tag-id"),
         ] {
             let existing: Vec<mysql_async::Row> = conn
                 .exec(has_index_sql, (table, index_name))
@@ -758,15 +759,36 @@ impl ObjectsStore for MySqlPool {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        Ok(find_(
+        self.find_with_options(
             researched_attributes,
             state,
             user,
             user_must_be_owner,
-            &self.pool,
             vendor_id,
+            &FindOptions::default(),
         )
-        .await?)
+        .await
+    }
+
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_from_attributes::<MySqlPlaceholder>(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            options,
+        );
+        trace!("find: {:?}", locate.sql);
+        Ok(run_locate_query(locate, &self.pool).await?)
     }
 
     async fn find_wrapped_by(
@@ -860,7 +882,30 @@ impl ObjectsStore for MySqlPool {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        Ok(find_all_(researched_attributes, state, &self.pool, vendor_id).await?)
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_all_from_attributes::<MySqlPlaceholder>(
+            researched_attributes,
+            state,
+            vendor_id,
+            options,
+        );
+        trace!("find_all: {:?}", locate.sql);
+        Ok(run_locate_query(locate, &self.pool).await?)
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
@@ -874,8 +919,8 @@ impl ObjectsStore for MySqlPool {
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        // Object JSON is stored as {"SymmetricKey": {...}} — use JSON_TYPE to
-        // check for key presence.
+        // Filters on the ObjectType attribute instead of parsing the full
+        // object JSON.
         let count: Option<u64> = conn
             .query_first(get_mysql_query!("count-non-destroyed-keys"))
             .await
@@ -1537,55 +1582,19 @@ pub(super) async fn is_object_owned_by_(uid: &str, owner: &str, pool: &Pool) -> 
     Ok(row_opt.is_some())
 }
 
-pub(super) async fn find_(
-    researched_attributes: Option<&Attributes>,
-    state: Option<State>,
-    user: &str,
-    user_must_be_owner: bool,
+/// Run a query built by the locate query builders and decode its
+/// `(id, state, attributes)` rows.
+async fn run_locate_query(
+    locate: LocateQuery,
     pool: &Pool,
-    vendor_id: &str,
 ) -> DbResult<Vec<(String, State, Attributes)>> {
-    let locate = query_from_attributes::<MySqlPlaceholder>(
-        researched_attributes,
-        state,
-        user,
-        user_must_be_owner,
-        vendor_id,
-    );
-    trace!("find_: {:?}", locate.sql);
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let params: Vec<mysql_async::Value> = locate
         .params
         .into_iter()
         .map(|p| match p {
-            crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                mysql_async::Value::Bytes(s.into_bytes())
-            }
-            crate::stores::sql::locate_query::LocateParam::I64(i) => mysql_async::Value::Int(i),
-        })
-        .collect();
-    let rows: Vec<mysql_async::Row> = conn.exec(locate.sql, params).await.map_err(DbError::from)?;
-    to_qualified_uids(&rows)
-}
-
-pub(super) async fn find_all_(
-    researched_attributes: Option<&Attributes>,
-    state: Option<State>,
-    pool: &Pool,
-    vendor_id: &str,
-) -> DbResult<Vec<(String, State, Attributes)>> {
-    let locate =
-        query_all_from_attributes::<MySqlPlaceholder>(researched_attributes, state, vendor_id);
-    trace!("find_all_: {:?}", locate.sql);
-    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-    let params: Vec<mysql_async::Value> = locate
-        .params
-        .into_iter()
-        .map(|p| match p {
-            crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                mysql_async::Value::Bytes(s.into_bytes())
-            }
-            crate::stores::sql::locate_query::LocateParam::I64(i) => mysql_async::Value::Int(i),
+            LocateParam::Text(s) => mysql_async::Value::Bytes(s.into_bytes()),
+            LocateParam::I64(i) => mysql_async::Value::Int(i),
         })
         .collect();
     let rows: Vec<mysql_async::Row> = conn.exec(locate.sql, params).await.map_err(DbError::from)?;

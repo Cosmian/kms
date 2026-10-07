@@ -41,6 +41,19 @@
 
 ### HSM
 
+- Harden `Session::decrypt_message_aes_gcm` (PKCS#11 v3.0 message-based AEAD) against a
+  caller-supplied detached IV/tag of the wrong length. The function previously derived
+  `CK_GCM_MESSAGE_PARAMS.ulIvLen`/`ulTagBits` straight from the slice lengths it was
+  given, so a caller passing an empty tag would have reached the token with
+  `ulTagBits = 0` — AES-GCM with its authentication effectively disabled — and an
+  arbitrary-length IV would have silently left the 96-bit nonce construction that the
+  encrypt side and the KMS wire format assume. The IV is now pinned to 12 bytes and the
+  tag to 16 bytes, matching `Session::encrypt_message_aes_gcm` and the module-side
+  `C_DecryptMessage` validation, and checked before the token is touched. No shipped
+  release is affected: the only in-tree caller already sliced exactly 12/16 bytes behind
+  a prior length guard, so this closes a defence-in-depth gap on a `pub` API rather than
+  a reachable authentication bypass
+
 - Fix two PKCS#11 v3.x conformance bugs that made Ed25519/Ed448 keys unusable through
   any external, `CKA_KEY_TYPE`-aware PKCS#11 client (e.g. OpenSC's `pkcs11-tool`),
   surfaced by the new `pkcs11-tool` conformance tier (see Testing below):
@@ -71,6 +84,19 @@
   map signature-data errors to `false`/`Invalid` while still propagating genuine
   public-key-conversion errors as real errors
   ([#1183](https://github.com/Cosmian/kms/issues/1183))
+
+### Server (`crate/server`)
+
+- Fix `SignatureVerify`'s crypto-oracle execution path resolving `data` and
+  `digested_data` inconsistently. The payload was taken from `data` when present, but
+  the "input is already a digest" flag passed to the oracle was derived independently
+  from `digested_data.is_some()`, so a request setting **both** fields had the raw bytes
+  of `data` verified as though they were a pre-computed digest — skipping the hash step
+  on input the caller fully controls, and letting it choose which question the KMS
+  actually answers. The two are now resolved together from a single match, and a request
+  setting both is rejected with `InvalidRequest`, matching what the local execution path,
+  the streaming path, and the `Sign` operation already did. Only the oracle path
+  (HSM-backed and other prefixed keys) was affected
 
 ### Nix dev environment
 

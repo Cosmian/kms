@@ -158,6 +158,18 @@ CREATE INDEX IF NOT EXISTS idx_read_access_userid ON read_access (userid);
 -- name: create-index-objects-wrapping-key-id
 CREATE INDEX IF NOT EXISTS idx_objects_wrapping_key_id ON objects (wrapping_key_id);
 
+-- name: create-index-tags-tag-id
+CREATE INDEX IF NOT EXISTS idx_tags_tag_id ON tags (tag, id);
+
+-- name: create-index-objects-rotate-lookup
+CREATE INDEX IF NOT EXISTS idx_objects_rotate_name ON objects ((attributes ->> 'RotateName'), owner) WHERE (attributes ->> 'RotateName') IS NOT NULL;
+
+-- name: create-index-objects-rotate-auto
+CREATE INDEX IF NOT EXISTS idx_objects_rotate_auto ON objects (state) WHERE (attributes ->> 'RotateAutomatic') = 'true';
+
+-- name: create-index-objects-type-state
+CREATE INDEX IF NOT EXISTS idx_objects_type_state ON objects ((attributes ->> 'ObjectType'), state);
+
 -- name: list-uids-for-tags
 SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int;
 
@@ -205,10 +217,7 @@ SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (object::jsonb ? 'SymmetricKey' OR
-     object::jsonb ? 'PrivateKey'   OR
-     object::jsonb ? 'PublicKey'    OR
-     object::jsonb ? 'SplitKey');
+AND (attributes ->> 'ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- ── CRL persistence (RFC 5280 §5) ─────────────────────────────────────────────
 -- One row per CA issuer. On regeneration the row is replaced in-place so that

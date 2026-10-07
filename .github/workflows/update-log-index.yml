@@ -1,7 +1,7 @@
 ---
 # Local reusable workflow — Update log-reference.md.
 #
-# Runs `mise run docs:log-index` (non-interactive, deletes stale entries) and
+# Runs `mise run docs:sync-logs` (non-interactive, deletes stale entries) and
 # commits the result back to `ref`. Mirrors nix-update-hashes.yml's
 # checkout → run → commit-if-changed → rebase → push flow.
 #
@@ -62,7 +62,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Update log-reference.md
-        run: mise run docs:log-index
+        run: mise run docs:sync-logs
 
       - name: Commit updated log index
         run: |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check log-reference.md is in sync with source (fails if out of date)"
+#MISE description="Verify log-reference.md is in sync with source (CI check)"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
@@ -14,7 +14,7 @@ else
   echo "  Fix it by running one of:"
   echo ""
   echo "    python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color"
-  echo "    mise run docs:generate"
+  echo "    mise run docs:sync-all"
   echo ""
   echo "  Then review, stage, and commit:"
   echo ""

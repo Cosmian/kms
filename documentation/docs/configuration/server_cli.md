@@ -372,6 +372,17 @@ Options:
 
           [env: KMS_JWT_AUTH_PROVIDER=]
 
+      --jwt-svid-auth
+          Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+
+          A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that validates successfully (signature, issuer, audience, expiry) against a configured issuer but has no `email` claim is authenticated using its `sub` claim **only if** `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+
+          The flag is global: it applies to every `--jwt-auth-provider`. Every provider MUST specify an audience (`issuer,jwks_uri,audience`), and the SVID MUST carry a matching `aud` claim; otherwise the server refuses to start, since an SVID minted for another service could be replayed against the KMS.
+
+          Disabled by default: enabling it only makes sense when the configured issuer(s) are a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+
+          [env: KMS_JWT_SVID_AUTH=]
+
       --enable
           Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
 
@@ -469,7 +480,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.27.1"]
+          [default: "Cosmian KMS v5.28.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -662,6 +673,15 @@ Options:
           When enabled, must be at least 60 seconds to avoid excessive database churn.
 
           [default: 0]
+
+      --metrics-count-interval-secs <METRICS_COUNT_INTERVAL_SECS>
+          Interval in seconds between background refreshes of the `kms.objects.total`
+          and `kms.keys.active.count` metrics. Each refresh runs a full COUNT over the
+          objects table, which is expensive on very large databases.
+          Set to 0 to disable both the startup seed and the periodic refresh.
+          Default: 30.
+
+          [default: 30]
 
       --keyset-warn-depth <KEYSET_WARN_DEPTH>
           Depth at which a successful keyset chain decryption triggers a server-side warning.
@@ -893,10 +913,18 @@ Options:
           When a CRL is generated without an explicit validity override (e.g., via
           `GET /certificates/{id}/crl?validity_days=N`), this value is used.
 
-          Production CAs often use 1–24 h for short-lived CRLs (code-signing,
-          high-security); enterprise PKIs commonly use 7–28 days.
+          This value is in whole days (minimum 1 day / 24 h); enterprise PKIs commonly
+          use 7–28 days. Avoid the practical minimum of 1 day unless
+          `crl_refresh_overlap_hours` is also lowered below 24: a 1-day CRL satisfies
+          the default 24-hour refresh-overlap condition immediately after creation,
+          causing the hourly scheduler to continuously re-sign it.
 
-          Valid range: 1–365. Default: 7.
+          Valid range: 1–365 when set via the CLI flag.
+          Default: 7.
+
+          This range is enforced by clap's argument parser only; it is not
+          currently re-validated when the value comes from a TOML config file, so
+          a value outside 1–365 in `kms.toml` is silently accepted.
 
           [default: 7]
 
@@ -906,6 +934,11 @@ Options:
 
           Set to 0 to disable the background scheduler entirely.
           When disabled, CRLs are only refreshed on certificate revocation events.
+
+          The scheduler is only spawned when `kms_public_url` is ALSO configured
+          (the CDP endpoint must be active); with `kms_public_url` unset, this
+          setting has no effect and CRLs are only refreshed on revocation events,
+          which can allow an expired CRL to be served in the meantime.
 
           Default: 1 (wake up hourly).
 
@@ -927,7 +960,7 @@ Options:
           [default: 24]
 
       --ocsp-enabled
-          Enable the OCSP responder endpoint at `GET/POST /ocsp/`.
+          Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
 
           When `false` (default) all `/ocsp/` routes return 404.
 
@@ -956,8 +989,10 @@ Options:
           The `OCSPSigning` requirement is enforced at request time: the server rejects
           the delegated certificate (and refuses to sign) if it is missing.
 
-          The referenced key may be backed by an HSM via the existing PKCS#11 routing —
-          no additional configuration is required.
+          The referenced key is loaded into an in-process OpenSSL key for signing;
+          this path does not currently dispatch to `kms.crypto_oracles`, so a
+          non-extractable HSM-resident key will fail here while an extractable key
+          is exported from the HSM to sign.
 
           When unset, the CA's own private key is used (acceptable for small deployments;
           not recommended for production CAs where the signing key must stay offline).
@@ -986,11 +1021,19 @@ Options:
           [default: optional]
 
       --ocsp-include-cert-chain
-          Include the signing certificate chain in OCSP `BasicResponse`s.
+          Include the signing certificate in OCSP `BasicResponse`s.
 
+          Only the signer certificate itself is embedded — not its issuing chain.
           Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
-          clients can verify the delegated responder's authorization without additional
-          fetches.  Safe to set `false` when the CA signs responses directly.
+          clients can verify the delegated responder's own certificate without an
+          additional fetch; delegated responders whose signer chain includes
+          intermediates the client does not already trust must distribute those
+          intermediates out of band. Safe to set `false` when the CA signs responses
+          directly.
+
+          This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+          sets it to `true` (already the default). To set it to `false`, use the
+          `ocsp_include_cert_chain = false` key in the TOML config file instead.
 
       --ocsp-archive-cutoff-secs <OCSP_ARCHIVE_CUTOFF_SECS>
           Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).

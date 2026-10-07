@@ -4,20 +4,22 @@
 //! command reports on the **entire** PKCS#11 surface `pkcs11-sys` v0.2.25 defines:
 //! all 442 real `CKM_*` mechanisms (`CKM_VENDOR_DEFINED` excluded — a range-marker
 //! sentinel, not an operation) and all 92 `C_*` functions in `CK_FUNCTION_LIST_3_0`.
-//! Two independent report sections are printed, each with its own summary line:
+//! Three independent report sections are printed, each with its own summary line:
 //!
-//! - **"PKCS#11 mechanism coverage"**: the ~12 mechanisms `cosmian_pkcs11` actually
-//!   advertises are deep-tested end to end (key generation, encryption/decryption,
-//!   signing/verification, across every provisioned curve); every other mechanism
-//!   is probed via `C_GetMechanismInfo` alone (`CKR_MECHANISM_INVALID` ⇒ ❌ not
-//!   implemented).
-//! - **"PKCS#11 API function coverage"**: functions already exercised for real
-//!   elsewhere (bootstrap, session lifecycle, object lookup, the deep mechanism
-//!   checks) are reported by reuse; three destructive/authentication-changing
-//!   functions (`C_InitToken`/`C_InitPIN`/`C_SetPIN`) are never invoked (⬛
-//!   excluded — deliberately not probed, so their real support status is
-//!   unknown, unlike a genuine ❌ not-implemented finding); the remainder get one
-//!   real, minimal-precondition shallow probe each.
+//! - **"PKCS#11 v2.40 API function coverage"**: entries from the legacy
+//!   `CK_FUNCTION_LIST` returned by `C_GetFunctionList`.
+//! - **"PKCS#11 v3.x API extension coverage"**: additions in
+//!   `CK_FUNCTION_LIST_3_0`, obtained through `C_GetInterface`.
+//! - **"PKCS#11 mechanism coverage"**: mechanisms advertised through the shared
+//!   `C_GetMechanismList` API. The ~12 mechanisms `cosmian_pkcs11` advertises
+//!   are deep-tested end to end; every other mechanism is probed via
+//!   `C_GetMechanismInfo` alone (`CKR_MECHANISM_INVALID` ⇒ ❌ not implemented).
+//!
+//! Functions already exercised for real elsewhere (bootstrap, session lifecycle,
+//! object lookup, and deep mechanism checks) are reported by reuse. Three
+//! destructive/authentication-changing functions (`C_InitToken`/`C_InitPIN`/
+//! `C_SetPIN`) are never invoked (⬛ excluded — their real support status is
+//! unknown); the remainder get one real, minimal-precondition shallow probe.
 //!
 //! Every row is always printed individually (all 442 mechanisms, all 92
 //! functions): the whole point of this report is to show exactly what is and is
@@ -682,6 +684,17 @@ const ALL_FUNCTIONS: &[&str] = &[
     "C_MessageVerifyFinal",
 ];
 
+/// Number of legacy entries at the head of `CK_FUNCTION_LIST_3_0`.
+const PKCS11_V2_FUNCTION_COUNT: usize = 68;
+
+/// Returns whether `name` belongs to the v2.40 `CK_FUNCTION_LIST` ABI.
+fn is_pkcs11_v2_function(name: &str) -> bool {
+    ALL_FUNCTIONS
+        .iter()
+        .take(PKCS11_V2_FUNCTION_COUNT)
+        .any(|candidate| *candidate == name)
+}
+
 /// The outcome of one mechanism or function check.
 enum Outcome {
     /// ✅ the real operation was attempted and behaved as expected.
@@ -812,6 +825,7 @@ pub(crate) async fn run_capabilities(
         session,
         key_handles.get("RSA"),
         &results,
+        token,
     );
 
     // Best-effort teardown: never let a session-close failure hide the report.
@@ -832,12 +846,16 @@ pub(crate) async fn run_capabilities(
     }
     println!();
 
-    // Two independent sections, each with its own summary (Decision 3 of
-    // `plan.md`): the mechanism and function universes are unrelated, so a
-    // merged grand total would be misleading.
+    // Mechanisms are advertised through the v2.40 `C_GetMechanismList` API;
+    // v3 adds API functions, not a separate mechanism-list namespace.
     let mut all_mechanism_results = results;
     all_mechanism_results.extend(mechanism_results);
-    print_section("PKCS#11 API function coverage", &function_results);
+    let (v2_function_results, v3_function_results): (Vec<_>, Vec<_>) = function_results
+        .into_iter()
+        .partition(|result| is_pkcs11_v2_function(result.name));
+    print_section("PKCS#11 v2.40 API function coverage", &v2_function_results);
+    println!();
+    print_section("PKCS#11 v3.x API extension coverage", &v3_function_results);
     println!();
     print_section("PKCS#11 mechanism coverage", &all_mechanism_results);
 
@@ -1997,6 +2015,7 @@ fn run_function_coverage(
     session: CK_SESSION_HANDLE,
     rsa: Option<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)>,
     deep_results: &[CheckResult],
+    token: Option<&str>,
 ) -> Vec<CheckResult> {
     let mut rows = Vec::with_capacity(ALL_FUNCTIONS.len());
 
@@ -2059,7 +2078,7 @@ fn run_function_coverage(
         object,
         rsa,
     };
-    shallow_probe_functions(&ctx, func_list_3_0, &mut rows);
+    shallow_probe_functions(&ctx, func_list_3_0, token, &mut rows);
     if object != 0 {
         if let Some(c_destroy) = func_list.C_DestroyObject {
             // SAFETY: `object` was just created above by `generate_aes_key`.
@@ -2089,6 +2108,7 @@ fn push_probe(rows: &mut Vec<CheckResult>, name: &'static str, rv: CK_RV, expect
 fn shallow_probe_functions(
     ctx: &FunctionProbeCtx,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
+    token: Option<&str>,
     rows: &mut Vec<CheckResult>,
 ) {
     let f = ctx.func_list;
@@ -2686,7 +2706,16 @@ fn shallow_probe_functions(
             });
         push_probe(rows, "C_WaitForSlotEvent", rv, CKR_OK);
     }
-    {
+    if token.is_some() {
+        rows.push(CheckResult {
+            name: "C_LoginUser",
+            detail: "shallow probe (authentication state)".to_owned(),
+            outcome: Outcome::Skip(
+                "not probed when --token is set: re-login can replace the active bearer backend"
+                    .to_owned(),
+            ),
+        });
+    } else {
         let pin = b"0000";
         let rv = func_list_3_0
             .C_LoginUser
@@ -2709,8 +2738,14 @@ fn shallow_probe_functions(
         push_probe(rows, "C_SessionCancel", rv, CKR_OK);
     }
 
-    // ---- v3.0 message-based encrypt/decrypt/verify families (all stubs in
-    // cosmian_pkcs11 today) ---------------------------------------------------
+    // ---- v3.0 message-based encrypt/decrypt/verify families -----------------
+    // One-shot AES-GCM message encrypt/decrypt is exercised as a round trip;
+    // multipart Begin/Next and the remaining message families are stubs.
+    let mut message_iv = [0_u8; AES_GCM_IV_SIZE];
+    let mut message_tag = [0_u8; 16];
+    let mut message_plaintext = [0x42_u8; 16];
+    let mut message_ciphertext = [0_u8; 16];
+    let mut message_ciphertext_len = ck_ulong(message_ciphertext.len()).unwrap_or(0);
     {
         let mut mechanism = CK_MECHANISM {
             mechanism: CKM_AES_GCM,
@@ -2725,25 +2760,36 @@ fn shallow_probe_functions(
         push_probe(rows, "C_MessageEncryptInit", rv, CKR_OK);
     }
     {
-        let mut pt = [0_u8; 16];
-        let mut ct = [0_u8; 32];
-        let mut ct_len = ck_ulong(ct.len()).unwrap_or(0);
+        let mut params = CK_GCM_MESSAGE_PARAMS {
+            pIv: message_iv.as_mut_ptr(),
+            ulIvLen: ck_ulong(message_iv.len()).unwrap_or(0),
+            ulIvFixedBits: 0,
+            ivGenerator: CKG_GENERATE_RANDOM,
+            pTag: message_tag.as_mut_ptr(),
+            ulTagBits: 128,
+        };
         let rv = func_list_3_0
             .C_EncryptMessage
             .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
                 c(
                     session,
+                    (&raw mut params).cast::<c_void>(),
+                    ck_ulong(size_of::<CK_GCM_MESSAGE_PARAMS>()).unwrap_or(0),
                     ptr::null_mut(),
                     0,
-                    ptr::null_mut(),
-                    0,
-                    pt.as_mut_ptr(),
-                    16,
-                    ct.as_mut_ptr(),
-                    &raw mut ct_len,
+                    message_plaintext.as_mut_ptr(),
+                    ck_ulong(message_plaintext.len()).unwrap_or(0),
+                    message_ciphertext.as_mut_ptr(),
+                    &raw mut message_ciphertext_len,
                 )
             });
         push_probe(rows, "C_EncryptMessage", rv, CKR_OK);
+    }
+    {
+        let rv = func_list_3_0
+            .C_MessageEncryptFinal
+            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        push_probe(rows, "C_MessageEncryptFinal", rv, CKR_OK);
     }
     {
         let mut pt = [0_u8; 16];
@@ -2773,12 +2819,6 @@ fn shallow_probe_functions(
         push_probe(rows, "C_EncryptMessageNext", rv, CKR_OK);
     }
     {
-        let rv = func_list_3_0
-            .C_MessageEncryptFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
-        push_probe(rows, "C_MessageEncryptFinal", rv, CKR_OK);
-    }
-    {
         let mut mechanism = CK_MECHANISM {
             mechanism: CKM_AES_GCM,
             pParameter: ptr::null_mut(),
@@ -2792,25 +2832,46 @@ fn shallow_probe_functions(
         push_probe(rows, "C_MessageDecryptInit", rv, CKR_OK);
     }
     {
-        let mut ct = [0_u8; 16];
-        let mut pt = [0_u8; 32];
-        let mut pt_len = ck_ulong(pt.len()).unwrap_or(0);
+        let mut params = CK_GCM_MESSAGE_PARAMS {
+            pIv: message_iv.as_mut_ptr(),
+            ulIvLen: ck_ulong(message_iv.len()).unwrap_or(0),
+            ulIvFixedBits: 0,
+            ivGenerator: CKG_NO_GENERATE,
+            pTag: message_tag.as_mut_ptr(),
+            ulTagBits: 128,
+        };
+        let mut plaintext = [0_u8; 16];
+        let mut plaintext_len = ck_ulong(plaintext.len()).unwrap_or(0);
         let rv = func_list_3_0
             .C_DecryptMessage
             .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
                 c(
                     session,
+                    (&raw mut params).cast::<c_void>(),
+                    ck_ulong(size_of::<CK_GCM_MESSAGE_PARAMS>()).unwrap_or(0),
                     ptr::null_mut(),
                     0,
-                    ptr::null_mut(),
-                    0,
-                    ct.as_mut_ptr(),
-                    16,
-                    pt.as_mut_ptr(),
-                    &raw mut pt_len,
+                    message_ciphertext.as_mut_ptr(),
+                    message_ciphertext_len,
+                    plaintext.as_mut_ptr(),
+                    &raw mut plaintext_len,
                 )
             });
+        let rv = if rv == CKR_OK
+            && plaintext_len == ck_ulong(message_plaintext.len()).unwrap_or(0)
+            && plaintext == message_plaintext
+        {
+            CKR_OK
+        } else {
+            rv
+        };
         push_probe(rows, "C_DecryptMessage", rv, CKR_OK);
+    }
+    {
+        let rv = func_list_3_0
+            .C_MessageDecryptFinal
+            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        push_probe(rows, "C_MessageDecryptFinal", rv, CKR_OK);
     }
     {
         let mut ct = [0_u8; 16];
@@ -2838,12 +2899,6 @@ fn shallow_probe_functions(
                     )
                 });
         push_probe(rows, "C_DecryptMessageNext", rv, CKR_OK);
-    }
-    {
-        let rv = func_list_3_0
-            .C_MessageDecryptFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
-        push_probe(rows, "C_MessageDecryptFinal", rv, CKR_OK);
     }
     {
         let mut sig = [0_u8; 128];
@@ -2993,4 +3048,17 @@ fn print_section(title: &str, results: &[CheckResult]) {
         results.len()
     );
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_pkcs11_v2_function;
+
+    #[test]
+    fn classifies_v2_and_v3_function_abis() {
+        assert!(is_pkcs11_v2_function("C_Encrypt"));
+        assert!(is_pkcs11_v2_function("C_WaitForSlotEvent"));
+        assert!(!is_pkcs11_v2_function("C_GetInterface"));
+        assert!(!is_pkcs11_v2_function("C_MessageEncryptInit"));
+    }
 }

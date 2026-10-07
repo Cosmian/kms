@@ -16,7 +16,7 @@
 //! # Supported Algorithms
 //!
 //! - AES: 128-bit and 256-bit keys
-//! - RSA: 1024-bit, 2048-bit, 3072-bit, and 4096-bit keys
+//! - RSA: 2048-bit, 3072-bit, and 4096-bit keys
 //!
 //! # Error Handling
 //!
@@ -42,7 +42,107 @@ use cosmian_kms_interfaces::{
 use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
-use crate::{AesKeySize, BaseHsm, RsaKeySize, hsm_capabilities::HsmProvider};
+use crate::{
+    AesKeySize, BaseHsm, RsaKeySize, Session, SessionGuard, hsm_capabilities::HsmProvider,
+};
+
+#[cfg(not(feature = "non-fips"))]
+fn generate_hsm_keypair(
+    session: &Session,
+    sk_id: &[u8],
+    pk_id: &[u8],
+    algorithm: HsmKeypairAlgorithm,
+    key_length_in_bits: usize,
+    sensitive: bool,
+    tags: &HashSet<String>,
+) -> InterfaceResult<()> {
+    match algorithm {
+        HsmKeypairAlgorithm::RSA => {
+            let key_size = match key_length_in_bits {
+                2048 => RsaKeySize::Rsa2048,
+                3072 => RsaKeySize::Rsa3072,
+                4096 => RsaKeySize::Rsa4096,
+                x => {
+                    return Err(InterfaceError::Default(format!(
+                        "Invalid key length: {x} bits for an HSM RSA key \
+                         (valid values are 2048, 3072, 4096)"
+                    )));
+                }
+            };
+            session.generate_rsa_key_pair(sk_id, pk_id, key_size, sensitive, Some(tags))?;
+        }
+        HsmKeypairAlgorithm::EC => {
+            let curve = EcCurve::from_key_length_in_bits(key_length_in_bits)
+                .map_err(|e| InterfaceError::Default(e.to_string()))?;
+            session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive, Some(tags))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+fn generate_hsm_keypair(
+    session: &Session,
+    sk_id: &[u8],
+    pk_id: &[u8],
+    algorithm: HsmKeypairAlgorithm,
+    key_length_in_bits: usize,
+    sensitive: bool,
+    tags: &HashSet<String>,
+) -> InterfaceResult<()> {
+    match algorithm {
+        HsmKeypairAlgorithm::RSA => {
+            let key_size = match key_length_in_bits {
+                2048 => RsaKeySize::Rsa2048,
+                3072 => RsaKeySize::Rsa3072,
+                4096 => RsaKeySize::Rsa4096,
+                x => {
+                    return Err(InterfaceError::Default(format!(
+                        "Invalid key length: {x} bits for an HSM RSA key \
+                         (valid values are 2048, 3072, 4096)"
+                    )));
+                }
+            };
+            session.generate_rsa_key_pair(sk_id, pk_id, key_size, sensitive, Some(tags))?;
+        }
+        HsmKeypairAlgorithm::EC => {
+            let curve = EcCurve::from_key_length_in_bits(key_length_in_bits)
+                .map_err(|e| InterfaceError::Default(e.to_string()))?;
+            session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive, Some(tags))?;
+        }
+        HsmKeypairAlgorithm::Secp256k1 => {
+            session.generate_ec_key_pair(
+                sk_id,
+                pk_id,
+                EcCurve::Secp256k1,
+                sensitive,
+                Some(tags),
+            )?;
+        }
+        HsmKeypairAlgorithm::Secp192k1 => {
+            session.generate_ec_key_pair(
+                sk_id,
+                pk_id,
+                EcCurve::Secp192k1,
+                sensitive,
+                Some(tags),
+            )?;
+        }
+        HsmKeypairAlgorithm::Ed25519 => {
+            session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive, Some(tags))?;
+        }
+        HsmKeypairAlgorithm::Ed448 => {
+            session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed448, sensitive, Some(tags))?;
+        }
+        HsmKeypairAlgorithm::X25519 => {
+            return Err(InterfaceError::NotSupported(
+                "X25519 HSM key creation is disabled until DeriveKey support is implemented"
+                    .to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
 
 #[async_trait]
 impl<P: HsmProvider> HSM for BaseHsm<P> {
@@ -67,29 +167,41 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
+        let id = id.to_vec();
+        let tags = tags.clone();
+        tokio::task::spawn_blocking(move || {
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
 
-        if session.get_object_handle(id).is_ok() {
-            return Err(InterfaceError::Default(
-                "A secret key with this id already exists".to_owned(),
-            ));
-        }
-
-        match algorithm {
-            HsmKeyAlgorithm::AES => {
-                let key_size = match key_length_in_bits {
-                    128 => AesKeySize::Aes128,
-                    256 => AesKeySize::Aes256,
-                    x => {
-                        return Err(InterfaceError::Default(format!(
-                            "Invalid key length: {x} bits, for and HSM AES key"
-                        )));
-                    }
-                };
-                let _ = session.generate_aes_key(id, key_size, sensitive, Some(tags))?;
-                Ok(())
+            if session.session()?.get_object_handle(&id).is_ok() {
+                return Err(InterfaceError::Default(
+                    "A secret key with this id already exists".to_owned(),
+                ));
             }
-        }
+
+            match algorithm {
+                HsmKeyAlgorithm::AES => {
+                    let key_size = match key_length_in_bits {
+                        128 => AesKeySize::Aes128,
+                        256 => AesKeySize::Aes256,
+                        x => {
+                            return Err(InterfaceError::Default(format!(
+                                "Invalid key length: {x} bits, for and HSM AES key"
+                            )));
+                        }
+                    };
+                    let _ = session.session()?.generate_aes_key(
+                        &id,
+                        key_size,
+                        sensitive,
+                        Some(&tags),
+                    )?;
+                }
+            }
+            session.checkin();
+            Ok(())
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn create_keypair<'a>(
@@ -106,87 +218,37 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
             public: pk_id,
         } = ids;
         let slot = self.get_slot(slot_id)?;
-        let session = slot.open_session(true)?;
+        let sk_id = sk_id.to_vec();
+        let pk_id = pk_id.to_vec();
+        let tags = tags.clone();
+        tokio::task::spawn_blocking(move || {
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
 
-        if session.get_object_handle(sk_id).is_ok() {
-            return Err(InterfaceError::Default(
-                "A private key with this ID already exists".to_owned(),
-            ));
-        }
-        if session.get_object_handle(pk_id).is_ok() {
-            return Err(InterfaceError::Default(
-                "A public key with this ID and the '_pk' suffix already exists".to_owned(),
-            ));
-        }
+            if session.session()?.get_object_handle(&sk_id).is_ok() {
+                return Err(InterfaceError::Default(
+                    "A private key with this ID already exists".to_owned(),
+                ));
+            }
+            if session.session()?.get_object_handle(&pk_id).is_ok() {
+                return Err(InterfaceError::Default(
+                    "A public key with this ID and the '_pk' suffix already exists".to_owned(),
+                ));
+            }
 
-        match algorithm {
-            HsmKeypairAlgorithm::RSA => {
-                let key_length_in_bits = match key_length_in_bits {
-                    1024 => RsaKeySize::Rsa1024,
-                    2048 => RsaKeySize::Rsa2048,
-                    3072 => RsaKeySize::Rsa3072,
-                    4096 => RsaKeySize::Rsa4096,
-                    x => {
-                        return Err(InterfaceError::Default(format!(
-                            "Invalid key length: {x} bits, for and HSM RSA key (valid values \
-                             are 1024, 2048, 3072, 4096)"
-                        )));
-                    }
-                };
-                session.generate_rsa_key_pair(
-                    sk_id,
-                    pk_id,
-                    key_length_in_bits,
-                    sensitive,
-                    Some(tags),
-                )?;
-                Ok(())
-            }
-            HsmKeypairAlgorithm::EC => {
-                let curve = EcCurve::from_key_length_in_bits(key_length_in_bits)
-                    .map_err(|e| InterfaceError::Default(e.to_string()))?;
-                session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive, Some(tags))?;
-                Ok(())
-            }
-            #[cfg(feature = "non-fips")]
-            HsmKeypairAlgorithm::Secp256k1 => {
-                session.generate_ec_key_pair(
-                    sk_id,
-                    pk_id,
-                    EcCurve::Secp256k1,
-                    sensitive,
-                    Some(tags),
-                )?;
-                Ok(())
-            }
-            #[cfg(feature = "non-fips")]
-            HsmKeypairAlgorithm::Ed25519 => {
-                session.generate_ec_key_pair(
-                    sk_id,
-                    pk_id,
-                    EcCurve::Ed25519,
-                    sensitive,
-                    Some(tags),
-                )?;
-                Ok(())
-            }
-            #[cfg(feature = "non-fips")]
-            HsmKeypairAlgorithm::Ed448 => {
-                session.generate_ec_key_pair(
-                    sk_id,
-                    pk_id,
-                    EcCurve::Ed448,
-                    sensitive,
-                    Some(tags),
-                )?;
-                Ok(())
-            }
-            #[cfg(feature = "non-fips")]
-            HsmKeypairAlgorithm::X25519 => Err(InterfaceError::NotSupported(
-                "X25519 HSM key creation is disabled until DeriveKey support is implemented"
-                    .to_owned(),
-            )),
-        }
+            generate_hsm_keypair(
+                session.session()?,
+                &sk_id,
+                &pk_id,
+                algorithm,
+                key_length_in_bits,
+                sensitive,
+                &tags,
+            )?;
+            session.checkin();
+            Ok(())
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn export(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<Option<HsmObject>> {
@@ -243,24 +305,16 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let data = data.to_vec();
         let iv_counter_nonce = iv_counter_nonce.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = slot.checkout_session(true)?;
-            let handle = match session.get_object_handle(&key_id) {
-                Ok(h) => h,
-                Err(e) => return Err(e.into()),
-            };
-            let encrypted_content = match session.encrypt(
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            let result = session.session()?.encrypt(
                 handle,
                 algorithm.into(),
                 &data,
                 (!iv_counter_nonce.is_empty()).then_some(&iv_counter_nonce),
-            ) {
-                Ok(res) => {
-                    slot.checkin_session(session);
-                    res
-                }
-                Err(e) => return Err(e.into()),
-            };
-            Ok(encrypted_content)
+            )?;
+            session.checkin();
+            Ok(result)
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -277,19 +331,13 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = slot.checkout_session(true)?;
-            let handle = match session.get_object_handle(&key_id) {
-                Ok(h) => h,
-                Err(e) => return Err(e.into()),
-            };
-            let plaintext = match session.decrypt(handle, algorithm.into(), &data) {
-                Ok(res) => {
-                    slot.checkin_session(session);
-                    res
-                }
-                Err(e) => return Err(e.into()),
-            };
-            Ok(plaintext)
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            let result = session
+                .session()?
+                .decrypt(handle, algorithm.into(), &data)?;
+            session.checkin();
+            Ok(result)
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -306,19 +354,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = slot.checkout_session(true)?;
-            let handle = match session.get_object_handle(&key_id) {
-                Ok(h) => h,
-                Err(e) => return Err(e.into()),
-            };
-            let signature = match session.sign(handle, algorithm.into(), &data) {
-                Ok(res) => {
-                    slot.checkin_session(session);
-                    res
-                }
-                Err(e) => return Err(e.into()),
-            };
-            Ok(signature)
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            let result = session.session()?.sign(handle, algorithm.into(), &data)?;
+            session.checkin();
+            Ok(result)
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -337,19 +377,13 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let data = data.to_vec();
         let signature = signature.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = slot.checkout_session(true)?;
-            let handle = match session.get_object_handle(&key_id) {
-                Ok(h) => h,
-                Err(e) => return Err(e.into()),
-            };
-            let is_valid = match session.verify(handle, algorithm.into(), &data, &signature) {
-                Ok(res) => {
-                    slot.checkin_session(session);
-                    res
-                }
-                Err(e) => return Err(e.into()),
-            };
-            Ok(is_valid)
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            let result = session
+                .session()?
+                .verify(handle, algorithm.into(), &data, &signature)?;
+            session.checkin();
+            Ok(result)
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -363,19 +397,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let key_id = key_id.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = slot.checkout_session(true)?;
-            let handle = match session.get_object_handle(&key_id) {
-                Ok(h) => h,
-                Err(e) => return Err(e.into()),
-            };
-            let key_type = match session.get_key_type(handle) {
-                Ok(res) => {
-                    slot.checkin_session(session);
-                    res
-                }
-                Err(e) => return Err(e.into()),
-            };
-            Ok(key_type)
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            let result = session.session()?.get_key_type(handle)?;
+            session.checkin();
+            Ok(result)
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -389,19 +415,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let slot = self.get_slot(slot_id)?;
         let key_id = key_id.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = slot.checkout_session(true)?;
-            let handle = match session.get_object_handle(&key_id) {
-                Ok(h) => h,
-                Err(e) => return Err(e.into()),
-            };
-            let metadata = match session.get_key_metadata(handle) {
-                Ok(res) => {
-                    slot.checkin_session(session);
-                    res
-                }
-                Err(e) => return Err(e.into()),
-            };
-            Ok(metadata)
+            let session = SessionGuard::new(&slot, slot.checkout_session()?);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            let result = session.session()?.get_key_metadata(handle)?;
+            session.checkin();
+            Ok(result)
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -409,15 +427,10 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
 
     async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let session = slot.checkout_session(true)?;
-        let bytes = match session.generate_random(len) {
-            Ok(res) => {
-                slot.checkin_session(session);
-                res
-            }
-            Err(e) => return Err(e.into()),
-        };
-        Ok(bytes)
+        let session = SessionGuard::new(&slot, slot.checkout_session()?);
+        let result = session.session()?.generate_random(len)?;
+        session.checkin();
+        Ok(result)
     }
 
     async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()> {
