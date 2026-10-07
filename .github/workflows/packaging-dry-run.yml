@@ -9,11 +9,14 @@
 # GitHub-hosted runners.
 #
 # Coverage
-#   reduced  — normal PRs: fips + non-fips, Linux amd64, static linkage.
-#   expanded — packaging-sensitive PRs, unreadable diffs, or manual runs with
-#              `expanded: true`: the production build dimensions (arm64,
-#              dynamic linkage, macOS DMG, unsigned Windows installers and the
-#              remaining Kubernetes checks).
+#   reduced  — normal PRs: fips + non-fips, Linux amd64, static linkage,
+#              no SBOM generation.
+#   expanded — packaging-sensitive PRs (Nix, packaging scripts, packaging
+#              CI, charts, manifests/lockfiles, native-build inputs),
+#              unreadable diffs, or manual runs with `expanded: true`: the
+#              production build dimensions (arm64, dynamic linkage, SBOMs,
+#              macOS DMG, unsigned Windows installers and the remaining
+#              Kubernetes checks).
 #
 # Never exercised here: publishing (package.cosmian.com, GHCR, GitHub
 # Releases, Helm pages) and production signing (GPG key, Authenticode,
@@ -105,7 +108,11 @@ jobs:
                   r"^\.mise/tasks/test/(docker|docker-oracle)$", r"^\.mise/tasks/test/k8s/",
                   r"\.nsi$", r"(^|/)Dockerfile[^/]*$", r"(^|/)\.dockerignore$",
               ],
-              "ci": [r"^\.github/(workflows|actions|reusable_scripts|scripts)/"],
+              # Only the CI that builds or tests packages; other workflows are off topic.
+              "packaging CI": [
+                  r"^\.github/workflows/(packaging[^/]*|build_windows)\.yml$",
+                  r"^\.github/actions/", r"^\.github/scripts/patch-kube-apiserver\.py$",
+              ],
               "charts": [r"^charts/"],
               "manifests/lockfiles": [
                   r"(^|/)Cargo\.(toml|lock)$", r"^rust-toolchain(\.toml)?$", r"^\.cargo/",
@@ -514,7 +521,10 @@ jobs:
                           stage += [f"{d}/*.{ext}", f"{d}/*.{ext}.asc", f"{d}/cosmian-kms-public.asc"]
                           if ext in ("zip", "dmg"):
                               stage.append(f"{d}/*.{ext}.sha256")
-                      sbom = runner == sbom_runner
+                      # SBOMs depend on Nix, lockfiles and the SBOM scripts, which all
+                      # select expanded coverage; reduced runs would only regenerate
+                      # develop's SBOMs at ~30 min per leg.
+                      sbom = EXPANDED and runner == sbom_runner
                       dirs = [sbom_dir(t, f, l) for t in sbom_targets] if sbom else []
                       stage += [f"{d}/{n}" for d in dirs for n in ("bom.cdx.json", "bom.spdx.json", "sbom.csv", "meta.json")]
                       entry = {
@@ -636,7 +646,7 @@ jobs:
                                                                  "k8s-plugin-package", "windows-build") for e in jobs[job]})
           if not EXPANDED:
               excluded.append("Not certified by this reduced run: arm64, dynamic linkage, macOS DMG, Windows installers, "
-                              "non-selected install containers and the remaining Kubernetes checks")
+                              "SBOM generation, non-selected install containers and the remaining Kubernetes checks")
           excluded += ["Publishing to package.cosmian.com, GHCR, GitHub Releases and Helm pages",
                        "Production signing (release GPG key, Authenticode, cosign); a throwaway GPG key signs packages"]
 
@@ -1208,8 +1218,9 @@ jobs:
           sudo sed -i 's/info = false/info = true/g' /etc/cosmian/kms.toml
           export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
           export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
+          # The packaged binary is mode 0500 (root only): test it as root.
           BIN=/usr/sbin/cosmian_kms
-          [ -x "$BIN" ] || BIN=/usr/bin/cosmian_kms
+          sudo test -x "$BIN" || BIN=/usr/bin/cosmian_kms
           sudo ldd "$BIN"
           sudo -E "$BIN" --version
           sudo -E "$BIN" --info
@@ -1677,7 +1688,7 @@ jobs:
           command -v rpm >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq rpm; }
           for pkg in "$dir"/result-k8s-plugin-rpm/*.rpm; do
             rpm -qpi --nosignature "$pkg"
-            rpm -qpl --nosignature "$pkg" | grep -qE '/kubernetes-kms-plugin$'
+            rpm -qpl --nosignature "$pkg" | grep -qE '/s?bin/kubernetes-kms-plugin$'
           done
           set -- "$dir"/result-k8s-plugin-deb/*.deb
           [ "$#" -eq 1 ] && [ -f "$1" ]
@@ -1685,8 +1696,9 @@ jobs:
           sudo dpkg -i "$1"
           name=$(dpkg-deb -f "$1" Package)
           dpkg-query -W -f='${Status}\n' "$name" | grep -qx 'install ok installed'
-          bin=$(dpkg -L "$name" | grep -E '/kubernetes-kms-plugin$' | head -n 1)
-          [ -x "$bin" ]
+          # The docs directory shares the binary's name; match the bin path only.
+          bin=$(dpkg -L "$name" | grep -E '/s?bin/kubernetes-kms-plugin$' || true)
+          [ "$(printf '%s\n' "$bin" | grep -c .)" -eq 1 ] && [ -f "$bin" ] && [ -x "$bin" ]
           "$bin" --version
           systemctl cat kubernetes-kms-plugin.service
 
@@ -1847,10 +1859,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ckms --version failed" }
 
           # Run the installed server on its own port and database, independent of the service.
+          # The installer drops a kms.toml at the default config path, and the server then
+          # rejects extra CLI arguments, so give it a dedicated config file instead.
           $work = Join-Path $env:RUNNER_TEMP "dry-run-kms-run"
           New-Item -ItemType Directory -Force -Path $work | Out-Null
-          $proc = Start-Process -FilePath $kms -WorkingDirectory $work -PassThru `
-            -ArgumentList @('--database-type', 'sqlite', '--sqlite-path', (Join-Path $work 'sqlite-data'), '--port', '19998') `
+          $kmsConf = Join-Path $work "kms.toml"
+          $sqlite = Join-Path $work "sqlite-data"
+          Set-Content -Path $kmsConf -Value "[db]`ndatabase_type = `"sqlite`"`nsqlite_path = '$sqlite'`n`n[http]`nport = 19998`nhostname = `"127.0.0.1`""
+          Get-Content $kmsConf
+          $proc = Start-Process -FilePath $kms -WorkingDirectory $work -PassThru -ArgumentList @('-c', $kmsConf) `
             -RedirectStandardOutput (Join-Path $work 'kms.out') -RedirectStandardError (Join-Path $work 'kms.err')
           try {
             $version = $null
