@@ -167,6 +167,11 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     `/etc/cosmian/kms.toml`, the web UI, and an OpenRC service (`/etc/init.d/cosmian_kms`,
     options in `/etc/conf.d/cosmian_kms`).
 
+    The OpenRC service runs as a dedicated, unprivileged `kms` system user (not root), created automatically on install.
+    `/etc/cosmian/kms.toml` is owned by `root:kms`, mode `0640` (readable by the service, writable only by root).
+    `/var/lib/cosmian` and `/var/log/cosmian` are owned by `kms:kms`.
+    If you bind-mount a custom config file or data directory, ensure it is readable/writable by the `kms` user (or its group).
+
     - **FIPS** (dynamically-linked musl): the package depends on `libgcc`, which `apk`
       installs automatically.
     - **non-FIPS** (fully static musl): no dependencies. Use the `non-fips` path and

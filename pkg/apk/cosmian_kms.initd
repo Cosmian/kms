@@ -6,6 +6,9 @@ description="Cosmian Key Management System server"
 
 command="/usr/sbin/cosmian_kms"
 command_background="yes"
+# Drops privileges via start-stop-daemon --user before exec'ing the server.
+# The "kms" system user/group is created by the package's preinstall script.
+command_user="kms:kms"
 pidfile="/run/${RC_SVCNAME}.pid"
 directory="/var/lib/cosmian"
 output_log="/var/log/cosmian/cosmian_kms.log"
@@ -23,6 +26,6 @@ depend() {
 }
 
 start_pre() {
-    checkpath --directory --mode 0750 /var/lib/cosmian
-    checkpath --directory --mode 0750 /var/log/cosmian
+    checkpath --directory --mode 0750 --owner kms:kms /var/lib/cosmian
+    checkpath --directory --mode 0750 --owner kms:kms /var/log/cosmian
 }

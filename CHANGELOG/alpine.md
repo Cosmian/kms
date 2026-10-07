@@ -48,6 +48,34 @@
   libc cannot `dlopen` the legacy OpenSSL provider module. All other algorithms,
   including PQC and Covercrypt, are unaffected.
 
+## Security
+
+- The Alpine `.apk` server package now runs the KMIP server as a dedicated,
+  unprivileged `kms` system user instead of root, via OpenRC's `command_user`
+  (translates to `start-stop-daemon --user`):
+  - The `kms` system user/group is created in a new `pkg/apk/preinstall.sh` script
+    — not `postinstall.sh` — because `apk-tools` resolves named file owners (e.g.
+    `kms.toml`'s `group: kms`) against `/etc/passwd` at file-extraction time,
+    silently falling back to `root:root` with no error if the user doesn't exist
+    yet (verified empirically against a fresh Alpine container: `postinstall`
+    would be too late on a clean install).
+  - `/etc/cosmian/kms.toml` is now `root:kms`, mode `0640` (service-readable,
+    root-writable only), so a compromised server process cannot persist a
+    malicious config change across a restart.
+  - `/var/lib/cosmian` and `/var/log/cosmian` are now owned by `kms:kms`
+    (`postinstall.sh` `chown`, and `cosmian_kms.initd`'s `checkpath --owner`).
+  - The `kms` user/group uses Alpine's system-allocated UID/GID range
+    (`adduser -S` / `addgroup -S`) rather than a hardcoded UID, to avoid
+    colliding with real interactive user accounts on a package-managed Alpine
+    host — unlike the Docker/Kubernetes image's `kms:1000`, which is safe only
+    because that container has no other human users.
+  - The user/group is never deleted on `apk del`, matching standard distro
+    packaging policy (avoids a later, unrelated account silently inheriting
+    the UID and any leftover file ownership).
+  - No `CAP_NET_BIND_SERVICE` is granted: all documented default KMS ports are
+    unprivileged (>1024). An admin who configures a privileged port must grant
+    the capability manually or front the server with a reverse proxy.
+
 ## Improvements
 
 ### CI
@@ -94,3 +122,7 @@
   RHEL/Rocky Linux packages. The server's "Alpine Linux" tab is now server-only and
   links to the CLI page for the `ckms` package; both pages are bumped from the
   `5.27.1` release that introduced the apk packages to the current `5.28.0`.
+- `installation_getting_started.md`'s "Alpine Linux" tab now documents the non-root
+  `kms` service user and the ownership/permissions of `kms.toml`, `/var/lib/cosmian`,
+  and `/var/log/cosmian`, including the note to grant the `kms` user access to any
+  bind-mounted custom config file or data directory.

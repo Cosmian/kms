@@ -22,6 +22,15 @@
 #           /usr/local/cosmian/lib/ (FIPS provider + openssl.cnf, FIPS only)
 #   cli:    /usr/bin/ckms
 #
+# The server runs as a dedicated, unprivileged "kms" system user/group (OpenRC
+# command_user, see cosmian_kms.initd), not root. The user/group is created by
+# preinstall.sh — this must happen *before* apk-tools extracts the package
+# files, because named file_info owners (e.g. kms.toml's `group: kms`) are
+# resolved against /etc/passwd at extraction time with a silent root:root
+# fallback if the user doesn't exist yet (verified empirically; postinstall
+# would be too late on a fresh install). postinstall.sh then chowns the
+# runtime directories (/var/lib/cosmian, /var/log/cosmian) to kms:kms.
+#
 # Output directory: result-apk-<component>-<variant>/
 # Output file:      cosmian-kms-<component>-<variant>_<version>-r0_<apk-arch>.apk
 # Signature:        <apk>.asc  (GPG detached ASCII-armor; the .apk itself is
@@ -218,6 +227,7 @@ EOF
     cat <<EOF
 description: Cosmian KMS server (${VARIANT}, musl) for Alpine Linux
 scripts:
+  preinstall: ${REPO_ROOT}/pkg/apk/preinstall.sh
   postinstall: ${REPO_ROOT}/pkg/apk/postinstall.sh
   preremove: ${REPO_ROOT}/pkg/apk/preremove.sh
 contents:
@@ -227,7 +237,13 @@ contents:
   - src: ${REPO_ROOT}/pkg/kms.toml
     dst: /etc/cosmian/kms.toml
     type: config|noreplace
-    file_info: { mode: 0600 }
+    # Group-readable by the unprivileged "kms" service user (see
+    # cosmian_kms.initd's command_user) but only root-writable, so a
+    # compromised server process cannot modify its own config. Requires
+    # preinstall.sh (not postinstall) to create the "kms" group first —
+    # apk-tools resolves named owners at file-extraction time and silently
+    # falls back to root:root if the group doesn't exist yet.
+    file_info: { owner: root, group: kms, mode: 0640 }
   - src: ${REPO_ROOT}/pkg/apk/cosmian_kms.initd
     dst: /etc/init.d/cosmian_kms
     file_info: { mode: 0755 }
