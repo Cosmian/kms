@@ -9,7 +9,6 @@ use cosmian_kms_interfaces::{
     EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
-use futures::executor::block_on;
 use libloading::Library;
 use openssl::{
     bn::BigNumContext,
@@ -400,7 +399,17 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
             session.get_key_type(sk_handle)?,
             Some(KeyType::EcPrivateKey)
         );
+        let signing_metadata = session
+            .get_signing_key_metadata(sk_handle)?
+            .ok_or_else(|| HError::Default("private signing metadata missing".to_owned()))?;
+        assert_eq!(signing_metadata.key_type, KeyType::EcPrivateKey);
+        assert_eq!(signing_metadata.curve, Some(curve));
         assert_eq!(session.get_key_type(pk_handle)?, Some(KeyType::EcPublicKey));
+        let signing_metadata = session
+            .get_signing_key_metadata(pk_handle)?
+            .ok_or_else(|| HError::Default("public signing metadata missing".to_owned()))?;
+        assert_eq!(signing_metadata.key_type, KeyType::EcPublicKey);
+        assert_eq!(signing_metadata.curve, Some(curve));
         let meta = session
             .get_key_metadata(sk_handle)?
             .expect("private key metadata must be present");
@@ -1509,6 +1518,11 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         .get_key_type(key_handle)?
         .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::AesKey);
+    let signing_metadata = session
+        .get_signing_key_metadata(key_handle)?
+        .ok_or_else(|| HError::Default("AES signing metadata missing".to_owned()))?;
+    assert_eq!(signing_metadata.key_type, KeyType::AesKey);
+    assert_eq!(signing_metadata.curve, None);
     // get the metadata
     let metadata = session
         .get_key_metadata(key_handle)?
@@ -1558,6 +1572,11 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         .get_key_type(sk)?
         .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::RsaPrivateKey);
+    let signing_metadata = session
+        .get_signing_key_metadata(sk)?
+        .ok_or_else(|| HError::Default("RSA private signing metadata missing".to_owned()))?;
+    assert_eq!(signing_metadata.key_type, KeyType::RsaPrivateKey);
+    assert_eq!(signing_metadata.curve, None);
 
     // get the private key metadata
     let metadata = session
@@ -1573,6 +1592,11 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         .get_key_type(pk)?
         .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::RsaPublicKey);
+    let signing_metadata = session
+        .get_signing_key_metadata(pk)?
+        .ok_or_else(|| HError::Default("RSA public signing metadata missing".to_owned()))?;
+    assert_eq!(signing_metadata.key_type, KeyType::RsaPublicKey);
+    assert_eq!(signing_metadata.curve, None);
 
     // get the public key metadata
     let metadata = session
@@ -1592,6 +1616,9 @@ where
     BaseHsm<P>: Sized,
 {
     log_init(None);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .map_err(|e| HError::Default(e.to_string()))?;
     let valid_key_id_0 = Uuid::new_v4().to_string();
     let valid_key_id_1 = Uuid::new_v4().to_string();
     let valid_key_id_2 = Uuid::new_v4().to_string();
@@ -1600,8 +1627,9 @@ where
     let session = slot.open_session(true)?;
 
     let object_list_start = session.list_objects(HsmObjectFilter::Any)?;
-    let object_find_start =
-        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    let object_find_start = runtime
+        .block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any))
+        .unwrap_or(vec![]);
 
     let valid_key_handle_0 =
         session.generate_sensitive_aes_key(valid_key_id_0.as_bytes(), AesKeySize::Aes128)?;
@@ -1617,8 +1645,9 @@ where
         session.generate_sensitive_aes_key(valid_key_id_3.as_bytes(), AesKeySize::Aes128)?;
 
     let object_list_test = session.list_objects(HsmObjectFilter::Any)?;
-    let object_find_test =
-        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    let object_find_test = runtime
+        .block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any))
+        .unwrap_or(vec![]);
     assert_eq!(object_list_start.len() + 6, object_list_test.len());
     assert_eq!(object_find_start.len() + 4, object_find_test.len());
 
@@ -1630,8 +1659,9 @@ where
     session.destroy_object(valid_key_handle_3)?;
 
     let object_list_end = session.list_objects(HsmObjectFilter::Any)?;
-    let object_find_end =
-        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    let object_find_end = runtime
+        .block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any))
+        .unwrap_or(vec![]);
     assert_eq!(object_list_start.len(), object_list_end.len());
     assert_eq!(object_find_start.len(), object_find_end.len());
     info!("Tested invalid object search");

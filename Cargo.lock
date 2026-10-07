@@ -1428,7 +1428,6 @@ dependencies = [
  "cosmian_crypto_core",
  "cosmian_kms_interfaces",
  "cosmian_logger",
- "futures",
  "libloading",
  "lru",
  "openssl",

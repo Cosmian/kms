@@ -39,6 +39,22 @@ pub struct KeyMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Minimal on-HSM key metadata used to resolve a signing algorithm.
+pub struct SigningKeyMetadata {
+    /// PKCS#11 key type used to select the signing algorithm family.
+    pub key_type: KeyType,
+    /// EC curve for EC-family keys; `None` for RSA and symmetric keys.
+    pub curve: Option<crate::EcCurve>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Minimal on-HSM key metadata used to resolve an encryption algorithm.
+pub struct EncryptionKeyMetadata {
+    /// PKCS#11 key type used to select the encryption algorithm family.
+    pub key_type: KeyType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CryptoAlgorithm {
     AesCbc,
     AesGcm,

@@ -1,8 +1,24 @@
 # PKCS#11 v3.0 review follow-ups: OIDC PIN length, `C_GetInterface` version matching and name bounds, and message-AEAD IV handling
 
+## Breaking Changes
+
+### HSM
+
+- Replace `HSM::sign`/`verify` with `sign_with_metadata`/`verify_with_metadata`. Downstream `HSM`
+  implementations must migrate; the resolver now receives `SigningKeyMetadata` (key type and
+  optional EC curve) from the same PKCS#11 session and can abort before `C_SignInit`/`C_VerifyInit`.
+
 ## Bug Fixes
 
 ### HSM
+
+- Bound async `BaseHsm` session checkouts per slot to `HsmCapabilities::max_concurrent_sessions`
+  (default 32), applying asynchronous backpressure and keeping PKCS#11 calls off Tokio executor
+  workers. KMIP `Sign` and `SignatureVerify` now resolve metadata and perform the operation in one
+  session checkout.
+
+- Resolve HSM signing algorithms from only the key type and optional EC curve instead of reading
+  full `KeyMetadata` for every `Sign` and `SignatureVerify` request.
 
 - Fix `Session::encrypt_message_aes_gcm()`/`decrypt_message_aes_gcm()` issuing **two**
   `C_EncryptMessage`/`C_DecryptMessage` calls per operation — a NULL-output-buffer size

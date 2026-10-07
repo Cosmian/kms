@@ -4,6 +4,7 @@
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
 #USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
+#USAGE flag "-a --algorithm <a>"   env="BENCH_ALGORITHM"     default=""                help="Filter benchmark algorithm (e.g. ecdsa-p256)"
 #USAGE flag "-P --protocol <p>"     env="BENCH_PROTOCOL"      default="all"             help="Protocol to benchmark"                     { choices "all" "ttlv-json" "ttlv-bytes" "jose" }
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
@@ -49,15 +50,17 @@ BENCH_SERVER_VERSION="${usage_server_version:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
 BENCH_MAX_GROUP_TIME="${usage_max_group_time:-}"
+BENCH_ALGORITHM="${usage_algorithm:-}"
+ALGORITHM_ARGS=()
+[ -n "${BENCH_ALGORITHM}" ] && ALGORITHM_ARGS=(--algorithm "${BENCH_ALGORITHM}")
 
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
 print_header "Running load benchmark (${VARIANT_NAME})"
 if [ -n "${BENCH_SERVER_VERSION}" ] && [ -n "${BENCH_SERVER_URL}" ]; then
-  echo "ERROR: --server-version and --server-url are mutually exclusive." >&2
-  exit 1
+    echo "ERROR: --server-version and --server-url are mutually exclusive." >&2
+    exit 1
 fi
 [ -n "${BENCH_SERVER_URL}" ] && echo "Target KMS server: ${BENCH_SERVER_URL} (external, not started by this task)"
-
 
 # ── Variables ────────────────────────────────────────────────────────────────
 TMP_DIR="$(mktemp -d /tmp/kms-bench-XXXXXX)"
@@ -66,41 +69,41 @@ BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
 # Sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt.
 # usage always resolves to "true" whether -s flag or BENCH_SANITY=1 env alias is used.
 if [ "${BENCH_SANITY}" = "true" ]; then
-  BUILD_MODE="debug"
-  BENCH_TIME="2"
-  BENCH_WARMUP="0"
-  BENCH_COOLDOWN="0"
-  BENCH_MODE="all"
-  BENCH_CONCURRENCY="1,2"
+    BUILD_MODE="debug"
+    BENCH_TIME="2"
+    BENCH_WARMUP="0"
+    BENCH_COOLDOWN="0"
+    BENCH_MODE="all"
+    BENCH_CONCURRENCY="1,2"
 fi
 
 bench_register_cleanup
 
 if [ -n "${BENCH_SERVER_URL}" ]; then
-  bench_build_ckms "${BUILD_MODE}"
+    bench_build_ckms "${BUILD_MODE}"
 elif [ -n "${BENCH_SERVER_VERSION}" ]; then
-  bench_build_ckms "${BUILD_MODE}"
-  bench_download_server "${BENCH_SERVER_VERSION}" "${TMP_DIR}/deb"
-  KMS_BIN="${BENCH_DEB_BINARY}"
-  OPENSSL_MODULES_DIR="${BENCH_DEB_OSSL_MODS}"
-  export KMS_BIN OPENSSL_MODULES_DIR
+    bench_build_ckms "${BUILD_MODE}"
+    bench_download_server "${BENCH_SERVER_VERSION}" "${TMP_DIR}/deb"
+    KMS_BIN="${BENCH_DEB_BINARY}"
+    OPENSSL_MODULES_DIR="${BENCH_DEB_OSSL_MODS}"
+    export KMS_BIN OPENSSL_MODULES_DIR
 else
-  bench_build_binaries "${BUILD_MODE}"
+    bench_build_binaries "${BUILD_MODE}"
 fi
 
 if [ -n "${BENCH_SERVER_URL}" ]; then
-  KMS_BASE_URL="${BENCH_SERVER_URL%/}"
-  echo "Using existing KMS server at ${KMS_BASE_URL} (no local server will be started)..."
-  bench_wait_ready_tls "${KMS_BASE_URL}/kmip/2_1" "${BENCH_ACCEPT_INVALID_CERTS}" "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" 15
-  CKMS_CONF="${TMP_DIR}/ckms.toml"
-  bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "${BENCH_ACCEPT_INVALID_CERTS}" \
-    "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" \
-    "${BENCH_TLS_CLIENT_PKCS12}" "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}"
-  export CKMS_CONF
+    KMS_BASE_URL="${BENCH_SERVER_URL%/}"
+    echo "Using existing KMS server at ${KMS_BASE_URL} (no local server will be started)..."
+    bench_wait_ready_tls "${KMS_BASE_URL}/kmip/2_1" "${BENCH_ACCEPT_INVALID_CERTS}" "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" 15
+    CKMS_CONF="${TMP_DIR}/ckms.toml"
+    bench_write_ckms_tls_conf "${CKMS_CONF}" "${KMS_BASE_URL}" "${BENCH_ACCEPT_INVALID_CERTS}" \
+        "${BENCH_TLS_CA_CERT}" "${BENCH_TLS_CLIENT_PEM_CERT}" "${BENCH_TLS_CLIENT_PEM_KEY}" \
+        "${BENCH_TLS_CLIENT_PKCS12}" "${BENCH_TLS_CLIENT_PKCS12_PASSWORD}"
+    export CKMS_CONF
 else
-  BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-  bench_start_server "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
-  KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
+    BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+    bench_start_server "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}"
+    KMS_BASE_URL="http://127.0.0.1:${BENCH_PORT}"
 fi
 export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
 
@@ -113,37 +116,39 @@ mkdir -p "${CRITERION_HOME}"
 bench_warn_cpu_scaling
 
 "${CKMS_BIN}" \
-  --url "${KMS_BASE_URL}" \
-  bench \
-  --load \
-  --mode "${BENCH_MODE}" \
-  --protocol "${BENCH_PROTOCOL}" \
-  --time "${BENCH_TIME}" \
-  --load-concurrency "${BENCH_CONCURRENCY}" \
-  --warmup-time "${BENCH_WARMUP}" \
-  --cooldown-time "${BENCH_COOLDOWN}"
+    --url "${KMS_BASE_URL}" \
+    bench \
+    --load \
+    --mode "${BENCH_MODE}" \
+    --protocol "${BENCH_PROTOCOL}" \
+    --time "${BENCH_TIME}" \
+    --load-concurrency "${BENCH_CONCURRENCY}" \
+    --warmup-time "${BENCH_WARMUP}" \
+    --cooldown-time "${BENCH_COOLDOWN}" \
+    "${ALGORITHM_ARGS[@]}"
 
 # Optional Criterion micro-benchmarks (run before the load sweep to warm up the server).
 if [ "${BENCH_CRITERION}" = "true" ]; then
-  VERSION_LABEL_ARG=()
-  [ -n "${BENCH_SERVER_VERSION}" ] &&
-    VERSION_LABEL_ARG=(--version-label "${BENCH_SERVER_VERSION}")
+    VERSION_LABEL_ARG=()
+    [ -n "${BENCH_SERVER_VERSION}" ] &&
+        VERSION_LABEL_ARG=(--version-label "${BENCH_SERVER_VERSION}")
 
-  MAX_GROUP_TIME_ARG=()
-  [ -n "${BENCH_MAX_GROUP_TIME}" ] &&
-    MAX_GROUP_TIME_ARG=(--max-group-time "${BENCH_MAX_GROUP_TIME}")
+    MAX_GROUP_TIME_ARG=()
+    [ -n "${BENCH_MAX_GROUP_TIME}" ] &&
+        MAX_GROUP_TIME_ARG=(--max-group-time "${BENCH_MAX_GROUP_TIME}")
 
-  "${CKMS_BIN}" \
-    --url "${KMS_BASE_URL}" \
-    bench \
-    --speed "${BENCH_SPEED}" \
-    --format json \
-    --mode "${BENCH_MODE}" \
-    --protocol "${BENCH_PROTOCOL}" \
-    --warmup-time "${BENCH_WARMUP}" \
-    --cooldown-time "${BENCH_COOLDOWN}" \
-    "${MAX_GROUP_TIME_ARG[@]}" \
-    "${VERSION_LABEL_ARG[@]}"
+    "${CKMS_BIN}" \
+        --url "${KMS_BASE_URL}" \
+        bench \
+        --speed "${BENCH_SPEED}" \
+        --format json \
+        --mode "${BENCH_MODE}" \
+        --protocol "${BENCH_PROTOCOL}" \
+        --warmup-time "${BENCH_WARMUP}" \
+        --cooldown-time "${BENCH_COOLDOWN}" \
+        "${MAX_GROUP_TIME_ARG[@]}" \
+        "${VERSION_LABEL_ARG[@]}" \
+        "${ALGORITHM_ARGS[@]}"
 fi
 
 bench_generate_report "${BENCH_PORT:-0}" "ckms_bench" "false" "false" "false" "${KMS_BASE_URL}"

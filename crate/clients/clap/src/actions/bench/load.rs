@@ -261,7 +261,15 @@ fn prepare_load_ops(
     filter: Option<&super::types::BenchFilter>,
 ) -> Vec<PreparedLoadOp> {
     if let Some(hsm_prefix) = hsm_prefix {
-        return prepare_hsm_load_ops(rt, client, mode, protocol, plaintext_size, hsm_prefix);
+        return prepare_hsm_load_ops(
+            rt,
+            client,
+            mode,
+            protocol,
+            plaintext_size,
+            hsm_prefix,
+            filter,
+        );
     }
 
     let mut ops = Vec::new();
@@ -528,6 +536,7 @@ fn prepare_hsm_load_ops(
     protocol: &BenchProtocol,
     plaintext_size: usize,
     hsm_prefix: &str,
+    filter: Option<&super::types::BenchFilter>,
 ) -> Vec<PreparedLoadOp> {
     let mut ops = Vec::new();
     let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
@@ -766,6 +775,9 @@ fn prepare_hsm_load_ops(
         }
     }
 
+    if let Some(filter) = filter {
+        ops.retain(|op| filter.matches(op.name(), None));
+    }
     ops
 }
 
