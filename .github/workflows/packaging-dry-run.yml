@@ -1,0 +1,1982 @@
+---
+# Packaging Dry-Run
+#
+# Independent rehearsal of the production packaging pipeline (packaging.yml,
+# packaging-tests.yml, packaging-docker.yml, packaging-kubernetes.yml and
+# build_windows.yml). It never calls those workflows: the plan job reads their
+# matrices and toolchain values (without executing them) and the build jobs
+# re-run the same MISE tasks and Windows BuildProject() on disposable
+# GitHub-hosted runners.
+#
+# Coverage
+#   reduced  — normal PRs: fips + non-fips, Linux amd64, static linkage.
+#   expanded — packaging-sensitive PRs, unreadable diffs, or manual runs with
+#              `expanded: true`: the production build dimensions (arm64,
+#              dynamic linkage, macOS DMG, unsigned Windows installers and the
+#              remaining Kubernetes checks).
+#
+# Never exercised here: publishing (package.cosmian.com, GHCR, GitHub
+# Releases, Helm pages) and production signing (GPG key, Authenticode,
+# cosign). Packages are signed with a throwaway GPG key generated in each
+# disposable checkout. A green reduced run does not certify omitted platforms.
+#
+# The single required check is the "Packaging Dry-Run" job at the bottom.
+
+name: Packaging Dry-Run
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      expanded:
+        description: Force expanded coverage (all production build dimensions)
+        type: boolean
+        default: false
+
+concurrency:
+  group: packaging-dry-run-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('manual-{0}', github.run_id)
+    }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ── Plan: classify the change and read production configuration ──────────
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      coverage: ${{ steps.classify.outputs.coverage }}
+      selected-jobs: ${{ steps.config.outputs.selected-jobs }}
+      expected-artifacts: ${{ steps.config.outputs.expected-artifacts }}
+      minikube-kubernetes-version: ${{ steps.config.outputs.minikube-kubernetes-version }}
+      package-matrix: ${{ steps.config.outputs.package-matrix }}
+      verify-matrix: ${{ steps.config.outputs.verify-matrix }}
+      install-matrix: ${{ steps.config.outputs.install-matrix }}
+      systemd-matrix: ${{ steps.config.outputs.systemd-matrix }}
+      dmg-matrix: ${{ steps.config.outputs.dmg-matrix }}
+      docker-matrix: ${{ steps.config.outputs.docker-matrix }}
+      k8s-kms-matrix: ${{ steps.config.outputs.k8s-kms-matrix }}
+      k8s-bins-matrix: ${{ steps.config.outputs.k8s-bins-matrix }}
+      k8s-images-matrix: ${{ steps.config.outputs.k8s-images-matrix }}
+      k8s-e2e-matrix: ${{ steps.config.outputs.k8s-e2e-matrix }}
+      k8s-plugin-matrix: ${{ steps.config.outputs.k8s-plugin-matrix }}
+      windows-matrix: ${{ steps.config.outputs.windows-matrix }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Ensure PyYAML is available
+        run: python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+
+      - name: Classify changed files
+        id: classify
+        shell: python3 {0}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_EXPANDED: ${{ inputs.expanded || false }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          import json
+          import os
+          import re
+          import subprocess
+
+          # Paths whose changes can alter what the packaging pipeline produces on
+          # platforms the reduced run does not build.
+          RULES = {
+              "nix": [r"^(default|shell)\.nix$", r"^flake\.(nix|lock)$", r"^nix/"],
+              "packaging": [
+                  r"^pkg/", r"^resources/", r"^sbom/", r"^mise\.toml$", r"^\.mise/lib/",
+                  r"^\.mise/scripts/(package|sbom|windows|oracle|release)/",
+                  r"^\.mise/scripts/(nix|common)\.sh$",
+                  r"^\.mise/scripts/(docker-compose\.yml|nginx\.conf)$",
+                  r"^\.mise/scripts/test/test_(docker_image|lb_kms_shutdown)\.sh$",
+                  r"^\.mise/tasks/(package|build|sbom)/",
+                  r"^\.mise/tasks/test/(docker|docker-oracle)$", r"^\.mise/tasks/test/k8s/",
+                  r"\.nsi$", r"(^|/)Dockerfile[^/]*$", r"(^|/)\.dockerignore$",
+              ],
+              "ci": [r"^\.github/(workflows|actions|reusable_scripts|scripts)/"],
+              "charts": [r"^charts/"],
+              "manifests/lockfiles": [
+                  r"(^|/)Cargo\.(toml|lock)$", r"^rust-toolchain(\.toml)?$", r"^\.cargo/",
+                  r"(^|/)package\.json$", r"(^|/)pnpm-(lock|workspace)\.yaml$",
+                  r"^vcpkg(-configuration)?\.json$",
+              ],
+              "native-build inputs": [
+                  r"(^|/)build\.rs$", r"\.(c|cc|cpp|h|hpp|def|rc)$", r"\.cnf$",
+                  r"^crate/clients/(pkcs11|cng)/",
+              ],
+          }
+          RULES = {k: [re.compile(p) for p in v] for k, v in RULES.items()}
+
+
+          def git(*args):
+              return subprocess.run(
+                  ["git", *args], check=True, capture_output=True, text=True
+              ).stdout
+
+
+          def changed_files():
+              event = os.environ["EVENT_NAME"]
+              if event == "pull_request":
+                  # actions/checkout checks out the PR merge commit: its first parent
+                  # is the base branch, so HEAD^1..HEAD is exactly the PR change.
+                  parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+                  if len(parents) != 2:
+                      raise RuntimeError(f"HEAD is not a pull request merge commit (parents: {parents})")
+                  base = parents[0]
+              elif event == "workflow_dispatch":
+                  base = git("merge-base", f"origin/{os.environ['DEFAULT_BRANCH']}", "HEAD").strip()
+              else:
+                  raise RuntimeError(f"unsupported event {event!r}")
+              out = git("diff", "--no-renames", "--name-only", "-z", base, "HEAD")
+              return [p for p in out.split("\0") if p]
+
+
+          reasons, matched = [], {}
+          try:
+              files = changed_files()
+          except (subprocess.CalledProcessError, RuntimeError, KeyError, OSError) as exc:
+              detail = getattr(exc, "stderr", None) or str(exc)
+              files = None
+              reasons.append(f"unreadable diff: {detail.strip()}")
+          if os.environ.get("FORCE_EXPANDED") == "true":
+              reasons.append("manual run forced expanded coverage")
+          for path in files or []:
+              for category, patterns in RULES.items():
+                  if any(p.search(path) for p in patterns):
+                      matched.setdefault(category, []).append(path)
+                      break
+          reasons += [f"{cat}: {len(paths)} file(s)" for cat, paths in matched.items()]
+          coverage = "expanded" if reasons else "reduced"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"coverage={coverage}\n")
+              out.write(f"reasons={json.dumps(reasons)}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(f"## Packaging Dry-Run coverage: `{coverage}`\n\n")
+              if files is not None:
+                  summary.write(f"{len(files)} changed file(s) inspected.\n\n")
+              for reason in reasons:
+                  summary.write(f"- {reason}\n")
+              for category, paths in matched.items():
+                  summary.write(f"\n<details><summary>{category}</summary>\n\n")
+                  summary.writelines(f"- `{p}`\n" for p in paths[:50])
+                  if len(paths) > 50:
+                      summary.write(f"- … {len(paths) - 50} more\n")
+                  summary.write("\n</details>\n")
+          print(f"coverage={coverage}")
+          print("\n".join(reasons))
+
+      - name: Read production packaging configuration
+        id: config
+        shell: python3 {0}
+        env:
+          COVERAGE: ${{ steps.classify.outputs.coverage }}
+        run: |
+          import json
+          import os
+          import re
+          import sys
+
+          import yaml
+
+          WORKFLOWS = ".github/workflows"
+          COVERAGE = os.environ["COVERAGE"]
+          if COVERAGE not in ("reduced", "expanded"):
+              sys.exit(f"::error::unknown coverage {COVERAGE!r}")
+          EXPANDED = COVERAGE == "expanded"
+
+          # What this workflow knows how to execute. Production values outside these
+          # sets are rejected so the dry-run never silently runs stale copies.
+          RUNNERS = {
+              "ubuntu-24.04": ("linux", "amd64"),
+              "ubuntu-24.04-arm": ("linux", "arm64"),
+              "macos-15": ("macos", "arm64"),
+          }
+          LINUX_RUNNERS = [r for r, (os_, _) in RUNNERS.items() if os_ == "linux"]
+          FEATURES = ["fips", "non-fips"]
+          LINKS = ["static", "dynamic"]
+          PACKAGE_TASKS = {"deb", "rpm", "pkcs11-zip", "dmg"}
+          CONTAINER_FAMILIES = [
+              (re.compile(r"^ubuntu:[\w.-]+$"), "deb"),
+              (re.compile(r"^debian:[\w.-]+$"), "deb"),
+              (re.compile(r"^rockylinux/rockylinux:[\w.-]+$"), "rpm"),
+          ]
+          K8S_TASKS = {
+              "test:k8s:plugin": {"bins": True, "images": False, "kms": True},
+              "test:k8s:plugin --mtls": {"bins": True, "images": False, "kms": True},
+              "test:k8s:operator": {"bins": True, "images": True, "kms": True},
+              "test:k8s:csi-provider": {"bins": True, "images": True, "kms": True},
+              "test:k8s:operator-image": {"bins": False, "images": True, "kms": False},
+              "test:k8s:csi-provider-image": {"bins": False, "images": True, "kms": False},
+          }
+          IMAGE_SMOKE_TASKS = ["test:k8s:operator-image", "test:k8s:csi-provider-image"]
+          K8S_BINS = ["kubernetes-kms-plugin", "cosmian-kms-operator", "cosmian-kms-csi-provider", "ckms"]
+          REDUCED_RUNNER, REDUCED_LINK = "ubuntu-24.04", "static"
+
+          errors, excluded = [], []
+
+
+          def reject(message):
+              errors.append(message)
+
+
+          def load(name):
+              try:
+                  with open(f"{WORKFLOWS}/{name}", encoding="utf-8") as fh:
+                      doc = yaml.safe_load(fh)
+              except (OSError, yaml.YAMLError) as exc:
+                  reject(f"{name}: cannot be read ({exc})")
+                  return {}
+              return doc if isinstance(doc, dict) else {}
+
+
+          def get_job(doc, wf, name):
+              job = (doc.get("jobs") or {}).get(name)
+              if not isinstance(job, dict):
+                  reject(f"{wf}: job '{name}' not found")
+                  return {}
+              return job
+
+
+          def strings(value, where, allowed=None):
+              if not isinstance(value, list) or not value or not all(isinstance(v, str) for v in value):
+                  reject(f"{where}: expected a non-empty list of strings, got {value!r}")
+                  return []
+              unknown = [v for v in value if allowed is not None and v not in allowed]
+              if unknown:
+                  reject(f"{where}: unsupported value(s) {unknown}")
+              return [v for v in value if v not in unknown]
+
+
+          def matrix(job, where, key, allowed=None):
+              m = (job.get("strategy") or {}).get("matrix") or {}
+              return strings(m.get(key), f"{where}.strategy.matrix.{key}", allowed)
+
+
+          def runs_on(job, where, allowed):
+              value = job.get("runs-on")
+              if value not in allowed:
+                  reject(f"{where}.runs-on: unsupported runner {value!r}")
+                  return None
+              return value
+
+
+          def steps(job):
+              return [s for s in job.get("steps") or [] if isinstance(s, dict)]
+
+
+          def run_text(job):
+              return "\n".join(str(s.get("run", "")) for s in steps(job))
+
+
+          def mv(key):
+              return r"\$\{\{\s*matrix\." + key + r"\s*\}\}"
+
+
+          def require(job, where, pattern, description):
+              if not re.search(pattern, run_text(job)):
+                  reject(f"{where}: expected command not found: {description}")
+
+
+          def action_inputs(job, action):
+              return [s.get("with") or {} for s in steps(job) if str(s.get("uses", "")).split("@")[0] == action]
+
+
+          def single_input(job, where, action, key):
+              values = [str(w.get(key, "")) for w in action_inputs(job, action)]
+              if len(values) != 1 or not values[0]:
+                  reject(f"{where}: expected exactly one {action} step with '{key}', found {values}")
+                  return ""
+              return values[0]
+
+
+          def includes(job, where):
+              inc = ((job.get("strategy") or {}).get("matrix") or {}).get("include")
+              if not isinstance(inc, list) or not inc:
+                  reject(f"{where}.strategy.matrix.include: expected a non-empty list")
+                  return []
+              good = []
+              for item in inc:
+                  if not isinstance(item, dict) or not isinstance(item.get("task"), str):
+                      reject(f"{where}: malformed matrix entry {item!r}")
+                  elif item["task"] not in K8S_TASKS:
+                      reject(f"{where}: unsupported Kubernetes task {item['task']!r}")
+                  else:
+                      good.append(item)
+              return good
+
+
+          def uses_refs(doc):
+              refs = {}
+              for job in (doc.get("jobs") or {}).values():
+                  for step in steps(job) if isinstance(job, dict) else []:
+                      uses = step.get("uses")
+                      if isinstance(uses, str) and "@" in uses and not uses.startswith("./"):
+                          name, ref = uses.split("@", 1)
+                          refs.setdefault(name, set()).add(ref)
+              return refs
+
+
+          def pick(values, reduced, where):
+              if EXPANDED:
+                  return list(values)
+              if reduced not in values:
+                  reject(f"{where}: reduced coverage needs {reduced!r}, production lists {values}")
+                  return []
+              return [reduced]
+
+
+          def both_modes(values, where):
+              if not EXPANDED and sorted(values) != sorted(FEATURES):
+                  reject(f"{where}: reduced coverage needs both FIPS modes, production lists {values}")
+              return list(values)
+
+
+          def arch(runner):
+              return RUNNERS[runner][1]
+
+
+          packaging = load("packaging.yml")
+          tests = load("packaging-tests.yml")
+          docker = load("packaging-docker.yml")
+          kube = load("packaging-kubernetes.yml")
+          windows = load("build_windows.yml")
+          dry_run = load("packaging-dry-run.yml")
+
+          # ── packaging.yml: package builds and SBOMs ─────────────────────────────
+          W = "packaging.yml:packages"
+          pk = get_job(packaging, "packaging.yml", "packages")
+          pk_features = matrix(pk, W, "features", FEATURES)
+          pk_links = matrix(pk, W, "link", LINKS)
+          pk_runners = matrix(pk, W, "runner", RUNNERS)
+          invoked = set(re.findall(r"mise run package:(\S+)", run_text(pk)))
+          canonical = set(re.findall(
+              r"mise run package:(\S+) --variant " + mv("features") + r" --link " + mv("link") + r"(?:\s|$)",
+              run_text(pk)))
+          if invoked != PACKAGE_TASKS:
+              reject(f"{W}: package tasks {sorted(invoked)} differ from supported {sorted(PACKAGE_TASKS)}")
+          if canonical != invoked:
+              reject(f"{W}: package tasks {sorted(invoked - canonical)} use an unsupported argument form")
+
+          with open(".mise/tasks/sbom/generate", encoding="utf-8") as fh:
+              block = re.search(r'flag "--target <target>"[^{]*\{\s*#USAGE\s+choices ([^\n]+)', fh.read())
+          sbom_choices = re.findall(r'"([^"]+)"', block.group(1)) if block else []
+          if not sbom_choices:
+              reject(".mise/tasks/sbom/generate: cannot read --target choices")
+          sbom_steps = [s for s in steps(pk) if "sbom:generate" in str(s.get("run", ""))]
+          sbom_runner, sbom_targets = None, []
+          if len(sbom_steps) != 1:
+              reject(f"{W}: expected exactly one SBOM step, found {len(sbom_steps)}")
+          else:
+              cond = re.fullmatch(r"\s*matrix\.runner == '([^']+)'\s*", str(sbom_steps[0].get("if", "")))
+              sbom_runner = cond.group(1) if cond else None
+              if sbom_runner not in pk_runners:
+                  reject(f"{W}: unsupported SBOM step condition {sbom_steps[0].get('if')!r}")
+              text = str(sbom_steps[0].get("run", ""))
+              sbom_targets = re.findall(
+                  r"mise run sbom:generate --variant " + mv("features") + r" --link " + mv("link") + r" --target (\S+)",
+                  text)
+              if len(sbom_targets) != text.count("mise run sbom:generate") or not sbom_targets:
+                  reject(f"{W}: SBOM invocations use an unsupported argument form")
+              for target in sbom_targets:
+                  if target not in sbom_choices or not re.fullmatch(r"server|ckms|openssl_\d+_\d+_\d+", target):
+                      reject(f"{W}: unsupported SBOM target {target!r}")
+
+
+          def sbom_dir(target, f, l):
+              return f"sbom/{target}/{f}/{l}" if target in ("server", "ckms") else f"sbom/{target}"
+
+
+          # ── build_windows.yml (called by packaging.yml) ─────────────────────────
+          wp = get_job(packaging, "packaging.yml", "windows-package")
+          if wp.get("uses") != "./.github/workflows/build_windows.yml":
+              reject(f"packaging.yml:windows-package: unsupported reusable workflow {wp.get('uses')!r}")
+          toolchain = str((wp.get("with") or {}).get("toolchain", ""))
+          if not re.fullmatch(r"\d+\.\d+\.\d+", toolchain):
+              reject(f"packaging.yml:windows-package: unsupported toolchain {toolchain!r}")
+          W = "build_windows.yml:cargo-build"
+          wb = get_job(windows, "build_windows.yml", "cargo-build")
+          win_runner = str(wb.get("runs-on", ""))
+          if not re.fullmatch(r"windows-\d{4}", win_runner):
+              reject(f"{W}.runs-on: unsupported runner {win_runner!r}")
+          pnpm = single_input(wb, W, "pnpm/action-setup", "version")
+          node = single_input(wb, W, "actions/setup-node", "node-version")
+          if single_input(wb, W, "dtolnay/rust-toolchain", "toolchain").replace(" ", "") != "$" + "{{inputs.toolchain}}":
+              reject(f"{W}: Rust toolchain no longer comes from inputs.toolchain")
+          require(wb, W, r"Build-UI -Variant non-fips", "Build-UI -Variant non-fips")
+          require(wb, W, r"vcpkg install --triplet x64-windows-static", "vcpkg install --triplet x64-windows-static")
+          require(wb, W, r"cargo_build\.ps1[\s\S]*\bBuildProject\b", "BuildProject from cargo_build.ps1")
+
+          # ── packaging-tests.yml: installation matrices ──────────────────────────
+          W = "packaging-tests.yml:packages-test"
+          pt = get_job(tests, "packaging-tests.yml", "packages-test")
+          containers, families = matrix(pt, W, "container"), {}
+          for c in containers:
+              family = next((fam for rx, fam in CONTAINER_FAMILIES if rx.match(c)), None)
+              if family is None:
+                  reject(f"{W}: unsupported container {c!r}")
+              families[c] = family
+          pt_features = matrix(pt, W, "features", FEATURES)
+          pt_links = matrix(pt, W, "link", LINKS)
+          pt_runners = matrix(pt, W, "runner", LINUX_RUNNERS)
+          W = "packaging-tests.yml:systemd-packages-test"
+          st = get_job(tests, "packaging-tests.yml", "systemd-packages-test")
+          st_features = matrix(st, W, "features", FEATURES)
+          st_links = matrix(st, W, "link", LINKS)
+          st_runners = matrix(st, W, "runner", LINUX_RUNNERS)
+
+          # ── packaging-docker.yml: images, Docker suite, image smoke tests ───────
+          W = "packaging-docker.yml:nix-docker-image"
+          dj = get_job(docker, "packaging-docker.yml", "nix-docker-image")
+          d_features = matrix(dj, W, "features", FEATURES)
+          d_runners = matrix(dj, W, "runner", LINUX_RUNNERS)
+          require(dj, W, r"mise run build:docker --variant " + mv("features") + r" --load", "mise run build:docker --load")
+          require(dj, W, r"mise run test:docker --variant " + mv("features") + r"(\s|$)", "mise run test:docker")
+          if "test:docker-oracle" in run_text(dj):
+              excluded.append("Remote Oracle TDE upgrade/smoke test (`test:docker-oracle`): needs production secrets")
+          W = "packaging-docker.yml:test-k8s-kms-pod"
+          kp = get_job(docker, "packaging-docker.yml", "test-k8s-kms-pod")
+          kp_features = matrix(kp, W, "features", FEATURES)
+          kp_runners = matrix(kp, W, "runner", LINUX_RUNNERS)
+          require(kp, W, r"mise run test:k8s:kms-image --variant " + mv("features"), "mise run test:k8s:kms-image")
+          image_runners = []
+          for name, component in (("k8s-operator-image", "operator"), ("k8s-csi-provider-image", "csi-provider")):
+              W = f"packaging-docker.yml:{name}"
+              job = get_job(docker, "packaging-docker.yml", name)
+              runners = matrix(job, W, "runner", LINUX_RUNNERS)
+              require(job, W, rf"mise run build:k8s-{component}-image", f"mise run build:k8s-{component}-image")
+              require(job, W, rf"mise run test:k8s:{component}-image", f"mise run test:k8s:{component}-image")
+              if image_runners and runners != image_runners:
+                  reject(f"{W}: runner matrix differs from k8s-operator-image ({runners} vs {image_runners})")
+              image_runners = image_runners or runners
+
+          # ── packaging-kubernetes.yml: binaries, images, E2E, plugin packages ────
+          W = "packaging-kubernetes.yml"
+          kb = get_job(kube, W, "build-k8s-bins")
+          kb_runner = runs_on(kb, f"{W}:build-k8s-bins", LINUX_RUNNERS)
+          require(kb, f"{W}:build-k8s-bins", r"mise run build:k8s-bins", "mise run build:k8s-bins")
+          ki = get_job(kube, W, "build-k8s-images")
+          ki_runner = runs_on(ki, f"{W}:build-k8s-images", LINUX_RUNNERS)
+          for component in ("operator", "csi-provider"):
+              require(ki, f"{W}:build-k8s-images", rf"mise run build:k8s-{component}-image", f"build:k8s-{component}-image")
+          e2e_sources = []
+          for name in ("e2e-plugin", "e2e-images"):
+              job = get_job(kube, W, name)
+              runner = runs_on(job, f"{W}:{name}", LINUX_RUNNERS)
+              require(job, f"{W}:{name}", r"mise run " + mv("task"), "mise run <matrix.task>")
+              e2e_sources += [(item, runner) for item in includes(job, f"{W}:{name}")]
+          pp = get_job(kube, W, "k8s-plugin-package")
+          pp_runners = matrix(pp, f"{W}:k8s-plugin-package", "runner", LINUX_RUNNERS)
+          require(pp, f"{W}:k8s-plugin-package", r"mise run package:k8s(\s|$)", "mise run package:k8s")
+
+          minikube = [(str(w.get("kubernetes-version")), str(w.get("driver")))
+                      for doc in (docker, kube) for job in (doc.get("jobs") or {}).values() if isinstance(job, dict)
+                      for w in action_inputs(job, "medyagh/setup-minikube")]
+          versions = {v for v, _ in minikube}
+          if len(versions) != 1 or not re.fullmatch(r"v\d+\.\d+\.\d+", next(iter(versions), "")):
+              reject(f"Minikube kubernetes-version must be one pinned version, production uses {sorted(versions)}")
+          if {d for _, d in minikube} != {"docker"}:
+              reject("Minikube driver must be 'docker' everywhere in production")
+          minikube_version = next(iter(versions), "")
+
+          # Actions pinned here must match production pins, so a production bump
+          # cannot leave this workflow on stale action versions.
+          prod_refs = {}
+          for doc in (packaging, tests, docker, kube, windows):
+              for name, refs in uses_refs(doc).items():
+                  prod_refs.setdefault(name, set()).update(refs)
+          for name, refs in uses_refs(dry_run).items():
+              if name in prod_refs and prod_refs[name] != refs:
+                  reject(f"action {name}: dry-run pins {sorted(refs)}, production uses {sorted(prod_refs[name])}")
+
+          # ── Selected matrices ───────────────────────────────────────────────────
+          package, packages_by = [], {}
+          for runner in pick(pk_runners, REDUCED_RUNNER, "packaging.yml:packages.runner"):
+              os_, arch_ = RUNNERS[runner]
+              for f in both_modes(pk_features, "packaging.yml:packages.features"):
+                  for l in pick(pk_links, REDUCED_LINK, "packaging.yml:packages.link"):
+                      kinds = [("deb", "deb"), ("rpm", "rpm"), ("pkcs11-zip", "zip")] if os_ == "linux" else [("dmg", "dmg")]
+                      stage = []
+                      for kind, ext in kinds:
+                          d = f"result-{kind}-{f}-{l}"
+                          stage += [f"{d}/*.{ext}", f"{d}/*.{ext}.asc", f"{d}/cosmian-kms-public.asc"]
+                          if ext in ("zip", "dmg"):
+                              stage.append(f"{d}/*.{ext}.sha256")
+                      sbom = runner == sbom_runner
+                      dirs = [sbom_dir(t, f, l) for t in sbom_targets] if sbom else []
+                      stage += [f"{d}/{n}" for d in dirs for n in ("bom.cdx.json", "bom.spdx.json", "sbom.csv", "meta.json")]
+                      entry = {
+                          "runner": runner, "os": os_, "arch": arch_, "features": f, "link": l,
+                          "artifact": f"dry-run-packages-{os_}-{arch_}-{f}-{l}",
+                          "sbom": sbom, "sbom_targets": " ".join(sbom_targets if sbom else []),
+                          "sbom_dirs": " ".join(dirs), "stage": "\n".join(stage),
+                      }
+                      package.append(entry)
+                      packages_by[(runner, f, l)] = entry
+
+          verify = [{k: e[k] for k in ("runner", "arch", "features", "link", "artifact", "sbom", "sbom_dirs")}
+                    for e in package if e["os"] == "linux"]
+          dmg = [{k: e[k] for k in ("runner", "arch", "features", "link", "artifact")}
+                 for e in package if e["os"] == "macos"]
+
+
+          def package_artifact(runner, f, l, where):
+              entry = packages_by.get((runner, f, l))
+              if entry is None:
+                  reject(f"{where}: tests {runner}/{f}/{l}, which this run does not build")
+                  return None
+              return entry["artifact"]
+
+
+          if EXPANDED:
+              install_containers = containers
+          else:
+              release = REDUCED_RUNNER.split("-")[1]
+              ubuntu = [c for c in containers if families.get(c) == "deb" and c.startswith("ubuntu:")]
+              rocky = [c for c in containers if families.get(c) == "rpm"]
+              install_containers = ([f"ubuntu:{release}"] if f"ubuntu:{release}" in ubuntu else ubuntu[:1]) + rocky[:1]
+              if len(install_containers) != 2:
+                  reject(f"packaging-tests.yml: reduced coverage needs an Ubuntu and a Rocky container, got {containers}")
+          install = []
+          for c in install_containers:
+              for runner in pick(pt_runners, REDUCED_RUNNER, "packaging-tests.yml:packages-test.runner"):
+                  for f in both_modes(pt_features, "packaging-tests.yml:packages-test.features"):
+                      for l in pick(pt_links, REDUCED_LINK, "packaging-tests.yml:packages-test.link"):
+                          artifact = package_artifact(runner, f, l, "packaging-tests.yml:packages-test")
+                          install.append({"container": c, "family": families.get(c), "runner": runner,
+                                          "arch": arch(runner), "features": f, "link": l, "artifact": artifact})
+          systemd = []
+          for runner in pick(st_runners, REDUCED_RUNNER, "packaging-tests.yml:systemd-packages-test.runner"):
+              for f in both_modes(st_features, "packaging-tests.yml:systemd-packages-test.features"):
+                  for l in pick(st_links, REDUCED_LINK, "packaging-tests.yml:systemd-packages-test.link"):
+                      artifact = package_artifact(runner, f, l, "packaging-tests.yml:systemd-packages-test")
+                      systemd.append({"runner": runner, "arch": arch(runner), "features": f, "link": l, "artifact": artifact})
+
+          docker_images, docker_by = [], {}
+          for runner in pick(d_runners, REDUCED_RUNNER, "packaging-docker.yml:nix-docker-image.runner"):
+              for f in both_modes(d_features, "packaging-docker.yml:nix-docker-image.features"):
+                  artifact = f"dry-run-docker-{arch(runner)}-{f}"
+                  docker_by[(arch(runner), f)] = artifact
+                  docker_images.append({"runner": runner, "arch": arch(runner), "features": f, "artifact": artifact,
+                                        "stage": f"result-docker-{f}-static\ndry-run-docker-image.env"})
+          k8s_kms = []
+          for runner in pick(kp_runners, REDUCED_RUNNER, "packaging-docker.yml:test-k8s-kms-pod.runner"):
+              for f in both_modes(kp_features, "packaging-docker.yml:test-k8s-kms-pod.features"):
+                  artifact = docker_by.get((arch(runner), f))
+                  if artifact is None:
+                      reject(f"packaging-docker.yml:test-k8s-kms-pod: no {arch(runner)}/{f} image is built")
+                  k8s_kms.append({"runner": runner, "arch": arch(runner), "features": f, "artifact": artifact})
+
+          k8s_bins, k8s_images, k8s_e2e, k8s_plugin, windows_build = [], [], [], [], []
+          if EXPANDED:
+              if kb_runner:
+                  k8s_bins.append({"runner": kb_runner, "arch": arch(kb_runner),
+                                   "artifact": f"dry-run-k8s-bins-{arch(kb_runner)}",
+                                   "stage": "\n".join(f"target/release/{b}" for b in K8S_BINS)})
+              images_by = {}
+              for runner in image_runners + ([ki_runner] if ki_runner else []):
+                  if arch(runner) not in images_by:
+                      images_by[arch(runner)] = f"dry-run-k8s-images-{arch(runner)}"
+                      k8s_images.append({"runner": runner, "arch": arch(runner), "artifact": images_by[arch(runner)],
+                                         "stage": "result-k8s-operator-image\nresult-k8s-csi-provider-image"})
+              sources = [({"task": t, "scenario": t.split(":")[-1]}, r) for r in image_runners for t in IMAGE_SMOKE_TASKS]
+              seen = set()
+              for item, runner in sources + e2e_sources:
+                  if runner is None or (item["task"], arch(runner)) in seen:
+                      continue
+                  seen.add((item["task"], arch(runner)))
+                  needs = K8S_TASKS[item["task"]]
+                  entry = {"scenario": f"{item.get('scenario') or item['task']}-{arch(runner)}", "task": item["task"],
+                           "runner": runner, "arch": arch(runner), **needs,
+                           "bins_artifact": k8s_bins[0]["artifact"] if needs["bins"] and k8s_bins else "",
+                           "images_artifact": images_by.get(arch(runner), "") if needs["images"] else "",
+                           "docker_artifact": docker_by.get((arch(runner), "non-fips"), "") if needs["kms"] else ""}
+                  if needs["bins"] and (not k8s_bins or k8s_bins[0]["arch"] != arch(runner)):
+                      reject(f"{entry['scenario']}: needs Kubernetes binaries for {arch(runner)}, which are not built")
+                  for key in ("images_artifact", "docker_artifact"):
+                      if needs[key.split("_")[0].replace("docker", "kms")] and not entry[key]:
+                          reject(f"{entry['scenario']}: no {key.replace('_', ' ')} for {arch(runner)}")
+                  entry["expected"] = " ".join(a for a in (entry["bins_artifact"], entry["images_artifact"],
+                                                          entry["docker_artifact"]) if a)
+                  k8s_e2e.append(entry)
+              for runner in pp_runners:
+                  d = "result-k8s-plugin"
+                  k8s_plugin.append({"runner": runner, "arch": arch(runner),
+                                     "artifact": f"dry-run-k8s-plugin-packages-{arch(runner)}",
+                                     "stage": "\n".join([f"{d}-deb/*.deb", f"{d}-deb/*.deb.asc", f"{d}-deb/cosmian-kms-public.asc",
+                                                         f"{d}-rpm/*.rpm", f"{d}-rpm/*.rpm.asc", f"{d}-rpm/cosmian-kms-public.asc"])})
+              windows_build.append({"runner": win_runner, "arch": "amd64", "toolchain": toolchain, "pnpm": pnpm,
+                                    "node": node, "artifact": "dry-run-windows-amd64",
+                                    "stage": "target/release/cosmian-kms-server-*.exe\ntarget/release/cosmian-kms-cli-*.exe"})
+
+          jobs = {
+              "package": package, "verify-packages": verify, "install-test": install, "systemd-test": systemd,
+              "dmg-test": dmg, "docker-image": docker_images, "docker-test": docker_images, "k8s-kms-pod": k8s_kms,
+              "k8s-bins": k8s_bins, "k8s-images": k8s_images, "k8s-e2e": k8s_e2e,
+              "k8s-plugin-package": k8s_plugin, "k8s-plugin-package-test": k8s_plugin,
+              "windows-build": windows_build, "windows-test": windows_build,
+          }
+          selected = [job for job, entries in jobs.items() if entries]
+          for job in ("package", "verify-packages", "install-test", "systemd-test", "docker-image", "k8s-kms-pod"):
+              if job not in selected:
+                  reject(f"{job}: selected coverage produced an empty matrix")
+          expected_artifacts = sorted({e["artifact"] for job in ("package", "docker-image", "k8s-bins", "k8s-images",
+                                                                 "k8s-plugin-package", "windows-build") for e in jobs[job]})
+          if not EXPANDED:
+              excluded.append("Not certified by this reduced run: arm64, dynamic linkage, macOS DMG, Windows installers, "
+                              "non-selected install containers and the remaining Kubernetes checks")
+          excluded += ["Publishing to package.cosmian.com, GHCR, GitHub Releases and Helm pages",
+                       "Production signing (release GPG key, Authenticode, cosign); a throwaway GPG key signs packages"]
+
+          errors = list(dict.fromkeys(errors))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              if errors:
+                  summary.write("\n### Unsupported production configuration\n\n")
+                  summary.writelines(f"- {e}\n" for e in errors)
+              summary.write("\n### Selected jobs\n\n")
+              summary.writelines(f"- `{job}`: {len(jobs[job])} leg(s)\n" for job in selected)
+              summary.write("\n### Excluded\n\n")
+              summary.writelines(f"- {e}\n" for e in excluded)
+          if errors:
+              for e in errors:
+                  print(f"::error::{e}")
+              sys.exit(1)
+
+          outputs = {
+              "selected-jobs": selected, "expected-artifacts": expected_artifacts,
+              "package-matrix": {"include": package}, "verify-matrix": {"include": verify},
+              "install-matrix": {"include": install}, "systemd-matrix": {"include": systemd},
+              "dmg-matrix": {"include": dmg}, "docker-matrix": {"include": docker_images},
+              "k8s-kms-matrix": {"include": k8s_kms}, "k8s-bins-matrix": {"include": k8s_bins},
+              "k8s-images-matrix": {"include": k8s_images}, "k8s-e2e-matrix": {"include": k8s_e2e},
+              "k8s-plugin-matrix": {"include": k8s_plugin}, "windows-matrix": {"include": windows_build},
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"minikube-kubernetes-version={minikube_version}\n")
+              for key, value in outputs.items():
+                  out.write(f"{key}={json.dumps(value, separators=(',', ':'))}\n")
+          print(json.dumps(outputs, indent=2))
+
+  # ── Linux packages (deb, rpm, PKCS#11 zip, SBOM) and macOS DMGs ──────────
+  package:
+    name: Package ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.features }}-${{ matrix.link }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'package') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.package-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_STAGE_FILES: ${{ matrix.stage }}
+      DRY_RUN_EXPECTED_ARCH: ${{ matrix.arch }}
+      DRY_RUN_RUNNER: ${{ matrix.runner }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_LINK: ${{ matrix.link }}
+    steps:
+      - &checkout
+        name: Check out source
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - &cleanup-runner
+        name: Clean up runner disk space
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cleanup-runner
+
+      - &setup-nix
+        name: Set up Nix
+        uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - &install-mise
+        name: Install mise
+        uses: ./.github/actions/install-mise
+
+      - &write-helpers
+        name: Write dry-run helpers
+        run: |
+          cat >"$RUNNER_TEMP/dry-run-lib.sh" <<'LIB'
+          # Helpers shared by Packaging Dry-Run steps; sourced, never executed.
+          dry_run_fail() { echo "::error::$*" >&2; exit 1; }
+
+          dry_run_sha256() {
+            if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
+          }
+
+          dry_run_arch() {
+            case "$(uname -m)" in
+              x86_64 | amd64) echo amd64 ;;
+              aarch64 | arm64) echo arm64 ;;
+              *) uname -m ;;
+            esac
+          }
+
+          # Copy the files matched by DRY_RUN_STAGE_FILES (one glob per line, each
+          # must match) into a staging directory with a provenance MANIFEST and
+          # SHA256SUMS. Symlinks (Nix results) are dereferenced.
+          dry_run_stage() {
+            local stage arch pattern f
+            local -a matches
+            [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || dry_run_fail "Checked-out commit differs from $GITHUB_SHA"
+            arch=$(dry_run_arch)
+            [ "$arch" = "$DRY_RUN_EXPECTED_ARCH" ] || dry_run_fail "Runner architecture $arch, expected $DRY_RUN_EXPECTED_ARCH"
+            stage="$RUNNER_TEMP/dry-run-stage/$DRY_RUN_ARTIFACT"
+            rm -rf "$stage"
+            mkdir -p "$stage"
+            shopt -s nullglob
+            while IFS= read -r pattern; do
+              [ -n "$pattern" ] || continue
+              # shellcheck disable=SC2206 # patterns are space-free globs that must expand
+              matches=($pattern)
+              [ "${#matches[@]}" -gt 0 ] || dry_run_fail "Required artifact missing: $pattern"
+              for f in "${matches[@]}"; do
+                [ -f "$f" ] || dry_run_fail "Not a regular file: $f"
+                mkdir -p "$stage/$(dirname "$f")"
+                cp -L "$f" "$stage/$f"
+              done
+            done <<<"$DRY_RUN_STAGE_FILES"
+            shopt -u nullglob
+            {
+              echo "artifact=$DRY_RUN_ARTIFACT"
+              echo "source_sha=$GITHUB_SHA"
+              echo "run_id=$GITHUB_RUN_ID"
+              echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+              echo "runner=$DRY_RUN_RUNNER"
+              echo "os=$RUNNER_OS"
+              echo "arch=$arch"
+              echo "features=${DRY_RUN_FEATURES:-n/a}"
+              echo "link=${DRY_RUN_LINK:-n/a}"
+              echo "signing_key_fingerprint=${DRY_RUN_SIGNING_FINGERPRINT:-none}"
+            } >"$stage/MANIFEST"
+            (
+              cd "$stage" || exit 1
+              files=$(find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+              while IFS= read -r f; do dry_run_sha256 "$f"; done <<<"$files" >SHA256SUMS
+            )
+            cat "$stage/MANIFEST" "$stage/SHA256SUMS"
+          }
+
+          # Check one downloaded artifact: provenance, checksums, no stray files.
+          dry_run_verify_artifact() {
+            local dir="$1" name listed actual
+            name=$(basename "$dir")
+            [ -f "$dir/MANIFEST" ] || dry_run_fail "$name: MANIFEST missing"
+            [ -f "$dir/SHA256SUMS" ] || dry_run_fail "$name: SHA256SUMS missing"
+            grep -qx "artifact=$name" "$dir/MANIFEST" || dry_run_fail "$name: MANIFEST names another artifact"
+            grep -qx "source_sha=$GITHUB_SHA" "$dir/MANIFEST" || dry_run_fail "$name: not built from $GITHUB_SHA"
+            grep -qx "run_id=$GITHUB_RUN_ID" "$dir/MANIFEST" || dry_run_fail "$name: produced by another run"
+            (cd "$dir" && dry_run_sha256 -c SHA256SUMS) || dry_run_fail "$name: checksum mismatch"
+            listed=$(sed 's/^[0-9a-f]\{64\} [ *]//' "$dir/SHA256SUMS" | LC_ALL=C sort)
+            actual=$(cd "$dir" && find . -type f ! -name SHA256SUMS | sed 's|^\./||' | LC_ALL=C sort)
+            [ "$listed" = "$actual" ] || dry_run_fail "$name: files on disk differ from SHA256SUMS"
+            echo "Verified $name"
+            cat "$dir/MANIFEST"
+          }
+
+          dry_run_verify_all() {
+            local expected="${DRY_RUN_EXPECTED_ARTIFACTS:-${DRY_RUN_ARTIFACT:-}}" name
+            [ -n "$expected" ] || dry_run_fail "No expected artifacts declared"
+            for name in $expected; do
+              [ -d "dry-run-artifacts/$name" ] || dry_run_fail "Artifact $name was not downloaded"
+              dry_run_verify_artifact "dry-run-artifacts/$name"
+            done
+          }
+
+          # Every package must carry a detached signature from the throwaway key
+          # recorded in MANIFEST; bundled public keys must be that key only.
+          dry_run_verify_signatures() {
+            local dir="$1" fingerprint home keys pub pkg status count=0
+            fingerprint=$(sed -n 's/^signing_key_fingerprint=//p' "$dir/MANIFEST")
+            [[ "$fingerprint" =~ ^[0-9A-F]{40}$ ]] || dry_run_fail "$dir: no dry-run signing fingerprint in MANIFEST"
+            home=$(mktemp -d "$RUNNER_TEMP/gpg-verify.XXXXXX")
+            chmod 700 "$home"
+            while IFS= read -r pub; do
+              GNUPGHOME="$home" gpg --batch --quiet --import "$pub"
+            done < <(find "$dir" -type f -name cosmian-kms-public.asc)
+            keys=$(GNUPGHOME="$home" gpg --batch --with-colons --list-keys | awk -F: '$1 == "pub" {getline; print $10}' | sort -u)
+            [ "$keys" = "$fingerprint" ] || dry_run_fail "$dir: bundled public keys [$keys] are not the dry-run key $fingerprint"
+            while IFS= read -r pkg; do
+              [ -f "$pkg.asc" ] || dry_run_fail "Unsigned package: $pkg"
+              status=$(GNUPGHOME="$home" gpg --batch --status-fd 1 --verify "$pkg.asc" "$pkg" 2>/dev/null) ||
+                dry_run_fail "Bad signature: $pkg"
+              grep -q "^\[GNUPG:\] VALIDSIG $fingerprint " <<<"$status" || dry_run_fail "$pkg: not signed by $fingerprint"
+              count=$((count + 1))
+            done < <(find "$dir" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.zip' -o -name '*.dmg' \))
+            [ "$count" -gt 0 ] || dry_run_fail "$dir: no packages to verify"
+            rm -rf "$home"
+            echo "Verified $count package signature(s) against dry-run key $fingerprint"
+          }
+
+          # Load a staged Docker image, prove it is the image built in this run,
+          # and tag it with a run-unique local name.
+          dry_run_load_image() {
+            local dir="$1" target="$2" expected tar ref id
+            local -a tars
+            expected=$(sed -n 's/^image_id=//p' "$dir/dry-run-docker-image.env")
+            [ -n "$expected" ] || dry_run_fail "$dir: no recorded image id"
+            tars=("$dir"/result-docker-*)
+            [ "${#tars[@]}" -eq 1 ] && [ -f "${tars[0]}" ] || dry_run_fail "$dir: expected one image tarball"
+            tar="${tars[0]}"
+            ref=$(docker load <"$tar" | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -n 1)
+            id=$(docker image inspect --format '{{.Id}}' "$ref")
+            [ "$id" = "$expected" ] || dry_run_fail "Loaded image $id differs from built image $expected"
+            docker tag "$ref" "$target"
+            echo "Loaded $ref ($id) as $target"
+          }
+
+          # Minimal GET (curl, or HTTP/1.0 over /dev/tcp in slim containers).
+          # Prints the body; fails unless the status is 2xx.
+          dry_run_http_get() (
+            port="$1" path="$2"
+            if command -v curl >/dev/null 2>&1; then
+              exec curl -fsS --max-time 10 "http://127.0.0.1:${port}${path}"
+            fi
+            exec 3<>"/dev/tcp/127.0.0.1/${port}" || exit 1
+            printf 'GET %s HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n' "$path" >&3
+            response=$(cat <&3)
+            status=$(printf '%s\n' "$response" | head -n 1 | awk '{print $2}')
+            printf '%s' "${response#*$'\r\n\r\n'}"
+            case "$status" in 2??) exit 0 ;; *) exit 1 ;; esac
+          )
+
+          dry_run_wait_kms() {
+            local port="$1" pid="${2:-}" log="${3:-}" deadline=$((SECONDS + 120))
+            until dry_run_http_get "$port" /version >/dev/null 2>&1; do
+              if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+                [ -z "$log" ] || tail -n 100 "$log"
+                dry_run_fail "KMS process exited before becoming ready"
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                [ -z "$log" ] || tail -n 100 "$log"
+                dry_run_fail "KMS not ready on port $port after 120s"
+              fi
+              sleep 2
+            done
+          }
+
+          # /version must report the expected FIPS variant and the UI must be served.
+          dry_run_check_kms() {
+            local port="$1" version
+            version=$(dry_run_http_get "$port" /version) || dry_run_fail "/version request failed"
+            echo "/version -> $version"
+            case "$DRY_RUN_FEATURES" in
+              fips)
+                if ! grep -q FIPS <<<"$version" || grep -q non-FIPS <<<"$version"; then
+                  dry_run_fail "Expected a FIPS build: $version"
+                fi
+                ;;
+              non-fips) grep -q non-FIPS <<<"$version" || dry_run_fail "Expected a non-FIPS build: $version" ;;
+              *) dry_run_fail "Unknown variant ${DRY_RUN_FEATURES:-}" ;;
+            esac
+            dry_run_http_get "$port" /ui/index.html >/dev/null || dry_run_fail "UI not served at /ui/index.html"
+            echo "UI served at /ui/index.html"
+          }
+
+          # The installed CLI must create a key on the installed server.
+          dry_run_ckms_roundtrip() {
+            local ckms="$1" port="$2" conf out
+            conf="$(mktemp -d "$RUNNER_TEMP/ckms.XXXXXX")/ckms.toml"
+            printf '[http_config]\nserver_url = "http://127.0.0.1:%s"\n' "$port" >"$conf"
+            out=$("$ckms" -c "$conf" sym keys create --algorithm aes --number-of-bits 256 --tag packaging-dry-run) ||
+              dry_run_fail "ckms could not create a key"
+            echo "$out"
+            grep -Eq '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$out" ||
+              dry_run_fail "ckms did not report a key identifier"
+          }
+          LIB
+
+      - &gpg-fixture
+        name: Create throwaway GPG signing key
+        run: |
+          set -euo pipefail
+          keys_dir=nix/signing-keys
+          prod_key_id=$(tr -d ' \t\r\n' <"$keys_dir/key-id.txt")
+          # Check the runner's default keyring before switching to an isolated one.
+          if gpg --batch --list-secret-keys "$prod_key_id" >/dev/null 2>&1; then
+            echo "::error::Production signing key $prod_key_id is available on this runner"
+            exit 1
+          fi
+          if [ -e "$keys_dir/cosmian-kms-private.asc" ] || [ -n "${GPG_SIGNING_KEY:-}" ]; then
+            echo "::error::Production private signing key material is present"
+            exit 1
+          fi
+          export GNUPGHOME="$RUNNER_TEMP/dry-run-gnupg"
+          rm -rf "$GNUPGHOME"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          passphrase=$(openssl rand -hex 32)
+          echo "::add-mask::$passphrase"
+          gpg --batch --pinentry-mode loopback --passphrase "$passphrase" --quick-generate-key \
+            "Cosmian KMS Packaging Dry-Run (throwaway, not for distribution) <packaging-dry-run@invalid>" ed25519 sign 1d
+          fingerprint=$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 ~ /^fp/ {print $10; exit}')
+          [ "${#fingerprint}" -eq 40 ] || { echo "::error::Could not read the throwaway key fingerprint"; exit 1; }
+          # Point the existing signing contract (key-id.txt + keyring + passphrase)
+          # at the throwaway key; these edits live only in this disposable checkout.
+          printf '%s\n' "$fingerprint" | tail -c 17 >"$keys_dir/key-id.txt"
+          gpg --batch --armor --export "$fingerprint" >"$keys_dir/cosmian-kms-public.asc"
+          gpg -K
+          {
+            echo "GNUPGHOME=$GNUPGHOME"
+            echo "GPG_SIGNING_KEY_PASSPHRASE=$passphrase"
+            echo "DRY_RUN_SIGNING_FINGERPRINT=$fingerprint"
+          } >>"$GITHUB_ENV"
+
+      - name: Build signed packages
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            mise run package:dmg --variant "$DRY_RUN_FEATURES" --link "$DRY_RUN_LINK"
+          else
+            mise run package:deb --variant "$DRY_RUN_FEATURES" --link "$DRY_RUN_LINK"
+            mise run package:rpm --variant "$DRY_RUN_FEATURES" --link "$DRY_RUN_LINK"
+            mise run package:pkcs11-zip --variant "$DRY_RUN_FEATURES" --link "$DRY_RUN_LINK"
+          fi
+
+      - name: Generate SBOMs
+        if: matrix.sbom
+        env:
+          SBOM_TARGETS: ${{ matrix.sbom_targets }}
+          SBOM_DIRS: ${{ matrix.sbom_dirs }}
+        run: |
+          set -euo pipefail
+          # Drop the committed reports so only freshly generated files are staged.
+          for dir in $SBOM_DIRS; do rm -rf "$dir"; done
+          for target in $SBOM_TARGETS; do
+            mise run sbom:generate --variant "$DRY_RUN_FEATURES" --link "$DRY_RUN_LINK" --target "$target"
+          done
+
+      - &stage-artifact
+        name: Stage artifact with provenance
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          dry_run_stage
+
+      - &upload-artifact
+        name: Upload staged artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.DRY_RUN_ARTIFACT }}
+          path: ${{ runner.temp }}/dry-run-stage/${{ env.DRY_RUN_ARTIFACT }}
+          retention-days: 1
+          if-no-files-found: error
+
+  verify-packages:
+    name: Verify ${{ matrix.arch }}-${{ matrix.features }}-${{ matrix.link }} packages
+    needs: [plan, package]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'verify-packages') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.verify-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_LINK: ${{ matrix.link }}
+    steps:
+      # Smoke tasks only need .mise/; skip the submodules.
+      - &checkout-no-submodules
+        name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - *install-mise
+      - *write-helpers
+
+      - &download-artifact
+        name: Download staged artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.DRY_RUN_ARTIFACT }}
+          path: dry-run-artifacts/${{ env.DRY_RUN_ARTIFACT }}
+
+      - &verify-artifacts
+        name: Verify artifact provenance and checksums
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          dry_run_verify_all
+
+      - &verify-signatures
+        name: Verify package signatures
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          dry_run_verify_signatures "dry-run-artifacts/$DRY_RUN_ARTIFACT"
+
+      - name: Inspect package metadata
+        run: |
+          set -euo pipefail
+          dir="dry-run-artifacts/$DRY_RUN_ARTIFACT"
+          if ! command -v rpm >/dev/null 2>&1 || ! command -v rpm2cpio >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq rpm rpm2cpio cpio
+          fi
+          for pkg in "$dir/result-deb-$DRY_RUN_FEATURES-$DRY_RUN_LINK"/*.deb; do
+            dpkg-deb --info "$pkg"
+            dpkg-deb --contents "$pkg"
+          done
+          for pkg in "$dir/result-rpm-$DRY_RUN_FEATURES-$DRY_RUN_LINK"/*.rpm; do
+            rpm -qpi --nosignature "$pkg"
+            rpm -qpl --nosignature "$pkg"
+          done
+          for zip in "$dir/result-pkcs11-zip-$DRY_RUN_FEATURES-$DRY_RUN_LINK"/*.zip; do
+            (cd "$(dirname "$zip")" && sha256sum -c "$(basename "$zip").sha256")
+            unzip -l "$zip"
+          done
+
+      # package:smoke-rpm is not run: rpm2cpio exits 1 on these RPMs (released
+      # 5.28.0 included) and the task fails under pipefail. RPMs are covered by
+      # the metadata step above and by the Rocky Linux install tests.
+      - name: Smoke-test server deb package
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dir="$PWD/dry-run-artifacts/$DRY_RUN_ARTIFACT"
+          debs=("$dir/result-deb-$DRY_RUN_FEATURES-$DRY_RUN_LINK"/cosmian-kms-server-*.deb)
+          [ "${#debs[@]}" -eq 1 ] || { echo "::error::Expected one server deb, found ${#debs[@]}"; exit 1; }
+          mise run package:smoke-deb "${debs[0]}"
+
+      - name: Validate SBOM documents
+        if: matrix.sbom
+        shell: python3 {0}
+        env:
+          SBOM_DIRS: ${{ matrix.sbom_dirs }}
+        run: |
+          import json
+          import os
+          import sys
+
+          root = os.path.join("dry-run-artifacts", os.environ["DRY_RUN_ARTIFACT"])
+          failures = []
+          for d in os.environ["SBOM_DIRS"].split():
+              try:
+                  with open(os.path.join(root, d, "bom.cdx.json"), encoding="utf-8") as fh:
+                      cdx = json.load(fh)
+                  with open(os.path.join(root, d, "bom.spdx.json"), encoding="utf-8") as fh:
+                      spdx = json.load(fh)
+              except (OSError, ValueError) as exc:
+                  failures.append(f"{d}: {exc}")
+                  continue
+              if cdx.get("bomFormat") != "CycloneDX" or not cdx.get("components"):
+                  failures.append(f"{d}: bom.cdx.json is not a populated CycloneDX document")
+              if not str(spdx.get("spdxVersion", "")).startswith("SPDX-") or not spdx.get("packages"):
+                  failures.append(f"{d}: bom.spdx.json is not a populated SPDX document")
+              print(f"{d}: {len(cdx.get('components') or [])} CycloneDX components")
+          for f in failures:
+              print(f"::error::{f}")
+          sys.exit(1 if failures else 0)
+
+  install-test:
+    name: Install ${{ matrix.container }} ${{ matrix.features }}-${{ matrix.link }}-${{ matrix.arch }}
+    needs: [plan, package]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'install-test') }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 30
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.install-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_LINK: ${{ matrix.link }}
+      DRY_RUN_FAMILY: ${{ matrix.family }}
+    steps:
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+
+      - name: Install packages
+        run: |
+          set -euxo pipefail
+          dir="dry-run-artifacts/$DRY_RUN_ARTIFACT/result-$DRY_RUN_FAMILY-$DRY_RUN_FEATURES-$DRY_RUN_LINK"
+          if [ "$DRY_RUN_FAMILY" = "rpm" ]; then
+            for pkg in "$dir"/*.rpm; do rpm -qpl "$pkg"; done
+            rpm -i "$dir"/*.rpm --nodeps
+            for pkg in "$dir"/*.rpm; do rpm -q "$(rpm -qp --qf '%{NAME}' "$pkg")"; done
+          else
+            for pkg in "$dir"/*.deb; do dpkg --contents "$pkg"; done
+            if [ "$DRY_RUN_LINK" = "dynamic" ]; then
+              # Dynamic builds depend on system libssl3; let apt resolve them.
+              dpkg -i "$dir"/*.deb || true
+              apt-get update -qq && apt-get install -f -y
+            else
+              dpkg -i "$dir"/*.deb
+            fi
+            for pkg in "$dir"/*.deb; do
+              dpkg-query -W -f='${Status}\n' "$(dpkg-deb -f "$pkg" Package)" | grep -qx 'install ok installed'
+            done
+          fi
+
+      - name: Check installed CLI and server binaries
+        run: |
+          set -euxo pipefail
+          [ -f /etc/cosmian/kms.toml ] || { echo "::error::/etc/cosmian/kms.toml not installed"; exit 1; }
+          sed -i 's/info = false/info = true/g' /etc/cosmian/kms.toml
+          su -s /bin/sh nobody -c "LD_LIBRARY_PATH=/usr/local/cosmian/ckms/lib /usr/local/bin/ckms --version"
+          export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
+          export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
+          BIN=/usr/sbin/cosmian_kms
+          [ -x "$BIN" ] || BIN=/usr/bin/cosmian_kms
+          ldd "$BIN"
+          "$BIN" --version
+          "$BIN" --info
+          sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
+
+      - name: Run installed server and CLI
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
+          export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
+          BIN=/usr/sbin/cosmian_kms
+          [ -x "$BIN" ] || BIN=/usr/bin/cosmian_kms
+          "$BIN" >"$RUNNER_TEMP/kms.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          dry_run_wait_kms 9998 "$pid" "$RUNNER_TEMP/kms.log"
+          dry_run_check_kms 9998
+          LD_LIBRARY_PATH=/usr/local/cosmian/ckms/lib dry_run_ckms_roundtrip /usr/local/bin/ckms 9998
+          kill -0 "$pid" || dry_run_fail "KMS exited during checks"
+
+  systemd-test:
+    name: Systemd ${{ matrix.features }}-${{ matrix.link }}-${{ matrix.arch }}
+    needs: [plan, package]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'systemd-test') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.systemd-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_LINK: ${{ matrix.link }}
+    steps:
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+      - *verify-signatures
+
+      - name: Install packages
+        run: |
+          set -euxo pipefail
+          dir="dry-run-artifacts/$DRY_RUN_ARTIFACT/result-deb-$DRY_RUN_FEATURES-$DRY_RUN_LINK"
+          for pkg in "$dir"/*.deb; do dpkg --contents "$pkg"; done
+          if [ "$DRY_RUN_LINK" = "dynamic" ]; then
+            # Dynamic builds depend on system libssl3; let apt resolve them.
+            sudo dpkg -i "$dir"/*.deb || true
+            sudo apt-get update -qq && sudo apt-get install -f -y
+          else
+            sudo dpkg -i "$dir"/*.deb
+          fi
+          for pkg in "$dir"/*.deb; do
+            dpkg-query -W -f='${Status}\n' "$(dpkg-deb -f "$pkg" Package)" | grep -qx 'install ok installed'
+          done
+
+      - name: Check installed CLI, unit hardening and server binary
+        run: |
+          set -euxo pipefail
+          sudo -u nobody /usr/local/bin/ckms --version
+          systemd-analyze security cosmian_kms.service
+          [ -f /etc/cosmian/kms.toml ] || { echo "::error::/etc/cosmian/kms.toml not installed"; exit 1; }
+          sudo sed -i 's/info = false/info = true/g' /etc/cosmian/kms.toml
+          export OPENSSL_CONF="/usr/local/cosmian/lib/ssl/openssl.cnf"
+          export OPENSSL_MODULES="/usr/local/cosmian/lib/ossl-modules"
+          BIN=/usr/sbin/cosmian_kms
+          [ -x "$BIN" ] || BIN=/usr/bin/cosmian_kms
+          sudo ldd "$BIN"
+          sudo -E "$BIN" --version
+          sudo -E "$BIN" --info
+          sudo sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
+
+      - name: Start service and check readiness
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          sudo systemctl start cosmian_kms
+          dump() {
+            sudo systemctl status cosmian_kms --no-pager || true
+            sudo journalctl -u cosmian_kms --no-pager -n 200 || true
+          }
+          trap 'dump' ERR
+          deadline=$((SECONDS + 120))
+          until dry_run_http_get 9998 /version >/dev/null 2>&1; do
+            systemctl is-active --quiet cosmian_kms || { dump; dry_run_fail "cosmian_kms service is not active"; }
+            [ "$SECONDS" -lt "$deadline" ] || { dump; dry_run_fail "cosmian_kms not ready after 120s"; }
+            sleep 2
+          done
+          dry_run_check_kms 9998
+          dry_run_ckms_roundtrip /usr/local/bin/ckms 9998
+
+      - name: Override branding.json and verify served
+        run: |
+          set -euo pipefail
+          BRANDING_FILE="/usr/local/cosmian/ui/dist/branding.json"
+          if [ ! -f "$BRANDING_FILE" ]; then
+            echo "::error::branding file not found: $BRANDING_FILE"
+            sudo find /usr/local/cosmian -maxdepth 5 -type f -name branding.json -print || true
+            exit 1
+          fi
+          MARKER="DRY_RUN_BRANDING_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$(date +%s)"
+          export MARKER
+          sudo env MARKER="$MARKER" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path("/usr/local/cosmian/ui/dist/branding.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["loginSubtitle"] = os.environ["MARKER"]
+          path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          sudo systemctl restart cosmian_kms
+          deadline=$((SECONDS + 60))
+          until curl -fsS "http://127.0.0.1:9998/ui/branding.json?cb=${MARKER}" -o /tmp/branding.json 2>/dev/null; do
+            [ "$SECONDS" -lt "$deadline" ] || { sudo journalctl -u cosmian_kms --no-pager -n 100; exit 1; }
+            sleep 2
+          done
+          grep -F "$MARKER" /tmp/branding.json >/dev/null
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          with open("/tmp/branding.json", encoding="utf-8") as fh:
+              data = json.load(fh)
+          candidates = [data.get("logoLightUrl"), data.get("logoDarkUrl"), data.get("faviconUrl")]
+          url = next((u for u in candidates if isinstance(u, str) and u.startswith("/ui/")), None)
+          if not url:
+              raise SystemExit("ERROR: no /ui/... asset URL found in branding.json to validate")
+          subprocess.check_call(["curl", "-fsSI", f"http://127.0.0.1:9998{url}?cb={os.environ['MARKER']}"])
+          PY
+          systemctl is-active --quiet cosmian_kms
+
+  dmg-test:
+    name: DMG ${{ matrix.features }}-${{ matrix.link }}-${{ matrix.arch }}
+    needs: [plan, package]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'dmg-test') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.dmg-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_LINK: ${{ matrix.link }}
+    steps:
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+      - *verify-signatures
+
+      - name: Install DMGs into /Applications
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          dir="dry-run-artifacts/$DRY_RUN_ARTIFACT/result-dmg-$DRY_RUN_FEATURES-$DRY_RUN_LINK"
+          install_dmg() {
+            local dmg="$1" env_name="$2" mnt app
+            mnt=$(mktemp -d "$RUNNER_TEMP/dmg.XXXXXX")
+            hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg"
+            app=$(find "$mnt" -maxdepth 1 -type d -name '*.app')
+            [ -n "$app" ] && [ "$(printf '%s\n' "$app" | wc -l | tr -d ' ')" = 1 ] || dry_run_fail "$dmg: expected one .app"
+            sudo rm -rf "/Applications/$(basename "$app")"
+            sudo ditto "$app" "/Applications/$(basename "$app")"
+            hdiutil detach "$mnt"
+            echo "$env_name=/Applications/$(basename "$app")" >>"$GITHUB_ENV"
+          }
+          for kind in server cli; do
+            set -- "$dir"/cosmian-kms-"$kind"-*.dmg
+            [ "$#" -eq 1 ] && [ -f "$1" ] || dry_run_fail "Expected one $kind DMG"
+            install_dmg "$1" "DRY_RUN_$(echo "$kind" | tr '[:lower:]' '[:upper:]')_APP"
+          done
+
+      - name: Run installed server and CLI
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          server=$(find "$DRY_RUN_SERVER_APP/Contents/MacOS" -type f -name cosmian_kms)
+          ckms=$(find "$DRY_RUN_CLI_APP/Contents/MacOS" -type f -name ckms)
+          [ -x "$server" ] && [ -x "$ckms" ] || dry_run_fail "Installed server or CLI binary not found"
+          "$server" --version
+          "$ckms" --version
+          work=$(mktemp -d "$RUNNER_TEMP/kms-run.XXXXXX")
+          (cd "$work" && exec "$server" --database-type sqlite --sqlite-path "$work/sqlite-data") >"$work/kms.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          dry_run_wait_kms 9998 "$pid" "$work/kms.log"
+          dry_run_check_kms 9998
+          dry_run_ckms_roundtrip "$ckms" 9998
+          kill -0 "$pid" || dry_run_fail "KMS exited during checks"
+
+  # ── KMS Docker images ─────────────────────────────────────────────────────
+  docker-image:
+    name: Docker image ${{ matrix.arch }}-${{ matrix.features }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'docker-image') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.docker-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_STAGE_FILES: ${{ matrix.stage }}
+      DRY_RUN_EXPECTED_ARCH: ${{ matrix.arch }}
+      DRY_RUN_RUNNER: ${{ matrix.runner }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+    steps:
+      - &free-disk-space
+        name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - *checkout
+      - *setup-nix
+      - *install-mise
+      - *write-helpers
+
+      - name: Build and load Docker image
+        run: mise run build:docker --variant "$DRY_RUN_FEATURES" --load
+
+      - name: Record image identity
+        run: |
+          set -euo pipefail
+          tar=$(readlink -f "result-docker-$DRY_RUN_FEATURES-static")
+          ref=$(docker load <"$tar" | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -n 1)
+          id=$(docker image inspect --format '{{.Id}}' "$ref")
+          printf 'image_ref=%s\nimage_id=%s\n' "$ref" "$id" | tee dry-run-docker-image.env
+
+      - *stage-artifact
+      - *upload-artifact
+
+  docker-test:
+    name: Docker suite ${{ matrix.arch }}-${{ matrix.features }}
+    needs: [plan, docker-image]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'docker-test') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.docker-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_IMAGE: cosmian-kms-dry-run:${{ matrix.features }}-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_INCREMENTAL: 0
+    steps:
+      - *free-disk-space
+      - *checkout
+      - *install-mise
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+
+      - &load-docker-image
+        name: Load PR-built Docker image
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          dry_run_load_image "dry-run-artifacts/$DRY_RUN_ARTIFACT" "$DRY_RUN_IMAGE"
+          echo "DOCKER_IMAGE_NAME=$DRY_RUN_IMAGE" >>"$GITHUB_ENV"
+
+      - name: Test Docker image (Compose, TLS, load balancer, Oracle TDE HSM)
+        run: |
+          set -euo pipefail
+          # Without cargo the existing suite skips its CLI checks; make that a failure.
+          command -v cargo >/dev/null || { echo "::error::cargo is required by the Docker suite"; exit 1; }
+          mise run test:docker --variant "$DRY_RUN_FEATURES" 2>&1 | tee "$RUNNER_TEMP/docker-suite.log"
+          for marker in "Using cargo run to execute ckms from workspace" "Oracle TDE HSM test completed successfully"; do
+            grep -qF "$marker" "$RUNNER_TEMP/docker-suite.log" || { echo "::error::Docker suite did not report: $marker"; exit 1; }
+          done
+
+  k8s-kms-pod:
+    name: K8s KMS pod ${{ matrix.arch }}-${{ matrix.features }}
+    needs: [plan, docker-image]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'k8s-kms-pod') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.k8s-kms-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_FEATURES: ${{ matrix.features }}
+      DRY_RUN_IMAGE: cosmian-kms-dry-run:${{ matrix.features }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - *checkout-no-submodules
+      - *install-mise
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+      - *load-docker-image
+
+      - &setup-helm
+        name: Install Helm
+        uses: azure/setup-helm@v5
+
+      - &start-minikube
+        name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: ${{ needs.plan.outputs.minikube-kubernetes-version }}
+
+      - name: Test KMS image in Kubernetes pod
+        run: mise run test:k8s:kms-image --variant "$DRY_RUN_FEATURES"
+
+      - &k8s-diagnostics
+        name: Dump Kubernetes diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A || true
+          kubectl get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -n 60 || true
+          kubectl describe pod kms-etc-check 2>/dev/null || true
+          kubectl logs kms-etc-check 2>/dev/null || true
+          kubectl logs -A -l app.kubernetes.io/name=cosmian-kms --tail=80 2>/dev/null || true
+          minikube image ls 2>/dev/null || true
+
+  # ── Expanded only: remaining Kubernetes checks ───────────────────────────
+  k8s-bins:
+    name: K8s binaries ${{ matrix.arch }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'k8s-bins') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.k8s-bins-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_STAGE_FILES: ${{ matrix.stage }}
+      DRY_RUN_EXPECTED_ARCH: ${{ matrix.arch }}
+      DRY_RUN_RUNNER: ${{ matrix.runner }}
+    steps:
+      - *checkout
+      - *cleanup-runner
+      - *setup-nix
+      - *install-mise
+      - *write-helpers
+
+      - name: Build Kubernetes binaries and ckms
+        run: mise run build:k8s-bins
+
+      - *stage-artifact
+      - *upload-artifact
+
+  k8s-images:
+    name: K8s images ${{ matrix.arch }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'k8s-images') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.k8s-images-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_STAGE_FILES: ${{ matrix.stage }}
+      DRY_RUN_EXPECTED_ARCH: ${{ matrix.arch }}
+      DRY_RUN_RUNNER: ${{ matrix.runner }}
+    steps:
+      - *free-disk-space
+      - *checkout
+      - *setup-nix
+      - *install-mise
+      - *write-helpers
+
+      - name: Build Operator and CSI provider images
+        run: |
+          set -euo pipefail
+          mise run build:k8s-operator-image
+          mise run build:k8s-csi-provider-image
+
+      - *stage-artifact
+      - *upload-artifact
+
+  k8s-e2e:
+    name: K8s ${{ matrix.scenario }}
+    needs: [plan, docker-image, k8s-bins, k8s-images]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'k8s-e2e') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.k8s-e2e-matrix) }}
+    env:
+      DRY_RUN_EXPECTED_ARTIFACTS: ${{ matrix.expected }}
+      DRY_RUN_KMS_TAG: dry-run-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - *checkout
+      - *install-mise
+      - *write-helpers
+      - *setup-helm
+
+      - name: Download Kubernetes binaries
+        if: matrix.bins
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.bins_artifact }}
+          path: dry-run-artifacts/${{ matrix.bins_artifact }}
+
+      - name: Download Operator and CSI provider images
+        if: matrix.images
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.images_artifact }}
+          path: dry-run-artifacts/${{ matrix.images_artifact }}
+
+      - name: Download KMS image
+        if: matrix.kms
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.docker_artifact }}
+          path: dry-run-artifacts/${{ matrix.docker_artifact }}
+
+      - *verify-artifacts
+
+      - name: Restore PR-built binaries and image tarballs
+        env:
+          BINS: ${{ matrix.bins_artifact }}
+          IMAGES: ${{ matrix.images_artifact }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BINS" ]; then
+            mkdir -p target/release
+            cp "dry-run-artifacts/$BINS/target/release/"* target/release/
+            chmod +x target/release/*
+          fi
+          if [ -n "$IMAGES" ]; then
+            cp "dry-run-artifacts/$IMAGES/result-k8s-operator-image" "dry-run-artifacts/$IMAGES/result-k8s-csi-provider-image" .
+          fi
+
+      - *start-minikube
+
+      - name: Preload PR-built KMS image for the Helm chart
+        if: matrix.kms
+        env:
+          DOCKER_ARTIFACT: ${{ matrix.docker_artifact }}
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/dry-run-lib.sh"
+          # The E2E tasks deploy the chart's default repository with
+          # image.tag=$KMS_IMAGE_TAG; render the chart to get that exact
+          # reference so the run-unique tag can only resolve to this build.
+          ref=$(helm template dry-run charts/cosmian-kms --set kms.database.type=sqlite --set image.tag="$DRY_RUN_KMS_TAG" |
+            sed -nE "s/^[[:space:]]*image:[[:space:]]*\"?([^\"[:space:]]+:${DRY_RUN_KMS_TAG})\"?[[:space:]]*$/\1/p" | sort -u)
+          [ -n "$ref" ] && [ "$(printf '%s\n' "$ref" | wc -l)" -eq 1 ] || dry_run_fail "Cannot resolve the chart image reference"
+          dry_run_load_image "dry-run-artifacts/$DOCKER_ARTIFACT" "$ref"
+          tar="$RUNNER_TEMP/kms-image.tar"
+          docker save "$ref" >"$tar"
+          minikube image load "$tar"
+          minikube image ls | grep -qF "$ref" || dry_run_fail "$ref is not present in Minikube"
+          echo "KMS_IMAGE_TAG=$DRY_RUN_KMS_TAG" >>"$GITHUB_ENV"
+
+      - name: Run ${{ matrix.scenario }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TASK: ${{ matrix.task }}
+        run: |
+          set -euo pipefail
+          read -ra task <<<"$TASK"
+          mise run "${task[@]}"
+
+      - *k8s-diagnostics
+
+  k8s-plugin-package:
+    name: K8s plugin packages ${{ matrix.arch }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'k8s-plugin-package') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.k8s-plugin-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_STAGE_FILES: ${{ matrix.stage }}
+      DRY_RUN_EXPECTED_ARCH: ${{ matrix.arch }}
+      DRY_RUN_RUNNER: ${{ matrix.runner }}
+    steps:
+      - *checkout
+      - *cleanup-runner
+      - *setup-nix
+      - *install-mise
+      - *write-helpers
+      - *gpg-fixture
+
+      - name: Build signed Kubernetes plugin packages
+        run: mise run package:k8s
+
+      - *stage-artifact
+      - *upload-artifact
+
+  k8s-plugin-package-test:
+    name: K8s plugin packages test ${{ matrix.arch }}
+    needs: [plan, k8s-plugin-package]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'k8s-plugin-package-test') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.k8s-plugin-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+    steps:
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+      - *verify-signatures
+
+      - name: Install plugin package and run it
+        run: |
+          set -euxo pipefail
+          dir="dry-run-artifacts/$DRY_RUN_ARTIFACT"
+          command -v rpm >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq rpm; }
+          for pkg in "$dir"/result-k8s-plugin-rpm/*.rpm; do
+            rpm -qpi --nosignature "$pkg"
+            rpm -qpl --nosignature "$pkg" | grep -qE '/kubernetes-kms-plugin$'
+          done
+          set -- "$dir"/result-k8s-plugin-deb/*.deb
+          [ "$#" -eq 1 ] && [ -f "$1" ]
+          dpkg-deb --info "$1"
+          sudo dpkg -i "$1"
+          name=$(dpkg-deb -f "$1" Package)
+          dpkg-query -W -f='${Status}\n' "$name" | grep -qx 'install ok installed'
+          bin=$(dpkg -L "$name" | grep -E '/kubernetes-kms-plugin$' | head -n 1)
+          [ -x "$bin" ]
+          "$bin" --version
+          systemctl cat kubernetes-kms-plugin.service
+
+  # ── Expanded only: unsigned Windows installers ────────────────────────────
+  windows-build:
+    name: Windows installers ${{ matrix.arch }}
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'windows-build') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.windows-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+      DRY_RUN_STAGE_FILES: ${{ matrix.stage }}
+      DRY_RUN_EXPECTED_ARCH: ${{ matrix.arch }}
+      DRY_RUN_RUNNER: ${{ matrix.runner }}
+      DRY_RUN_FEATURES: non-fips
+      DRY_RUN_LINK: static
+    steps:
+      - *checkout
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          version: ${{ matrix.pnpm }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Build UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.mise\scripts\windows\windows_ui.ps1
+          Build-UI -Variant non-fips
+
+      - name: Copy UI to server directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Test-Path "crate\server\ui_non_fips") {
+            Remove-Item -Recurse -Force "crate\server\ui_non_fips"
+          }
+          New-Item -ItemType Directory -Path "crate\server\ui_non_fips" -Force | Out-Null
+          Copy-Item -Recurse "ui\dist\*" "crate\server\ui_non_fips\"
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
+          vcpkg integrate install
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg integrate failed" }
+
+      - name: Build unsigned installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.mise\scripts\windows\cargo_build.ps1
+          BuildProject
+
+      - name: Rename installers to release convention
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $cargoToml = Get-Content -Raw "Cargo.toml"
+          $inWorkspace = $false
+          $version = ""
+          foreach ($line in $cargoToml -split "`n") {
+            if ($line -match '^\[workspace\.package\]') { $inWorkspace = $true; continue }
+            if ($inWorkspace -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
+            if ($inWorkspace -and $line -match '^\[') { break }
+          }
+          if (-not $version) { throw "Unable to parse version from Cargo.toml" }
+          $renames = @{
+            "cosmian_kms_*setup.exe" = "cosmian-kms-server-non-fips-static-openssl_${version}_x86_64.exe"
+            "ckms*setup.exe"         = "cosmian-kms-cli-non-fips-static-openssl_${version}_x86_64.exe"
+          }
+          foreach ($filter in $renames.Keys) {
+            $found = @(Get-ChildItem -Path "target/release" -Filter $filter)
+            if ($found.Count -ne 1) { throw "Expected one installer matching $filter, found $($found.Count)" }
+            Move-Item -Force $found[0].FullName (Join-Path $found[0].DirectoryName $renames[$filter])
+          }
+
+      - *write-helpers
+      - *stage-artifact
+      - *upload-artifact
+
+  windows-test:
+    name: Windows installers test ${{ matrix.arch }}
+    needs: [plan, windows-build]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && contains(fromJSON(needs.plan.outputs.selected-jobs), 'windows-test') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.windows-matrix) }}
+    env:
+      DRY_RUN_ARTIFACT: ${{ matrix.artifact }}
+    steps:
+      - *write-helpers
+      - *download-artifact
+      - *verify-artifacts
+
+      - name: Install unsigned installers and run them
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = Join-Path "dry-run-artifacts" "$env:DRY_RUN_ARTIFACT/target/release"
+          $server = @(Get-ChildItem $dir -Filter "cosmian-kms-server-*.exe")
+          $cli = @(Get-ChildItem $dir -Filter "cosmian-kms-cli-*.exe")
+          if ($server.Count -ne 1 -or $cli.Count -ne 1) {
+            throw "Expected one server and one CLI installer, found $($server.Count) and $($cli.Count)"
+          }
+          foreach ($exe in $server + $cli) {
+            $status = (Get-AuthenticodeSignature -FilePath $exe.FullName).Status
+            Write-Host "$($exe.Name): Authenticode $status"
+            if ($status -ne "NotSigned") { throw "$($exe.Name) is signed ($status); the dry-run must not use production signing" }
+          }
+
+          function Install-Silently([System.IO.FileInfo]$Installer, [string]$Target) {
+            $p = Start-Process -FilePath $Installer.FullName -ArgumentList @('/S', "/D=$Target") -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "$($Installer.Name) exited with $($p.ExitCode)" }
+          }
+          function Find-Installed([string]$Name, [string[]]$Roots) {
+            $hits = @($Roots | Where-Object { $_ -and (Test-Path $_) } |
+              ForEach-Object { Get-ChildItem -Path $_ -Recurse -Depth 3 -Filter $Name -ErrorAction SilentlyContinue } |
+              Select-Object -ExpandProperty FullName -Unique)
+            if ($hits.Count -ne 1) { throw "Expected one installed $Name, found: $($hits -join ', ')" }
+            return $hits[0]
+          }
+          $serverDir = Join-Path $env:RUNNER_TEMP "dry-run-kms-server"
+          $cliDir = Join-Path $env:RUNNER_TEMP "dry-run-kms-cli"
+          Install-Silently $server[0] $serverDir
+          Install-Silently $cli[0] $cliDir
+          $kms = Find-Installed "cosmian_kms.exe" @($serverDir, $env:ProgramFiles, $env:LOCALAPPDATA)
+          $ckms = Find-Installed "ckms.exe" @($cliDir, $env:ProgramFiles, $env:LOCALAPPDATA)
+          $service = Get-Service -Name CosmianKMS
+          Write-Host "Windows service CosmianKMS registered (status: $($service.Status))"
+
+          & $kms --version
+          if ($LASTEXITCODE -ne 0) { throw "cosmian_kms --version failed" }
+          & $ckms --version
+          if ($LASTEXITCODE -ne 0) { throw "ckms --version failed" }
+
+          # Run the installed server on its own port and database, independent of the service.
+          $work = Join-Path $env:RUNNER_TEMP "dry-run-kms-run"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          $proc = Start-Process -FilePath $kms -WorkingDirectory $work -PassThru `
+            -ArgumentList @('--database-type', 'sqlite', '--sqlite-path', (Join-Path $work 'sqlite-data'), '--port', '19998') `
+            -RedirectStandardOutput (Join-Path $work 'kms.out') -RedirectStandardError (Join-Path $work 'kms.err')
+          try {
+            $version = $null
+            $deadline = (Get-Date).AddSeconds(120)
+            while (-not $version) {
+              if ($proc.HasExited) { Get-Content (Join-Path $work 'kms.err') -Tail 100; throw "KMS exited before becoming ready" }
+              if ((Get-Date) -gt $deadline) { Get-Content (Join-Path $work 'kms.err') -Tail 100; throw "KMS not ready after 120s" }
+              try { $version = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 "http://127.0.0.1:19998/version").Content } catch { Start-Sleep 2 }
+            }
+            Write-Host "/version -> $version"
+            if ($version -notmatch 'non-FIPS') { throw "Expected a non-FIPS build: $version" }
+            $ui = Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 "http://127.0.0.1:19998/ui/index.html"
+            if ($ui.StatusCode -ne 200) { throw "UI not served (status $($ui.StatusCode))" }
+            $conf = Join-Path $work "ckms.toml"
+            Set-Content -Path $conf -Value "[http_config]`nserver_url = `"http://127.0.0.1:19998`""
+            $out = & $ckms -c $conf sym keys create --algorithm aes --number-of-bits 256 --tag packaging-dry-run 2>&1 | Out-String
+            Write-Host $out
+            if ($LASTEXITCODE -ne 0 -or $out -notmatch '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') {
+              throw "ckms could not create a key on the installed server"
+            }
+            if ($proc.HasExited) { throw "KMS exited during checks" }
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+  # ── Single required check ─────────────────────────────────────────────────
+  result:
+    name: Packaging Dry-Run
+    if: always()
+    needs:
+      - plan
+      - package
+      - verify-packages
+      - install-test
+      - systemd-test
+      - dmg-test
+      - docker-image
+      - docker-test
+      - k8s-kms-pod
+      - k8s-bins
+      - k8s-images
+      - k8s-e2e
+      - k8s-plugin-package
+      - k8s-plugin-package-test
+      - windows-build
+      - windows-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    steps:
+      - name: Evaluate selected jobs and artifacts
+        shell: python3 {0}
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          needs = json.loads(os.environ["NEEDS"])
+          plan = needs.get("plan") or {}
+          outputs = plan.get("outputs") or {}
+          failures, selected, expected = [], [], []
+          if plan.get("result") != "success":
+              failures.append(f"plan: result is {plan.get('result')!r}; coverage could not be determined")
+          else:
+              try:
+                  selected = json.loads(outputs["selected-jobs"])
+                  expected = json.loads(outputs["expected-artifacts"])
+              except (KeyError, ValueError) as exc:
+                  failures.append(f"plan: outputs unreadable ({exc})")
+          for job in selected:
+              if job not in needs:
+                  failures.append(f"{job}: selected by plan but not awaited by this check")
+
+          rows = []
+          for job, data in needs.items():
+              if job == "plan":
+                  continue
+              result, wanted = data.get("result"), job in selected
+              ok = result == ("success" if wanted else "skipped")
+              if not ok:
+                  failures.append(f"{job}: {'selected' if wanted else 'not selected'} but result is {result!r}")
+              rows.append((job, "yes" if wanted else "no", result, "ok" if ok else "FAIL"))
+
+
+          def run_artifacts():
+              api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+              base = f"{api}/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}/artifacts"
+              names, page = set(), 1
+              while True:
+                  req = urllib.request.Request(f"{base}?per_page=100&page={page}", headers={
+                      "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  })
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      batch = json.load(resp).get("artifacts", [])
+                  names.update(a["name"] for a in batch if not a.get("expired"))
+                  if len(batch) < 100:
+                      return names
+                  page += 1
+
+
+          if expected:
+              try:
+                  present = run_artifacts()
+              except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
+                  failures.append(f"artifact inventory unavailable ({exc})")
+              else:
+                  failures += [f"artifact {name}: missing" for name in sorted(set(expected) - present)]
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(f"## Packaging Dry-Run ({outputs.get('coverage', 'unknown')} coverage)\n\n")
+              summary.write("| Job | Selected | Result | Check |\n|---|---|---|---|\n")
+              summary.writelines(f"| `{j}` | {s} | {r} | {c} |\n" for j, s, r, c in rows)
+              summary.write(f"\n{len(expected)} artifact(s) expected.\n")
+              if failures:
+                  summary.write("\n### Failures\n\n")
+                  summary.writelines(f"- {f}\n" for f in failures)
+          for f in failures:
+              print(f"::error::{f}")
+          if failures:
+              sys.exit(1)
+          print(f"All {len(selected)} selected job(s) succeeded and {len(expected)} artifact(s) are present.")
