@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: 'Run a scoped code-quality audit: one KMS Caveman pass first, followed by applicable Rust review skills, Clippy, MISE conventions, and CI-efficiency review. Deduplicates findings into a ranked report. Use before a PR or when improving code quality.'
+description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/skills/shared/orchestrator-contract.md (KMS Caveman first, then MISE, error-prop, simplify, refactor, patterns, async, Clippy). Each phase is a task sub-agent routed by Jev delegation. One ranked report deduplicating overlapping findings. Use before PRs or when improving code quality.'
 ---
 
 # Code Quality Audit
@@ -8,6 +8,7 @@ description: 'Run a scoped code-quality audit: one KMS Caveman pass first, follo
 Orchestrates six Rust-focused audit skills, MISE Bash checks, Clippy, and CI efficiency in one ranked report. The read-only KMS Caveman pass runs first; findings from deeper reviews are deduplicated.
 
 **Usage**: `/code-quality` (full workspace) or `/code-quality crate/server/src/`
+> **Canonical Reference**: This orchestrator's phase ordering, skip gates, and deduplication rules follow `.github/skills/shared/orchestrator-contract.md`. Each phase runs as a task sub-agent and is automatically routed by Jev to `smol` (mechanical phases) or `slow` (reasoning phases) based on phase type.
 
 ## Orchestration rationale
 
