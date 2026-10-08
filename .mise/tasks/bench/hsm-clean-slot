@@ -43,7 +43,7 @@ trap "rm -f '$BEFORE_FILE' '$AFTER_FILE'" EXIT
 
 # List objects before cleanup
 echo "[cleanup] Listing objects on slot $HSM_SLOT..."
-nethsmtool -s "$HSM_SLOT" -p "$PROTECCIO_PASSWORD" -l > "$BEFORE_FILE" 2>&1 || true
+nethsmtool -l "$HSM_SLOT" "$PROTECCIO_PASSWORD" > "$BEFORE_FILE" 2>&1 || true
 
 # Count objects: grep -c returns 1 if no match, so use || true to suppress
 count_objs() {
@@ -81,23 +81,19 @@ if [ "$FORCE_DELETE" != "true" ]; then
   fi
 fi
 
-# Delete each object
-deleted=0
-for handle in "${handles[@]}"; do
-  echo "[cleanup] Deleting handle=$handle..."
-  if nethsmtool -s "$HSM_SLOT" -p "$PROTECCIO_PASSWORD" -r "$handle" >/dev/null 2>&1; then
-    ((deleted++))
-  else
-    echo "[cleanup] WARNING: Failed to delete handle=$handle" >&2
-  fi
-done
+# Delete all objects in one call (nethsmtool -r accepts a comma-separated handle list)
+handle_list=$(IFS=,; echo "${handles[*]}")
+echo "[cleanup] Deleting ${#handles[@]} object(s)..."
+if ! nethsmtool -r "$HSM_SLOT" "$PROTECCIO_PASSWORD" "$handle_list" >/dev/null 2>&1; then
+  echo "[cleanup] WARNING: nethsmtool reported an error while deleting" >&2
+fi
 
 # List objects after cleanup
 echo "[cleanup] Listing objects after cleanup..."
-nethsmtool -s "$HSM_SLOT" -p "$PROTECCIO_PASSWORD" -l > "$AFTER_FILE" 2>&1 || true
+nethsmtool -l "$HSM_SLOT" "$PROTECCIO_PASSWORD" > "$AFTER_FILE" 2>&1 || true
 
 after_count=$(count_objs "$AFTER_FILE")
-echo "[cleanup] Found $after_count object(s) after cleanup (deleted $deleted)"
+echo "[cleanup] Found $after_count object(s) after cleanup (was $before_count)"
 
 if [ "$after_count" -gt 0 ]; then
   echo "[cleanup] WARNING: Some objects remain after cleanup" >&2

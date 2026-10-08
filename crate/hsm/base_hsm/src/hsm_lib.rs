@@ -24,7 +24,9 @@ use crate::{
     pkcs11_v3::{self, CkInterface, InterfaceDescriptor},
 };
 
-const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
+/// Symbolic name of a PKCS#11 return value, for error messages.
+#[must_use]
+pub const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
     match rv {
         0x0000_0000 => "CKR_OK",
         0x0000_0002 => "CKR_HOST_MEMORY",
@@ -34,6 +36,12 @@ const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
         0x0000_0007 => "CKR_ARGUMENTS_BAD",
         0x0000_000a => "CKR_CANT_LOCK",
         0x0000_0030 => "CKR_DEVICE_ERROR",
+        0x0000_0013 => "CKR_ATTRIBUTE_VALUE_INVALID",
+        0x0000_001b => "CKR_ACTION_PROHIBITED",
+        0x0000_0031 => "CKR_DEVICE_MEMORY (HSM storage full)",
+        0x0000_0062 => "CKR_KEY_SIZE_RANGE",
+        0x0000_00d1 => "CKR_TEMPLATE_INCONSISTENT",
+        0x0000_0100 => "CKR_USER_ALREADY_LOGGED_IN",
         0x0000_0032 => "CKR_DEVICE_REMOVED",
         0x0000_0054 => "CKR_FUNCTION_NOT_SUPPORTED",
         0x0000_00e0 => "CKR_TOKEN_NOT_PRESENT",

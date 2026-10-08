@@ -14,6 +14,7 @@ pub use slots::{ObjectHandlesCache, SlotManager};
 
 mod base_hsm;
 mod hsm_lib;
+pub use hsm_lib::pkcs11_return_code_name;
 mod pkcs11_v3;
 mod session;
 
@@ -267,7 +268,13 @@ macro_rules! hsm_call {
                 None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
             };
             if rv != pkcs11_sys::CKR_OK $( && rv != $allowed_rv)? {
-                return Err($crate::HError::Default(format!("{}. Return code: {}", $msg, rv)));
+                return Err($crate::HError::Default(format!(
+                    "{}. Return code: {} ({:#010x}, {})",
+                    $msg,
+                    rv,
+                    rv,
+                    $crate::pkcs11_return_code_name(rv)
+                )));
             }
             rv
         }

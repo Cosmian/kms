@@ -547,7 +547,7 @@ The signature is available at "/tmp/secret.sig"
     uses raw `CKM_RSA_PKCS_PSS` so the supplied digest is signed directly; otherwise it uses the
     matching `CKM_SHA{256,384,512}_RSA_PKCS_PSS` mechanism. This is purely additive: existing
     PKCS#1 v1.5 and OAEP mechanisms, key types, and HSM vendor loaders are unaffected. See
-    [ADR-2026-09-05](../adr/2026-09-05-hsm-track-a-rsa-pss-scope-decision.md) for the scope
+    [ADR-2026-09-05](../../adr/2026-09-05-hsm-track-a-rsa-pss-scope-decision.md) for the scope
     decision.
 
 ECDSA signing over an HSM-resident EC private key uses the same `ec sign` CLI command as the
@@ -573,7 +573,7 @@ The signature is available at "/tmp/secret.sig"
     implementation, ECDSA signatures may be randomized or deterministic (for example RFC 6979);
     both behaviors are valid as long as the returned signature verifies. This is purely additive:
     existing RSA signing mechanisms, key types, and HSM vendor loaders are unaffected. See
-    [ADR-2026-09-06](../adr/2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral.md) for
+    [ADR-2026-09-06](../../adr/2026-09-06-hsm-track-a-ec-ecdsa-completion-pbkdf2-deferral.md) for
     implementation details and the PBKDF2 deferral rationale (SoftHSM2, the only backend
     available for end-to-end validation in this environment, does not implement
     `CKM_PKCS5_PBKD2`).
@@ -626,7 +626,7 @@ v3.0.
     library simply does not export `C_GetInterfaceList`, so the probe reports "not
     supported" and nothing else changes; a v3-capable library additionally reports the list of
     interfaces it exposes (e.g. `"PKCS 11"`). See
-    [ADR-2026-09-03](../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the full
+    [ADR-2026-09-03](../../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the full
     scope decision and rationale.
 
 ### Supported operations and mechanisms
