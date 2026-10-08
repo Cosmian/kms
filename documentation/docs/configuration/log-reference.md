@@ -755,7 +755,6 @@ Crate path: `crate/server`
 | `debug` | `AuditFileStore: sink '{}' is at capacity — event dropped` | `src/core/audit/writer.rs` | sink name (`AuditSink::name()`) | Throttled to at most once every 500ms while blocked events keep arriving after the sink reports `is_write_capacity_exceeded() == true`. |
 | `error` | `AuditFileStore: cannot open or stat audit log {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e` | - |
 | `error` | `AuditFileStore: recovery sentinel id counter overflow at i64::MAX` | `src/core/audit/file_sink.rs` | - | - |
-| `error` | `AuditFileStore: cannot open or stat audit log {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e` | - |
 | `error` | `AuditFileStore: exhausted resync attempts at id={id} — event dropped` | `src/core/audit/writer.rs` | `id` | - |
 | `error` | `AuditFileStore: failed to write event id={id}: {e} — event dropped` | `src/core/audit/writer.rs` | `id`, `e` | - |
 | `error` | `AuditFileStore: sink rejected size-cap sentinel at id={id}` | `src/core/audit/writer.rs` | `id` | - |
