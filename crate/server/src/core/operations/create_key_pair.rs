@@ -294,7 +294,9 @@ pub(super) fn generate_key_pair(
                     request.public_key_attributes,
                 ),
                 #[cfg(feature = "non-fips")]
-                RecommendedCurve::SECP224K1 | RecommendedCurve::SECP256K1 => create_secp_key_pair(
+                RecommendedCurve::SECP224K1
+                | RecommendedCurve::SECP256K1
+                | RecommendedCurve::SECP192K1 => create_secp_key_pair(
                     vendor_id,
                     private_key_uid,
                     public_key_uid,

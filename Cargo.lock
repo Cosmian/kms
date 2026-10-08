@@ -632,6 +632,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws_cloudhsm_pkcs11_loader"
+version = "5.28.0"
+dependencies = [
+ "cosmian_kms_base_hsm",
+]
+
+[[package]]
 name = "axum"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1417,15 +1424,19 @@ name = "cosmian_kms_base_hsm"
 version = "5.28.0"
 dependencies = [
  "async-trait",
+ "cc",
+ "cosmian_crypto_core",
  "cosmian_kms_interfaces",
  "cosmian_logger",
- "futures",
  "libloading",
  "lru",
+ "openssl",
  "pkcs11-sys",
  "rand 0.10.2",
+ "serde_json",
  "thiserror 2.0.19",
  "time",
+ "tokio",
  "uuid",
  "zeroize",
 ]
@@ -1440,6 +1451,7 @@ dependencies = [
  "cosmian_config_utils",
  "cosmian_crypto_core",
  "cosmian_kmip",
+ "cosmian_kms_base_hsm",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
  "cosmian_logger",
@@ -1616,7 +1628,6 @@ dependencies = [
  "num-bigint-dig",
  "openssl",
  "serde",
- "serde_json",
  "thiserror 2.0.19",
  "time",
  "tokio",
@@ -1687,6 +1698,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "aws_cloudhsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
  "clap",
@@ -1703,12 +1715,14 @@ dependencies = [
  "dotenvy",
  "fs4",
  "futures",
+ "gcp_cloud_hsm_pkcs11_loader",
  "governor",
  "hex",
  "hmac 0.12.1",
  "http 1.5.0",
  "ipnet",
  "jsonwebtoken",
+ "kryoptic_pkcs11_loader",
  "native-tls",
  "num-bigint-dig",
  "openssl",
@@ -1822,6 +1836,7 @@ dependencies = [
  "cosmian_pkcs11_module",
  "etcetera",
  "hex",
+ "openssl",
  "p256",
  "pkcs1",
  "pkcs11-sys",
@@ -2892,6 +2907,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gcp_cloud_hsm_pkcs11_loader"
+version = "5.28.0"
+dependencies = [
+ "cosmian_kms_base_hsm",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3793,6 +3815,15 @@ version = "5.28.0"
 dependencies = [
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "kryoptic_pkcs11_loader"
+version = "5.28.0"
+dependencies = [
+ "cosmian_kms_base_hsm",
+ "libloading",
+ "pkcs11-sys",
 ]
 
 [[package]]

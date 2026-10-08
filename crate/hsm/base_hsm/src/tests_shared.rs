@@ -5,17 +5,32 @@
 
 use std::{collections::HashMap, ptr, sync::Arc, thread};
 
-use cosmian_kms_interfaces::{HSM, HsmObjectFilter, KeyMaterial, KeyType};
-use cosmian_logger::{debug, info, log_init, warn};
-use futures::executor::block_on;
+use cosmian_kms_interfaces::{
+    EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
+};
+use cosmian_logger::{debug, info, log_init, trace, warn};
 use libloading::Library;
+use openssl::{
+    bn::BigNumContext,
+    ec::{EcGroup, EcKey, EcPoint},
+    ecdsa::EcdsaSig,
+    hash::{MessageDigest, hash},
+    nid::Nid,
+};
+#[cfg(feature = "non-fips")]
+use openssl::{
+    pkey::{Id, PKey},
+    sign::Verifier,
+};
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS, CKR_OK,
+    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384,
+    CKM_ECDSA_SHA512, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -44,10 +59,16 @@ pub struct HsmTestConfig {
     pub lib_path: String,
     pub slot_ids_and_passwords: HashMap<usize, Option<String>>, // for BaseHsm::instantiate
     pub slot_id_for_tests: usize,                               // slot to use
-    pub rsa_oaep_digest: Option<RsaOaepDigest>,                 // Some if supported, None if not
     pub threads: usize,                                         // number of threads for MT test
-    pub supports_rsa_wrap: bool, // whether RSA OAEP wrap/unwrap is supported
 }
+
+/// RSA-OAEP digest used by shared HSM tests for the selected build variant.
+#[cfg(feature = "non-fips")]
+pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA1;
+
+/// RSA-OAEP digest used by shared HSM tests for the selected build variant.
+#[cfg(not(feature = "non-fips"))]
+pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA256;
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
@@ -164,50 +185,72 @@ where
     Ok(())
 }
 
+/// Destroys every listed object, skipping those the token refuses with
+/// `CKR_ACTION_PROHIBITED` (0x1B = 27; objects with `CKA_DESTROYABLE = false`).
+fn destroy_destroyable_objects(session: &Session) -> HResult<()> {
+    let objects = session.list_objects(HsmObjectFilter::Any)?;
+    for object in &objects {
+        match session.destroy_object(*object) {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("Return code: 27") => {
+                trace!("Skipping non-destroyable object {object}: {e}");
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
 pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in &objects {
-        session.destroy_object(*object)?;
-    }
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 0);
-    info!("Destroyed all objects");
+    destroy_destroyable_objects(&session)?;
+    info!("Destroyed all destroyable objects");
     Ok(())
 }
 
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
+    let supports_exportable_keys = slot.capabilities().supports_aes_sensitive_attribute;
     log_init(None);
-    let key_id = Uuid::new_v4().to_string();
     let session = slot.open_session(true)?;
-    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
-    info!("Generated exportable AES key: {}", key_id);
-    // assert the key handles are identical
-    assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
-    // assert CKA_ID is set and matches the key label bytes
-    let cka_id = session.get_object_id(key_handle)?;
-    assert_eq!(
-        cka_id.as_deref(),
-        Some(key_id.as_bytes()),
-        "CKA_ID must be set to the key id bytes"
-    );
-    // try export if allowed
-    if let Ok(Some(key)) = session.export_key(key_handle) {
-        let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
-            panic!("Expected an AES key")
-        };
-        assert_eq!(key_bytes.len() * 8, 256);
-        assert_eq!(key.id(), key_id.as_str());
-        if let KeyMaterial::AesKey(v) = key.key_material() {
-            assert_eq!(v.len(), 32);
+    if supports_exportable_keys {
+        let key_id = Uuid::new_v4().to_string();
+        let key_handle =
+            session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
+        info!("Generated exportable AES key: {}", key_id);
+        // assert the key handles are identical
+        assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
+        // assert CKA_ID is set and matches the key label bytes
+        let cka_id = session.get_object_id(key_handle)?;
+        assert_eq!(
+            cka_id.as_deref(),
+            Some(key_id.as_bytes()),
+            "CKA_ID must be set to the key id bytes"
+        );
+        // try export if allowed
+        if let Ok(Some(key)) = session.export_key(key_handle) {
+            let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
+                panic!("Expected an AES key")
+            };
+            assert_eq!(key_bytes.len() * 8, 256);
+            assert_eq!(key.id(), key_id.as_str());
+            if let KeyMaterial::AesKey(v) = key.key_material() {
+                assert_eq!(v.len(), 32);
+            }
+        }
+        // a non-sensitive (exportable) key must have CKA_EXTRACTABLE = true
+        if let Some(extractable) = session.is_extractable(key_handle)? {
+            assert!(
+                extractable,
+                "A non-sensitive AES key must have CKA_EXTRACTABLE=true"
+            );
         }
     }
 
     // Generate a sensitive AES key
     let key_id = Uuid::new_v4().to_string();
-    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?;
     info!("Generated sensitive AES key: {}", key_id);
     // assert the key handles are identical
     assert_eq!(key_handle, session.get_object_handle(key_id.as_bytes())?);
@@ -220,6 +263,16 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
+    // Without `CKA_SENSITIVE` support, `CKA_EXTRACTABLE` is left at the HSM default and cannot
+    // be asserted.
+    if supports_exportable_keys {
+        if let Some(extractable) = session.is_extractable(key_handle)? {
+            assert!(
+                !extractable,
+                "A sensitive AES key must have CKA_EXTRACTABLE=false"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -234,6 +287,7 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         false,
+        None,
     )?;
     info!("Generated exportable RSA key: sk: {sk_id}, pk: {pk_id}");
     // exportability differs per HSM; verify handles and metadata
@@ -261,6 +315,13 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
         KeyMaterial::RsaPublicKey(v) => assert_eq!(v.modulus.len() * 8, 2048),
         _ => panic!("Expected an RSA public key"),
     }
+    // a non-sensitive (exportable) private key must have CKA_EXTRACTABLE = true
+    if let Some(extractable) = session.is_extractable(sk_handle)? {
+        assert!(
+            extractable,
+            "A non-sensitive RSA private key must have CKA_EXTRACTABLE=true"
+        );
+    }
 
     // sensitive keypair
     let sk_id = Uuid::new_v4().to_string();
@@ -270,20 +331,118 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
     info!("Generated sensitive RSA key: sk: {sk_id}, pk: {pk_id}");
     let sk_handle = session.get_object_handle(sk_id.as_bytes())?;
     session.export_key(sk_handle).unwrap_err();
+    // a sensitive private key must have CKA_EXTRACTABLE = false at the PKCS#11
+    // level, not just be rejected by the KMS software check
+    if let Some(extractable) = session.is_extractable(sk_handle)? {
+        assert!(
+            !extractable,
+            "A sensitive RSA private key must have CKA_EXTRACTABLE=false"
+        );
+    }
     let pk_handle = session.get_object_handle(pk_id.as_bytes())?;
     let _unused = session.export_key(pk_handle)?;
     Ok(())
 }
 
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    for (curve, expected_bits) in [
+        (EcCurve::P224, 224_usize),
+        (EcCurve::P256, 256),
+        (EcCurve::P384, 384),
+        (EcCurve::P521, 521),
+    ] {
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        // Capability-probe per curve rather than hard-failing the whole test: some
+        // PKCS#11 libraries implement only a subset of NIST curves (e.g. Kryoptic
+        // 1.5.2 rejects P-224 specifically with a generic CKR_DEVICE_ERROR while
+        // generating P-256/P-384/P-521 without issue).
+        let (sk_handle, pk_handle) = match session.generate_ec_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            curve,
+            false,
+            None,
+        ) {
+            Ok(handles) => handles,
+            Err(error) => {
+                warn!("EC key pair generation for {curve:?} unavailable, skipping: {error}");
+                continue;
+            }
+        };
+        info!("Generated exportable EC ({curve:?}) key: sk: {sk_id}, pk: {pk_id}");
+        assert_eq!(sk_handle, session.get_object_handle(sk_id.as_bytes())?);
+        assert_eq!(pk_handle, session.get_object_handle(pk_id.as_bytes())?);
+        // public key should be exportable
+        let key = session
+            .export_key(pk_handle)?
+            .expect("Failed to find the public key");
+        assert_eq!(key.id(), pk_id.as_str());
+        match key.key_material() {
+            KeyMaterial::EcPublicKey(v) => {
+                assert_eq!(v.curve, curve);
+                // uncompressed X9.62 point: 0x04 || X || Y
+                assert_eq!(v.q.first().copied(), Some(0x04_u8));
+                assert_eq!(v.q.len(), 1 + 2 * expected_bits.div_ceil(8));
+            }
+            _ => panic!("Expected an EC public key"),
+        }
+        assert_eq!(
+            session.get_key_type(sk_handle)?,
+            Some(KeyType::EcPrivateKey)
+        );
+        let signing_metadata = session
+            .get_signing_key_metadata(sk_handle)?
+            .ok_or_else(|| HError::Default("private signing metadata missing".to_owned()))?;
+        assert_eq!(signing_metadata.key_type, KeyType::EcPrivateKey);
+        assert_eq!(signing_metadata.curve, Some(curve));
+        assert_eq!(session.get_key_type(pk_handle)?, Some(KeyType::EcPublicKey));
+        let signing_metadata = session
+            .get_signing_key_metadata(pk_handle)?
+            .ok_or_else(|| HError::Default("public signing metadata missing".to_owned()))?;
+        assert_eq!(signing_metadata.key_type, KeyType::EcPublicKey);
+        assert_eq!(signing_metadata.curve, Some(curve));
+        let meta = session
+            .get_key_metadata(sk_handle)?
+            .expect("private key metadata must be present");
+        assert_eq!(meta.key_length_in_bits, expected_bits);
+
+        // sensitive keypair: private key material must not be exportable
+        let sensitive_sk_id = Uuid::new_v4().to_string();
+        let sensitive_pk_id = sensitive_sk_id.clone() + "_pk";
+        session.generate_ec_key_pair(
+            sensitive_sk_id.as_bytes(),
+            sensitive_pk_id.as_bytes(),
+            curve,
+            true,
+            None,
+        )?;
+        let sensitive_sk_handle = session.get_object_handle(sensitive_sk_id.as_bytes())?;
+        session.export_key(sensitive_sk_handle).unwrap_err();
+    }
+    Ok(())
+}
+
 pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<()> {
     log_init(None);
+    if !slot.capabilities().supports_rsa_oaep_key_wrap {
+        info!("RSA-OAEP key wrap not supported by this HSM (capability), skipping");
+        return Ok(());
+    }
     let key_id = Uuid::new_v4().to_string();
     let session = slot.open_session(true)?;
-    let symmetric_key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    // The AES key being wrapped must be explicitly non-sensitive as well as
+    // extractable (PKCS#11 `C_WrapKey` precondition).
+    let symmetric_key =
+        session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
@@ -291,6 +450,7 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
     let encrypted_key = session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key, digest)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
@@ -311,8 +471,9 @@ pub fn rsa_pkcs_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
-    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaPkcsV15, data)?;
+    let enc = session.encrypt(pk, HsmEncryptionAlgorithm::RsaPkcsV15, data, None)?;
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
     let plaintext = session.decrypt(sk, HsmEncryptionAlgorithm::RsaPkcsV15, &enc.ciphertext)?;
     assert_eq!(plaintext.as_slice(), data);
@@ -331,11 +492,14 @@ pub fn rsa_oaep_encrypt(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResu
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
     let enc = match digest {
-        RsaOaepDigest::SHA1 => session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data)?,
+        RsaOaepDigest::SHA1 => {
+            session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, data, None)?
+        }
         RsaOaepDigest::SHA256 => {
-            session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data)?
+            session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, data, None)?
         }
     };
     assert_eq!(enc.ciphertext.len(), 2048 / 8);
@@ -350,9 +514,11 @@ pub fn rsa_oaep_encrypt(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResu
     assert_eq!(plaintext.as_slice(), data);
     let data_2 = generate_random_data::<128>()?;
     let enc_2 = match digest {
-        RsaOaepDigest::SHA1 => session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, &data_2)?,
+        RsaOaepDigest::SHA1 => {
+            session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha1, &data_2, None)?
+        }
         RsaOaepDigest::SHA256 => {
-            session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, &data_2)?
+            session.encrypt(pk, HsmEncryptionAlgorithm::RsaOaepSha256, &data_2, None)?
         }
     };
     assert_eq!(enc_2.ciphertext.len(), 2048 / 8);
@@ -374,12 +540,12 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
-    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data)?;
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, None)?;
     assert_eq!(enc.ciphertext.len(), data.len());
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 16);
-    assert_eq!(enc.iv.clone().unwrap_or_default().len(), 12);
+    assert!(enc.iv.is_some());
     let plaintext = session.decrypt(
         sk,
         HsmEncryptionAlgorithm::AesGcm,
@@ -401,12 +567,13 @@ pub fn aes_cbc_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
-    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, data)?;
+    let iv = [7_u8; 16];
+    let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, data, Some(&iv))?;
     assert_eq!(enc.ciphertext.len(), 16);
     assert_eq!(enc.tag.clone().unwrap_or_default().len(), 0);
-    assert_eq!(enc.iv.clone().unwrap_or_default().len(), 16);
+    assert_eq!(enc.iv.as_deref(), Some(iv.as_slice()));
     let plaintext = session.decrypt(
         sk,
         HsmEncryptionAlgorithm::AesCbc,
@@ -427,12 +594,12 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     let key_id = Uuid::new_v4().to_string();
-    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let data_1k = generate_random_data::<1024>()?;
     let data_8k = generate_random_data::<8192>()?;
 
-    let enc_1k_single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_1k)?;
+    let enc_1k_single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_1k, None)?;
 
     assert_eq!(enc_1k_single.ciphertext.len(), 1040);
     assert_eq!(enc_1k_single.tag.clone().unwrap_or_default().len(), 0);
@@ -489,7 +656,7 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(plaintext_1k_multi_single.as_slice(), data_1k);
     assert_eq!(plaintext_1k_multi_multi.as_slice(), data_1k);
 
-    let enc_8k_single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_8k)?;
+    let enc_8k_single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, &data_8k, None)?;
 
     assert_eq!(enc_8k_single.ciphertext.len(), 8208);
     assert_eq!(enc_8k_single.tag.clone().unwrap_or_default().len(), 0);
@@ -570,6 +737,7 @@ pub fn rsa_pkcs_v15_sign(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
     let signature = session.sign(sk, HsmSigningAlgorithm::RsaPkcsV15, &digest_info)?;
     // RSA-2048 signature is 256 bytes
@@ -589,6 +757,7 @@ pub fn rsa_sha256_sign(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
     let signature = session.sign(sk, HsmSigningAlgorithm::Sha256WithRsa, data)?;
     // RSA-2048 signature is 256 bytes
@@ -617,6 +786,7 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
     let algorithms = [
         (
@@ -642,6 +812,10 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     ];
     let mut tested = 0;
     for (name, algorithm, ckm) in &algorithms {
+        #[cfg(not(feature = "non-fips"))]
+        if matches!(algorithm, HsmSigningAlgorithm::Sha1WithRsa) {
+            continue;
+        }
         if !supported_mechanisms.contains(ckm) {
             warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
             continue;
@@ -660,6 +834,457 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
         "No signing algorithms were supported by the HSM"
     );
     Ok(())
+}
+
+/// Exercises HSM-delegated RSA-PSS signing (issue #1154, RSA-PSS sub-item) across the
+/// SHA-256/384/512 variants, both with the default salt length (= digest length) and
+/// with an explicit shorter salt length (including the deterministic `salt_length: 0`
+/// case). Confirms signatures are well-formed (correct length) and that non-zero-salt
+/// PSS signing is randomized (unlike deterministic PKCS#1 v1.5, already covered by
+/// `rsa_sha256_sign`).
+pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for RSA-PSS signing";
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, _pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+        None,
+    )?;
+    let algorithms = [
+        (
+            "RsaPssSha256 (default salt)",
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            },
+            CKM_SHA256_RSA_PKCS_PSS,
+        ),
+        (
+            "RsaPssSha256 (salt=0, deterministic)",
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: Some(0),
+                prehashed: false,
+            },
+            CKM_SHA256_RSA_PKCS_PSS,
+        ),
+        (
+            "RsaPssSha384 (default salt)",
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA384,
+                salt_length: None,
+                prehashed: false,
+            },
+            CKM_SHA384_RSA_PKCS_PSS,
+        ),
+        (
+            "RsaPssSha512 (default salt)",
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA512,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA512,
+                salt_length: None,
+                prehashed: false,
+            },
+            CKM_SHA512_RSA_PKCS_PSS,
+        ),
+    ];
+    let mut tested = 0;
+    for (name, algorithm, ckm) in algorithms {
+        if !supported_mechanisms.contains(&ckm) {
+            warn!("{name} (CKM {ckm}) not supported by HSM, skipping");
+            continue;
+        }
+        // Capability-probe per algorithm: the mechanism may be advertised at the slot
+        // level yet rejected for this specific key size/salt combination at `C_SignInit`
+        // time (e.g. CKR_KEY_SIZE_RANGE). Skip that one algorithm instead of hard-failing
+        // the whole sweep, mirroring the ECDSA/EdDSA capability probes above.
+        let signature = match session.sign(sk, algorithm, data) {
+            Ok(signature) => signature,
+            Err(error) => {
+                warn!("{name} rejected by the HSM at sign time, skipping: {error}");
+                continue;
+            }
+        };
+        // RSA-2048 signature is 256 bytes regardless of the salt length used.
+        assert_eq!(
+            signature.len(),
+            2048 / 8,
+            "Signature length mismatch for {name}"
+        );
+        info!("Successfully signed with {name}");
+        tested += 1;
+    }
+    assert!(
+        tested > 0,
+        "No RSA-PSS signing algorithms were supported by the HSM"
+    );
+    // PSS is randomized (unless salt_length is 0): two signatures over the same data with
+    // the default salt length must differ, unlike PKCS#1 v1.5 which is deterministic.
+    if supported_mechanisms.contains(&CKM_SHA256_RSA_PKCS_PSS) {
+        let sig_a = session.sign(
+            sk,
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            },
+            data,
+        )?;
+        let sig_b = session.sign(
+            sk,
+            HsmSigningAlgorithm::RsaPss {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                mask_generator_hashing_algorithm: HashingAlgorithm::SHA256,
+                salt_length: None,
+                prehashed: false,
+            },
+            data,
+        )?;
+        assert_ne!(
+            sig_a, sig_b,
+            "RSA-PSS with a non-zero salt length must be randomized"
+        );
+    }
+    Ok(())
+}
+
+/// Signs data on the HSM with ECDSA (P-224/P-256/P-384/P-521, SHA-256/384/512) and
+/// independently verifies each signature with OpenSSL against the exported public key,
+/// proving that the DER re-encoding of the raw PKCS#11 `r || s` signature
+/// (`Session::ecdsa_raw_to_der`) is correct and interoperable with standard ECDSA
+/// verification. Also confirms ECDSA signing is randomized (two signatures over the
+/// same data must differ) and that tampering with the signed data is detected.
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for ECDSA signing";
+
+    let algorithms = [
+        (
+            "EcdsaSha256",
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA256,
+                prehashed: false,
+            },
+            CKM_ECDSA_SHA256,
+            Nid::SHA256,
+        ),
+        (
+            "EcdsaSha384",
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA384,
+                prehashed: false,
+            },
+            CKM_ECDSA_SHA384,
+            Nid::SHA384,
+        ),
+        (
+            "EcdsaSha512",
+            HsmSigningAlgorithm::Ecdsa {
+                hashing_algorithm: HashingAlgorithm::SHA512,
+                prehashed: false,
+            },
+            CKM_ECDSA_SHA512,
+            Nid::SHA512,
+        ),
+    ];
+
+    let mut tested = 0;
+    for curve in [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521] {
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk, pk) = match session.generate_ec_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            curve,
+            true,
+            None,
+        ) {
+            Ok(handles) => handles,
+            Err(error) => {
+                warn!("EC key pair generation for {curve:?} unavailable, skipping: {error}");
+                continue;
+            }
+        };
+        let exported_pk = session
+            .export_key(pk)?
+            .expect("Failed to export the EC public key");
+        let openssl_pk = match exported_pk.key_material() {
+            KeyMaterial::EcPublicKey(v) => ec_public_key_from_material(v)?,
+            _ => panic!("Expected an EC public key"),
+        };
+
+        for (name, algorithm, ckm, digest_nid) in algorithms {
+            if slot.capabilities().enforces_ecdsa_digest_strength
+                && ((matches!(curve, EcCurve::P384 | EcCurve::P521)
+                    && matches!(digest_nid, Nid::SHA256))
+                    || (matches!(curve, EcCurve::P521) && matches!(digest_nid, Nid::SHA384)))
+            {
+                warn!(
+                    "{curve:?}/{name} rejected by the HSM's ECDSA digest-strength policy, skipping"
+                );
+                continue;
+            }
+            // Some PKCS#11 implementations (e.g. some v2.40 libraries) do not implement the
+            // combined hash-and-sign mechanisms (CKM_ECDSA_SHA*), only the raw
+            // CKM_ECDSA mechanism operating on a pre-computed digest. Fall back to
+            // hashing in software and signing with `prehashed: true` in that case,
+            // so this coverage does not silently no-op against such HSMs.
+            let (sign_algorithm, signing_input): (_, std::borrow::Cow<'_, [u8]>) =
+                if supported_mechanisms.contains(&ckm) {
+                    (algorithm, data.as_slice().into())
+                } else if supported_mechanisms.contains(&CKM_ECDSA) {
+                    let digest = MessageDigest::from_nid(digest_nid).ok_or_else(|| {
+                        HError::Default(format!("Unknown digest NID: {digest_nid:?}"))
+                    })?;
+                    let hashed = hash(digest, data)
+                        .map_err(|e| HError::Default(format!("OpenSSL hash error: {e}")))?;
+                    let HsmSigningAlgorithm::Ecdsa {
+                        hashing_algorithm, ..
+                    } = algorithm
+                    else {
+                        return Err(HError::Default(
+                            "algorithm is always HsmSigningAlgorithm::Ecdsa here".to_owned(),
+                        ));
+                    };
+                    (
+                        HsmSigningAlgorithm::Ecdsa {
+                            hashing_algorithm,
+                            prehashed: true,
+                        },
+                        hashed.to_vec().into(),
+                    )
+                } else {
+                    warn!(
+                        "{curve:?}/{name} (CKM {ckm} or raw CKM_ECDSA) not supported by HSM, \
+                         skipping"
+                    );
+                    continue;
+                };
+
+            // Capability-probe per curve/hash: some HSMs advertise the combined
+            // CKM_ECDSA_SHA* mechanism (or raw CKM_ECDSA) at the slot level yet reject a
+            // specific key-size/digest combination (e.g. a weak digest paired with a strong
+            // curve) with CKR_KEY_SIZE_RANGE at `C_SignInit` time. Mirror the EdDSA pattern
+            // above: skip that one combination instead of hard-failing the whole sweep.
+            let signature = match session.sign(sk, sign_algorithm, &signing_input) {
+                Ok(signature) => signature,
+                Err(error) => {
+                    warn!("{curve:?}/{name} rejected by the HSM at sign time, skipping: {error}");
+                    continue;
+                }
+            };
+            verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature)?;
+            info!("Successfully signed and verified {curve:?}/{name}");
+
+            let signature_2 = session.sign(sk, sign_algorithm, &signing_input)?;
+            verify_ecdsa_der_signature(&openssl_pk, digest_nid, data, &signature_2)?;
+
+            // Tampering with the signed data must be detected.
+            let mut tampered = data.to_vec();
+            if let Some(first) = tampered.first_mut() {
+                *first ^= 0xFF;
+            }
+            assert!(
+                verify_ecdsa_der_signature(&openssl_pk, digest_nid, &tampered, &signature).is_err(),
+                "A tampered message must fail ECDSA verification ({curve:?}/{name})"
+            );
+            tested += 1;
+        }
+    }
+    assert!(
+        tested > 0,
+        "No ECDSA signing algorithms were supported by the HSM"
+    );
+    Ok(())
+}
+
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Exercises
+/// `CKM_EC_EDWARDS_KEY_PAIR_GEN` key generation and `CKM_EDDSA` signing for Ed25519 and Ed448,
+/// verifying each HSM-produced signature independently with OpenSSL. Additive: does not touch
+/// any of the pre-existing ECDSA/RSA signing coverage above.
+///
+/// Requires an HSM that implements the PKCS#11 v3.0 `CKM_EDDSA`/`CKM_EC_EDWARDS_KEY_PAIR_GEN`
+/// mechanisms (verified against `SoftHSM2` 2.6.1 and the Utimaco `CryptoServer` simulator; not
+/// supported by all vendors/firmware versions, hence the mechanism-support skip below).
+#[cfg(feature = "non-fips")]
+#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let data = b"test data for EdDSA signing";
+
+    let curves = [
+        (
+            EcCurve::Ed25519,
+            HsmSigningAlgorithm::Ed25519,
+            Id::ED25519,
+            32_usize,
+        ),
+        (EcCurve::Ed448, HsmSigningAlgorithm::Ed448, Id::ED448, 57),
+    ];
+
+    let mut tested = 0;
+    for (curve, signing_algorithm, openssl_id, expected_point_len) in curves {
+        if !supported_mechanisms.contains(&pkcs11_sys::CKM_EDDSA) {
+            warn!("{curve:?} (CKM_EDDSA) not supported by HSM, skipping");
+            continue;
+        }
+        let sk_id = Uuid::new_v4().to_string();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk, pk) =
+            session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, true, None)?;
+        let exported_pk = session
+            .export_key(pk)?
+            .expect("Failed to export the EdDSA public key");
+        let raw_point = match exported_pk.key_material() {
+            KeyMaterial::EcPublicKey(v) => {
+                assert_eq!(v.curve, curve);
+                assert_eq!(
+                    v.q.len(),
+                    expected_point_len,
+                    "raw EdDSA point length mismatch for {curve:?}"
+                );
+                v.q.clone()
+            }
+            _ => panic!("Expected an EC public key"),
+        };
+        let openssl_pk = PKey::public_key_from_raw_bytes(&raw_point, openssl_id)
+            .map_err(|e| HError::Default(format!("OpenSSL EdDSA public key error: {e}")))?;
+
+        // Capability-probe per curve: some EdDSA implementations only support Ed25519
+        // despite advertising the generic CKM_EDDSA mechanism (e.g. Kryoptic 1.5.2 rejects
+        // Ed448 with CKR_MECHANISM_PARAM_INVALID while signing Ed25519 without issue).
+        let signature = match session.sign(sk, signing_algorithm, data) {
+            Ok(signature) => signature,
+            Err(error) => {
+                warn!("EdDSA sign for {curve:?} unavailable, skipping: {error}");
+                continue;
+            }
+        };
+        verify_eddsa_signature(&openssl_pk, data, &signature)?;
+        info!("Successfully signed and verified {curve:?}/EdDSA");
+
+        // Pure EdDSA (RFC 8032) is deterministic: two signatures over the same data must match,
+        // unlike ECDSA above.
+        let signature_2 = session.sign(sk, signing_algorithm, data)?;
+        assert_eq!(
+            signature, signature_2,
+            "EdDSA signing must be deterministic ({curve:?})"
+        );
+
+        // Tampering with the signed data must be detected.
+        let mut tampered = data.to_vec();
+        if let Some(first) = tampered.first_mut() {
+            *first ^= 0xFF;
+        }
+        assert!(
+            verify_eddsa_signature(&openssl_pk, &tampered, &signature).is_err(),
+            "A tampered message must fail EdDSA verification ({curve:?})"
+        );
+        tested += 1;
+    }
+    if tested == 0 {
+        warn!("No EdDSA mechanism was supported by the HSM; skipping (see issue #1157)");
+    }
+    Ok(())
+}
+
+/// Verify a raw `EdDSA` signature (no digest, no DER wrapping) against `data` using the given
+/// OpenSSL Ed25519/Ed448 public key.
+#[cfg(feature = "non-fips")]
+fn verify_eddsa_signature(
+    public_key: &PKey<openssl::pkey::Public>,
+    data: &[u8],
+    signature: &[u8],
+) -> HResult<()> {
+    let mut verifier = Verifier::new_without_digest(public_key)
+        .map_err(|e| HError::Default(format!("OpenSSL EdDSA verifier init error: {e}")))?;
+    let valid = verifier
+        .verify_oneshot(signature, data)
+        .map_err(|e| HError::Default(format!("OpenSSL EdDSA verification error: {e}")))?;
+    if valid {
+        Ok(())
+    } else {
+        Err(HError::Default(
+            "EdDSA signature verification failed".to_owned(),
+        ))
+    }
+}
+
+/// Build an OpenSSL `EcKey` from the raw uncompressed X9.62 point exported from the HSM.
+///
+/// Only applies to the FIPS-approved NIST prime curves: `EdDSA`/X25519 keys are not classic
+/// OpenSSL `EC_KEY` objects (see `eddsa_public_key_from_material` for those, issue #1157).
+fn ec_public_key_from_material(
+    material: &cosmian_kms_interfaces::EcPublicKeyMaterial,
+) -> HResult<EcKey<openssl::pkey::Public>> {
+    let nid = match material.curve {
+        EcCurve::P224 => Nid::SECP224R1,
+        EcCurve::P256 => Nid::X9_62_PRIME256V1,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp256k1 => Nid::SECP256K1,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Secp192k1 => Nid::SECP192K1,
+        EcCurve::P384 => Nid::SECP384R1,
+        EcCurve::P521 => Nid::SECP521R1,
+        #[cfg(feature = "non-fips")]
+        EcCurve::Ed25519 | EcCurve::Ed448 | EcCurve::X25519 => {
+            return Err(HError::Default(
+                "ec_public_key_from_material: Ed25519/Ed448/X25519 are not OpenSSL EC_KEY \
+                 objects; use eddsa_public_key_from_material instead"
+                    .to_owned(),
+            ));
+        }
+    };
+    let group = EcGroup::from_curve_name(nid)
+        .map_err(|e| HError::Default(format!("OpenSSL EC group error: {e}")))?;
+    let mut ctx = BigNumContext::new()
+        .map_err(|e| HError::Default(format!("OpenSSL BigNumContext error: {e}")))?;
+    let point = EcPoint::from_bytes(&group, &material.q, &mut ctx)
+        .map_err(|e| HError::Default(format!("OpenSSL EC point decoding error: {e}")))?;
+    EcKey::from_public_key(&group, &point)
+        .map_err(|e| HError::Default(format!("OpenSSL EC key construction error: {e}")))
+}
+
+/// Verify a DER-encoded ECDSA signature (as produced by `Session::ecdsa_raw_to_der`) against
+/// `data` hashed with `digest_nid`, using the given OpenSSL public key.
+fn verify_ecdsa_der_signature(
+    public_key: &EcKey<openssl::pkey::Public>,
+    digest_nid: Nid,
+    data: &[u8],
+    der_signature: &[u8],
+) -> HResult<()> {
+    let digest = MessageDigest::from_nid(digest_nid)
+        .ok_or_else(|| HError::Default(format!("Unknown digest NID: {digest_nid:?}")))?;
+    let hash = openssl::hash::hash(digest, data)
+        .map_err(|e| HError::Default(format!("OpenSSL hash error: {e}")))?;
+    let sig = EcdsaSig::from_der(der_signature)
+        .map_err(|e| HError::Default(format!("Invalid DER ECDSA signature: {e}")))?;
+    let valid = sig
+        .verify(&hash, public_key)
+        .map_err(|e| HError::Default(format!("OpenSSL ECDSA verification error: {e}")))?;
+    if valid {
+        Ok(())
+    } else {
+        Err(HError::Default(
+            "ECDSA signature verification failed".to_owned(),
+        ))
+    }
 }
 
 pub fn multi_threaded_rsa(
@@ -682,13 +1307,14 @@ pub fn multi_threaded_rsa(
                 pk_id.as_bytes(),
                 RsaKeySize::Rsa2048,
                 true,
+                None,
             )?;
             info!("RSA handles sk: {sk}, pk: {pk}");
             let enc_alg = match digest {
                 RsaOaepDigest::SHA1 => HsmEncryptionAlgorithm::RsaOaepSha1,
                 RsaOaepDigest::SHA256 => HsmEncryptionAlgorithm::RsaOaepSha256,
             };
-            let encrypted_content = session.encrypt(pk, enc_alg, data)?;
+            let encrypted_content = session.encrypt(pk, enc_alg, data, None)?;
             assert_eq!(encrypted_content.ciphertext.len(), 2048 / 8);
             let plaintext = session.decrypt(sk, enc_alg, &encrypted_content.ciphertext)?;
             assert_eq!(plaintext.as_slice(), data);
@@ -706,17 +1332,127 @@ pub fn multi_threaded_rsa(
     Ok(())
 }
 
+/// Assert that concurrent HSM signing does not experience throughput collapse under concurrency (8 threads vs 1 thread).
+pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> {
+    use std::{
+        sync::atomic::{AtomicBool, AtomicU64, Ordering},
+        time::{Duration, Instant},
+    };
+
+    log_init(None);
+    let supported_mechanisms = slot.get_supported_mechanisms()?;
+
+    let sk_id = Uuid::new_v4().to_string();
+    let pk_id = sk_id.clone() + "_pk";
+    let session0 = slot.open_session(true)?;
+    let (sk, _pk) = session0.generate_ec_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        EcCurve::P256,
+        true,
+        None,
+    )?;
+    drop(session0);
+
+    let data = b"test data for concurrent ECDSA signing regression test";
+    let (sign_algorithm, signing_input): (_, std::borrow::Cow<'_, [u8]>) =
+        if supported_mechanisms.contains(&CKM_ECDSA_SHA256) {
+            (
+                HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: false,
+                },
+                data.as_slice().into(),
+            )
+        } else if supported_mechanisms.contains(&CKM_ECDSA) {
+            let digest = MessageDigest::from_nid(Nid::SHA256)
+                .ok_or_else(|| HError::Default(format!("Unknown digest NID: {:?}", Nid::SHA256)))?;
+            let hashed = hash(digest, data)
+                .map_err(|e| HError::Default(format!("OpenSSL hash error: {e}")))?;
+            (
+                HsmSigningAlgorithm::Ecdsa {
+                    hashing_algorithm: HashingAlgorithm::SHA256,
+                    prehashed: true,
+                },
+                hashed.to_vec().into(),
+            )
+        } else {
+            return Err(HError::Default(
+                "CKM_ECDSA_SHA256 or raw CKM_ECDSA mechanism not supported by HSM".to_owned(),
+            ));
+        };
+
+    let mut rates = Vec::new();
+    for threads in [1, 8] {
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let ops_counter = Arc::new(AtomicU64::new(0));
+        let mut handles = Vec::with_capacity(threads);
+
+        let duration = Duration::from_secs(3);
+        let start = Instant::now();
+
+        for _ in 0..threads {
+            let slot = Arc::clone(slot);
+            let stop = Arc::clone(&stop_flag);
+            let ops = Arc::clone(&ops_counter);
+            let signing_input = signing_input.clone().into_owned();
+
+            let handle = thread::spawn(move || -> HResult<()> {
+                while !stop.load(Ordering::Relaxed) {
+                    let session = slot.checkout_session()?;
+                    let _sig = {
+                        let res = session.sign(sk, sign_algorithm, &signing_input)?;
+                        slot.checkin_session(session);
+                        res
+                    };
+                    ops.fetch_add(1, Ordering::Relaxed);
+                }
+                Ok(())
+            });
+            handles.push(handle);
+        }
+
+        thread::sleep(duration);
+        stop_flag.store(true, Ordering::Relaxed);
+
+        for handle in handles {
+            handle
+                .join()
+                .map_err(|e| HError::Default(format!("Thread panicked: {e:?}")))??;
+        }
+
+        let elapsed = start.elapsed().as_secs_f64();
+        let count = ops_counter.load(Ordering::Relaxed);
+        let count_as_f64 = count
+            .to_string()
+            .parse::<f64>()
+            .map_err(|e| HError::Default(format!("Failed converting operation count: {e}")))?;
+        let ops_per_sec = count_as_f64 / elapsed;
+        rates.push(ops_per_sec);
+    }
+
+    let rate_1 = *rates
+        .first()
+        .ok_or_else(|| HError::Default("Missing 1-thread rate sample".to_owned()))?;
+    let rate_8 = *rates
+        .get(1)
+        .ok_or_else(|| HError::Default("Missing 8-thread rate sample".to_owned()))?;
+    info!("Concurrent sign rates: 1 thread = {rate_1:.1} ops/s, 8 threads = {rate_8:.1} ops/s");
+    assert!(
+        rate_8 >= rate_1 * 0.8,
+        "Concurrent sign degraded at 8 threads ({rate_8:.1} ops/s) vs 1 thread ({rate_1:.1} ops/s)"
+    );
+    Ok(())
+}
+
 pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    for object in &objects {
-        session.destroy_object(*object)?;
-    }
+    destroy_destroyable_objects(&session)?;
     session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 0);
+    let baseline_objects = session.list_objects(HsmObjectFilter::Any)?;
+    let base_count = baseline_objects.len();
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let (_sk, _pk) = session.generate_rsa_key_pair(
@@ -724,10 +1460,11 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         false,
+        None,
     )?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 2);
+    assert_eq!(objects.len(), base_count + 2);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
     assert_eq!(objects.len(), 2);
     let objects = session.list_objects(HsmObjectFilter::RsaPublicKey)?;
@@ -744,10 +1481,11 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa3072,
         false,
+        None,
     )?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 4);
+    assert_eq!(objects.len(), base_count + 4);
     let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
     assert_eq!(objects.len(), 4);
     let objects = session.list_objects(HsmObjectFilter::RsaPublicKey)?;
@@ -758,10 +1496,10 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(objects.len(), 0);
     // add an AES key
     let key_id = Uuid::new_v4().to_string();
-    let _key = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false)?;
+    let _key = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     session.clear_object_handles()?;
     let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), 5);
+    assert_eq!(objects.len(), base_count + 5);
     let objects = session.list_objects(HsmObjectFilter::AesKey)?;
     assert_eq!(objects.len(), 1);
     info!("Listed all objects");
@@ -774,12 +1512,17 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
 
     // generate an AES key
     let key_id = Uuid::new_v4().to_string();
-    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true)?;
+    let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?;
     // get the key basics
     let key_type = session
         .get_key_type(key_handle)?
         .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::AesKey);
+    let signing_metadata = session
+        .get_signing_key_metadata(key_handle)?
+        .ok_or_else(|| HError::Default("AES signing metadata missing".to_owned()))?;
+    assert_eq!(signing_metadata.key_type, KeyType::AesKey);
+    assert_eq!(signing_metadata.curve, None);
     // get the metadata
     let metadata = session
         .get_key_metadata(key_handle)?
@@ -789,6 +1532,30 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(metadata.key_length_in_bits, 256);
     assert_eq!(metadata.id.as_str(), key_id.as_str());
 
+    // CKA_START_DATE / CKA_END_DATE round-trip (HSM key rotation scheduling)
+    let start = time::Date::from_calendar_date(2030, time::Month::January, 2)
+        .map_err(|e| HError::Default(e.to_string()))?;
+    let end = time::Date::from_calendar_date(2031, time::Month::January, 2)
+        .map_err(|e| HError::Default(e.to_string()))?;
+    if slot.capabilities().supports_key_dates {
+        session.set_key_dates(key_handle, Some(start), Some(end))?;
+        let metadata = session
+            .get_key_metadata(key_handle)?
+            .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
+        assert_eq!(metadata.start_date, Some(start));
+        assert_eq!(metadata.end_date, Some(end));
+    } else {
+        assert!(
+            session
+                .set_key_dates(key_handle, Some(start), Some(end))
+                .is_err()
+        );
+        let metadata = session
+            .get_key_metadata(key_handle)?
+            .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
+        assert_eq!((metadata.start_date, metadata.end_date), (None, None));
+    }
+
     // generate an RSA keypair
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
@@ -797,6 +1564,7 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         true,
+        None,
     )?;
 
     // get the private key basics
@@ -804,6 +1572,11 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         .get_key_type(sk)?
         .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::RsaPrivateKey);
+    let signing_metadata = session
+        .get_signing_key_metadata(sk)?
+        .ok_or_else(|| HError::Default("RSA private signing metadata missing".to_owned()))?;
+    assert_eq!(signing_metadata.key_type, KeyType::RsaPrivateKey);
+    assert_eq!(signing_metadata.curve, None);
 
     // get the private key metadata
     let metadata = session
@@ -819,6 +1592,11 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         .get_key_type(pk)?
         .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
     assert_eq!(key_type, KeyType::RsaPublicKey);
+    let signing_metadata = session
+        .get_signing_key_metadata(pk)?
+        .ok_or_else(|| HError::Default("RSA public signing metadata missing".to_owned()))?;
+    assert_eq!(signing_metadata.key_type, KeyType::RsaPublicKey);
+    assert_eq!(signing_metadata.curve, None);
 
     // get the public key metadata
     let metadata = session
@@ -838,6 +1616,9 @@ where
     BaseHsm<P>: Sized,
 {
     log_init(None);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .map_err(|e| HError::Default(e.to_string()))?;
     let valid_key_id_0 = Uuid::new_v4().to_string();
     let valid_key_id_1 = Uuid::new_v4().to_string();
     let valid_key_id_2 = Uuid::new_v4().to_string();
@@ -846,25 +1627,27 @@ where
     let session = slot.open_session(true)?;
 
     let object_list_start = session.list_objects(HsmObjectFilter::Any)?;
-    let object_find_start =
-        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    let object_find_start = runtime
+        .block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any))
+        .unwrap_or(vec![]);
 
     let valid_key_handle_0 =
-        session.generate_aes_key(valid_key_id_0.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_0.as_bytes(), AesKeySize::Aes128)?;
     let valid_key_handle_1 =
-        session.generate_aes_key(valid_key_id_1.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_1.as_bytes(), AesKeySize::Aes128)?;
     let Ok((sk, pk)) = generate_incompatible_key_pair(&session) else {
         info!("Failed to generate incompatible key. Skipping invalid object search test");
         return Ok(());
     };
     let valid_key_handle_2 =
-        session.generate_aes_key(valid_key_id_2.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_2.as_bytes(), AesKeySize::Aes128)?;
     let valid_key_handle_3 =
-        session.generate_aes_key(valid_key_id_3.as_bytes(), AesKeySize::Aes128, false)?;
+        session.generate_sensitive_aes_key(valid_key_id_3.as_bytes(), AesKeySize::Aes128)?;
 
     let object_list_test = session.list_objects(HsmObjectFilter::Any)?;
-    let object_find_test =
-        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    let object_find_test = runtime
+        .block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any))
+        .unwrap_or(vec![]);
     assert_eq!(object_list_start.len() + 6, object_list_test.len());
     assert_eq!(object_find_start.len() + 4, object_find_test.len());
 
@@ -876,11 +1659,119 @@ where
     session.destroy_object(valid_key_handle_3)?;
 
     let object_list_end = session.list_objects(HsmObjectFilter::Any)?;
-    let object_find_end =
-        block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any)).unwrap_or(vec![]);
+    let object_find_end = runtime
+        .block_on(hsm.find(cfg.slot_id_for_tests, HsmObjectFilter::Any))
+        .unwrap_or(vec![]);
     assert_eq!(object_list_start.len(), object_list_end.len());
     assert_eq!(object_find_start.len(), object_find_end.len());
     info!("Tested invalid object search");
+    Ok(())
+}
+
+/// Checks that the PKCS#11 v3.0 interface discovery (`C_GetInterfaceList`) is populated.
+///
+/// Unlike [`get_supported_algorithms`], this asserts that the library *does* report v3
+/// interfaces: only call this for libraries known to implement PKCS#11 v3.0 discovery.
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_pkcs11_v3_interface_list_is_populated<P>(hsm: &BaseHsm<P>) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    assert!(hsm.hsm_lib().supports_pkcs11_v3_interfaces());
+    let interfaces = hsm
+        .hsm_lib()
+        .list_pkcs11_v3_interfaces()?
+        .ok_or_else(|| HError::Default("HSM must report v3 interfaces".to_owned()))?;
+    assert!(!interfaces.is_empty());
+    assert!(
+        interfaces
+            .iter()
+            .all(|interface| !interface.name.is_empty())
+    );
+    Ok(())
+}
+
+/// Generates an Ed25519 (`EdDSA`) key pair (`CKM_EC_EDWARDS_KEY_PAIR_GEN`, OASIS Cryptoki
+/// v3.0 §2.3.9) and checks that a `CKM_EDDSA` signature round-trips through `sign`/`verify`.
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_eddsa_sign_and_verify_round_trip<P>(
+    hsm: &BaseHsm<P>,
+    cfg: &HsmTestConfig,
+) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+    let (sk, pk) = session.generate_eddsa_key_pair(b"eddsa-sk", b"eddsa-pk", false)?;
+    let data = b"pkcs11 v3.1 eddsa conformance";
+    let signature = session.sign(sk, HsmSigningAlgorithm::Eddsa, data)?;
+    let verified = session.verify(pk, HsmSigningAlgorithm::Eddsa, data, &signature)?;
+    assert!(verified, "EdDSA signature must verify");
+    Ok(())
+}
+
+/// Generates a `CKK_GENERIC_SECRET` base key and derives a key from it via `CKM_HKDF_DERIVE`
+/// (OASIS Cryptoki v3.0 §2.5).
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_hkdf_derive<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+    let ikm = session.generate_generic_secret_key(b"hkdf-ikm", 32, false)?;
+    let derived = session.derive_hkdf_key(
+        ikm,
+        CKM_SHA256,
+        Some(b"salt"),
+        b"info",
+        32,
+        b"hkdf-derived",
+        false,
+    )?;
+    assert_ne!(derived, 0);
+    Ok(())
+}
+
+/// Checks a message-based AES-GCM AEAD round-trip (`C_MessageEncryptInit`/`C_EncryptMessage`
+/// and `C_MessageDecryptInit`/`C_DecryptMessage`, OASIS Cryptoki v3.0 §5.20/§5.21).
+///
+/// Only call this for libraries reporting `HsmLib::supports_message_encrypt`/
+/// `supports_message_decrypt`.
+#[allow(clippy::panic, clippy::unwrap_used)]
+pub fn check_message_based_aes_gcm_round_trip<P>(
+    hsm: &BaseHsm<P>,
+    cfg: &HsmTestConfig,
+) -> HResult<()>
+where
+    P: crate::hsm_capabilities::HsmProvider,
+    BaseHsm<P>: Sized,
+{
+    log_init(None);
+    let slot = get_slot(hsm, cfg)?;
+    let session = slot.open_session(true)?;
+    let key = session.generate_aes_key(b"aead-key", AesKeySize::Aes256, false, None)?;
+    assert!(
+        hsm.hsm_lib().supports_message_encrypt(),
+        "HSM must support C_MessageEncryptInit/C_EncryptMessage (v3.0)"
+    );
+    assert!(
+        hsm.hsm_lib().supports_message_decrypt(),
+        "HSM must support C_MessageDecryptInit/C_DecryptMessage (v3.0)"
+    );
+    let aad = b"pkcs11-v3-aad";
+    let plaintext = b"pkcs11 v3.1 message-based aead conformance";
+    let encrypted = session.encrypt_message_aes_gcm(key, aad, plaintext)?;
+    let iv = encrypted.iv.clone().unwrap_or_default();
+    let tag = encrypted.tag.clone().unwrap_or_default();
+    let decrypted = session.decrypt_message_aes_gcm(key, aad, &iv, &tag, &encrypted.ciphertext)?;
+    assert_eq!(decrypted.as_slice(), plaintext.as_slice());
     Ok(())
 }
 

@@ -38,6 +38,19 @@ impl HsmProvider for SofthsmCapabilityProvider {
         HsmCapabilities {
             max_cbc_data_size: None,
             find_max_object_count: 32,
+            supports_aes_sensitive_attribute: true,
+            supports_rsa_sensitive_attribute: true,
+            supports_ec_sensitive_attribute: true,
+            supports_aes_gcm_caller_iv: true,
+            supports_aes_gcm_message: false,
+            rsa_oaep_requires_source_data_ptr: true,
+            max_label_len: None,
+            // `C_SetAttributeValue` stores CKA_START_DATE/CKA_END_DATE in plaintext on private
+            // objects, then `C_GetAttributeValue` fails to decrypt them (CKR_GENERAL_ERROR).
+            supports_key_dates: false,
+            supports_rsa_oaep_key_wrap: false,
+            enforces_ecdsa_digest_strength: false,
+            max_concurrent_sessions: 128,
         }
     }
 }

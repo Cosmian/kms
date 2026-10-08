@@ -200,6 +200,16 @@ jobs:
           set -ex
           mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
+      # PKCS#11 support report: exhaustive ckms pkcs11 capabilities smoke test
+      # (442 mechanisms / 92 functions against a live sqlite KMS server). Runs
+      # once (non-fips only, since cosmian_pkcs11 needs --features non-fips),
+      # piggybacking on the `ase` matrix combination to avoid a separate,
+      # colon-containing matrix value (which the yamlfmt pre-commit hook mangles).
+      - name: 'Test (PKCS#11 support report: ckms pkcs11 capabilities)'
+        if: matrix.type == 'ase' && matrix.features == 'non-fips'
+        run: |
+          mise run test:pkcs11:support --variant non-fips
+
   # Test types that depend on upstream-only secrets / external services. Kept out of
   # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
   # job is skipped on forks, where those secrets do not exist.
@@ -269,7 +279,7 @@ jobs:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
     # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
-    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm) run in the `hsm-upstream` job.
+    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
     concurrency:
       group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
       queue: max
@@ -280,28 +290,35 @@ jobs:
         hsm-type:
           - utimaco
           - softhsm2
+          - kryoptic
         features: [fips, non-fips]
 
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-
       - uses: ./.github/actions/cleanup-runner
-
       - uses: ./.github/actions/setup-nix
-
       - uses: ./.github/actions/install-mise
-
       - name: Test
-        env:
-          # Google variables
-          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
+
+      - name: Bench (PKCS#11 load, HSM-delegated)
+        run: |
+          HSM_MODEL="${{ matrix.hsm-type }}"
+          mise run bench:pkcs11 --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
+
+      - name: Bench (HSM-delegated)
+        run: |
+          HSM_MODEL="${{ matrix.hsm-type }}"
+          mise run bench:hsm --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
+
+      # The comprehensive provider suite and pkcs11-check require non-FIPS.
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool and pkcs11-check)
+        if: matrix.features == 'non-fips'
+        run: |
+          mise run test:hsm-pkcs11-tool --variant non-fips --marker smoke
 
   # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
   # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their
@@ -325,9 +342,10 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          # - aws-cloudhsm
+          # - aws-cloudhsm # This non-free service has been disabled on october 2026
+          # - gcp-cloud-hsm # This non-free service has been disabled on october 2026
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
-        # sufficient for crypt2pay, and aws-cloudhsm FIPS-mode compatibility is not yet
+        # sufficient for crypt2pay, gcp-cloud-hsm and aws-cloudhsm FIPS-mode compatibility is not yet
         # confirmed against the cluster's supported mechanism list.
         features: [non-fips]
 
@@ -335,12 +353,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-
       - uses: ./.github/actions/cleanup-runner
-
       - uses: ./.github/actions/setup-nix
-
       - uses: ./.github/actions/install-mise
+
+      - name: Install OpenVPN
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openvpn
 
       - name: Test
         env:

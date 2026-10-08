@@ -17,8 +17,9 @@ use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     core::object::Object,
     traits::{
-        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
-        PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version,
+        Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm,
+        MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm,
+        SymmetricKey, Version,
     },
 };
 use zeroize::Zeroizing;
@@ -27,8 +28,8 @@ use crate::{
     kms_object::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
-        kms_revoke_object, kms_sign, locate_kms_objects,
+        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_import_object,
+        kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -46,10 +47,9 @@ pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
 fn require_id(query: SearchOptions, caller: &str) -> ModuleResult<String> {
     match query {
         SearchOptions::Id(id) => Ok(id),
-        SearchOptions::All => Err(ModuleError::Backend(Box::new(pkcs11_error!(
-            "{}: find must be made using an ID",
-            caller
-        )))),
+        SearchOptions::All | SearchOptions::ProfileId(_) => Err(ModuleError::Backend(Box::new(
+            pkcs11_error!("{}: find must be made using an ID", caller),
+        ))),
     }
 }
 
@@ -103,6 +103,30 @@ impl CliBackend {
             algorithm,
             key_size,
         )))
+    }
+
+    fn create_public_key_from_id(&self, id: &str) -> Option<Arc<dyn PublicKey>> {
+        let kms_object = match get_kms_object(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            id,
+            KeyFormatType::PKCS8,
+        ) {
+            Ok(o) => o,
+            Err(e) => {
+                warn!("create_public_key_from_id: failed to export public key {id}: {e}, skipping");
+                return None;
+            }
+        };
+        match Pkcs11PublicKey::try_from_kms_object(&kms_object) {
+            Ok(pk) => Some(Arc::new(pk)),
+            Err(e) => {
+                warn!(
+                    "create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping"
+                );
+                None
+            }
+        }
     }
 
     /// Helper function to create a symmetric key from an ID
@@ -344,37 +368,11 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &[SYSTEM_TAG_PUBLIC_KEY.to_owned()],
-        )
-        .unwrap_or_default();
-        let mut public_keys = Vec::with_capacity(ids.len());
-        for id in ids {
-            let kms_object = match get_kms_object(
-                &self.kms_rest_client,
-                &self.vendor_id,
-                &id,
-                KeyFormatType::PKCS8,
-            ) {
-                Ok(o) => o,
-                Err(e) => {
-                    warn!(
-                        "find_all_public_keys: failed to export public key {id}: {e}, \
-                             skipping"
-                    );
-                    continue;
-                }
-            };
-            match Pkcs11PublicKey::try_from_kms_object(&kms_object) {
-                Ok(pk) => {
-                    let arc_pk: Arc<dyn PublicKey> = Arc::new(pk);
-                    public_keys.push(arc_pk);
-                }
-                Err(e) => warn!(
-                    "find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e}, \
-                     skipping"
-                ),
-            }
-        }
-        Ok(public_keys)
+        )?;
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| self.create_public_key_from_id(&id))
+            .collect())
     }
 
     fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
@@ -403,14 +401,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_data_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -493,13 +484,11 @@ impl Backend for CliBackend {
             SYSTEM_TAG_SYMMETRIC_KEY,
             SYSTEM_TAG_PRIVATE_KEY,
             SYSTEM_TAG_PUBLIC_KEY,
-            SYSTEM_TAG_CERTIFICATE,
             SYSTEM_TAG_SECRET_DATA,
             SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         ] {
             let kms_ids =
-                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])
-                    .unwrap_or_default();
+                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])?;
             for id in kms_ids {
                 if seen_ids.insert(id.clone()) {
                     if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
@@ -509,6 +498,42 @@ impl Backend for CliBackend {
                         }
                     }
                 }
+            }
+        }
+
+        // Certificates are not reconstructible from attributes alone
+        // (`Pkcs11Certificate::try_from` needs the actual X.509 DER plus the
+        // `PrivateKeyLink` attribute, not just a subset of KMIP attributes), so
+        // they are located and batch-exported separately, reusing the same
+        // `Get` + `GetAttributes` path as `find_all_certificates` (which correctly
+        // populates `PrivateKeyLink` in the returned `Attributes`).
+        match get_kms_certificate_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &[SYSTEM_TAG_CERTIFICATE.to_owned()],
+        ) {
+            Ok(kms_objects) => {
+                for dao in kms_objects {
+                    if seen_ids.insert(dao.remote_id.clone()) {
+                        match Pkcs11Certificate::try_from(dao) {
+                            Ok(certificate) => {
+                                objects.push(Arc::new(Object::Certificate(Arc::new(certificate))));
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "find_all_objects: failed to build Certificate object: {e}, \
+                                     skipping"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "find_all_objects: failed to fetch Certificate objects: {e}, skipping \
+                     certificates"
+                );
             }
         }
 
@@ -523,14 +548,7 @@ impl Backend for CliBackend {
             &self.kms_rest_client,
             &self.vendor_id,
             &disk_encryption_tag,
-        )
-        .unwrap_or_else(|e| {
-            warn!(
-                "find_all_objects: failed to fetch disk-encryption data objects: {e}, \
-                 returning empty list"
-            );
-            vec![]
-        });
+        )?;
         for kms_obj in disk_enc_data_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -587,6 +605,9 @@ impl Backend for CliBackend {
     }
 
     fn revoke_object(&self, remote_id: &str) -> ModuleResult<()> {
+        if remote_id.starts_with("hsm::") {
+            return Ok(());
+        }
         Ok(kms_revoke_object(&self.kms_rest_client, remote_id)?)
     }
 
@@ -597,6 +618,15 @@ impl Backend for CliBackend {
     fn encrypt(&self, ctx: &EncryptContext, cleartext: Vec<u8>) -> ModuleResult<Vec<u8>> {
         debug!("encrypt: ctx: {ctx:?}");
         kms_encrypt(&self.kms_rest_client, ctx, cleartext).map_err(Into::into)
+    }
+
+    fn encrypt_message(
+        &self,
+        ctx: &EncryptContext,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        debug!("encrypt_message: ctx: {ctx:?}");
+        kms_encrypt_message(&self.kms_rest_client, ctx, cleartext).map_err(Into::into)
     }
 
     fn decrypt(
@@ -613,8 +643,41 @@ impl Backend for CliBackend {
         remote_id: &str,
         algorithm: &SignatureAlgorithm,
         data: &[u8],
+        key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<Vec<u8>> {
         debug!("remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}");
-        kms_sign(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into)
+        let remote_sign = cosmian_pkcs11_module::profiling::phase(
+            cosmian_pkcs11_module::profiling::SignPhase::BackendRemoteSign,
+        );
+        let result = kms_sign(
+            &self.kms_rest_client,
+            remote_id,
+            algorithm,
+            data,
+            key_algorithm,
+        )
+        .map_err(Into::into);
+        drop(remote_sign);
+        result
+    }
+
+    fn remote_verify(
+        &self,
+        remote_id: &str,
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
+        key_algorithm: KeyAlgorithm,
+    ) -> ModuleResult<()> {
+        debug!("remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
+        kms_verify(
+            &self.kms_rest_client,
+            remote_id,
+            algorithm,
+            data,
+            signature,
+            key_algorithm,
+        )
+        .map_err(Into::into)
     }
 }

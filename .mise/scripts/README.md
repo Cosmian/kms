@@ -225,7 +225,7 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 |------|-------------|
 | `bench:ci` | CI sanity benchmark |
 | `bench:load` | Load-test benchmark (optionally with Criterion micro-benchmarks) |
-| `bench:load-hsm` | Load-test benchmark with SoftHSM2-backed key encryption key |
+| `bench:hsm` | Load-test benchmark with SoftHSM2-backed key encryption key |
 | `bench:flamegraph` | CPU-scaling flamegraph (requires Linux `perf`) |
 
 ---

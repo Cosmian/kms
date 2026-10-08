@@ -1,20 +1,48 @@
-# Object Cache and Unwrapped Cache
+# KMS Cache Mechanisms
 
-The KMS server uses two in-memory caches backed by
-[`moka::future::Cache`](https://docs.rs/moka/latest/moka/future/struct.Cache.html),
-a lock-free concurrent hash map. Both caches use sharding so multiple
-Actix-web worker threads can read simultaneously without serialization.
+The database layer uses three in-memory caches backed by
+[`moka::future::Cache`](https://docs.rs/moka/latest/moka/future/struct.Cache.html):
+`ObjectCache`, `UnwrappedCache`, and `RotateNameCache`.
+This page documents those caches and inventories the other runtime cache
+mechanisms used by the server.
+Unless stated otherwise, cache state is process-local and is not shared between
+KMS replicas.
 
----
+`ObjectCache` and `UnwrappedCache` serve object retrieval and key unwrapping.
+`RotateNameCache` serves keyset-generation resolution, especially for delegated
+HSM operations.
+
+## Runtime cache inventory
+
+| Mechanism | Scope and stored data | Lifetime or bound |
+|---|---|---|
+| `ObjectCache` | Wrapped database object and fingerprint by UID | Configurable capacity and idle age |
+| `UnwrappedCache` | Unwrapped object and wrapped-object fingerprint by UID | Configurable capacity and idle age; optional absolute TTL |
+| `RotateNameCache` | Matching keyset UIDs and attributes by selector and owner | 10,000 entries; 2-second TTL |
+| `ObjectHandlesCache` | PKCS#11 object handle by object-ID bytes, per HSM slot | 100-entry LRU; no TTL |
+| `supported_oaep_hash_cache` | Supported RSA-OAEP hash mechanisms, per HSM slot | Populated on first probe; no TTL |
+| `KeyMetadataCache` | No active implementation in the current `base_hsm` source | Key metadata is read from the HSM on demand |
+| `SpireTokenCache` | SHA-256 token hash to validated identity and policies | `vault_token_cache_ttl_secs`; expired-entry sweep at 100,000 entries |
+| `JwksManager` | JWKS URI to parsed JWK set | 60-second refresh throttle; 5-second force-refresh cooldown |
+| Generated CRL cache | Issuer certificate UID to locally generated CRL | 60-second in-memory freshness window; database fallback |
+| Fetched CRL cache | Distribution-point URI to downloaded CRL bytes | At most 300 seconds and only while the CRL remains fresh |
+| OCSP response cache | CA and full `CertID` to signed response bytes | `ocsp_cache_ttl_secs`; at most 10,000 entries |
+| JOSE CEK entry | A synthetic-UID entry in `UnwrappedCache` | Shares `UnwrappedCache` bounds and fingerprint validation |
+| Microsoft DKE response | `cache.exp` client-cache hint, not a KMS memory cache | One day |
+
+The detailed sections below describe the three database caches.
+The other runtime caches are described in the [HSM](#hsm-slot-caches),
+[authentication/JWKS](#authentication-and-jwks-caches),
+[certificate](#certificate-response-caches), and
+[client cache hint](#client-side-cache-hints) sections.
 
 ## Architecture overview
 
 ```mermaid
 graph TD
-    CALLER[Caller]
-
     CALLER -->|retrieve_object| DB[Database]
     CALLER -->|get_unwrapped| GU[get_unwrapped]
+    CALLER -->|find_by_rotate_name| RNC[RotateNameCache]
 
     DB -->|get| OC[ObjectCache]
     OC -->|miss| BS[(Backing Store<br/>SQLite / Postgres)]
@@ -22,19 +50,41 @@ graph TD
     GU -->|peek| UC[UnwrappedCache]
     UC -->|miss| CRYPTO[unwrap_object<br/>KEK unwrap]
 
+    RNC -->|miss| RESOLVE[Keyset resolution<br/>SQL / HSM scan]
+
     OC -->|stores| OC_VAL["wrapped ObjectWithMetadata<br/>+ fingerprint"]
     UC -->|stores| UC_VAL["unwrapped key material<br/>+ fingerprint of wrapped"]
+    RNC -->|stores| RNC_VAL["matching UIDs + attributes"]
 
     style BS fill:#f9f,stroke:#333
     style CRYPTO fill:#f99,stroke:#333
+    style RESOLVE fill:#f99,stroke:#333
     style OC fill:#9f9,stroke:#333
     style UC fill:#9f9,stroke:#333
+    style RNC fill:#9f9,stroke:#333
 ```
 
 | Cache | Key | Value | Miss path |
 |---|---|---|---|
 | **ObjectCache** | UID string | `Arc<ObjectWithMetadata>` (wrapped) + fingerprint | DB fetch → insert → return |
 | **UnwrappedCache** | UID string | unwrapped `Object` + fingerprint of wrapped | Crypto unwrap → insert → return |
+| **RotateNameCache** | `(name, generation, owner)` | matching UIDs + KMIP attributes | SQL query or HSM scan → insert → return |
+
+`RotateNameCache` is an implementation cache; it has no operator-facing
+configuration. It is bounded to 10,000 entries and uses a 2-second TTL. The
+cache is populated by `Database::find_by_rotate_name`, which resolves a keyset
+name to its generations across the configured object stores. For HSM-backed
+objects, a miss can require a PKCS#11 `C_FindObjects` scan followed by
+`C_GetAttributeValue` calls; a hit avoids that scan on the delegated
+Sign/Verify/Encrypt/Decrypt hot path.
+
+The cache key includes the requesting owner so one user's resolution cannot be
+reused for another user's objects. Explicit generation filters are also
+isolated from bare/latest lookups. After a rotation commits, the relevant
+bare/latest entry is invalidated immediately; the TTL remains a bounded
+staleness safeguard for paths that do not explicitly invalidate it. A rotation
+can therefore become visible immediately through the normal commit paths, while
+uncovered mutation paths are stale for at most the TTL.
 
 ---
 
@@ -155,6 +205,71 @@ moka eviction requires no explicit call:
 |---|---|---|
 | LRU | `max_capacity` exceeded | Least-recently-used entry evicted |
 | TTL | `time_to_idle` elapsed without access | Entry evicted |
+
+---
+
+## RotateNameCache
+
+**Source:** `crate/server_database/src/core/rotate_name_cache.rs`
+
+Caches the result of `Database::find_by_rotate_name`, the shared keyset lookup
+used to resolve `RotateName` and generation selectors. This is distinct from
+`ObjectCache`: it caches a multi-object keyset query, not an individual object.
+
+### Why this cache exists
+
+Every delegated Sign/Verify/Encrypt/Decrypt call that names a bare key UID
+(no `@N` generation suffix) must first answer *"which generation is the
+latest?"*. For an HSM-backed store that answer is not free: it requires a full
+`C_FindObjects` scan of the slot followed by a `C_GetAttributeValue`
+round-trip for every object found, on **every** call — even for a key that has
+never been rotated.
+
+Without the cache, that scan sits directly on the hot path and, because the
+lookup fans through the same `Database::find_by_rotate_name` chokepoint,
+concurrent operations all pay it simultaneously. `RotateNameCache` remembers
+the resolution for a short TTL (2 seconds) so repeat calls skip the scan
+entirely; correctness is preserved by eagerly invalidating the relevant entry
+the moment a local rotation commits (see below).
+
+### Behavior
+
+| Property | Behavior |
+|---|---|
+| Key | `(name, generation, owner)` |
+| Value | `Vec<(UID, Attributes)>` for matching generations |
+| Default capacity | 10,000 entries |
+| TTL | 2 seconds |
+| Concurrency | Lock-free `moka::future::Cache` |
+| Invalidation | By keyset name (all owners and generations) or by member UID on local writes |
+| Empty results | Never cached |
+
+On a miss, the existing multi-store lookup runs unchanged. On a hit, the
+database query or HSM slot scan is skipped. The owner is part of the key to
+preserve access isolation, and `generation` is part of the key to prevent an
+explicit historical lookup from sharing the bare/latest result.
+
+### Invalidation and consistency
+
+Every local write through `Database` invalidates the affected entries eagerly:
+
+- creating an object with a `RotateName` (including a re-key's new generation)
+  clears every entry for that keyset name, for all owners and generation filters;
+- updating, re-labelling (HSM `CKA_LABEL`), changing the state of (revoke,
+  destroy) or deleting an object clears every entry that lists it as a member.
+
+Empty results are not cached, so a newly created keyset is visible at once.
+
+Writes performed by *other* KMS nodes sharing the same database are only seen
+once the 2-second TTL expires. Paths whose correctness depends on the current
+keyset state — re-key eligibility (`enforce_keyset_latest`) and rotation-time
+generation allocation (selecting which generation to increment on the next
+re-key) — therefore bypass the cache through
+`Database::find_by_rotate_name_uncached`. The delegated crypto hot path
+(Sign/Verify/Encrypt/Decrypt) does *not* bypass the cache.
+
+`RotateNameCache` is internal and is not configurable through the server
+configuration file or command-line options.
 
 ---
 
@@ -294,7 +409,8 @@ sequenceDiagram
 
 Full trace of `POST /v1/crypto/decrypt` with `alg: RSA-OAEP`. The RSA wrapping
 key (persistent DB object, identified by `kid`) passes through both caches.
-The CEK (ephemeral, from the JWE `encrypted_key` field) is never cached.
+The RSA-OAEP CEK is cached as a separate `UnwrappedCache` entry, keyed by a
+SHA-256 digest of the JWE `encrypted_key` field.
 
 ```mermaid
 sequenceDiagram
@@ -549,3 +665,128 @@ When disabled:
 The `ObjectCache` can be configured to very short TTI or very small capacity to
 reduce wrapped-object retention, but it cannot be disabled via a flag — set
 `--cache-max-age 1 --cache-max-size 1` to minimise its footprint if needed.
+
+## HSM slot caches
+
+**Source:** `crate/hsm/base_hsm/src/slots.rs` and
+`crate/hsm/base_hsm/src/session/session_impl.rs`.
+
+`SlotManager` creates one object-handle cache and one OAEP hash support cache
+for each HSM slot.
+The caches are in memory and shared with sessions opened for that slot.
+
+### `ObjectHandlesCache`
+
+`ObjectHandlesCache` maps an object identifier byte vector to a
+`CK_OBJECT_HANDLE`.
+`Session::get_object_handle()` checks the cache before querying PKCS#11.
+On a miss, it searches `CKA_ID`, falls back to `CKA_LABEL` if needed, then
+inserts the discovered handle.
+
+The cache is a 100-entry `LruCache` protected by a `Mutex`.
+A hit updates LRU recency and therefore still takes the mutex.
+There is no time-based expiry.
+The KMS removes the entry after destroying its object; `clear_object_handles()`
+clears the cache explicitly.
+
+### OAEP hash support cache
+
+`supported_oaep_hash_cache` is a slot-shared
+`Mutex<Option<Vec<CK_MECHANISM_TYPE>>>`.
+On its first call, `Session::get_supported_oaep_hash()` creates a temporary
+RSA-2048 key pair and tests RSA-OAEP encryption with SHA-1, SHA-256, SHA-384,
+and SHA-512.
+It stores the mechanisms that succeed and reuses the list for later calls.
+The cache has no TTL or separate capacity and is discarded with its
+`SlotManager`.
+
+### Key metadata is not cached
+
+The current `base_hsm` source has no `KeyMetadataCache` type or field.
+`Session::get_key_metadata()` reads the relevant metadata from PKCS#11 when
+called; `ObjectHandlesCache` caches handles, not key metadata.
+
+The `SlotManager` session pool is a resource-reuse pool, not a cache of key or
+object data.
+
+## Authentication and JWKS caches
+
+### SPIRE token validation
+
+**Source:** `crate/server/src/middlewares/spire_token.rs`.
+
+`SpireTokenCache` stores successful auth-verifier lookup results under the
+SHA-256 hash of the raw token.
+The cached value is the resolved entity and policies; the raw bearer token is
+not stored in the cache.
+Failed validations are not cached.
+
+`vault_token_cache_ttl_secs` controls entry lifetime, defaults to 30 seconds,
+and can be set to `0` to disable cache hits.
+When the map reaches 100,000 entries, insertion triggers an expired-entry
+sweep; live entries are not evicted to enforce a hard capacity.
+A still-valid cached token can therefore remain accepted until its TTL expires
+after the auth-verifier revokes it.
+See the [SPIRE/SPIFFE integration](../integrations/spire_spiffe.md) guide for
+the operational setting.
+
+### JWKS verification keys
+
+**Source:** `crate/server/src/middlewares/jwt/jwks.rs`.
+
+`JwksManager` keeps parsed JWK sets in a process-local map keyed by JWKS URI.
+Initialization fetches the configured sets.
+Calls to `refresh()` fetch no more often than once every 60 seconds; a forced
+refresh bypasses that throttle but has a 5-second cooldown.
+A refresh replaces the in-memory map with the sets fetched successfully in
+that refresh.
+The manager has no entry-count bound or disk persistence.
+
+## Certificate response caches
+
+### CRL caches
+
+The server uses two distinct CRL caches:
+
+- `GENERATED_CRL_CACHE` stores the latest locally generated CRL by issuer
+  certificate UID.
+  An entry is used for up to 60 seconds, after which the public CRL endpoint
+  reloads the shared `crls` database table and refreshes its local copy.
+  If the database read fails, the handler may serve the previous in-memory copy.
+- `CRL_CACHE_MAP` stores downloaded CRLs by distribution-point URI for
+  certificate validation.
+  An entry is reused for at most 300 seconds and only while the CRL remains
+  valid through `nextUpdate`.
+  Expired entries are purged when a fetched CRL is inserted.
+
+Both caches are process-local hash maps protected by Tokio `RwLock`s.
+They have no explicit entry-count limit.
+
+**Sources:** `crate/server/src/core/operations/generate_crl.rs` and
+`crate/server/src/core/operations/validate.rs`.
+
+### OCSP response cache
+
+**Source:** `crate/server/src/routes/ocsp/handler.rs`.
+
+`OCSP_CACHE` stores signed DER responses by CA UID and the complete `CertID`
+(serial, hash algorithm, issuer-name hash, and issuer-key hash).
+The configured `ocsp_cache_ttl_secs` controls both entry expiry and the
+response's advertised cache lifetime; its default is 86,400 seconds.
+The cache holds at most 10,000 entries and purges expired entries before
+inserting at capacity.
+
+Only single-`CertID` requests without an honored nonce are cacheable.
+Unknown certificate statuses and responses under a compromised CA are not
+cached.
+The `Revoke` operation immediately evicts the response for the revoked
+certificate; other entries expire by TTL.
+
+## Client-side cache hints
+
+The Microsoft DKE endpoint includes a `cache.exp` value in its public-key
+response, set to one day in the future.
+This tells the Office client how long it may cache the public key; the KMS does
+not keep a corresponding in-memory DKE key cache.
+See the [Microsoft DKE integration](../integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)
+guide.
