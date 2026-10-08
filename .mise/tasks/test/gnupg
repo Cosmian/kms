@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run GnuPG OpenPGP interoperability tests against KMS PGP keys (non-FIPS only)"
+#MISE description="Run GnuPG OpenPGP interoperability and gnupg-pkcs11-scd smartcard tests (non-FIPS only)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -8,6 +8,7 @@
 #USAGE }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
 
@@ -17,9 +18,16 @@ fi
 
 require_cmd gpg "GnuPG is required for the OpenPGP interoperability tests. Install gnupg and re-run."
 
+# The smartcard part needs SoftHSM2, gnupg-pkcs11-scd and pkcs11-tool from the nix shell.
+export WITH_HSM=1 WITH_GNUPG_PKCS11=1
+ensure_nix_shell
+
 print_header "Running GnuPG OpenPGP interoperability tests"
 
 REPO_ROOT="$(get_repo_root)"
 bash "${REPO_ROOT}/.mise/scripts/test/test_gnupg.sh" --variant "$VARIANT" --link "$LINK"
 
-print_success "GnuPG OpenPGP interoperability tests completed"
+print_header "Running GnuPG smartcard (gnupg-pkcs11-scd) PKCS#11 tests"
+bash "${REPO_ROOT}/.mise/scripts/test/test_gnupg_smartcard.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "GnuPG OpenPGP and smartcard tests completed"

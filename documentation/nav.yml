@@ -28,7 +28,6 @@ nav:
       - Introduction: kmip_support/introduction/index.md
       - KMIP support summary: kmip_support/support.md
       - Supported Objects: kmip_support/objects.md
-      - OpenPGP: kmip_support/openpgp.md
       - Supported Formats: kmip_support/formats.md
       - Objects Tagging: kmip_support/tagging.md
       - Attributes Extensions: kmip_support/attributes.md
@@ -124,6 +123,9 @@ nav:
           - PKCS#11 provider module: integrations/pkcs11_provider.md
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
+          - GnuPG:
+              - OpenPGP keys: integrations/gnupg/openpgp.md
+              - Smartcard (gnupg-pkcs11-scd): integrations/gnupg/smartcard.md
           - PyKMIP: integrations/pykmip.md
           - KMIP compliance tests (ovh/kmip-go): integrations/kmip_go.md
           - S/MIME Email encryption: integrations/smime.md

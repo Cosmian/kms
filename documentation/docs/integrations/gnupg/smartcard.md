@@ -6,8 +6,9 @@ Eviden KMS PKCS#11 provider (`libcosmian_pkcs11`), it lets `gpg` sign and decryp
 KMS-managed RSA keys as if they were stored on a smartcard. The **private key never leaves the
 KMS**: every private-key operation is performed server-side and only the result is returned.
 
-See the [PKCS#11 provider module](pkcs11_provider.md) reference page for the mechanisms and
-Cryptoki versions supported by the library.
+See the [PKCS#11 provider module](../pkcs11_provider.md) reference page for the mechanisms and
+Cryptoki versions supported by the library. For OpenPGP keys held and used directly by the KMS
+(no smartcard emulation), see [OpenPGP key support](openpgp.md).
 
 ---
 
@@ -19,6 +20,36 @@ Cryptoki versions supported by the library.
    presents each matching pair to GnuPG as a virtual smartcard key.
 4. When GnuPG signs or decrypts, `gnupg-pkcs11-scd` calls `C_Sign` / `C_Decrypt` through the
    library, which forwards the request to the KMS.
+
+```mermaid
+flowchart LR
+    GPG["gpg"] --> AGENT["gpg-agent"]
+    AGENT -- "Assuan protocol" --> SCD["gnupg-pkcs11-scd<br/>replaces scdaemon"]
+    SCD -- "PKCS11 API" --> LIB["libcosmian_pkcs11"]
+    LIB -- "KMIP over HTTPS" --> KMS["Eviden KMS<br/>private keys never leave"]
+    KMS -.-> HSM[("HSM-resident KEK<br/>optional, wraps keys at rest")]
+```
+
+```mermaid
+sequenceDiagram
+    participant G as gpg-agent
+    participant S as gnupg-pkcs11-scd
+    participant P as libcosmian_pkcs11
+    participant K as Eviden KMS
+
+    G->>S: LEARN --force
+    S->>P: C_FindObjects (certificates and private keys)
+    P->>K: Locate objects tagged gnupg-card
+    K-->>P: certificate and private key
+    P-->>S: objects with matching CKA_ID
+    S-->>G: key fingerprint and subject
+    G->>S: SETDATA digest, then PKSIGN
+    S->>P: C_Sign with CKM_RSA_PKCS (DigestInfo)
+    P->>K: Sign (pre-computed digest)
+    K-->>P: RSA signature
+    P-->>S: signature
+    S-->>G: signature
+```
 
 ---
 
@@ -35,11 +66,17 @@ key with `ckms certificates certify --public-key-id-to-certify` inherits that pu
 its private key, and both the certificate's and the private key's `CKA_ID` are the private key's
 KMS unique identifier.
 
+```mermaid
+flowchart LR
+    PK["Public key"] -- "PrivateKeyLink" --> SK["Private key<br/>tag gnupg-card<br/>CKA_ID = KMS key id"]
+    CERT["X.509 certificate<br/>tag gnupg-card<br/>CKA_ID = KMS key id"] -- "certified from the public key<br/>inherits PrivateKeyLink" --> SK
+```
+
 ---
 
 ## Prerequisites
 
-- A running Eviden KMS instance (see the [Quick-start guide](../quick_start.md)).
+- A running Eviden KMS instance (see the [Quick-start guide](../../quick_start.md)).
 - The `ckms` CLI configured and authenticated against it.
 - The `libcosmian_pkcs11.so` (Linux) or `libcosmian_pkcs11.dylib` (macOS) shared library, e.g.
   `/usr/local/lib/libcosmian_pkcs11.so`.
@@ -135,3 +172,12 @@ are described in the GNUPG INTEGRATION section of the
 - The library reads the same `ckms` configuration file as the CLI. Make sure the environment
   variable points to a valid configuration and that the KMS server is reachable from the
   `gpg-agent` environment.
+
+---
+
+## Automated tests
+
+`mise run test:gnupg` runs the OpenPGP interoperability suite and then this integration end to
+end: a KMS server whose keys are wrapped by a SoftHSM2 key-encryption key, an RSA key pair and
+self-signed certificate tagged `gnupg-card`, `LEARN` and `PKSIGN` driven through the real
+`gnupg-pkcs11-scd`, and an `openssl` verification of the resulting signature.

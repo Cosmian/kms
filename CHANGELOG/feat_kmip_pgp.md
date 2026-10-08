@@ -10,7 +10,7 @@
 - Add `pgp-secret-binary` and `pgp-public-binary` formats for GnuPG-compatible OpenPGP key exports.
 
 ### PKCS#11
-- Discover RSA private keys and certificates tagged `gnupg-card` (override with `COSMIAN_PKCS11_GNUPG_KEY_TAG`) so `gnupg-pkcs11-scd` can use them as a GnuPG smartcard; add the `test:gnupg-smartcard` test suite backed by a SoftHSM2 KEK.
+- Discover RSA private keys and certificates tagged `gnupg-card` (override with `COSMIAN_PKCS11_GNUPG_KEY_TAG`) so `gnupg-pkcs11-scd` can use them as a GnuPG smartcard; `mise run test:gnupg` now also runs the smartcard tests backed by a SoftHSM2 KEK.
 
 ### Web UI
 - Offer binary OpenPGP key export alongside ASCII-armored secret and public key formats.

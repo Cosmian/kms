@@ -2,8 +2,9 @@
 
 Eviden KMS supports OpenPGP transferable secret and public keys (`ObjectType::PGPKey`) in **non-FIPS builds only**.
 OpenPGP keys can be created, imported, exported, and used for the KMIP `Encrypt`, `Decrypt`, `Sign`, and
-`SignatureVerify` operations. See the [supported objects](./objects.md) and
-[supported formats](./formats.md) pages for the KMIP-level summary.
+`SignatureVerify` operations. See the [supported objects](../../kmip_support/objects.md) and
+[supported formats](../../kmip_support/formats.md) pages for the KMIP-level summary. To use KMS-managed
+RSA keys as a GnuPG smartcard instead, see [GnuPG smartcard](smartcard.md).
 
 ```mermaid
 flowchart TD
@@ -54,6 +55,18 @@ command. Two algorithm profiles are supported:
 
 Keys are generated **unprotected** inside the KMS protection boundary.
 
+```mermaid
+flowchart LR
+    subgraph ED["Ed25519 profile (default)"]
+        EP["Primary key<br/>Ed25519<br/>certify and sign"] --> ES["Subkey<br/>Curve25519 ECDH<br/>encrypt"]
+    end
+    subgraph RS["RSA profile"]
+        RP["Primary key<br/>RSA 2048 / 3072 / 4096<br/>certify and sign"] --> RE["Subkey<br/>RSA<br/>encrypt"]
+    end
+    UID["User ID packet<br/>from pgp-user-id"] -.-> EP
+    UID -.-> RP
+```
+
 ## Import and export formats
 
 `ckms` and the Web UI accept both ASCII-armored and binary OpenPGP transferable keys for import.
@@ -90,6 +103,29 @@ exercised by the `.mise/scripts/test/test_gnupg.sh` end-to-end suite.
 
 Create an Ed25519 key, export it, and let `gpg` verify a KMS signature and decrypt a KMS-encrypted
 message:
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant C as ckms
+    participant K as Eviden KMS
+    participant G as gpg
+
+    U->>C: pgp keys create (Ed25519, tag pgp-ci)
+    C->>K: Create PGPKey
+    U->>C: pgp export (pgp-secret)
+    C->>K: Export
+    K-->>U: transferable secret key
+    U->>G: import the exported key
+    U->>C: pgp sign
+    C->>K: Sign
+    K-->>U: detached signature
+    U->>G: verify the signature
+    U->>C: pgp encrypt
+    C->>K: Encrypt
+    K-->>U: PKESK + SEIPD message
+    U->>G: decrypt the message
+```
 
 ```bash
 # Create the key and export the secret armor so gpg can decrypt
@@ -146,6 +182,27 @@ gpg --batch --local-user "gpg@example.com" --armor --detach-sign --output gpg.as
 ckms pgp sign-verify -k gpg-imported data.txt gpg.asc
 ```
 
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant G as gpg
+    participant C as ckms
+    participant K as Eviden KMS
+
+    U->>G: generate unprotected key with encryption subkey
+    U->>G: export secret keys (armor)
+    U->>C: pgp import (key-format pgp)
+    C->>K: Import PGPKey
+    U->>G: encrypt to the recipient
+    U->>C: pgp decrypt
+    C->>K: Decrypt
+    K-->>U: plaintext
+    U->>G: detach-sign data.txt
+    U->>C: pgp sign-verify
+    C->>K: SignatureVerify
+    K-->>U: signature valid
+```
+
 !!! note Generating GnuPG keys for the KMS
     `gpg --quick-generate-key` does **not** create an encryption subkey by default, and batch-generated
     keys default to SEIPDv2/AEAD packets the KMS cannot decrypt. Use the explicit `--generate-key`
@@ -181,6 +238,14 @@ and v1 SEIPD (AES-256) encryption:
   it interoperates out-of-the-box with any standard OpenPGP implementation, including GnuPG and commercial
   OpenPGP-compliant tooling. Non-standard extensions, such as experimental AEAD packet types (packet tag 20),
   are rejected by the server parser.
+
+```mermaid
+flowchart LR
+    PT["Plaintext"] --> ENC["Encrypt<br/>KMIP Encrypt on a PGPKey"]
+    ENC --> OUT["Binary OpenPGP message"]
+    OUT --> PKESK["PKESK v3<br/>session key encrypted<br/>to the encryption subkey"]
+    OUT --> SEIPD["SEIPD v1<br/>AES-256 with integrity protection<br/>wrapping the literal data"]
+```
 
 ## Limitations
 

@@ -8,7 +8,7 @@ This page documents capabilities of the provider library itself. It is shared by
 that loads the library, including [Veracrypt](disk_encryption/veracrypt.md),
 [LUKS](disk_encryption/luks.md), [Cryhod](disk_encryption/cryhod.md),
 [Oracle Database TDE](databases/oracle_tde.md), [OpenSSH](openssh.md), and
-[GnuPG smartcard (gnupg-pkcs11-scd)](gnupg_smartcard.md). See those pages for integration-specific
+[GnuPG smartcard (gnupg-pkcs11-scd)](gnupg/smartcard.md). See those pages for integration-specific
 setup steps.
 
 ## Cryptoki version and interfaces discovery

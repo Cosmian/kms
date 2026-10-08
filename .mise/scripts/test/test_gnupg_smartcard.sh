@@ -22,7 +22,7 @@
 # #[cfg(feature = "non-fips")] (RSA/X.509 themselves are FIPS-legal).
 #
 # Usage:
-#   mise run test:gnupg-smartcard --variant non-fips
+#   mise run test:gnupg --variant non-fips   (also runs the OpenPGP interoperability tests)
 #   bash .mise/scripts/test/test_gnupg_smartcard.sh
 set -euo pipefail
 set -x
