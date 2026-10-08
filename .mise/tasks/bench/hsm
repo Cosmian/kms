@@ -286,7 +286,7 @@ elif [ "${BENCH_MODE}" = "all" ]; then
   # apply to real HSMs). Keys accumulate on the HSM token across submodes, which
   # is the expected behaviour for a single persistent token.
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}"
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
   for SUB_MODE in key-creation encrypt sign-verify; do
     run_hsm_load "${BENCH_PORT}" "${SUB_MODE}" "${BENCH_CONCURRENCY}"
     [ "${BENCH_CRITERION}" = "true" ] && run_hsm_criterion "${BENCH_PORT}" "${SUB_MODE}"
@@ -313,7 +313,7 @@ else
   # hsm::<slot>:: keys are created directly ON the HSM and Encrypt/Sign
   # against them execute via the HSM's CryptoOracle (PKCS#11), unlike the
   # default (non-delegated) mode above, which only wraps a software KEK.
-  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}"
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
 
   run_hsm_load "${BENCH_PORT}" "${BENCH_MODE}" "${BENCH_CONCURRENCY}"
 

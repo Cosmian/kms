@@ -134,8 +134,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-          # All five reports: ckms_bench/, ckms_bench_hsm_kek/, ckms_bench_delegated_crypto_operations/,
-          # ckms_bench_pkcs11/, ckms_bench_pkcs11_delegated/ — each report.md + load/ + criterion/ + raw JSON,
+          # Reports generated per HSM backend: ckms_bench/, ckms_bench_hsm_kek_<backend>/,
+          # ckms_bench_hsm_delegated_<backend>/, ckms_bench_pkcs11/, ckms_bench_pkcs11_hsm_delegated_<backend>/
           # mirroring the existing pattern in .github/workflows/flamegraph.yml.
           path: documentation/docs/benchmarks/
           retention-days: 30
@@ -175,7 +175,7 @@ jobs:
           echo ""
           echo "Published:"
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_kek/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_delegated_crypto_operations/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_kek_softhsm2/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md"
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11_delegated/report.md"
+          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md"

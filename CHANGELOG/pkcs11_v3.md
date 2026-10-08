@@ -18,7 +18,7 @@
 ### HSM
 
 - Bound async `BaseHsm` session checkouts per slot to `HsmCapabilities::max_concurrent_sessions`
-  (default 32), applying asynchronous backpressure and keeping PKCS#11 calls off Tokio executor
+  (default 128), applying asynchronous backpressure and keeping PKCS#11 calls off Tokio executor
   workers. KMIP `Sign` and `SignatureVerify` now resolve metadata and perform the operation in one
   session checkout.
 

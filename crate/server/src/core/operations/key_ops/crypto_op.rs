@@ -796,6 +796,27 @@ impl KMS {
             .context("The unique identifier must be a string")?;
         let object_handle = ObjectHandle::from(uid_str);
 
+        // ── Fast-path for explicit HSM generation UIDs ───────────────────────────
+        // Only skip keyset resolution for HSM UIDs with an explicit `@N` generation
+        // suffix (e.g., `hsm::5::my-key@1`). Bare HSM UIDs (without `@`) are keyset
+        // names that need rotation resolution: Encrypt/Sign→latest, Decrypt/Verify→chain-walk.
+        if let ObjectHandle::Hsm { prefix, .. } = &object_handle {
+            if uid_str.contains('@') {
+                // Explicit generation handle: skip keyset resolution, go direct to oracle
+                if self
+                    .is_user_authorized_with_get_wildcard(uid_str, user, Op::KMIP_OP)
+                    .await?
+                {
+                    return Ok(ResolvedKey::Oracle {
+                        uid: uid_str.to_owned(),
+                        prefix: prefix.to_string(),
+                    });
+                }
+                // Authorization check failed; fall through to standard error handling below
+            }
+            // Bare HSM UID (no `@`): fall through to keyset resolution for rotation handling
+        }
+
         // ── Keyset detection ─────────────────────────────────────────────────────
         if let Some(keyset_ref) = as_keyset_ref(object_handle) {
             match &keyset_ref.version {

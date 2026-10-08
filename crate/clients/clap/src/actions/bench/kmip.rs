@@ -40,10 +40,11 @@ use super::helpers::{
 };
 use super::{
     helpers::{
-        aes_cbc_params, aes_gcm_params, aes_xts_params, create_rsa_kp, create_sym_key,
-        hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_kwp_params,
-        rsa_oaep_params, rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp,
-        try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks, with_fips_rsa_masks,
+        HsmKeyLedger, aes_cbc_params, aes_gcm_params, aes_xts_params, create_rsa_kp,
+        create_sym_key, hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
+        rsa_kwp_params, rsa_oaep_params, rsa_oaep_sha1_params, try_create_ec_kp,
+        try_create_hsm_ec_kp, try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks,
+        with_fips_rsa_masks,
     },
     transport::{Transport, bench_message_id, bench_op, bench_op_id, timed_group},
     types::bench_ko,
@@ -1418,11 +1419,17 @@ pub(super) fn bench_hsm_encrypt(
     hsm_prefix: &str,
 ) {
     let slug = transport.slug();
+    let ledger = HsmKeyLedger::new();
 
     // AES-GCM
-    if let Some(key_id) =
-        try_create_hsm_sym_key(rt, client, hsm_prefix, 256, CryptographicAlgorithm::AES)
-    {
+    if let Some(key_id) = try_create_hsm_sym_key(
+        rt,
+        client,
+        hsm_prefix,
+        256,
+        CryptographicAlgorithm::AES,
+        &ledger,
+    ) {
         let mut group = timed_group(c, format!("{slug}/encrypt/hsm-aes-gcm"));
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
@@ -1445,9 +1452,14 @@ pub(super) fn bench_hsm_encrypt(
     }
 
     // AES-CBC
-    if let Some(key_id) =
-        try_create_hsm_sym_key(rt, client, hsm_prefix, 256, CryptographicAlgorithm::AES)
-    {
+    if let Some(key_id) = try_create_hsm_sym_key(
+        rt,
+        client,
+        hsm_prefix,
+        256,
+        CryptographicAlgorithm::AES,
+        &ledger,
+    ) {
         let mut group = timed_group(c, format!("{slug}/encrypt/hsm-aes-cbc"));
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
@@ -1474,7 +1486,7 @@ pub(super) fn bench_hsm_encrypt(
     // key). One RSA-2048 key pair is created and reused for all three
     // variants — RSA key generation is comparatively slow, and `CryptoAlgorithm`
     // does not vary by key size, so there is no benefit to separate key pairs.
-    if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+    if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, &ledger) {
         for (label, params) in [
             ("hsm-rsa-oaep", rsa_oaep_params()),
             ("hsm-rsa-oaep-sha1", rsa_oaep_sha1_params()),
@@ -1503,6 +1515,11 @@ pub(super) fn bench_hsm_encrypt(
         bench_ko(format!("{slug}/encrypt/hsm-rsa-oaep-sha1"));
         bench_ko(format!("{slug}/encrypt/hsm-rsa-pkcs1v15"));
     }
+
+    // Clean up created HSM keys
+    if let Err(e) = rt.block_on(ledger.destroy_all(client)) {
+        eprintln!("[bench] HSM encrypt cleanup warning: {e}");
+    }
 }
 
 pub(super) fn bench_hsm_sign_verify(
@@ -1513,10 +1530,10 @@ pub(super) fn bench_hsm_sign_verify(
     hsm_prefix: &str,
 ) {
     let slug = transport.slug();
+    let ledger = HsmKeyLedger::new();
     let message = Zeroizing::new(vec![0x42_u8; 32]);
-
     // RSA-PSS
-    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, &ledger) {
         let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-rsa-pss"));
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
@@ -1544,7 +1561,7 @@ pub(super) fn bench_hsm_sign_verify(
     // RSA PKCS#1 v1.5 hash-and-sign (SigningAlgorithm::Sha1WithRsa/
     // Sha256WithRsa/Sha384WithRsa/Sha512WithRsa on the oracle). One RSA-2048
     // key pair is reused for all four hash variants.
-    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, &ledger) {
         for (label, dsa) in [
             (
                 "hsm-rsa-pkcs1v15-sha1",
@@ -1594,7 +1611,8 @@ pub(super) fn bench_hsm_sign_verify(
         ("ecdsa-p256", RecommendedCurve::P256),
         ("ecdsa-p384", RecommendedCurve::P384),
     ] {
-        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve) else {
+        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve, &ledger)
+        else {
             eprintln!("[bench] HSM {label} not available, skipping");
             bench_ko(format!("{slug}/sign-verify/hsm-{label}"));
             continue;
@@ -1639,7 +1657,8 @@ pub(super) fn bench_hsm_sign_verify(
             CryptographicAlgorithm::Ed448,
         ),
     ] {
-        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve) else {
+        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve, &ledger)
+        else {
             eprintln!("[bench] HSM {label} not available, skipping");
             bench_ko(format!("{slug}/sign-verify/hsm-{label}"));
             continue;
@@ -1663,6 +1682,11 @@ pub(super) fn bench_hsm_sign_verify(
             Operation::Sign(sign_req),
         );
         group.finish();
+    }
+
+    // Clean up created HSM keys
+    if let Err(e) = rt.block_on(ledger.destroy_all(client)) {
+        eprintln!("[bench] HSM sign-verify cleanup warning: {e}");
     }
 }
 

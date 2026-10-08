@@ -26,6 +26,7 @@ pub(crate) fn write_load_json(results: &[LoadResult]) -> BenchResult<()> {
             p95_ms: r.p95_ms,
             p99_ms: r.p99_ms,
             samples: r.samples,
+            errors: 0, // In pkcs11/bench/load.rs `run_for`, any op(session)? error aborts the sweep, so only completed runs are reported
         })
         .collect();
 

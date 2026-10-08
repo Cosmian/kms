@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
@@ -23,6 +26,63 @@ use cosmian_kms_client::{
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 use zeroize::Zeroizing;
+
+/// Track HSM keys created during benchmark for cleanup
+#[derive(Default, Clone)]
+pub(super) struct HsmKeyLedger {
+    keys: std::sync::Arc<Mutex<Vec<UniqueIdentifier>>>,
+}
+
+impl HsmKeyLedger {
+    /// Create a new empty key ledger.
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register an HSM key UID for cleanup at the end of the benchmark.
+    pub(super) fn register(&self, uid: UniqueIdentifier) {
+        if let Ok(mut keys) = self.keys.lock() {
+            keys.push(uid);
+        }
+    }
+
+    /// Destroy all registered keys with `remove: true` to delete from the HSM.
+    pub(super) async fn destroy_all(&self, client: &KmsClient) -> Result<(), String> {
+        let keys = {
+            if let Ok(mut k) = self.keys.lock() {
+                k.drain(..).collect::<Vec<_>>()
+            } else {
+                return Err("Failed to lock key ledger".to_owned());
+            }
+        };
+
+        let mut errors = Vec::new();
+        for uid in keys {
+            let req = Destroy {
+                unique_identifier: Some(uid.clone()),
+                remove: true,
+                ..Default::default()
+            };
+            match client.destroy(req).await {
+                Ok(_) => eprintln!("[bench] Destroyed key: {uid:?}"),
+                Err(e) => {
+                    eprintln!("[bench] Failed to destroy key {uid:?}: {e}");
+                    errors.push(format!("{uid:?}: {e}"));
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Failed to destroy {} keys: {:?}",
+                errors.len(),
+                errors
+            ))
+        }
+    }
+}
 
 /// Send lightweight requests to the KMS server for `warmup_secs` seconds to
 /// warm up HTTP connection pools, TLS sessions, and server-side caches.
@@ -399,6 +459,7 @@ pub(super) fn try_create_hsm_sym_key(
     hsm_prefix: &str,
     bits: usize,
     algo: CryptographicAlgorithm,
+    ledger: &HsmKeyLedger,
 ) -> Option<UniqueIdentifier> {
     rt.block_on(async {
         let uid = hsm_uid(hsm_prefix, "sym");
@@ -418,7 +479,10 @@ pub(super) fn try_create_hsm_sym_key(
             }
         };
         match client.create(req).await {
-            Ok(resp) => Some(resp.unique_identifier),
+            Ok(resp) => {
+                ledger.register(resp.unique_identifier.clone());
+                Some(resp.unique_identifier)
+            }
             Err(e) => {
                 eprintln!("[bench] Failed to create HSM symmetric key ({algo:?}, {bits} bits, UID={uid}): {e}");
                 None
@@ -434,6 +498,7 @@ pub(super) fn try_create_hsm_rsa_kp(
     client: &KmsClient,
     hsm_prefix: &str,
     bits: usize,
+    ledger: &HsmKeyLedger,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
         let uid = hsm_uid(hsm_prefix, "rsa");
@@ -454,10 +519,14 @@ pub(super) fn try_create_hsm_rsa_kp(
             }
         };
         match client.create_key_pair(req).await {
-            Ok(resp) => Some((
-                resp.public_key_unique_identifier,
-                resp.private_key_unique_identifier,
-            )),
+            Ok(resp) => {
+                ledger.register(resp.public_key_unique_identifier.clone());
+                ledger.register(resp.private_key_unique_identifier.clone());
+                Some((
+                    resp.public_key_unique_identifier,
+                    resp.private_key_unique_identifier,
+                ))
+            }
             Err(e) => {
                 eprintln!(
                     "[bench] Failed to create HSM RSA key pair ({bits} bits, UID={uid}): {e}"
@@ -482,23 +551,40 @@ pub(super) fn try_create_hsm_ec_kp(
     client: &KmsClient,
     hsm_prefix: &str,
     curve: RecommendedCurve,
+    ledger: &HsmKeyLedger,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
         let uid = hsm_uid(hsm_prefix, "ec");
-        let req = create_ec_key_pair_request(
+        let req = match create_ec_key_pair_request(
             &client.config.vendor_id,
-            Some(UniqueIdentifier::TextString(uid)),
+            Some(UniqueIdentifier::TextString(uid.clone())),
             ["bench"],
             curve,
             false,
             None,
-        )
-        .ok()?;
-        let resp = client.create_key_pair(req).await.ok()?;
-        Some((
-            resp.public_key_unique_identifier,
-            resp.private_key_unique_identifier,
-        ))
+        ) {
+            Ok(req) => req,
+            Err(e) => {
+                eprintln!(
+                    "[bench] Failed to build EC key pair request ({curve:?}, UID={uid}): {e}"
+                );
+                return None;
+            }
+        };
+        match client.create_key_pair(req).await {
+            Ok(resp) => {
+                ledger.register(resp.public_key_unique_identifier.clone());
+                ledger.register(resp.private_key_unique_identifier.clone());
+                Some((
+                    resp.public_key_unique_identifier,
+                    resp.private_key_unique_identifier,
+                ))
+            }
+            Err(e) => {
+                eprintln!("[bench] Failed to create HSM EC key pair ({curve:?}, UID={uid}): {e}");
+                None
+            }
+        }
     })
 }
 
