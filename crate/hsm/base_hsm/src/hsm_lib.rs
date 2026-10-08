@@ -94,7 +94,7 @@ const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 #[expect(dead_code)]
 #[expect(non_snake_case)]
 pub struct HsmLib {
-    _library: Option<Library>,
+    library: Option<Library>,
     skip_finalize_on_drop: bool,
     pub(crate) C_Initialize: CK_C_Initialize,
     pub(crate) C_Finalize: CK_C_Finalize,
@@ -363,7 +363,7 @@ impl HsmLib {
                     C_MessageVerifyFinal
                 ),
                 // we need to keep the library alive
-                _library: Some(library),
+                library: Some(library),
                 skip_finalize_on_drop,
             };
 
@@ -676,11 +676,11 @@ impl std::fmt::Display for Info {
 
 impl Drop for HsmLib {
     fn drop(&mut self) {
-        if !self.skip_finalize_on_drop {
-            drop(self.finalize());
-            drop(self._library.take());
+        if self.skip_finalize_on_drop {
+            std::mem::forget(self.library.take());
         } else {
-            std::mem::forget(self._library.take());
+            drop(self.finalize());
+            drop(self.library.take());
         }
     }
 }
