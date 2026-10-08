@@ -181,6 +181,7 @@
   - [PKCS#11](benchmarks/ckms_bench_pkcs11/report.md)
   - [PKCS#11 HSM Delegated](benchmarks/ckms_bench_pkcs11_delegated/report.md)
   - [CPU Scaling & Flamegraphs](benchmarks/cpu_scaling.md)
+  - [p11perftest Commands](benchmarks/p11perftest.md)
 - [KMS Clients]()
   - [Getting started](kms_clients/index.md)
   - [Installation](kms_clients/installation.md)
