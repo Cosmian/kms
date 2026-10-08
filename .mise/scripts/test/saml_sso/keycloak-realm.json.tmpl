@@ -1,0 +1,60 @@
+{
+  "realm": "demo",
+  "enabled": true,
+  "sslRequired": "none",
+  "groups": [{ "name": "kms-users" }],
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Tester",
+      "enabled": true,
+      "groups": ["/kms-users"],
+      "credentials": [{ "type": "password", "value": "alice-pw", "temporary": false }]
+    },
+    {
+      "username": "bob",
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Tester",
+      "enabled": true,
+      "groups": ["/kms-users"],
+      "credentials": [{ "type": "password", "value": "bob-pw", "temporary": false }]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "${PUBLIC_ORIGIN}/saml/${SAML_REALM}",
+      "protocol": "saml",
+      "enabled": true,
+      "redirectUris": ["${PUBLIC_ORIGIN}/saml/${SAML_REALM}/acs"],
+      "attributes": {
+        "saml_assertion_consumer_url_post": "${PUBLIC_ORIGIN}/saml/${SAML_REALM}/acs",
+        "saml.assertion.signature": "true",
+        "saml.server.signature": "false",
+        "saml.client.signature": "true",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml.signing.certificate": "${SP_CERT}",
+        "saml.authnstatement": "true",
+        "saml_name_id_format": "username"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "config": { "user.attribute": "email", "attribute.name": "email", "attribute.nameformat": "Basic" }
+        },
+        {
+          "name": "groups",
+          "protocol": "saml",
+          "protocolMapper": "saml-group-membership-mapper",
+          "config": { "attribute.name": "groups", "attribute.nameformat": "Basic", "full.path": "false", "single": "false" }
+        }
+      ]
+    }
+  ]
+}

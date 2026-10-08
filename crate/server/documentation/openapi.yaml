@@ -3584,6 +3584,24 @@ paths:
         '502':
           description: Cosmian authentication server unreachable or returned an unexpected response
 
+  /ui/login_saml:
+    get:
+      tags: [UI Auth]
+      summary: Start SAML single sign-on through the Auth Verifier
+      description: |
+        Redirects the browser to the Auth Verifier SAML login of the realm configured with
+        `auth_verifier_saml_realm`, at `/saml/{realm}/login` on the KMS public origin, with
+        `return_to` set to the Web UI. The Auth Verifier `/saml/` routes must be
+        reverse-proxied on that origin so the `_ea_` session cookie set after sign-in is sent
+        to the KMS, which then accepts it for that realm only. Any previous KMS UI session is
+        dropped.
+      operationId: uiLoginSaml
+      responses:
+        '302':
+          description: Redirect to the Auth Verifier SAML login
+        '500':
+          description: SAML single sign-on is not configured
+
   /ui/login_svid:
     post:
       tags: [UI Auth]
@@ -3654,7 +3672,11 @@ paths:
     get:
       tags: [UI Auth]
       summary: Current session user
-      description: Returns the user ID of the currently authenticated UI session. Returns 401 if no valid session exists.
+      description: >-
+        Returns the user ID of the currently authenticated UI session. When SAML single
+        sign-on is configured, a valid Auth Verifier `_ea_` session cookie issued for
+        `auth_verifier_saml_realm` takes precedence over the KMS session. Returns 401 if no
+        valid session exists.
       operationId: uiWhoAmI
       responses:
         '200':
@@ -3676,7 +3698,11 @@ paths:
     get:
       tags: [UI Auth]
       summary: Logout
-      description: Clears the session cookie and optionally redirects to the OIDC provider's logout endpoint.
+      description: >-
+        Clears the session cookie and optionally redirects to the OIDC provider's logout
+        endpoint. When SAML single sign-on is configured and the browser holds an Auth
+        Verifier `_ea_` session cookie, the session is also revoked on the Auth Verifier
+        (best effort) and the cookie is expired.
       operationId: uiLogout
       responses:
         '302':
@@ -3689,9 +3715,11 @@ paths:
       description: >-
         Returns the authentication methods configured for the web UI as an ordered
         `auth_methods` array (priority first: OIDC/JWT, then SPIFFE, then auth-verifier
-        username/password, then client certificate). `SPIFFE` is advertised when
+        SAML single sign-on, then auth-verifier username/password, then client certificate).
+        `SPIFFE` is advertised when
         `--jwt-svid-auth` is enabled; the session is established out of band through
-        `/ui/login_svid`. The singular `auth_method`
+        `/ui/login_svid`. `AUTH_VERIFIER_SAML` is advertised when `auth_verifier_saml_realm`
+        is set; the login starts at `/ui/login_saml`. The singular `auth_method`
         field is the primary method (auth_methods[0]) or `None`, retained for
         backward compatibility.
       operationId: uiAuthMethod
@@ -3705,13 +3733,13 @@ paths:
                 properties:
                   auth_method:
                     type: string
-                    enum: [JWT, AUTH_VERIFIER, CERT, None]
+                    enum: [JWT, AUTH_VERIFIER_SAML, AUTH_VERIFIER, CERT, None]
                     description: Highest-priority configured method (auth_methods[0]), or None. Kept for backward compatibility.
                   auth_methods:
                     type: array
                     items:
                       type: string
-                      enum: [JWT, AUTH_VERIFIER, CERT]
+                      enum: [JWT, AUTH_VERIFIER_SAML, AUTH_VERIFIER, CERT]
                     description: Configured UI login methods, ordered by priority (primary first).
                   oidc_issuer:
                     type: string

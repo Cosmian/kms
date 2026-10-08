@@ -201,6 +201,23 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         } else {
             None
         };
+        let enable_saml_login: bool = Confirm::with_theme(&theme)
+            .with_prompt(
+                "Enable Web UI SAML single sign-on through the Auth Verifier server? \
+                 (its /saml/ routes must be reverse-proxied on the KMS public HTTPS origin)",
+            )
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let saml_realm: Option<String> = if enable_saml_login {
+            let saml_realm: String = Input::with_theme(&theme)
+                .with_prompt("Auth Verifier realm configured for SAML")
+                .interact_text()
+                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            Some(saml_realm)
+        } else {
+            None
+        };
         auth_verifier = AuthVerifierConfig {
             auth_verifier_url: Some(server_url),
             auth_verifier_jwks_uri: if jwks_uri.trim().is_empty() {
@@ -209,6 +226,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 Some(jwks_uri)
             },
             auth_verifier_realm: realm,
+            auth_verifier_saml_realm: saml_realm,
             auth_verifier_accept_invalid_certs: accept_invalid_certs,
         };
     }

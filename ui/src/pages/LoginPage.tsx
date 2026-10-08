@@ -18,7 +18,9 @@ interface LoginProps {
 
 const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthenticated }) => {
     // Keep only browser-login methods, preserving the server's priority order.
-    const methods = (authMethods ?? []).filter((m): m is AuthMethod => m === "JWT" || m === "AUTH_VERIFIER" || m === "CERT");
+    const methods = (authMethods ?? []).filter(
+        (m): m is AuthMethod => m === "JWT" || m === "AUTH_VERIFIER_SAML" || m === "AUTH_VERIFIER" || m === "CERT",
+    );
     const [selectedMethod, setSelectedMethod] = useState<AuthMethod | undefined>(methods[0]);
     const [isLoading, setIsLoading] = useState(false);
     const [certError, setCertError] = useState<string | null>(null);
@@ -40,6 +42,8 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                 return t("login.certificate");
             case "AUTH_VERIFIER":
                 return t("login.authVerifier");
+            case "AUTH_VERIFIER_SAML":
+                return t("login.saml");
             default:
                 return method ?? "";
         }
@@ -77,14 +81,22 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
         }
     };
 
+    const handleSamlLogin = () => {
+        setIsLoading(true);
+        // The KMS redirects to the Auth Verifier SAML login, which returns to /ui/locate.
+        window.location.assign(`${serverUrl}/ui/login_saml`);
+    };
+
     /**
      * Act on a method chosen from the primary or secondary control.
-     * One-click methods (JWT redirect, CERT probe) execute immediately; the
+     * One-click methods (JWT and SAML redirects, CERT probe) execute immediately; the
      * form-based method (AUTH_VERIFIER) is selected so its form is revealed.
      */
     const selectMethod = (method: AuthMethod) => {
         if (method === "JWT") {
             void handleLogin();
+        } else if (method === "AUTH_VERIFIER_SAML") {
+            handleSamlLogin();
         } else if (method === "CERT") {
             void handleAccessKms();
         } else {
@@ -195,6 +207,10 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, onCertAuthe
                     ) : selectedMethod === "JWT" ? (
                         <Button type="primary" block onClick={handleLogin} loading={isLoading} data-testid="oidc-login-btn">
                             {t("login.oidc")}
+                        </Button>
+                    ) : selectedMethod === "AUTH_VERIFIER_SAML" ? (
+                        <Button type="primary" block onClick={handleSamlLogin} loading={isLoading} data-testid="saml-login-btn">
+                            {t("login.saml")}
                         </Button>
                     ) : selectedMethod === "CERT" ? (
                         <Button type="primary" block onClick={handleAccessKms} loading={isLoading} data-testid="cert-login-btn">

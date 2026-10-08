@@ -12,7 +12,12 @@ mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
 mod auth_verifier;
-pub(crate) use auth_verifier::{AuthVerifier, verify_auth_verifier_jwt_subject};
+#[cfg(test)]
+pub(crate) use auth_verifier::test_helpers as auth_verifier_test_helpers;
+pub(crate) use auth_verifier::{
+    AUTH_VERIFIER_SESSION_COOKIE, AuthVerifier, authenticate_auth_verifier_session_cookie,
+    verify_auth_verifier_jwt_subject,
+};
 
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;
@@ -80,6 +85,8 @@ pub(crate) enum AuthMethod {
     JwtSvid,
     /// Cosmian Auth Verifier JWT (no `kid`)
     AuthVerifierJwt,
+    /// Cosmian Auth Verifier `_ea_` session cookie (browser SAML single sign-on)
+    AuthVerifierSession,
     /// Static API token (Bearer)
     ApiToken,
     /// mTLS client certificate

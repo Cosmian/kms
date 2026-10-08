@@ -22,6 +22,7 @@ The UI automatically detects the authentication method configured on the KMS ser
 
 - **OIDC Authentication**: The UI presents a **LOGIN** button that redirects to the identity provider. See [Configuring OIDC Authentication](#configuring-oidc-authentication) below.
 - **Cosmian Authentication Server Login**: The UI presents a username/password form (with an optional TOTP step) that authenticates directly against a [Cosmian authentication server](#configuring-cosmian-authentication-server-login). See [Configuring Cosmian Authentication Server Login](#configuring-cosmian-authentication-server-login) below.
+- **SAML Single Sign-On**: Users sign in at the organisation's SAML identity provider through the Authentication Verifier. See [Configuring SAML Single Sign-On](#configuring-saml-single-sign-on) below.
 - **Certificate Authentication**: The UI presents an **ACCESS KMS** button. The browser negotiates the [mTLS](tls.md) handshake and submits the client certificate automatically. If no valid certificate is available, the login page is shown again with an error. See [Configuring Certificate Authentication](#configuring-certificate-authentication-mtls) below.
 - **No authentication configured**: No login is required — the UI takes you directly to the key management interface. However, a warning banner is displayed:
 
@@ -170,5 +171,62 @@ Both `cosmian_auth_server_url` and `cosmian_auth_realm` must be set for the UI l
 
 !!! note
     If the account requires a password change or has an expired password, the UI surfaces the Cosmian authentication server's message directly; the password must be changed through the Cosmian authentication server (or its own admin UI), not through the KMS.
+
+---
+
+### Configuring SAML Single Sign-On
+
+When an Authentication Verifier realm is configured as a SAML 2.0 service provider, Web UI users can sign in at the
+organisation's identity provider (Microsoft Entra ID, Okta, ADFS, Keycloak, ...). The KMS does not process SAML
+itself: the Authentication Verifier validates the SAML response and issues its `_ea_` session cookie, which the KMS
+then accepts as the Web UI credential **for the configured realm only**. Sessions of any other realm of the same
+Authentication Verifier are rejected.
+
+#### Prerequisites
+
+- The Authentication Verifier `/saml/` routes are served from the **KMS public origin**, behind a reverse proxy,
+  without changing the `/saml/` path prefix. The `_ea_` cookie is bound to the host the browser contacted, so it
+  only reaches the KMS when both are served from the same host.
+- `kms_public_url` uses `https://`. The server refuses to start otherwise.
+- The reverse proxy reaches the Authentication Verifier over HTTPS, so that the `_ea_` cookie carries the `Secure`
+  flag.
+- In the SAML realm of the Authentication Verifier, `sp_acs_url` is `https://<kms host>/saml/<realm>/acs` and
+  `allowed_return_origins` contains `https://<kms host>`.
+
+Example reverse-proxy configuration (nginx):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name kms.example.com;
+
+    location /saml/ { proxy_pass https://auth-verifier.internal:8443; }
+    location /      { proxy_pass https://kms.internal:9998; }
+}
+```
+
+#### Server configuration
+
+```toml
+kms_public_url = "https://kms.example.com"
+
+[auth_verifier]
+auth_verifier_url        = "https://auth-verifier.internal:8443"
+auth_verifier_saml_realm = "kms-saml"
+```
+
+When `auth_verifier_saml_realm` is set, `GET /ui/auth_method` advertises `AUTH_VERIFIER_SAML` and the login page shows
+a **Single sign-on (SSO)** button, which starts sign-in at `https://kms.example.com/ui/login_saml`. The KMS redirects to
+`/saml/<realm>/login`, the identity provider authenticates the user, and the browser returns to the UI with the `_ea_`
+cookie. Logging out of the UI revokes the Authentication Verifier session and expires the cookie.
+
+!!! note
+    The KMS user identity is the `sub` claim of the session, mapped by the Authentication Verifier from the SAML
+    assertion. Configure the realm's `subject_attribute` (for example `email`) so that it matches the identities
+    used in KMS access rights.
+
+!!! warning
+    The KMS validates the session cookie locally (signature, realm and expiry). A session revoked directly on the
+    Authentication Verifier remains accepted by the KMS until it expires: keep the realm's session lifetime short.
 
 ---

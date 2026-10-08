@@ -192,9 +192,11 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                 ? "JWT"
                 : methods.includes("SPIFFE")
                   ? "SPIFFE"
-                  : methods.includes("AUTH_VERIFIER")
-                    ? "AUTH_VERIFIER"
-                    : undefined;
+                  : methods.includes("AUTH_VERIFIER_SAML")
+                    ? "AUTH_VERIFIER_SAML"
+                    : methods.includes("AUTH_VERIFIER")
+                      ? "AUTH_VERIFIER"
+                      : undefined;
 
             if (sessionMethod) {
                 const data = await fetchWhoAmI(location);
