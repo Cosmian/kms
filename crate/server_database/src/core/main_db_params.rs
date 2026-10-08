@@ -72,7 +72,8 @@ fn redact_url(original: &Url) -> Url {
 }
 
 /// Redact credentials from a raw connection string (supports multi-host URLs).
-fn redact_connection_string(s: &str) -> String {
+#[must_use]
+pub fn redact_connection_string(s: &str) -> String {
     if let Some(scheme_end) = s.find("://") {
         let after_scheme = &s[scheme_end + 3..];
         if let Some(at_pos) = after_scheme.find('@') {

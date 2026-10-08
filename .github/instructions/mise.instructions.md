@@ -1,7 +1,7 @@
 ---
-name: 'MISE Task Conventions'
-description: 'Best practices for writing MISE task scripts and shell libraries in the Eviden KMS project'
-applyTo: '.mise/**, scripts/**, .github/reusable_scripts/**'
+name: "MISE Task Conventions"
+description: "Best practices for writing MISE task scripts and shell libraries in the Eviden KMS project"
+applyTo: ".mise/**, scripts/**, .github/reusable_scripts/**"
 ---
 
 # MISE task and library conventions
@@ -80,14 +80,14 @@ Never hard-code `--features non-fips`; always go through `FEATURES_FLAG`.
 
 Use the helpers from `common.sh` — never use raw `echo` for status messages:
 
-| Helper | Purpose |
-|---|---|
-| `print_header "…"` | Decorated section header (blue box) |
-| `print_status "…"` | Info line `[INFO]` in green |
-| `print_warning "…"` | Warning line `[WARN]` in yellow |
-| `print_error "…"` | Error line `[ERROR]` in red + **exits** with code 1 |
-| `print_success "…"` | Success line `[SUCCESS]` in green |
-| `print_info "…"` | Info line `[i]` in blue |
+| Helper              | Purpose                                             |
+| ------------------- | --------------------------------------------------- |
+| `print_header "…"`  | Decorated section header (blue box)                 |
+| `print_status "…"`  | Info line `[INFO]` in green                         |
+| `print_warning "…"` | Warning line `[WARN]` in yellow                     |
+| `print_error "…"`   | Error line `[ERROR]` in red + **exits** with code 1 |
+| `print_success "…"` | Success line `[SUCCESS]` in green                   |
+| `print_info "…"`    | Info line `[i]` in blue                             |
 
 Always end a successful task with `print_success "…"` so the CI log clearly marks completion.
 
@@ -138,6 +138,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 | `.mise/lib/k8s.sh` | Kubernetes helpers (helm, kubectl) |
 | `.mise/lib/bench_helpers.sh` | Benchmark setup helpers |
 | `.mise/lib/test_slots.sh` | Dynamic port-slot allocation |
+| `.mise/lib/audit_e2e.sh` | Shared ckms/audit E2E helpers: `audit_ckms(_json/_fail)`, `audit_exercise_kmip_ops`, `audit_assert_events_jsonl` |
 
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
 free-port allocation, or SHA-256 computation — all three already exist.
@@ -234,11 +235,11 @@ run_isolated curl -sS http://127.0.0.1:9998/kmip/2_1
 
 ## Directory references
 
-| Variable | Value / use |
-|---|---|
+| Variable           | Value / use                                                               |
+| ------------------ | ------------------------------------------------------------------------- |
 | `MISE_CONFIG_ROOT` | Repository root (set by MISE) — use for all absolute paths inside scripts |
-| `get_repo_root` | Function returning repo root via git or directory heuristic |
-| `CARGO_TARGET_DIR` | Override via env; `get_cargo_target_dir` resolves it safely |
+| `get_repo_root`    | Function returning repo root via git or directory heuristic               |
+| `CARGO_TARGET_DIR` | Override via env; `get_cargo_target_dir` resolves it safely               |
 
 Never hard-code `/home/...` or relative `../../` paths. Always start from `${MISE_CONFIG_ROOT}`.
 
@@ -273,15 +274,15 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 
 ## Naming conventions
 
-| Scope | Convention | Example |
-|---|---|---|
-| Task files | `kebab-case`, no extension | `.mise/tasks/test/psql` |
-| Library files | `snake_case.sh` | `.mise/lib/kms_server.sh` |
-| Library functions | `snake_case`, prefixed by lib name | `kms_write_config`, `kms_build_server` |
-| Private (internal) functions | leading underscore | `_wait_for_port`, `_warn_system_kms_conf` |
-| Guard variables | `_MISE_<LIB>_SH_LOADED` | `_MISE_COMMON_SH_LOADED` |
-| Script variables | `SCREAMING_SNAKE_CASE` for globals | `FAILED=()`, `VARIANT` |
-| Local variables | `snake_case` | `local port="$1"` |
+| Scope                        | Convention                         | Example                                   |
+| ---------------------------- | ---------------------------------- | ----------------------------------------- |
+| Task files                   | `kebab-case`, no extension         | `.mise/tasks/test/psql`                   |
+| Library files                | `snake_case.sh`                    | `.mise/lib/kms_server.sh`                 |
+| Library functions            | `snake_case`, prefixed by lib name | `kms_write_config`, `kms_build_server`    |
+| Private (internal) functions | leading underscore                 | `_wait_for_port`, `_warn_system_kms_conf` |
+| Guard variables              | `_MISE_<LIB>_SH_LOADED`            | `_MISE_COMMON_SH_LOADED`                  |
+| Script variables             | `SCREAMING_SNAKE_CASE` for globals | `FAILED=()`, `VARIANT`                    |
+| Local variables              | `snake_case`                       | `local port="$1"`                         |
 
 ## Adding a new library
 

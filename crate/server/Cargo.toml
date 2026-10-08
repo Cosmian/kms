@@ -72,6 +72,7 @@ actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["macros", "openssl"] }
 async-recursion = { workspace = true }
+async-trait = { workspace = true }
 aws_cloudhsm_pkcs11_loader = { path = "../hsm/aws_cloudhsm", version = "5.28.0" }
 gcp_cloud_hsm_pkcs11_loader = { path = "../hsm/gcp_cloud_hsm", version = "5.28.0" }
 base64 = { workspace = true }
@@ -88,7 +89,7 @@ clap = { workspace = true, features = [
 clap-config-fallback = { workspace = true }
 cosmian_kms_access = { path = "../access", version = "5.28.0" }
 cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.28.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.25.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.28.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.28.0" }
 cosmian_logger = { workspace = true }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.28.0" }
@@ -104,7 +105,7 @@ hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 ipnet = { version = "2", features = ["serde"] }
 jsonwebtoken = { workspace = true }
-kryoptic_pkcs11_loader = { path = "../hsm/kryoptic", version = "5.27.1" }
+kryoptic_pkcs11_loader = { path = "../hsm/kryoptic", version = "5.28.0" }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",
@@ -156,6 +157,7 @@ native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }
 tempfile = { workspace = true }
+tokio-postgres = { workspace = true }
 
 [build-dependencies]
 actix-http = { workspace = true }

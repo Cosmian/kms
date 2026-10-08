@@ -1454,6 +1454,7 @@ dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
+ "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
  "der",
@@ -1623,6 +1624,7 @@ version = "5.28.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_logger",
  "mockall",
  "num-bigint-dig",
@@ -1698,6 +1700,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "async-recursion",
+ "async-trait",
  "aws_cloudhsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
@@ -1748,6 +1751,7 @@ dependencies = [
  "thiserror 2.0.19",
  "time",
  "tokio",
+ "tokio-postgres",
  "toml 0.9.12+spec-1.1.0",
  "tower-service",
  "tracing",
@@ -1768,6 +1772,7 @@ dependencies = [
  "base64 0.22.1",
  "cosmian_findex",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
@@ -4922,6 +4927,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "time",
  "uuid",
 ]
 
