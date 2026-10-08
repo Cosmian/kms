@@ -66,6 +66,7 @@ instance_id = "${INSTANCE_ID}"
 EOF
 
 kms_start_from_bin "${kms_bin}"
+# shellcheck disable=SC2034 # consumed by the audit_e2e.sh helpers sourced above
 ckms_conf=$(kms_write_ckms_conf)
 
 # ── Exercise KMIP operations ──────────────────────────────────────────────────
@@ -176,6 +177,76 @@ if "${ckms_bin}" audit verify \
   exit 1
 fi
 echo "GUARD OK: unknown instance_id was rejected."
+
+# ── GUARD: tamper → restart → seal-and-roll → verify across generations ─────
+# Proves the real server's startup path (not just PgAuditSink in isolation) seals a
+# corrupted generation and keeps serving on a fresh one, and that the CLI then reports
+# the sealed generation as failed while the new one verifies clean.
+
+echo "==> Stopping KMS and corrupting the last stored row of generation 0..."
+kill "${KMS_PID}" 2>/dev/null || true
+wait "${KMS_PID}" 2>/dev/null || true
+KMS_PID=""
+
+_repo_root="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+tamper_out=$(
+  docker compose --project-directory "${_repo_root}" exec -T postgres-audit \
+    psql -U kms_audit -d kms_audit -v ON_ERROR_STOP=1 <<SQL
+ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_update;
+UPDATE kms_audit_events SET row_hash = decode(repeat('00', 32), 'hex')
+ WHERE instance_id = '${INSTANCE_ID}' AND chain_generation = 0
+   AND id = (SELECT max(id) FROM kms_audit_events
+              WHERE instance_id = '${INSTANCE_ID}' AND chain_generation = 0);
+ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_update;
+SQL
+)
+if ! echo "${tamper_out}" | grep -qx 'UPDATE 1'; then
+  echo "ERROR: expected to tamper exactly one row, psql said: ${tamper_out}" >&2
+  exit 1
+fi
+
+echo "==> Restarting KMS: it must seal generation 0 and start generation 1..."
+kms_start_from_bin "${kms_bin}"
+
+export_jsonl="$(mktemp -t audit-pg-e2e-roll-XXXXXX.jsonl)"
+"${ckms_bin}" audit export \
+  --audit-postgres-url "${KMS_AUDIT_POSTGRES_URL}" \
+  --audit-instance-id "${INSTANCE_ID}" \
+  >"${export_jsonl}"
+if ! python3 -c "
+import json
+for l in open('${export_jsonl}'):
+    if not l.strip(): continue
+    d = json.loads(l)
+    if d.get('operation') != 'audit:reanchor': continue
+    det = d.get('details')
+    det = json.loads(det) if isinstance(det, str) else (det or {})
+    if det.get('reason') == 'hash_mismatch' and det.get('sealed_generation') == 0 and det.get('new_generation') == 1:
+        raise SystemExit(0)
+raise SystemExit(1)
+"; then
+  echo "ERROR: no audit:reanchor (hash_mismatch, generation 0 -> 1) event found after restart." >&2
+  cat "${export_jsonl}" >&2
+  exit 1
+fi
+rm -f "${export_jsonl}"
+echo "GUARD OK: restart sealed generation 0 and recorded an audit:reanchor into generation 1."
+
+echo "==> Verifying across generations (generation 0 must fail, generation 1 must pass)..."
+set +e
+verify_out=$("${ckms_bin}" audit verify \
+  --audit-postgres-url "${KMS_AUDIT_POSTGRES_URL}" \
+  --audit-instance-id "${INSTANCE_ID}" 2>&1)
+verify_rc=$?
+set -e
+echo "${verify_out}"
+if [ "${verify_rc}" -eq 0 ] ||
+  ! echo "${verify_out}" | grep -q "1 of 2 generations failed verification" ||
+  ! echo "${verify_out}" | grep -q "generation(s) 1 verified OK"; then
+  echo "ERROR: verify must exit non-zero, flag generation 0 and verify generation 1 clean (rc=${verify_rc})." >&2
+  exit 1
+fi
+echo "GUARD OK: verify flags the sealed generation 0 and verifies generation 1."
 
 echo ""
 echo "==========================================="

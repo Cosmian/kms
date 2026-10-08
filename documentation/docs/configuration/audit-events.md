@@ -7,7 +7,7 @@ system events described below. `ckms audit export` and `ckms audit verify` both 
 
 | Field         | Type                                     | Nullable | Description                                                                                                                                      |
 | ------------- | ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`          | `integer`                                | No       | Monotonically increasing row counter, starting at 0.                                                                                             |
+| `id`          | `integer`                                | No       | Monotonically increasing row counter, starting at 0 for each chain (for each chain generation with the PostgreSQL backend).                    |
 | `timestamp`   | `string` (RFC 3339 / UTC)                | No       | Wall-clock time of the KMIP operation.                                                                                                           |
 | `operation`   | `string`                                 | No       | KMIP operation name, e.g. `"Create"`, `"Encrypt"`, `"Destroy"`. Batch requests produce a `+`-joined name such as `"Create+Encrypt"`.             |
 | `user`        | `string`                                 | No       | Authenticated username. `"unauthenticated"` when no identity was presented (e.g. 401 paths). `"server"` for a system event.                      |
@@ -21,7 +21,14 @@ system events described below. `ckms audit export` and `ckms audit verify` both 
 | `prev_hash`   | `string` (64 hex chars)                  | No       | SHA-256 of the previous row's canonical bytes. All-zeros for the first row (`id = 0`).                                                           |
 | `row_hash`    | `string` (64 hex chars)                  | No       | SHA-256 of this row's canonical bytes (including `prev_hash`).                                                                                   |
 
-**Example event**:
+!!! note "PostgreSQL backend"
+    The PostgreSQL backend stores the `user` field in a `username` column. `ckms audit export`
+    from a PostgreSQL source adds two fields, `instance_id` and `chain_generation`, to every JSON
+    event; the stored event and its hashes are unchanged. Because `id` restarts in each generation
+    and instance, identify an event by `(instance_id, chain_generation, id)`. See
+    [SIEM integration](./siems.md#postgresql-source-attribution).
+
+**Example event** (file backend):
 
 ```json
 {
@@ -47,12 +54,24 @@ system events described below. `ckms audit export` and `ckms audit verify` both 
 The KMS appends these events for its own recovery and operational actions. They join the same
 hash chain as ordinary KMIP events, with `user` set to `"server"`.
 
-| Event                        | Written when                                                                             | `result`                                     | `details`                                                  |
-| ----------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
-| `audit:eviction`             | One or more events were dropped because the writer's queue was full.                     | `Failure`, with the count of dropped events. | `null`                                                     |
-| `audit:size-cap-reached`     | The file backend's `--audit-file-max-size-bytes` cap was reached.                        | `Failure`                                     | `null`                                                     |
-| `audit:torn-write-recovered` | An incomplete trailing row was found and discarded after an ungraceful restart.          | `Success`                                     | `bytes_discarded` and `offset` of the discarded fragment.  |
-| `audit:reanchor`             | The KMS started a fresh chain after finding the previous one corrupted (seal-and-roll).  | `Success`                                     | Identifies the sealed evidence and the reason for the corruption. The exact fields are backend-specific: see [File backend](./audit-file-backend.md#startup-and-recovery). |
+| Event                        | Written when                                                                            | `result`                                     | `details`                                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `audit:eviction`             | One or more events were dropped because the writer's queue was full.                    | `Failure`, with the count of dropped events. | `null`                                                                                             |
+| `audit:size-cap-reached`     | The file backend's `--audit-file-max-size-bytes` cap was reached.                       | `Failure`                                    | `null`                                                                                             |
+| `audit:torn-write-recovered` | File backend only: an incomplete trailing row was found and discarded after an ungraceful restart. | `Success`                         | `bytes_discarded` and `offset` of the discarded fragment.                                          |
+| `audit:reanchor`             | The KMS started a fresh chain after finding the previous one corrupted (seal-and-roll). | `Success`                                    | `reason` (see [Reanchor reasons](#reanchor-reasons)) plus backend-specific evidence fields, described in [File backend](./audit-file-backend.md#startup-and-recovery) and [PostgreSQL backend](./audit-postgresql-backend.md#startup-and-recovery). |
+
+### Reanchor reasons
+
+Both backends classify the corruption that triggered a seal-and-roll with one of these values in
+the `reason` field of the `audit:reanchor` event's `details`:
+
+| Reason          | Meaning                                                                       |
+| --------------- | ----------------------------------------------------------------------------- |
+| `hash_mismatch` | A complete row whose own hash doesn't match its stored bytes.                 |
+| `broken_link`   | A row that verifies on its own but doesn't chain to its predecessor.          |
+| `unparsable`    | A row or column doesn't decode as an audit event at all.                      |
+| `id_overflow`   | A valid tail row at the maximum event ID: continuing in place would overflow. |
 
 ---
 

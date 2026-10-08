@@ -1,12 +1,5 @@
 -- Never put a `--` comment between a `-- name:` tag and its query's closing `;`: the rawsql loader joins a query's lines with spaces, so a mid-body `--` would comment out the rest, including the `;`.
 
--- Held only for the duration of `ensure_schema`'s transaction (`pg_advisory_xact_lock`,
--- auto-released on commit/rollback): serializes the DDL bundle across concurrently-starting
--- instances so their DROP/CREATE TRIGGER pairs (and CREATE OR REPLACE FUNCTION, REVOKE) can
--- never interleave. Independent of the per-instance_id session lock in select-audit-advisory-lock.
--- name: acquire-audit-schema-lock
-SELECT pg_advisory_xact_lock(hashtextextended('kms_audit_schema_bootstrap', 0));
-
 -- name: create-table-audit-events
 CREATE TABLE IF NOT EXISTS kms_audit_events (
     instance_id      TEXT        NOT NULL CHECK (length(instance_id) BETWEEN 1 AND 255),
@@ -71,7 +64,7 @@ DROP TRIGGER IF EXISTS kms_audit_no_truncate ON kms_audit_events;
 CREATE TRIGGER kms_audit_no_truncate BEFORE TRUNCATE ON kms_audit_events FOR EACH STATEMENT EXECUTE FUNCTION kms_audit_reject_mutation();
 
 -- name: create-audit-reject-sealed-insert
-CREATE OR REPLACE FUNCTION kms_audit_reject_sealed_insert() RETURNS trigger LANGUAGE plpgsql AS $BODY$ DECLARE active BIGINT; BEGIN SELECT active_generation INTO active FROM kms_audit_control WHERE instance_id = NEW.instance_id; IF active IS NOT NULL AND NEW.chain_generation <> active THEN RAISE EXCEPTION 'kms_audit_events: cannot insert into sealed or unknown generation % (active is %)', NEW.chain_generation, active USING ERRCODE = '23001'; END IF; RETURN NEW; END; $BODY$;
+CREATE OR REPLACE FUNCTION kms_audit_reject_sealed_insert() RETURNS trigger LANGUAGE plpgsql AS $BODY$ DECLARE active BIGINT; BEGIN SELECT active_generation INTO active FROM kms_audit_control WHERE instance_id = NEW.instance_id; IF active IS NOT NULL AND NEW.chain_generation <> active THEN RAISE EXCEPTION 'kms_audit_events: cannot insert into generation % because the active generation is %', NEW.chain_generation, active USING ERRCODE = '23001'; END IF; RETURN NEW; END; $BODY$;
 
 -- name: create-audit-trigger-no-insert-sealed
 DROP TRIGGER IF EXISTS kms_audit_no_insert_sealed ON kms_audit_events;
@@ -81,6 +74,9 @@ CREATE TRIGGER kms_audit_no_insert_sealed BEFORE INSERT ON kms_audit_events FOR 
 
 -- name: create-audit-revoke-mutations
 REVOKE UPDATE, DELETE, TRUNCATE ON kms_audit_events FROM PUBLIC;
+
+-- name: select-audit-enabled-guard-triggers
+SELECT tgname FROM pg_trigger WHERE tgrelid = 'kms_audit_events'::regclass AND NOT tgisinternal AND tgenabled IN ('O', 'A');
 
 -- name: select-audit-schema-columns
 SELECT instance_id, chain_generation, id, timestamp, operation, username, object_uid, algorithm, client_ip, result, duration_ms, request_id, details, prev_hash, row_hash FROM kms_audit_events LIMIT 0;
@@ -112,4 +108,3 @@ SELECT prev_hash, row_hash FROM kms_audit_events WHERE instance_id = $1 AND chai
 
 -- name: select-audit-generation-evidence
 SELECT id, 'v1' || '|' || encode(convert_to(instance_id, 'UTF8'), 'hex') || '|' || chain_generation || '|' || id || '|' || to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') || '|' || encode(convert_to(operation, 'UTF8'), 'hex') || '|' || encode(convert_to(username, 'UTF8'), 'hex') || '|' || COALESCE(encode(convert_to(object_uid, 'UTF8'), 'hex'), '-') || '|' || COALESCE(encode(convert_to(algorithm, 'UTF8'), 'hex'), '-') || '|' || COALESCE(encode(convert_to(client_ip, 'UTF8'), 'hex'), '-') || '|' || encode(convert_to(result, 'UTF8'), 'hex') || '|' || duration_ms || '|' || COALESCE(request_id::text, '-') || '|' || COALESCE(encode(convert_to(details, 'UTF8'), 'hex'), '-') || '|' || encode(prev_hash, 'hex') || '|' || encode(row_hash, 'hex') AS evidence_line FROM kms_audit_events WHERE instance_id = $1 AND chain_generation = $2 AND id > $3 ORDER BY id ASC LIMIT $4;
-

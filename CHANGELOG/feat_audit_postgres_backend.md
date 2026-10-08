@@ -25,3 +25,18 @@
 - The `PostgreSQL` audit connection now honors `sslmode=verify-ca`/`verify-full` (plus
   `sslrootcert`/`sslcert`/`sslkey`) the same way the main database connection does. Previously
   any non-`disable` `sslmode` silently skipped certificate verification.
+- When the `PostgreSQL` audit role has no DDL rights (hardened deployment), startup now also
+  verifies that the four append-only guard triggers on `kms_audit_events` exist and are enabled,
+  and refuses to start otherwise, instead of trusting the pre-provisioned schema.
+- Upgrading from 5.28.0 needs no migration: the object-store schema is unchanged, the
+  `PostgreSQL` audit tables are new and created on first connection, file audit logs keep the same
+  hash-chain format and resume in place, and every new configuration key is optional.
+
+## Testing
+
+### Audit
+
+- `mise run test:audit` now also runs the live `PostgreSQL` audit suite (`test:audit-postgres`).
+  It covers resume after a roll, consecutive rolls, the `unparsable` and `id_overflow` reasons, the
+  restricted `kms_audit_writer` role (self-provisioned by the tests), and an end-to-end
+  tamper → restart → seal-and-roll → `ckms audit verify` scenario against a real server.

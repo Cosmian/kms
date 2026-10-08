@@ -56,37 +56,33 @@ docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
   psql -U kms_audit -d kms_audit -v ON_ERROR_STOP=1 \
   -c "DROP TABLE IF EXISTS kms_audit_events, kms_audit_control CASCADE;"
 
-# Fails the task if a filter matched zero tests instead of letting Cargo's exit 0
-# hide it — a wrong test name/module path here would otherwise pass silently.
+# Cargo exits 0 when a name filter matches nothing; fail instead of passing silently.
 _require_tests_passed() {
-  local log="$1"
-  if ! grep -qE 'test result: ok\. [1-9][0-9]* passed' "${log}"; then
-    print_error "no tests were selected or passed — see ${log}"
-  fi
+  grep -qE 'test result: ok\. [1-9][0-9]* passed' "$1" ||
+    print_error "no tests were selected or passed — see $1"
 }
 
+# `--ignored` runs only #[ignore]d tests (those needing a live database). The trailing `audit`
+# is a name filter on the full test path, so EVERY ignored audit test in each crate runs —
+# including ones added later — while unrelated ignored PostgreSQL tests (object store,
+# mTLS, failover) are not selected. The restricted-role tests (`kms_audit_writer`)
+# provision their own role and grants.
 print_status "Running live unit tests: cosmian_kms_server_database..."
 _log_db="$(mktemp)"
-# Skipped: needs a properly provisioned restricted role and a fixed connection-URL
-# substitution (kms_audit_writer with the corrected kms_audit_events + kms_audit_control
-# grants) that this task doesn't set up yet — deferred, see
-# .agents/out/audit-postgres-fixes/PLAN.md Step 2.
-cargo test -p cosmian_kms_server_database --lib stores::audit "${FEATURES_FLAG[@]}" \
-  -- --ignored --test-threads=1 \
-  --skip pg_audit_connect_falls_back_to_column_check_without_ddl_rights \
-  2>&1 | tee "${_log_db}"
+cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1 audit 2>&1 | tee "${_log_db}"
 _require_tests_passed "${_log_db}"
 
 print_status "Running live unit tests: cosmian_kms_cli_actions..."
 _log_cli="$(mktemp)"
-cargo test -p cosmian_kms_cli_actions --lib actions::audit "${FEATURES_FLAG[@]}" \
-  -- --ignored --test-threads=1 2>&1 | tee "${_log_cli}"
+cargo test -p cosmian_kms_cli_actions --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1 audit 2>&1 | tee "${_log_cli}"
 _require_tests_passed "${_log_cli}"
 
 print_status "Running live acceptance test: cosmian_kms_server (real AuditStore::start_postgres controlling path)..."
 _log_server="$(mktemp)"
-cargo test -p cosmian_kms_server --lib core::audit::store::live_postgres_tests "${FEATURES_FLAG[@]}" \
-  -- --ignored --test-threads=1 2>&1 | tee "${_log_server}"
+cargo test -p cosmian_kms_server --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --test-threads=1 audit 2>&1 | tee "${_log_server}"
 _require_tests_passed "${_log_server}"
 
 print_status "Running end-to-end integration test (KMS server + ckms CLI)..."

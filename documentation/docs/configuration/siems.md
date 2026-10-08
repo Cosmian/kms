@@ -18,8 +18,8 @@ The KMS supports two integration models:
 | **File tailing** | SIEM agent tails the JSONL audit file directly | JSON | Yes |
 | **CEF export** | `ckms audit export` converts events to CEF on stdout | CEF v27 | Manual / scripted |
 
-> The audit trail itself is authoritative (see [Audit logs](./audit-logs.md)); CEF is a
-> serialisation view and does not include the hash-chain fields (`prev_hash`, `row_hash`).
+> The audit trail itself is authoritative (see [Audit logging](./audit-logs.md)); CEF is a
+> serialization view and does not include the hash-chain fields (`prev_hash`, `row_hash`).
 >
 > File tailing needs the file backend, since it reads the JSONL file directly. With the
 > PostgreSQL backend, export events with `ckms audit export --audit-postgres-url` instead, or
@@ -96,7 +96,9 @@ File-backed events have no embedded instance ID; configure a source tag for each
 ## File tailing (recommended for continuous ingestion)
 
 A SIEM agent monitors the JSONL audit file and forwards events as they are written. No format
-conversion is needed, and delivery state is tracked by the agent.
+conversion is needed, and delivery state is tracked by the agent. This model requires the
+[file backend](./audit-file-backend.md); with the PostgreSQL backend, use
+[CEF export](#cef-export-for-siems-requiring-cef-format) or query the database directly.
 
 ### Splunk
 
@@ -212,9 +214,10 @@ notes:
 Any log shipping agent that supports file tailing can forward the JSONL file. Configure
 the agent to:
 
-1. Monitor the audit file path (default: `/var/log/cosmian-kms/audit.jsonl`)
+1. Monitor the audit file path (the default is `<root-data-path>/audit.jsonl`; the examples on
+   this page use `/var/log/cosmian-kms/audit.jsonl`)
 2. Track file position (cursor) to avoid duplicate delivery
-3. Use a sourcetype or tag that your SIEM recognises as JSON
+3. Use a sourcetype or tag that your SIEM recognizes as JSON
 
 ---
 
@@ -306,7 +309,7 @@ These products ingest KMS **audit events** (JSONL file or CEF syslog).
 |---|---|---|
 | **rsyslog** | Syslog receiver | CEF lines delivered over TCP (RFC 6587 octet-counting); all events received intact |
 | **Fluent Bit 4.0** | Log shipper | JSONL audit file tailed continuously; all events forwarded; required fields present |
-| **Filebeat 8.17** | Log shipper | Audit JSONL shipped to Elasticsearch; ingest pipeline normalises `result`; all events indexed |
+| **Filebeat 8.17** | Log shipper | Audit JSONL shipped to Elasticsearch; ingest pipeline normalizes `result`; all events indexed |
 | **Elasticsearch 8.17** | Log store / SIEM backend | Events indexed with correct field mapping for both Success and Failure outcomes |
 
 #### Documented but not live-tested

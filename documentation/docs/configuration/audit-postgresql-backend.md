@@ -22,14 +22,19 @@ database's append-only grants.
 parameters as `--database-url`; see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls-mtls).
 
 The KMS creates its table on first connection, with triggers that reject `UPDATE`, `DELETE`, and
-`TRUNCATE` on it, even for the table owner. This runs again on every boot and self-heals an older
-table automatically.
+`TRUNCATE` on it. The table owner and any superuser can still disable these triggers with
+`ALTER TABLE … DISABLE TRIGGER`, so run the KMS with a role that does not own the table (see
+below) and rely on the hash chain, verified by `ckms audit verify`, to detect tampering by a
+privileged role. This runs again on every boot and self-heals an older table automatically.
 
 For a hardened deployment, a database administrator can provision both tables separately and grant
 the KMS role only `SELECT` and `INSERT` on `kms_audit_events`, plus `SELECT`, `INSERT`, and `UPDATE` on
 `kms_audit_control`, with no DDL rights; see
 [the exact schema](https://github.com/Cosmian/kms/blob/develop/crate/server_database/src/stores/audit/audit.sql).
-The KMS then skips schema creation and only checks that every required column is present.
+The KMS then skips schema creation and only checks that every required column is present and that
+the four append-only triggers (`kms_audit_no_update`, `kms_audit_no_delete`,
+`kms_audit_no_truncate`, `kms_audit_no_insert_sealed`) exist and are enabled; it refuses to start
+otherwise. Grants are not checked and remain the administrator's responsibility.
 
 ---
 
@@ -63,10 +68,14 @@ The KMS then skips schema creation and only checks that every required column is
     cosmian_kms
     ```
 
-| CLI flag               | Environment variable    | Required | Description                                                                                              |
-| ------------------------ | -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
-| `--audit-postgres-url` | `KMS_AUDIT_POSTGRES_URL` | Yes      | Connection URL for the audit database.                                                                  |
-| `--audit-instance-id`  | `KMS_AUDIT_INSTANCE_ID`  | Yes      | Identifies this instance's chain. See [Choosing an instance ID](#choosing-an-instance-id).              |
+| CLI flag               | Environment variable     | Required | Description                                                                                |
+| ---------------------- | ------------------------ | -------- | ------------------------------------------------------------------------------------------ |
+| `--audit-postgres-url` | `KMS_AUDIT_POSTGRES_URL` | Yes      | Connection URL for the audit database.                                                     |
+| `--audit-instance-id`  | `KMS_AUDIT_INSTANCE_ID`  | Yes      | Identifies this instance's chain. See [Choosing an instance ID](#choosing-an-instance-id). |
+
+These settings are specific to the PostgreSQL backend. For the settings shared with the file
+backend (channel capacity, failure mode, trusted proxies), see
+[Audit logging](./audit-logs.md#configuration).
 
 Setting `--audit-postgres-url` selects the PostgreSQL backend instead of the file backend, at
 configuration time, with no fallback between the two. If `--audit-file-path` is also set, it is
@@ -97,17 +106,11 @@ Content corruption does not block startup. A stable instance ID owns a sequence 
 generations, numbered from 0; only one generation accepts writes at a time, and older generations
 are never modified again. On startup, the KMS verifies the latest generation. If a row is found
 corrupted, that generation is sealed as-is and a fresh one starts with a row-0 `audit:reanchor`
-event, classifying the cause:
+event. The `reason` field classifies the cause (see
+[Reanchor reasons](./audit-events.md#reanchor-reasons)).
 
-| Reason          | Meaning                                                                   |
-| ---------------- | ---------------------------------------------------------------------------- |
-| `hash_mismatch` | A complete row whose own hash doesn't match its stored bytes.             |
-| `broken_link`   | A row that verifies on its own but doesn't chain to its predecessor.      |
-| `unparsable`    | A column doesn't decode as an audit event at all.                        |
-| `id_overflow`   | A valid tail row at the maximum event ID: continuing in place would overflow. |
-
-The reanchor event's `details` record which generation was sealed, the reason, and a digest of
-the sealed generation's content:
+The reanchor event's `details` also record which generation was sealed and a digest of the
+sealed generation's content:
 
 ```json
 {
@@ -120,7 +123,8 @@ the sealed generation's content:
 ```
 
 This is logged as an error; monitor for it the same way you would for a file-backend
-seal-and-roll (see [Audit events](./audit-events.md#system-events)).
+seal-and-roll (see [Audit events](./audit-events.md#system-events) and the
+[log reference](./log-reference.md)).
 
 ---
 
@@ -147,7 +151,10 @@ verified clean, and the command exits with code 1 if any failed.
 It does not yet check a reanchor's recorded evidence digest against the sealed generation's
 current content; reproduce that check manually (see below).
 
-See [ckms audit](../kms_clients/audit.md) for the full CLI reference.
+`ckms audit export` prints events in the shape described in [Audit events](./audit-events.md#fields),
+plus `instance_id` and `chain_generation`. With `--format cef` it produces [CEF](./cef-export.md),
+identifying each event by its instance and generation. See [ckms audit](../kms_clients/audit.md)
+for the full CLI reference.
 
 ---
 

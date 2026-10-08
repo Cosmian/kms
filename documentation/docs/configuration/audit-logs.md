@@ -114,11 +114,15 @@ instead of the normal KMIP response. The KMIP operation has already executed at 
 ## Verifying the trail
 
 ```bash
+# File backend
 ckms audit verify --path /var/log/cosmian-kms/audit.jsonl
+
+# PostgreSQL backend
+ckms audit verify --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit
 ```
 
-Exit code `0` means the chain is intact; `1` means a broken link, a tampered event, or altered or
-missing sealed evidence was found. See
+Exit code `0` means the chain is intact; `1` means a broken link or a tampered event was found,
+or, with the file backend, that sealed evidence is altered or missing. See
 [File backend](./audit-file-backend.md#verifying-a-file-or-a-directory) or
 [PostgreSQL backend](./audit-postgresql-backend.md#verifying-and-exporting) for the full set of
 options and sample output.

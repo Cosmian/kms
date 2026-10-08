@@ -42,9 +42,13 @@ OS crash or a power failure.
 When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.jsonl`.
 
 | CLI flag                      | Environment variable            | Default                        | Description                                                                                              |
-| ------------------------------- | --------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| ----------------------------- | ------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `--audit-file-path`           | `KMS_AUDIT_FILE_PATH`           | `<root-data-path>/audit.jsonl` | Absolute path to the JSONL audit log file. Parent directories are created automatically on first write. |
-| `--audit-file-max-size-bytes` | `KMS_AUDIT_FILE_MAX_SIZE_BYTES` | _(unlimited)_                   | Stops all further writes once the file reaches this many bytes. Must be greater than 0 when set.        |
+| `--audit-file-max-size-bytes` | `KMS_AUDIT_FILE_MAX_SIZE_BYTES` | _(unlimited)_                  | Stops all further writes once the file reaches this many bytes. Must be greater than 0 when set.         |
+
+These settings are specific to the file backend. For the settings shared with the PostgreSQL
+backend (channel capacity, failure mode, trusted proxies), see
+[Audit logging](./audit-logs.md#configuration).
 
 `--audit-file-max-size-bytes` is a write-stop cap, not rotation or retention: the KMS never
 deletes, truncates, or rolls the file on its own. Once the file reaches the cap, the event that
@@ -70,7 +74,7 @@ cause:
 | **Mid-chain tamper**                                  | Any row other than the last fails its own hash check or its link to the previous row. **Seal-and-roll** (below) — caught by the unconditional whole-chain scan that runs on every boot, not just a tail check.                                                                                                                                                     |
 | Last row is valid but missing its trailing newline    | Resumes in place; the missing newline is repaired before the next event is appended.                                                                                                                                                                                                                                                                               |
 | **Torn write**                                        | An incomplete trailing row, but the row before it (or genesis) is valid. The incomplete fragment is truncated away; an `audit:torn-write-recovered` event is appended recording the bytes discarded. The chain continues in place: no data loss beyond the incomplete row, which was never durably committed.                                                     |
-| **Tampered last row**                                 | Or structural garbage with no trustworthy fallback row. **Seal-and-roll**: the corrupted file is renamed aside as `<name>.<UTC-timestamp>.<8-hex>.corrupt.<ext>`, kept as forensic evidence and never modified or deleted by the KMS. A fresh chain starts at the original path with an `audit:reanchor` event as row 0, recording the sealed file's name, size, and SHA-256 in its `details` field. |
+| **Tampered last row**                                 | Or structural garbage with no trustworthy fallback row. **Seal-and-roll**: the corrupted file is renamed aside as `<name>.<UTC-timestamp>.<8-hex>.corrupt.<ext>`, kept as forensic evidence and never modified or deleted by the KMS. A fresh chain starts at the original path with an `audit:reanchor` event as row 0. Its `details` field records the sealed file's name (`sealed_file`), `sha256`, `size`, `claimed_last_id`, `failure_offset`, and `reason` (see [Reanchor reasons](./audit-events.md#reanchor-reasons)). |
 
 A torn write is the common case after an ungraceful restart (OOM kill, pod eviction, power loss)
 and is expected to happen periodically at fleet scale; it does not indicate tampering. See
@@ -143,10 +147,9 @@ See [ckms audit](../kms_clients/audit.md) for the full CLI reference.
 - Restrict read access to the KMS process user, authorized auditors, and collection services; the file contains usernames
   and operation details.
 - Give collection services read-only access through their own service accounts.
-- Retain audit files for the compliance window required by your frameworkThis includes sealed 
-`*.corrupt.jsonl` files left behind by a seal-and-roll recovery: they are forensic evidence, 
-never deleted automatically, and need
-  cleaning up as part of your retention process.
+- Retain audit files for the compliance window required by your framework. This includes sealed
+  `*.corrupt.jsonl` files left behind by a seal-and-roll recovery: they are forensic evidence,
+  never deleted automatically, and need cleaning up as part of your retention process.
 - Monitor for the recovery events in [Audit events](./audit-events.md#system-events) and the
   matching server log lines in the [log reference](./log-reference.md): they are the primary
   signal that a torn-write or seal-and-roll recovery happened.

@@ -11,10 +11,9 @@
 mod pgsql;
 mod row;
 
-pub use pgsql::{PgAuditReader, PgAuditSink};
-
 use std::sync::LazyLock;
 
+pub use pgsql::{PgAuditReader, PgAuditSink};
 use rawsql::Loader;
 
 const AUDIT_FILE_QUERIES: &str = include_str!("audit.sql");
@@ -73,6 +72,7 @@ mod tests {
             "create-audit-trigger-no-insert-sealed-create",
             "create-audit-revoke-mutations",
             "select-audit-schema-columns",
+            "select-audit-enabled-guard-triggers",
             "select-audit-advisory-lock",
             "lock-audit-schema-bootstrap",
             "insert-audit-event",

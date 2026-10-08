@@ -38,29 +38,28 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 /// dispatches to the Windows service entry point instead.
 ///
 /// The tokio runtime is sized to the available parallelism reported by the OS.
-#[allow(unsafe_code)]
 fn main() {
-    // SAFETY: this is the first statement executed in `main`, before any other thread
-    // (including the Tokio multi-thread runtime's own worker pool, built immediately
-    // below, and later the actix-server acceptor/worker threads) is spawned. Rust's std
-    // reads `RUST_MIN_STACK` exactly once, on the first-ever thread spawn in the
-    // process, and caches it in a process-global static (see
-    // library/std/src/thread/lifecycle.rs `spawn_unchecked`); there is no concurrent
-    // access to the environment at this point, so this call is sound. actix-server
-    // (pinned at 2.6.0) spawns its acceptor and worker OS threads via a bare
+    // Raise the default stack size of every std-spawned thread. actix-server (pinned at
+    // 2.6.0) spawns its acceptor and worker OS threads via a bare
     // `std::thread::Builder::spawn` with no `.stack_size()` override and exposes no API
-    // to configure one, so this is the only lever to give those threads a larger stack;
-    // deep KMIP/TTLV + middleware call chains under concurrent load otherwise overflow
-    // the small platform default stack (observed: "actix-server worker N ... stack
-    // overflow" under >16 concurrent clients).
+    // to configure one, so `RUST_MIN_STACK` is the only lever; deep KMIP/TTLV + middleware
+    // call chains under concurrent load otherwise overflow the small platform default
+    // stack (observed: "actix-server worker N ... stack overflow" under >16 concurrent
+    // clients).
     //
     // This minimum applies to *every* std-spawned thread without an explicit stack size,
     // including each actix worker's Tokio blocking pool (where HSM PKCS#11 calls run via
     // `spawn_blocking`; ~512 threads in total by default). Stacks are reserved as virtual
     // memory and only committed on use, so the resident cost is unchanged, but hosts that
-    // cap address space (`ulimit -v`, `RLIMIT_AS`) must budget for it. Operators can set
+    // cap address space (`ulimit -v`, `RLIMIT_AS`) must budget for it. The variable is
+    // also inherited by every child process this server spawns. Operators can set
     // `RUST_MIN_STACK` explicitly to override this default.
     if std::env::var_os("RUST_MIN_STACK").is_none() {
+        // SAFETY: this runs before any other thread (including the Tokio multi-thread
+        // runtime's worker pool, built below, and later the actix-server threads) exists,
+        // so nothing can read or write the environment concurrently. Rust's std reads
+        // `RUST_MIN_STACK` once, on the first-ever thread spawn, so it must be set here.
+        #[allow(unsafe_code)]
         unsafe {
             std::env::set_var("RUST_MIN_STACK", (16 * 1024 * 1024).to_string());
         }

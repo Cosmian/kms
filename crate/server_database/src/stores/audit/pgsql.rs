@@ -79,6 +79,14 @@ fn pg_error_detail(e: &tokio_postgres::Error) -> String {
 /// for a fresh connection after a failover kills the current one.
 const AUDIT_POOL_SIZE: usize = 1;
 
+/// Append-only guard triggers that must exist and be enabled on `kms_audit_events`.
+const REQUIRED_GUARD_TRIGGERS: [&str; 4] = [
+    "kms_audit_no_update",
+    "kms_audit_no_delete",
+    "kms_audit_no_truncate",
+    "kms_audit_no_insert_sealed",
+];
+
 /// How long [`PgAuditSink::connect`] waits for a stale writer's advisory lock to be
 /// released before giving up — covers a rolling update where the outgoing instance's
 /// `PostgreSQL` session (and its lock) hasn't ended yet when the incoming instance starts,
@@ -272,12 +280,14 @@ impl PgAuditSink {
     /// A hardened production deployment whose KMS role has only `SELECT`/`INSERT` on
     /// `kms_audit_events` and `SELECT`/`INSERT`/`UPDATE` on `kms_audit_control`, both owned
     /// by someone else, gets a permission-denied error here (`SQLSTATE 42501`) — expected,
-    /// not fatal: falls back to a read-only check that every required column is present,
-    /// trusting the documented setup SQL to have configured triggers/constraints correctly.
+    /// not fatal: falls back to a read-only check that every required column is present
+    /// and that the append-only guard triggers exist and are enabled. Grants (`REVOKE`)
+    /// are not verified and remain the administrator's responsibility.
     ///
     /// # Errors
     /// Returns an error if a non-permission DDL failure occurs, or if the read-only
-    /// fallback check finds a required column missing.
+    /// fallback check finds a required column missing or an append-only trigger
+    /// missing or disabled.
     async fn ensure_schema(pool: &Pool) -> DbResult<()> {
         let statements = [
             // Must stay first: every DDL statement below runs under this lock.
@@ -315,7 +325,7 @@ impl PgAuditSink {
                     .is_some_and(|db| *db.code() == SqlState::INSUFFICIENT_PRIVILEGE) =>
             {
                 tx.rollback().await.map_err(DbError::from)?;
-                Self::verify_schema_columns(&client).await
+                Self::verify_provisioned_schema(&client).await
             }
             Err(e) => Err(DbError::from(e)),
         }
@@ -333,10 +343,13 @@ impl PgAuditSink {
         Ok(())
     }
 
-    /// Read-only fallback for [`Self::ensure_schema`] when the role lacks DDL rights: a
-    /// zero-row `SELECT` fails to parse (and therefore errors) if any required column is
-    /// missing, without needing to mutate anything.
-    async fn verify_schema_columns(client: &deadpool_postgres::Object) -> DbResult<()> {
+    /// Read-only fallback for [`Self::ensure_schema`] when the role lacks DDL rights.
+    ///
+    /// Checks that every required column exists (a zero-row `SELECT` fails to parse
+    /// otherwise) and that the four append-only guard triggers are present and enabled,
+    /// so a pre-provisioned schema missing its enforcement is refused at startup instead
+    /// of silently accepted.
+    async fn verify_provisioned_schema(client: &deadpool_postgres::Object) -> DbResult<()> {
         client
             .query(get_audit_query!("select-audit-schema-columns"), &[])
             .await
@@ -347,6 +360,24 @@ impl PgAuditSink {
                      privileged role first."
                 ))
             })?;
+        let enabled = client
+            .query(get_audit_query!("select-audit-enabled-guard-triggers"), &[])
+            .await
+            .map_err(DbError::from)?
+            .iter()
+            .map(|row| row.try_get::<_, String>(0).map_err(DbError::from))
+            .collect::<DbResult<Vec<String>>>()?;
+        let missing: Vec<&str> = REQUIRED_GUARD_TRIGGERS
+            .into_iter()
+            .filter(|name| !enabled.iter().any(|t| t == name))
+            .collect();
+        if !missing.is_empty() {
+            return Err(db_error!(
+                "audit: kms_audit_events is missing or has disabled append-only trigger(s) \
+                 {missing:?} and this role cannot create them. Run the documented audit \
+                 setup SQL as a privileged role first."
+            ));
+        }
         Ok(())
     }
 
@@ -1468,6 +1499,167 @@ mod live_tests {
             .expect("insert into the active generation must still succeed");
     }
 
+    /// A restart after a roll must resume the new generation in place (no second roll), and
+    /// a later corruption of that generation must roll again to generation 2 while
+    /// generations 0 and 1 stay byte-for-byte untouched.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_resume_after_roll_then_roll_again() {
+        let instance_id = unique_instance_id("seal-roll-twice");
+        let url = audit_url();
+
+        drop(seed_generation_zero(&url, &instance_id).await);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await;
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink.resume().await.unwrap();
+        assert_eq!(head.next_id, 1);
+        let ev1 = make_event(1, head.prev_hash);
+        sink.write_event_atomic(&ev1).await.unwrap();
+        drop(sink);
+
+        // Restart on a clean generation 1: resume in place, no second roll.
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink.resume().await.unwrap();
+        assert_eq!(head.next_id, 2, "must resume generation 1, not roll again");
+        assert_eq!(head.prev_hash, ev1.row_hash);
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        assert_eq!(
+            reader.list_generations(&instance_id).await.unwrap(),
+            vec![0, 1]
+        );
+        drop(sink);
+
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 1 AND id = 1",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await;
+        let gen0_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        let gen1_before = reader.events_page(&instance_id, 1, -1).await.unwrap();
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink.resume().await.unwrap();
+        assert_eq!(
+            head.next_id, 1,
+            "second roll must anchor generation 2 at id=1"
+        );
+        assert_eq!(
+            reader.list_generations(&instance_id).await.unwrap(),
+            vec![0, 1, 2]
+        );
+
+        let gen2 = reader.events_page(&instance_id, 2, -1).await.unwrap();
+        assert_eq!(gen2.len(), 1);
+        assert_eq!(gen2[0].operation, "audit:reanchor");
+        let details: serde_json::Value =
+            serde_json::from_str(gen2[0].details.as_deref().unwrap()).unwrap();
+        assert_eq!(details["sealed_generation"], 1);
+        assert_eq!(details["new_generation"], 2);
+        assert_eq!(details["first_failure_id"], 1);
+        assert_eq!(details["reason"], "hash_mismatch");
+
+        for (name, before, generation) in [("0", &gen0_before, 0), ("1", &gen1_before, 1)] {
+            let after = reader
+                .events_page(&instance_id, generation, -1)
+                .await
+                .unwrap();
+            assert_eq!(before.len(), after.len(), "generation {name} changed size");
+            for (b, a) in before.iter().zip(after.iter()) {
+                assert_eq!(b.row_hash, a.row_hash, "generation {name} was modified");
+            }
+        }
+    }
+
+    /// A row whose columns cannot be decoded as an `AuditEvent` seals the generation with
+    /// reason `unparsable` (the case `hash_mismatch`/`broken_link` tests cannot reach).
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_seal_and_roll_recovers_unparsable_row() {
+        let instance_id = unique_instance_id("seal-roll-unparsable");
+        let url = audit_url();
+
+        drop(seed_generation_zero(&url, &instance_id).await);
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET result = 'invalid-result' WHERE instance_id = $1 \
+             AND chain_generation = 0 AND id = 1",
+            &[&instance_id],
+        )
+        .await;
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink
+            .resume()
+            .await
+            .expect("unparsable rows must roll, not abort");
+        assert_eq!(head.next_id, 1);
+
+        // Restore the row: the database is shared, and an unparsable row would fail every
+        // unfiltered export of all instances (e.g. the CLI export tests).
+        tamper_row(
+            &url,
+            "UPDATE kms_audit_events SET result = 'Success' WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 1",
+            &[&instance_id],
+        )
+        .await;
+
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let gen1 = reader.events_page(&instance_id, 1, -1).await.unwrap();
+        assert_eq!(gen1.len(), 1);
+        let details: serde_json::Value =
+            serde_json::from_str(gen1[0].details.as_deref().unwrap()).unwrap();
+        assert_eq!(details["reason"], "unparsable");
+        assert_eq!(details["first_failure_id"], 1);
+        assert_eq!(details["sealed_generation"], 0);
+    }
+
+    /// A valid, correctly linked tail row with `id == i64::MAX` cannot be continued in
+    /// place (the next id would overflow): it must seal and roll with reason `id_overflow`.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_seal_and_roll_recovers_id_overflow() {
+        let instance_id = unique_instance_id("seal-roll-overflow");
+        let url = audit_url();
+
+        drop(seed_generation_zero(&url, &instance_id).await);
+        let reader = PgAuditReader::connect(&url).await.unwrap();
+        let tail_hash = reader
+            .events_page(&instance_id, 0, -1)
+            .await
+            .unwrap()
+            .last()
+            .unwrap()
+            .row_hash;
+        raw_insert_event(&url, &instance_id, 0, &make_event(i64::MAX, tail_hash))
+            .await
+            .unwrap();
+
+        let mut sink = PgAuditSink::connect(&url, &instance_id).await.unwrap();
+        let head = sink
+            .resume()
+            .await
+            .expect("id overflow must roll, not abort");
+        assert_eq!(head.next_id, 1);
+
+        let gen1 = reader.events_page(&instance_id, 1, -1).await.unwrap();
+        assert_eq!(gen1.len(), 1);
+        let details: serde_json::Value =
+            serde_json::from_str(gen1[0].details.as_deref().unwrap()).unwrap();
+        assert_eq!(details["reason"], "id_overflow");
+        assert_eq!(details["first_failure_id"], i64::MAX);
+        assert_eq!(details["sealed_generation"], 0);
+    }
+
     /// A brand-new instance's control row must be initialized to generation 0 before
     /// `resume()` returns, so the first write is never blocked by its own bootstrap.
     #[tokio::test]
@@ -1651,25 +1843,54 @@ mod live_tests {
         );
     }
 
+    /// Swaps the credentials of `base` for the restricted `kms_audit_writer` role (see
+    /// [`provision_restricted_writer`]), keeping the same scheme, host, port, database and
+    /// query parameters.
+    fn restricted_writer_url(base: &str) -> String {
+        let scheme_end = base.find("://").expect("audit URL has a scheme") + 3;
+        let at = base.find('@').expect("audit URL has credentials");
+        format!(
+            "{}kms_audit_writer:writer_pw{}",
+            &base[..scheme_end],
+            &base[at..]
+        )
+    }
+
+    /// Idempotently provisions the hardened-deployment role: `SELECT`/`INSERT` on
+    /// `kms_audit_events`, `SELECT`/`INSERT`/`UPDATE` on `kms_audit_control`, no DDL, no
+    /// ownership. Connecting as the owner first guarantees the schema exists so the `GRANT`s
+    /// have tables to target (the task drops them before every run).
+    async fn provision_restricted_writer(owner_url: &str) {
+        drop(
+            PgAuditSink::connect(owner_url, &unique_instance_id("provision"))
+                .await
+                .unwrap(),
+        );
+        raw_client(owner_url)
+            .await
+            .batch_execute(
+                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = \
+                 'kms_audit_writer') THEN CREATE ROLE kms_audit_writer LOGIN PASSWORD \
+                 'writer_pw'; END IF; END $$; \
+                 REVOKE ALL ON kms_audit_events, kms_audit_control FROM kms_audit_writer; \
+                 GRANT SELECT, INSERT ON kms_audit_events TO kms_audit_writer; \
+                 GRANT SELECT, INSERT, UPDATE ON kms_audit_control TO kms_audit_writer;",
+            )
+            .await
+            .unwrap();
+    }
+
     /// Simulates a hardened production deployment where the KMS role has only
     /// `SELECT`/`INSERT` on `kms_audit_events` and `SELECT`/`INSERT`/`UPDATE` on
     /// `kms_audit_control`, both owned by someone else: `ensure_schema`'s DDL bundle must
-    /// fail with `SQLSTATE 42501` and fall back to the read-only column check instead of
-    /// aborting `connect()`.
-    ///
-    /// Requires a companion role `kms_audit_writer` (password `writer_pw`) granted only
-    /// that set — set up by the documented production audit setup SQL, or manually for
-    /// this test:
-    /// `CREATE ROLE kms_audit_writer LOGIN PASSWORD 'writer_pw'; GRANT SELECT, INSERT ON
-    /// kms_audit_events TO kms_audit_writer; GRANT SELECT, INSERT, UPDATE ON
-    /// kms_audit_control TO kms_audit_writer;`
+    /// fail with `SQLSTATE 42501` and fall back to the read-only schema check instead of
+    /// aborting `connect()`. The role is provisioned by the test itself.
     #[tokio::test]
-    #[ignore = "Requires a running PostgreSQL instance and a pre-provisioned restricted \
-                kms_audit_writer role (see doc comment)"]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
     async fn pg_audit_connect_falls_back_to_column_check_without_ddl_rights() {
         let base_url = audit_url();
-        // Swap in the restricted role's credentials, keeping the same host/port/database.
-        let restricted_url = base_url.replacen("kms:kms", "kms_audit_writer:writer_pw", 1);
+        provision_restricted_writer(&base_url).await;
+        let restricted_url = restricted_writer_url(&base_url);
 
         let result = PgAuditSink::connect(&restricted_url, &unique_instance_id("no-ddl")).await;
         assert!(
@@ -1677,6 +1898,93 @@ mod live_tests {
             "connect() must fall back to a read-only column check, not fail, when the \
              role lacks DDL rights on an already-correct schema: {:?}",
             result.err()
+        );
+    }
+
+    /// The restricted role must be able to run the whole writer lifecycle — resume, write,
+    /// and a seal-and-roll — using only its documented grants (no UPDATE on the events
+    /// table, no DDL), and must not be able to mutate or delete sealed evidence.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_restricted_writer_can_write_and_roll_but_not_mutate() {
+        let owner_url = audit_url();
+        provision_restricted_writer(&owner_url).await;
+        let writer_url = restricted_writer_url(&owner_url);
+        let instance_id = unique_instance_id("restricted-roll");
+
+        drop(seed_generation_zero(&writer_url, &instance_id).await);
+        tamper_row(
+            &owner_url,
+            "UPDATE kms_audit_events SET row_hash = $2 WHERE instance_id = $1 AND \
+             chain_generation = 0 AND id = 2",
+            &[&instance_id, &vec![0_u8; 32]],
+        )
+        .await;
+
+        let reader = PgAuditReader::connect(&owner_url).await.unwrap();
+        let sealed_before = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        let mut sink = PgAuditSink::connect(&writer_url, &instance_id)
+            .await
+            .unwrap();
+        let head = sink
+            .resume()
+            .await
+            .expect("a restricted writer must be able to seal and roll");
+        assert_eq!(head.next_id, 1);
+        let sealed_after = reader.events_page(&instance_id, 0, -1).await.unwrap();
+        assert_eq!(sealed_before.len(), sealed_after.len());
+
+        let writer = raw_client(&writer_url).await;
+        for sql in [
+            "UPDATE kms_audit_events SET operation = 'x' WHERE instance_id = $1",
+            "DELETE FROM kms_audit_events WHERE instance_id = $1",
+        ] {
+            let err = writer
+                .execute(sql, &[&instance_id])
+                .await
+                .expect_err("the restricted role must not be able to mutate audit rows");
+            assert_eq!(
+                err.as_db_error().map(|e| e.code().code().to_owned()),
+                Some("42501".to_owned()),
+                "{sql}: expected permission denied, got {err}"
+            );
+        }
+        let err = writer
+            .batch_execute("TRUNCATE kms_audit_events")
+            .await
+            .expect_err("the restricted role must not be able to truncate the audit table");
+        assert_eq!(
+            err.as_db_error().map(|e| e.code().code().to_owned()),
+            Some("42501".to_owned()),
+            "{err}"
+        );
+    }
+
+    /// A restricted role (no DDL rights) must refuse to start when a pre-provisioned schema
+    /// has an append-only trigger disabled.
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_restricted_connect_refuses_disabled_guard_trigger() {
+        let base_url = audit_url();
+        provision_restricted_writer(&base_url).await;
+        let restricted_url = restricted_writer_url(&base_url);
+        let raw = raw_client(&base_url).await;
+
+        raw.batch_execute("ALTER TABLE kms_audit_events DISABLE TRIGGER kms_audit_no_delete;")
+            .await
+            .unwrap();
+        let result = PgAuditSink::connect(&restricted_url, &unique_instance_id("no-trigger")).await;
+        // Re-enable before asserting so a failure cannot leave the shared table unguarded.
+        raw.batch_execute("ALTER TABLE kms_audit_events ENABLE TRIGGER kms_audit_no_delete;")
+            .await
+            .unwrap();
+
+        let err = result
+            .err()
+            .expect("connect() must refuse a disabled guard trigger");
+        assert!(
+            err.to_string().contains("kms_audit_no_delete"),
+            "error must name the disabled trigger: {err}"
         );
     }
 
