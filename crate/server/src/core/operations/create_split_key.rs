@@ -174,7 +174,7 @@ pub(crate) async fn create_split_key(
         .rng
         .random_vec(32)
         .map_err(|e| KmsError::InvalidRequest(format!("KMS RNG failed: {e}")))?;
-    let mut seed_array = [0u8; 32];
+    let mut seed_array = [0_u8; 32];
     seed_array.copy_from_slice(&seed_bytes);
     let mut rng = ChaCha20Rng::from_seed(seed_array);
 

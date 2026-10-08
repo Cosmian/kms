@@ -8,7 +8,7 @@ use crate::error::CryptoError;
 
 /// Unified, thread-safe NIST-compliant KMS RNG implementation.
 ///
-/// `KmsRng` wraps OpenSSL's DRBG (CTR-DRBG or Hash_DRBG depending on provider)
+/// `KmsRng` wraps OpenSSL's DRBG (`CTR-DRBG` or `Hash_DRBG` depending on provider)
 /// and provides a thread-safe interface for cryptographic random number generation.
 ///
 /// This struct should be instantiated once during KMS startup and shared
@@ -18,7 +18,7 @@ use crate::error::CryptoError;
 /// - Nonce/IV generation
 /// - Split keys
 /// - Certificate serial numbers
-/// - KMIP RNG operations (RNGRetrieve, RNGSeed)
+/// - KMIP RNG operations (`RNGRetrieve`, `RNGSeed`)
 /// - PQC key generation seeding
 ///
 /// # Thread Safety
@@ -29,11 +29,17 @@ use crate::error::CryptoError;
 ///
 /// # Conformance
 ///
-/// - NIST SP 800-90B/90C: Approved entropy source with CTR-DRBG or Hash_DRBG
-/// - NIST SP 800-133r3: Deterministic seeding via `reseed` for RNGSeed operations
+/// - NIST SP 800-90B/90C: Approved entropy source with `CTR-DRBG` or `Hash_DRBG`
+/// - NIST SP 800-133r3: Deterministic seeding via `reseed` for `RNGSeed` operations
 /// - FIPS 140-3: Compliant with IG 9.3.A, IG D.J, IG D.K
 pub struct KmsRng {
-    _state: Mutex<()>,
+    state: Mutex<()>,
+}
+
+impl Default for KmsRng {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KmsRng {
@@ -41,10 +47,11 @@ impl KmsRng {
     ///
     /// This initializes the wrapper around OpenSSL's DRBG. No manual seeding
     /// is performed here; OpenSSL's automatic seeding mechanisms are used.
-    pub fn new() -> Result<Self, CryptoError> {
-        Ok(Self {
-            _state: Mutex::new(()),
-        })
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            state: Mutex::new(()),
+        }
     }
 
     /// Fill a buffer with cryptographically random bytes.
@@ -55,14 +62,15 @@ impl KmsRng {
     ///
     /// # Errors
     ///
-    /// Returns `CryptoError` if OpenSSL's RAND_bytes fails
+    /// Returns `CryptoError` if OpenSSL's `RAND_bytes` fails
     /// (e.g., insufficient entropy).
     pub fn fill_bytes(&self, dest: &mut [u8]) -> Result<(), CryptoError> {
-        let _guard = self
-            ._state
+        let guard = self
+            .state
             .lock()
-            .map_err(|_| CryptoError::Default("Failed to acquire RNG lock".to_string()))?;
+            .map_err(|e| CryptoError::Default(format!("Failed to acquire RNG lock: {e}")))?;
         rand_bytes(dest).map_err(CryptoError::from)?;
+        drop(guard);
         Ok(())
     }
 
@@ -75,7 +83,7 @@ impl KmsRng {
     ///
     /// Returns `CryptoError` if random byte generation fails.
     pub fn random_vec(&self, len: usize) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-        let mut buf = Zeroizing::new(vec![0u8; len]);
+        let mut buf = Zeroizing::new(vec![0_u8; len]);
         self.fill_bytes(&mut buf)?;
         Ok(buf)
     }
@@ -101,88 +109,101 @@ impl KmsRng {
         if seed.is_empty() {
             return Ok(());
         }
-        let _guard = self
-            ._state
+        let guard = self
+            .state
             .lock()
-            .map_err(|_| CryptoError::Default("Failed to acquire RNG lock".to_string()))?;
-        // SAFETY: RAND_add accepts a pointer to bytes and length, and entropy estimate.
-        // We pass seed.as_ptr() (valid reference), seed.len() (correct length as i32),
-        // and seed.len() as the entropy estimate (1.0 bit per byte). OpenSSL manages its
-        // own state and will not dereference beyond the provided length.
+            .map_err(|e| CryptoError::Default(format!("Failed to acquire RNG lock: {e}")))?;
+        let seed_len_i32 = i32::try_from(seed.len())
+            .map_err(|e| CryptoError::Default(format!("seed length exceeds i32: {e}")))?;
+        #[expect(clippy::as_conversions, clippy::cast_precision_loss)]
+        let entropy_estimate = seed.len() as f64;
+        // SAFETY: RAND_add accepts a pointer to bytes, a valid length, and an entropy estimate.
+        // seed is a valid byte slice; seed.as_ptr() is non-null and valid for seed.len() bytes.
         unsafe {
             RAND_add(
-                seed.as_ptr() as *const std::ffi::c_void,
-                seed.len() as i32,
-                seed.len() as f64,
+                seed.as_ptr().cast::<std::ffi::c_void>(),
+                seed_len_i32,
+                entropy_estimate,
             );
         }
+        drop(guard);
         Ok(())
     }
 }
 
+#[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_kms_rng_new() {
+    fn test_kms_rng_new() -> Result<(), CryptoError> {
         let rng = KmsRng::new();
-        assert!(rng.is_ok());
-    }
-
-    #[test]
-    fn test_fill_bytes() {
-        let rng = KmsRng::new().expect("KmsRng creation failed");
-        let mut buf = [0u8; 32];
-        let result = rng.fill_bytes(&mut buf);
-        assert!(result.is_ok());
+        let mut buf = [0_u8; 16];
+        rng.fill_bytes(&mut buf)?;
         assert!(buf.iter().any(|&b| b != 0));
+        Ok(())
     }
 
     #[test]
-    fn test_random_vec() {
-        let rng = KmsRng::new().expect("KmsRng creation failed");
-        let result = rng.random_vec(32);
-        assert!(result.is_ok());
-        let vec = result.unwrap();
+    fn test_fill_bytes() -> Result<(), CryptoError> {
+        let rng = KmsRng::new();
+        let mut buf = [0_u8; 32];
+        rng.fill_bytes(&mut buf)?;
+        assert!(buf.iter().any(|&b| b != 0));
+        Ok(())
+    }
+
+    #[test]
+    fn test_random_vec() -> Result<(), CryptoError> {
+        let rng = KmsRng::new();
+        let vec = rng.random_vec(32)?;
         assert_eq!(vec.len(), 32);
         assert!(vec.iter().any(|&b| b != 0));
+        Ok(())
     }
 
     #[test]
-    fn test_reseed() {
-        let rng = KmsRng::new().expect("KmsRng creation failed");
+    fn test_reseed() -> Result<(), CryptoError> {
+        let rng = KmsRng::new();
         let seed = b"test_seed_32_bytes_exactly______";
-        let result = rng.reseed(seed);
-        assert!(result.is_ok());
+        rng.reseed(seed)?;
+        Ok(())
     }
 
     #[test]
-    fn test_reseed_empty() {
-        let rng = KmsRng::new().expect("KmsRng creation failed");
-        let result = rng.reseed(b"");
-        assert!(result.is_ok());
+    fn test_reseed_empty() -> Result<(), CryptoError> {
+        let rng = KmsRng::new();
+        rng.reseed(b"")?;
+        Ok(())
     }
 
     #[test]
-    fn test_thread_safety() {
-        let rng = std::sync::Arc::new(KmsRng::new().expect("KmsRng creation failed"));
+    fn test_thread_safety() -> Result<(), Box<dyn std::error::Error>> {
+        let rng = std::sync::Arc::new(KmsRng::new());
         let mut handles = vec![];
 
         for _ in 0..4 {
             let rng_clone = rng.clone();
             let handle = std::thread::spawn(move || {
-                let mut buf = [0u8; 16];
+                let mut buf = [0_u8; 16];
                 for _ in 0..10 {
-                    rng_clone.fill_bytes(&mut buf).expect("fill_bytes failed");
+                    rng_clone
+                        .fill_bytes(&mut buf)
+                        .map_err(|e| format!("{e:?}"))?;
                     assert!(buf.iter().any(|&b| b != 0));
                 }
+                Ok::<(), String>(())
             });
             handles.push(handle);
         }
 
         for handle in handles {
-            handle.join().expect("thread panicked");
+            let thread_res = handle
+                .join()
+                .map_err(|e| format!("thread panicked: {e:?}"))?;
+            thread_res.map_err(|e| format!("worker thread error: {e}"))?;
         }
+        Ok(())
     }
 }

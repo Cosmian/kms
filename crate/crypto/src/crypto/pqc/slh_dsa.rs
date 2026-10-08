@@ -16,6 +16,7 @@ use crate::{crypto::KeyPair, error::CryptoError};
 ///
 /// If `rng` is provided, it ensures the keygen draws from an NIST-compliant
 /// entropy source (ESV-validated DRBG) per NIST SP 800-90B/C and FIPS 140-3 IG.
+#[expect(clippy::too_many_arguments)]
 pub fn create_slh_dsa_key_pair(
     algorithm: CryptographicAlgorithm,
     vendor_id: &str,

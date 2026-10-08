@@ -308,7 +308,7 @@ impl KMS {
         };
 
         // Instantiate the unified KMS RNG.
-        let rng = Arc::new(KmsRng::new()?);
+        let rng = Arc::new(KmsRng::new());
 
         Ok(Self {
             params: server_params.clone(),

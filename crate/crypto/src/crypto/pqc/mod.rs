@@ -747,7 +747,7 @@ mod tests {
 
     #[test]
     fn generate_pqc_seed_produces_entropy() {
-        let rng = super::super::KmsRng::new().expect("KmsRng init");
+        let rng = super::super::KmsRng::new();
 
         // Generate a 32-byte seed (typical for ML-KEM per FIPS 203)
         let seed_32 = generate_pqc_seed(&rng, 32).expect("seed generation");
@@ -769,15 +769,15 @@ mod tests {
         let seed_a = generate_pqc_seed(&rng, 32).expect("seed a");
         let seed_b = generate_pqc_seed(&rng, 32).expect("seed b");
         assert_ne!(
-            seed_a.as_ref() as &[u8],
-            seed_b.as_ref() as &[u8],
+            seed_a.as_slice(),
+            seed_b.as_slice(),
             "consecutive seeds must differ"
         );
     }
 
     #[test]
     fn generate_pqc_seed_zeroizes_on_drop() {
-        let rng = super::super::KmsRng::new().expect("KmsRng init");
+        let rng = super::super::KmsRng::new();
 
         // This test verifies that Zeroizing works by creating a seed and
         // allowing it to be dropped. The actual memory zeroization is
