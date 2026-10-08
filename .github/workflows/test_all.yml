@@ -279,7 +279,7 @@ jobs:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
     # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
-    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm) run in the `hsm-upstream` job.
+    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
     concurrency:
       group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
       queue: max
@@ -342,9 +342,10 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          - aws-cloudhsm
+          # - aws-cloudhsm # This non-free service has been disabled on october 2026
+          # - gcp-cloud-hsm # This non-free service has been disabled on october 2026
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
-        # sufficient for crypt2pay, and aws-cloudhsm FIPS-mode compatibility is not yet
+        # sufficient for crypt2pay, gcp-cloud-hsm and aws-cloudhsm FIPS-mode compatibility is not yet
         # confirmed against the cluster's supported mechanism list.
         features: [non-fips]
 
