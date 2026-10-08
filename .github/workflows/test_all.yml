@@ -242,10 +242,6 @@ jobs:
             features: fips
           - type: secret_azure
             features: fips
-          # Not required until FIPS-mode compatibility is confirmed against the cluster's
-          # supported mechanism list - testing non-fips is sufficient for now
-          - hsm-type: aws-cloudhsm
-            features: fips
 
     steps:
       - uses: actions/checkout@v7
