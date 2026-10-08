@@ -337,6 +337,7 @@ pub(crate) async fn set_attribute(
             owm.id()
         );
         kms.database.set_key_label(owm.id(), &label).await?;
+        kms.database.invalidate_rotate_name_cache(&rotate_name);
     } else if let Some(interval_secs) = hsm_rotate_interval_secs {
         // CKA_START_DATE / CKA_END_DATE are PKCS#11 CK_DATE fields (year/month/day only —
         // no sub-day precision).  These dates ARE the scheduling signal used by

@@ -415,12 +415,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         tokio::task::spawn_blocking(move || {
             let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
-            let metadata = session
+            let metadata = if let Some(meta) = session
                 .session()?
-                .get_signing_key_metadata(handle)?
-                .ok_or_else(|| {
-                    InterfaceError::InvalidRequest("Sign: key not found on the HSM".to_owned())
-                })?;
+                .object_handles_cache()
+                .get_metadata(handle)?
+            {
+                meta
+            } else {
+                let meta = session
+                    .session()?
+                    .get_signing_key_metadata(handle)?
+                    .ok_or_else(|| {
+                        InterfaceError::InvalidRequest("Sign: key not found on the HSM".to_owned())
+                    })?;
+                session
+                    .session()?
+                    .object_handles_cache()
+                    .insert_metadata(handle, meta.clone())?;
+                meta
+            };
             let algorithm = resolve_algorithm(&metadata)?;
             let result = session.session()?.sign(handle, algorithm.into(), &data)?;
             session.checkin();
@@ -454,14 +467,27 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         tokio::task::spawn_blocking(move || {
             let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
-            let metadata = session
+            let metadata = if let Some(meta) = session
                 .session()?
-                .get_signing_key_metadata(handle)?
-                .ok_or_else(|| {
-                    InterfaceError::InvalidRequest(
-                        "SignatureVerify: key not found on the HSM".to_owned(),
-                    )
-                })?;
+                .object_handles_cache()
+                .get_metadata(handle)?
+            {
+                meta
+            } else {
+                let meta = session
+                    .session()?
+                    .get_signing_key_metadata(handle)?
+                    .ok_or_else(|| {
+                        InterfaceError::InvalidRequest(
+                            "SignatureVerify: key not found on the HSM".to_owned(),
+                        )
+                    })?;
+                session
+                    .session()?
+                    .object_handles_cache()
+                    .insert_metadata(handle, meta.clone())?;
+                meta
+            };
             let algorithm = resolve_algorithm(&metadata)?;
             let result = session
                 .session()?
