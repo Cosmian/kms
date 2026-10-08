@@ -184,6 +184,7 @@ nav:
       - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
       - HSM Delegated Crypto: benchmarks/ckms_bench_delegated_crypto_operations/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
+      - p11perftest Commands: benchmarks/p11perftest.md
   - KMS Clients:
       - Getting started: kms_clients/index.md
       - Installation: kms_clients/installation.md

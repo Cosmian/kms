@@ -26,6 +26,7 @@
   full `KeyMetadata` for every `Sign` and `SignatureVerify` request.
 - Avoid the second `C_Sign` RPC by preallocating a 512-byte signature buffer and retrying with the
   provider-reported size only when PKCS#11 returns `CKR_BUFFER_TOO_SMALL`.
+- **Optimize HSM keyset resolution with extended negative caching**: Extended `RotateNameCache` with a separate 1-hour TTL for non-rotated HSM UIDs (keyset references without explicit `@generation`). When `resolve_keyset_to_single_uid()` returns no rotated versions, the empty result is cached for 1 hour instead of 2 seconds. Per-slot restriction in `find_by_rotate_name()` further optimizes queries for HSM UIDs. Both `invalidate_name()` and `invalidate_member()` flush the negative cache on keyset rotation or relabeling. Measured effect: p99 latency reduced from 4,415ms to 28ms at c=1 (single-threaded baseline). **Note**: 1-hour TTL is safe only within a single KMS node; keys relabeled or rotated on another node won't invalidate this node's cache during that window.
 
 - Fix `Session::encrypt_message_aes_gcm()`/`decrypt_message_aes_gcm()` issuing **two**
   `C_EncryptMessage`/`C_DecryptMessage` calls per operation — a NULL-output-buffer size

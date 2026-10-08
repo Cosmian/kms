@@ -87,7 +87,7 @@ impl Default for HsmCapabilities {
             supports_key_dates: true,
             supports_rsa_oaep_key_wrap: true,
             enforces_ecdsa_digest_strength: false,
-            max_concurrent_sessions: 32,
+            max_concurrent_sessions: 128,
         }
     }
 }
