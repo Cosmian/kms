@@ -27,7 +27,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 # Default (no --delegated): the benchmarked keys are ordinary SOFTWARE keys,
 # wrapped by an HSM-resident key_encryption_key (KEK). Encrypt/Sign still
 # execute in KMS software; only the KEK unwrap touches the HSM. Results are
-# written to their own documentation/docs/benchmarks/ckms_bench_hsm_kek/
+# written to their own documentation/docs/benchmarks/ckms_bench_hsm_kek_<hsm_backend>/
 # directory (mirrors the structure of bench/load's software-baseline report,
 # just with a different key-wrapping backend) so they never clobber that
 # baseline.
@@ -36,14 +36,14 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 # RESIDENT keys. Both key generation and Encrypt/Sign are routed by the
 # server to the HSM's CryptoOracle (PKCS#11) — the crypto operation itself
 # executes ON the HSM, not in KMS software. Results are written to a
-# separate documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/ directory so they
+# separate documentation/docs/benchmarks/ckms_bench_hsm_delegated_<hsm_backend>/ directory so they
 # never clobber the other two reports.
 #
 # In total there are three independent benchmark reports, all linked from
 # the mdBook "Benchmarks" nav section:
-#   1. documentation/docs/benchmarks/ckms_bench/report.md      — bench/load (software baseline)
-#   2. documentation/docs/benchmarks/ckms_bench_hsm_kek/report.md — bench/hsm (this task, default)
-#   3. documentation/docs/benchmarks/ckms_bench_delegated_crypto_operations/report.md  — bench/hsm --delegated
+#   1. documentation/docs/benchmarks/ckms_bench/report.md                    — bench/load (software baseline)
+#   2. documentation/docs/benchmarks/ckms_bench_hsm_kek_<hsm_backend>/report.md       — bench/hsm (this task, default)
+#   3. documentation/docs/benchmarks/ckms_bench_hsm_delegated_<hsm_backend>/report.md — bench/hsm --delegated
 
 # ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
 BENCH_VARIANT="${usage_variant:-non-fips}"
@@ -158,7 +158,7 @@ if [ "${BENCH_DELEGATED}" != "true" ]; then
       --cooldown-time "${BENCH_COOLDOWN}"
   fi
 
-  bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm_kek" "false" "true"
+  bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm_kek_${BENCH_HSM_MODEL}" "false" "true"
 
   print_success "HSM-backed KEK load benchmark completed (KEK: ${HSM_KEK_UID})"
   exit 0
@@ -286,7 +286,7 @@ elif [ "${BENCH_MODE}" = "all" ]; then
   # apply to real HSMs). Keys accumulate on the HSM token across submodes, which
   # is the expected behaviour for a single persistent token.
   BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}"
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
   for SUB_MODE in key-creation encrypt sign-verify; do
     run_hsm_load "${BENCH_PORT}" "${SUB_MODE}" "${BENCH_CONCURRENCY}"
     [ "${BENCH_CRITERION}" = "true" ] && run_hsm_criterion "${BENCH_PORT}" "${SUB_MODE}"
@@ -313,7 +313,7 @@ else
   # hsm::<slot>:: keys are created directly ON the HSM and Encrypt/Sign
   # against them execute via the HSM's CryptoOracle (PKCS#11), unlike the
   # default (non-delegated) mode above, which only wraps a software KEK.
-  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}"
+  bench_start_server_hsm_resident "$BENCH_PORT" "$TMP_DIR" "${BENCH_HTTP_WORKERS}" "${BENCH_HSM_MODEL}" "${BENCH_HSM_SLOT}" "${BENCH_HSM_PASSWORD}"
 
   run_hsm_load "${BENCH_PORT}" "${BENCH_MODE}" "${BENCH_CONCURRENCY}"
 
@@ -323,6 +323,6 @@ else
   fi
 fi
 
-bench_generate_report "${BENCH_PORT}" "ckms_bench_delegated_crypto_operations" "true"
+bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm_delegated_${BENCH_HSM_MODEL}" "true"
 
 print_success "HSM-delegated crypto load benchmark completed"

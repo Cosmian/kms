@@ -30,7 +30,7 @@ applyTo: '**/*.md'
 ## General formatting
 
 - Use ATX-style headings (`##`, not underline style).
-- Wrap lines at 120 characters for non-table, non-code content (configurable per project `.markdownlint.yaml`).
+- Do not hard-wrap Markdown prose; keep each paragraph on one physical line and rely on editor soft wrapping.
 - Use reference-style links for URLs that appear more than once.
 - Tables must have a header row and alignment pipes.
 - Use `**bold**` for UI elements, commands, and key terms on first use; not for decoration.

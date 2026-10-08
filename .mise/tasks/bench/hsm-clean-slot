@@ -1,0 +1,103 @@
+#!/usr/bin/env -S usage bash
+#MISE description="Clean all objects from a Proteccio HSM slot (useful for benchmark cleanup)"
+#USAGE flag "--slot <s>"          env="HSM_SLOT"            default="5"               help="HSM slot number to clean"
+#USAGE flag "--dry-run"            env="DRY_RUN"                                       help="List objects that would be deleted without actually deleting"
+#USAGE flag "--force"              env="FORCE_DELETE"                                  help="Skip cosmian_kms process check and delete without prompting"
+
+set -euo pipefail
+
+HSM_SLOT="${usage_slot:-5}"
+DRY_RUN="${usage_dry_run:-}"
+FORCE_DELETE="${usage_force_delete:-}"
+
+# Resolve HOME reliably
+HOME_DIR="${HOME:?HOME not set}"
+
+# Source proteccio config if available
+PROTECCIO_CONFIG="${HOME_DIR}/.cosmian/proteccio.sh"
+if [ -f "$PROTECCIO_CONFIG" ]; then
+  source "$PROTECCIO_CONFIG"
+fi
+
+# Check for required env vars
+if [ -z "${PROTECCIO_PASSWORD:-}" ]; then
+  echo "ERROR: PROTECCIO_PASSWORD environment variable is not set." >&2
+  echo "Set it or source $PROTECCIO_CONFIG" >&2
+  exit 1
+fi
+
+# Check for running cosmian_kms processes
+running_kms=$(pgrep -f "cosmian_kms" || true)
+if [ -n "$running_kms" ] && [ "$FORCE_DELETE" != "true" ]; then
+  echo "WARNING: Found running cosmian_kms process(es):" >&2
+  ps -f -p "$running_kms" | tail -n +2 >&2
+  echo "" >&2
+  echo "This slot may be in use. Pass --force to skip this check." >&2
+  exit 1
+fi
+
+# Create temp files for before/after listings
+BEFORE_FILE=$(mktemp /tmp/kms-slot-before-XXXXXX.txt)
+AFTER_FILE=$(mktemp /tmp/kms-slot-after-XXXXXX.txt)
+trap "rm -f '$BEFORE_FILE' '$AFTER_FILE'" EXIT
+
+# List objects before cleanup
+echo "[cleanup] Listing objects on slot $HSM_SLOT..."
+nethsmtool -l "$HSM_SLOT" "$PROTECCIO_PASSWORD" > "$BEFORE_FILE" 2>&1 || true
+
+# Count objects: grep -c returns 1 if no match, so use || true to suppress
+count_objs() {
+  grep -cE '^(KEY|CERT|DATA)[[:space:]]+handle=' "$1" || true
+}
+
+before_count=$(count_objs "$BEFORE_FILE")
+echo "[cleanup] Found $before_count object(s) before cleanup"
+
+# Extract handles: look for lines starting with KEY/CERT/DATA and extract handle number
+mapfile -t handles < <(grep -oE '^(KEY|CERT|DATA)[[:space:]]+handle=[0-9]+' "$BEFORE_FILE" | grep -oE '[0-9]+$' || true)
+
+if [ ${#handles[@]} -eq 0 ]; then
+  echo "[cleanup] No objects to delete. Slot is already clean."
+  exit 0
+fi
+
+echo "[cleanup] Handles to delete: ${handles[*]}"
+
+if [ "$DRY_RUN" = "true" ]; then
+  echo "[cleanup] DRY RUN: Would delete ${#handles[@]} object(s):"
+  for h in "${handles[@]}"; do
+    echo "  - handle=$h"
+  done
+  exit 0
+fi
+
+if [ "$FORCE_DELETE" != "true" ]; then
+  echo ""
+  echo "About to delete ${#handles[@]} object(s) from slot $HSM_SLOT"
+  read -p "Continue? (y/N): " -r
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "[cleanup] Cancelled."
+    exit 0
+  fi
+fi
+
+# Delete all objects in one call (nethsmtool -r accepts a comma-separated handle list)
+handle_list=$(IFS=,; echo "${handles[*]}")
+echo "[cleanup] Deleting ${#handles[@]} object(s)..."
+if ! nethsmtool -r "$HSM_SLOT" "$PROTECCIO_PASSWORD" "$handle_list" >/dev/null 2>&1; then
+  echo "[cleanup] WARNING: nethsmtool reported an error while deleting" >&2
+fi
+
+# List objects after cleanup
+echo "[cleanup] Listing objects after cleanup..."
+nethsmtool -l "$HSM_SLOT" "$PROTECCIO_PASSWORD" > "$AFTER_FILE" 2>&1 || true
+
+after_count=$(count_objs "$AFTER_FILE")
+echo "[cleanup] Found $after_count object(s) after cleanup (was $before_count)"
+
+if [ "$after_count" -gt 0 ]; then
+  echo "[cleanup] WARNING: Some objects remain after cleanup" >&2
+  exit 1
+fi
+
+echo "[cleanup] Slot $HSM_SLOT cleanup complete."

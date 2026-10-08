@@ -789,8 +789,8 @@ PYEOF
 # Call after running load tests and/or criterion benchmarks.
 # Usage: bench_generate_report <kms_port> [docs_subdir] [is_hsm] [is_hsm_kek] [is_pkcs11]
 #   docs_subdir defaults to "ckms_bench" (the shared software-bench baseline
-#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_delegated_crypto_operations" or
-#   "ckms_bench_hsm_kek") to avoid clobbering that baseline with a different
+#   used by bench/load). Pass a distinct name (e.g. "ckms_bench_hsm_delegated_proteccio" or
+#   "ckms_bench_hsm_kek_softhsm2") to avoid clobbering that baseline with a different
 #   benchmark's results — the docs dir is entirely replaced on each call.
 #   is_hsm ("true"/"false", default "false"): when "true", passes --hsm to
 #   plot_version_compare.py so the report's Protocols/Methodology sections
@@ -807,7 +807,6 @@ PYEOF
 #   for PKCS#11 operations delegated to HSM-resident keys.
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
-#         $CRITERION_HOME/pkcs11_overhead.json  (PKCS#11 overhead breakdown)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
 #         $CRITERION_HOME/reports/<version>/load/       load SVGs
 #         $CRITERION_HOME/reports/<version>/criterion/  criterion SVGs
@@ -854,10 +853,6 @@ bench_generate_report() {
   done
   if [ -f "${crit_home}/criterion.json" ]; then
     cp "${crit_home}/criterion.json" "${report_dir}/${version}/"
-    found=1
-  fi
-  if [ -f "${crit_home}/pkcs11_overhead.json" ]; then
-    cp "${crit_home}/pkcs11_overhead.json" "${report_dir}/${version}/"
     found=1
   fi
 

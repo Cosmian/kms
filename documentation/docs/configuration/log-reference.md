@@ -361,7 +361,7 @@ Crate path: `crate/server`
 | `trace` | `OpenSSL Private Key instantiated before signing` | `src/core/operations/sign.rs` | — | — |
 | `trace` | `OpenSSL Public Key instantiated before encryption` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `Operation processed successfully: {op}` | `src/core/operations/message.rs` | `op` — … | — |
-| `trace` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` — … | [REMOVED] |
+| `trace` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` — … | — |
 | `trace` | `params: {server_params:?}` | `src/core/kms/mod.rs` | `server_params` — … | — |
 | `trace` | `PKCS12 parsed successfully` | `src/core/operations/import.rs` | — | — |
 | `trace` | `plaintext length: {} bytes` | `src/core/operations/decrypt.rs` | — | — |
@@ -755,7 +755,6 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
 | `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
-| `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e`: operation processing error. | Request operation failed; investigate the associated error and request context. |
 
 ### `cosmian_kms_server_database`
 
@@ -1245,7 +1244,6 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e` | - |
 | `warn` | `create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
 | `warn` | `create_public_key_from_id: failed to export public key {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
-| `debug` | `encrypt_message: ctx: {ctx:?}` | `src/backend.rs` | `ctx`: message encryption context | Debug-only message encryption state; do not enable at scale without reviewing sensitive data exposure. |
 
 ### `cosmian_pkcs11_module`
 
@@ -1267,7 +1265,7 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `Unsupported hashAlg: {}` | `src/core/mechanism.rs` | - | PKCS#11 hash algorithm not supported. Use SHA-256 or SHA-384. |
 | `error` | `Unsupported mgf: {}` | `src/core/mechanism.rs` | - | PKCS#11 MGF algorithm not supported. Use MGF1 with a supported hash. |
 | `error` | `{}: {}` | `src/pkcs11.rs` | - | Generic two-part error - inspect both values for the error type and detail. |
-| `warn` | `load_find_context: id {label} not found in store` | `src/sessions.rs` | `label`: label | [REMOVED] |
+| `warn` | `load_find_context: id {label} not found in store` | `src/sessions.rs` | `label`: label | - |
 | `info` | `C_CloseAllSessions: slot: {:?}` | `src/pkcs11.rs` | - | - |
 | `info` | `C_CloseSession: session: {:?}` | `src/pkcs11.rs` | - | - |
 | `info` | `C_FindObjects: session: {:?}, no more objects to return` | `src/pkcs11.rs` | - | - |
@@ -1282,8 +1280,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `generate_key: generated key with handle: {handle}` | `src/sessions.rs` | `handle`: PKCS#11 object handle | - |
 | `debug` | `generate_key: generating key with mechanism: {:?} and attributes: {:?}` | `src/sessions.rs` | - | - |
 | `debug` | `load_find_context: display current store: {find_ctx}` | `src/sessions.rs` | `find_ctx`: find ctx | - |
-| `debug` | `load_find_context: loading for label: {label:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label`: label<br>`attributes`: KMIP attribute (debug display)s | [REMOVED] |
-| `debug` | `load_find_context: search by id: {label} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label`: label | [REMOVED] |
+| `debug` | `load_find_context: loading for label: {label:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label`: label<br>`attributes`: KMIP attribute (debug display)s | - |
+| `debug` | `load_find_context: search by id: {label} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label`: label | - |
 | `debug` | `load_find_context_by_class: added {} objects with handles: {:?}` | `src/sessions.rs` | - | - |
 | `debug` | `map_oracle_tde_security_to_mk: processing label: {label}` | `src/sessions.rs` | `label`: label | - |
 | `debug` | `Object: {}, attribute: {:?} => {:?}` | `src/core/object.rs` | - | - |
@@ -1325,11 +1323,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `warn` | `CKO_DATA search: full fetch for {remote_id} returned no object, keeping cached stub` | `src/sessions.rs` | `remote_id` | - |
 | `warn` | `load_find_context_by_class: failed to refresh public key {} with full key material: {e}, using cached (metadata-only) object` | `src/sessions.rs` | `e` | - |
 | `debug` | `CKO_DATA match: remote_id={remote_id}, handle={handle}` | `src/sessions.rs` | `remote_id`, `handle` | - |
-| `error` | `CKM_RSA_PKCS_OAEP pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | First value: received parameter size; second: expected size. | OAEP parameter encoding is invalid; request rejected. |
-| `error` | `CKM_RSA_PKCS_OAEP: unsupported hashAlg/mgf combination {hash_alg}/{mgf} (only SHA-256/MGF1-SHA256 is supported)` | `src/core/mechanism.rs` | `hash_alg`: OAEP hash algorithm; `mgf`: mask generation function. | Only SHA-256 with MGF1-SHA256 is supported for this path. |
-| `warn` | `load_find_context: id {label_or_id} not found in store` | `src/sessions.rs` | `label_or_id`: requested object label or identifier. | Object lookup failed; operation cannot continue. |
-| `debug` | `load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label_or_id`: requested object label or identifier; `attributes`: KMIP object attributes. | Debug lookup details; may expose object metadata. |
-| `debug` | `load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label_or_id`: requested object label or identifier. | Debug object lookup and PKCS#11 handle mapping. |
 
 ---
 

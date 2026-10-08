@@ -25,9 +25,10 @@ use zeroize::Zeroizing;
 use super::jose::jose_try_create_okp_kp;
 use super::{
     helpers::{
-        aes_cbc_params, aes_gcm_params, create_sym_key, hsm_rsa_pkcs1v15_encrypt_params,
-        hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_oaep_params, rsa_oaep_sha1_params,
-        try_create_ec_kp, try_create_hsm_ec_kp, try_create_hsm_rsa_kp, try_create_hsm_sym_key,
+        HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key,
+        hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_oaep_params,
+        rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp, try_create_hsm_rsa_kp,
+        try_create_hsm_sym_key,
     },
     jose::{jose_create_sym_key, jose_try_create_ec_kp},
     output::criterion_home,
@@ -56,6 +57,8 @@ pub(crate) struct LoadResult {
     pub p99_ms: f64,
     /// Total requests completed during the measurement window.
     pub samples: usize,
+    /// Number of failed operations during the measurement window.
+    pub errors: usize,
 }
 
 /// A pre-built KMIP request ready for the load test hot loop.
@@ -116,18 +119,16 @@ impl PreparedLoadOp {
 
     /// Cap on concurrency for this operation, if any.
     ///
-    /// HSM-resident key *creation* (`HsmAesSymCreate`/`HsmRsaKpCreate`) is
-    /// capped at 4: concurrent RSA/EC key generation against a single
-    /// `SoftHSM2` token at concurrency >= 8 has been observed to severely
-    /// degrade the token (subsequent PKCS#11 operations — even unrelated
-    /// Encrypt/Sign — can take minutes afterwards). This is a `SoftHSM2`
-    /// limitation, not a KMS defect; capping here lets `--mode all --hsm
-    /// --load` complete a full sweep in one server session without hitting
-    /// it, while still exercising the requested concurrency for every other
-    /// operation.
+    /// HSM-resident key *creation* (`HsmAesSymCreate`/`HsmRsaKpCreate`) can
+    /// safely handle high concurrency on modern HSMs like Proteccio. The cap is
+    /// set to 64 to exercise parallel key generation on hardware-accelerated
+    /// tokens. This allows `--mode all --hsm --load` to perform comprehensive
+    /// benchmarking at target concurrency levels for all operations, including
+    /// HSM key creation, while maintaining reliable token stability across
+    /// concurrent PKCS#11 operations.
     const fn max_concurrency(&self) -> Option<usize> {
         match self {
-            Self::HsmAesSymCreate { .. } | Self::HsmRsaKpCreate { .. } => Some(4),
+            Self::HsmAesSymCreate { .. } | Self::HsmRsaKpCreate { .. } => Some(64),
             Self::PreSerialized { .. }
             | Self::PreSerializedBinary { .. }
             | Self::AesSymCreate { .. } => None,
@@ -251,6 +252,9 @@ pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
 }
 
 /// Prepare one representative operation per applicable mode category.
+// Mirrors `bench_load`: every argument is an independent borrowed input
+// threaded from `bench_load`; a one-use parameter struct would only add boilerplate.
+#[expect(clippy::too_many_arguments)]
 fn prepare_load_ops(
     rt: &Runtime,
     client: &KmsClient,
@@ -259,6 +263,7 @@ fn prepare_load_ops(
     plaintext_size: usize,
     hsm_prefix: Option<&str>,
     filter: Option<&super::types::BenchFilter>,
+    ledger: &HsmKeyLedger,
 ) -> Vec<PreparedLoadOp> {
     if let Some(hsm_prefix) = hsm_prefix {
         return prepare_hsm_load_ops(
@@ -269,6 +274,7 @@ fn prepare_load_ops(
             plaintext_size,
             hsm_prefix,
             filter,
+            ledger,
         );
     }
 
@@ -529,6 +535,8 @@ fn prepare_load_ops(
 /// JOSE is not supported here: the `POST /v1/crypto/keys` endpoint has no way
 /// to request a caller-chosen `kid`, so an `hsm::`-prefixed key cannot be
 /// created through it.
+// Same signature as `prepare_load_ops`, which delegates to this function.
+#[expect(clippy::too_many_arguments)]
 fn prepare_hsm_load_ops(
     rt: &Runtime,
     client: &KmsClient,
@@ -537,6 +545,7 @@ fn prepare_hsm_load_ops(
     plaintext_size: usize,
     hsm_prefix: &str,
     filter: Option<&super::types::BenchFilter>,
+    ledger: &HsmKeyLedger,
 ) -> Vec<PreparedLoadOp> {
     let mut ops = Vec::new();
     let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
@@ -581,9 +590,14 @@ fn prepare_hsm_load_ops(
     }
 
     if needs_encrypt {
-        if let Some(key_id) =
-            try_create_hsm_sym_key(rt, client, hsm_prefix, 256, CryptographicAlgorithm::AES)
-        {
+        if let Some(key_id) = try_create_hsm_sym_key(
+            rt,
+            client,
+            hsm_prefix,
+            256,
+            CryptographicAlgorithm::AES,
+            ledger,
+        ) {
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_gcm_params()),
@@ -601,7 +615,9 @@ fn prepare_hsm_load_ops(
             eprintln!("[load] HSM AES-GCM not available, skipping HSM encrypt load test");
         }
 
-        if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+        if let Some((pub_id, _priv_id)) =
+            try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, ledger)
+        {
             for (label, params) in [
                 ("rsa-oaep", rsa_oaep_params()),
                 ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
@@ -626,9 +642,14 @@ fn prepare_hsm_load_ops(
         }
 
         // AES-CBC
-        if let Some(key_id) =
-            try_create_hsm_sym_key(rt, client, hsm_prefix, 256, CryptographicAlgorithm::AES)
-        {
+        if let Some(key_id) = try_create_hsm_sym_key(
+            rt,
+            client,
+            hsm_prefix,
+            256,
+            CryptographicAlgorithm::AES,
+            ledger,
+        ) {
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_cbc_params()),
@@ -650,7 +671,9 @@ fn prepare_hsm_load_ops(
 
     if needs_sign {
         // RSA-PSS
-        if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+        if let Some((_pub_id, priv_id)) =
+            try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, ledger)
+        {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -673,7 +696,9 @@ fn prepare_hsm_load_ops(
 
         // RSA PKCS#1 v1.5 hash-and-sign (SHA1/256/384/512). One RSA-2048 key
         // pair is reused for all four hash variants.
-        if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048) {
+        if let Some((_pub_id, priv_id)) =
+            try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, ledger)
+        {
             for (label, dsa) in [
                 (
                     "rsa-pkcs1v15-sha1",
@@ -712,7 +737,7 @@ fn prepare_hsm_load_ops(
 
         // ECDSA P-256 — prehashed only (SoftHSM2 lacks combined CKM_ECDSA_SHA*).
         if let Some((_pub_id, priv_id)) =
-            try_create_hsm_ec_kp(rt, client, hsm_prefix, RecommendedCurve::P256)
+            try_create_hsm_ec_kp(rt, client, hsm_prefix, RecommendedCurve::P256, ledger)
         {
             let digest = Sha256::digest([0x42_u8; 32]).to_vec();
             let req = Sign {
@@ -752,7 +777,9 @@ fn prepare_hsm_load_ops(
                 CryptographicAlgorithm::Ed448,
             ),
         ] {
-            if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve) {
+            if let Some((_pub_id, priv_id)) =
+                try_create_hsm_ec_kp(rt, client, hsm_prefix, curve, ledger)
+            {
                 let req = Sign {
                     unique_identifier: Some(priv_id),
                     cryptographic_parameters: Some(CryptographicParameters {
@@ -814,6 +841,7 @@ fn run_load_level(
             p95_ms: 0.0,
             p99_ms: 0.0,
             samples: 0,
+            errors: 0,
         };
     }
 
@@ -856,25 +884,33 @@ fn run_load_level(
                 // minimising clock-skew between workers.
                 barrier.wait();
 
-                // Measurement loop
+                // Measurement loop: count successes and failures separately
                 let mut timings = Vec::new();
+                let mut error_count = 0_usize;
                 let task_start = Instant::now();
                 while task_start.elapsed() < duration {
                     let t0 = Instant::now();
-                    rt.block_on(async {
-                        let _ = op.execute(&task_client).await;
-                    });
-                    timings.push(t0.elapsed().as_secs_f64() * 1_000.0); // ms
+                    let success = rt.block_on(async { op.execute(&task_client).await });
+                    let elapsed_ms = t0.elapsed().as_secs_f64() * 1_000.0;
+                    if success {
+                        timings.push(elapsed_ms);
+                    } else {
+                        error_count += 1;
+                    }
                 }
-                timings
+                (timings, error_count)
             })
         })
         .collect();
 
     let mut all_timings: Vec<f64> = Vec::new();
+    let mut total_errors: usize = 0;
     for handle in handles {
         match handle.join() {
-            Ok(timings) => all_timings.extend(timings),
+            Ok((timings, error_count)) => {
+                all_timings.extend(timings);
+                total_errors += error_count;
+            }
             Err(_) => {
                 eprintln!(
                     "[load] Warning: a worker thread panicked; benchmark results may be incomplete"
@@ -901,6 +937,7 @@ fn run_load_level(
         p95_ms: load_percentile(&all_timings, 0.95),
         p99_ms: load_percentile(&all_timings, 0.99),
         samples,
+        errors: total_errors,
     }
 }
 
@@ -919,6 +956,7 @@ pub(super) fn bench_load(
     hsm_prefix: Option<&str>,
     filter: Option<&super::types::BenchFilter>,
 ) -> Vec<LoadResult> {
+    let ledger = HsmKeyLedger::new();
     let ops = prepare_load_ops(
         rt,
         client,
@@ -927,6 +965,7 @@ pub(super) fn bench_load(
         plaintext_size,
         hsm_prefix,
         filter,
+        &ledger,
     );
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
@@ -979,6 +1018,12 @@ pub(super) fn bench_load(
             results.push(result);
         }
     }
+
+    // Clean up all created HSM keys
+    if let Err(e) = rt.block_on(ledger.destroy_all(client)) {
+        eprintln!("[load] Cleanup warning: {e}");
+    }
+
     results
 }
 
