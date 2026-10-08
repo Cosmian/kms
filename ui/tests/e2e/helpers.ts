@@ -58,7 +58,7 @@ export async function gotoAndWait(page: Page, path: string): Promise<void> {
  * workers share a single KMS server. A fresh navigation recovers; waiting
  * longer on the same page does not.
  */
-export async function gotoUntilVisible(page: Page, path: string, ready: Locator, attempts = 3): Promise<void> {
+async function gotoUntilVisible(page: Page, path: string, ready: Locator, attempts = 3): Promise<void> {
     for (let attempt = 1; ; attempt++) {
         await gotoAndWait(page, path);
         try {
