@@ -4,6 +4,7 @@
 #USAGE flag "-l --link <l>"         env="BENCH_LINK"          default="static"          help="Linkage type"                              { choices "static" "dynamic" }
 #USAGE flag "-r --release"          env="BENCH_RELEASE"       default="true"            help="Build in release mode"
 #USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
+#USAGE flag "-a --algorithm <a>"   env="BENCH_ALGORITHM"     default=""                help="Filter benchmark algorithm (e.g. ecdsa-p256)"
 #USAGE flag "-P --protocol <p>"     env="BENCH_PROTOCOL"      default="all"             help="Protocol to benchmark (jose is skipped with --delegated)" { choices "all" "ttlv-json" "ttlv-bytes" "jose" }
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
 #USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
@@ -61,6 +62,9 @@ BENCH_DELEGATED="${usage_delegated:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
 BENCH_HSM_MODEL="${usage_hsm_model:-softhsm2}"
+BENCH_ALGORITHM="${usage_algorithm:-}"
+ALGORITHM_ARGS=()
+[ -n "${BENCH_ALGORITHM}" ] && ALGORITHM_ARGS=(--algorithm "${BENCH_ALGORITHM}")
 
 kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
 if [ "${BENCH_DELEGATED}" = "true" ]; then
@@ -137,6 +141,7 @@ if [ "${BENCH_DELEGATED}" != "true" ]; then
     --time "${BENCH_TIME}" \
     --load-concurrency "${BENCH_CONCURRENCY}" \
     --warmup-time "${BENCH_WARMUP}" \
+    "${ALGORITHM_ARGS[@]}" \
     --cooldown-time "${BENCH_COOLDOWN}"
 
   # Optional Criterion micro-benchmarks (software crypto, same server).
@@ -149,6 +154,7 @@ if [ "${BENCH_DELEGATED}" != "true" ]; then
       --mode "${BENCH_MODE}" \
       --protocol "${BENCH_PROTOCOL}" \
       --warmup-time "${BENCH_WARMUP}" \
+      "${ALGORITHM_ARGS[@]}" \
       --cooldown-time "${BENCH_COOLDOWN}"
   fi
 
@@ -192,7 +198,8 @@ run_hsm_load() {
     --time "${BENCH_TIME}" \
     --load-concurrency "${concurrency}" \
     --warmup-time "${BENCH_WARMUP}" \
-    --cooldown-time "${BENCH_COOLDOWN}"
+    --cooldown-time "${BENCH_COOLDOWN}" \
+    "${ALGORITHM_ARGS[@]}"
 }
 
 run_hsm_criterion() {
@@ -207,7 +214,8 @@ run_hsm_criterion() {
     --mode "${sub_mode}" \
     --protocol "${BENCH_PROTOCOL}" \
     --warmup-time "${BENCH_WARMUP}" \
-    --cooldown-time "${BENCH_COOLDOWN}"
+    --cooldown-time "${BENCH_COOLDOWN}" \
+    "${ALGORITHM_ARGS[@]}"
 }
 
 if [ "${BENCH_MODE}" = "all" ] && [ "${BENCH_HSM_MODEL}" = "softhsm2" ]; then

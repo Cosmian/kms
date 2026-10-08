@@ -47,6 +47,28 @@ fn add_supported_oaep_algorithms(
     }
 }
 
+/// Query a slot's supported cryptographic algorithms using one opened session.
+pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgorithm>> {
+    let mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let supported_hashes = session.get_supported_oaep_hash()?;
+    let mut algorithms = Vec::new();
+
+    for &mechanism in &mechanisms {
+        match mechanism {
+            CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
+            CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
+            CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
+            CKM_RSA_PKCS_OAEP => {
+                add_supported_oaep_algorithms(&supported_hashes, &mut algorithms);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(algorithms)
+}
+
 struct SlotState {
     password: Option<String>,
     slot: Option<Arc<SlotManager>>,
@@ -99,13 +121,11 @@ impl<P: HsmProvider> BaseHsm<P> {
             .slots
             .lock()
             .context("Failed to acquire lock on slots")?;
-        // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
-            if let Some(s) = &slot_state.slot {
+            if let Some(slot) = &slot_state.slot {
                 debug!("Reusing slot {slot_id}");
-                Ok(s.clone())
+                Ok(slot.clone())
             } else {
-                // instantiate a new slot
                 let manager = Arc::new(SlotManager::instantiate(
                     self.hsm_lib.clone(),
                     slot_id,
@@ -183,23 +203,6 @@ impl<P: HsmProvider> BaseHsm<P> {
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
     pub fn get_algorithms(&self, slot_id: usize) -> HResult<Vec<CryptoAlgorithm>> {
         let slot = self.get_slot(slot_id)?;
-        let mechanisms = slot.get_supported_mechanisms()?;
-        let session = slot.open_session(true)?;
-        let supported_hashes = session.get_supported_oaep_hash()?;
-        let mut algorithms = Vec::new();
-
-        for &mechanism in &mechanisms {
-            match mechanism {
-                CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
-                CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
-                CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
-                CKM_RSA_PKCS_OAEP => {
-                    add_supported_oaep_algorithms(&supported_hashes, &mut algorithms);
-                }
-                _ => {}
-            }
-        }
-
-        Ok(algorithms)
+        algorithms_for_slot(&slot)
     }
 }

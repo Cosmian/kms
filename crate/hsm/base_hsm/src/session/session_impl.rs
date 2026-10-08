@@ -12,7 +12,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
     HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
+    RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm, SigningKeyMetadata,
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
@@ -3486,12 +3486,13 @@ impl Session {
         }
     }
 
-    ///  Get the key type, sensitivity and label length
-    /// # Arguments
-    /// * `key_handle` - The key handle
-    /// # Returns
-    /// * `Result<Option<KeyType>>` - The key type if the key exists
-    pub fn get_key_type(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyType>> {
+    /// Resolve an object handle to its PKCS#11 key type and optional supported EC curve.
+    ///
+    /// `CKA_CLASS` and `CKA_KEY_TYPE` are read together. `CKA_EC_PARAMS` is read only for EC-family keys.
+    fn get_key_type_and_curve(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+    ) -> HResult<Option<(KeyType, Option<EcCurve>)>> {
         let mut key_type: CK_KEY_TYPE = CKK_VENDOR_DEFINED;
         let mut class: CK_OBJECT_CLASS = CKO_VENDOR_DEFINED;
         let mut template = [
@@ -3513,20 +3514,19 @@ impl Session {
         {
             return Ok(None);
         }
-        let key_type = match key_type {
-            CKK_AES => KeyType::AesKey,
-            CKK_RSA => {
+
+        let (key_type, curve) = match key_type {
+            CKK_AES => (KeyType::AesKey, None),
+            CKK_RSA => (
                 if class == CKO_PRIVATE_KEY {
                     KeyType::RsaPrivateKey
                 } else {
                     KeyType::RsaPublicKey
-                }
-            }
-            // Validate that the curve is one Cosmian KMS recognizes (CKA_EC_PARAMS decodes to
-            // a supported `EcCurve`, including Ed25519/Ed448/X25519, issue #1157). This
-            // rejects HSM objects using curves outside the supported set (e.g. brainpool
-            // curves), keeping them excluded from generic searches/exports exactly like any
-            // other unsupported key type.
+                },
+                None,
+            ),
+            // Validate that the curve is one Cosmian KMS recognizes. This rejects unsupported
+            // curves while returning the decoded curve for signing algorithm selection.
             CKK_EC | CKK_EC_EDWARDS | CKK_EC_MONTGOMERY => {
                 let mut len_template = [CK_ATTRIBUTE {
                     type_: CKA_EC_PARAMS,
@@ -3556,22 +3556,41 @@ impl Session {
                         "Export: unable to read CKA_EC_PARAMS for EC key".to_owned(),
                     ));
                 }
-                // Reject unsupported/unrecognized curves.
-                curve_from_der_oid(&ec_params)?;
-                if class == CKO_PRIVATE_KEY {
+                let curve = curve_from_der_oid(&ec_params)?;
+                let key_type = if class == CKO_PRIVATE_KEY {
                     KeyType::EcPrivateKey
                 } else {
                     KeyType::EcPublicKey
-                }
+                };
+                (key_type, Some(curve))
             }
-            x => {
+            key_type => {
                 return Err(HError::Default(format!(
-                    "Export: unsupported key type: {x}"
+                    "Export: unsupported key type: {key_type}"
                 )));
             }
         };
         debug!("Retrieved HSM key type for key handle {key_handle}: {key_type:?}");
-        Ok(Some(key_type))
+        Ok(Some((key_type, curve)))
+    }
+
+    /// Get the type of an HSM key.
+    ///
+    /// For EC-family keys, this also validates `CKA_EC_PARAMS` against supported curves.
+    pub fn get_key_type(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyType>> {
+        Ok(self
+            .get_key_type_and_curve(key_handle)?
+            .map(|(key_type, _)| key_type))
+    }
+
+    /// Get only the key type and optional curve required to resolve an HSM signing algorithm.
+    pub(crate) fn get_signing_key_metadata(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+    ) -> HResult<Option<SigningKeyMetadata>> {
+        Ok(self
+            .get_key_type_and_curve(key_handle)?
+            .map(|(key_type, curve)| SigningKeyMetadata { key_type, curve }))
     }
 
     /// Get the Object id

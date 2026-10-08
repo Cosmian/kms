@@ -53,7 +53,7 @@ Options:
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, kryoptic, other]
+          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, kryoptic, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.

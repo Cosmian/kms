@@ -26,7 +26,7 @@ use zeroize::Zeroizing;
 use crate::{
     AtomicOperation, CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
     HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial,
-    KeyType, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, UserId,
+    KeyType, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
@@ -857,33 +857,36 @@ impl CryptoOracle for HsmStore {
         input_is_digest: bool,
     ) -> InterfaceResult<Vec<u8>> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let metadata = self
-            .hsm
-            .get_key_metadata(slot_id, key_id.as_bytes())
-            .await?
-            .ok_or_else(|| {
-                InterfaceError::InvalidRequest(format!("Sign: key {uid} not found on the HSM"))
-            })?;
-        let key_type = match metadata.key_type {
-            KeyType::RsaPrivateKey => KeyType::RsaPrivateKey,
-            KeyType::EcPrivateKey => KeyType::EcPrivateKey,
-            other => {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "Sign: key {uid} is a {other:?}, expected an RSA or EC private key"
-                )));
-            }
-        };
-        let curve = metadata.curve;
-        let algorithm = SigningAlgorithm::from_kmip(
-            cryptographic_parameters,
-            key_type,
-            curve,
-            input_is_digest,
-            data.len(),
-        )?;
-        debug!("sign: using algorithm {algorithm:?} for key {uid}");
+        let uid = uid.to_owned();
+        let cryptographic_parameters = cryptographic_parameters.cloned();
+        let data_len = data.len();
+        let resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        > = Box::new(move |metadata: &SigningKeyMetadata| {
+            let key_type = match metadata.key_type.clone() {
+                KeyType::RsaPrivateKey => KeyType::RsaPrivateKey,
+                KeyType::EcPrivateKey => KeyType::EcPrivateKey,
+                other => {
+                    return Err(InterfaceError::InvalidRequest(format!(
+                        "Sign: key {uid} is a {other:?}, expected an RSA or EC private key"
+                    )));
+                }
+            };
+            let algorithm = SigningAlgorithm::from_kmip(
+                cryptographic_parameters.as_ref(),
+                key_type,
+                metadata.curve,
+                input_is_digest,
+                data_len,
+            )?;
+            debug!("sign: using algorithm {algorithm:?} for key {uid}");
+            Ok(algorithm)
+        });
         self.hsm
-            .sign(slot_id, key_id.as_bytes(), algorithm, data)
+            .sign_with_metadata(slot_id, key_id.as_bytes(), resolve_algorithm, data)
             .await
     }
 
@@ -898,42 +901,44 @@ impl CryptoOracle for HsmStore {
         input_is_digest: bool,
     ) -> InterfaceResult<bool> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let metadata = self
-            .hsm
-            .get_key_metadata(slot_id, key_id.as_bytes())
-            .await?
-            .ok_or_else(|| {
-                InterfaceError::InvalidRequest(format!(
-                    "SignatureVerify: key {uid} not found on the HSM"
-                ))
-            })?;
-        let key_type = match metadata.key_type {
-            // Accept both public and private keys, mirroring the KMIP `SignatureVerify`
-            // operation's `is_key_eligible` acceptance (imported keys may lack a paired
-            // public key object).
-            key_type @ (KeyType::RsaPublicKey
-            | KeyType::RsaPrivateKey
-            | KeyType::EcPublicKey
-            | KeyType::EcPrivateKey) => key_type,
-            other => {
-                return Err(InterfaceError::InvalidRequest(format!(
-                    "SignatureVerify: key {uid} is a {other:?}, expected an RSA or EC key"
-                )));
-            }
-        };
-        let curve = metadata.curve;
-        // `data` is the caller-supplied digest when `input_is_digest` is set (KMIP
-        // `digested_data`), otherwise the original signed message.
-        let algorithm = SigningAlgorithm::from_kmip(
-            cryptographic_parameters,
-            key_type,
-            curve,
-            input_is_digest,
-            data.len(),
-        )?;
-        debug!("signature_verify: using algorithm {algorithm:?} for key {uid}");
+        let uid = uid.to_owned();
+        let cryptographic_parameters = cryptographic_parameters.cloned();
+        let data_len = data.len();
+        let resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        > = Box::new(move |metadata: &SigningKeyMetadata| {
+            let key_type = match metadata.key_type.clone() {
+                key_type @ (KeyType::RsaPublicKey
+                | KeyType::RsaPrivateKey
+                | KeyType::EcPublicKey
+                | KeyType::EcPrivateKey) => key_type,
+                other => {
+                    return Err(InterfaceError::InvalidRequest(format!(
+                        "SignatureVerify: key {uid} is a {other:?}, expected an RSA or EC key"
+                    )));
+                }
+            };
+            let algorithm = SigningAlgorithm::from_kmip(
+                cryptographic_parameters.as_ref(),
+                key_type,
+                metadata.curve,
+                input_is_digest,
+                data_len,
+            )?;
+            debug!("signature_verify: using algorithm {algorithm:?} for key {uid}");
+            Ok(algorithm)
+        });
         self.hsm
-            .verify(slot_id, key_id.as_bytes(), algorithm, data, signature)
+            .verify_with_metadata(
+                slot_id,
+                key_id.as_bytes(),
+                resolve_algorithm,
+                data,
+                signature,
+            )
             .await
     }
 
@@ -1804,9 +1809,15 @@ mod tests {
     use crate::{
         CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
         HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult,
-        KeyMaterial, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm, UserId,
-        crypto_oracle::EncryptedContent, hsm::HsmStore,
+        KeyMaterial, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm, SigningKeyMetadata,
+        UserId, crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
+    type SigningAlgorithmResolver = Box<
+        dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+            + Send
+            + Sync
+            + 'static,
+    >;
 
     // ── mockall-generated test double for HSM ─────────────────────────────────
 
@@ -1878,18 +1889,18 @@ mod tests {
                 slot_id: usize,
                 key_id: &[u8],
             ) -> InterfaceResult<Option<KeyMetadata>>;
-            async fn sign(
+            async fn sign_with_metadata(
                 &self,
                 slot_id: usize,
                 key_id: &[u8],
-                algorithm: SigningAlgorithm,
+                resolve_algorithm: SigningAlgorithmResolver,
                 data: &[u8],
             ) -> InterfaceResult<Vec<u8>>;
-            async fn verify(
+            async fn verify_with_metadata(
                 &self,
                 slot_id: usize,
                 key_id: &[u8],
-                algorithm: SigningAlgorithm,
+                resolve_algorithm: SigningAlgorithmResolver,
                 data: &[u8],
                 signature: &[u8],
             ) -> InterfaceResult<bool>;
@@ -2301,28 +2312,49 @@ mod tests {
         );
     }
 
-    /// `CryptoOracle::signature_verify` must delegate to `HSM::verify` for an RSA
-    /// public key, closing the previously-unconditional
-    /// `InterfaceError::NotSupported` gap.
+    /// `CryptoOracle::sign` must reject a key type that is not an RSA or EC private key before
+    /// ever reaching the HSM's real sign call, enforced by `resolve_algorithm` returning an
+    /// `Err`.
+    #[tokio::test]
+    async fn test_sign_rejects_non_signing_key_type() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_sign_with_metadata().returning(
+            |_slot_id, _key_id, resolve_algorithm, _data| {
+                let metadata = SigningKeyMetadata {
+                    key_type: KeyType::AesKey,
+                    curve: None,
+                };
+                resolve_algorithm(&metadata)?;
+                Ok(vec![])
+            },
+        );
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+
+        let result = store.sign("hsm::0::key1", b"data", None, false).await;
+
+        if !matches!(result, Err(InterfaceError::InvalidRequest(_))) {
+            return Err(InterfaceError::Default(format!(
+                "expected an InvalidRequest error for a non-signing key type, got: {result:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `CryptoOracle::signature_verify` must delegate to `HSM::verify_with_metadata` for an RSA
+    /// public key, closing the previously-unconditional `InterfaceError::NotSupported` gap.
     #[tokio::test]
     async fn test_signature_verify_delegates_to_hsm_verify() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_metadata().returning(|_, _| {
-            Ok(Some(KeyMetadata {
-                key_type: KeyType::RsaPublicKey,
-                key_length_in_bits: 2048,
-                sensitive: false,
-                id: "key1".to_owned(),
-                tags: HashSet::new(),
-                curve: None,
-                start_date: None,
-                end_date: None,
-                rotate_name: None,
-                rotate_generation: None,
-            }))
-        });
-        mock.expect_verify()
-            .returning(|_slot_id, _key_id, _algorithm, _data, _signature| Ok(true));
+        mock.expect_verify_with_metadata().returning(
+            |_slot_id, _key_id, resolve_algorithm, _data, _signature| {
+                let metadata = SigningKeyMetadata {
+                    key_type: KeyType::RsaPublicKey,
+                    curve: None,
+                };
+                resolve_algorithm(&metadata)?;
+                Ok(true)
+            },
+        );
 
         let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
 
@@ -2341,35 +2373,28 @@ mod tests {
     #[tokio::test]
     async fn test_signature_verify_preserves_digested_data() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_metadata().returning(|_, _| {
-            Ok(Some(KeyMetadata {
-                key_type: KeyType::EcPublicKey,
-                key_length_in_bits: 256,
-                sensitive: false,
-                id: "key1".to_owned(),
-                tags: HashSet::new(),
-                curve: Some(EcCurve::P256),
-                start_date: None,
-                end_date: None,
-                rotate_name: None,
-                rotate_generation: None,
-            }))
-        });
-        mock.expect_verify().returning(|_, _, algorithm, _, _| {
-            if matches!(
-                algorithm,
-                SigningAlgorithm::Ecdsa {
-                    prehashed: true,
-                    ..
+        mock.expect_verify_with_metadata().returning(
+            |_slot_id, _key_id, resolve_algorithm, _data, _signature| {
+                let metadata = SigningKeyMetadata {
+                    key_type: KeyType::EcPublicKey,
+                    curve: Some(EcCurve::P256),
+                };
+                let algorithm = resolve_algorithm(&metadata)?;
+                if matches!(
+                    algorithm,
+                    SigningAlgorithm::Ecdsa {
+                        prehashed: true,
+                        ..
+                    }
+                ) {
+                    Ok(true)
+                } else {
+                    Err(InterfaceError::Default(format!(
+                        "expected prehashed ECDSA verification, got {algorithm:?}"
+                    )))
                 }
-            ) {
-                Ok(true)
-            } else {
-                Err(InterfaceError::Default(format!(
-                    "expected prehashed ECDSA verification, got {algorithm:?}"
-                )))
-            }
-        });
+            },
+        );
         let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
         let parameters = CryptographicParameters {
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
@@ -2393,26 +2418,21 @@ mod tests {
         Ok(())
     }
 
-    /// `CryptoOracle::signature_verify` must reject a non-RSA key type before ever
-    /// calling `HSM::verify`, mirroring `sign`'s existing key-type guard.
+    /// `CryptoOracle::signature_verify` must reject a non-RSA/EC key type before ever reaching
+    /// the HSM's real verify call, enforced by `resolve_algorithm` returning an `Err`.
     #[tokio::test]
     async fn test_signature_verify_rejects_non_rsa_key_type() -> InterfaceResult<()> {
         let mut mock = MockHsm::new();
-        mock.expect_get_key_metadata()
-            .returning(|_slot_id, _key_id| {
-                Ok(Some(KeyMetadata {
+        mock.expect_verify_with_metadata().returning(
+            |_slot_id, _key_id, resolve_algorithm, _data, _signature| {
+                let metadata = SigningKeyMetadata {
                     key_type: KeyType::AesKey,
-                    key_length_in_bits: 256,
-                    sensitive: true,
-                    id: "key1".to_owned(),
-                    tags: HashSet::new(),
                     curve: None,
-                    start_date: None,
-                    end_date: None,
-                    rotate_name: None,
-                    rotate_generation: None,
-                }))
-            });
+                };
+                resolve_algorithm(&metadata)?;
+                Ok(true)
+            },
+        );
         let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
 
         let result = store
