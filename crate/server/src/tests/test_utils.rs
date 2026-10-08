@@ -29,7 +29,7 @@ use crate::{
         AuditFailureMode, ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams,
         SocketServerConfig, TlsConfig,
     },
-    core::{KMS, audit::AuditFileStore},
+    core::{KMS, audit::AuditStore},
     kms_bail,
     middlewares::{AuditMiddleware, ensure_auth_middleware},
     result::KResult,
@@ -373,8 +373,8 @@ pub(crate) async fn test_app_with_clap_config(
 
 /// Creates a test application that records every KMIP request to an audit file.
 ///
-/// Pass `AuditFileStore::start(path, 128)` for normal operation or
-/// `AuditFileStore::new_disconnected()` to exercise failure paths without a
+/// Pass `AuditStore::start(path, 128)` for normal operation or
+/// `AuditStore::new_disconnected()` to exercise failure paths without a
 /// file on disk. `failure_mode` controls the middleware's response when
 /// `enqueue` fails; existing tests pass `Default::default()` for `Continue`.
 ///
@@ -382,7 +382,7 @@ pub(crate) async fn test_app_with_clap_config(
 /// state directly (bypassing HTTP), e.g. to confirm an operation's side
 /// effect landed even when the middleware replaced the response with a 503.
 pub(crate) async fn test_app_with_audit(
-    store: AuditFileStore,
+    store: AuditStore,
     failure_mode: AuditFailureMode,
 ) -> (
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
@@ -469,7 +469,7 @@ pub(crate) async fn test_app_with_audit_and_auth(
     audit_path: &std::path::Path,
 ) -> (
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
-    AuditFileStore,
+    AuditStore,
 ) {
     let clap_config = https_clap_config();
     let server_params =
@@ -481,7 +481,7 @@ pub(crate) async fn test_app_with_audit_and_auth(
             .expect("cannot instantiate KMS server"),
     );
 
-    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(audit_path, 128).expect("cannot start audit store");
 
     let app = App::new()
         .app_data(Data::new(kms_server.clone()))

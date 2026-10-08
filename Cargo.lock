@@ -1454,6 +1454,7 @@ dependencies = [
  "cosmian_kms_base_hsm",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
+ "cosmian_kms_server_database",
  "cosmian_logger",
  "criterion",
  "der",
@@ -1750,6 +1751,7 @@ dependencies = [
  "thiserror 2.0.19",
  "time",
  "tokio",
+ "tokio-postgres",
  "toml 0.9.12+spec-1.1.0",
  "tower-service",
  "tracing",
@@ -1770,6 +1772,7 @@ dependencies = [
  "base64 0.22.1",
  "cosmian_findex",
  "cosmian_kmip",
+ "cosmian_kms_access",
  "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
@@ -4924,6 +4927,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "time",
  "uuid",
 ]
 

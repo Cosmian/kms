@@ -11,10 +11,10 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft};
-use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult};
+use cosmian_kms_interfaces::{AuditSink, ChainHead, InterfaceError, InterfaceResult, WriteOutcome};
 use cosmian_logger::{debug, error};
 
-use super::recovery::recover_and_open;
+use super::{SIZE_CAP_SENTINEL_OPERATION, recovery::recover_and_open};
 
 const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -91,7 +91,9 @@ pub(crate) struct FileSink {
 }
 
 impl FileSink {
-    /// Builds a file sink that has not yet been resumed.
+    /// Builds a not-yet-resumed file sink for `path`. `write_state` is shared with the
+    /// `AuditStore` handle so `enqueue()`'s fast pre-check and this sink's own
+    /// post-write cap update observe the same flag.
     pub(super) const fn new(path: PathBuf, write_state: Arc<AuditWriteState>) -> Self {
         Self {
             path,
@@ -113,6 +115,14 @@ impl FileSink {
         }
         self.needs_repair = false;
         Ok(())
+    }
+
+    fn would_reach_size_cap(&self, row_len: usize) -> bool {
+        let Some(cap) = self.write_state.max_size_bytes else {
+            return false;
+        };
+        let row_len = u64::try_from(row_len).unwrap_or(u64::MAX);
+        self.committed_len.saturating_add(row_len) >= cap
     }
 }
 
@@ -197,10 +207,15 @@ impl AuditSink for FileSink {
     ///
     /// # Errors
     /// Returns an error if the sink is not resumed or file I/O fails.
-    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<()> {
+    async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
         let mut row = serde_json::to_vec(event)
             .map_err(|e| InterfaceError::Default(format!("audit: cannot serialise event: {e}")))?;
         row.push(b'\n');
+
+        let is_size_cap_sentinel = event.operation == SIZE_CAP_SENTINEL_OPERATION;
+        if !is_size_cap_sentinel && self.would_reach_size_cap(row.len()) {
+            return Ok(WriteOutcome::CapacityReached);
+        }
 
         self.repair_if_needed().map_err(|e| InterfaceError::Io {
             context: "audit: torn-tail repair failed".to_owned(),
@@ -215,8 +230,19 @@ impl AuditSink for FileSink {
         match file.write_all(&row).and_then(|()| file.sync_data()) {
             Ok(()) => {
                 self.committed_len += u64::try_from(row.len()).unwrap_or(u64::MAX);
-                enforce_size_cap(self.committed_len, &self.write_state, &self.path);
-                Ok(())
+                if is_size_cap_sentinel {
+                    if let Some(cap) = self.write_state.max_size_bytes {
+                        mark_size_cap_reached(
+                            self.committed_len,
+                            cap,
+                            &self.write_state,
+                            &self.path,
+                        );
+                    }
+                } else {
+                    enforce_size_cap(self.committed_len, &self.write_state, &self.path);
+                }
+                Ok(WriteOutcome::Written)
             }
             Err(e) => {
                 self.needs_repair = true;
@@ -256,11 +282,15 @@ fn enforce_size_cap(len: u64, write_state: &AuditWriteState, path: &Path) {
     if len < cap {
         return;
     }
+    mark_size_cap_reached(len, cap, write_state, path);
+}
+
+fn mark_size_cap_reached(len: u64, cap: u64, write_state: &AuditWriteState, path: &Path) {
     let was_already_capped = write_state.size_limit_reached.swap(true, Ordering::Relaxed);
     if !was_already_capped {
         error!(
-            "AuditFileStore: audit log {} reached its configured max_size_bytes cap \
-             ({len} bytes >= {cap}) — audit writing is blocked until the log is safely \
+            "AuditFileStore: audit log {} stopped at its configured max_size_bytes cap \
+             ({len} bytes, cap {cap}) — audit writing is blocked until the log is safely \
              remediated and the KMS is restarted",
             path.display()
         );
@@ -405,7 +435,7 @@ mod tests {
         let mut sink = make_sink(read_only, 0);
 
         let event = sample_event(0, [0_u8; 32]);
-        assert!(sink.write_event_atomic(&event).await.is_err());
+        sink.write_event_atomic(&event).await.unwrap_err();
         assert!(sink.needs_repair);
 
         // The underlying handle becomes writable again — mirrors the process
