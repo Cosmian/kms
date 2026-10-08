@@ -392,8 +392,15 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
-          # Azure Cloud HSM (the client library is installed on the CI runner)
-          AZURE_CLOUD_HSM_PKCS11_LIB: /opt/azurecloudhsm/lib64/libazcloudhsm_pkcs11.so
+          # Azure Cloud HSM: prepare_azure_cloudhsm.sh installs the client SDK and
+          # starts azcloudhsm_client (see crate/hsm/azure_cloud_hsm/README.md).
+          AZURE_CLOUD_HSM_PO_CERT: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_PO_CERT }}
+          AZURE_CLOUD_HSM_HOSTNAME: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HOSTNAME }}
+          # GitHub-hosted runners cannot resolve *.privatelink.cloudhsm.azure.net or
+          # route to the HSM's private VNet IP; prepare_azure_cloudhsm.sh maps the
+          # hostname and starts a VPN tunnel only if the HSM is not already reachable.
+          AZURE_CLOUD_HSM_HSM_IP: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IP }}
+          AZURE_CLOUD_HSM_OVPN_CONF: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_OVPN_CONF }}
           HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
           HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
         run: |

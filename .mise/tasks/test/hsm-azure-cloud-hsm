@@ -14,8 +14,13 @@ if [[ "$(uname -s)" != "Linux" ]]; then
 fi
 
 require_cmd cargo
-: "${AZURE_CLOUD_HSM_PKCS11_LIB:?Set AZURE_CLOUD_HSM_PKCS11_LIB to libazcloudhsm_pkcs11.so}"
 : "${HSM_USER_PASSWORD:?Set HSM_USER_PASSWORD to the Cloud HSM user:password PIN}"
+
+# Installs the Azure Cloud HSM SDK, writes PO.crt and azcloudhsm_resource.cfg, opens a
+# VPN tunnel to the private endpoint if needed, and starts the azcloudhsm_client daemon.
+# See crate/hsm/azure_cloud_hsm/README.md for the one-time partition/CU provisioning steps.
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_azure_cloudhsm.sh"
 
 print_header "Running Azure Cloud HSM tests (${VARIANT_NAME})"
 
