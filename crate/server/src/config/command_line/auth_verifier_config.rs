@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 /// auth_verifier_accept_invalid_certs = false   # set true only for dev/test
 /// # Required in addition to the above to enable the Web UI login form:
 /// auth_verifier_realm                = "kms"
+/// # Optional: enable Web UI SAML single sign-on for this realm:
+/// auth_verifier_saml_realm           = "kms-saml"
 /// ```
 ///
 /// The JWKS endpoint is derived automatically from `auth_verifier_url` as
@@ -44,6 +46,16 @@ pub struct AuthVerifierConfig {
     #[clap(long, env = "KMS_AUTH_VERIFIER_REALM", verbatim_doc_comment)]
     pub auth_verifier_realm: Option<String>,
 
+    /// Auth Verifier realm configured for SAML 2.0 single sign-on in the Web UI.
+    ///
+    /// When set, the Web UI offers SAML sign-in and the KMS accepts the Auth
+    /// Verifier `_ea_` session cookie, but only for tokens issued for this realm.
+    /// The Auth Verifier `/saml/` routes must be served from the KMS public origin
+    /// (reverse proxy) so the browser sends the cookie to the KMS, and
+    /// `kms_public_url` must use `https://`.
+    #[clap(long, env = "KMS_AUTH_VERIFIER_SAML_REALM", verbatim_doc_comment)]
+    pub auth_verifier_saml_realm: Option<String>,
+
     /// Accept invalid or self-signed TLS certificates when fetching the JWKS.
     ///
     /// **Development and testing only.** Never set this in production.
@@ -71,6 +83,15 @@ impl AuthVerifierConfig {
         self.auth_verifier_url.is_some() && self.auth_verifier_realm.is_some()
     }
 
+    /// Returns the SAML realm whose `_ea_` session cookies the KMS accepts, or `None`
+    /// when SAML single sign-on is disabled (no server URL or no SAML realm).
+    #[must_use]
+    pub fn saml_session_realm(&self) -> Option<&str> {
+        self.auth_verifier_url
+            .as_ref()
+            .and(self.auth_verifier_saml_realm.as_deref())
+    }
+
     /// Returns the effective JWKS URI:
     /// - `auth_verifier_jwks_uri` if explicitly set, or
     /// - `{auth_verifier_url}/.well-known/jwks.json` otherwise.
@@ -94,9 +115,7 @@ mod tests {
     fn test_jwks_uri_default() {
         let cfg = AuthVerifierConfig {
             auth_verifier_url: Some("https://auth.example.com".to_owned()),
-            auth_verifier_jwks_uri: None,
-            auth_verifier_realm: None,
-            auth_verifier_accept_invalid_certs: false,
+            ..AuthVerifierConfig::default()
         };
         assert_eq!(
             cfg.jwks_uri(),
@@ -109,8 +128,7 @@ mod tests {
         let cfg = AuthVerifierConfig {
             auth_verifier_url: Some("https://auth.example.com".to_owned()),
             auth_verifier_jwks_uri: Some("https://auth.example.com/custom/jwks".to_owned()),
-            auth_verifier_realm: None,
-            auth_verifier_accept_invalid_certs: false,
+            ..AuthVerifierConfig::default()
         };
         assert_eq!(
             cfg.jwks_uri(),
@@ -122,9 +140,7 @@ mod tests {
     fn test_jwks_uri_trailing_slash_stripped() {
         let cfg = AuthVerifierConfig {
             auth_verifier_url: Some("https://auth.example.com/".to_owned()),
-            auth_verifier_jwks_uri: None,
-            auth_verifier_realm: None,
-            auth_verifier_accept_invalid_certs: false,
+            ..AuthVerifierConfig::default()
         };
         assert_eq!(
             cfg.jwks_uri(),
@@ -149,6 +165,22 @@ mod tests {
 
         cfg.auth_verifier_realm = Some("kms".to_owned());
         assert!(cfg.ui_login_enabled());
+    }
+
+    #[test]
+    fn test_saml_session_realm_requires_both_url_and_saml_realm() {
+        let mut cfg = AuthVerifierConfig {
+            auth_verifier_saml_realm: Some("kms-saml".to_owned()),
+            ..AuthVerifierConfig::default()
+        };
+        assert_eq!(cfg.saml_session_realm(), None);
+
+        cfg.auth_verifier_url = Some("https://auth.example.com".to_owned());
+        assert_eq!(cfg.saml_session_realm(), Some("kms-saml"));
+
+        cfg.auth_verifier_saml_realm = None;
+        cfg.auth_verifier_realm = Some("kms".to_owned());
+        assert_eq!(cfg.saml_session_realm(), None);
     }
 
     /// Verify that the `auth_verifier.toml` test config parses correctly and

@@ -754,6 +754,8 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
 | `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `warn` | `Logout: failed to revoke the Auth Verifier session: {e}` | `src/routes/ui_auth.rs` | `e`: network, TLS or HTTP status error returned while calling `DELETE /sessions` on the Auth Verifier | UI logout still succeeds and the `_ea_` cookie is expired, but the Auth Verifier session stays valid until it expires. Check that `auth_verifier_url` is reachable from the KMS. |
+| `debug` | `whoami: Auth Verifier session cookie rejected: {e}` | `src/routes/ui_auth.rs` | `e`: reason the `_ea_` cookie was rejected (invalid signature, expired, wrong realm, empty or reserved subject) | Expected after the SAML session expires. Repeated wrong-realm rejections indicate a cookie issued for another Auth Verifier realm. |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`

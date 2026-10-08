@@ -1,0 +1,41 @@
+# Local SAML single sign-on stack for manual testing — started by stack.sh (do not run directly).
+#   keycloak       SAML identity provider           https://localhost:9443 (admin / admin)
+#   auth-verifier  SAML service provider (SAML build) https://127.0.0.1:8444 (reached by the KMS)
+#   proxy          nginx: /saml/* -> auth-verifier, everything else -> KMS on the host
+#                  public origin https://localhost:8443
+services:
+  keycloak:
+    image: ${KEYCLOAK_IMAGE}
+    command: [start-dev, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTPS_PORT: '9443'
+      KC_HOSTNAME: https://localhost:9443
+      KC_HTTPS_CERTIFICATE_FILE: /conf/tls.cert.pem
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /conf/tls.key.pem
+    ports:
+      - 127.0.0.1:9443:9443
+    volumes:
+      - ${SAML_SSO_DIR}:/conf:ro
+      - ${SAML_SSO_DIR}/keycloak-realm.json:/opt/keycloak/data/import/demo-realm.json:ro
+
+  auth-verifier:
+    image: ${AUTH_VERIFIER_IMAGE}
+    environment:
+      AUTH_SERVER_CONF: /conf/auth_verifier.toml
+    ports:
+      - 127.0.0.1:8444:8444
+    volumes:
+      - ${SAML_SSO_DIR}:/conf:ro
+
+  proxy:
+    image: ${NGINX_IMAGE}
+    depends_on: [auth-verifier]
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - 127.0.0.1:8443:8443
+    volumes:
+      - ${SAML_SSO_DIR}:/conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
