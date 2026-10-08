@@ -267,7 +267,7 @@ else
 fi
 
 if [ "${BENCH_DELEGATED}" = "true" ]; then
-  bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11_delegated" "true" "false" "true" "${KMS_BASE_URL}"
+  bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11_hsm_delegated_${BENCH_HSM_MODEL}" "true" "false" "true" "${KMS_BASE_URL}"
   print_success "HSM-delegated PKCS#11 load benchmark completed"
 else
   bench_generate_report "${BENCH_PORT:-0}" "ckms_bench_pkcs11" "false" "false" "true" "${KMS_BASE_URL}"

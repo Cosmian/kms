@@ -180,9 +180,9 @@ nav:
   - Benchmarks:
       - Software: benchmarks/ckms_bench/report.md
       - PKCS#11: benchmarks/ckms_bench_pkcs11/report.md
-      - PKCS#11 HSM Delegated: benchmarks/ckms_bench_pkcs11_delegated/report.md
-      - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek/report.md
-      - HSM Delegated Crypto: benchmarks/ckms_bench_delegated_crypto_operations/report.md
+      - PKCS#11 HSM Delegated: benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md
+      - HSM KEK-Wrap: benchmarks/ckms_bench_hsm_kek_softhsm2/report.md
+      - HSM Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
       - p11perftest Commands: benchmarks/p11perftest.md
   - KMS Clients:
