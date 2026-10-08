@@ -402,17 +402,28 @@ pub(super) fn try_create_hsm_sym_key(
 ) -> Option<UniqueIdentifier> {
     rt.block_on(async {
         let uid = hsm_uid(hsm_prefix, "sym");
-        let req = symmetric_key_create_request(
+        let req = match symmetric_key_create_request(
             &client.config.vendor_id,
-            Some(UniqueIdentifier::TextString(uid)),
+            Some(UniqueIdentifier::TextString(uid.clone())),
             bits,
             algo,
             ["bench"],
             false,
             None,
-        )
-        .ok()?;
-        client.create(req).await.ok().map(|r| r.unique_identifier)
+        ) {
+            Ok(req) => req,
+            Err(e) => {
+                eprintln!("[bench] Failed to build symmetric key request ({algo:?}, {bits} bits, UID={uid}): {e}");
+                return None;
+            }
+        };
+        match client.create(req).await {
+            Ok(resp) => Some(resp.unique_identifier),
+            Err(e) => {
+                eprintln!("[bench] Failed to create HSM symmetric key ({algo:?}, {bits} bits, UID={uid}): {e}");
+                None
+            }
+        }
     })
 }
 
@@ -426,20 +437,34 @@ pub(super) fn try_create_hsm_rsa_kp(
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
         let uid = hsm_uid(hsm_prefix, "rsa");
-        let req = create_rsa_key_pair_request(
+        let req = match create_rsa_key_pair_request(
             &client.config.vendor_id,
-            Some(UniqueIdentifier::TextString(uid)),
+            Some(UniqueIdentifier::TextString(uid.clone())),
             ["bench"],
             bits,
             false,
             None,
-        )
-        .ok()?;
-        let resp = client.create_key_pair(req).await.ok()?;
-        Some((
-            resp.public_key_unique_identifier,
-            resp.private_key_unique_identifier,
-        ))
+        ) {
+            Ok(req) => req,
+            Err(e) => {
+                eprintln!(
+                    "[bench] Failed to build RSA key pair request ({bits} bits, UID={uid}): {e}"
+                );
+                return None;
+            }
+        };
+        match client.create_key_pair(req).await {
+            Ok(resp) => Some((
+                resp.public_key_unique_identifier,
+                resp.private_key_unique_identifier,
+            )),
+            Err(e) => {
+                eprintln!(
+                    "[bench] Failed to create HSM RSA key pair ({bits} bits, UID={uid}): {e}"
+                );
+                None
+            }
+        }
     })
 }
 
