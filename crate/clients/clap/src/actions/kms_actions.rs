@@ -185,7 +185,7 @@ impl KmsActions {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
             Self::Cng(action) => Box::pin(action.process(kms_rest_client)).await?,
-            Self::Pkcs11(action) => action.process()?,
+            Self::Pkcs11(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::DeriveKey(action) => {
                 Box::pin(action.run(&kms_rest_client)).await?;
             }

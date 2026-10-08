@@ -10,7 +10,10 @@ use super::{
         bench_jose_batch, bench_jose_encrypt, bench_jose_key_creation, bench_jose_mac,
         bench_jose_sign_verify,
     },
-    kmip::{bench_batch, bench_encrypt, bench_key_creation, bench_sign_verify},
+    kmip::{
+        bench_batch, bench_encrypt, bench_hsm_encrypt, bench_hsm_key_creation,
+        bench_hsm_sign_verify, bench_key_creation, bench_sign_verify,
+    },
     load::{
         LoadResult, bench_load, generate_html_output, generate_load_json_output,
         generate_markdown_load_output_combined, parse_concurrency_levels, print_load_results,
@@ -19,7 +22,7 @@ use super::{
         collect_json_output, count_baseline_files, criterion_home, generate_compact_output,
         generate_markdown_output,
     },
-    transport::{Transport, set_max_group_time},
+    transport::{Transport, set_bench_filter, set_max_group_time},
     types::{BenchAction, BenchFormat, BenchMode, BenchProtocol, BenchSpeed, bench_ko_reset},
 };
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -32,7 +35,8 @@ impl BenchAction {
     /// benchmark groups.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let config = kms_rest_client.config.clone();
-        let mode = self.mode.clone();
+        let mode = self.mode;
+        let filter = self.filter.clone();
         let protocol = self.protocol.clone();
         let format = self.format.clone();
         let speed = self.speed.clone();
@@ -46,7 +50,7 @@ impl BenchAction {
         let warmup_time = self.warmup_time;
         let cooldown_time = self.cooldown_time;
         let load_plaintext_size = self.load_plaintext_size;
-
+        let hsm_prefix = self.hsm.then(|| format!("hsm::{}", self.hsm_slot));
         // Drop the existing client (bound to the current runtime)
         drop(kms_rest_client);
 
@@ -91,13 +95,15 @@ impl BenchAction {
                     let results = bench_load(
                         &rt,
                         &client,
-                        &mode,
+                        mode,
                         proto,
                         &concurrency_levels,
                         warmup,
                         duration,
                         cooldown,
                         load_plaintext_size,
+                        hsm_prefix.as_deref(),
+                        Some(&filter),
                     );
                     if results.is_empty() {
                         continue;
@@ -196,16 +202,36 @@ impl BenchAction {
 
             // Apply the optional per-group wall-clock budget (KMIP groups only).
             set_max_group_time(max_group_time.map(Duration::from_secs));
+            set_bench_filter(Some(filter.clone()));
 
             if run_json {
-                run_kmip_benches(&mut c, &client, &rt, &mode, Transport::Json, is_sanity);
+                if let Some(ref hsm_prefix) = hsm_prefix {
+                    run_hsm_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, hsm_prefix);
+                } else {
+                    run_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, is_sanity);
+                }
             }
 
             if run_wire {
-                run_kmip_benches(&mut c, &client, &rt, &mode, Transport::Bytes, is_sanity);
+                if hsm_prefix.is_some() {
+                    eprintln!(
+                        "[bench] --hsm only benchmarks the ttlv-json transport for delegated \
+                         crypto operations: a ttlv-bytes run measured strictly after the \
+                         ttlv-json group on the same HSM token would be contaminated by \
+                         cumulative SoftHSM2 load from that group, invalidating the comparison, \
+                         skipping ttlv-bytes"
+                    );
+                } else {
+                    run_kmip_benches(&mut c, &client, &rt, mode, Transport::Bytes, is_sanity);
+                }
             }
 
-            if run_jose {
+            if run_jose && hsm_prefix.is_some() {
+                eprintln!(
+                    "[bench] --hsm does not support the jose protocol (no way to request a \
+                     caller-chosen kid via POST /v1/crypto/keys), skipping"
+                );
+            } else if run_jose {
                 match mode {
                     BenchMode::All => {
                         bench_jose_encrypt(&mut c, &client, &rt);
@@ -281,7 +307,7 @@ fn run_kmip_benches(
     c: &mut Criterion,
     client: &KmsClient,
     rt: &Runtime,
-    mode: &BenchMode,
+    mode: BenchMode,
     transport: Transport,
     is_sanity: bool,
 ) {
@@ -296,5 +322,33 @@ fn run_kmip_benches(
         BenchMode::KeyCreation => bench_key_creation(c, client, rt, transport),
         BenchMode::SignVerify => bench_sign_verify(c, client, rt, transport),
         BenchMode::Batch => bench_batch(c, client, rt, transport, is_sanity),
+    }
+}
+
+/// HSM counterpart of [`run_kmip_benches`]: keys are created with an
+/// `hsm::`-prefixed unique identifier so both key generation and Encrypt/Sign
+/// execute directly on the HSM (PKCS#11). `Batch` has no HSM equivalent (out
+/// of scope — the oracle has no bulk-operation support) and is skipped with a
+/// notice.
+fn run_hsm_kmip_benches(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    mode: BenchMode,
+    transport: Transport,
+    hsm_prefix: &str,
+) {
+    match mode {
+        BenchMode::All => {
+            bench_hsm_encrypt(c, client, rt, transport, hsm_prefix);
+            bench_hsm_key_creation(c, client, rt, transport, hsm_prefix);
+            bench_hsm_sign_verify(c, client, rt, transport, hsm_prefix);
+        }
+        BenchMode::Encrypt => bench_hsm_encrypt(c, client, rt, transport, hsm_prefix),
+        BenchMode::KeyCreation => bench_hsm_key_creation(c, client, rt, transport, hsm_prefix),
+        BenchMode::SignVerify => bench_hsm_sign_verify(c, client, rt, transport, hsm_prefix),
+        BenchMode::Batch => {
+            eprintln!("[bench] --hsm does not support --mode batch (no HSM bulk-op support)");
+        }
     }
 }

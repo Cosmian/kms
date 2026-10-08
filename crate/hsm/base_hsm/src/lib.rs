@@ -5,13 +5,17 @@ mod error;
 pub use base_hsm::BaseHsm;
 pub use error::{HError, HResult};
 pub use hsm_lib::{HsmLib, Info};
+pub use pkcs11_v3::InterfaceDescriptor;
 pub use session::{
     AesKeySize, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize, RsaOaepDigest, Session,
 };
+pub(crate) use slots::SessionGuard;
 pub use slots::{ObjectHandlesCache, SlotManager};
 
 mod base_hsm;
 mod hsm_lib;
+pub use hsm_lib::pkcs11_return_code_name;
+mod pkcs11_v3;
 mod session;
 
 mod kms_hsm;
@@ -29,7 +33,72 @@ pub mod tests_shared;
 // per PKCS#11 v2 and avoid warnings with pkcs11-tool --list-objects
 #[macro_export]
 macro_rules! aes_key_template {
-    ($id:expr, $size:expr, $sensitive:expr) => {
+    ($id:expr, $size:expr) => {
+        [
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_CLASS,
+                pValue: std::ptr::from_ref::<CK_ULONG>(&pkcs11_sys::CKO_SECRET_KEY)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_KEY_TYPE,
+                pValue: std::ptr::from_ref::<CK_ULONG>(&pkcs11_sys::CKK_AES)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_VALUE_LEN,
+                pValue: std::ptr::from_ref(&$size)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_TOKEN,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_ENCRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_DECRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_LABEL,
+                pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_ID,
+                pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_PRIVATE,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+        ]
+    };
+    // Sets CKA_EXTRACTABLE without CKA_SENSITIVE: AWS CloudHSM rejects any
+    // explicit value (true or false) for the Sensitive attribute.
+    ($id:expr, $size:expr, $extractable:expr) => {
         [
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_CLASS,
@@ -91,6 +160,78 @@ macro_rules! aes_key_template {
                 ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
             },
             pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_EXTRACTABLE,
+                pValue: std::ptr::from_ref::<u8>(&$extractable)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<
+                    pkcs11_sys::CK_BBOOL,
+                >())?,
+            },
+        ]
+    };
+    ($id:expr, $label:expr, $size:expr, $sensitive:expr, $extractable:expr) => {
+        [
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_CLASS,
+                pValue: std::ptr::from_ref::<CK_ULONG>(&pkcs11_sys::CKO_SECRET_KEY)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_KEY_TYPE,
+                pValue: std::ptr::from_ref::<CK_ULONG>(&pkcs11_sys::CKK_AES)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_VALUE_LEN,
+                pValue: std::ptr::from_ref(&$size)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_ULONG>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_TOKEN,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_ENCRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_DECRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_LABEL,
+                pValue: $label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($label.len())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_ID,
+                pValue: $id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: pkcs11_sys::CK_ULONG::try_from($id.len())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_PRIVATE,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_SENSITIVE,
                 pValue: std::ptr::from_ref::<u8>(&$sensitive)
                     .cast::<std::ffi::c_void>()
@@ -101,7 +242,7 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_EXTRACTABLE,
-                pValue: std::ptr::from_ref::<u8>(&pkcs11_sys::CK_TRUE)
+                pValue: std::ptr::from_ref::<u8>(&$extractable)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<
@@ -113,9 +254,10 @@ macro_rules! aes_key_template {
 }
 
 /// Macro to simplify HSM function calls with automatic return value checking
+/// An optional `; return_code` suffix lets the caller handle one non-`CKR_OK` code.
 #[macro_export]
 macro_rules! hsm_call {
-    ($hsm_lib:expr, $msg:expr, $fn_name:ident $(, $args:expr)*) => {
+    ($hsm_lib:expr, $msg:expr, $fn_name:ident $(, $args:expr)* $(; $allowed_rv:expr)?) => {
         {
             let hsm_lib_ref = &$hsm_lib;
             let function_name = stringify!($fn_name);
@@ -125,8 +267,14 @@ macro_rules! hsm_call {
                 Some(func) => unsafe { func($($args),*) },
                 None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
             };
-            if rv != pkcs11_sys::CKR_OK {
-                return Err($crate::HError::Default(format!("{}. Return code: {}", $msg, rv)));
+            if rv != pkcs11_sys::CKR_OK $( && rv != $allowed_rv)? {
+                return Err($crate::HError::Default(format!(
+                    "{}. Return code: {} ({:#010x}, {})",
+                    $msg,
+                    rv,
+                    rv,
+                    $crate::pkcs11_return_code_name(rv)
+                )));
             }
             rv
         }
