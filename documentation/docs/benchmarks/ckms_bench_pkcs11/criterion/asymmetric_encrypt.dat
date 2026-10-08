@@ -1,2 +1,3 @@
-# idx  pkcs11/5.27.1  label
-0  95.34  "rsa-pkcs"
+# idx  pkcs11/5.28.0  label
+0  287.28  "rsa-oaep"
+1  238.10  "rsa-pkcs"

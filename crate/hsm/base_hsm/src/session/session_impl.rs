@@ -30,7 +30,7 @@ use pkcs11_sys::{
     CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
     CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
     CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_MECHANISM_INVALID,
+    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL, CKR_MECHANISM_INVALID,
     CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
     CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
@@ -52,6 +52,9 @@ const AES_BLOCK_SIZE: usize = 16;
 const AES_CBC_IV_LENGTH: usize = 16;
 const AES_GCM_IV_LENGTH: usize = 12;
 const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
+
+/// Initial output capacity covers RSA-4096, ECDSA P-521, and Ed448 signatures.
+const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
 
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
@@ -1777,6 +1780,59 @@ impl Session {
         }
     }
 
+    fn sign_with_buffer(&self, data: &mut [u8]) -> HResult<Vec<u8>> {
+        let mut signature = vec![0_u8; MAX_SIGNATURE_BUFFER_LEN];
+        let mut signature_len = CK_ULONG::try_from(signature.len())?;
+        let mut rv = hsm_call!(
+            self.hsm,
+            "Failed to sign data",
+            C_Sign,
+            self.handle,
+            data.as_mut_ptr(),
+            CK_ULONG::try_from(data.len())?,
+            signature.as_mut_ptr(),
+            &raw mut signature_len;
+            CKR_BUFFER_TOO_SMALL
+        );
+
+        if rv == CKR_BUFFER_TOO_SMALL {
+            let required_len = usize::try_from(signature_len)?;
+            if required_len <= signature.len() {
+                return Err(HError::Default(format!(
+                    "C_Sign reported an invalid required signature length: {required_len}"
+                )));
+            }
+            signature.resize(required_len, 0);
+            signature_len = CK_ULONG::try_from(signature.len())?;
+            rv = hsm_call!(
+                self.hsm,
+                "Failed to sign data",
+                C_Sign,
+                self.handle,
+                data.as_mut_ptr(),
+                CK_ULONG::try_from(data.len())?,
+                signature.as_mut_ptr(),
+                &raw mut signature_len;
+                CKR_BUFFER_TOO_SMALL
+            );
+        }
+
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to sign data. Return code: {rv}"
+            )));
+        }
+        let signature_len = usize::try_from(signature_len)?;
+        if signature_len > signature.len() {
+            return Err(HError::Default(format!(
+                "C_Sign returned signature length {signature_len} beyond buffer capacity {}",
+                signature.len()
+            )));
+        }
+        signature.truncate(signature_len);
+        Ok(signature)
+    }
+
     fn sign_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -1815,37 +1871,7 @@ impl Session {
             };
         }
 
-        let mut signature_len: CK_ULONG = 0;
-        hsm_call!(
-            self.hsm,
-            "Failed to get signature length",
-            C_Sign,
-            self.handle,
-            data.as_mut_ptr(),
-            CK_ULONG::try_from(data.len())?,
-            ptr::null_mut(),
-            &raw mut signature_len
-        );
-
-        let expected_len = signature_len;
-        let mut signature = vec![0_u8; usize::try_from(signature_len)?];
-        hsm_call!(
-            self.hsm,
-            "Failed to sign data",
-            C_Sign,
-            self.handle,
-            data.as_mut_ptr(),
-            CK_ULONG::try_from(data.len())?,
-            signature.as_mut_ptr(),
-            &raw mut signature_len
-        );
-
-        if signature_len != expected_len {
-            return Err(HError::Default(format!(
-                "C_Sign: signature length mismatch: expected {expected_len}, got {signature_len}"
-            )));
-        }
-        Ok(signature)
+        self.sign_with_buffer(&mut data)
     }
 
     /// Verify a signature using the specified key and algorithm.

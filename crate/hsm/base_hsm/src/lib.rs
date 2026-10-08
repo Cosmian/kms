@@ -253,9 +253,10 @@ macro_rules! aes_key_template {
 }
 
 /// Macro to simplify HSM function calls with automatic return value checking
+/// An optional `; return_code` suffix lets the caller handle one non-`CKR_OK` code.
 #[macro_export]
 macro_rules! hsm_call {
-    ($hsm_lib:expr, $msg:expr, $fn_name:ident $(, $args:expr)*) => {
+    ($hsm_lib:expr, $msg:expr, $fn_name:ident $(, $args:expr)* $(; $allowed_rv:expr)?) => {
         {
             let hsm_lib_ref = &$hsm_lib;
             let function_name = stringify!($fn_name);
@@ -265,7 +266,7 @@ macro_rules! hsm_call {
                 Some(func) => unsafe { func($($args),*) },
                 None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
             };
-            if rv != pkcs11_sys::CKR_OK {
+            if rv != pkcs11_sys::CKR_OK $( && rv != $allowed_rv)? {
                 return Err($crate::HError::Default(format!("{}. Return code: {}", $msg, rv)));
             }
             rv

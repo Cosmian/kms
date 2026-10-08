@@ -47,7 +47,7 @@ impl HsmProvider for AwsCloudHsmCapabilityProvider {
             supports_rsa_oaep_key_wrap: true,
             enforces_ecdsa_digest_strength: true,
             skip_finalize_on_drop: false,
-            max_concurrent_sessions: 32,
+            max_concurrent_sessions: 128,
         }
     }
 }

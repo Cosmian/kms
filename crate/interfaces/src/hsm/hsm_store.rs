@@ -583,7 +583,12 @@ impl ObjectsStore for HsmStore {
         // (which is multi-tenant) does filter by owner.
         _owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
-        let slot_ids = self.hsm.get_available_slot_list().await?;
+        // If `name` matches `{prefix}::{slot_id}::{key_id}`, only scan that specific slot.
+        let slot_ids = if let Ok((target_slot, _)) = parse_uid_with_prefix(name, &self.prefix) {
+            vec![target_slot]
+        } else {
+            self.hsm.get_available_slot_list().await?
+        };
         let mut results = Vec::new();
 
         for slot_id in slot_ids {

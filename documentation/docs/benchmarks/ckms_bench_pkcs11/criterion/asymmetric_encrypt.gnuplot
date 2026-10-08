@@ -9,5 +9,5 @@ set boxwidth 0.800
 set grid ytics
 set key top right
 set xtics rotate by -30
-set xtics ("rsa-pkcs" 0)
+set xtics ("rsa-oaep" 0, "rsa-pkcs" 1)
 plot 'asymmetric_encrypt.dat' using ($1+0.000):2 with boxes lw 1 title 'pkcs11'

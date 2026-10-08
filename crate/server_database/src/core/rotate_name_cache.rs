@@ -45,6 +45,12 @@ use moka::future::Cache;
 /// cross-node consistency.
 pub(crate) const DEFAULT_TTL: Duration = Duration::from_secs(2);
 
+/// Extended TTL for empty `hsm::` results (negative cache).
+/// Non-rotated HSM keys never gain rotation metadata unless explicitly rotated via
+/// `ReKey` or labeled via `SetAttribute`, both of which eagerly invalidate this cache.
+/// A 1-hour window prevents recurring 4-second slot scans during steady-state workloads.
+pub(crate) const HSM_NEGATIVE_TTL: Duration = Duration::from_secs(3600);
+
 /// Default maximum number of distinct `(name, generation, owner)` lookups held at once.
 const DEFAULT_MAX_CAPACITY: usize = 10_000;
 
@@ -59,12 +65,13 @@ struct RotateNameKey {
 
 type RotateNameResults = Arc<Vec<(String, Attributes)>>;
 
-/// Concurrent, short-TTL cache for [`crate::Database::find_by_rotate_name`] results.
+/// Concurrent cache for [`crate::Database::find_by_rotate_name`] results.
 ///
 /// Backed by [`moka::future::Cache`] — lookups are lock-free, so concurrent
 /// Sign/Verify calls on distinct HSM sessions never serialize on a shared lock.
 pub struct RotateNameCache {
     inner: Cache<RotateNameKey, RotateNameResults>,
+    hsm_negative: Cache<RotateNameKey, RotateNameResults>,
 }
 
 impl RotateNameCache {
@@ -72,17 +79,26 @@ impl RotateNameCache {
     #[must_use]
     pub fn new() -> Self {
         let max_capacity = NonZeroUsize::new(DEFAULT_MAX_CAPACITY).unwrap_or(NonZeroUsize::MIN);
-        Self::with_config(DEFAULT_TTL, max_capacity)
+        Self::with_config(DEFAULT_TTL, HSM_NEGATIVE_TTL, max_capacity)
     }
 
-    /// Create a new cache with an explicit TTL and capacity (used in tests).
+    /// Create a new cache with explicit TTLs and capacity (used in tests).
     #[must_use]
-    pub fn with_config(ttl: Duration, max_capacity: NonZeroUsize) -> Self {
+    pub fn with_config(
+        ttl: Duration,
+        hsm_negative_ttl: Duration,
+        max_capacity: NonZeroUsize,
+    ) -> Self {
         let max_capacity = u64::try_from(max_capacity.get()).map_or(u64::MAX, |capacity| capacity);
         Self {
             inner: Cache::builder()
                 .max_capacity(max_capacity)
                 .time_to_live(ttl)
+                .support_invalidation_closures()
+                .build(),
+            hsm_negative: Cache::builder()
+                .max_capacity(max_capacity)
+                .time_to_live(hsm_negative_ttl)
                 .support_invalidation_closures()
                 .build(),
         }
@@ -100,13 +116,18 @@ impl RotateNameCache {
             generation,
             owner: owner.to_owned(),
         };
+        if let Some(res) = self.hsm_negative.get(&key).await {
+            return Some((*res).clone());
+        }
         self.inner.get(&key).await.map(|results| (*results).clone())
     }
 
     /// Insert a freshly computed result for `(name, generation, owner)`.
     ///
-    /// Empty results are not cached: a keyset that does not exist yet must become
-    /// visible as soon as its first member is created, not after the TTL.
+    /// Empty results are cached only for `hsm::` identifiers: a non-rotated HSM key
+    /// will never match a keyset label, and re-querying the slot on every operation
+    /// causes full-slot `C_FindObjects` scans over WAN/RPC. SQL keysets that do not
+    /// exist yet are NOT cached so newly created keysets become visible immediately.
     pub async fn insert(
         &self,
         name: &str,
@@ -114,14 +135,17 @@ impl RotateNameCache {
         owner: &str,
         results: Vec<(String, Attributes)>,
     ) {
-        if results.is_empty() {
-            return;
-        }
         let key = RotateNameKey {
             name: name.to_owned(),
             generation,
             owner: owner.to_owned(),
         };
+        if results.is_empty() {
+            if name.starts_with("hsm::") {
+                self.hsm_negative.insert(key, Arc::new(results)).await;
+            }
+            return;
+        }
         self.inner.insert(key, Arc::new(results)).await;
     }
 
@@ -132,7 +156,12 @@ impl RotateNameCache {
     /// generation immediately instead of waiting out the TTL.
     pub fn invalidate_name(&self, name: &str) {
         let name = name.to_owned();
+        let name_clone = name.clone();
         self.invalidate_if(move |key, _| key.name == name);
+        drop(
+            self.hsm_negative
+                .invalidate_entries_if(move |key, _| key.name == name_clone),
+        );
     }
 
     /// Invalidate every cached entry that may be affected by a local write to `uid`:
@@ -144,10 +173,17 @@ impl RotateNameCache {
     pub fn invalidate_member(&self, uid: &str, rotate_name: Option<&str>) {
         let uid = uid.to_owned();
         let rotate_name = rotate_name.map(ToOwned::to_owned);
+        let rotate_name_clone = rotate_name.clone();
         self.invalidate_if(move |key, results| {
             rotate_name.as_deref() == Some(key.name.as_str())
                 || results.iter().any(|(member, _)| *member == uid)
         });
+        if let Some(name) = rotate_name_clone {
+            drop(
+                self.hsm_negative
+                    .invalidate_entries_if(move |key, _| key.name == name),
+            );
+        }
     }
 
     fn invalidate_if<F>(&self, predicate: F)
@@ -182,10 +218,10 @@ mod tests {
     fn cache() -> RotateNameCache {
         RotateNameCache::with_config(
             Duration::from_secs(60),
+            Duration::from_secs(3600),
             NonZeroUsize::new(100).unwrap_or(NonZeroUsize::MIN),
         )
     }
-
     async fn seed(cache: &RotateNameCache, name: &str, generation: Option<i32>, owner: &str) {
         cache
             .insert(
@@ -215,12 +251,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_results_are_not_cached() {
+    async fn empty_results_are_not_cached_for_sql() {
         let cache = cache();
         cache.insert("keyset-a", Some(2), "alice", vec![]).await;
         assert!(cache.get("keyset-a", Some(2), "alice").await.is_none());
     }
 
+    #[tokio::test]
+    async fn empty_results_are_cached_for_hsm() {
+        let cache = cache();
+        cache
+            .insert("hsm::softhsm2::0::my-key", None, "alice", vec![])
+            .await;
+        assert_eq!(
+            cache.get("hsm::softhsm2::0::my-key", None, "alice").await,
+            Some(vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn hsm_negative_entries_cleared_by_invalidate_name() {
+        let cache = cache();
+        cache
+            .insert("hsm::softhsm2::0::my-key", None, "alice", vec![])
+            .await;
+        assert!(
+            cache
+                .get("hsm::softhsm2::0::my-key", None, "alice")
+                .await
+                .is_some()
+        );
+        cache.invalidate_name("hsm::softhsm2::0::my-key");
+        assert!(
+            cache
+                .get("hsm::softhsm2::0::my-key", None, "alice")
+                .await
+                .is_none()
+        );
+    }
     #[tokio::test]
     async fn invalidate_name_clears_all_owners_and_generations() {
         let cache = cache();
@@ -261,7 +329,11 @@ mod tests {
 
     #[tokio::test]
     async fn entries_expire_after_ttl() {
-        let cache = RotateNameCache::with_config(Duration::from_millis(20), NonZeroUsize::MIN);
+        let cache = RotateNameCache::with_config(
+            Duration::from_millis(20),
+            Duration::from_millis(20),
+            NonZeroUsize::MIN,
+        );
         seed(&cache, "keyset-a", None, "alice").await;
         assert!(cache.get("keyset-a", None, "alice").await.is_some());
         tokio::time::sleep(Duration::from_millis(80)).await;
