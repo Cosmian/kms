@@ -3,7 +3,7 @@ mod event;
 mod file_hash;
 mod hash;
 
-pub use cef::to_cef_line;
+pub use cef::{to_cef_line, to_cef_line_with_source};
 pub use event::{
     AuditEvent, AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
 };
