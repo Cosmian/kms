@@ -39,13 +39,14 @@ export function extractAllUuids(text: string): string[] {
 }
 
 /**
- * Navigate to a page and wait for it to be fully idle (WASM, React effects,
- * Ant Design initialisation).  All async hooks that populate dropdowns from
- * WASM resolve during `networkidle`.
+ * Navigate after the document and application scripts are ready.
+ *
+ * The KMS UI may retain requests while React effects populate controls, so
+ * `networkidle` is not a valid readiness signal. Callers wait for the
+ * specific interactive element they need before acting.
  */
 export async function gotoAndWait(page: Page, path: string): Promise<void> {
-    await page.goto(path);
-    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    await page.goto(path, { waitUntil: "domcontentloaded" });
 }
 
 /**
@@ -199,13 +200,12 @@ export async function selectOptionById(page: Page, cssSelector: string, optionTe
     // Use a regex anchored to start/end so "Active" does not accidentally match "PreActive".
     const escapedText = optionText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const exactTextRe = new RegExp(`^\\s*${escapedText}\\s*$`);
-    // In Ant Design v5, Form.Item sets the `id` on the inner <input> of the Select
-    // (the search combobox), not on the outer .ant-select wrapper. So the CSS path
-    // `#keyFormat .ant-select-selection-item` never matches because .ant-select-selection-item
-    // is a sibling of the input within .ant-select-selector, not a descendant of the input.
-    // Use :has() to find the .ant-select-selector that contains our trigger input, then
-    // locate .ant-select-selection-item within it.
-    const selectionItem = page.locator(`.ant-select-selector:has(${cssSelector}) .ant-select-selection-item`);
+    // Ant Design Form.Item places an `id` on the inner input, while `data-testid`
+    // is attached to the Select wrapper. Resolve the selected label from the
+    // matching wrapper for test IDs and from the input's selector for IDs.
+    const selectionItem = cssSelector.includes("[data-testid=")
+        ? trigger.locator(".ant-select-selection-item")
+        : page.locator(`.ant-select-selector:has(${cssSelector}) .ant-select-selection-item`);
 
     const overallDeadline = Date.now() + 30_000;
     while (Date.now() < overallDeadline) {
@@ -325,6 +325,19 @@ export async function createSymKeyWithId(page: Page, id: string): Promise<string
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/has been created/i);
     return id;
+}
+
+/**
+ * Create a fresh Ed25519 OpenPGP key and return its UUID.
+ */
+export async function createPgpKey(page: Page): Promise<string> {
+    await gotoAndWait(page, "/ui/pgp/keys/create");
+    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/has been created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
 }
 
 /**

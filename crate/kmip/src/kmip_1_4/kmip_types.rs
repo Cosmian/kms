@@ -221,7 +221,9 @@ impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
             kmip_2_1::kmip_types::KeyFormatType::PKCS10
             | kmip_2_1::kmip_types::KeyFormatType::PKCS7
             | kmip_2_1::kmip_types::KeyFormatType::EnclaveECKeyPair
-            | kmip_2_1::kmip_types::KeyFormatType::EnclaveECSharedKey => {
+            | kmip_2_1::kmip_types::KeyFormatType::EnclaveECSharedKey
+            | kmip_2_1::kmip_types::KeyFormatType::OpenPgpSecretKey
+            | kmip_2_1::kmip_types::KeyFormatType::OpenPgpPublicKey => {
                 Err(KmipError::InvalidKmip14Value(
                     ResultReason::InvalidField,
                     format!("Key Format Type: {value:?}, is not supported in KMIP 1.4"),

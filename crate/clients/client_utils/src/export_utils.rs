@@ -11,6 +11,8 @@ use cosmian_kmip::{
         },
     },
 };
+#[cfg(all(feature = "openpgp-export", not(target_arch = "wasm32")))]
+use cosmian_kms_crypto::crypto::openpgp::openpgp_key_to_binary as convert_openpgp_key_to_binary;
 use pem::{EncodeConfig, LineEnding};
 use strum::EnumString;
 use zeroize::Zeroizing;
@@ -30,6 +32,14 @@ pub enum ExportKeyFormat {
     Pkcs8Der,
     Base64,
     Raw,
+    /// ASCII-armored `OpenPGP` transferable secret key.
+    PgpSecret,
+    /// ASCII-armored `OpenPGP` transferable public key.
+    PgpPublic,
+    /// Binary `OpenPGP` transferable secret key.
+    PgpSecretBinary,
+    /// Binary `OpenPGP` transferable public key.
+    PgpPublicBinary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
@@ -133,10 +143,40 @@ pub const fn get_export_key_format_type(
         ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
         ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
         ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
+        ExportKeyFormat::PgpSecret | ExportKeyFormat::PgpSecretBinary => {
+            (Some(KeyFormatType::OpenPgpSecretKey), false)
+        }
+        ExportKeyFormat::PgpPublic | ExportKeyFormat::PgpPublicBinary => {
+            (Some(KeyFormatType::OpenPgpPublicKey), false)
+        }
     };
     (key_format_type, encode_to_pem)
 }
 
+/// Serialize an armored or binary `OpenPGP` transferable key as binary packets.
+///
+/// # Errors
+///
+/// Returns an error if the bytes are not a valid `OpenPGP` transferable key or
+/// cannot be serialized.
+#[cfg(all(feature = "openpgp-export", not(target_arch = "wasm32")))]
+pub fn openpgp_key_to_binary(input: &[u8]) -> Result<Vec<u8>, UtilsError> {
+    convert_openpgp_key_to_binary(input)
+        .map(|bytes| bytes.to_vec())
+        .map_err(|e| UtilsError::Default(e.to_string()))
+}
+
+/// Return an error when binary `OpenPGP` export is not enabled for this client target.
+///
+/// # Errors
+///
+/// Always returns an error because this target does not include the native `OpenPGP` backend.
+#[cfg(any(not(feature = "openpgp-export"), target_arch = "wasm32"))]
+pub fn openpgp_key_to_binary(_input: &[u8]) -> Result<Vec<u8>, UtilsError> {
+    Err(UtilsError::Default(
+        "binary OpenPGP export requires a native non-FIPS client build".to_owned(),
+    ))
+}
 pub fn prepare_key_export_elements(
     key_format: &ExportKeyFormat,
     wrapping_algorithm: &Option<WrappingAlgorithm>,

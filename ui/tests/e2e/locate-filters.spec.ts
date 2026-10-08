@@ -256,6 +256,7 @@ test.describe("Locate – response table rendering", () => {
     test("Search Objects button shows loading state during request", async ({ page }) => {
         await gotoAndWait(page, "/ui/locate");
         const submitBtn = page.locator('[data-testid="submit-btn"]');
+        await expect(submitBtn).toBeVisible({ timeout: UI_READY_TIMEOUT });
 
         // The button should not be in loading state initially
         await expect(submitBtn).not.toHaveClass(/ant-btn-loading/);
@@ -270,28 +271,34 @@ test.describe("Locate – response table rendering", () => {
     });
 
     test("Search Objects with tag filter finds tagged key", async ({ page }) => {
-        // Create a key with a known tag via the create page
+        const tag = "e2e-locate-test-tag";
+
+        // Create a key and wait for the Ant Design tag value to be committed before submitting.
         await gotoAndWait(page, "/ui/sym/keys/create");
         const tagsInput = page.locator("#tags");
         await tagsInput.click();
-        await page.keyboard.type("e2e-locate-test-tag");
+        await page.keyboard.type(tag);
         await page.keyboard.press("Enter");
+        await expect(page.getByText(tag, { exact: true }).last()).toBeVisible({ timeout: UI_READY_TIMEOUT });
+
         const createText = await submitAndWaitForResponse(page);
         expect(createText).toMatch(/has been created/i);
         const keyId = extractUuid(createText);
         expect(keyId).not.toBeNull();
 
-        // Now locate using that tag
+        // Locate the new key by the same committed tag.
         await gotoAndWait(page, "/ui/locate");
         const locateTagsInput = page.locator("#tags");
         await locateTagsInput.click();
-        await page.keyboard.type("e2e-locate-test-tag");
+        await page.keyboard.type(tag);
         await page.keyboard.press("Enter");
+        await expect(page.getByText(tag, { exact: true }).last()).toBeVisible({ timeout: UI_READY_TIMEOUT });
+
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/objects?\s+located/i);
         expect(extractCount(text)).toBeGreaterThanOrEqual(1);
 
-        // Verify the created key appears in results
+        // Verify that the created key is present in the result table.
         await page.waitForLoadState("networkidle");
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });

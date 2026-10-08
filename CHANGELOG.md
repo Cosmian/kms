@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🚀 Features
+
+#### OpenPGP CLI, Web UI & Battle-Testing Suite
+
+- Add `ckms pgp` CLI subcommand group under `non-fips` feature for OpenPGP key management and crypto operations: `keys create` (Ed25519 or RSA 2048/3072/4096, `--user-id`, tags, sensitive, wrapping key id), `keys revoke`, `keys destroy`, `export` (`--key-format pgp-secret` / `pgp-public`), `import` (`--key-format pgp`), `encrypt`, `decrypt`, `sign`, and `sign-verify`
+- Add Web UI OpenPGP (`pgp`) section matching `sym`/`rsa` parity: WASM bridge bindings (`create_pgp_key_ttlv_request`, `get_pgp_algorithms`, `encrypt_pgp_ttlv_request`, `decrypt_pgp_ttlv_request`), React action forms (`PgpKeysCreate`, `PgpEncrypt`, `PgpDecrypt`, `PgpSign`, `PgpVerify`), SPA deep-linking and allowlist, navigation menu item with FIPS filtering, full i18n in English, French, and Simplified Chinese (`en`, `fr`, `zh-CN`), and Playwright E2E test coverage (`pgp-key-flow.spec.ts`)
+- Add comprehensive 24-test GnuPG interoperability matrix in `pgp_gnupg_tests.rs`: keys generated in GnuPG imported into KMS for Decrypt and Sign, keys generated in KMS exported to GnuPG for Decrypt and Verify, subkey signature verification, binary and ASCII-armored inputs, RFC 3156 PGP/MIME encrypted and signed email round-trips, and negative tests pinning server operational boundaries
+- Add end-to-end shell test script `.mise/scripts/test/test_gnupg.sh` and CI matrix job `gnupg` (non-fips only) in `.github/workflows/test_all.yml`
+
 ## [5.28.0] - 2026-09-30
 
 ### 🔒 Security

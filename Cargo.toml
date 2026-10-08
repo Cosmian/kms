@@ -156,7 +156,7 @@ debug = 0 # No debug info (timestamps/paths)
 overflow-checks = true # Catch integer overflows in release builds (ANSSI LANG-ARITH)
 
 [profile.bench]
-# Flamegraph-friendly profile: max-speed optimisations + symbol visibility.
+# Flamegraph-friendly profile: max-speed optimizations + symbol visibility.
 # Overrides release for the following reasons:
 #   opt-level = 3   → release uses "z" (size) which costs 15–40% throughput;
 #                     benchmarks must measure server speed, not binary size.
@@ -250,6 +250,7 @@ reqwest = { version = "0.12", default-features = false }
 rustls = { version = "0.23", default-features = false }
 schemars = "0.8"
 scratchstack-aws-signature = "0.11"
+pgp = { version = "0.21", default-features = false }
 serde = "1.0"
 serde_ignored = "0.1"
 serde_json = "1.0"

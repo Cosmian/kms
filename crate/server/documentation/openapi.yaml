@@ -2529,6 +2529,37 @@ paths:
         '404':
           description: OCSP responder disabled (`ocsp_enabled = false`, the default)
 
+  /v1/crypto/openpgp/binary:
+    post:
+      tags: [REST Crypto API]
+      summary: Convert an OpenPGP transferable key to binary
+      description: |
+        Converts an armored or binary transferable key to binary packet bytes.
+        Available only in non-FIPS builds. Rejects malformed version 6 S2K parameter lengths.
+      operationId: cryptoOpenPgpBinary
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Binary OpenPGP transferable key
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+        '422':
+          description: Invalid OpenPGP key or v6 S2K parameter lengths
+
   /v1/crypto/encrypt:
     post:
       tags: [REST Crypto API]

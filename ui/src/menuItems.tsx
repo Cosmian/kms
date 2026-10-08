@@ -171,6 +171,29 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "pgp",
+        label: "OpenPGP",
+        icon: <KeyOutlined />,
+        collapsedlabel: "PGP",
+        children: [
+            {
+                key: "pgp/keys",
+                label: "Keys",
+                children: [
+                    { key: "pgp/keys/create", label: "Create" },
+                    { key: "pgp/keys/export", label: "Export" },
+                    { key: "pgp/keys/import", label: "Import" },
+                    { key: "pgp/keys/revoke", label: "Revoke" },
+                    { key: "pgp/keys/destroy", label: "Destroy" },
+                ],
+            },
+            { key: "pgp/encrypt", label: "Encrypt" },
+            { key: "pgp/decrypt", label: "Decrypt" },
+            { key: "pgp/sign", label: "Sign" },
+            { key: "pgp/verify", label: "Verify" },
+        ],
+    },
+    {
         key: "mac",
         label: "MAC",
         icon: <AuditOutlined />,
@@ -376,7 +399,9 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
     // Hide PQC, MAC, FPE, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
     // Rotation Policy for PQC is removed automatically since it lives inside the PQC item.
     if (isFips) {
-        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize");
+        menu = menu.filter(
+            (item) => item.key !== "pqc" && item.key !== "pgp" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize",
+        );
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last

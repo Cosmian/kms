@@ -73,7 +73,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, ocsp, root_redirect,
+        ms_dke, ocsp, openpgp, root_redirect,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -1697,6 +1697,7 @@ pub async fn prepare_kms_server(
                 "/rsa{_:.*}",
                 "/ec{_:.*}",
                 "/pqc{_:.*}",
+                "/pgp{_:.*}",
                 "/mac{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
@@ -1826,6 +1827,7 @@ pub async fn prepare_kms_server(
                 ),
             ))
             .wrap(Cors::permissive())
+            .configure(openpgp::configure)
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
             .service(jose::sign_handler)
@@ -1923,7 +1925,7 @@ pub async fn prepare_kms_server(
     .keep_alive(actix_web::http::KeepAlive::Timeout(
         std::time::Duration::from_secs(120),
     ))
-    .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
+    .client_request_timeout(std::time::Duration::from_secs(60)); // allow queued integration-test clients to send their request
 
     // Apply worker count if configured; otherwise default to available_parallelism
     // (total logical cores). HTTP workers are I/O-bound (connection handling), so
@@ -1950,8 +1952,9 @@ pub async fn prepare_kms_server(
     // surfaced in the client test (reqwest) when it attempted to reuse the pooled
     // socket. Extending the keep-alive timeout prevents these false negatives and
     // lets us observe true protocol-level failures instead of transport resets.
-    // Additionally, actix-web has a default client_request_timeout of 5 seconds which
-    // was causing "408 Request Timeout" errors during long-running test operations.
+    // Additionally, Actix-web's default client_request_timeout of 5 seconds caused
+    // 408 errors when concurrent integration-test clients were delayed before sending
+    // their request. Allow one minute for the client request while retaining a finite limit.
 
     // Start and return the main KMS server
     Ok(match tls_config {

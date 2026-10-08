@@ -56,6 +56,11 @@ import PqcEncapsulateForm from "./actions/PQC/PqcEncapsulate";
 import PqcKeysCreateForm from "./actions/PQC/PqcKeysCreate";
 import PqcSignForm from "./actions/PQC/PqcSign";
 import PqcVerifyForm from "./actions/PQC/PqcVerify";
+import PgpKeyCreateForm from "./actions/Pgp/PgpKeysCreate";
+import PgpEncryptForm from "./actions/Pgp/PgpEncrypt";
+import PgpDecryptForm from "./actions/Pgp/PgpDecrypt";
+import PgpSignForm from "./actions/Pgp/PgpSign";
+import PgpVerifyForm from "./actions/Pgp/PgpVerify";
 import GetRotationPolicyForm from "./actions/RotationPolicy/GetRotationPolicy";
 import SetRotationPolicyForm from "./actions/RotationPolicy/SetRotationPolicy";
 import RsaDecryptForm from "./actions/RSA/RsaDecrypt";
@@ -163,10 +168,13 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                 console.warn("[KMS] Could not query server vendor_id, using default:", e);
             }
         };
-        void syncVendorId();
 
         const fetchUser = async () => {
+            // Form requests must use the server's vendor ID, not the WASM default.
+            // Keep the app in its initial loading state until both bootstrap queries settle.
+            const vendorIdSync = syncVendorId();
             const methods = await fetchAuthMethods(location);
+            await vendorIdSync;
             // `undefined` means the server was unreachable or the response could not
             // be parsed: leave `authMethod` undefined so the error UI is shown.
             if (methods === undefined) {
@@ -359,6 +367,17 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="decapsulate" element={<PqcDecapsulateForm />} />
                             <Route path="sign" element={<PqcSignForm />} />
                             <Route path="verify" element={<PqcVerifyForm />} />
+                        </Route>
+                        <Route path="pgp">
+                            <Route path="keys/create" element={<PgpKeyCreateForm />} />
+                            <Route path="keys/export" element={<KeyExportForm key_type="pgp" />} />
+                            <Route path="keys/import" element={<KeyImportForm key_type="pgp" />} />
+                            <Route path="keys/revoke" element={<RevokeForm objectType="pgp" />} />
+                            <Route path="keys/destroy" element={<DestroyForm objectType="pgp" />} />
+                            <Route path="encrypt" element={<PgpEncryptForm />} />
+                            <Route path="decrypt" element={<PgpDecryptForm />} />
+                            <Route path="sign" element={<PgpSignForm />} />
+                            <Route path="verify" element={<PgpVerifyForm />} />
                         </Route>
                         <Route path="mac">
                             <Route path="compute" element={<MacComputeForm />} />

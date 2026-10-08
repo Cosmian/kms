@@ -317,7 +317,9 @@ _run_workspace_tests() {
       -- --ignored --nocapture "test_db_${db}" test_certificate_validate
   fi
   cargo test --workspace --lib --all-targets "${FEATURES_FLAG[@]}" --bench benches --no-run
-  cargo test --workspace --lib "${FEATURES_FLAG[@]}" -- --nocapture
+  # Prevent concurrent test KMS servers from starving request reads on
+  # constrained runners.
+  RUST_TEST_THREADS="${RUST_TEST_THREADS:-1}" cargo test --workspace --lib "${FEATURES_FLAG[@]}" -- --nocapture
 }
 
 run_db_tests() {

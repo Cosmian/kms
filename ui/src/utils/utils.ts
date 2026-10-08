@@ -170,6 +170,21 @@ export const sendKmipRequest = async (request: object, serverUrl: string) => {
 
     return JSON.stringify(await response.json());
 };
+export const convertOpenPgpKeyToBinary = async (data: Uint8Array, serverUrl: string): Promise<Uint8Array> => {
+    const response = await fetch(`${serverUrl}/v1/crypto/openpgp/binary`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: data,
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+    }
+
+    return new Uint8Array(await response.arrayBuffer());
+};
 
 export const postNoTTLVRequest = async (path: string, request: object, serverUrl: string) => {
     const kmsUrl = serverUrl + path;
@@ -307,7 +322,17 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType =
+    | "rsa"
+    | "ec"
+    | "symmetric"
+    | "fpe"
+    | "covercrypt"
+    | "pqc"
+    | "pgp"
+    | "certificate"
+    | "secret-data"
+    | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
@@ -317,6 +342,7 @@ export const getObjectLabel = (type: ObjectType): string => {
         case "fpe":
         case "covercrypt":
         case "pqc":
+        case "pgp":
             return "key";
         case "certificate":
             return "certificate";

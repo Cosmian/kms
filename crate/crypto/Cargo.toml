@@ -39,6 +39,8 @@ non-fips = [
   "dep:itertools",
   "dep:num-bigint",
   "dep:num-traits",
+  "dep:pgp",
+  "dep:rand_08",
 ]
 
 [dependencies]
@@ -65,10 +67,12 @@ openssl = { workspace = true }
 openssl-sys = "0.9"
 p256 = { version = "0.13", features = ["ecdsa"], optional = true }
 num-traits = { workspace = true, optional = true }
+pgp = { workspace = true, optional = true }
+rand_08 = { package = "rand", version = "0.8.6", optional = true }
 rand_distr = { version = "0.6", optional = true }
 rand = { workspace = true, optional = true }
 rand_chacha = { version = "0.10", optional = true }
-rand_core = { version = "0.10", optional = false }
+rand_core = { version = "0.10" }
 regex = { workspace = true, optional = true, features = ["unicode-perl"] }
 rust-ini = "0.21"
 serde = { workspace = true }

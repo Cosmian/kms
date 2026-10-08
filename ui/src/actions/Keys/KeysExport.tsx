@@ -1,7 +1,7 @@
 import { Button, Card, Checkbox, Divider, Form, Input, Select, Space } from "antd";
 import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { downloadFile, sendKmipRequest } from "../../utils/utils";
+import { convertOpenPgpKeyToBinary, downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_ttlv_request, parse_export_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import KeyIdInput from "../../components/common/KeyIdInput";
@@ -17,7 +17,20 @@ interface KeyExportFormData {
     authenticatedAdditionalData?: string;
 }
 
-type ExportKeyFormat = "json-ttlv" | "sec1-pem" | "sec1-der" | "pkcs1-pem" | "pkcs1-der" | "pkcs8-pem" | "pkcs8-der" | "base64" | "raw";
+type ExportKeyFormat =
+    | "json-ttlv"
+    | "sec1-pem"
+    | "sec1-der"
+    | "pkcs1-pem"
+    | "pkcs1-der"
+    | "pkcs8-pem"
+    | "pkcs8-der"
+    | "base64"
+    | "raw"
+    | "pgp-secret"
+    | "pgp-public"
+    | "pgp-secret-binary"
+    | "pgp-public-binary";
 
 type WrappingAlgorithm = "aes-key-wrap-padding" | "nist-key-wrap" | "aes-gcm" | "rsa-pkcs-v15" | "rsa-oaep" | "rsa-aes-key-wrap";
 
@@ -30,9 +43,9 @@ const WRAPPING_ALGORITHMS: { labelKey: string; value: WrappingAlgorithm }[] = [
     { labelKey: "keysExport.wrapAlgoRsaAesKeyWrap", value: "rsa-aes-key-wrap" },
 ];
 
-type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "secret-data" | "opaque-object";
+type KeyType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "pgp" | "secret-data" | "opaque-object";
 
-const exportFileExtension = {
+const exportFileExtension: Record<ExportKeyFormat, string> = {
     "json-ttlv": "json",
     "sec1-pem": "pem",
     "pkcs1-pem": "pem",
@@ -42,8 +55,11 @@ const exportFileExtension = {
     "pkcs8-der": "der",
     base64: "b64",
     raw: "",
+    "pgp-secret": "asc",
+    "pgp-public": "asc",
+    "pgp-secret-binary": "pgp",
+    "pgp-public-binary": "pgp",
 };
-
 interface KeyExportFormProps {
     key_type: KeyType;
 }
@@ -88,12 +104,15 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
             const request = export_ttlv_request(id, values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
-                const data = await parse_export_ttlv_response(result_str, values.keyFormat);
+                let data = await parse_export_ttlv_response(result_str, values.keyFormat);
+                if (values.keyFormat === "pgp-secret-binary" || values.keyFormat === "pgp-public-binary") {
+                    data = await convertOpenPgpKeyToBinary(data as Uint8Array, serverUrl);
+                }
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
                 const mimeType =
                     values.keyFormat === "json-ttlv"
                         ? "application/json"
-                        : values.keyFormat === "base64"
+                        : values.keyFormat === "base64" || values.keyFormat === "pgp-secret" || values.keyFormat === "pgp-public"
                           ? "text/plain"
                           : "application/octet-stream";
                 downloadFile(data, filename, mimeType);
@@ -127,6 +146,15 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
         keyFormats = [
             { label: t("keysExport.formatJsonTtlv"), value: "json-ttlv" },
             { label: t("keysExport.formatBase64"), value: "base64" },
+            { label: t("keysExport.formatRaw"), value: "raw" },
+        ];
+    } else if (key_type === "pgp") {
+        keyFormats = [
+            { label: t("keysExport.formatJsonTtlv"), value: "json-ttlv" },
+            { label: t("keysExport.formatPgpSecret"), value: "pgp-secret" },
+            { label: t("keysExport.formatPgpPublic"), value: "pgp-public" },
+            { label: t("keysExport.formatPgpSecretBinary"), value: "pgp-secret-binary" },
+            { label: t("keysExport.formatPgpPublicBinary"), value: "pgp-public-binary" },
             { label: t("keysExport.formatRaw"), value: "raw" },
         ];
     } else {
@@ -183,6 +211,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                                       ? t("keysExport.enterOpaqueObjectId")
                                       : t("keysExport.enterKeyId")
                             }
+                            data-testid="key-id-input"
                         />
 
                         <Form.Item name="tags" label={t("common:tags")}>
@@ -192,7 +221,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
 
                     <Card>
                         <Form.Item name="keyFormat" label={t("keysExport.exportFormat")} rules={[{ required: true }]}>
-                            <Select options={keyFormats} />
+                            <Select data-testid="key-format-select" options={keyFormats} />
                         </Form.Item>
                     </Card>
 

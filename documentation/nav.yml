@@ -28,6 +28,7 @@ nav:
       - Introduction: kmip_support/introduction/index.md
       - KMIP support summary: kmip_support/support.md
       - Supported Objects: kmip_support/objects.md
+      - OpenPGP: kmip_support/openpgp.md
       - Supported Formats: kmip_support/formats.md
       - Objects Tagging: kmip_support/tagging.md
       - Attributes Extensions: kmip_support/attributes.md
@@ -62,7 +63,7 @@ nav:
           - Revoke: kmip_support/_revoke.md
           - Sign: kmip_support/_signature.md
   - Integrations:
-      - API overview:
+      - API Overview & Security:
           - API Endpoints: integrations/api.md
           - OpenAPI Specification and Swagger UI: integrations/openapi.md
       - PKCS#11 provider module: integrations/pkcs11_provider.md
