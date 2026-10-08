@@ -1,6 +1,6 @@
 /// <reference types="node" />
 
-import { Download, expect, Page } from "@playwright/test";
+import { Download, expect, Locator, Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +47,28 @@ export function extractAllUuids(text: string): string[] {
  */
 export async function gotoAndWait(page: Page, path: string): Promise<void> {
     await page.goto(path, { waitUntil: "domcontentloaded" });
+}
+
+/**
+ * Navigate to `path` and wait for `ready` to become visible, reloading up to
+ * `attempts` times when it does not.
+ *
+ * The SPA shows no form when its bootstrap requests (`/ui/auth_method`,
+ * QueryServerInformation) fail transiently, which happens when several
+ * workers share a single KMS server. A fresh navigation recovers; waiting
+ * longer on the same page does not.
+ */
+export async function gotoUntilVisible(page: Page, path: string, ready: Locator, attempts = 3): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+        await gotoAndWait(page, path);
+        try {
+            await ready.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
+            return;
+        } catch (error) {
+            if (attempt >= attempts) throw error;
+            await page.waitForTimeout(1_000);
+        }
+    }
 }
 
 /**
@@ -302,7 +324,7 @@ export async function selectMultipleOptions(page: Page, cssSelector: string, opt
  * need a key as a fixture, avoiding copy-pasted `createSymKey` functions.
  */
 export async function createSymKey(page: Page): Promise<string> {
-    await gotoAndWait(page, "/ui/sym/keys/create");
+    await gotoUntilVisible(page, "/ui/sym/keys/create", page.locator(".ant-select-selection-item"));
     // The algorithm Select is populated by WASM; wait until it shows a value.
     await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
     const text = await submitAndWaitForResponse(page);
@@ -319,7 +341,7 @@ export async function createSymKey(page: Page): Promise<string> {
  * human-readable keyset name must create the key with that name as its UID.
  */
 export async function createSymKeyWithId(page: Page, id: string): Promise<string> {
-    await gotoAndWait(page, "/ui/sym/keys/create");
+    await gotoUntilVisible(page, "/ui/sym/keys/create", page.locator(".ant-select-selection-item"));
     await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
     await page.fill('input[placeholder="Enter key ID"]', id);
     const text = await submitAndWaitForResponse(page);
@@ -331,7 +353,7 @@ export async function createSymKeyWithId(page: Page, id: string): Promise<string
  * Create a fresh Ed25519 OpenPGP key and return its UUID.
  */
 export async function createPgpKey(page: Page): Promise<string> {
-    await gotoAndWait(page, "/ui/pgp/keys/create");
+    await gotoUntilVisible(page, "/ui/pgp/keys/create", page.locator(".ant-select-selection-item"));
     await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
     const text = await submitAndWaitForResponse(page);
     expect(text).toMatch(/has been created/i);
@@ -380,7 +402,7 @@ export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string;
  */
 export async function createEcKeyPair(page: Page, curve = "NIST P-256"): Promise<{ privKeyId: string; pubKeyId: string }> {
     const setup = async (p: Page) => selectOption(p, "ec-curve-select", curve);
-    await gotoAndWait(page, "/ui/ec/keys/create");
+    await gotoUntilVisible(page, "/ui/ec/keys/create", page.locator('[data-testid="ec-curve-select"]'));
     await setup(page);
     const text = await submitWithFetchRetry(page, "/ui/ec/keys/create", setup);
     expect(text).toMatch(/Key pair has been created/i);
@@ -398,7 +420,7 @@ export async function createEcKeyPair(page: Page, curve = "NIST P-256"): Promise
  */
 export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{ privKeyId: string; pubKeyId: string }> {
     const setup = async (p: Page) => selectOption(p, "pqc-algorithm-select", algorithm);
-    await gotoAndWait(page, "/ui/pqc/keys/create");
+    await gotoUntilVisible(page, "/ui/pqc/keys/create", page.locator('[data-testid="pqc-algorithm-select"]'));
     await setup(page);
     const text = await submitWithFetchRetry(page, "/ui/pqc/keys/create", setup);
     expect(text).toMatch(/Key pair has been created/i);
