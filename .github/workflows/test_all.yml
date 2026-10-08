@@ -392,6 +392,10 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+          # Azure Cloud HSM (the client library is installed on the CI runner)
+          AZURE_CLOUD_HSM_PKCS11_LIB: /opt/azurecloudhsm/lib64/libazcloudhsm_pkcs11.so
+          HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
+          HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 

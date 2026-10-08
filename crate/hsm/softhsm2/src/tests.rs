@@ -67,7 +67,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // manifest) and SHA-1 (see resident_rsa2048_encrypt_oaep_sha1 manifest) on this
     // SoftHSM2 build. `multi_threaded_rsa` uses RSA-OAEP encrypt/decrypt, so it is
     // skipped entirely here rather than gated by FIPS variant.
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
