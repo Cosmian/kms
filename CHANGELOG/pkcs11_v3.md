@@ -10,6 +10,11 @@
 
 ## Bug Fixes
 
+### Benchmarks
+
+- Disable vendor PKCS#11 client tracing in Proteccio benchmark preparation by setting
+  `LoggingLevel=0` in both installed config files; correctness-test setup retains tracing.
+
 ### HSM
 
 - Bound async `BaseHsm` session checkouts per slot to `HsmCapabilities::max_concurrent_sessions`
@@ -19,6 +24,8 @@
 
 - Resolve HSM signing algorithms from only the key type and optional EC curve instead of reading
   full `KeyMetadata` for every `Sign` and `SignatureVerify` request.
+- Avoid the second `C_Sign` RPC by preallocating a 512-byte signature buffer and retrying with the
+  provider-reported size only when PKCS#11 returns `CKR_BUFFER_TOO_SMALL`.
 
 - Fix `Session::encrypt_message_aes_gcm()`/`decrypt_message_aes_gcm()` issuing **two**
   `C_EncryptMessage`/`C_DecryptMessage` calls per operation — a NULL-output-buffer size

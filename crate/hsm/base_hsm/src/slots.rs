@@ -25,7 +25,10 @@ use crate::{
 ///
 /// The LRU cache automatically removes the least recently accessed entries when it reaches its capacity,
 /// helping to manage memory usage while maintaining quick access to frequently used handles.
-pub struct ObjectHandlesCache(Mutex<LruCache<Vec<u8>, CK_OBJECT_HANDLE>>);
+pub struct ObjectHandlesCache {
+    handles: Mutex<LruCache<Vec<u8>, CK_OBJECT_HANDLE>>,
+    metadata: Mutex<LruCache<CK_OBJECT_HANDLE, cosmian_kms_interfaces::SigningKeyMetadata>>,
+}
 
 impl Default for ObjectHandlesCache {
     fn default() -> Self {
@@ -38,13 +41,16 @@ impl ObjectHandlesCache {
     pub fn new() -> Self {
         #[expect(unsafe_code)]
         let max = unsafe { NonZeroUsize::new_unchecked(100) };
-        Self(Mutex::new(LruCache::new(max)))
+        Self {
+            handles: Mutex::new(LruCache::new(max)),
+            metadata: Mutex::new(LruCache::new(max)),
+        }
     }
 
     /// Get the object handle for the specified key.
     pub fn get(&self, key: &[u8]) -> HResult<Option<CK_OBJECT_HANDLE>> {
         Ok(self
-            .0
+            .handles
             .lock()
             .map_err(|e| {
                 HError::Default(format!(
@@ -55,9 +61,43 @@ impl ObjectHandlesCache {
             .copied())
     }
 
+    /// Get cached signing key metadata for the specified handle.
+    pub fn get_metadata(
+        &self,
+        handle: CK_OBJECT_HANDLE,
+    ) -> HResult<Option<cosmian_kms_interfaces::SigningKeyMetadata>> {
+        Ok(self
+            .metadata
+            .lock()
+            .map_err(|e| {
+                HError::Default(format!(
+                    "Failed to acquire lock on object metadata cache: {e}"
+                ))
+            })?
+            .get(&handle)
+            .cloned())
+    }
+
+    /// Insert cached signing key metadata for the specified handle.
+    pub fn insert_metadata(
+        &self,
+        handle: CK_OBJECT_HANDLE,
+        meta: cosmian_kms_interfaces::SigningKeyMetadata,
+    ) -> HResult<()> {
+        self.metadata
+            .lock()
+            .map_err(|e| {
+                HError::Default(format!(
+                    "Failed to acquire lock on object metadata cache: {e}"
+                ))
+            })?
+            .put(handle, meta);
+        Ok(())
+    }
+
     /// Insert a new object handle into the cache.
     pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) -> HResult<()> {
-        self.0
+        self.handles
             .lock()
             .map_err(|e| {
                 HError::Default(format!(
@@ -70,27 +110,24 @@ impl ObjectHandlesCache {
 
     /// Remove an object handle from the cache.
     pub fn remove(&self, key: &[u8]) -> HResult<()> {
-        self.0
-            .lock()
-            .map_err(|e| {
-                HError::Default(format!(
-                    "Failed to acquire lock on object handle cache: {e}"
-                ))
-            })?
-            .pop(key);
+        if let Ok(mut lock) = self.handles.lock() {
+            if let Some(handle) = lock.pop(key) {
+                if let Ok(mut meta_lock) = self.metadata.lock() {
+                    meta_lock.pop(&handle);
+                }
+            }
+        }
         Ok(())
     }
 
     /// Remove all object handles from the cache.
     pub fn clear(&self) -> HResult<()> {
-        self.0
-            .lock()
-            .map_err(|e| {
-                HError::Default(format!(
-                    "Failed to acquire lock on object handle cache: {e}"
-                ))
-            })?
-            .clear();
+        if let Ok(mut lock) = self.handles.lock() {
+            lock.clear();
+        }
+        if let Ok(mut meta_lock) = self.metadata.lock() {
+            meta_lock.clear();
+        }
         Ok(())
     }
 }

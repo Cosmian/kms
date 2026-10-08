@@ -557,6 +557,11 @@ bench_prepare_hsm() {
       ;;
     proteccio)
       bash "${scripts_dir}/prepare_proteccio.sh"
+      # Disable the shipped per-call PKCS#11 trace for throughput benchmarks.
+      # Patch both files because the tarball installs both names; correctness-test
+      # preparation remains unchanged so its trace is available for diagnosis.
+      sudo sed -i 's/^LoggingLevel=.*/LoggingLevel=0/' \
+        /etc/proteccio/proteccio.rc /etc/proteccio/proteccio.ini
       ;;
     crypt2pay)
       BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
