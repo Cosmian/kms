@@ -32,6 +32,7 @@ jobs:
           - gcp-cmek
           - openssh
           - gnupg
+          - gnupg-smartcard
           - luks
           - veracrypt
           - jose
@@ -66,6 +67,9 @@ jobs:
             features: fips
           # gnupg OpenPGP tests force non-fips
           - type: gnupg
+            features: fips
+          # gnupg-smartcard PKCS#11 tests force non-fips like the other PKCS#11 test types
+          - type: gnupg-smartcard
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks

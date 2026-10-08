@@ -106,8 +106,6 @@ allow = [
   "CC0-1.0",
   "BUSL-1.1",
   "CDLA-Permissive-2.0",
-  "BSL-1.0",
-  "LGPL-2.0-or-later"
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -162,7 +160,7 @@ registries = [
 # https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "warn"
+multiple-versions = "allow"
 # Lint level for when a crate version requirement is `*`
 wildcards = "allow"
 # The graph highlighting used when creating dotgraphs for crates

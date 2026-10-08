@@ -9,6 +9,9 @@
 ### CLI
 - Add `pgp-secret-binary` and `pgp-public-binary` formats for GnuPG-compatible OpenPGP key exports.
 
+### PKCS#11
+- Discover RSA private keys and certificates tagged `gnupg-card` (override with `COSMIAN_PKCS11_GNUPG_KEY_TAG`) so `gnupg-pkcs11-scd` can use them as a GnuPG smartcard; add the `test:gnupg-smartcard` test suite backed by a SoftHSM2 KEK.
+
 ### Web UI
 - Offer binary OpenPGP key export alongside ASCII-armored secret and public key formats.
 
@@ -20,10 +23,16 @@
 ### CLI
 - Document CKMS support for GnuPG/OpenPGP transferable keys in armored and binary import formats, with GnuPG-compatible armored and binary exports.
 
+### PKCS#11
+- Document using `libcosmian_pkcs11` as the backend of `gnupg-pkcs11-scd` to expose KMS-managed RSA keys as a GnuPG smartcard.
+
 ## Bug Fixes
 
 ### KMIP
 - Support revoking and destroying OpenPGP keys through KMIP lifecycle operations.
+
+### PKCS#11
+- Sign `CKM_RSA_PKCS` input that is a DER `DigestInfo` (SHA-1/256/384/512) as a pre-computed digest instead of hashing it a second time, producing standard RSASSA-PKCS1-v1_5 signatures for callers such as `gnupg-pkcs11-scd` and OpenSSH.
 
 ### Crypto
 - Preserve signed OpenPGP encryption subkey metadata when constructing recipient packets, restoring GnuPG decryption interoperability.

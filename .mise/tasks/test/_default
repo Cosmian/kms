@@ -122,6 +122,8 @@ gate_run "openssh" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix
   bash "${TASK_DIR}/openssh" --variant "${VARIANT}" --link "${LINK}"
 gate_run "gnupg" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_cmd gpg)")" \
   bash "${TASK_DIR}/gnupg" --variant "${VARIANT}" --link "${LINK}"
+gate_run "gnupg-smartcard" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/gnupg-smartcard" --variant "${VARIANT}" --link "${LINK}"
 gate_run "pykmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/pykmip" --variant "${VARIANT}" --link "${LINK}"
 gate_run "azure-ekm" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \

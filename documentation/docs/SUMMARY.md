@@ -86,6 +86,7 @@
   - [Other]()
     - [FortiGate / FortiOS](integrations/fortigate.md)
     - [OpenSSH](integrations/openssh.md)
+    - [GnuPG smartcard (gnupg-pkcs11-scd)](integrations/gnupg_smartcard.md)
     - [PyKMIP](integrations/pykmip.md)
     - [KMIP compliance tests (ovh/kmip-go)](integrations/kmip_go.md)
     - [S/MIME Email encryption](integrations/smime.md)

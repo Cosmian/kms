@@ -14,7 +14,12 @@ use ckms::{
                 create_symmetric_key_kmip_object, import_object_request,
             },
         },
-        cosmian_kms_client::KmsClient,
+        cosmian_kms_client::{
+            KmsClient,
+            reexport::cosmian_kms_client_utils::certificate_utils::{
+                Algorithm, build_certify_request,
+            },
+        },
     },
 };
 use cosmian_config_utils::ConfigUtils;
@@ -42,7 +47,10 @@ use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
-    backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
+    backend::{
+        COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_GNUPG_KEY_TAG,
+        COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend,
+    },
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,
 };
@@ -495,6 +503,146 @@ pub(crate) async fn create_ec_ssh_keypair(
         resp.private_key_unique_identifier.to_string(),
         resp.public_key_unique_identifier.to_string(),
     )
+}
+
+pub(crate) async fn create_rsa_gnupg_keypair(
+    kms_rest_client: &KmsClient,
+    bits: usize,
+) -> (String, String) {
+    let req = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        [COSMIAN_PKCS11_GNUPG_KEY_TAG],
+        bits,
+        false,
+        None,
+    )
+    .expect("failed to build RSA key pair request");
+    let resp = kms_rest_client
+        .create_key_pair(req)
+        .await
+        .expect("failed to create RSA GnuPG key pair");
+    (
+        resp.private_key_unique_identifier.to_string(),
+        resp.public_key_unique_identifier.to_string(),
+    )
+}
+
+/// `gnupg-pkcs11-scd` (manpage CONSTRAINTS) requires, for every private key object, a
+/// certificate object with an *identical* `CKA_ID`. This test creates an RSA keypair tagged
+/// `gnupg-card`, self-certifies its public key, and asserts both the discovery methods used
+/// by `C_FindObjectsInit(CKA_CLASS=CKO_CERTIFICATE|CKO_PRIVATE_KEY)` surface the pair, and
+/// that `Certificate::private_key_id()` (the cert's `CKA_ID`) equals the private key's own
+/// `remote_id()` (its `CKA_ID`).
+#[test]
+#[serial]
+fn test_gnupg_card_key_discovery() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, rsa_sk_id, cert_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (rsa_sk_id, rsa_pk_id) = create_rsa_gnupg_keypair(&kms_rest_client, 2048).await;
+
+        let certify_request = build_certify_request(
+            VENDOR_ID_COSMIAN,
+            &None,
+            &None,
+            &None,
+            &Some(rsa_pk_id.clone()),
+            &None,
+            false,
+            &Some("CN=gnupg-smartcard-test,O=Cosmian".to_owned()),
+            Algorithm::RSA2048,
+            // No issuer: the server self-signs using the PrivateKeyLink of the public key.
+            &None,
+            &None,
+            365,
+            &None,
+            &[COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned()],
+        )
+        .expect("failed to build certify request");
+        let cert_id = kms_rest_client
+            .certify(certify_request)
+            .await
+            .expect("failed to certify RSA public key")
+            .unique_identifier
+            .to_string();
+
+        (ctx.owner_client_config.clone(), rsa_sk_id, cert_id)
+    });
+
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+
+    let private_keys = backend.find_all_private_keys()?;
+    assert!(
+        private_keys.iter().any(|k| k.remote_id() == rsa_sk_id),
+        "GnuPG RSA private key {rsa_sk_id} not found in find_all_private_keys"
+    );
+
+    let certificates = backend.find_all_certificates()?;
+    let certificate = certificates
+        .iter()
+        .find(|c| c.remote_id() == cert_id)
+        .expect("GnuPG certificate not found in find_all_certificates");
+    assert_eq!(
+        certificate.private_key_id(),
+        rsa_sk_id,
+        "certificate CKA_ID must equal the private key's own CKA_ID — the exact invariant \
+         gnupg-pkcs11-scd requires"
+    );
+    Ok(())
+}
+
+/// `CKM_RSA_PKCS` (used by `gnupg-pkcs11-scd` and OpenSSH) receives a DER `DigestInfo` and must
+/// only apply PKCS#1 v1.5 block formatting. The resulting signature must therefore be a
+/// standard RSASSA-PKCS1-v1_5/SHA-256 signature of the original message, which the
+/// independent `CKM_SHA256_RSA_PKCS` verification path accepts.
+#[test]
+#[serial]
+fn test_rsa_pkcs_raw_signs_digest_info() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, pk_id) = create_rsa_gnupg_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
+    });
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+
+    let message = b"CKM_RSA_PKCS DigestInfo round trip";
+    let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), message)
+        .expect("failed to compute SHA-256 digest");
+    // DER DigestInfo prefix for SHA-256 (RFC 8017 §9.2 note 1)
+    let mut digest_info = vec![
+        0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+        0x05, 0x00, 0x04, 0x20,
+    ];
+    digest_info.extend_from_slice(&digest);
+
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Raw,
+        &digest_info,
+        KeyAlgorithm::Rsa,
+    )?;
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        message,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+    // The same DigestInfo must also verify through the CKM_RSA_PKCS path itself.
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Raw,
+        &digest_info,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+    Ok(())
 }
 
 /// Test remote RSA-PKCS1v15-SHA256 signing and verification for an `ssh-auth`-tagged
