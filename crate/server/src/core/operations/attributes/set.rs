@@ -17,6 +17,7 @@ use time::OffsetDateTime;
 /// `SECS_PER_DAY - 1`, used for ceiling integer division of seconds into whole days.
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
+use super::policy::{check_attribute_grant, check_attribute_read_only};
 use crate::{
     core::{
         KMS,
@@ -62,25 +63,14 @@ pub(crate) async fn set_attribute(
     let object_handle = from_request(request.unique_identifier.as_ref(), "Set Attribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
-    match &request.new_attribute {
-        Attribute::AlwaysSensitive(_)
-        | Attribute::NeverExtractable(_)
-        | Attribute::State(_)
-        | Attribute::RotateGeneration(_)
-        | Attribute::RotateDate(_)
-        | Attribute::RotateLatest(_) => {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Attribute_Read_Only,
-                "DENIED: this attribute is server-managed and cannot be set by the user".to_owned(),
-            ));
-        }
-        Attribute::RotateName(name) if name.contains('@') => {
+    check_attribute_read_only(&request.new_attribute, KmipOperation::SetAttribute)?;
+    if let Attribute::RotateName(name) = &request.new_attribute {
+        if name.contains('@') {
             return Err(KmsError::InvalidRequest(
                 "SetAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
                     .to_owned(),
             ));
         }
-        _ => {}
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
@@ -155,6 +145,15 @@ pub(crate) async fn set_attribute(
     let is_setting_positive_rotate_interval_on_sql = matches!(&request.new_attribute, Attribute::RotateInterval(v) if *v > 0)
         && !ObjectHandle::from(owm.id()).is_hsm();
 
+    check_attribute_grant(
+        kms,
+        &owm,
+        user,
+        KmipOperation::SetAttribute,
+        &request.new_attribute,
+    )
+    .await?;
+
     // Check if the attribute is allowed to be set
     match_set_attribute! {
         "SetAttribute", request.new_attribute, attributes,
@@ -228,32 +227,12 @@ pub(crate) async fn set_attribute(
                 ));
             }
             Attribute::Sensitive(sensitive) => {
-                if !kms
-                    .user_can_perform_operation(&owm, user, &KmipOperation::SetAttribute)
-                    .await?
-                {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED: modifying Sensitive attribute requires ownership or explicit SetAttribute grant"
-                            .to_owned(),
-                    ));
-                }
                 // Setting Sensitive also (re)computes the server-managed
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
                 trace!("Set Attribute: Sensitive: {:?}", sensitive);
                 attributes.apply_sensitive(sensitive);
             }
             Attribute::Extractable(extractable) => {
-                if !kms
-                    .user_can_perform_operation(&owm, user, &KmipOperation::SetAttribute)
-                    .await?
-                {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED: modifying Extractable attribute requires ownership or explicit SetAttribute grant"
-                            .to_owned(),
-                    ));
-                }
                 trace!("Set Attribute: Extractable: {:?}", extractable);
                 attributes.apply_extractable(extractable);
             }
