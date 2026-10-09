@@ -188,7 +188,7 @@ jobs:
         # (tracked upstream: https://github.com/actions/runner/issues/1637,
         # no workaround currently exists). aarch64 coverage for musl itself
         # is not lost — musl-crosscheck above and the Nix-built artifacts
-        # (test-alpine-musl below) both already cover ubuntu-24.04-arm.
+        # (alpine-packages-test in packaging-tests.yml) both already cover ubuntu-24.04-arm.
         runner: [ubuntu-24.04]
     steps:
       # Must run *before* actions/checkout: GitHub's own bundled Node.js
@@ -227,49 +227,6 @@ jobs:
 
       - name: Build natively on Alpine (no cross-compilation)
         run: mise run test:alpine-native-build --variant ${{ matrix.features }}
-
-  # Proves the Nix-built Alpine apk packages actually run on real Alpine — not just
-  # that they link correctly in the Nix sandbox. See
-  # .mise/scripts/test/test_alpine_musl.sh for the full test sequence
-  # (FIPS-provider / legacy-provider-skip log checks, AES/RSA/EC round-trips,
-  # PQC for non-FIPS including SLH-DSA as a musl thread-stack-size canary).
-  test-alpine-musl:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
-      'schedule'
-    name: alpine-${{ matrix.alpine-tag }}-${{ matrix.features }}-${{ matrix.runner }}
-    needs: packages
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        features: [fips, non-fips]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-        alpine-tag: ['3.20', '3.21', latest]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - name: Download apk artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: apk_${{ matrix.features }}_${{ matrix.runner }}
-
-      - name: Locate apk packages
-        run: |
-          set -euo pipefail
-          SERVER_APK=$(find "result-apk-server-${{ matrix.features }}" -name "cosmian-kms-server-*.apk")
-          CLI_APK=$(find "result-apk-cli-${{ matrix.features }}" -name "cosmian-kms-cli-*.apk")
-          echo "SERVER_APK=$(pwd)/${SERVER_APK}" >> "$GITHUB_ENV"
-          echo "CLI_APK=$(pwd)/${CLI_APK}" >> "$GITHUB_ENV"
-
-      - name: Run Alpine ${{ matrix.alpine-tag }} smoke test
-        run: |
-          bash .mise/scripts/test/test_alpine_musl.sh \
-            --variant ${{ matrix.features }} \
-            --server-apk "${SERVER_APK}" \
-            --cli-apk "${CLI_APK}" \
-            --alpine-tag ${{ matrix.alpine-tag }}
 
   kubernetes:
     uses: ./.github/workflows/packaging-kubernetes.yml
@@ -417,22 +374,23 @@ jobs:
   # Kept as its own job — rather than extending `publish-release`'s package-type
   # matrix — for two reasons: (a) the musl artifacts don't share that matrix's
   # static/dynamic-OpenSSL axis (musl libc linkage is implied by `features`, not
-  # a free choice), and (b) this job must additionally gate on `test-alpine-musl`
+  # a free choice), and (b) this job must additionally gate on the `tests` job
   # (see `needs:`/`if:` below), while the deb/rpm/dmg/pkcs11-zip packages in
   # `publish-release` do not — GitHub Actions `needs:`/`if:` apply to a whole job
   # (all its matrix rows), not to individual matrix combinations, so the two
   # publish flows cannot share one job once their gating conditions diverge.
   #
   # Gating rationale: `packages` only *builds* the apk files; it does not prove
-  # they actually install and run on real Alpine. `test-alpine-musl` is the job
-  # that `apk add`s them into real `alpine:3.20`/`3.21`/`latest` containers and
-  # smoke-tests them (FIPS-provider load, AES/RSA/EC/PQC round-trips). Without
-  # the explicit `needs.test-alpine-musl.result == 'success'` check below, this
-  # job ran concurrently with (not after) those smoke tests, so a broken apk
-  # package could be published/released before the smoke test caught it.
+  # they actually install and run on real Alpine. `tests` calls
+  # packaging-tests.yml, whose `alpine-packages-test` job `apk add`s them into real
+  # `alpine:3.20`/`3.21`/`latest` containers and smoke-tests them (FIPS-provider
+  # load, AES/RSA/EC/PQC round-trips). Without the explicit
+  # `needs.tests.result == 'success'` check below, this job ran concurrently
+  # with (not after) those smoke tests, so a broken apk package could be
+  # published/released before the smoke test caught it.
   publish-apk:
     if: |
-      needs.test-alpine-musl.result == 'success' &&
+      needs.tests.result == 'success' &&
       (
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
         || startsWith(github.ref, 'refs/tags/')
@@ -440,7 +398,7 @@ jobs:
       )
 
     name: Publish apk-${{ matrix.features }}-${{ matrix.runner }}
-    needs: [packages, test-alpine-musl]
+    needs: [packages, tests]
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci

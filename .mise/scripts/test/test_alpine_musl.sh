@@ -90,25 +90,35 @@ EOF
 echo "=== Building ${IMAGE_TAG} (alpine:${ALPINE_TAG}) ==="
 docker build -t "${IMAGE_TAG}" "${WORK_DIR}"
 
-HOST_PORT="$((19000 + RANDOM % 1000))"
-echo "=== Starting server (variant=${VARIANT}, port=${HOST_PORT}) ==="
-docker run -d --name "${CONTAINER_NAME}" -p "${HOST_PORT}:9998" "${IMAGE_TAG}" \
+echo "=== Pre-check installed binaries (--version / --info) ==="
+docker run --rm --entrypoint /usr/sbin/cosmian_kms "${IMAGE_TAG}" --version
+docker run --rm --entrypoint /usr/sbin/cosmian_kms "${IMAGE_TAG}" --info
+docker run --rm --user nobody --entrypoint /usr/bin/ckms "${IMAGE_TAG}" --version
+
+echo "=== Starting server (variant=${VARIANT}) ==="
+# Let Docker pick a free ephemeral host port (loopback only): no pick-then-bind race.
+docker run -d --name "${CONTAINER_NAME}" -p 127.0.0.1::9998 "${IMAGE_TAG}" \
   --database-type sqlite --sqlite-path /tmp/data
+HOST_PORT="$(docker port "${CONTAINER_NAME}" 9998/tcp | head -n1 | sed 's/.*://')"
+echo "Server mapped to 127.0.0.1:${HOST_PORT}"
 
 echo "=== Waiting for /version ==="
 for _ in $(seq 1 30); do
-  if curl -sf "http://localhost:${HOST_PORT}/version" >/dev/null 2>&1; then
+  if curl -sf "http://127.0.0.1:${HOST_PORT}/version" >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-VERSION_OUTPUT="$(curl -sf "http://localhost:${HOST_PORT}/version")"
+VERSION_OUTPUT="$(curl -sf "http://127.0.0.1:${HOST_PORT}/version")"
 echo "Version: ${VERSION_OUTPUT}"
 echo "${VERSION_OUTPUT}" | grep -qi "${VARIANT/non-fips/non-FIPS}" || {
   echo "ERROR: /version output does not mention ${VARIANT}: ${VERSION_OUTPUT}" >&2
   docker logs "${CONTAINER_NAME}" >&2
   exit 1
 }
+
+echo "=== Checking UI endpoint ==="
+curl -sfI "http://127.0.0.1:${HOST_PORT}/ui/index.html"
 
 echo "=== Checking provider-loading log line ==="
 LOGS="$(docker logs "${CONTAINER_NAME}" 2>&1)"

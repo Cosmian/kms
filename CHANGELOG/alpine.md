@@ -40,7 +40,7 @@
   actions (e.g. `actions/checkout`) inside Alpine containers on arm64 runners
   ([actions/runner#1637](https://github.com/actions/runner/issues/1637)). aarch64 musl
   coverage is unaffected — still provided independently by `musl-crosscheck` and the
-  Nix-built artifacts' `test-alpine-musl` smoke test.
+  Nix-built artifacts' `alpine-packages-test` smoke test.
 
 - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported on the
   Alpine packages — vendor PKCS#11 drivers are glibc-only shared libraries.
@@ -80,11 +80,11 @@
 
 ### CI
 
-- `publish-apk` now `needs: [packages, test-alpine-musl]` and gates on
-  `needs.test-alpine-musl.result == 'success'`, instead of only `needs: packages`.
+- `publish-apk` now `needs: [packages, tests]` and gates on
+  `needs.tests.result == 'success'`, instead of only `needs: packages`.
   Previously the apk packages were published to `package.cosmian.com` / GitHub
   Releases as soon as they were *built*, running concurrently with (not after)
-  `test-alpine-musl`'s real-Alpine-container smoke tests — a broken apk package
+  the `alpine-packages-test` job's (in `packaging-tests.yml`) real-Alpine-container smoke tests — a broken apk package
   could have been published before the smoke test caught it. `publish-apk` stays
   a standalone job (not folded into `publish-release`'s matrix) because GitHub
   Actions `needs:`/`if:` gate a whole job, not individual matrix rows, and the
