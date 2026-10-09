@@ -11,7 +11,7 @@ use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
         AuditConfig, AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig,
-        GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig, WorkspaceConfig, RegionRole,
+        GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig, RegionRole, WorkspaceConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
