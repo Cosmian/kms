@@ -35,6 +35,277 @@ use crate::{
     tests::get_redis_url,
 };
 
+#[cfg(test)]
+mod issue_940_repro {
+    use cosmian_kms_interfaces::AtomicOperation;
+    use uuid::Uuid;
+
+    use super::*;
+
+    async fn clients(database: u8) -> DbResult<(RedisWithFindex, RedisWithFindex)> {
+        let port = std::env::var("KMS_REDIS_REPRO_PORT").unwrap_or_else(|_| "16394".to_owned());
+        let url = format!("redis://127.0.0.1:{port}/{database}");
+        let mut rng = CsRng::from_entropy();
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let first = RedisWithFindex::instantiate(&url, master_key.clone(), false).await?;
+        let second = RedisWithFindex::instantiate(&url, master_key, false).await?;
+        Ok((first, second))
+    }
+
+    fn key(marker: u8) -> DbResult<Object> {
+        Ok(create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[marker; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?)
+    }
+
+    fn upsert(
+        uid: &str,
+        object: &Object,
+        tags: Option<HashSet<String>>,
+    ) -> DbResult<AtomicOperation> {
+        Ok(AtomicOperation::Upsert((
+            uid.to_owned(),
+            object.clone(),
+            object.attributes()?.clone(),
+            tags,
+            State::PreActive,
+        )))
+    }
+
+    struct TagCase {
+        uid: String,
+        owner: UserId,
+        expected_tags: HashSet<String>,
+        replace: [AtomicOperation; 1],
+        preserve: [AtomicOperation; 1],
+    }
+
+    async fn tag_case(writer: &RedisWithFindex) -> DbResult<TagCase> {
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let old_tags = HashSet::from([format!("old-{uid}")]);
+        let expected_tags = HashSet::from([format!("new-{uid}")]);
+        let first_key = key(2)?;
+        writer
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &first_key,
+                first_key.attributes()?,
+                &old_tags,
+            )
+            .await?;
+        Ok(TagCase {
+            replace: [upsert(&uid, &first_key, Some(expected_tags.clone()))?],
+            preserve: [upsert(&uid, &key(3)?, None)?],
+            uid,
+            owner,
+            expected_tags,
+        })
+    }
+
+    async fn sequential_controls(
+        first: &RedisWithFindex,
+        second: &RedisWithFindex,
+    ) -> DbResult<()> {
+        for replace_first in [true, false] {
+            let case = tag_case(first).await?;
+            if replace_first {
+                first.atomic(&case.owner, &case.replace).await?;
+                second.atomic(&case.owner, &case.preserve).await?;
+            } else {
+                second.atomic(&case.owner, &case.preserve).await?;
+                first.atomic(&case.owner, &case.replace).await?;
+            }
+            let actual = second.retrieve_tags(&case.uid).await?;
+            assert_eq!(
+                actual, case.expected_tags,
+                "Sequential control failed: replace_first={replace_first}"
+            );
+            eprintln!(
+                "T2 sequential control replace_first={replace_first}: PASS uid={} tags={actual:?}",
+                case.uid
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn t1_removed_tag_must_not_select_existing_object() -> DbResult<()> {
+        let (writer, reader) = clients(1).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let old_tags = HashSet::from([format!("old-{uid}")]);
+        let new_tags = HashSet::from([format!("new-{uid}")]);
+        let object = key(1)?;
+        writer
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &old_tags,
+            )
+            .await?;
+        let operations = [upsert(&uid, &object, Some(new_tags.clone()))?];
+        writer.atomic(&owner, &operations).await?;
+        assert!(reader.retrieve(&uid).await?.is_some(), "K must still exist");
+        let stored_tags = reader.retrieve_tags(&uid).await?;
+        assert_eq!(stored_tags, new_tags, "Upsert must replace stored tags");
+        let old_lookup = reader.list_uids_for_tags(&old_tags).await?;
+        let new_lookup = reader.list_uids_for_tags(&new_tags).await?;
+        let mut attributes = Attributes::default();
+        attributes.set_tags(VENDOR_ID_COSMIAN, old_tags.clone())?;
+        let old_find = reader
+            .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?
+            .into_iter()
+            .map(|(found, ..)| found)
+            .collect::<HashSet<_>>();
+        attributes.set_tags(VENDOR_ID_COSMIAN, new_tags.clone())?;
+        let new_find = reader
+            .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?
+            .into_iter()
+            .map(|(found, ..)| found)
+            .collect::<HashSet<_>>();
+        eprintln!(
+            "T1 uid={uid} stored_tags={stored_tags:?} old_lookup={old_lookup:?} new_lookup={new_lookup:?} old_find={old_find:?} new_find={new_find:?}"
+        );
+        assert!(new_lookup.contains(&uid), "New tag must select K");
+        assert!(new_find.contains(&uid), "Find must select K by new tag");
+        assert!(
+            !old_lookup.contains(&uid) && !old_find.contains(&uid),
+            "Removed tag still selects existing K: list={old_lookup:?}, find={old_find:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn t2_concurrent_upserts_must_preserve_tags() -> DbResult<()> {
+        let (first, second) = clients(2).await?;
+        sequential_controls(&first, &second).await?;
+        let started = std::time::Instant::now();
+        for round in 1..=10_000 {
+            let case = tag_case(&first).await?;
+            let (replace_result, preserve_result) =
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    tokio::join!(
+                        first.atomic(&case.owner, &case.replace),
+                        second.atomic(&case.owner, &case.preserve)
+                    )
+                })
+                .await
+                .map_err(|error| crate::db_error!(format!("T2 infrastructure timeout: {error}")))?;
+            eprintln!(
+                "T2 round={round} uid={} replace_result={replace_result:?} preserve_result={preserve_result:?}",
+                case.uid
+            );
+            replace_result?;
+            preserve_result?;
+            let stored_tags = second.retrieve_tags(&case.uid).await?;
+            if stored_tags != case.expected_tags {
+                let final_object = second
+                    .retrieve(&case.uid)
+                    .await?
+                    .context("T2 object disappeared")?;
+                let payload = final_object.object().key_block()?.key_bytes()?;
+                eprintln!(
+                    "T2 mismatch round={round} uid={} expected={:?} stored={stored_tags:?} synthetic_payload={payload:?}",
+                    case.uid, case.expected_tags
+                );
+            }
+            assert_eq!(
+                stored_tags, case.expected_tags,
+                "Concurrent Upserts lost tags at round {round}, uid={}",
+                case.uid
+            );
+            if started.elapsed() >= std::time::Duration::from_secs(120) {
+                eprintln!(
+                    "T2 INCONCLUSIVE: no mismatch in {round} rounds before 120-second budget"
+                );
+                return Ok(());
+            }
+        }
+        eprintln!("T2 INCONCLUSIVE: no mismatch in 10000 rounds");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn t3_failed_competing_batch_must_rollback_upsert() -> DbResult<()> {
+        let (first, second) = clients(3).await?;
+        let shared = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{shared}"));
+        let marker_a = format!("marker-a-{shared}");
+        let marker_b = format!("marker-b-{shared}");
+        let batch = |marker: &str, object: &Object| -> DbResult<[AtomicOperation; 2]> {
+            Ok([
+                upsert(
+                    marker,
+                    object,
+                    Some(HashSet::from([format!("tag-{marker}")])),
+                )?,
+                AtomicOperation::Create((
+                    shared.clone(),
+                    owner.clone(),
+                    object.clone(),
+                    object.attributes()?.clone(),
+                    HashSet::new(),
+                )),
+            ])
+        };
+        let first_operations = batch(&marker_a, &key(4)?)?;
+        let second_operations = batch(&marker_b, &key(5)?)?;
+        let (first_result, second_result) = tokio::join!(
+            first.atomic(&owner, &first_operations),
+            second.atomic(&owner, &second_operations)
+        );
+        eprintln!(
+            "T3 shared={shared} marker_a={marker_a} marker_b={marker_b} first_result={first_result:?} second_result={second_result:?}"
+        );
+        let (winner, loser, conflict) = match (first_result, second_result) {
+            (Ok(_), Err(error)) => (&marker_a, &marker_b, error),
+            (Err(error), Ok(_)) => (&marker_b, &marker_a, error),
+            results => {
+                return Err(crate::db_error!(format!(
+                    "T3 expected exactly one successful batch: {results:?}"
+                )));
+            }
+        };
+        assert!(
+            conflict
+                .to_string()
+                .contains(&format!("object {shared} already exists")),
+            "Unexpected failure: {conflict}"
+        );
+        assert!(
+            first.retrieve(&shared).await?.is_some(),
+            "Winning shared object must exist"
+        );
+        assert!(
+            first.retrieve(winner).await?.is_some(),
+            "Winning marker must exist"
+        );
+        let loser_exists = first.retrieve(loser).await?.is_some();
+        let loser_lookup = first
+            .list_uids_for_tags(&HashSet::from([format!("tag-{loser}")]))
+            .await?;
+        eprintln!(
+            "T3 winner={winner} loser={loser} loser_exists={loser_exists} loser_lookup={loser_lookup:?}"
+        );
+        assert!(
+            !loser_exists && !loser_lookup.contains(loser),
+            "Failed batch left partial effects: loser={loser}, exists={loser_exists}, indexed={loser_lookup:?}"
+        );
+        Ok(())
+    }
+}
+
 async fn clear_all(mgr: &mut ConnectionManager) -> DbResult<()> {
     redis::cmd("FLUSHDB").query_async::<()>(mgr).await?;
     Ok(())
