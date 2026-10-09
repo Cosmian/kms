@@ -47,15 +47,15 @@ require_cmd perl "perl not found — apk add perl first (needed by crate/crypto/
 
 print_header "Native Alpine build: ${VARIANT_NAME} ($(cat /etc/alpine-release))"
 
-# Pin the link mode explicitly rather than relying on rustc's per-host default
-# (crt-static is the musl default, which would silently make the FIPS build static).
-# Mirrors nix/kms-server-musl.nix and .mise/tasks/test/musl-crosscheck:
+# Link mode:
 #   FIPS     => dynamic musl (-crt-static): the FIPS provider is loaded via dlopen.
-#   non-FIPS => fully static musl (+crt-static).
+#   non-FIPS => fully static musl: already rustc's default on musl hosts, so NOT pinned.
+#               Without --target, RUSTFLAGS also applies to host artifacts, and
+#               `+crt-static` makes proc-macros fail ("cannot produce proc-macro ...
+#               does not support these crate types"). The ELF assertion below still
+#               enforces the invariant (mirrors nix/kms-server-musl.nix).
 if [ "$VARIANT" = "fips" ]; then
   export RUSTFLAGS="-C target-feature=-crt-static${RUSTFLAGS:+ ${RUSTFLAGS}}"
-else
-  export RUSTFLAGS="-C target-feature=+crt-static${RUSTFLAGS:+ ${RUSTFLAGS}}"
 fi
 
 print_status "Building cosmian_kms (server)…"
