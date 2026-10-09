@@ -80,6 +80,15 @@ gpg "${GPG_OPTS[@]}" --verify data.sig data.txt
 gpg "${GPG_OPTS[@]}" --decrypt msg.bin >out_kms.txt
 diff -u data.txt out_kms.txt
 
+# 5. KMS encrypts to the default <FILE>.gpg, then KMS decrypts that .gpg file.
+# The .gpg file must be a binary OpenPGP message (gpg can list its packets).
+echo ">>> Subtest 2.1.5: KMS encrypt -> KMS decrypt of the .gpg file"
+"${CKMS_BIN}" --url "${KMS_URL}" pgp encrypt --tag pgp-ci data.txt
+test -s data.gpg
+gpg "${GPG_OPTS[@]}" --list-packets data.gpg >/dev/null
+"${CKMS_BIN}" --url "${KMS_URL}" pgp decrypt --tag pgp-ci -o out_kms_roundtrip.txt data.gpg
+diff -u data.txt out_kms_roundtrip.txt
+
 echo ">>> Subtest 2.2: GnuPG -> KMS"
 # 1. Generate key in gpg with encryption subkey and explicit preferences
 cat <<'EOF' | gpg "${GPG_OPTS[@]}" --generate-key
@@ -147,6 +156,15 @@ echo ">>> Subtest 2.2.3: encrypt/decrypt"
 gpg "${GPG_OPTS[@]}" --trust-model always --recipient "gpg@example.com" --output msg.gpg --encrypt data.txt
 "${CKMS_BIN}" --url "${KMS_URL}" pgp decrypt -k gpg-imported -o out.txt msg.gpg
 diff -u data.txt out.txt
+
+# 3b. KMS encrypts with the imported key to a .gpg file, KMS and gpg both decrypt it
+echo ">>> Subtest 2.2.3b: KMS encrypt -> KMS and gpg decrypt of the .gpg file"
+"${CKMS_BIN}" --url "${KMS_URL}" pgp encrypt -k gpg-imported -o imported.gpg data.txt
+gpg "${GPG_OPTS[@]}" --list-packets imported.gpg >/dev/null
+"${CKMS_BIN}" --url "${KMS_URL}" pgp decrypt -k gpg-imported -o out_imported_kms.txt imported.gpg
+diff -u data.txt out_imported_kms.txt
+gpg "${GPG_OPTS[@]}" --decrypt imported.gpg >out_imported_gpg.txt
+diff -u data.txt out_imported_gpg.txt
 
 # 4. gpg signs (binary detached), KMS verifies
 echo ">>> Subtest 2.2.4: sign-verify binary"
