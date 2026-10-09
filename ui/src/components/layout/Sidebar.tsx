@@ -19,7 +19,7 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const branding = useBranding();
-    const { t, i18n } = useTranslation("menu");
+    const { t } = useTranslation("menu");
     const menuItems = useMemo(
         () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel, isFips }),
         [branding.enableCovercrypt, branding.pqcLabel, isFips],
@@ -128,32 +128,25 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
     // Menu labels are i18n keys: translate via the "menu" namespace, falling
     // back to the English/branding label. rawLabel items (e.g. the branding-
     // provided PQC label) are rendered verbatim.
-    const displayLabel = (item: MenuItem) => (item.rawLabel ? item.label : t(item.key, { defaultValue: item.label }));
-
-    // Recursively extract all translated labels from menu items to compute sidebar width.
-    const extractAllLabels = (items: MenuItem[]): string[] => {
-        const labels: string[] = [];
-        const traverse = (menuItem: MenuItem) => {
-            labels.push(displayLabel(menuItem));
-            if (menuItem.children) {
-                menuItem.children.forEach(traverse);
-            }
-        };
-        items.forEach(traverse);
-        return labels;
-    };
+    const displayLabel = useCallback((item: MenuItem) => (item.rawLabel ? item.label : t(item.key, { defaultValue: item.label })), [t]);
 
     // Calculate sidebar width based on longest label in the current language.
     const siderWidth = useMemo(() => {
         if (collapsed) {
             return undefined; // Let AntD handle collapsedWidth
         }
-        const allLabels = extractAllLabels(processedMenuItems);
+        // Recursively extract all translated labels from menu items.
+        const allLabels: string[] = [];
+        const traverse = (menuItem: MenuItem) => {
+            allLabels.push(displayLabel(menuItem));
+            menuItem.children?.forEach(traverse);
+        };
+        processedMenuItems.forEach(traverse);
         const longestLabelLength = allLabels.reduce((max, label) => Math.max(max, label.length), 0);
         // Base width calculation: ~8.5 px per character + 80 px for padding/icon/chevron.
         // Clamp between 220 px (minimum for "Symmetric" or similar) and 360 px (reasonable max).
         return Math.max(220, Math.min(360, Math.ceil(longestLabelLength * 8.5 + 80)));
-    }, [processedMenuItems, collapsed, displayLabel, i18n.language]);
+    }, [processedMenuItems, collapsed, displayLabel]);
 
     // Recursively decorate every menu level so that sub-menu labels are
     // translated too, not just the top level. Ant Design handles hiding text

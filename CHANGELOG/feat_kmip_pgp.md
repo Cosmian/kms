@@ -36,3 +36,7 @@
 - Normalize RSA secret-key factors in generated OpenPGP keys for GnuPG interoperability.
 - Use rPGP 0.21.0 without its default bzip2 feature, avoiding Nettle and libclang as PGP build dependencies.
 - Decrypt DEFLATE-compressed OpenPGP messages; preserve v4 GnuPG compatibility and v6 recipient packet profiles.
+
+### Web UI
+- Fix OpenPGP encrypt and decrypt downloads: the `.gpg` file contained the textual list of byte values instead of the binary message, so decrypting it failed with `failed to parse OpenPGP message`.
+- Hide OpenPGP, PQC, MAC, FPE, Anonymize and Covercrypt from the sidebar and block their URLs when the server runs in FIPS mode. The gating now fails closed while `/server-info` is loading or unavailable, and `/server-info` is fetched before `/version` and `/health` so those cannot prevent it.

@@ -128,6 +128,33 @@ test.describe("OpenPGP key", () => {
         expect(destroyText).toMatch(/destroyed/i);
     });
 
+    test("encrypt a file to .gpg then decrypt the downloaded .gpg file", async ({ page }) => {
+        const keyId = await createPgpKey(page);
+        const plaintext = Buffer.from("Hello from the OpenPGP UI encrypt/decrypt round trip!\n");
+
+        await gotoAndWait(page, "/ui/pgp/encrypt");
+        await page.setInputFiles('input[type="file"]', { name: "data.txt", mimeType: "text/plain", buffer: plaintext });
+        await page.fill('input[placeholder="Enter key ID"]', keyId);
+        const { download: encDownload } = await submitAndWaitForDownload(page);
+        expect(encDownload.suggestedFilename()).toBe("data.txt.gpg");
+        const encPath = await encDownload.path();
+        expect(encPath).not.toBeNull();
+
+        // The download must be the binary OpenPGP message, not its textual number-list form.
+        const encrypted = await readFile(encPath!);
+        expect(encrypted.length).toBeGreaterThan(plaintext.length);
+        // First byte of a binary OpenPGP packet always has the high bit set.
+        expect(encrypted[0] & 0x80).toBe(0x80);
+
+        await gotoAndWait(page, "/ui/pgp/decrypt");
+        await page.setInputFiles('input[type="file"]', encPath!);
+        await page.fill('input[placeholder="Enter key ID"]', keyId);
+        const { download: decDownload } = await submitAndWaitForDownload(page);
+        const decPath = await decDownload.path();
+        expect(decPath).not.toBeNull();
+        expect((await readFile(decPath!)).equals(plaintext)).toBe(true);
+    });
+
     test("navigate to pgp crypto operation pages", async ({ page }) => {
         for (const op of ["encrypt", "decrypt", "sign", "verify"]) {
             await gotoAndWait(page, `/ui/pgp/${op}`);

@@ -81,7 +81,9 @@ import TokenizeWordPatternMask from "./actions/Tokenize/TokenizeWordPatternMask"
 import TokenizeWordTokenize from "./actions/Tokenize/TokenizeWordTokenize";
 import LocateForm from "./components/common/Locate";
 import MainLayout from "./components/layout/MainLayout";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import NonFipsRoute from "./components/layout/NonFipsRoute";
+import { AuthProvider } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/useAuth";
 import { useBranding } from "./contexts/useBranding";
 import { useAppLocale } from "./i18n/useAppLocale";
 import LoginPage from "./pages/LoginPage";
@@ -356,7 +358,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="sign" element={<ECSignForm />} />
                             <Route path="verify" element={<ECVerifyForm />} />
                         </Route>
-                        <Route path="pqc">
+                        <Route path="pqc" element={<NonFipsRoute />}>
                             <Route path="keys/create" element={<PqcKeysCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"pqc"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pqc" />} />
@@ -368,7 +370,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="sign" element={<PqcSignForm />} />
                             <Route path="verify" element={<PqcVerifyForm />} />
                         </Route>
-                        <Route path="pgp">
+                        <Route path="pgp" element={<NonFipsRoute />}>
                             <Route path="keys/create" element={<PgpKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type="pgp" />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pgp" />} />
@@ -379,7 +381,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="sign" element={<PgpSignForm />} />
                             <Route path="verify" element={<PgpVerifyForm />} />
                         </Route>
-                        <Route path="mac">
+                        <Route path="mac" element={<NonFipsRoute />}>
                             <Route path="compute" element={<MacComputeForm />} />
                             <Route path="verify" element={<MacVerifyForm />} />
                         </Route>
@@ -396,12 +398,12 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                                 <Route path="set" element={<SetRotationPolicyForm />} />
                                 <Route path="get" element={<GetRotationPolicyForm />} />
                             </Route>
-                            <Route path="pqc">
+                            <Route path="pqc" element={<NonFipsRoute />}>
                                 <Route path="set" element={<SetRotationPolicyForm />} />
                                 <Route path="get" element={<GetRotationPolicyForm />} />
                             </Route>
                         </Route>
-                        <Route path="fpe">
+                        <Route path="fpe" element={<NonFipsRoute />}>
                             <Route path="keys/create" element={<FpeKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"fpe"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="fpe" />} />
@@ -411,7 +413,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="decrypt" element={<FpeDecryptForm />} />
                         </Route>
                         {branding.enableCovercrypt !== false && (
-                            <Route path="cc">
+                            <Route path="cc" element={<NonFipsRoute />}>
                                 <Route path="keys/create-master-key-pair" element={<CovercryptMasterKeyForm />} />
                                 <Route path="keys/create-user-key" element={<CovercryptUserKeyForm />} />
                                 <Route path="keys/export" element={<KeyExportForm key_type={"covercrypt"} />} />
@@ -473,7 +475,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="export-key-material" element={<AwsExportKeyMaterialForm />} />
                         </Route>
                         <Route path="google-cse" element={<CseInfo />} />
-                        <Route path="tokenize">
+                        <Route path="tokenize" element={<NonFipsRoute />}>
                             <Route path="hash" element={<TokenizeHash />} />
                             <Route path="noise" element={<TokenizeNoise />} />
                             <Route path="word-mask" element={<TokenizeWordMask />} />

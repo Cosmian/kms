@@ -31,7 +31,9 @@ const PgpEncryptForm: React.FC = () => {
             if (result_str) {
                 const { Data } = await parse_encrypt_ttlv_response(result_str);
                 const filename = `${values.fileName}.gpg`;
-                downloadFile(Data, filename, "application/octet-stream");
+                // `Data` is a plain JS number[]; a Blob built directly from it would hold its
+                // comma-separated text form instead of the binary OpenPGP message.
+                downloadFile(new Uint8Array(Data), filename, "application/octet-stream");
                 return t("pgpEncrypt.success");
             }
         });

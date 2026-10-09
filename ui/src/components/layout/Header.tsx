@@ -1,6 +1,6 @@
 import { CheckCircleFilled, DatabaseOutlined } from "@ant-design/icons";
 import { Select } from "antd";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useBranding } from "../../contexts/useBranding";
 import { DOCS_BASE_URL } from "../../utils/utils";
@@ -33,7 +33,8 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
     const { t } = useTranslation("layout");
     const logoUrl = isDarkMode ? branding.logoDarkUrl : branding.logoLightUrl;
 
-    const instances = serverInfo?.hsm_instances ?? [];
+    const hsmInstances = serverInfo?.hsm_instances;
+    const instances = useMemo(() => hsmInstances ?? [], [hsmInstances]);
     const [selectedPrefix, setSelectedPrefix] = useState<string | undefined>(undefined);
 
     // Initialise selection once serverInfo arrives (it's null on first render).

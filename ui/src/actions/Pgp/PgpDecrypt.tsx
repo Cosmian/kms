@@ -35,7 +35,7 @@ const PgpDecryptForm: React.FC = () => {
                     : values.fileName.endsWith(".asc")
                       ? values.fileName.slice(0, -4)
                       : `${values.fileName}.plain`;
-                downloadFile(Data, outName, "application/octet-stream");
+                downloadFile(new Uint8Array(Data), outName, "application/octet-stream");
                 return t("pgpDecrypt.success");
             }
         });

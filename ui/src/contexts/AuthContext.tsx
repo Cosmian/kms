@@ -1,8 +1,6 @@
 import { ReactNode, useState } from "react";
 import { AuthContext } from "./AuthContextDef.tsx";
 
-export { useAuth } from "./useAuth";
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [userId, setUserId] = useState<string | null>(null);
     const [serverUrl, setServerUrl] = useState<string>("");
