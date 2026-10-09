@@ -12,7 +12,7 @@ on:
 jobs:
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -220,7 +220,7 @@ jobs:
   # job is skipped on forks, where those secrets do not exist.
   test-nix-upstream:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
@@ -282,7 +282,7 @@ jobs:
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
     # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
     concurrency:
@@ -330,7 +330,7 @@ jobs:
   # own job (a job-level `if` cannot read the `matrix` context) and are skipped on forks.
   hsm-upstream:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
@@ -394,7 +394,7 @@ jobs:
 
   helm:
     name: Helm chart E2E (minikube)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
@@ -424,7 +424,7 @@ jobs:
 
   xks-remote:
     name: AWS XKS — remote server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
       group: xks-remote
