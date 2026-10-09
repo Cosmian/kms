@@ -6,32 +6,26 @@ use zeroize::Zeroizing;
 
 use crate::error::CryptoError;
 
-/// Unified, thread-safe NIST-compliant KMS RNG implementation.
+/// Thread-safe KMS random number generator, a thin wrapper around OpenSSL's `RAND_bytes`.
 ///
-/// `KmsRng` wraps OpenSSL's DRBG (`CTR-DRBG` or `Hash_DRBG` depending on provider)
-/// and provides a thread-safe interface for cryptographic random number generation.
-///
-/// This struct should be instantiated once during KMS startup and shared
-/// across all cryptographic operations via `Arc<KmsRng>`. It is the single
-/// source of randomness for:
-/// - Symmetric key generation
-/// - Nonce/IV generation
+/// `KmsRng` is instantiated once during KMS startup and shared via `Arc<KmsRng>`. It is used for:
+/// - Symmetric key and `SecretData` seed generation
 /// - Split keys
 /// - Certificate serial numbers
 /// - KMIP RNG operations (`RNGRetrieve`, `RNGSeed`)
-/// - PQC key generation seeding
+///
+/// PQC key generation does **not** use it: OpenSSL generates that key material from its own
+/// default DRBG.
 ///
 /// # Thread Safety
 ///
-/// `KmsRng` uses an internal `Mutex` to ensure thread-safe access to the
-/// underlying OpenSSL RAND APIs. Each call to `fill_bytes` holds the mutex
-/// only for the duration of the OpenSSL call, minimizing contention.
+/// `KmsRng` uses an internal `Mutex` to serialize calls to the underlying OpenSSL RAND APIs.
+/// Each call to `fill_bytes` holds the mutex only for the duration of the OpenSSL call.
 ///
-/// # Conformance
+/// # Compliance
 ///
-/// - NIST SP 800-90B/90C: Approved entropy source with `CTR-DRBG` or `Hash_DRBG`
-/// - NIST SP 800-133r3: Deterministic seeding via `reseed` for `RNGSeed` operations
-/// - FIPS 140-3: Compliant with IG 9.3.A, IG D.J, IG D.K
+/// This type makes no entropy-source validation (NIST SP 800-90B) or FIPS 140-3 claim: entropy
+/// comes from whatever OpenSSL's default DRBG is seeded with by the operating system.
 pub struct KmsRng {
     state: Mutex<()>,
 }

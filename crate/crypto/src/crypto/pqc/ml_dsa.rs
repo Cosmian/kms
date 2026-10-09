@@ -17,8 +17,8 @@ use crate::{crypto::KeyPair, error::CryptoError};
 ///
 /// Supports ML-DSA-44, ML-DSA-65, ML-DSA-87 via OpenSSL 3.4+.
 ///
-/// If `rng` is provided, it ensures the keygen draws from an NIST-compliant
-/// entropy source (ESV-validated DRBG) per NIST SP 800-90B/C and FIPS 140-3 IG.
+/// `rng` is currently unused: key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws
+/// from OpenSSL's own default DRBG, not from `KmsRng`.
 #[expect(clippy::too_many_arguments)]
 pub fn create_ml_dsa_key_pair(
     algorithm: CryptographicAlgorithm,

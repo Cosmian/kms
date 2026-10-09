@@ -24,8 +24,8 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// Hybrid KEM keys don't support DER serialization in OpenSSL 3.6,
 /// so raw key bytes are stored with `KeyFormatType::Raw`.
 ///
-/// If `rng` is provided, it ensures the keygen draws from an NIST-compliant
-/// entropy source (ESV-validated DRBG) per NIST SP 800-90B/C and FIPS 140-3 IG.
+/// `rng` is currently unused: key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws
+/// from OpenSSL's own default DRBG, not from `KmsRng`.
 #[expect(clippy::too_many_arguments)]
 pub fn create_hybrid_kem_key_pair(
     algorithm: CryptographicAlgorithm,
