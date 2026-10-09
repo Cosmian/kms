@@ -170,21 +170,6 @@ export const sendKmipRequest = async (request: object, serverUrl: string) => {
 
     return JSON.stringify(await response.json());
 };
-export const convertOpenPgpKeyToBinary = async (data: Uint8Array, serverUrl: string): Promise<Uint8Array> => {
-    const response = await fetch(`${serverUrl}/v1/crypto/openpgp/binary`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: data,
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
-    }
-
-    return new Uint8Array(await response.arrayBuffer());
-};
 
 export const postNoTTLVRequest = async (path: string, request: object, serverUrl: string) => {
     const kmsUrl = serverUrl + path;

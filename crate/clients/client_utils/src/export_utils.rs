@@ -11,13 +11,13 @@ use cosmian_kmip::{
         },
     },
 };
-#[cfg(all(feature = "openpgp-export", not(target_arch = "wasm32")))]
-use cosmian_kms_crypto::crypto::openpgp::openpgp_key_to_binary as convert_openpgp_key_to_binary;
 use pem::{EncodeConfig, LineEnding};
 use strum::EnumString;
 use zeroize::Zeroizing;
 
 use crate::error::UtilsError;
+#[cfg(feature = "openpgp-export")]
+use crate::openpgp_format::openpgp_key_to_binary as convert_openpgp_key_to_binary;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, EnumString, ValueEnum)]
 #[strum(serialize_all = "kebab-case")]
@@ -159,22 +159,22 @@ pub const fn get_export_key_format_type(
 ///
 /// Returns an error if the bytes are not a valid `OpenPGP` transferable key or
 /// cannot be serialized.
-#[cfg(all(feature = "openpgp-export", not(target_arch = "wasm32")))]
+#[cfg(feature = "openpgp-export")]
 pub fn openpgp_key_to_binary(input: &[u8]) -> Result<Vec<u8>, UtilsError> {
     convert_openpgp_key_to_binary(input)
         .map(|bytes| bytes.to_vec())
         .map_err(|e| UtilsError::Default(e.to_string()))
 }
 
-/// Return an error when binary `OpenPGP` export is not enabled for this client target.
+/// Return an error when binary `OpenPGP` export is not enabled for this build.
 ///
 /// # Errors
 ///
-/// Always returns an error because this target does not include the native `OpenPGP` backend.
-#[cfg(any(not(feature = "openpgp-export"), target_arch = "wasm32"))]
+/// Always returns an error because this build does not include `OpenPGP` support (FIPS builds).
+#[cfg(not(feature = "openpgp-export"))]
 pub fn openpgp_key_to_binary(_input: &[u8]) -> Result<Vec<u8>, UtilsError> {
     Err(UtilsError::Default(
-        "binary OpenPGP export requires a native non-FIPS client build".to_owned(),
+        "binary OpenPGP export requires a non-FIPS build".to_owned(),
     ))
 }
 pub fn prepare_key_export_elements(

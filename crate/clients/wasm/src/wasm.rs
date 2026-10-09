@@ -14,7 +14,7 @@ use cosmian_kms_client_utils::{
     error::UtilsError,
     export_utils::{
         CertificateExportFormat, ExportKeyFormat, WrappingAlgorithm, der_to_pem, export_request,
-        get_export_key_format_type, prepare_certificate_export_elements,
+        get_export_key_format_type, openpgp_key_to_binary, prepare_certificate_export_elements,
         prepare_key_export_elements, tag_from_object,
     },
     import_utils::{
@@ -1682,6 +1682,13 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
                 .encode(get_object_bytes(&kmip_object)?)
                 .to_lowercase();
             JsValue::from(string)
+        }
+        ExportKeyFormat::PgpSecretBinary | ExportKeyFormat::PgpPublicBinary => {
+            let kmip_object = response.object;
+            let armored = get_object_bytes(&kmip_object)?;
+            let binary =
+                openpgp_key_to_binary(&armored).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            JsValue::from(Uint8Array::from(binary.as_slice()))
         }
         _ => {
             let kmip_object = response.object;

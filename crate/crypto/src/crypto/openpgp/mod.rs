@@ -1,10 +1,10 @@
 use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+use cosmian_kms_client_utils::openpgp_format::parse_secret_or_public;
 use openssl::bn::{BigNum, BigNumContext};
 use pgp::{
     composed::{
         ArmorOptions, Deserializable, DetachedSignature, EncryptionCaps, KeyType, Message,
-        MessageBuilder, PublicOrSecret, SecretKeyParamsBuilder, SignedPublicKey, SignedSecretKey,
-        SubkeyParamsBuilder,
+        MessageBuilder, SecretKeyParamsBuilder, SignedSecretKey, SubkeyParamsBuilder,
     },
     crypto::{ecc_curve::ECCCurve, hash::HashAlgorithm, sym::SymmetricKeyAlgorithm},
     packet::KeyFlags,
@@ -200,25 +200,6 @@ pub fn openpgp_normalize(input: &[u8]) -> Result<(Zeroizing<Vec<u8>>, bool), Cry
     }
 }
 
-/// Helper to parse an armored or binary key into either `SignedSecretKey` or `SignedPublicKey`.
-fn parse_secret_or_public(
-    input: &[u8],
-) -> Result<(Option<SignedSecretKey>, Option<SignedPublicKey>), CryptoError> {
-    let (mut keys, _) = PublicOrSecret::from_reader_many_buf(std::io::Cursor::new(input))
-        .map_err(|e| crypto_error!("failed to parse OpenPGP certificate: {e}"))?;
-    let key = keys
-        .next()
-        .ok_or_else(|| crypto_error!("failed to parse OpenPGP certificate: no key found"))?
-        .map_err(|e| crypto_error!("failed to parse OpenPGP certificate: {e}"))?;
-    if keys.next().is_some() {
-        crypto_bail!("OpenPGP input contains multiple transferable keys");
-    }
-    match key {
-        PublicOrSecret::Secret(secret) => Ok((Some(secret), None)),
-        PublicOrSecret::Public(public) => Ok((None, Some(public))),
-    }
-}
-
 /// Serialize an armored or binary `OpenPGP` transferable key as binary packets.
 ///
 /// # Errors
@@ -226,18 +207,7 @@ fn parse_secret_or_public(
 /// Returns an error if the input is not a valid transferable secret or public key
 /// or if the key cannot be serialized.
 pub fn openpgp_key_to_binary(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
-    let (secret, public) = parse_secret_or_public(input)?;
-    let mut binary = Zeroizing::new(Vec::new());
-    match (secret, public) {
-        (Some(key), None) => key
-            .to_writer(&mut *binary)
-            .map_err(|e| crypto_error!("failed to serialize OpenPGP secret key: {e}"))?,
-        (None, Some(key)) => key
-            .to_writer(&mut *binary)
-            .map_err(|e| crypto_error!("failed to serialize OpenPGP public key: {e}"))?,
-        _ => crypto_bail!("failed to parse OpenPGP transferable key"),
-    }
-    Ok(binary)
+    Ok(cosmian_kms_client_utils::openpgp_format::openpgp_key_to_binary(input)?)
 }
 
 /// Helper to parse a secret key specifically from armored or binary bytes.

@@ -20,7 +20,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [features]
-non-fips = ["cosmian_kms_client_utils/non-fips"]
+non-fips = ["cosmian_kms_client_utils/non-fips", "cosmian_kms_client_utils/openpgp-export"]
 default = ["getrandom/js"]
 
 [dependencies]

@@ -13,10 +13,7 @@
 - Discover RSA private keys and certificates tagged `gnupg-card` (override with `COSMIAN_PKCS11_GNUPG_KEY_TAG`) so `gnupg-pkcs11-scd` can use them as a GnuPG smartcard; `mise run test:gnupg` now also runs the smartcard tests backed by a SoftHSM2 KEK.
 
 ### Web UI
-- Offer binary OpenPGP key export alongside ASCII-armored secret and public key formats.
-
-### REST API
-- Add an authenticated endpoint for converting OpenPGP keys to binary packet format, enabling server-side binary exports in the Web UI.
+- Offer binary OpenPGP key export alongside ASCII-armored secret and public key formats; the armored-to-binary conversion runs in the browser (WASM), with no extra server round-trip.
 
 ## Documentation
 

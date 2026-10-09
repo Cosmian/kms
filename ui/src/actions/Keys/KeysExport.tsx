@@ -1,7 +1,7 @@
 import { Button, Card, Checkbox, Divider, Form, Input, Select, Space } from "antd";
 import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { convertOpenPgpKeyToBinary, downloadFile, sendKmipRequest } from "../../utils/utils";
+import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_ttlv_request, parse_export_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import KeyIdInput from "../../components/common/KeyIdInput";
@@ -104,10 +104,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
             const request = export_ttlv_request(id, values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
-                let data = await parse_export_ttlv_response(result_str, values.keyFormat);
-                if (values.keyFormat === "pgp-secret-binary" || values.keyFormat === "pgp-public-binary") {
-                    data = await convertOpenPgpKeyToBinary(data as Uint8Array, serverUrl);
-                }
+                const data = await parse_export_ttlv_response(result_str, values.keyFormat);
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;
                 const mimeType =
                     values.keyFormat === "json-ttlv"

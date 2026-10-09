@@ -73,7 +73,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, ocsp, openpgp, root_redirect,
+        ms_dke, ocsp, root_redirect,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -1827,7 +1827,6 @@ pub async fn prepare_kms_server(
                 ),
             ))
             .wrap(Cors::permissive())
-            .configure(openpgp::configure)
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
             .service(jose::sign_handler)

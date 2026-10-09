@@ -40,6 +40,8 @@ non-fips = [
   "dep:num-bigint",
   "dep:num-traits",
   "dep:pgp",
+  "dep:cosmian_kms_client_utils",
+  "cosmian_kms_client_utils/openpgp-export",
   "dep:rand_08",
 ]
 
@@ -51,6 +53,7 @@ base64 = { workspace = true }
 cosmian_cover_crypt = { version = "16.0.0", optional = true }
 cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }
 cosmian_kmip = { path = "../kmip", version = "5.28.0" }
+cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.28.0", optional = true }
 cosmian_logger = { workspace = true }
 foreign-types = "0.3"
 hex = { workspace = true }

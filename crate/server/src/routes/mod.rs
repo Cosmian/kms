@@ -29,7 +29,6 @@ pub(crate) mod jwks;
 pub mod kmip;
 pub mod ms_dke;
 pub(crate) mod ocsp;
-pub(crate) mod openpgp;
 pub mod root_redirect;
 pub(crate) mod spire;
 pub mod swagger;

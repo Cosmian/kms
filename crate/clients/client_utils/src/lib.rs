@@ -7,6 +7,8 @@ pub mod error;
 pub mod export_utils;
 pub mod import_utils;
 pub mod locate_utils;
+#[cfg(feature = "openpgp-export")]
+pub mod openpgp_format;
 pub mod revoke_utils;
 pub mod rsa_utils;
 pub mod symmetric_utils;
