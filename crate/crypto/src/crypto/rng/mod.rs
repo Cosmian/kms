@@ -14,8 +14,10 @@ use crate::error::CryptoError;
 /// - Certificate serial numbers
 /// - KMIP RNG operations (`RNGRetrieve`, `RNGSeed`)
 ///
-/// PQC key generation does **not** use it: OpenSSL generates that key material from its own
-/// default DRBG.
+/// - PQC key generation seed injection for ML-KEM and ML-DSA
+///
+/// SLH-DSA and hybrid KEM do not draw seeds from `KmsRng`: OpenSSL generates their key
+/// material from its own default DRBG.
 ///
 /// # Thread Safety
 ///

@@ -15,8 +15,10 @@ use crate::{crypto::KeyPair, error::CryptoError};
 ///
 /// Supports `ML-KEM-512`, `ML-KEM-768`, `ML-KEM-1024` via OpenSSL 3.4+.
 ///
-/// `rng` is currently unused: key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws
-/// from OpenSSL's own default DRBG, not from `KmsRng`.
+/// When `rng` is supplied, a 64-byte seed is drawn from `KmsRng` and passed to OpenSSL's
+/// key generation context (per FIPS 203 §7.1 and OpenSSL `ml_kem_kmgmt.c`), generating
+/// the key pair deterministically from that seed. When `None`, OpenSSL draws entropy
+/// directly from its own default DRBG.
 #[expect(clippy::too_many_arguments)]
 pub fn create_ml_kem_key_pair(
     algorithm: CryptographicAlgorithm,
@@ -30,8 +32,7 @@ pub fn create_ml_kem_key_pair(
 ) -> Result<KeyPair, CryptoError> {
     let _ = ml_kem_algorithm_name(algorithm)?; // validate
     let (private_key_der, public_key_der, num_bits) =
-        pqc_keygen(ml_kem_algorithm_name(algorithm)?, rng)?;
-
+        pqc_keygen(ml_kem_algorithm_name(algorithm)?, rng, None)?;
     create_pqc_key_pair(
         vendor_id,
         &private_key_der,
@@ -270,7 +271,8 @@ mod tests {
 
     #[test]
     fn ml_kem_512_roundtrip() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-KEM-512", None).unwrap();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-512", None, None).unwrap();
 
         // Encapsulate with public key
         let (shared_secret1, ciphertext) = ml_kem_encapsulate(&pub_der).unwrap();
@@ -284,16 +286,29 @@ mod tests {
 
     #[test]
     fn ml_kem_768_roundtrip() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-KEM-768", None).unwrap();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-768", None, None).unwrap();
 
         let (ss1, ct) = ml_kem_encapsulate(&pub_der).unwrap();
         let ss2 = ml_kem_decapsulate(&priv_der, &ct).unwrap();
         assert_eq!(ss1, ss2);
     }
+    #[test]
+    fn ml_kem_768_roundtrip_with_kms_rng_seed() {
+        let rng = crate::crypto::KmsRng::new();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-768", Some(&rng), None).unwrap();
+
+        let (ss1, ct) = ml_kem_encapsulate(&pub_der).unwrap();
+        let ss2 = ml_kem_decapsulate(&priv_der, &ct).unwrap();
+        assert_eq!(ss1, ss2, "encapsulate/decapsulate on seeded key must match");
+        assert!(!ss1.is_empty());
+    }
 
     #[test]
     fn ml_kem_1024_roundtrip() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-KEM-1024", None).unwrap();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-1024", None, None).unwrap();
 
         let (ss1, ct) = ml_kem_encapsulate(&pub_der).unwrap();
         let ss2 = ml_kem_decapsulate(&priv_der, &ct).unwrap();
@@ -374,7 +389,8 @@ mod tests {
 
     #[test]
     fn ml_kem_decapsulate_empty_ciphertext_returns_err() {
-        let (priv_der, _pub_der, _bits) = super::super::pqc_keygen("ML-KEM-512", None).unwrap();
+        let (priv_der, _pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-512", None, None).unwrap();
         let result = ml_kem_decapsulate(&priv_der, &[]);
         assert!(
             result.is_err(),
@@ -385,7 +401,8 @@ mod tests {
     #[test]
     fn ml_kem_decapsulate_truncated_ciphertext_returns_err() {
         // ML-KEM-512 ciphertext is 768 bytes; passing just 1 byte must fail.
-        let (priv_der, _pub_der, _bits) = super::super::pqc_keygen("ML-KEM-512", None).unwrap();
+        let (priv_der, _pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-512", None, None).unwrap();
         let result = ml_kem_decapsulate(&priv_der, &[0_u8; 1]);
         assert!(
             result.is_err(),
@@ -396,7 +413,8 @@ mod tests {
     #[test]
     fn ml_kem_decapsulate_wrong_size_ciphertext_returns_err() {
         // ML-KEM-768 ciphertext is 1088 bytes; pass a ML-KEM-512-sized one.
-        let (priv_der, _pub_der, _bits) = super::super::pqc_keygen("ML-KEM-768", None).unwrap();
+        let (priv_der, _pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-768", None, None).unwrap();
         let result = ml_kem_decapsulate(&priv_der, &[0_u8; 768]);
         assert!(
             result.is_err(),
@@ -412,7 +430,7 @@ mod tests {
         // `d2i_PUBKEY` succeeds but `EVP_PKEY_encapsulate_init` fails.
         // We generate a real ML-DSA key and try to KEM-encapsulate it — reusing the
         // same well-formed SPKI but wrong algorithm.
-        let (_, pub_der, _) = super::super::pqc_keygen("ML-DSA-44", None).unwrap();
+        let (_, pub_der, _) = super::super::pqc_keygen("ML-DSA-44", None, None).unwrap();
         // This must fail (wrong key type for KEM) without panicking or leaking.
         let result = ml_kem_encapsulate(&pub_der);
         assert!(

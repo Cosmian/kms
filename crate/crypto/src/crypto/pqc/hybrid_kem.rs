@@ -24,8 +24,9 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// Hybrid KEM keys don't support DER serialization in OpenSSL 3.6,
 /// so raw key bytes are stored with `KeyFormatType::Raw`.
 ///
-/// `rng` is currently unused: key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws
-/// from OpenSSL's own default DRBG, not from `KmsRng`.
+/// `rng` is unused for hybrid KEMs: OpenSSL 3.6.2 generates composite keys atomically
+/// without exposing a seed parameter (see `mlx_kmgmt.c`). Key generation draws from
+/// OpenSSL's internal default DRBG.
 #[expect(clippy::too_many_arguments)]
 pub fn create_hybrid_kem_key_pair(
     algorithm: CryptographicAlgorithm,
@@ -38,8 +39,7 @@ pub fn create_hybrid_kem_key_pair(
     rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = hybrid_kem_algorithm_name(algorithm)?;
-    let (private_key_raw, public_key_raw, num_bits) = pqc_keygen_raw(algorithm_name, rng)?;
-
+    let (private_key_raw, public_key_raw, num_bits) = pqc_keygen_raw(algorithm_name, rng, None)?;
     create_pqc_key_pair(
         vendor_id,
         &private_key_raw,
@@ -233,8 +233,7 @@ mod tests {
     fn encaps_decaps_roundtrip(algorithm: CryptographicAlgorithm) {
         let algorithm_name = hybrid_kem_algorithm_name(algorithm).unwrap();
         let (priv_raw, pub_raw, _bits) =
-            super::super::pqc_keygen_raw(algorithm_name, None).expect("keygen");
-
+            super::super::pqc_keygen_raw(algorithm_name, None, None).expect("keygen");
         let (ss1, ct) = hybrid_kem_encapsulate(algorithm, &pub_raw).expect("encapsulate");
         let ss2 = hybrid_kem_decapsulate(algorithm, &priv_raw, &ct).expect("decapsulate");
         assert_eq!(ss1, ss2);
@@ -318,7 +317,7 @@ mod tests {
         let algorithm_name =
             hybrid_kem_algorithm_name(CryptographicAlgorithm::X25519MLKEM768).unwrap();
         let (priv_raw, _pub_raw, _bits) =
-            super::super::pqc_keygen_raw(algorithm_name, None).expect("keygen");
+            super::super::pqc_keygen_raw(algorithm_name, None, None).expect("keygen");
         let result = hybrid_kem_decapsulate(CryptographicAlgorithm::X25519MLKEM768, &priv_raw, &[]);
         assert!(
             result.is_err(),
@@ -331,7 +330,7 @@ mod tests {
         let algorithm_name =
             hybrid_kem_algorithm_name(CryptographicAlgorithm::X25519MLKEM768).unwrap();
         let (priv_raw, _pub_raw, _bits) =
-            super::super::pqc_keygen_raw(algorithm_name, None).expect("keygen");
+            super::super::pqc_keygen_raw(algorithm_name, None, None).expect("keygen");
         let result = hybrid_kem_decapsulate(
             CryptographicAlgorithm::X25519MLKEM768,
             &priv_raw,

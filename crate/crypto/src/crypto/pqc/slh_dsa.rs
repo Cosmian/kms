@@ -14,8 +14,9 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// Supports all 12 SLH-DSA variants (SHA2/SHAKE × 128/192/256 × s/f)
 /// via OpenSSL 3.6+.
 ///
-/// `rng` is currently unused: key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws
-/// from OpenSSL's own default DRBG, not from `KmsRng`.
+/// Key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws from OpenSSL's own default DRBG.
+/// OpenSSL's SLH-DSA seed parameter is documented as testing-only (`EVP_PKEY-SLH-DSA(7)`), so
+/// production key generation does not pass a seed.
 #[expect(clippy::too_many_arguments)]
 pub fn create_slh_dsa_key_pair(
     algorithm: CryptographicAlgorithm,
@@ -28,8 +29,7 @@ pub fn create_slh_dsa_key_pair(
     rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = slh_dsa_algorithm_name(algorithm)?;
-    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng)?;
-
+    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng, None)?;
     create_pqc_key_pair(
         vendor_id,
         &private_key_der,
@@ -58,8 +58,7 @@ mod tests {
 
     fn sign_verify_roundtrip(algorithm_name: &str) {
         let (priv_der, pub_der, _bits) =
-            super::super::pqc_keygen(algorithm_name, None).expect("keygen");
-
+            super::super::pqc_keygen(algorithm_name, None, None).expect("keygen");
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
 

@@ -17,8 +17,10 @@ use crate::{crypto::KeyPair, error::CryptoError};
 ///
 /// Supports ML-DSA-44, ML-DSA-65, ML-DSA-87 via OpenSSL 3.4+.
 ///
-/// `rng` is currently unused: key generation calls OpenSSL `EVP_PKEY_Q_keygen`, which draws
-/// from OpenSSL's own default DRBG, not from `KmsRng`.
+/// When `rng` is supplied, a 32-byte seed is drawn from `KmsRng` and passed to OpenSSL's
+/// key generation context (per FIPS 204 §6.1 and OpenSSL `ml_dsa_kmgmt.c`), generating
+/// the key pair deterministically from that seed. When `None`, OpenSSL draws entropy
+/// directly from its own default DRBG.
 #[expect(clippy::too_many_arguments)]
 pub fn create_ml_dsa_key_pair(
     algorithm: CryptographicAlgorithm,
@@ -31,8 +33,7 @@ pub fn create_ml_dsa_key_pair(
     rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = ml_dsa_algorithm_name(algorithm)?;
-    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng)?;
-
+    let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng, None)?;
     create_pqc_key_pair(
         vendor_id,
         &private_key_der,
@@ -79,7 +80,7 @@ mod tests {
     #[test]
     fn ml_dsa_44_sign_verify() {
         let (priv_der, pub_der, _bits) =
-            super::super::pqc_keygen("ML-DSA-44", None).expect("keygen");
+            super::super::pqc_keygen("ML-DSA-44", None, None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
@@ -99,7 +100,7 @@ mod tests {
     #[test]
     fn ml_dsa_65_sign_verify() {
         let (priv_der, pub_der, _bits) =
-            super::super::pqc_keygen("ML-DSA-65", None).expect("keygen");
+            super::super::pqc_keygen("ML-DSA-65", None, None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
@@ -109,11 +110,25 @@ mod tests {
         let valid = ml_dsa_verify(&pub_key, message, &signature).expect("verify");
         assert!(valid);
     }
+    #[test]
+    fn ml_dsa_65_sign_verify_with_kms_rng_seed() {
+        let rng = crate::crypto::KmsRng::new();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-DSA-65", Some(&rng), None).expect("seeded keygen");
+
+        let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
+        let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
+
+        let message = b"test message for ML-DSA-65 seeded with KmsRng";
+        let signature = ml_dsa_sign(&priv_key, message).expect("sign");
+        let valid = ml_dsa_verify(&pub_key, message, &signature).expect("verify");
+        assert!(valid, "signature on seeded key must verify");
+    }
 
     #[test]
     fn ml_dsa_87_sign_verify() {
         let (priv_der, pub_der, _bits) =
-            super::super::pqc_keygen("ML-DSA-87", None).expect("keygen");
+            super::super::pqc_keygen("ML-DSA-87", None, None).expect("keygen");
 
         let priv_key = PKey::private_key_from_der(&priv_der).expect("priv from der");
         let pub_key = PKey::public_key_from_der(&pub_der).expect("pub from der");
