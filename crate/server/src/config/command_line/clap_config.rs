@@ -9,13 +9,14 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AuditConfig, AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig,
+    AuditConfig, AuthVerifierConfig, CrlConfig, EstConfig, GoogleCseConfig, HsmConfig, HttpConfig,
     IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig,
-    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ScepConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
     ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
+    core::operations::certify::template::CertTemplate,
     error::KmsError,
     result::KResult,
     routes::aws_xks::AwsXksConfig,
@@ -104,6 +105,9 @@ impl Default for ClapConfig {
             audit: AuditConfig::default(),
             crl: CrlConfig::default(),
             ocsp: OcspConfig::default(),
+            est: EstConfig::default(),
+            scep: ScepConfig::default(),
+            templates: HashMap::new(),
         }
     }
 }
@@ -321,6 +325,22 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub ocsp: OcspConfig,
+
+    /// EST (RFC 7030) enrollment endpoint settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub est: EstConfig,
+
+    /// SCEP (RFC 8894) enrollment endpoint settings.
+    #[command(flatten)]
+    #[serde(default)]
+    pub scep: ScepConfig,
+
+    /// Certificate templates (`[templates.<name>]`) selectable by `est_template` /
+    /// `scep_template`. TOML-only: nested map configuration has no flat CLI surface.
+    #[clap(skip)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub templates: HashMap<String, CertTemplate>,
 }
 
 impl ClapConfig {

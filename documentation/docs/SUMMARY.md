@@ -10,6 +10,7 @@
   - [Introduction](use_cases/pki.md)
   - [Revocation & CRL Distribution](use_cases/pki-revocation.md)
   - [OCSP Responder](use_cases/pki-ocsp.md)
+  - [Device enrollment: EST and SCEP](use_cases/pki-enrollment.md)
 - [HSM support]()
   - [Introduction](hsm_support/introduction/index.md)
   - [HSM keys & operations](hsm_support/hsm_operations.md)

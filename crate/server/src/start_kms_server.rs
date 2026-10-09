@@ -68,12 +68,12 @@ use crate::{
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
-        get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, est, get_hsm_status,
+        get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, ocsp, root_redirect,
+        ms_dke, ocsp, root_redirect, scep,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -1763,6 +1763,15 @@ pub async fn prepare_kms_server(
             // Public OCSP responder (no authentication, RFC 6960 §2 — public information).
             .service(ocsp::get_ocsp)
             .service(ocsp::post_ocsp)
+            // EST (RFC 7030) and SCEP (RFC 8894) enrollment. Registered at app level, before
+            // the `/.well-known` JWKS scope, so they are not shadowed. Authentication is done
+            // by the handlers themselves (TLS client certificate / Basic / CMS signature).
+            .service(est::get_cacerts)
+            .service(est::get_csrattrs)
+            .service(est::post_simpleenroll)
+            .service(est::post_simplereenroll)
+            .service(scep::scep_get)
+            .service(scep::scep_post)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)

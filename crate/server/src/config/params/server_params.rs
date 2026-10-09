@@ -17,6 +17,7 @@ use crate::{
             proxy_params::ProxyParams,
         },
     },
+    core::operations::certify::template::CertTemplate,
     error::KmsError,
     result::{KResult, KResultHelper},
     routes::aws_xks::AwsXksParams,
@@ -319,6 +320,41 @@ pub struct ServerParams {
 
     /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
     pub ocsp_archive_cutoff_secs: u64,
+
+    // ── EST (RFC 7030) ────────────────────────────────────────────────────────────
+    /// Enable the EST endpoints under `/.well-known/est/`.
+    pub est_enabled: bool,
+
+    /// UID of the CA certificate that signs EST-enrolled certificates.
+    pub est_ca_uid: Option<String>,
+
+    /// Require TLS client-certificate authentication for `/simpleenroll`.
+    pub est_require_client_cert: bool,
+
+    /// HTTP Basic bootstrap username for `/simpleenroll`.
+    pub est_bootstrap_username: Option<String>,
+
+    /// HTTP Basic bootstrap password for `/simpleenroll`.
+    pub est_bootstrap_password: Option<String>,
+
+    /// Validated certificate template applied to EST enrollments.
+    pub est_template: Option<CertTemplate>,
+
+    // ── SCEP (RFC 8894) ───────────────────────────────────────────────────────────
+    /// Enable the SCEP endpoint at `/scep`.
+    pub scep_enabled: bool,
+
+    /// UID of the CA certificate that signs SCEP-enrolled certificates.
+    pub scep_ca_uid: Option<String>,
+
+    /// Shared challenge password for initial SCEP enrollments.
+    pub scep_challenge_password: Option<String>,
+
+    /// Accept `RenewalReq` without the challenge password.
+    pub scep_allow_renewal_without_challenge: bool,
+
+    /// Validated certificate template applied to SCEP enrollments.
+    pub scep_template: Option<CertTemplate>,
 }
 
 /// Resolved audit storage backend — one variant per backend, all values already
@@ -580,6 +616,46 @@ impl ServerParams {
         let audit_backend =
             Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
 
+        // EST / SCEP enrollment: resolve and validate the referenced certificate templates.
+        for (cfg_key, name) in [
+            ("est_template", conf.est.est_template.as_deref()),
+            ("scep_template", conf.scep.scep_template.as_deref()),
+        ] {
+            if let Some(name) = name {
+                conf.templates
+                    .get(name)
+                    .ok_or_else(|| {
+                        KmsError::ServerError(format!(
+                            "{cfg_key} = \"{name}\" does not match any [templates.{name}] section"
+                        ))
+                    })?
+                    .validate()
+                    .map_err(|e| KmsError::ServerError(format!("[templates.{name}]: {e}")))?;
+            }
+        }
+        if conf.est.est_enabled && conf.est.est_ca_uid.is_none() {
+            return Err(KmsError::ServerError(
+                "est_enabled = true requires est_ca_uid".to_owned(),
+            ));
+        }
+        if conf.scep.scep_enabled
+            && (conf.scep.scep_ca_uid.is_none() || conf.scep.scep_challenge_password.is_none())
+        {
+            return Err(KmsError::ServerError(
+                "scep_enabled = true requires scep_ca_uid and scep_challenge_password".to_owned(),
+            ));
+        }
+        let est_template = conf
+            .est
+            .est_template
+            .as_deref()
+            .and_then(|n| conf.templates.get(n).cloned());
+        let scep_template = conf
+            .scep
+            .scep_template
+            .as_deref()
+            .and_then(|n| conf.templates.get(n).cloned());
+
         let res = Self {
             identity_provider_configurations,
             jwt_svid_auth_enabled,
@@ -833,6 +909,17 @@ impl ServerParams {
             ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
             ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
             ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
+            est_enabled: conf.est.est_enabled,
+            est_ca_uid: conf.est.est_ca_uid,
+            est_require_client_cert: conf.est.est_require_client_cert,
+            est_bootstrap_username: conf.est.est_bootstrap_username,
+            est_bootstrap_password: conf.est.est_bootstrap_password,
+            est_template,
+            scep_enabled: conf.scep.scep_enabled,
+            scep_ca_uid: conf.scep.scep_ca_uid,
+            scep_challenge_password: conf.scep.scep_challenge_password,
+            scep_allow_renewal_without_challenge: conf.scep.scep_allow_renewal_without_challenge,
+            scep_template,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a

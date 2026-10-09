@@ -1047,6 +1047,67 @@ Options:
 
           [default: 0]
 
+      --est-enabled
+          Enable the EST endpoints under `/.well-known/est/`.
+
+          When `false` (default) all `/.well-known/est/` routes return 404.
+
+      --est-ca-uid <EST_CA_UID>
+          UID of the CA certificate object in the KMS that signs EST-enrolled certificates.
+
+          The CA private key must be linked to this certificate. Must be set when
+          `est_enabled = true`.
+
+      --est-require-client-cert
+          Require TLS client-certificate authentication for `/simpleenroll` (RFC 7030 §3.3.2).
+
+          When `true` (default) initial enrollment is only accepted over mutual TLS.
+          When `false`, HTTP Basic authentication (RFC 7030 §3.2.3) with
+          `est_bootstrap_username` / `est_bootstrap_password` is accepted as a fallback for
+          devices that have no certificate yet. `/simplereenroll` always requires a client
+          certificate (RFC 7030 §4.2.2).
+
+      --est-bootstrap-username <EST_BOOTSTRAP_USERNAME>
+          Username accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
+
+      --est-bootstrap-password <EST_BOOTSTRAP_PASSWORD>
+          Password accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
+
+      --est-template <EST_TEMPLATE>
+          Name of the `[templates.<name>]` section whose issuance policy (key type and size,
+          EKU, Subject/SAN patterns, validity) is enforced on EST enrollments.
+
+          When unset, a baseline policy applies: RSA keys of at least 2048 bits, no
+          `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
+
+      --scep-enabled
+          Enable the SCEP endpoint at `/scep`.
+
+          When `false` (default) the `/scep` route returns 404.
+
+      --scep-ca-uid <SCEP_CA_UID>
+          UID of the CA certificate object in the KMS that signs SCEP-enrolled certificates.
+
+          SCEP encrypts requests to the CA public key, so this MUST be an RSA CA whose private
+          key is linked to the certificate. Must be set when `scep_enabled = true`.
+
+      --scep-challenge-password <SCEP_CHALLENGE_PASSWORD>
+          Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
+          initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.
+
+      --scep-allow-renewal-without-challenge
+          Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
+          CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
+
+          When `false`, renewal requests are rejected with `badRequest`.
+
+      --scep-template <SCEP_TEMPLATE>
+          Name of the `[templates.<name>]` section whose issuance policy (key type and size,
+          EKU, Subject/SAN patterns, validity) is enforced on SCEP enrollments.
+
+          When unset, a baseline policy applies: RSA keys of at least 2048 bits, no
+          `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
+
   -h, --help
           Print help (see a summary with '-h')
 

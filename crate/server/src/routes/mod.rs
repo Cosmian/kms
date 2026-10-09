@@ -22,6 +22,8 @@ pub mod access;
 pub mod aws_xks;
 pub(crate) mod azure_ekm;
 pub(crate) mod crl;
+pub(crate) mod enrollment;
+pub(crate) mod est;
 pub mod google_cse;
 pub mod health;
 pub(crate) mod jose;
@@ -30,6 +32,7 @@ pub mod kmip;
 pub mod ms_dke;
 pub(crate) mod ocsp;
 pub mod root_redirect;
+pub(crate) mod scep;
 pub(crate) mod spire;
 pub mod swagger;
 #[cfg(feature = "non-fips")]

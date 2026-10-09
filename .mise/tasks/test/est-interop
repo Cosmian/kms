@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="EST (RFC 7030) interoperability test against the globalsign estclient over TLS / mTLS"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# Black-box test: starts a live KMS server over TLS with EST enabled and drives it with a
+# third-party EST client: /cacerts, /csrattrs, /simpleenroll (HTTP Basic bootstrap),
+# /simplereenroll (mutual TLS with the certificate being renewed).
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_est_interop.sh" \
+  --variant "${usage_variant:-fips}" --link "${usage_link:-static}"
+
+print_success "EST interoperability tests completed"

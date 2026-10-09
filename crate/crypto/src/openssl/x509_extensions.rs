@@ -217,6 +217,8 @@ pub fn parse_v3_ca(
                         "msEFS" => eku.ms_efs(),
                         "nsSGC" => eku.ns_sgc(),
                         "msSGC" => eku.ms_sgc(),
+                        // Any other purpose can be given as a dotted OID, e.g. `1.3.6.1.5.5.7.3.2`.
+                        oid if is_dotted_oid(oid) => eku.other(oid),
                         _ => {
                             crypto_bail!(
                                 "not supported `extendedKeyUsage` extension's value: {value}"
@@ -522,6 +524,26 @@ mod tests {
         let split = colon_split("email:dummy@gmail.com", "email").unwrap();
         assert_eq!(split, "dummy@gmail.com");
         colon_split("email:dummy@gmail.com", "emails").unwrap_err();
+    }
+
+    #[test]
+    fn test_extended_key_usage_accepts_dotted_oid() {
+        let x509_builder = X509::builder().unwrap();
+        let x509_context = x509_builder.x509v3_context(None, None);
+        let exts = parse_v3_ca_from_str(
+            "[ v3_ca ]\nextendedKeyUsage=1.3.6.1.5.5.7.3.2",
+            &x509_context,
+        )
+        .unwrap();
+        let der = exts.first().unwrap().to_der().unwrap();
+        // DER of clientAuth (1.3.6.1.5.5.7.3.2) content octets
+        assert!(
+            der.windows(8)
+                .any(|w| w == [0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02])
+        );
+        assert!(
+            parse_v3_ca_from_str("[ v3_ca ]\nextendedKeyUsage=notAnEku", &x509_context).is_err()
+        );
     }
 
     #[test]
@@ -870,7 +892,7 @@ certificatePolicies=2.5.29.32
         let ctx = builder.x509v3_context(None, None);
         let exts = parse_v3_ca_from_str(&ext_bare, &ctx).unwrap();
         assert_eq!(exts.len(), 1);
-        let der = exts[0].to_der().unwrap();
+        let der = exts.first().unwrap().to_der().unwrap();
         let (_, parsed) = X509ExtensionParser::new().parse(&der).unwrap();
         assert!(!parsed.critical);
         assert!(

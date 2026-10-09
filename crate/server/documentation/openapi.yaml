@@ -32,6 +32,11 @@ tags:
     description: Server information and HSM status
   - name: Certificates
     description: X.509 certificate lifecycle — CRL generation, OCSP status (RFC 6960)
+  - name: Enrollment
+    description: |
+      Automated certificate enrollment for IoT and MDM-managed devices — EST (RFC 7030) and
+      SCEP (RFC 8894). Enabled with `est_enabled` / `scep_enabled`; issuance is constrained by
+      the `[templates.<name>]` certificate templates.
   - name: REST Crypto API
     description: Simplified JWE/JWS/HMAC REST API built on top of KMIP keys
   - name: Google CSE
@@ -2528,6 +2533,215 @@ paths:
                 format: binary
         '404':
           description: OCSP responder disabled (`ocsp_enabled = false`, the default)
+
+  /.well-known/est/cacerts:
+    get:
+      tags: [Enrollment]
+      summary: EST CA certificates distribution (RFC 7030 §4.1, no authentication)
+      description: |
+        Returns the CA certificate chain configured via `est_ca_uid` as a degenerate
+        (certs-only) CMS `SignedData`, base64-encoded (`Content-Transfer-Encoding: base64`).
+        Returns `404` when `est_enabled = false` (the default).
+      operationId: estCaCerts
+      security: []
+      responses:
+        '200':
+          description: Base64-encoded certs-only PKCS#7 / CMS structure
+          headers:
+            Content-Transfer-Encoding:
+              schema:
+                type: string
+                enum: [base64]
+          content:
+            application/pkcs7-mime:
+              schema:
+                type: string
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+
+  /.well-known/est/csrattrs:
+    get:
+      tags: [Enrollment]
+      summary: EST CSR attributes (RFC 7030 §4.5, no authentication)
+      description: |
+        Returns the base64-encoded `CsrAttrs` the server would like to see in a CSR
+        (`id-pkcs9-at-extensionRequest`). `204` when no `est_template` is configured.
+        Returns `404` when `est_enabled = false`.
+      operationId: estCsrAttrs
+      security: []
+      responses:
+        '200':
+          description: Base64-encoded DER `CsrAttrs`
+          content:
+            application/csrattrs:
+              schema:
+                type: string
+        '204':
+          description: No CSR attributes to advertise
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+
+  /.well-known/est/simpleenroll:
+    post:
+      tags: [Enrollment]
+      summary: EST initial enrollment (RFC 7030 §4.2.1)
+      description: |
+        Submit a base64-encoded PKCS#10 request (`Content-Type: application/pkcs10`, RFC 5967).
+        The client is authenticated by its TLS client certificate or, when
+        `est_require_client_cert = false`, by HTTP Basic credentials matching
+        `est_bootstrap_username` / `est_bootstrap_password`. The CSR is validated against the
+        `est_template` certificate template (key type and size, EKU, Subject/SAN patterns,
+        validity) before the certificate is issued by the CA `est_ca_uid`.
+        The response contains only the issued certificate.
+      operationId: estSimpleEnroll
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/pkcs10:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Base64-encoded certs-only PKCS#7 containing the issued certificate
+          content:
+            application/pkcs7-mime; smime-type=certs-only:
+              schema:
+                type: string
+        '401':
+          description: 'Client authentication required (`WWW-Authenticate: Basic` when Basic bootstrap is enabled)'
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+        '422':
+          description: The CSR violates the certificate template or is malformed (plain-text reason)
+
+  /.well-known/est/simplereenroll:
+    post:
+      tags: [Enrollment]
+      summary: EST re-enrollment (RFC 7030 §4.2.2)
+      description: |
+        Renew or rekey a certificate. Always authenticated by the TLS client certificate being
+        renewed, which must have been issued by the EST CA and still be active. The CSR Subject
+        and SubjectAltName must be identical to those of that certificate. No challenge or
+        bootstrap credential is needed.
+      operationId: estSimpleReenroll
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/pkcs10:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Base64-encoded certs-only PKCS#7 containing the renewed certificate
+          content:
+            application/pkcs7-mime; smime-type=certs-only:
+              schema:
+                type: string
+        '400':
+          description: CSR Subject/SubjectAltName differ from the certificate being renewed
+        '401':
+          description: No TLS client certificate presented
+        '403':
+          description: The client certificate was not issued by the EST CA, is expired, or is not active
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+        '422':
+          description: The CSR violates the certificate template or is malformed
+
+  /scep:
+    get:
+      tags: [Enrollment]
+      summary: SCEP GetCACaps, GetCACert and PKIOperation over GET (RFC 8894)
+      description: |
+        Dispatches on the `operation` query parameter (RFC 8894 §4.1):
+
+        - `GetCACaps` — capabilities, `text/plain`: `POSTPKIOperation`, `SHA-256`, `AES`,
+          `Renewal`. `DES3` and `SHA-1` are never advertised (not FIPS 140-3 approved).
+        - `GetCACert` — the CA certificate: raw DER (`application/x-x509-ca-cert`) for a root CA,
+          or a certs-only `SignedData` chain (`application/x-x509-ca-ra-cert`).
+        - `PKIOperation` — the base64 `message` parameter carries a signed `pkiMessage`.
+
+        Authentication happens inside the CMS `pkiMessage` (RFC 8894 §2.3). Returns `404`
+        when `scep_enabled = false` (the default).
+      operationId: scepGet
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [GetCACaps, GetCACert, PKIOperation]
+        - name: message
+          in: query
+          required: false
+          description: Base64 (URL-escaped) `pkiMessage`, for `operation=PKIOperation`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation result (binary DER bodies are not base64-encoded)
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/x-x509-ca-cert:
+              schema:
+                type: string
+                format: binary
+            application/x-x509-ca-ra-cert:
+              schema:
+                type: string
+                format: binary
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing or unsupported `operation`, or unreadable `pkiMessage`
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
+    post:
+      tags: [Enrollment]
+      summary: SCEP PKIOperation over POST (RFC 8894 §4.3)
+      description: |
+        The body is a DER `pkiMessage` (`Content-Type: application/x-pki-message`) carrying a
+        `PKCSReq` (initial enrollment, `challengePassword` required) or a `RenewalReq`
+        (signed by a still-valid certificate of the SCEP CA, no challenge required unless
+        `scep_allow_renewal_without_challenge = false`). The CSR is validated against the
+        `scep_template` certificate template. The answer is always a signed `CertRep`;
+        failures are reported as `pkiStatus = FAILURE` with a `failInfo`
+        (`badRequest`, `badMessageCheck`, `badCertId`).
+      operationId: scepPost
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PKIOperation]
+      requestBody:
+        required: true
+        content:
+          application/x-pki-message:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Signed `CertRep` `pkiMessage`
+          content:
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported operation or unreadable `pkiMessage`
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
 
   /v1/crypto/encrypt:
     post:

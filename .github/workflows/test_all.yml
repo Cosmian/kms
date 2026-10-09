@@ -44,6 +44,8 @@ jobs:
           - cef
           - monitoring
           - ocsp
+          - scep-interop
+          - est-interop
           - pki-revocation
           - siem
           - audit
