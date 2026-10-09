@@ -617,44 +617,81 @@ impl ServerParams {
             Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
 
         // EST / SCEP enrollment: resolve and validate the referenced certificate templates.
-        for (cfg_key, name) in [
-            ("est_template", conf.est.est_template.as_deref()),
-            ("scep_template", conf.scep.scep_template.as_deref()),
-        ] {
-            if let Some(name) = name {
-                conf.templates
-                    .get(name)
-                    .ok_or_else(|| {
-                        KmsError::ServerError(format!(
-                            "{cfg_key} = \"{name}\" does not match any [templates.{name}] section"
-                        ))
-                    })?
+        let resolve_template =
+            |cfg_key: &str, name: Option<&str>| -> KResult<Option<CertTemplate>> {
+                let Some(name) = name else {
+                    return Ok(None);
+                };
+                let mut template = conf.templates.get(name).cloned().ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "{cfg_key} = \"{name}\" does not match any [templates.{name}] section"
+                    ))
+                })?;
+                name.clone_into(&mut template.name);
+                template
                     .validate()
                     .map_err(|e| KmsError::ServerError(format!("[templates.{name}]: {e}")))?;
+                Ok(Some(template))
+            };
+        let est_template = resolve_template("est_template", conf.est.est_template.as_deref())?;
+        let scep_template = resolve_template("scep_template", conf.scep.scep_template.as_deref())?;
+        let is_blank =
+            |secret: &Option<String>| secret.as_deref().is_none_or(|s| s.trim().is_empty());
+        if conf.est.est_enabled {
+            if conf.est.est_ca_uid.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_enabled = true requires est_ca_uid".to_owned(),
+                ));
+            }
+            if !conf.est.est_require_client_cert {
+                if is_blank(&conf.est.est_bootstrap_username)
+                    || is_blank(&conf.est.est_bootstrap_password)
+                {
+                    return Err(KmsError::ServerError(
+                        "est_require_client_cert = false requires non-empty est_bootstrap_username \
+                         and est_bootstrap_password"
+                            .to_owned(),
+                    ));
+                }
+                if conf
+                    .est
+                    .est_bootstrap_username
+                    .as_deref()
+                    .is_some_and(|u| u.contains(':'))
+                {
+                    return Err(KmsError::ServerError(
+                        "est_bootstrap_username must not contain ':' (HTTP Basic)".to_owned(),
+                    ));
+                }
+                if !conf.tls.is_tls_enabled() {
+                    warn!(
+                        "EST HTTP Basic bootstrap is enabled but TLS is not: credentials would \
+                         travel in clear text (RFC 7030 requires TLS)"
+                    );
+                }
+            }
+            if est_template.is_none() {
+                warn!(
+                    "EST enabled without est_template: only the baseline policy applies (RSA >= \
+                     2048, no CA:TRUE, <= 365 days; any EKU, CN and SAN)"
+                );
             }
         }
-        if conf.est.est_enabled && conf.est.est_ca_uid.is_none() {
-            return Err(KmsError::ServerError(
-                "est_enabled = true requires est_ca_uid".to_owned(),
-            ));
+        if conf.scep.scep_enabled {
+            if conf.scep.scep_ca_uid.is_none() || is_blank(&conf.scep.scep_challenge_password) {
+                return Err(KmsError::ServerError(
+                    "scep_enabled = true requires scep_ca_uid and a non-empty \
+                     scep_challenge_password"
+                        .to_owned(),
+                ));
+            }
+            if scep_template.is_none() {
+                warn!(
+                    "SCEP enabled without scep_template: only the baseline policy applies (RSA >= \
+                     2048, no CA:TRUE, <= 365 days; any EKU, CN and SAN)"
+                );
+            }
         }
-        if conf.scep.scep_enabled
-            && (conf.scep.scep_ca_uid.is_none() || conf.scep.scep_challenge_password.is_none())
-        {
-            return Err(KmsError::ServerError(
-                "scep_enabled = true requires scep_ca_uid and scep_challenge_password".to_owned(),
-            ));
-        }
-        let est_template = conf
-            .est
-            .est_template
-            .as_deref()
-            .and_then(|n| conf.templates.get(n).cloned());
-        let scep_template = conf
-            .scep
-            .scep_template
-            .as_deref()
-            .and_then(|n| conf.templates.get(n).cloned());
 
         let res = Self {
             identity_provider_configurations,

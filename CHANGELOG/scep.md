@@ -23,4 +23,6 @@
   profile) and `mise run test:est-interop` (globalsign `estclient`, TLS and mTLS) black-box tests.
   Note: the stock `scepclient` always encrypts with single DES-CBC, which the server refuses;
   the test builds it with AES-128-CBC selected.
+- `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented; issuance is synchronous.
+  EST over plain HTTP is not refused (a startup warning is logged when Basic bootstrap runs without TLS).
 - The CLI (`ckms`) and the Web UI for these endpoints follow in separate pull requests.

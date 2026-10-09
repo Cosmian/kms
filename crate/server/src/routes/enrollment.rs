@@ -149,6 +149,15 @@ pub(crate) async fn issue_from_csr(
     Ok(kmip_certificate_to_openssl(owm.object())?)
 }
 
+/// `true` when `cert` names `ca_cert` as issuer and carries a valid signature from its key.
+pub(crate) fn is_issued_by(cert: &X509, ca_cert: &X509) -> KResult<bool> {
+    let ca_public_key = ca_cert.public_key()?;
+    Ok(
+        cert.issuer_name().to_der()? == ca_cert.subject_name().to_der()?
+            && cert.verify(&ca_public_key)?,
+    )
+}
+
 /// Check that `cert` was issued by the CA `ca_cert` (`ca_uid`), is within its validity period
 /// and is tracked by the KMS in the `Active` state (i.e. not revoked / deactivated / destroyed).
 pub(crate) async fn ensure_active_certificate_of_ca(
@@ -157,10 +166,7 @@ pub(crate) async fn ensure_active_certificate_of_ca(
     ca_cert: &X509,
     cert: &X509,
 ) -> KResult<()> {
-    let ca_public_key = ca_cert.public_key()?;
-    if cert.issuer_name().to_der()? != ca_cert.subject_name().to_der()?
-        || !cert.verify(&ca_public_key)?
-    {
+    if !is_issued_by(cert, ca_cert)? {
         return Err(KmsError::InvalidRequest(
             "the certificate was not issued by the enrollment CA".to_owned(),
         ));

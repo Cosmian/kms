@@ -42,7 +42,7 @@ pub struct EstConfig {
     /// `est_bootstrap_username` / `est_bootstrap_password` is accepted as a fallback for
     /// devices that have no certificate yet. `/simplereenroll` always requires a client
     /// certificate (RFC 7030 §4.2.2).
-    #[clap(long, default_value = "true", verbatim_doc_comment)]
+    #[clap(long, default_value_t = true, action = clap::ArgAction::Set, verbatim_doc_comment)]
     pub est_require_client_cert: bool,
 
     /// Username accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.

@@ -8,9 +8,19 @@ constrained by a **certificate template**. Both are disabled by default.
 
 ## Prerequisites
 
-Create a CA with the KMS (`ckms certificates certify --generate-key-pair ...`) and note its
-certificate unique identifier. The CA private key must be `Active` and owned by `default_username`.
-For SCEP, the CA must be an RSA CA, since requests are encrypted to the CA public key.
+Create a CA with the KMS and note its certificate unique identifier. The CA private key must be
+`Active` and owned by `default_username`. For SCEP, the CA must be an RSA CA, since requests are
+encrypted to the CA public key.
+
+```sh
+cat > ca.ext <<'EOF2'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign,digitalSignature,keyEncipherment
+EOF2
+ckms certificates certify --certificate-id device-ca --generate-key-pair --algorithm rsa2048 \
+  --subject-name "CN=Device CA,O=ACME,C=FR" --days 3650 --certificate-extensions ca.ext
+```
 
 ## Certificate templates
 
@@ -27,7 +37,9 @@ subject_cn_regex = "[a-z0-9-]+\\.iot\\.example"   # anchored: must match the who
 san_dns_regex = "[a-z0-9-]+\\.iot\\.example"
 ```
 
-Checks applied to every CSR: proof of possession, key type and size, requested EKUs, no
+Unknown keys in a template are rejected at startup, as are `min_rsa_key_bits` below 2048 and
+inconsistent validity limits. Neither protocol carries a requested validity, so issued
+certificates get `default_validity_days`. Checks applied to every CSR: proof of possession, key type and size, requested EKUs, no
 `basicConstraints` `CA:TRUE`, subject CN and SAN patterns (when any SAN pattern is set, SAN types without a
 pattern are refused), and validity clamped to `max_validity_days`. Violations answer
 `422` (EST) or a `badRequest` `CertRep` (SCEP). Without a template, a baseline applies: RSA ≥ 2048,
@@ -52,9 +64,15 @@ est_template = "iot_device"
 | `POST /.well-known/est/simpleenroll` | TLS client certificate, or HTTP Basic bootstrap | Initial enrollment |
 | `POST /.well-known/est/simplereenroll` | TLS client certificate being renewed | Renewal / rekey, no secret needed |
 
-EST requires TLS. For re-enrollment the device certificate must be accepted by the TLS layer:
-set `clients_ca_cert_file` to the EST CA certificate. The renewal CSR must carry the same Subject and
-SubjectAltName as the certificate, which must be issued by the EST CA and still `Active`.
+EST must be served over TLS (RFC 7030). The KMS does not enforce this: with
+`est_require_client_cert = false` on a plain-HTTP listener the Basic credentials travel in clear
+text, and a warning is logged at startup. For re-enrollment the device certificate must be accepted by
+the TLS layer: set `clients_ca_cert_file` to the EST CA certificate. Note that this enables mutual TLS
+server-wide, so every device certificate also authenticates to the KMS API as the user named by its CN;
+prefer a dedicated trust anchor for TLS client authentication where possible. The renewal CSR must
+carry the same Subject and SubjectAltName as the certificate, which must be issued by the EST CA and
+still `Active`. `/simpleenroll` applies the same identity rule when the client presents a certificate
+issued by the EST CA.
 
 ## SCEP
 
@@ -72,8 +90,13 @@ scep_template = "iot_device"
 with a certificate previously issued by the SCEP CA that is within its validity period and `Active`
 (not revoked); it needs no challenge and must keep the Subject and SubjectAltName of that
 certificate. `DES3` and `SHA-1` are not supported: clients must negotiate `AES` and `SHA-256`.
-This matches Apple SCEP payloads and Windows MDM; the stock micromdm `scepclient` hard-codes
-single DES and needs AES-128-CBC selected (see `mise run test:scep-interop`).
+The implementation is designed for clients that honour `GetCACaps`, as the Apple and Windows MDM SCEP
+payloads are documented to; it is verified only against the micromdm `scepclient`, whose stock build
+hard-codes single DES and needs AES-128-CBC selected (see `mise run test:scep-interop`). Apple and
+Windows clients themselves were not run.
+
+Limitations: `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented, and issuance is
+synchronous (`PENDING` is never returned).
 
 ## Verifying the setup
 

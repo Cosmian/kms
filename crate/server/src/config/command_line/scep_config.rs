@@ -45,7 +45,7 @@ pub struct ScepConfig {
     /// CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
     ///
     /// When `false`, renewal requests are rejected with `badRequest`.
-    #[clap(long, default_value = "true", verbatim_doc_comment)]
+    #[clap(long, default_value_t = true, action = clap::ArgAction::Set, verbatim_doc_comment)]
     pub scep_allow_renewal_without_challenge: bool,
 
     /// Name of the `[templates.<name>]` section whose issuance policy (key type and size,

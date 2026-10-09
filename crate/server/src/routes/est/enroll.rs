@@ -24,8 +24,8 @@ use crate::{
     middlewares::PeerCertificate,
     result::KResult,
     routes::enrollment::{
-        csr_matches_certificate_identity, ensure_active_certificate_of_ca, issue_from_csr,
-        load_ca_chain, secrets_equal,
+        csr_matches_certificate_identity, ensure_active_certificate_of_ca, is_issued_by,
+        issue_from_csr, load_ca_chain, secrets_equal,
     },
 };
 
@@ -132,6 +132,26 @@ pub(crate) async fn post_simpleenroll(
     }
 
     let csr = decode_csr(&body)?;
+    // A certificate already issued by the EST CA must not be used to obtain a certificate for
+    // another identity: such a client has to renew with the same Subject/SubjectAltName.
+    if let Some(peer) = req.conn_data::<PeerCertificate>() {
+        let ca_uid =
+            kms.params.est_ca_uid.as_deref().ok_or_else(|| {
+                KmsError::ServerError("EST enabled without est_ca_uid".to_owned())
+            })?;
+        let chain = load_ca_chain(&kms, ca_uid).await?;
+        if let Some(ca_cert) = chain.first() {
+            if is_issued_by(&peer.cert, ca_cert)?
+                && !csr_matches_certificate_identity(&csr, &peer.cert)?
+            {
+                return Ok(plain_response(
+                    StatusCode::BAD_REQUEST,
+                    "a certificate issued by this CA can only be re-enrolled with the same \
+                     Subject and SubjectAltName",
+                ));
+            }
+        }
+    }
     issue_and_respond(&kms, &csr).await
 }
 

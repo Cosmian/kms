@@ -108,16 +108,37 @@ async fn make_kms(
     scep_enabled: bool,
     allow_renewal: bool,
 ) -> KResult<(Arc<KMS>, X509)> {
+    make_kms_with(est_enabled, scep_enabled, allow_renewal, |_| {}).await
+}
+
+/// Like [`make_kms`], letting the caller adjust the configuration first.
+async fn make_kms_with(
+    est_enabled: bool,
+    scep_enabled: bool,
+    allow_renewal: bool,
+    tweak: impl FnOnce(&mut crate::config::ClapConfig),
+) -> KResult<(Arc<KMS>, X509)> {
+    // boxed: the KMS bring-up future is large
+    Box::pin(make_kms_inner(
+        est_enabled,
+        scep_enabled,
+        allow_renewal,
+        tweak,
+    ))
+    .await
+}
+
+async fn make_kms_inner(
+    est_enabled: bool,
+    scep_enabled: bool,
+    allow_renewal: bool,
+    tweak: impl FnOnce(&mut crate::config::ClapConfig),
+) -> KResult<(Arc<KMS>, X509)> {
     cosmian_logger::log_init(None);
     init_openssl_providers_for_tests();
-    let kms = Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(config(
-            est_enabled,
-            scep_enabled,
-            allow_renewal,
-        ))?))
-        .await?,
-    );
+    let mut conf = config(est_enabled, scep_enabled, allow_renewal);
+    tweak(&mut conf);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?);
     let owner: UserId = kms.params.default_username.clone().into();
     let attrs = Attributes {
         unique_identifier: Some(UniqueIdentifier::TextString(CA_UID.to_owned())),
@@ -247,18 +268,20 @@ async fn disabled_endpoints_return_404() -> KResult<()> {
         "/.well-known/est/cacerts",
         "/.well-known/est/csrattrs",
         "/scep?operation=GetCACaps",
+        "/scep?operation=GetCACert",
+        "/scep?operation=PKIOperation&message=AAAA",
     ] {
         let resp = test::call_service(&app, test::TestRequest::get().uri(uri).to_request()).await;
         assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{uri}");
     }
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::post()
-            .uri("/.well-known/est/simpleenroll")
-            .to_request(),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    for uri in [
+        "/.well-known/est/simpleenroll",
+        "/.well-known/est/simplereenroll",
+        "/scep?operation=PKIOperation",
+    ] {
+        let resp = test::call_service(&app, test::TestRequest::post().uri(uri).to_request()).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{uri}");
+    }
     Ok(())
 }
 
@@ -779,4 +802,88 @@ async fn scep_renewal_can_be_disabled() -> KResult<()> {
     assert_eq!(outcome.attrs.pki_status, Some(PKI_STATUS_FAILURE));
     assert_eq!(outcome.attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
     Ok(())
+}
+
+#[tokio::test]
+async fn est_simpleenroll_requires_client_certificate_when_configured() -> KResult<()> {
+    let (kms, _) = make_kms_with(true, false, true, |c| {
+        c.est.est_require_client_cert = true;
+    })
+    .await?;
+    let app = app!(kms);
+    let csr = csr(&rsa_key(2048), "dev1.iot.example");
+    // valid Basic credentials must not be honoured when a client certificate is mandatory
+    let (status, _, headers) =
+        est_enroll(&app, &csr, Some(basic_auth("testuser", "testpass"))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(headers.get("www-authenticate").is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn est_simplereenroll_route_never_accepts_basic_credentials() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let csr = csr(&rsa_key(2048), "dev1.iot.example");
+    let req = test::TestRequest::post()
+        .uri("/.well-known/est/simplereenroll")
+        .insert_header(basic_auth("testuser", "testpass"))
+        .set_payload(STANDARD.encode(csr.to_der().unwrap()))
+        .to_request();
+    let (status, _, _) = body_of(test::call_service(&app, req).await).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    Ok(())
+}
+
+#[tokio::test]
+async fn scep_renewal_challenge_does_not_replace_a_ca_issued_signer() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let foreign = self_signed(&key, "dev1.iot.example");
+    let outcome = scep_roundtrip(
+        &app,
+        &ca,
+        &foreign,
+        &key,
+        &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
+        MESSAGE_TYPE_RENEWAL_REQ,
+        "TX-CHALLENGE-RENEWAL",
+        false,
+    )
+    .await;
+    assert_eq!(outcome.attrs.pki_status, Some(PKI_STATUS_FAILURE));
+    assert_eq!(outcome.attrs.fail_info, Some(FAIL_INFO_BAD_CERT_ID));
+    Ok(())
+}
+
+#[tokio::test]
+async fn startup_rejects_unsafe_enrollment_configuration() {
+    type Tweak = fn(&mut crate::config::ClapConfig);
+    init_openssl_providers_for_tests();
+    let cases: [(&str, Tweak); 6] = [
+        ("est without CA", |c| c.est.est_ca_uid = None),
+        ("scep without CA", |c| c.scep.scep_ca_uid = None),
+        ("scep blank challenge", |c| {
+            c.scep.scep_challenge_password = Some("  ".to_owned());
+        }),
+        ("est basic without credentials", |c| {
+            c.est.est_bootstrap_password = None;
+        }),
+        ("unknown template", |c| {
+            c.scep.scep_template = Some("missing".to_owned());
+        }),
+        ("weak template", |c| {
+            c.templates.get_mut("iot_device").unwrap().min_rsa_key_bits = 1024;
+        }),
+    ];
+    for (name, tweak) in cases {
+        let mut conf = config(true, true, true);
+        tweak(&mut conf);
+        assert!(
+            ServerParams::try_from(conf).is_err(),
+            "{name} must be refused"
+        );
+    }
+    ServerParams::try_from(config(true, true, true)).unwrap();
 }

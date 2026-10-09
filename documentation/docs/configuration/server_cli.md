@@ -1058,7 +1058,7 @@ Options:
           The CA private key must be linked to this certificate. Must be set when
           `est_enabled = true`.
 
-      --est-require-client-cert
+      --est-require-client-cert <EST_REQUIRE_CLIENT_CERT>
           Require TLS client-certificate authentication for `/simpleenroll` (RFC 7030 §3.3.2).
 
           When `true` (default) initial enrollment is only accepted over mutual TLS.
@@ -1066,6 +1066,9 @@ Options:
           `est_bootstrap_username` / `est_bootstrap_password` is accepted as a fallback for
           devices that have no certificate yet. `/simplereenroll` always requires a client
           certificate (RFC 7030 §4.2.2).
+
+          [default: true]
+          [possible values: true, false]
 
       --est-bootstrap-username <EST_BOOTSTRAP_USERNAME>
           Username accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
@@ -1095,11 +1098,14 @@ Options:
           Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
           initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.
 
-      --scep-allow-renewal-without-challenge
+      --scep-allow-renewal-without-challenge <SCEP_ALLOW_RENEWAL_WITHOUT_CHALLENGE>
           Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
           CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
 
           When `false`, renewal requests are rejected with `badRequest`.
+
+          [default: true]
+          [possible values: true, false]
 
       --scep-template <SCEP_TEMPLATE>
           Name of the `[templates.<name>]` section whose issuance policy (key type and size,

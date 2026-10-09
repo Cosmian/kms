@@ -40,7 +40,7 @@ const EKU_NAMES: &[(&str, &str)] = &[
 /// Regular expressions are **anchored** (`^(?:pattern)$`) before use, so a pattern must
 /// describe the full value.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct CertTemplate {
     /// Template name (informational; the key under `[templates.<name>]` is authoritative).
     pub name: String,
@@ -237,10 +237,20 @@ impl CertTemplate {
         for e in &self.allowed_ekus {
             eku_to_oid(e)?;
         }
-        if self.max_validity_days == 0 {
+        if self.min_rsa_key_bits < 2048 {
             return Err(invalid(format!(
-                "template '{}': max_validity_days must be > 0",
+                "template '{}': min_rsa_key_bits must be >= 2048 (SP 800-131A)",
                 self.name
+            )));
+        }
+        if self.default_validity_days == 0
+            || self.default_validity_days > self.max_validity_days
+            || i32::try_from(self.max_validity_days).is_err()
+        {
+            return Err(invalid(format!(
+                "template '{}': require 0 < default_validity_days <= max_validity_days <= {}",
+                self.name,
+                i32::MAX
             )));
         }
         Ok(())
@@ -614,6 +624,38 @@ mod tests {
         assert_eq!(t.effective_validity_days(None), 10);
         assert_eq!(t.effective_validity_days(Some(20)), 20);
         assert_eq!(t.effective_validity_days(Some(9999)), 30);
+    }
+
+    #[test]
+    fn unknown_keys_are_rejected_when_parsing_a_template() {
+        toml::from_str::<CertTemplate>("max_validity_days = 30\n").unwrap();
+        // a typo must not silently fall back to the permissive default
+        let err = toml::from_str::<CertTemplate>("san_dns_regexp = \"x\"\n")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("san_dns_regexp"), "{err}");
+    }
+
+    #[test]
+    fn weak_or_inconsistent_limits_are_detected() {
+        for t in [
+            CertTemplate {
+                min_rsa_key_bits: 1024,
+                ..CertTemplate::default()
+            },
+            CertTemplate {
+                default_validity_days: 0,
+                ..CertTemplate::default()
+            },
+            CertTemplate {
+                default_validity_days: 400,
+                max_validity_days: 365,
+                ..CertTemplate::default()
+            },
+        ] {
+            assert!(t.validate().is_err());
+        }
+        CertTemplate::default().validate().unwrap();
     }
 
     #[test]
