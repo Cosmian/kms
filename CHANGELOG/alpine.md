@@ -126,3 +126,7 @@
   `kms` service user and the ownership/permissions of `kms.toml`, `/var/lib/cosmian`,
   and `/var/log/cosmian`, including the note to grant the `kms` user access to any
   bind-mounted custom config file or data directory.
+- Alpine `.apk` install instructions (`installation_getting_started.md` tab and Dockerfile
+  example, `kms_clients/installation.md` amd64/arm64 tabs) now download the detached
+  `.apk.asc` and run `gpg --verify` (fail-closed, before `apk add --allow-untrusted`);
+  the "Verifying release signatures" section now covers APK packages.
