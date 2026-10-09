@@ -64,7 +64,6 @@ pub struct HsmCapabilities {
     /// The shared test suite reads it to skip those combinations; production calls
     /// surface the HSM's own error.
     pub enforces_ecdsa_digest_strength: bool,
-
     /// Whether the provider crashes when the PKCS#11 library is finalized during drop.
     pub skip_finalize_on_drop: bool,
     /// Maximum number of PKCS#11 sessions this slot may have concurrently checked out

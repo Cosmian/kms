@@ -24,7 +24,9 @@ use crate::{
     pkcs11_v3::{self, CkInterface, InterfaceDescriptor},
 };
 
-const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
+/// Symbolic name of a PKCS#11 return value, for error messages.
+#[must_use]
+pub const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
     match rv {
         0x0000_0000 => "CKR_OK",
         0x0000_0002 => "CKR_HOST_MEMORY",
@@ -34,6 +36,12 @@ const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
         0x0000_0007 => "CKR_ARGUMENTS_BAD",
         0x0000_000a => "CKR_CANT_LOCK",
         0x0000_0030 => "CKR_DEVICE_ERROR",
+        0x0000_0013 => "CKR_ATTRIBUTE_VALUE_INVALID",
+        0x0000_001b => "CKR_ACTION_PROHIBITED",
+        0x0000_0031 => "CKR_DEVICE_MEMORY (HSM storage full)",
+        0x0000_0062 => "CKR_KEY_SIZE_RANGE",
+        0x0000_00d1 => "CKR_TEMPLATE_INCONSISTENT",
+        0x0000_0100 => "CKR_USER_ALREADY_LOGGED_IN",
         0x0000_0032 => "CKR_DEVICE_REMOVED",
         0x0000_0054 => "CKR_FUNCTION_NOT_SUPPORTED",
         0x0000_00e0 => "CKR_TOKEN_NOT_PRESENT",
@@ -686,6 +694,307 @@ impl Drop for HsmLib {
 }
 
 #[cfg(test)]
+mod function_table_fallback_tests {
+    use std::{
+        path::PathBuf,
+        process::Command,
+        sync::{
+            Mutex,
+            atomic::{AtomicU64, Ordering},
+        },
+    };
+
+    use super::HsmLib;
+    use crate::{HError, HResult};
+
+    /// Monotonic counter giving each `compile_minimal_pkcs11_shim()` invocation a
+    /// unique output filename. Required because this module now has several
+    /// `#[test]` functions calling the helper concurrently (the default `cargo
+    /// test` runner parallelises tests within a binary): a shared, fixed output
+    /// path let one test's (re)compilation truncate/replace the file out from
+    /// under another test's concurrent `dlopen`, causing sporadic "no such file"
+    /// failures.
+    static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+    /// Serializes invocations of the C compiler across the concurrently-running
+    /// tests in this module. Unlike GCC/Clang (`-o <unique>.{so,dylib}`, no
+    /// leftover intermediate file), MSVC's `cl.exe` does not honor `-o` as an
+    /// object-output path (only accepts it as a deprecated legacy alias — see the
+    /// `D9035` compiler warning) and always writes an intermediate
+    /// `minimal_pkcs11.obj` at a fixed location relative to the current
+    /// directory, regardless of the requested (unique) `.dll` output path.
+    /// Concurrent `cargo test` threads invoking `cl.exe` at the same time
+    /// therefore race on that single shared `.obj` file (`C1083: Cannot open
+    /// compiler generated file ... Permission denied`, then a
+    /// corrupted/partially-linked `.dll` causing a later access violation on
+    /// load) — observed only on Windows CI. Serializing the compiler invocation
+    /// itself (not just the final output filename) avoids the race on every
+    /// platform, at the cost of a little test time.
+    static COMPILE_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Returns the current Rust host target triple (e.g.
+    /// `aarch64-apple-darwin`), needed because `cc::Build` requires `TARGET`/`HOST`
+    /// to be set (normally supplied by Cargo to build scripts, but absent in a plain
+    /// `#[test]` context).
+    fn host_target_triple() -> HResult<String> {
+        let output = Command::new("rustc")
+            .arg("-vV")
+            .output()
+            .map_err(|e| HError::Default(format!("failed to invoke rustc: {e}")))?;
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("host: "))
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                HError::Default("rustc -vV output did not contain a \"host: \" line".to_owned())
+            })
+    }
+
+    /// Compiles `tests/fixtures/minimal_pkcs11.c` — a strictly spec-conformant PKCS#11
+    /// v3.0 shim that exports *only* `C_GetFunctionList`/`C_GetInterface` (no
+    /// individual `C_XXX` symbols) — into a shared library, mirroring how Kryoptic
+    /// and other strictly conformant libraries behave. Returns an error with a
+    /// descriptive message on any compiler failure so a broken fixture never
+    /// silently skips the regression test below.
+    fn compile_minimal_pkcs11_shim() -> HResult<PathBuf> {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let source = PathBuf::from(manifest_dir).join("tests/fixtures/minimal_pkcs11.c");
+        let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap_or_else(|_| {
+            std::env::temp_dir()
+                .join("cosmian_kms_base_hsm_test_fixtures")
+                .to_string_lossy()
+                .into_owned()
+        }));
+        std::fs::create_dir_all(&out_dir).map_err(|e| {
+            HError::Default(format!("failed to create test fixture output dir: {e}"))
+        })?;
+
+        let extension = if cfg!(target_os = "windows") {
+            "dll"
+        } else if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        let output = out_dir.join(format!(
+            "minimal_pkcs11_{}_{}.{extension}",
+            std::process::id(),
+            NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+
+        // `cc::Build` targets static libs/object files, not shared libraries, so the
+        // shared-library flag is invoked manually via the resolved compiler. `target`
+        // and `host` must be set explicitly since we are not running inside a Cargo
+        // build script (where Cargo would set the `TARGET`/`HOST` env vars for us).
+        let triple = host_target_triple()?;
+        let compiler = cc::Build::new()
+            .opt_level(0)
+            .target(&triple)
+            .host(&triple)
+            .cargo_metadata(false) // this is a plain test, not a build script
+            .get_compiler();
+        let mut cmd = Command::new(compiler.path());
+        for (key, value) in compiler.env() {
+            cmd.env(key, value);
+        }
+        cmd.args(compiler.args());
+        if !cfg!(target_os = "windows") {
+            // Silence the intentional generic-function-pointer-cast warning below:
+            // this is a throwaway test fixture standing in for a real vendor PKCS#11
+            // library, not shipped code subject to the workspace's zero-warnings rule.
+            cmd.arg("-w");
+        }
+        if cfg!(target_os = "macos") {
+            cmd.arg("-dynamiclib");
+        } else if cfg!(target_os = "windows") {
+            cmd.arg("/LD");
+        } else {
+            cmd.arg("-shared");
+        }
+        if !cfg!(target_os = "windows") {
+            cmd.arg("-fPIC");
+        }
+        cmd.arg(&source);
+        cmd.arg("-o").arg(&output);
+
+        // See `COMPILE_LOCK`'s doc comment: on Windows, `cl.exe` writes a
+        // fixed-name intermediate `.obj` shared by every concurrent invocation,
+        // so the compiler must be invoked one test at a time. `PoisonError` is
+        // ignored (`unwrap_or_else`) so a prior test panicking while holding the
+        // lock cannot spuriously fail every subsequent test in this module.
+        let _guard = COMPILE_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let status = cmd.status().map_err(|e| {
+            HError::Default(format!(
+                "failed to invoke the C compiler for the test fixture: {e}"
+            ))
+        })?;
+        if !status.success() {
+            return Err(HError::Default(format!(
+                "failed to compile the minimal PKCS#11 test fixture {source:?}: compiler exited \
+                 with {status}"
+            )));
+        }
+        Ok(output)
+    }
+
+    /// Regression test for the `C_GetFunctionList`/`C_GetInterface` fallback path
+    /// (PKCS#11 v3.1 §5.4.4/§5.4.6): a library exporting *only* the three
+    /// function-table entry points must still load and expose a working v3.0
+    /// interface, exactly as validated manually against Kryoptic 1.5.2.
+    #[test]
+    fn function_table_only_library_loads_via_fallback() -> HResult<()> {
+        let path = compile_minimal_pkcs11_shim()?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+
+        if !hsm_lib.supports_pkcs11_v3_interfaces() {
+            return Err(HError::Default(
+                "the fallback-resolved library must report v3.0 interface support".to_owned(),
+            ));
+        }
+        let Some(interfaces) = hsm_lib.list_pkcs11_v3_interfaces()? else {
+            return Err(HError::Default(
+                "a v3.0-capable library must report at least one interface".to_owned(),
+            ));
+        };
+        if !interfaces.iter().any(|i| i.name == "PKCS 11") {
+            return Err(HError::Default(format!(
+                "expected a \"PKCS 11\" interface entry, got: {interfaces:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Builds a `Session` directly against the minimal fixture library, bypassing
+    /// `SlotManager` (which the fixture does not implement enough of `C_GetSlotList`
+    /// et al. to support) — sufficient for exercising `Session` methods that only
+    /// need an `HsmLib` and an opaque session handle.
+    fn test_session(hsm_lib: HsmLib) -> crate::Session {
+        crate::Session::new(
+            std::sync::Arc::new(hsm_lib),
+            1, // opaque session handle; every fixture stub ignores it
+            std::sync::Arc::new(crate::ObjectHandlesCache::new()),
+            std::sync::Arc::new(std::sync::Mutex::new(None)),
+            false,
+            crate::hsm_capabilities::HsmCapabilities::default(),
+        )
+    }
+
+    /// `CKM_EDDSA` (v3.0-only) must be gracefully reported as unsupported —
+    /// not silently incorrectly signed — when the loaded library is v2.40-only, per the
+    /// additive/non-breaking philosophy established for issue #1153.
+    #[test]
+    fn eddsa_sign_gracefully_reports_unsupported_mechanism() -> HResult<()> {
+        let path = compile_minimal_pkcs11_shim()?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = test_session(hsm_lib);
+
+        let Err(err) = session.sign(1, crate::HsmSigningAlgorithm::Eddsa, b"data") else {
+            return Err(HError::Default(
+                "signing with CKM_EDDSA on a v2.40-only library must fail".to_owned(),
+            ));
+        };
+        if !err.to_string().contains("112") {
+            return Err(HError::Default(format!(
+                "expected the CKR_MECHANISM_INVALID (112) return code in the error, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Same as above, for `Session::verify`.
+    #[test]
+    fn eddsa_verify_gracefully_reports_unsupported_mechanism() -> HResult<()> {
+        let path = compile_minimal_pkcs11_shim()?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = test_session(hsm_lib);
+
+        let Err(err) = session.verify(1, crate::HsmSigningAlgorithm::Eddsa, b"data", b"sig") else {
+            return Err(HError::Default(
+                "verifying with CKM_EDDSA on a v2.40-only library must fail".to_owned(),
+            ));
+        };
+        if !err.to_string().contains("does not support mechanism") {
+            return Err(HError::Default(format!(
+                "expected a clear \"does not support mechanism\" error, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// A mechanism the fixture library does accept (any classic RSA-family signing
+    /// mechanism) must still succeed end-to-end — proving graceful degradation
+    /// only rejects genuinely unsupported v3.0-only mechanisms, not everything.
+    #[test]
+    fn rsa_sign_succeeds_through_classic_mechanism() -> HResult<()> {
+        let path = compile_minimal_pkcs11_shim()?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = test_session(hsm_lib);
+
+        session.sign(1, crate::HsmSigningAlgorithm::Sha256WithRsa, b"data")?;
+        Ok(())
+    }
+
+    /// `CKM_HKDF_DERIVE` (v3.0-only) must be gracefully reported as unsupported on
+    /// a v2.40-only library, mirroring the `EdDSA` sign/verify behaviour above.
+    #[test]
+    fn hkdf_derive_gracefully_reports_unsupported_mechanism() -> HResult<()> {
+        let path = compile_minimal_pkcs11_shim()?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = test_session(hsm_lib);
+
+        let Err(err) = session.derive_hkdf_key(
+            1,
+            pkcs11_sys::CKM_SHA256,
+            None,
+            b"info",
+            32,
+            b"derived",
+            true,
+        ) else {
+            return Err(HError::Default(
+                "deriving via CKM_HKDF_DERIVE on a v2.40-only library must fail".to_owned(),
+            ));
+        };
+        if !err.to_string().contains("112") {
+            return Err(HError::Default(format!(
+                "expected the CKR_MECHANISM_INVALID (112) return code in the error, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Message-based AEAD (`C_MessageEncryptInit`/... , v3.0-only) must be
+    /// proactively gated by the `supports_message_encrypt`/`supports_message_decrypt`
+    /// capability checks — not attempted and left to fail deep inside the FFI call —
+    /// since the fixture exports no message-based function-table entries at all.
+    #[test]
+    fn message_aead_gracefully_reports_unsupported_capability() -> HResult<()> {
+        let path = compile_minimal_pkcs11_shim()?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        if hsm_lib.supports_message_encrypt() {
+            return Err(HError::Default(
+                "the minimal fixture must not report message-encrypt support".to_owned(),
+            ));
+        }
+        let session = test_session(hsm_lib);
+
+        let Err(err) = session.encrypt_message_aes_gcm(1, b"aad", b"plaintext") else {
+            return Err(HError::Default(
+                "message-based AES-GCM encryption must fail on a v2.40-only library".to_owned(),
+            ));
+        };
+        if !err.to_string().to_lowercase().contains("message") {
+            return Err(HError::Default(format!(
+                "expected an error mentioning the missing message-based functions, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(any())]
 mod function_table_fallback_tests {
     use std::{
         path::PathBuf,
