@@ -375,6 +375,22 @@ fn resolve_optional_provider<T, E>(
     }
 }
 
+/// Run `load` at most once and cache its outcome in `cell`; later calls are no-ops.
+///
+/// `Ok(None)` (a tolerated failure, see [`resolve_optional_provider`]) is cached like any
+/// other success so the load is never retried; an `Err` is returned to the caller and
+/// nothing is cached. Generic and `cell`-injected so tests can use a local `OnceLock`.
+#[cfg(feature = "non-fips")]
+fn init_optional_provider_once<T, E>(
+    cell: &std::sync::OnceLock<Option<T>>,
+    load: impl FnOnce() -> Result<Option<T>, E>,
+) -> Result<(), E> {
+    if cell.get().is_none() {
+        drop(cell.set(load()?));
+    }
+    Ok(())
+}
+
 /// Initialize OpenSSL providers for production KMS server.
 ///
 /// For FIPS mode: loads the FIPS provider.
@@ -431,9 +447,9 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
         // initialized".
         static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
-        if PROVIDER.get().is_none() {
+        init_optional_provider_once(&PROVIDER, || {
             let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
-            let loaded = if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
+            if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
                 // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats.
                 info!("Load legacy provider");
                 resolve_optional_provider(
@@ -446,15 +462,13 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
                              (including PQC and Covercrypt) are unaffected."
                         );
                     },
-                )?
+                )
             } else {
                 // OpenSSL < 3.0: load the default provider
                 info!("Load default provider");
-                Some(Provider::load(None, "default")?)
-            };
-            drop(PROVIDER.set(loaded));
-        }
-        Ok(())
+                Ok(Some(Provider::load(None, "default")?))
+            }
+        })
     }
 }
 
@@ -517,5 +531,41 @@ mod tests {
             assert_eq!(resolved, Ok(Some(42)));
             assert!(!warned, "must not warn on a successful load");
         }
+    }
+
+    /// A failing loader on a dlopen-impossible target must make initialization return
+    /// `Ok(())`, cache the failure as `None`, and never invoke the loader again.
+    #[test]
+    fn test_init_optional_provider_once_caches_tolerated_failure_without_retry() {
+        use std::{cell::Cell, sync::OnceLock};
+
+        use super::init_optional_provider_once;
+
+        let cell: OnceLock<Option<u8>> = OnceLock::new();
+        let calls = Cell::new(0_u32);
+        let failing_loader = || {
+            calls.set(calls.get() + 1);
+            resolve_optional_provider(Err::<u8, _>("legacy module not found"), true, |_| {})
+        };
+
+        assert_eq!(init_optional_provider_once(&cell, failing_loader), Ok(()));
+        assert_eq!(cell.get(), Some(&None), "Err must be cached as None");
+        assert_eq!(init_optional_provider_once(&cell, failing_loader), Ok(()));
+        assert_eq!(calls.get(), 1, "loader must not be retried after caching");
+    }
+
+    /// When the failure is propagated, it is returned and nothing is cached.
+    #[test]
+    fn test_init_optional_provider_once_propagates_error_without_caching() {
+        use std::sync::OnceLock;
+
+        use super::init_optional_provider_once;
+
+        let cell: OnceLock<Option<u8>> = OnceLock::new();
+        let result = init_optional_provider_once(&cell, || {
+            resolve_optional_provider(Err::<u8, _>("boom"), false, |_| {})
+        });
+        assert_eq!(result, Err("boom"));
+        assert!(cell.get().is_none());
     }
 }
