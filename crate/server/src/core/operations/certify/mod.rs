@@ -11,6 +11,7 @@ mod rfc9909;
 #[cfg(feature = "non-fips")]
 mod rfc9935;
 mod subject;
+pub(crate) mod template;
 
 #[cfg(test)]
 mod tests;

@@ -1,10 +1,13 @@
 mod certificate;
+pub(crate) mod cms_ffi;
 pub mod crl;
+pub mod csr_attrs;
 mod hashing;
 pub mod ocsp;
 pub(crate) mod ocsp_ffi;
 mod private_key;
 mod public_key;
+pub mod scep_cms;
 pub mod x509_extensions;
 
 pub use certificate::{
