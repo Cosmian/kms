@@ -33,7 +33,7 @@ let
 
   libcTag = if muslCrtStatic then "musl-static" else "musl-dynamic";
 
-  hostPlatform = pkgsMusl.stdenv.hostPlatform;
+  inherit (pkgsMusl.stdenv) hostPlatform;
   archTag = if hostPlatform.isAarch64 then "aarch64" else "x86_64";
   muslTriple = hostPlatform.config;
   muslLoader = "/lib/ld-musl-${archTag}.so.1";
@@ -56,6 +56,7 @@ rustPlatform.buildRustPackage rec {
   inherit version;
   auditable = false;
   doCheck = false; # see kms-server-musl.nix: validated via Alpine-container smoke test instead
+  doInstallCheck = true; # runs installCheckPhase below: ELF linkage assertions + .sha256 files
 
   src = filteredSrc;
   cargoSha256 = cargoHash;
