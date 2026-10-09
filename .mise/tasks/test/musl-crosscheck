@@ -121,15 +121,26 @@ print_status "Binary info:"
 file "$BIN" || true
 readelf -l "$BIN" 2>/dev/null | grep -i "interpreter\|type:" || true
 
-# Detect actual staticness from the ELF itself rather than assuming from
-# --variant — cheap belt-and-suspenders check, and only attempt direct
-# execution when there is truly no INTERP segment, i.e. the binary cannot
-# need Alpine's own ld-musl.
-if readelf -l "$BIN" 2>/dev/null | grep -q "INTERP"; then
-  print_status "Skipping direct execution (dynamic-musl interpreter needs Alpine's own ld-musl); validated via the Alpine-container smoke test instead."
-else
+# Assert the ELF matches the requested variant (same invariant as
+# test:alpine-native-build), then decide whether it can be executed:
+#   non-fips => fully static musl: no INTERP (PT_INTERP) segment.
+#   fips     => dynamic musl: INTERP is /lib/ld-musl-<arch>.so.1.
+# Any mismatch, or a failure of readelf itself, fails the task.
+HEADERS=$(readelf -lW "$BIN") || print_error "readelf failed on $BIN — cannot verify linkage."
+INTERP=$(printf '%s\n' "$HEADERS" | sed -n 's/^.*interpreter: \(.*\)\]$/\1/p')
+if [ "$VARIANT" = "non-fips" ]; then
+  if printf '%s\n' "$HEADERS" | grep -q "INTERP"; then
+    print_error "$BIN: expected a fully static musl binary (no INTERP segment), got interpreter: ${INTERP:-<unparsed>}"
+  fi
+  print_status "Confirmed fully static musl binary (no dynamic linker)."
   print_status "Running --version (fully static, no interpreter dependency)..."
   "$BIN" --version
+else
+  EXPECTED_INTERP="/lib/ld-musl-${MUSL_TRIPLE%%-*}.so.1"
+  [ -n "$INTERP" ] || print_error "$BIN: expected a dynamic musl binary (INTERP ${EXPECTED_INTERP}), but it has no interpreter (statically linked?)."
+  [ "$INTERP" = "$EXPECTED_INTERP" ] || print_error "$BIN: expected interpreter ${EXPECTED_INTERP}, got: ${INTERP}"
+  print_status "Confirmed dynamic musl binary, interpreter ${INTERP}."
+  print_status "Skipping direct execution (dynamic-musl interpreter needs Alpine's own ld-musl); validated via the Alpine-container smoke test instead."
 fi
 
 print_success "Musl cross-check build passed for ${VARIANT_NAME} (${MUSL_TRIPLE})"
