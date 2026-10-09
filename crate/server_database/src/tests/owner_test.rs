@@ -7,9 +7,8 @@ use cosmian_kmip::{
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
@@ -19,7 +18,7 @@ use crate::{db_error, error::DbResult};
 pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     let user_id_1 = UserId::from("user_id_1@example.org");
     let user_id_2 = UserId::from("user_id_2@example.org");

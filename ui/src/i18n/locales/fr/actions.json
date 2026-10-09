@@ -1927,6 +1927,34 @@
         "error404": "Aucune CRL trouvée pour l'émetteur '{{issuerId}}'. La CRL est générée automatiquement lors de la révocation d'un certificat. Si aucun certificat n'a encore été révoqué, la CRL n'existe peut-être pas.",
         "success": "CRL téléchargée avec succès ({{bytes}} octets, format {{format}})"
     },
+    "estCaCerts": {
+        "title": "Certificats CA EST",
+        "alertMessage": "Télécharge la chaîne de certificats CA depuis le point de terminaison EST public.",
+        "alertDescription": "Aucune authentification n'est requise. La réponse est le paquet PKCS#7 \"certs-only\" brut renvoyé par le serveur (RFC 7030 §4.1) ; utilisez `openssl pkcs7 -inform DER -in <file> -print_certs` pour extraire les certificats PEM individuels.",
+        "submit": "Télécharger les certificats CA",
+        "responseTitle": "Résultat des certificats CA EST",
+        "error404": "EST n'est pas activé sur ce serveur.",
+        "success": "Chaîne de certificats CA téléchargée avec succès ({{bytes}} octets)."
+    },
+    "estEnroll": {
+        "title": "Enrôlement EST",
+        "intro": "Soumet une demande de signature de certificat PKCS#10 au point de terminaison EST simpleenroll (RFC 7030 §4.2.1) et télécharge le certificat émis.",
+        "csrFile": "Demande de signature de certificat",
+        "csrFileHelp": "Téléversez une CSR PKCS#10 dans le format sélectionné.",
+        "uploadCsrFile": "Téléverser le fichier CSR",
+        "pleaseUploadCsr": "Veuillez téléverser une demande de signature de certificat",
+        "csrFormat": "Format de la CSR",
+        "formatPem": "PEM (texte)",
+        "formatDer": "DER (binaire)",
+        "username": "Nom d'utilisateur d'amorçage",
+        "usernameHelp": "Nom d'utilisateur HTTP Basic, accepté uniquement lorsque le serveur a est_require_client_cert = false. Laissez les deux champs vides pour vous authentifier avec le certificat client TLS configuré pour cette session.",
+        "password": "Mot de passe d'amorçage",
+        "submit": "Enrôler",
+        "responseTitle": "Résultat de l'enrôlement EST",
+        "error404": "EST n'est pas activé sur ce serveur.",
+        "error401": "Échec de l'authentification EST : vérifiez les identifiants d'amorçage, ou qu'un certificat client TLS est configuré.",
+        "success": "Certificat émis avec succès ({{bytes}} octets)."
+    },
     "pgpKeysCreate": {
         "title": "Créer une clé OpenPGP",
         "intro": "Créer une nouvelle clé secrète transférable OpenPGP (v4). La clé est générée non protégée dans le KMS.",

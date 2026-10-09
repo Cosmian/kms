@@ -80,12 +80,10 @@ async fn get_mysql() -> DbResult<MySqlPool> {
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
 #[cfg(feature = "non-fips")]
 async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
-    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng, Secret, reexport::rand_core::SeedableRng,
-    };
+    use cosmian_kms_crypto::{crypto::KmsRng, reexport::cosmian_crypto_core::Secret};
 
     use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);

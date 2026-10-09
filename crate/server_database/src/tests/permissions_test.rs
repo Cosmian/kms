@@ -4,9 +4,8 @@ use cosmian_kmip::kmip_2_1::{
     KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
     kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
@@ -237,7 +236,7 @@ async fn permissions_granted_includes_wildcard<DB: ObjectsStore + PermissionsSto
     let owner = UserId::from(Uuid::new_v4().to_string());
     let user_id = UserId::from(Uuid::new_v4().to_string());
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(
@@ -299,7 +298,7 @@ async fn permissions_find_includes_wildcard<DB: ObjectsStore + PermissionsStore>
     let user_id = UserId::from(Uuid::new_v4().to_string());
     let tag = format!("wildcard-find-{}", Uuid::new_v4());
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     let symmetric_key = create_symmetric_key_kmip_object(

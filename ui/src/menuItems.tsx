@@ -291,6 +291,14 @@ const baseMenu: MenuItem[] = [
                     { key: "certificates/certs/generate-crl", label: "Download CRL" },
                 ],
             },
+            {
+                key: "certificates/enrollment",
+                label: "Enrollment (EST)",
+                children: [
+                    { key: "certificates/enrollment/cacerts", label: "CA Certificates" },
+                    { key: "certificates/enrollment/enroll", label: "Enroll" },
+                ],
+            },
             { key: "certificates/encrypt", label: "Encrypt" },
             { key: "certificates/decrypt", label: "Decrypt" },
         ],

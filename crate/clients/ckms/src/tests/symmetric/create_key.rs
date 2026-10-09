@@ -1,7 +1,6 @@
 use base64::{Engine as _, engine::general_purpose};
-use cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use test_kms_server::start_default_test_kms_server;
 
@@ -32,7 +31,7 @@ async fn test_create_symmetric_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut key = vec![0_u8; 32];
 
     // AES
@@ -57,7 +56,7 @@ async fn test_create_symmetric_key() -> CosmianResult<()> {
             &["--algorithm", "chacha20", "--number-of-bits", "128"],
         )?;
         //  ChaCha20 256 bit key from a base64 encoded key
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let mut key = vec![0_u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
@@ -89,7 +88,7 @@ async fn test_create_symmetric_key() -> CosmianResult<()> {
             &["--algorithm", "sha3", "--number-of-bits", "512"],
         )?;
         //  Sha3 256 bit salt from a base64 encoded salt
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let mut salt = vec![0_u8; 32];
         rng.fill_bytes(&mut salt);
         let key_b64 = general_purpose::STANDARD.encode(&salt);

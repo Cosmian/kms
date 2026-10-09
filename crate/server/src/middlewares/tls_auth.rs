@@ -26,7 +26,7 @@ use crate::{
 
 /// Holds the peer certificate for the current connection.
 #[derive(Debug, Clone)]
-pub(super) struct PeerCertificate {
+pub(crate) struct PeerCertificate {
     /// The peer certificate.
     pub(crate) cert: X509,
 }
