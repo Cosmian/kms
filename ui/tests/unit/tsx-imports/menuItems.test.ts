@@ -8,7 +8,7 @@ test("menuItems exports a non-empty menu", () => {
     expect(menuItems.length).toBeGreaterThan(0);
 });
 
-const NON_FIPS_SECTIONS = ["pgp", "pqc", "mac", "fpe", "tokenize", "cc"];
+const NON_FIPS_SECTIONS = ["pgp", "pqc", "fpe", "tokenize", "cc"];
 
 test("non-FIPS sections are hidden in FIPS mode", () => {
     const keys = getMenuItems({ isFips: true }).map((item) => item.key);
@@ -22,4 +22,9 @@ test("non-FIPS sections are shown outside FIPS mode", () => {
     for (const section of NON_FIPS_SECTIONS) {
         expect(keys).toContain(section);
     }
+});
+
+test("MAC section stays available in FIPS mode", () => {
+    const keys = getMenuItems({ isFips: true }).map((item) => item.key);
+    expect(keys).toContain("mac");
 });

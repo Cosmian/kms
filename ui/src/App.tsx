@@ -381,7 +381,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="sign" element={<PgpSignForm />} />
                             <Route path="verify" element={<PgpVerifyForm />} />
                         </Route>
-                        <Route path="mac" element={<NonFipsRoute />}>
+                        <Route path="mac">
                             <Route path="compute" element={<MacComputeForm />} />
                             <Route path="verify" element={<MacVerifyForm />} />
                         </Route>

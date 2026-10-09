@@ -61,10 +61,7 @@ jobs:
         run: |
           set -ex
           if [ "${{ matrix.features }}" = "non-fips" ]; then
-            export FEATURES_FLAG="--features non-fips"
-            # These CPU-heavy integration tests spawn concurrent KMS servers and can
-            # otherwise exceed the Actix request timeout on constrained CI runners.
-            export RUST_TEST_THREADS=1
+            export FEATURES_FLAG="--features non-fips";
             # Build the PKCS#11 cdylib so that `ckms pkcs11 verify` and
             # integration tests can dynamically load it at runtime.
             # `cargo test --lib` does not produce cdylib artifacts.
