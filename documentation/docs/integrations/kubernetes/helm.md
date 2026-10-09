@@ -25,10 +25,11 @@ Once the KMS server is running on Kubernetes you can enable the other integratio
 
 !!! warning "Audit logging and multiple replicas"
     If you enable audit logging, do not point multiple replicas at the same audit file (e.g. a
-    shared PVC). The file backend is not safe for concurrent writers from different pods — only
+    shared PVC). The file backend is not safe for concurrent writers from different pods: only
     one replica will actually log events. Keep audit files per-pod (the chart default) and ship
-    them off with a sidecar/log agent, or wait for the PostgreSQL audit backend for a single
-    consolidated trail.
+    them off with a sidecar/log agent, or use the
+    [PostgreSQL audit backend](../../configuration/audit-postgresql-backend.md) for a
+    single consolidated trail.
 
 ## Container images
 

@@ -1,7 +1,7 @@
 ---
-name: 'Database Tables Documentation'
-description: 'Keep documentation/docs/configuration/database/tables.md in sync with SQL schema changes in crate/server_database'
-applyTo: 'crate/server_database/src/stores/sql/*.sql'
+name: "Database Tables Documentation"
+description: "Keep documentation/docs/configuration/database/tables.md in sync with SQL schema changes in crate/server_database"
+applyTo: "**/*.sql"
 ---
 
 # Database table documentation sync rules
@@ -14,9 +14,9 @@ Whenever you add, remove, or modify a `CREATE TABLE` statement in any `.sql` fil
 
 The canonical table definitions live in:
 
-| File | Used by |
-|---|---|
-| `query.sql` | SQLite and PostgreSQL |
+| File              | Used by                 |
+| ----------------- | ----------------------- |
+| `query.sql`       | SQLite and PostgreSQL   |
 | `query_mysql.sql` | MySQL, MariaDB, Percona |
 
 Both files must stay consistent with each other for tables they both define.
@@ -27,8 +27,8 @@ Both files must stay consistent with each other for tables they both define.
 
 1. Add a row to the overview table at the top.
 2. Update the table count in the overview sentence (e.g. "consists of five tables").
-3. Add a new `## \`table_name\`` section documenting every column (name, type, description)
-   and any backend-specific differences (e.g. MySQL AUTO_INCREMENT `id` column).
+3. Add a new `## \`table_name\``section documenting every column (name, type, description)
+and any backend-specific differences (e.g. MySQL AUTO_INCREMENT`id` column).
 4. Update the "Links between tables" section if the new table references or is referenced by
    another table.
 5. Add the table to the Mermaid ER diagram if it participates in a logical relationship.
@@ -61,10 +61,26 @@ Both files must stay consistent with each other for tables they both define.
 
 ## Checklist (run after every `.sql` change)
 
-- [ ] Did you add a `CREATE TABLE`?  → Add to overview + add `## \`name\`` section.
-- [ ] Did you drop / remove a `CREATE TABLE`?  → Remove from overview + remove `## \`name\`` section.
-- [ ] Did you change column types or add/remove columns?  → Update the column table.
-- [ ] Did you add or remove an index?  → Update the index table.
+- [ ] Did you add a `CREATE TABLE`? → Add to overview + add `## \`name\`` section.
+- [ ] Did you drop / remove a `CREATE TABLE`? → Remove from overview + remove `## \`name\`` section.
+- [ ] Did you change column types or add/remove columns? → Update the column table.
+- [ ] Did you add or remove an index? → Update the index table.
 - [ ] Is the Mermaid diagram still accurate?
 - [ ] Is the table count in the overview sentence correct?
 - [ ] Is the "Links between tables" section still accurate?
+## `rawsql` loader gotcha
+
+Queries are parsed by the `rawsql` crate: a line is a new query tag only if it starts with
+`--` AND contains the substring `name` anywhere; otherwise, while inside a `-- name:`
+query's body, any `--` line is appended as literal text and the query's lines get joined
+with spaces. Two failure modes follow:
+
+- A `--` comment placed between a `-- name:` tag and its query's closing `;` gets glued
+  into the single-line query text — `--` then comments out everything after it once sent
+  to `PostgreSQL`, including the real `;`.
+- If that stray comment happens to contain the word "name", it's misparsed as a new tag
+  instead, silently discarding the query being built (surfaces later as `"{name} SQL
+  query can't be found"`).
+
+Comments are safe only between two queries (after one query's closing `;`, before the
+next `-- name:` tag) — never inside a query's body.

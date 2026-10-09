@@ -120,7 +120,8 @@ jobs:
           # use docker run internally and do not need a pre-started compose service.
           - type: siem
             docker: elasticsearch
-          # audit test has no external Docker dependencies (uses KMS binary directly).
+          # audit test has no external Docker dependencies from the matrix: the task starts its
+          # own `postgres-audit` container (docker-compose.yml) for the PostgreSQL backend tests.
 
     steps:
       - uses: actions/checkout@v7
