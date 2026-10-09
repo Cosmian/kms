@@ -91,7 +91,11 @@ impl<P: HsmProvider> BaseHsm<P> {
         passwords: HashMap<usize, Option<String>>,
     ) -> HResult<Self> {
         debug!("Using PKCS#11 library with {:?}", P::capabilities());
-        let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
+        let capabilities = P::capabilities();
+        let hsm_lib = Arc::new(HsmLib::instantiate_with_options(
+            path,
+            capabilities.skip_finalize_on_drop,
+        )?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in passwords {
             slots.insert(

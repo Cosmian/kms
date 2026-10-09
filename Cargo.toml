@@ -25,6 +25,7 @@ members = [
   "crate/hsm/base_hsm",
   "crate/hsm/aws_cloudhsm",
   "crate/hsm/gcp_cloud_hsm",
+  "crate/hsm/azure_cloud_hsm",
   "crate/hsm/crypt2pay",
   "crate/hsm/kryoptic",
   "crate/hsm/proteccio",

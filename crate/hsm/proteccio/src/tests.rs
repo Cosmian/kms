@@ -57,7 +57,7 @@ fn test_hsm_proteccio_all() -> HResult<()> {
     shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -205,7 +205,7 @@ fn test_hsm_proteccio_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
 fn test_hsm_proteccio_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
+    shared::get_key_metadata(&slot, true)
 }
 
 #[test]

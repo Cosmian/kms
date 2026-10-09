@@ -58,7 +58,7 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, cfg.threads)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -224,7 +224,7 @@ fn test_hsm_smartcardhsm_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
 fn test_hsm_smartcardhsm_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
+    shared::get_key_metadata(&slot, true)
 }
 
 #[test]

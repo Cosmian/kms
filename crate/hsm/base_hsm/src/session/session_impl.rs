@@ -166,6 +166,15 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
         }
     }
 }
+/// Returns `true` for return codes that indicate the requested mechanism (or its
+/// parameters) is simply not supported by the loaded PKCS#11 library — as opposed to
+/// a hard failure. Callers use this to gracefully degrade (e.g. report the mechanism
+/// as unavailable) instead of surfacing a generic HSM error, mirroring the additive,
+/// non-breaking philosophy already established for the v3.0 capability probes in
+/// `HsmLib` (issue #1153).
+const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
+    rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
+}
 
 #[cfg(not(feature = "non-fips"))]
 const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) -> bool {
@@ -195,10 +204,6 @@ pub(super) const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bo
     true
 }
 
-/// Returns whether a PKCS#11 return code means a mechanism is unsupported.
-const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
-    rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
-}
 /// An active PKCS#11 session with an HSM.
 pub struct Session {
     hsm: Arc<crate::hsm_lib::HsmLib>,
@@ -206,7 +211,7 @@ pub struct Session {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     logging_in: bool,
-    hsm_capabilities: HsmCapabilities,
+    pub(crate) hsm_capabilities: HsmCapabilities,
 }
 
 impl Session {

@@ -1549,6 +1549,13 @@ def generate_report(
     )
     lines += sep
 
+    # NOTE: the standard report intentionally omits the "PKCS#11 Ed25519 signing
+    # overhead" internal-diagnosis section (tier ladder + internal phase
+    # boundaries) so `ckms_bench_pkcs11/report.md` mirrors `ckms_bench/report.md`'s
+    # structure exactly. `_render_pkcs11_overhead_section`/`pkcs11_overhead_data`
+    # remain available (and tested) for ad hoc local diagnostics, they are simply
+    # never wired into this function's output.
+
     # ── Load tests ────────────────────────────────────────────────────────
     has_load = any(load_data.get(v) for v in versions)
     if has_load:
@@ -1718,7 +1725,36 @@ def main() -> None:
         criterion_data[v] = data
         print(f"  [{v}] {len(data)} benchmark(s)" if data else f"  [{v}] no data")
 
-    if not any(load_data.values()) and not any(criterion_data.values()):
+    pkcs11_overhead_data: dict[str, dict[str, object]] = {}
+    if is_pkcs11:
+        print('── PKCS#11 overhead data (diagnostic only, not rendered in report) ──')
+        for v in versions:
+            data = parse_pkcs11_overhead_json(out_dir / v / 'pkcs11_overhead.json')
+            pkcs11_overhead_data[v] = data
+            tier_count = len(data.get('tiers', [])) if data else 0
+            phase_count = len(data.get('phases', [])) if data else 0
+            if tier_count or phase_count:
+                print(f"  [{v}] {tier_count} tier(s), {phase_count} phase(s)")
+            else:
+                print(f"  [{v}] no valid overhead data")
+            # NOTE: the overhead ladder's `pkcs11-one-call-bracketed` tier used to
+            # be aliased into `pkcs11_sign-verify_eddsa-ed25519/sign` here. That tier
+            # is an A/B/A/B bracketed mean measured inside a differential benchmark
+            # group alongside ~12 unrelated micro-benchmarks, not a clean standalone
+            # sample series like every other Sign/Verify row — so it is no longer
+            # substituted in. `sign/eddsa-ed25519` is now always benchmarked
+            # standalone (see `criterion_bench.rs::run_criterion`), the same way as
+            # every other algorithm.
+
+    has_overhead_data = any(
+        data.get('tiers') or data.get('phases')
+        for data in pkcs11_overhead_data.values()
+    )
+    if (
+        not any(load_data.values())
+        and not any(criterion_data.values())
+        and not has_overhead_data
+    ):
         print('ERROR: no benchmark data found for any version')
         sys.exit(1)
 

@@ -46,8 +46,13 @@ jobs:
           - pki-revocation
           - siem
           - audit
+          # Azure Cloud HSM loader compilation does not require a live HSM.
+          - azure-cloud-hsm-build
         features: [fips, non-fips]
         exclude:
+          # kryoptic-conformance only needs to be validated once (fips)
+          - type: hsm-kryoptic-conformance
+            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
@@ -280,7 +285,7 @@ jobs:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
     # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
-    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
+    # Hardware HSMs (proteccio, crypt2pay, azure-cloud-hsm) run in the `hsm-upstream` job.
     concurrency:
       group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
       queue: max
@@ -322,7 +327,7 @@ jobs:
           mise run test:hsm-pkcs11-tool --variant non-fips --marker smoke
 
   # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
-  # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their
+  # network HSM, Crypt2Pay over OpenVPN, the Azure Cloud HSM CI cluster). They live in their
   # own job (a job-level `if` cannot read the `matrix` context) and are skipped on forks.
   hsm-upstream:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
@@ -343,11 +348,14 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          # - aws-cloudhsm # This non-free service has been disabled on october 2026
-          # - gcp-cloud-hsm # This non-free service has been disabled on october 2026
+          - azure-cloud-hsm
+          # aws-cloudhsm and gcp-cloud-hsm clusters are torn down after validation to
+          # limit cloud costs; re-enable once a cluster is provisioned again.
+          # - aws-cloudhsm
+          # - gcp-cloud-hsm
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
-        # sufficient for crypt2pay, gcp-cloud-hsm and aws-cloudhsm FIPS-mode compatibility is not yet
-        # confirmed against the cluster's supported mechanism list.
+        # sufficient for crypt2pay, and aws-cloudhsm/azure-cloud-hsm FIPS-mode compatibility
+        # is not yet confirmed against the clusters' supported mechanism lists.
         features: [non-fips]
 
     steps:
@@ -385,8 +393,33 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+          # Azure Cloud HSM: prepare_azure_cloudhsm.sh installs the client SDK and
+          # starts azcloudhsm_client (see crate/hsm/azure_cloud_hsm/README.md).
+          AZURE_CLOUD_HSM_PO_CERT: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_PO_CERT }}
+          AZURE_CLOUD_HSM_HOSTNAME: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HOSTNAME }}
+          # GitHub-hosted runners cannot resolve *.privatelink.cloudhsm.azure.net or
+          # route to the HSM's private VNet IP; prepare_azure_cloudhsm.sh maps the
+          # hostname and starts a VPN tunnel only if the HSM is not already reachable.
+          AZURE_CLOUD_HSM_HSM_IP: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IP }}
+          AZURE_CLOUD_HSM_OVPN_CONF: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_OVPN_CONF }}
+          HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
+          HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
+
+      # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
+      # independently-implemented external PKCS#11 v3 client), not just our own
+      # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
+      # is allowed to reconfigure with an HSM-KEK for this check.
+      # Prerequisite warning: `pkcs11-tool` (OpenSC) is a hard requirement — the
+      # task fails loudly if it is missing, with no silent fallback. It does not
+      # need a separate install step here: shell.nix already adds `pkgs.opensc` to
+      # the nix-shell PATH on Linux whenever `WITH_HSM=1` is set, which this task
+      # sets before entering the nix shell (see .mise/tasks/test/hsm-pkcs11-tool).
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool)
+        if: matrix.hsm-type == 'softhsm2'
+        run: |
+          mise run test:hsm-pkcs11-tool --variant ${{ matrix.features }}
 
   helm:
     name: Helm chart E2E (minikube)
