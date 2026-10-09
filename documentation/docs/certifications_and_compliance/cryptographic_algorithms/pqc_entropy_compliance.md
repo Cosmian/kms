@@ -11,7 +11,7 @@
 
 | Question | Answer |
 |----------|--------|
-| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (non-secret anonymization values, OpenSSL-internal keygen, Covercrypt) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans the other generators |
+| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (OpenSSL-internal keygen, Covercrypt, `uuid::Uuid::new_v4` identifiers, the `oauth2` PKCE/CSRF helpers of `cosmian_kms_client`) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans every other entropy source |
 | What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (keys, seeds) and `RAND_bytes_ex` (`RNGRetrieve` output), each requesting 256-bit security strength; no lock, no state of its own |
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
@@ -99,14 +99,13 @@ was not re-verified at run time here.
 
 `KmsRng` is the sole production path for key material, nonces/IVs and secret tokens. Third-party APIs that
 demand an infallible `rand_core` generator (OpenPGP through the `pgp` crate, ECIES `SalsaSealBox` through
-`cosmian_crypto_core`) are fed by a ChaCha12 stream **seeded with 256 bits drawn from `KmsRng`**; the
-workspace `clippy.toml` bans `openssl::rand::rand_bytes`, `cosmian_crypto_core::CsRng` and `rand` `StdRng` /
-`ThreadRng`, with explicit inline exceptions for those seed-stretching uses and for test fixtures.
+`cosmian_crypto_core`) are fed by a ChaCha12 stream **seeded with 256 bits drawn from `KmsRng`**
+(`KmsRng::seeded_csrng`); the workspace `clippy.toml` bans every other entropy source (OpenSSL `rand_bytes`,
+`BigNum` random generation, `rand::rng`, `thread_rng`, `OsRng`, `getrandom`, `from_entropy`, ...) without any
+inline exception, test fixtures included.
 
 Documented exceptions where no `KmsRng` injection point exists:
 
-- **Non-secret values**: anonymization noise (`NoiseGenerator`, differential-privacy noise) and word-token
-  labels (`anonymization/word.rs`), and the label of the unused `random_label` helper of the PKCS#11 module.
 - **RSA / EC / EdDSA key generation, SLH-DSA and hybrid KEM composite keygen**: OpenSSL generates these
   atomically from its own default DRBG (the same hierarchy `KmsRng` calls into, served by the FIPS provider
   in FIPS builds; asserted by `crate/crypto/tests/fips_rng_provider.rs`).

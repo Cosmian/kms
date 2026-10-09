@@ -1927,6 +1927,34 @@
         "error404": "No CRL found for issuer '{{issuerId}}'. The CRL is generated automatically when a certificate is revoked. If no certificate has been revoked yet, the CRL may not exist.",
         "success": "CRL downloaded successfully ({{bytes}} bytes, {{format}} format)"
     },
+    "estCaCerts": {
+        "title": "EST CA Certificates",
+        "alertMessage": "Downloads the CA certificate chain from the public EST endpoint.",
+        "alertDescription": "No authentication is required. The response is the raw PKCS#7 \"certs-only\" bundle the server returns (RFC 7030 §4.1); use `openssl pkcs7 -inform DER -in <file> -print_certs` to extract individual PEM certificates.",
+        "submit": "Download CA Certificates",
+        "responseTitle": "EST CA Certificates Result",
+        "error404": "EST is not enabled on this server.",
+        "success": "CA certificate chain downloaded successfully ({{bytes}} bytes)."
+    },
+    "estEnroll": {
+        "title": "EST Enroll",
+        "intro": "Submit a PKCS#10 certificate signing request to the EST simpleenroll endpoint (RFC 7030 §4.2.1) and download the issued certificate.",
+        "csrFile": "Certificate Signing Request",
+        "csrFileHelp": "Upload a PKCS#10 CSR in the selected format.",
+        "uploadCsrFile": "Upload CSR File",
+        "pleaseUploadCsr": "Please upload a certificate signing request",
+        "csrFormat": "CSR Format",
+        "formatPem": "PEM (text)",
+        "formatDer": "DER (binary)",
+        "username": "Bootstrap Username",
+        "usernameHelp": "HTTP Basic username, only accepted when the server has est_require_client_cert = false. Leave both fields empty to authenticate with the TLS client certificate configured for this session.",
+        "password": "Bootstrap Password",
+        "submit": "Enroll",
+        "responseTitle": "EST Enroll Result",
+        "error404": "EST is not enabled on this server.",
+        "error401": "EST authentication failed: check the bootstrap credentials, or that a TLS client certificate is configured.",
+        "success": "Certificate issued successfully ({{bytes}} bytes)."
+    },
     "pgpKeysCreate": {
         "title": "Create an OpenPGP Key",
         "intro": "Create a new OpenPGP transferable secret key (v4). The key is generated unprotected inside the KMS.",

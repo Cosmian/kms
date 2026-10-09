@@ -2,6 +2,7 @@ pub mod config;
 pub mod error;
 pub mod service;
 
+// tonic::Status (176 bytes) is the error type of every generated gRPC method.
 #[allow(
     unreachable_pub,
     clippy::derive_partial_eq_without_eq,
@@ -10,7 +11,8 @@ pub mod service;
     clippy::default_trait_access,
     clippy::as_conversions,
     clippy::use_self,
-    clippy::doc_markdown
+    clippy::doc_markdown,
+    clippy::result_large_err
 )]
 pub mod v1alpha1 {
     include!("provider.rs");

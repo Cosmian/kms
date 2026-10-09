@@ -1,14 +1,11 @@
 use chrono::{DateTime, TimeZone};
-#[allow(
-    clippy::disallowed_types,
-    reason = "differential-privacy noise is not secret material or a key/nonce/token"
-)]
-use rand::{Rng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use rand_distr::{
     Distribution, Normal, StandardNormal, StandardUniform, Uniform, num_traits::Float,
 };
 
 use super::{AnoError, datetime_to_rfc3339};
+use crate::crypto::KmsRng;
 
 pub enum NoiseMethod<F>
 where
@@ -95,16 +92,21 @@ where
     }
 }
 
+/// Noise is not secret, but its generator is still seeded from `KmsRng`: no other entropy source is allowed.
+fn kms_seeded_rng() -> Result<StdRng, AnoError> {
+    let mut seed = [0_u8; 32];
+    KmsRng::new().fill_bytes(&mut seed).map_err(|e| {
+        AnoError::AnonymizationError(format!("noise generator seeding failed: {e}"))
+    })?;
+    Ok(StdRng::from_seed(seed))
+}
+
 pub struct NoiseGenerator<F>
 where
     F: Float + rand_distr::uniform::SampleUniform,
     rand_distr::StandardNormal: rand_distr::Distribution<F>,
 {
     method: NoiseMethod<F>,
-    #[allow(
-        clippy::disallowed_types,
-        reason = "differential-privacy noise is not secret material or a key/nonce/token"
-    )]
     rng: StdRng,
 }
 
@@ -150,7 +152,7 @@ where
         }?;
         Ok(Self {
             method,
-            rng: rand::make_rng(),
+            rng: kms_seeded_rng()?,
         })
     }
 
@@ -206,7 +208,7 @@ where
         }?;
         Ok(Self {
             method,
-            rng: rand::make_rng(),
+            rng: kms_seeded_rng()?,
         })
     }
 

@@ -1,7 +1,7 @@
 //! These functions use OpenSSL to simulate some cloud provider HSM operations
 //! for testing purposes. Using OpenSSL avoids using vendor-specific SDKs in tests
 //! and keeps the tests independent from KMS key generation/export actions.
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
+use cosmian_kms_crypto::crypto::KmsRng;
 use openssl::{
     cipher::{Cipher, CipherRef},
     cipher_ctx::CipherCtx,
@@ -10,14 +10,14 @@ use openssl::{
     pkey::{PKey, Private, Public},
     rsa::{Padding, Rsa},
 };
-use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
+use sha2::digest::crypto_common::rand_core::RngCore;
 
 use crate::error::{KmsCliError, result::KmsCliResult};
 
 /// Generate RSA keypair using OpenSSL (random size from 2048, 3072, or 4096 bits).
 pub(crate) fn generate_rsa_keypair() -> KmsCliResult<(PKey<Private>, PKey<Public>)> {
     let key_sizes = [2048, 3072, 4096];
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
 
     let rsa = Rsa::generate(bits)

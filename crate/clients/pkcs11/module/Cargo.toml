@@ -34,7 +34,6 @@ p256 = { workspace = true, features = [
 ] }
 pkcs1 = { workspace = true }
 pkcs11-sys = { workspace = true }
-rand = { workspace = true }
 strum_macros = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

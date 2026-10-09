@@ -1,7 +1,7 @@
 mod activate;
 mod attributes;
 mod auto_rotate;
-mod certify;
+pub(crate) mod certify;
 mod check;
 mod create;
 mod create_key_pair;

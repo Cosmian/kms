@@ -6,7 +6,9 @@ pub(crate) use audit::{
 
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
-pub(crate) use tls_auth::{client_cert_username, extract_peer_certificate, tls_auth_fn};
+pub(crate) use tls_auth::{
+    PeerCertificate, client_cert_username, extract_peer_certificate, tls_auth_fn,
+};
 
 mod api_token;
 pub(crate) use api_token::api_token_middleware;

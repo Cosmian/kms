@@ -1,5 +1,5 @@
 //! the code in this file is only for reproducing test data, it should not be included in production builds and neither on running tests
-#![allow(clippy::all, unused)]
+#![allow(unused)]
 use redis::aio::ConnectionManager;
 use redis::{Commands, RedisResult};
 use std::collections::HashMap;
