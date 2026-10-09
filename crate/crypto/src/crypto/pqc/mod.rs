@@ -179,7 +179,7 @@ fn pqc_keygen_seeded(
                         return_size: 0,
                     },
                 ];
-                if EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()) > 0 && indicator == 0 {
+                if EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()) <= 0 || indicator != 1 {
                     openssl_sys::EVP_PKEY_free(raw_pkey);
                     return Err(CryptoError::Default(format!(
                         "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
