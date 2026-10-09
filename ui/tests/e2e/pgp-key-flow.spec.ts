@@ -32,11 +32,14 @@ test.describe("OpenPGP key", () => {
     });
 
     test("create RSA-3072 key", async ({ page }) => {
+        // Generating 3072-bit RSA OpenPGP primary + encryption subkey in unoptimized debug builds
+        // under heavy CI runner contention can take > 60s.
+        test.setTimeout(180_000);
         await gotoAndWait(page, "/ui/pgp/keys/create");
         await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
         await selectOptionById(page, "#algorithm", "RSA");
         await page.fill("#keySize", "3072");
-        const text = await submitAndWaitForResponse(page);
+        const text = await submitAndWaitForResponse(page, 150_000);
         expect(text).toMatch(/has been created/i);
     });
 

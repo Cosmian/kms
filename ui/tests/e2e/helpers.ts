@@ -77,10 +77,10 @@ async function gotoUntilVisible(page: Page, path: string, ready: Locator, attemp
  *
  * Returns the text content of the response panel.
  */
-export async function submitAndWaitForResponse(page: Page): Promise<string> {
+export async function submitAndWaitForResponse(page: Page, timeoutMs: number = UI_RESPONSE_TIMEOUT): Promise<string> {
     await page.click('[data-testid="submit-btn"]');
     const responseEl = page.locator('[data-testid="response-output"]');
-    await responseEl.waitFor({ state: "visible", timeout: UI_RESPONSE_TIMEOUT });
+    await responseEl.waitFor({ state: "visible", timeout: timeoutMs });
     return (await responseEl.textContent()) ?? "";
 }
 
@@ -89,13 +89,13 @@ export async function submitAndWaitForResponse(page: Page): Promise<string> {
  * download that operations such as Export / Encrypt trigger via a synthetic
  * `<a download>` click.
  */
-export async function submitAndWaitForDownload(page: Page): Promise<{ text: string; download: Download }> {
-    const [download] = await Promise.all([
-        page.waitForEvent("download", { timeout: UI_RESPONSE_TIMEOUT }),
-        page.click('[data-testid="submit-btn"]'),
-    ]);
+export async function submitAndWaitForDownload(
+    page: Page,
+    timeoutMs: number = UI_RESPONSE_TIMEOUT,
+): Promise<{ text: string; download: Download }> {
+    const [download] = await Promise.all([page.waitForEvent("download", { timeout: timeoutMs }), page.click('[data-testid="submit-btn"]')]);
     const responseEl = page.locator('[data-testid="response-output"]');
-    await responseEl.waitFor({ state: "visible", timeout: UI_RESPONSE_TIMEOUT });
+    await responseEl.waitFor({ state: "visible", timeout: timeoutMs });
     const text = (await responseEl.textContent()) ?? "";
     return { text, download };
 }
