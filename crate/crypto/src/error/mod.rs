@@ -50,6 +50,10 @@ pub enum CryptoError {
     #[cfg(feature = "non-fips")]
     #[error(transparent)]
     Covercrypt(#[from] cosmian_cover_crypt::Error),
+
+    #[cfg(feature = "non-fips")]
+    #[error(transparent)]
+    OpenPgpFormat(#[from] cosmian_kms_client_utils::openpgp_format::OpenPgpFormatError),
 }
 
 impl From<Vec<u8>> for CryptoError {

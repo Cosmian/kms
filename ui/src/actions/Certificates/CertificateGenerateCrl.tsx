@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 
 interface GenerateCrlFormData {
     issuerCertificateId: string;

@@ -3,7 +3,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{CertificateType, CryptographicUsageMask},
     kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_objects::{Certificate, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+        kmip_objects::{Certificate, ObjectType, PGPKey, PrivateKey, PublicKey, SymmetricKey},
         kmip_types::{CryptographicAlgorithm, LinkType, LinkedObjectIdentifier},
     },
     time_normalize,
@@ -27,6 +27,7 @@ pub enum ImportKeyFormat {
     Pkcs8Pub,
     Aes,
     Chacha20,
+    Pgp,
 }
 
 #[derive(Deserialize, Debug, Clone, EnumIter, PartialEq, Eq, EnumString, ValueEnum)]
@@ -139,6 +140,26 @@ fn build_public_key_from_der_bytes(
             // Also it should not be specified if the cryptographic length is not specified.
             cryptographic_algorithm: None,
             // See comment above
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    })
+}
+
+/// Wrap raw `OpenPGP` key bytes (armored or binary, secret or public) into a `PGPKey`
+/// managed object. The server normalizes and classifies the material during Import,
+/// so the client only has to produce a well-formed envelope.
+const fn build_pgp_key_from_bytes(bytes: Zeroizing<Vec<u8>>) -> Object {
+    Object::PGPKey(PGPKey {
+        pgp_key_version: 4,
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::OpenPgpSecretKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(bytes),
+                attributes: None,
+            }),
+            cryptographic_algorithm: None,
             cryptographic_length: None,
             key_wrapping_data: None,
         },
@@ -357,6 +378,7 @@ pub fn prepare_key_import_elements(
         ImportKeyFormat::Chacha20 => {
             build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
         }
+        ImportKeyFormat::Pgp => build_pgp_key_from_bytes(bytes),
     };
 
     // Generate the import attributes if links are specified.

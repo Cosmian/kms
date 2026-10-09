@@ -7,6 +7,7 @@ import { useAuth } from "../../contexts/useAuth";
 import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
+import type { LayoutOutletContext } from "./NonFipsRoute";
 import LanguageSwitcher from "../common/LanguageSwitcher";
 import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "../../utils/utils";
 
@@ -32,6 +33,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     const normalizedServerHealth = (serverHealth ?? "").trim().toUpperCase();
     const isServerHealthy = normalizedServerHealth === "UP";
+    // Fail closed: until the server reports it is NOT in FIPS mode (or if /server-info is
+    // unavailable), hide and block the features that do not exist in a FIPS build.
+    const isFips = serverInfo?.fips_mode ?? true;
 
     const serverHealthLabel =
         serverHealthLatencyMs === null
@@ -42,13 +46,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const fetchServerInfo = useCallback(async () => {
         if (authMethod != "JWT" || userId) {
             try {
+                // Fetch /server-info first: it decides which features are available (FIPS mode),
+                // so it must not depend on /version or /health succeeding.
+                const info = await getNoTTLVRequest("/server-info", serverUrl);
+                setServerInfo(info as ServerInfo);
                 const version = await getNoTTLVRequest("/version", serverUrl);
                 setServerVersion(version);
                 const health = await getNoTTLVRequestWithTimeout("/health", serverUrl, 2_000);
                 setServerHealth(health?.status ?? t("main.unavailable"));
                 setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
-                const info = await getNoTTLVRequest("/server-info", serverUrl);
-                setServerInfo(info as ServerInfo);
                 // Fetch the authenticated username via /me (runs through auth middleware).
                 // This correctly returns the cert CN for CERT auth.
                 try {
@@ -163,7 +169,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             </Layout.Header>
 
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
-                <Sidebar isFips={serverInfo?.fips_mode ?? false} isDarkMode={isDarkMode} />
+                <Sidebar isFips={isFips} isDarkMode={isDarkMode} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {authMethod === "None" && (
@@ -194,7 +200,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 }
                             />
                         )}
-                        {loading ? <Spin size="large" /> : <Outlet />}
+                        {loading ? <Spin size="large" /> : <Outlet context={{ isFips } satisfies LayoutOutletContext} />}
                     </Layout.Content>
                     <Footer
                         version={(() => {

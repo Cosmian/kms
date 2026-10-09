@@ -62,7 +62,7 @@ nav:
           - Revoke: kmip_support/_revoke.md
           - Sign: kmip_support/_signature.md
   - Integrations:
-      - API overview:
+      - API Overview & Security:
           - API Endpoints: integrations/api.md
           - OpenAPI Specification and Swagger UI: integrations/openapi.md
       - PKCS#11 provider module: integrations/pkcs11_provider.md
@@ -123,6 +123,9 @@ nav:
           - PKCS#11 provider module: integrations/pkcs11_provider.md
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
+          - GnuPG:
+              - OpenPGP keys: integrations/gnupg/openpgp.md
+              - Smartcard (gnupg-pkcs11-scd): integrations/gnupg/smartcard.md
           - PyKMIP: integrations/pykmip.md
           - KMIP compliance tests (ovh/kmip-go): integrations/kmip_go.md
           - S/MIME Email encryption: integrations/smime.md

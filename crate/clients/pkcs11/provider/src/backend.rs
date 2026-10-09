@@ -41,6 +41,7 @@ use crate::{
 
 pub(crate) const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
+pub(crate) const COSMIAN_PKCS11_GNUPG_KEY_TAG: &str = "gnupg-card";
 
 /// Extract the `Id` from a `SearchOptions`, returning an error if `All` was passed.
 /// Centralises the "find requires an ID" check shared by four `Backend` methods.
@@ -281,15 +282,24 @@ impl Backend for CliBackend {
         trace!("find_all_certificates");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
-        let kms_objects = get_kms_certificate_objects(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &[disk_encryption_tag, SYSTEM_TAG_CERTIFICATE.to_owned()],
-        )?;
-        let mut result = Vec::with_capacity(kms_objects.len());
-        for dao in kms_objects {
-            let data_object: Arc<dyn Certificate> = Arc::new(Pkcs11Certificate::try_from(dao)?);
-            result.push(data_object);
+        let gnupg_key_tag = std::env::var("COSMIAN_PKCS11_GNUPG_KEY_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned());
+
+        let mut seen = std::collections::HashSet::new();
+        let mut result = vec![];
+        for tag in [disk_encryption_tag, gnupg_key_tag] {
+            let kms_objects = get_kms_certificate_objects(
+                &self.kms_rest_client,
+                &self.vendor_id,
+                &[tag, SYSTEM_TAG_CERTIFICATE.to_owned()],
+            )?;
+            for dao in kms_objects {
+                if seen.insert(dao.remote_id.clone()) {
+                    let certificate: Arc<dyn Certificate> =
+                        Arc::new(Pkcs11Certificate::try_from(dao)?);
+                    result.push(certificate);
+                }
+            }
         }
         Ok(result)
     }
@@ -337,6 +347,22 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in ssh_ids {
+            if seen.insert(id.clone()) {
+                if let Some(private_key) = self.create_private_key_from_id(&id) {
+                    private_keys.push(private_key);
+                }
+            }
+        }
+
+        let gnupg_key_tag = std::env::var("COSMIAN_PKCS11_GNUPG_KEY_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned());
+        let gnupg_ids = locate_kms_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &[gnupg_key_tag, SYSTEM_TAG_PRIVATE_KEY.to_owned()],
+        )
+        .unwrap_or_default();
+        for id in gnupg_ids {
             if seen.insert(id.clone()) {
                 if let Some(private_key) = self.create_private_key_from_id(&id) {
                     private_keys.push(private_key);

@@ -24,7 +24,7 @@ response header.
 
 ## Implementation
 
-To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
+Encryption is supported for symmetric keys, public keys, certificates, and OpenPGP keys (`PGPKey`, non-FIPS mode). To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 ## Example - AES GCM encryption
 

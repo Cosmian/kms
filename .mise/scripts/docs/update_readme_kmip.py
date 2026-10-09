@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -328,6 +329,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
         return get_fallback_version_data(version)
 
 
+@lru_cache(maxsize=None)
 def parse_kmip_spec(version: str) -> Dict[str, Set[str]]:
     """Parse KMIP specification HTML file for a specific version."""
     return parse_kmip_spec_with_bs4(version)
@@ -1344,7 +1346,7 @@ The following table shows managed object support across all KMIP versions.
         'Template': False,  # Deprecated
         'Secret Data': True,
         'Opaque Data': True,
-        'PGP Key': False,
+        'PGP Key': True,
     }
 
     # Build version support matrix for managed objects
@@ -1391,7 +1393,7 @@ The following table shows managed object support across all KMIP versions.
         md += row + '\n'
 
     md += """\nNotes:\n\n- Opaque Object import support is present (see `import.rs`).
-- PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
+- PGP Key objects are supported (Create, Import, Export, Encrypt, Decrypt, Sign, SignatureVerify) in non-FIPS mode.
 - Template objects are deprecated in newer KMIP versions.
 
 ### Base Objects

@@ -17,8 +17,7 @@ use crate::{actions::console, error::result::KmsCliResult};
 ///
 /// When no unique ID is specified, a unique ID is generated.
 ///
-/// By default, the format is expected to be JSON TTLV but
-/// other formats can be specified with the `-f` option.
+/// By default, the format is expected to be JSON TTLV but other formats can be specified with the `-f` option.
 ///   * json-ttlv (the default)
 ///   * pem (PKCS#1, PKCS#8, SEC1): the function will attempt to detect the type of key and key format
 ///   * sec1: an elliptic curve private key in SEC1 DER format (NIST curves only - SECG SEC1-v2 #C.4)
@@ -27,6 +26,7 @@ use crate::{actions::console, error::result::KmsCliResult};
 ///   * pkcs8: an RSA or Elliptic Curve private key in PKCS#8 DER format (RFC 5208 and 5958)
 ///   * aes: the bytes of an AES symmetric key
 ///   * chacha20: the bytes of a `ChaCha20` symmetric key
+///   * pgp: a `GnuPG`/`OpenPGP` transferable public key or unprotected secret key in ASCII armor or binary form
 ///
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Default, Debug)]
@@ -41,7 +41,8 @@ pub struct ImportSecretDataOrKeyAction {
     #[clap(required = false)]
     pub(crate) key_id: Option<String>,
 
-    /// The format of the key.
+    /// The input format. `pgp` accepts `GnuPG` transferable public or secret keys in
+    /// binary or ASCII-armored form.
     #[clap(long, short = 'f', default_value = "json-ttlv")]
     pub(crate) key_format: ImportKeyFormat,
 

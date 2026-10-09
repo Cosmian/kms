@@ -721,7 +721,7 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
             return None;
         }
         // SAFETY: octet is a valid ASN1_OCTET_STRING.
-        let octet = octet.cast_const().cast::<openssl_sys::ASN1_STRING>();
+        let octet = octet.cast::<openssl_sys::ASN1_STRING>();
         let Ok(len) = usize::try_from(unsafe { ASN1_STRING_length(octet) }) else {
             return None;
         };

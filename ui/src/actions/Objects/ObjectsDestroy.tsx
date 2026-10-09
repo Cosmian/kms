@@ -43,14 +43,19 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
         symmetric: t("objectsDestroy.typeSymmetric"),
         fpe: t("objectsDestroy.typeFpe"),
         pqc: t("objectsDestroy.typePqc"),
+        pgp: "PGPKey",
         certificate: t("objectsDestroy.typeCertificate"),
         "secret-data": t("objectsDestroy.typeSecretData"),
         "opaque-object": t("objectsDestroy.typeOpaqueObject"),
     };
     const typeString = typeMap[objectType] ?? t("objectsDestroy.typeGeneric");
     const isKeyLike =
-        objectType === "rsa" || objectType === "ec" || objectType === "covercrypt" || objectType === "symmetric" || objectType === "fpe";
-
+        objectType === "rsa" ||
+        objectType === "ec" ||
+        objectType === "covercrypt" ||
+        objectType === "symmetric" ||
+        objectType === "fpe" ||
+        objectType === "pgp";
     const onFinish = async (values: DestroyFormData) => {
         const id = values.objectId ? values.objectId : values.tags ? JSON.stringify(values.tags) : undefined;
         await execute(async () => {

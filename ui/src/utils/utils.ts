@@ -307,7 +307,17 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType =
+    | "rsa"
+    | "ec"
+    | "symmetric"
+    | "fpe"
+    | "covercrypt"
+    | "pqc"
+    | "pgp"
+    | "certificate"
+    | "secret-data"
+    | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
@@ -317,6 +327,7 @@ export const getObjectLabel = (type: ObjectType): string => {
         case "fpe":
         case "covercrypt":
         case "pqc":
+        case "pgp":
             return "key";
         case "certificate":
             return "certificate";
