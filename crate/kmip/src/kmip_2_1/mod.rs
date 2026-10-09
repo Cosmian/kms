@@ -3,6 +3,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 use strum::{EnumCount, FromRepr};
 
+pub mod attribute_policy;
 pub mod extra;
 pub mod kmip_attributes;
 pub mod kmip_data_structures;

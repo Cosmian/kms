@@ -9,6 +9,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::trace;
 
+use super::policy::{
+    check_attribute_grant, check_attribute_read_only, check_tag_grant, check_tag_read_only,
+};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -45,33 +48,8 @@ pub(crate) async fn delete_attribute(
 
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
-        match &attribute {
-            Attribute::UniqueIdentifier(_)
-            | Attribute::ObjectType(_)
-            | Attribute::CryptographicLength(_)
-            | Attribute::CertificateLength(_)
-            | Attribute::Digest(_)
-            | Attribute::State(_)
-            | Attribute::InitialDate(_)
-            | Attribute::Fresh(_)
-            | Attribute::LastChangeDate(_)
-            | Attribute::OriginalCreationDate(_)
-            | Attribute::AlwaysSensitive(_)
-            | Attribute::Sensitive(_)
-            | Attribute::NeverExtractable(_)
-            | Attribute::Extractable(_)
-            | Attribute::RotateAutomatic(_)
-            | Attribute::RotateGeneration(_)
-            | Attribute::RotateDate(_)
-            | Attribute::RotateLatest(_) => {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: this attribute is server-managed and cannot be deleted by the user"
-                        .to_owned(),
-                ));
-            }
-            _ => {}
-        }
+        check_attribute_read_only(&attribute, KmipOperation::DeleteAttribute)?;
+        check_attribute_grant(kms, &owm, user, KmipOperation::DeleteAttribute, &attribute).await?;
         match_delete_attribute! {
             attribute, attributes,
             simple {
@@ -177,51 +155,9 @@ pub(crate) async fn delete_attribute(
         for attribute_reference in attribute_references {
             match attribute_reference {
                 AttributeReference::Standard(tag) => {
-                    // Read-only guard — every tag below is marked
-                    // "Deletable by client: No" in its KMIP Attribute Rules table.
-                    if matches!(
-                        tag,
-                        // KMIP 1.4 §3.1  — Unique Identifier
-                        Tag::UniqueIdentifier
-                        // KMIP 1.4 §3.3  — Object Type
-                            | Tag::ObjectType
-                        // KMIP 1.4 §3.5  — Cryptographic Length
-                            | Tag::CryptographicLength
-                        // KMIP 1.4 §3.9  — Certificate Length
-                            | Tag::CertificateLength
-                        // KMIP 1.4 §3.17 — Digest
-                            | Tag::Digest
-                        // KMIP 1.4 §3.22 — State
-                            | Tag::State
-                        // KMIP 1.4 §3.23 — Initial Date
-                            | Tag::InitialDate
-                        // KMIP 1.4 §3.34 — Fresh
-                            | Tag::Fresh
-                        // KMIP 1.4 §3.38 — Last Change Date
-                            | Tag::LastChangeDate
-                        // KMIP 1.4 §3.43 — Original Creation Date
-                            | Tag::OriginalCreationDate
-                        // KMIP 1.4 §3.49 — Always Sensitive
-                            | Tag::AlwaysSensitive
-                        // KMIP 1.4 §3.48 — Sensitive
-                            | Tag::Sensitive
-                        // KMIP 1.4 §3.51 — Never Extractable
-                            | Tag::NeverExtractable
-                        // KMIP 1.4 §3.50 — Extractable
-                            | Tag::Extractable
-                        // Cosmian keyset rotation metadata is server-managed.
-                            | Tag::RotateAutomatic
-                            | Tag::RotateGeneration
-                            | Tag::RotateDate
-                            | Tag::RotateLatest
-                    ) {
-                        return Err(KmsError::Kmip21Error(
-                            ErrorReason::Attribute_Read_Only,
-                            "DENIED: this attribute is server-managed and cannot be deleted by \
-                             the user"
-                                .to_owned(),
-                        ));
-                    }
+                    // Read-only guard — server-managed tags cannot be deleted by the user.
+                    check_tag_read_only(tag, KmipOperation::DeleteAttribute)?;
+                    check_tag_grant(kms, &owm, user, KmipOperation::DeleteAttribute, tag).await?;
                     match_delete_attribute_by_tag! {
                         tag, attributes,
                         simple {

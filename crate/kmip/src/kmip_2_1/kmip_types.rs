@@ -1040,6 +1040,7 @@ pub enum Tag {
     AsynchronousCorrelationValue = 0x42_0006,
     AsynchronousIndicator = 0x42_0007,
     Attribute = 0x42_0008,
+    AttributeIndex = 0x42_0009,
     AttributeName = 0x42_000A,
     AttributeValue = 0x42_000B,
     Authentication = 0x42_000C,
