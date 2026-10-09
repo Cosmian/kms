@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#MISE description="Run PKCS#11-backed client integration tests (luks, openssh, pykmip, veracrypt)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+print_header "Running PKCS#11-backed client integration tests (${VARIANT_NAME})"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+
+PASSED=()
+FAILED=()
+SKIPPED=()
+
+# Runs $name ($@ as the command). Never aborts the aggregator on failure.
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: $name"
+  if "$@"; then
+    print_success "$name passed"
+    PASSED+=("$name")
+  else
+    print_warning "$name FAILED (continuing...)"
+    FAILED+=("$name")
+  fi
+}
+
+# Records a skip with its reason instead of running the step.
+skip_step() {
+  local name="$1" reason="$2"
+  print_warning "Skipping $name — ${reason}"
+  SKIPPED+=("$name (${reason})")
+}
+
+# Runs $name via run_step, or skip_step if $reason is non-empty.
+gate_run() {
+  local name="$1" reason="$2"
+  shift 2
+  if [ -n "$reason" ]; then
+    skip_step "$name" "$reason"
+  else
+    run_step "$name" "$@"
+  fi
+}
+
+reason_non_fips_only() {
+  [ "${VARIANT}" = "non-fips" ] || echo "requires --variant non-fips"
+}
+
+# All members are non-FIPS-only today (PKCS#11 EdDSA / full algorithm set, P12 TLS);
+# on --variant fips every step is skipped and the group exits 0.
+gate_run "luks" "$(reason_non_fips_only)" \
+  bash "${TASK_DIR}/luks" --variant "${VARIANT}" --link "${LINK}"
+gate_run "openssh" "$(reason_non_fips_only)" \
+  bash "${TASK_DIR}/openssh" --variant "${VARIANT}" --link "${LINK}"
+gate_run "veracrypt" "$(reason_non_fips_only)" \
+  bash "${TASK_DIR}/veracrypt" --variant "${VARIANT}" --link "${LINK}"
+gate_run "pykmip" "$(reason_non_fips_only)" \
+  bash "${TASK_DIR}/pykmip" --variant "${VARIANT}" --link "${LINK}"
+
+echo ''
+echo '============================================'
+print_success "Passed:  ${#PASSED[@]}"
+if [ ${#SKIPPED[@]} -gt 0 ]; then
+  print_warning "Skipped: ${#SKIPPED[@]}"
+  for s in "${SKIPPED[@]}"; do
+    echo "  - $s"
+  done
+fi
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo "  FAILED steps: ${FAILED[*]}" >&2
+  echo '============================================' >&2
+  exit 1
+fi
+echo '============================================'
+
+print_success "PKCS#11-backed client integration tests completed"
