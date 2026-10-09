@@ -14,6 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, trace};
 
+use super::policy::{check_attribute_grant, check_attribute_read_only};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -44,54 +45,14 @@ pub(crate) async fn modify_attribute(
     let object_handle = from_request(request.unique_identifier.as_ref(), "ModifyAttribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
-    //
-    // Every attribute below is marked "Modifiable by client: No" in its KMIP
-    // Attribute Rules table. Letting a client modify them would allow rewriting
-    // server-managed provenance — for example back-dating `Initial Date` to
-    // defeat an audit trail, or lowering `Cryptographic Length` so the metadata
-    // understates the real key strength.
-    match &request.new_attribute {
-        // KMIP 1.4 §3.1  / KMIP 2.1 §4.61 — Unique Identifier
-        Attribute::UniqueIdentifier(_)
-        // KMIP 1.4 §3.3  / KMIP 2.1 §4.36 — Object Type
-        | Attribute::ObjectType(_)
-        // KMIP 1.4 §3.5  / KMIP 2.1 §4.16 — Cryptographic Length
-        | Attribute::CryptographicLength(_)
-        // KMIP 1.4 §3.9  — Certificate Length
-        | Attribute::CertificateLength(_)
-        // KMIP 1.4 §3.17 / KMIP 2.1 §4.20 — Digest
-        | Attribute::Digest(_)
-        // KMIP 1.4 §3.22 / KMIP 2.1 §4.60 — State
-        | Attribute::State(_)
-        // KMIP 1.4 §3.23 / KMIP 2.1 §4.27 — Initial Date
-        | Attribute::InitialDate(_)
-        // KMIP 1.4 §3.34 / KMIP 2.1 §4.24 — Fresh
-        | Attribute::Fresh(_)
-        // KMIP 1.4 §3.38 / KMIP 2.1 §4.30 — Last Change Date
-        | Attribute::LastChangeDate(_)
-        // KMIP 1.4 §3.43 / KMIP 2.1 §4.38 — Original Creation Date
-        | Attribute::OriginalCreationDate(_)
-        // KMIP 1.4 §3.49 / KMIP 2.1 §4.3  — Always Sensitive
-        | Attribute::AlwaysSensitive(_)
-        // KMIP 1.4 §3.51 / KMIP 2.1 §4.33 — Never Extractable
-        | Attribute::NeverExtractable(_)
-        // Cosmian keyset rotation metadata is server-managed.
-        | Attribute::RotateGeneration(_)
-        | Attribute::RotateDate(_)
-        | Attribute::RotateLatest(_) => {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Attribute_Read_Only,
-                "DENIED: this attribute is server-managed and cannot be modified by the user"
-                    .to_owned(),
-            ));
-        }
-        Attribute::RotateName(name) if name.contains('@') => {
+    check_attribute_read_only(&request.new_attribute, KmipOperation::ModifyAttribute)?;
+    if let Attribute::RotateName(name) = &request.new_attribute {
+        if name.contains('@') {
             return Err(KmsError::InvalidRequest(
                 "ModifyAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
                     .to_owned(),
             ));
         }
-        _ => {}
     }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
@@ -121,6 +82,15 @@ pub(crate) async fn modify_attribute(
     }
 
     let mut attributes = owm.attributes_mut().clone();
+
+    check_attribute_grant(
+        kms,
+        &owm,
+        user,
+        KmipOperation::ModifyAttribute,
+        &request.new_attribute,
+    )
+    .await?;
 
     match_set_attribute! {
         "ModifyAttribute", request.new_attribute, attributes,
@@ -194,32 +164,12 @@ pub(crate) async fn modify_attribute(
                 ));
             }
             Attribute::Sensitive(sensitive) => {
-                if !kms
-                    .user_can_perform_operation(&owm, user, &KmipOperation::ModifyAttribute)
-                    .await?
-                {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED: modifying Sensitive attribute requires ownership or explicit ModifyAttribute grant"
-                            .to_owned(),
-                    ));
-                }
                 // Setting Sensitive also (re)computes the server-managed
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
                 trace!("ModifyAttribute: Sensitive: {:?}", sensitive);
                 attributes.apply_sensitive(sensitive);
             }
             Attribute::Extractable(extractable) => {
-                if !kms
-                    .user_can_perform_operation(&owm, user, &KmipOperation::ModifyAttribute)
-                    .await?
-                {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED: modifying Extractable attribute requires ownership or explicit ModifyAttribute grant"
-                            .to_owned(),
-                    ));
-                }
                 // Setting Extractable also (re)computes the server-managed
                 // NeverExtractable attribute (KMIP 2.1 §4.33).
                 trace!("ModifyAttribute: Extractable: {:?}", extractable);
