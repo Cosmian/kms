@@ -27,6 +27,7 @@
 
 ### KMIP
 - Support revoking and destroying OpenPGP keys through KMIP lifecycle operations.
+- Generate OpenPGP keys on the blocking thread pool so a slow RSA generation no longer stalls the HTTP worker and makes concurrent requests fail with `408 Request Timeout`.
 
 ### PKCS#11
 - Sign `CKM_RSA_PKCS` input that is a DER `DigestInfo` (SHA-1/256/384/512) as a pre-computed digest instead of hashing it a second time, producing standard RSASSA-PKCS1-v1_5 signatures for callers such as `gnupg-pkcs11-scd` and OpenSSH.

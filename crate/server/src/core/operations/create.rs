@@ -27,7 +27,19 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
         ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
         ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
-        ObjectType::PGPKey => pgp_ops::create_pgp_key_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::PGPKey => {
+            // OpenPGP key generation is CPU-bound (pure-Rust RSA takes tens of seconds in
+            // unoptimized builds). Run it on the blocking pool: on the HTTP worker thread it
+            // would stall every other connection served by that worker until their request
+            // head times out with `408 Request Timeout`.
+            let vendor_id = kms.vendor_id().to_owned();
+            let create_request = request.clone();
+            tokio::task::spawn_blocking(move || {
+                pgp_ops::create_pgp_key_and_tags(&vendor_id, &create_request)
+            })
+            .await
+            .map_err(|e| KmsError::Default(format!("OpenPGP key generation task failed: {e}")))??
+        }
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",
