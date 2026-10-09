@@ -7,6 +7,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
+use foreign_types::ForeignType;
 
 use super::{
     create_pqc_key_pair, hybrid_kem_algorithm_name, load_raw_private_key, load_raw_public_key,

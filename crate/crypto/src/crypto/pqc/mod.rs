@@ -3,10 +3,7 @@ pub mod ml_dsa;
 pub mod ml_kem;
 pub mod slh_dsa;
 
-use std::{
-    ffi::{CString, c_char},
-    ptr,
-};
+use std::{ffi::CString, ptr};
 
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -21,263 +18,61 @@ use cosmian_kmip::{
         },
     },
 };
+use foreign_types::ForeignType;
+use openssl::pkey::{PKey, Private, Public};
 use zeroize::Zeroizing;
 
 use crate::{crypto::KeyPair, error::CryptoError};
 
-/// RAII guard for an owned `EVP_PKEY` pointer — calls `EVP_PKEY_free` on drop.
-///
-/// `PKey<T>` from the `openssl` crate offers the same guarantee, but constructing
-/// it from a raw pointer requires importing the `ForeignType` trait from
-/// `foreign_types_shared` which is not a direct workspace dependency. This thin
-/// wrapper achieves the same RAII semantics without the extra dependency.
-pub(crate) struct PKeyGuard(pub(crate) *mut openssl_sys::EVP_PKEY);
-
-/// RAII guard for an owned `BIO` pointer — calls `BIO_free_all` on drop.
-///
-/// Ensures the BIO memory is freed even if the code reading its contents
-/// panics (e.g. an OOM abort in `to_vec()`), eliminating a resource leak
-/// in `evp_pkey_to_pkcs8_der` / `evp_pkey_to_spki_der`.
-struct BioGuard(*mut openssl_sys::BIO);
-
-impl Drop for BioGuard {
-    #[expect(unsafe_code)]
-    fn drop(&mut self) {
-        // SAFETY: pointer was checked for null before wrapping; BIO_free_all
-        // accepts null as a documented no-op, so double-drop is also safe.
-        unsafe { openssl_sys::BIO_free_all(self.0) }
-    }
-}
-
-impl PKeyGuard {
-    pub(crate) const fn as_ptr(&self) -> *mut openssl_sys::EVP_PKEY {
-        self.0
-    }
-}
-
-impl Drop for PKeyGuard {
-    #[expect(unsafe_code)]
-    fn drop(&mut self) {
-        unsafe {
-            openssl_sys::EVP_PKEY_free(self.0);
-        }
-    }
-}
-
 /// Result of [`pqc_keygen`]: (private PKCS#8 DER, public SPKI DER, key bits).
 type PqcKeygenResult = (Zeroizing<Vec<u8>>, Vec<u8>, u32);
 
-/// Serialize an `EVP_PKEY` to PKCS#8 DER (private key).
+/// Generate a PQC key with `EVP_PKEY_Q_keygen`, which the `openssl` crate cannot yet wrap.
 #[expect(unsafe_code)]
-fn evp_pkey_to_pkcs8_der(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let bio = openssl_sys::BIO_new(openssl_sys::BIO_s_mem());
-        if bio.is_null() {
-            return Err(CryptoError::Default("BIO_new failed".to_owned()));
-        }
-        // SAFETY: BioGuard frees the BIO on drop — even if to_vec() panics
-        // with OOM later in this function, preventing a resource leak.
-        let _bio_guard = BioGuard(bio);
-
-        if openssl_sys::i2d_PrivateKey_bio(bio, pkey) != 1 {
-            return Err(CryptoError::Default(format!(
-                "i2d_PKCS8PrivateKeyInfo_bio failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut ptr: *mut c_char = ptr::null_mut();
-        let len = openssl_sys::BIO_get_mem_data(bio, ptr::from_mut(&mut ptr));
-        if len <= 0 || ptr.is_null() {
-            return Err(CryptoError::Default("BIO_get_mem_data failed".to_owned()));
-        }
-        // Propagate length overflow as an error rather than silently returning
-        // an empty slice (would only happen on 32-bit targets with >2 GB keys).
-        let len_usize = usize::try_from(len)
-            .map_err(|e| CryptoError::Default(format!("BIO data length overflow: {e}")))?;
-        // Copy the bytes *before* _bio_guard drops — the slice borrows BIO
-        // internal memory, so it must not outlive the BIO.
-        let der = std::slice::from_raw_parts(ptr.cast::<u8>(), len_usize).to_vec();
-        Ok(der)
-        // _bio_guard drops here, freeing the BIO.
-    }
-}
-
-/// Serialize an `EVP_PKEY` to `SubjectPublicKeyInfo` DER (public key).
-#[expect(unsafe_code)]
-fn evp_pkey_to_spki_der(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let bio = openssl_sys::BIO_new(openssl_sys::BIO_s_mem());
-        if bio.is_null() {
-            return Err(CryptoError::Default("BIO_new failed".to_owned()));
-        }
-        // SAFETY: BioGuard frees the BIO on drop — even if to_vec() panics
-        // with OOM later in this function, preventing a resource leak.
-        let _bio_guard = BioGuard(bio);
-
-        if openssl_sys::i2d_PUBKEY_bio(bio, pkey) != 1 {
-            return Err(CryptoError::Default(format!(
-                "i2d_PUBKEY_bio failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut ptr: *mut c_char = ptr::null_mut();
-        let len = openssl_sys::BIO_get_mem_data(bio, ptr::from_mut(&mut ptr));
-        if len <= 0 || ptr.is_null() {
-            return Err(CryptoError::Default("BIO_get_mem_data failed".to_owned()));
-        }
-        // Propagate length overflow as an error rather than silently returning
-        // an empty slice (would only happen on 32-bit targets with >2 GB keys).
-        let len_usize = usize::try_from(len)
-            .map_err(|e| CryptoError::Default(format!("BIO data length overflow: {e}")))?;
-        // Copy the bytes *before* _bio_guard drops — the slice borrows BIO
-        // internal memory, so it must not outlive the BIO.
-        let der = std::slice::from_raw_parts(ptr.cast::<u8>(), len_usize).to_vec();
-        Ok(der)
-        // _bio_guard drops here, freeing the BIO.
-    }
-}
-
-/// Extract the raw private key bytes from an `EVP_PKEY`.
-#[expect(unsafe_code)]
-fn evp_pkey_get_raw_private(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let mut len: usize = 0;
-        if openssl_sys::EVP_PKEY_get_raw_private_key(pkey, ptr::null_mut(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_private_key (size) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut buf = vec![0_u8; len];
-        let expected = len;
-        if openssl_sys::EVP_PKEY_get_raw_private_key(pkey, buf.as_mut_ptr(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_private_key (data) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        if len != expected {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_private_key: size mismatch (expected {expected}, got {len})"
-            )));
-        }
-        Ok(buf)
-    }
-}
-
-/// Extract the raw public key bytes from an `EVP_PKEY`.
-#[expect(unsafe_code)]
-fn evp_pkey_get_raw_public(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let mut len: usize = 0;
-        if openssl_sys::EVP_PKEY_get_raw_public_key(pkey, ptr::null_mut(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_public_key (size) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut buf = vec![0_u8; len];
-        let expected = len;
-        if openssl_sys::EVP_PKEY_get_raw_public_key(pkey, buf.as_mut_ptr(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_public_key (data) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        if len != expected {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_public_key: size mismatch (expected {expected}, got {len})"
-            )));
-        }
-        Ok(buf)
-    }
-}
-
-/// Generate a PQC key pair using OpenSSL `EVP_PKEY_Q_keygen`.
-#[expect(unsafe_code)]
-fn pqc_keygen(algorithm_name: &str) -> Result<PqcKeygenResult, CryptoError> {
+fn q_keygen(algorithm_name: &str) -> Result<PKey<Private>, CryptoError> {
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
 
-    unsafe {
-        let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), ptr::null(), name.as_ptr());
-        if raw.is_null() {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        // Take ownership: freed automatically on drop, even if subsequent calls error.
-        let pkey = PKeyGuard(raw);
-
-        let bits = u32::try_from(openssl_sys::EVP_PKEY_bits(pkey.as_ptr())).map_err(|e| {
-            CryptoError::Default(format!("EVP_PKEY_bits returned negative value: {e}"))
-        })?;
-
-        let private_der = evp_pkey_to_pkcs8_der(pkey.as_ptr())?;
-        let public_der = evp_pkey_to_spki_der(pkey.as_ptr())?;
-
-        Ok((Zeroizing::from(private_der), public_der, bits))
+    // SAFETY: `name` is NUL-terminated and outlives the call; null context/propq select the defaults.
+    let raw =
+        unsafe { openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), ptr::null(), name.as_ptr()) };
+    if raw.is_null() {
+        return Err(CryptoError::Default(format!(
+            "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
+            openssl::error::ErrorStack::get()
+        )));
     }
+    // SAFETY: `raw` is non-null and exclusively owned; `PKey` frees it on drop.
+    Ok(unsafe { PKey::from_ptr(raw) })
+}
+
+/// Generate a PQC key pair using OpenSSL `EVP_PKEY_Q_keygen`.
+fn pqc_keygen(algorithm_name: &str) -> Result<PqcKeygenResult, CryptoError> {
+    let pkey = q_keygen(algorithm_name)?;
+    Ok((
+        Zeroizing::from(pkey.private_key_to_der()?),
+        pkey.public_key_to_der()?,
+        pkey.bits(),
+    ))
 }
 
 /// Generate a PQC key pair and extract raw key bytes (for algorithms that don't
 /// support DER serialization, such as hybrid KEMs).
-#[expect(unsafe_code)]
 fn pqc_keygen_raw(algorithm_name: &str) -> Result<PqcKeygenResult, CryptoError> {
-    let name = CString::new(algorithm_name)
-        .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
-
-    unsafe {
-        let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), ptr::null(), name.as_ptr());
-        if raw.is_null() {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        // Take ownership: freed automatically on drop, even if subsequent calls error.
-        let pkey = PKeyGuard(raw);
-
-        let bits = u32::try_from(openssl_sys::EVP_PKEY_bits(pkey.as_ptr())).map_err(|e| {
-            CryptoError::Default(format!("EVP_PKEY_bits returned negative value: {e}"))
-        })?;
-
-        let private_raw = evp_pkey_get_raw_private(pkey.as_ptr())?;
-        let public_raw = evp_pkey_get_raw_public(pkey.as_ptr())?;
-
-        Ok((Zeroizing::from(private_raw), public_raw, bits))
-    }
+    let pkey = q_keygen(algorithm_name)?;
+    Ok((
+        Zeroizing::from(pkey.raw_private_key()?),
+        pkey.raw_public_key()?,
+        pkey.bits(),
+    ))
 }
 
-// FFI declarations for OpenSSL 3.x _ex raw key loading functions
-// (not available in openssl-sys crate)
-#[expect(unsafe_code)]
-unsafe extern "C" {
-    fn EVP_PKEY_new_raw_public_key_ex(
-        libctx: *mut openssl_sys::OSSL_LIB_CTX,
-        keytype: *const std::ffi::c_char,
-        propq: *const std::ffi::c_char,
-        key: *const u8,
-        keylen: usize,
-    ) -> *mut openssl_sys::EVP_PKEY;
-
-    fn EVP_PKEY_new_raw_private_key_ex(
-        libctx: *mut openssl_sys::OSSL_LIB_CTX,
-        keytype: *const std::ffi::c_char,
-        propq: *const std::ffi::c_char,
-        key: *const u8,
-        keylen: usize,
-    ) -> *mut openssl_sys::EVP_PKEY;
-}
-
-/// Load a raw public key into a `PKeyGuard` using the algorithm name.
-/// The returned guard owns the allocation and frees it on drop.
+/// Load a raw public key using the algorithm name.
 #[expect(unsafe_code)]
 pub(crate) fn load_raw_public_key(
     algorithm_name: &str,
     raw_bytes: &[u8],
-) -> Result<PKeyGuard, CryptoError> {
+) -> Result<PKey<Public>, CryptoError> {
     // Guard: an empty slice has a dangling .as_ptr(); passing it to C is UB.
     if raw_bytes.is_empty() {
         return Err(CryptoError::Default(format!(
@@ -286,8 +81,10 @@ pub(crate) fn load_raw_public_key(
     }
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
+    // SAFETY: `name` and `raw_bytes` outlive the call; null context/propq select the defaults.
+    // `raw` is checked non-null and exclusively owned by the returned `PKey`.
     unsafe {
-        let raw = EVP_PKEY_new_raw_public_key_ex(
+        let raw = openssl_sys::EVP_PKEY_new_raw_public_key_ex(
             ptr::null_mut(),
             name.as_ptr(),
             ptr::null(),
@@ -300,17 +97,16 @@ pub(crate) fn load_raw_public_key(
                 openssl::error::ErrorStack::get()
             )));
         }
-        Ok(PKeyGuard(raw))
+        Ok(PKey::from_ptr(raw))
     }
 }
 
-/// Load a raw private key into a `PKeyGuard` using the algorithm name.
-/// The returned guard owns the allocation and frees it on drop.
+/// Load a raw private key using the algorithm name.
 #[expect(unsafe_code)]
 pub(crate) fn load_raw_private_key(
     algorithm_name: &str,
     raw_bytes: &[u8],
-) -> Result<PKeyGuard, CryptoError> {
+) -> Result<PKey<Private>, CryptoError> {
     // Guard: an empty slice has a dangling .as_ptr(); passing it to C is UB.
     if raw_bytes.is_empty() {
         return Err(CryptoError::Default(format!(
@@ -319,8 +115,10 @@ pub(crate) fn load_raw_private_key(
     }
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
+    // SAFETY: `name` and `raw_bytes` outlive the call; null context/propq select the defaults.
+    // `raw` is checked non-null and exclusively owned by the returned `PKey`.
     unsafe {
-        let raw = EVP_PKEY_new_raw_private_key_ex(
+        let raw = openssl_sys::EVP_PKEY_new_raw_private_key_ex(
             ptr::null_mut(),
             name.as_ptr(),
             ptr::null(),
@@ -333,7 +131,7 @@ pub(crate) fn load_raw_private_key(
                 openssl::error::ErrorStack::get()
             )));
         }
-        Ok(PKeyGuard(raw))
+        Ok(PKey::from_ptr(raw))
     }
 }
 
@@ -341,60 +139,26 @@ pub(crate) fn load_raw_private_key(
 ///
 /// Loads the DER into an `EVP_PKEY` and extracts the raw private key material
 /// via `EVP_PKEY_get_raw_private_key`.
-#[expect(unsafe_code)]
 pub fn pqc_private_key_pkcs8_to_raw(pkcs8_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if pkcs8_der.is_empty() {
         return Err(CryptoError::Default(
             "pqc_private_key_pkcs8_to_raw: empty PKCS#8 DER input".to_owned(),
         ));
     }
-    unsafe {
-        let mut der_ptr = pkcs8_der.as_ptr();
-        let pkey = openssl_sys::d2i_AutoPrivateKey(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            std::os::raw::c_long::try_from(pkcs8_der.len())
-                .map_err(|e| CryptoError::Default(format!("PKCS#8 DER length overflow: {e}")))?,
-        );
-        if pkey.is_null() {
-            return Err(CryptoError::Default(format!(
-                "pqc_private_key_pkcs8_to_raw: d2i_AutoPrivateKey failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let guard = PKeyGuard(pkey);
-        evp_pkey_get_raw_private(guard.as_ptr())
-    }
+    Ok(PKey::private_key_from_der(pkcs8_der)?.raw_private_key()?)
 }
 
 /// Convert a PQC public key from SPKI DER to raw bytes.
 ///
 /// Loads the DER into an `EVP_PKEY` and extracts the raw public key material
 /// via `EVP_PKEY_get_raw_public_key`.
-#[expect(unsafe_code)]
 pub fn pqc_public_key_spki_to_raw(spki_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if spki_der.is_empty() {
         return Err(CryptoError::Default(
             "pqc_public_key_spki_to_raw: empty SPKI DER input".to_owned(),
         ));
     }
-    unsafe {
-        let mut der_ptr = spki_der.as_ptr();
-        let pkey = openssl_sys::d2i_PUBKEY(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            std::os::raw::c_long::try_from(spki_der.len())
-                .map_err(|e| CryptoError::Default(format!("SPKI DER length overflow: {e}")))?,
-        );
-        if pkey.is_null() {
-            return Err(CryptoError::Default(format!(
-                "pqc_public_key_spki_to_raw: d2i_PUBKEY failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let guard = PKeyGuard(pkey);
-        evp_pkey_get_raw_public(guard.as_ptr())
-    }
+    Ok(PKey::public_key_from_der(spki_der)?.raw_public_key()?)
 }
 
 /// Map a `CryptographicAlgorithm` to the OpenSSL algorithm name string.
@@ -553,9 +317,8 @@ mod tests {
 
     // ── BIO RAII / serialization round-trip ─────────────────────────────────
 
-    /// Verify that the key serialization helpers (`evp_pkey_to_pkcs8_der` /
-    /// `evp_pkey_to_spki_der`) work and do not panic or leak when called with a
-    /// freshly generated ML-DSA key (the cheapest DER-capable PQC key).
+    /// Verify that `pqc_keygen` serializes a freshly generated ML-DSA key (the
+    /// cheapest DER-capable PQC key) without panicking.
     #[test]
     fn bio_serialization_roundtrip_does_not_panic() {
         let (priv_der, pub_der, _bits) = pqc_keygen("ML-DSA-44").expect("keygen");
@@ -623,8 +386,8 @@ mod tests {
         let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
         assert!(!raw.is_empty(), "raw private key must not be empty");
         // Verify it can be loaded back
-        let guard = load_raw_private_key("ML-DSA-44", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        let key = load_raw_private_key("ML-DSA-44", &raw).expect("reload raw");
+        let raw2 = key.raw_private_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw private key must match");
     }
 
@@ -633,8 +396,8 @@ mod tests {
         let (_, spki_der, _) = pqc_keygen("ML-DSA-44").expect("keygen");
         let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
         assert!(!raw.is_empty(), "raw public key must not be empty");
-        let guard = load_raw_public_key("ML-DSA-44", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        let key = load_raw_public_key("ML-DSA-44", &raw).expect("reload raw");
+        let raw2 = key.raw_public_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw public key must match");
     }
 
@@ -643,8 +406,8 @@ mod tests {
         let (pkcs8_der, _, _) = pqc_keygen("ML-KEM-768").expect("keygen");
         let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
         assert!(!raw.is_empty(), "raw private key must not be empty");
-        let guard = load_raw_private_key("ML-KEM-768", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        let key = load_raw_private_key("ML-KEM-768", &raw).expect("reload raw");
+        let raw2 = key.raw_private_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw private key must match");
     }
 
@@ -653,8 +416,8 @@ mod tests {
         let (_, spki_der, _) = pqc_keygen("ML-KEM-768").expect("keygen");
         let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
         assert!(!raw.is_empty(), "raw public key must not be empty");
-        let guard = load_raw_public_key("ML-KEM-768", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        let key = load_raw_public_key("ML-KEM-768", &raw).expect("reload raw");
+        let raw2 = key.raw_public_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw public key must match");
     }
 
@@ -663,8 +426,8 @@ mod tests {
         let (pkcs8_der, _, _) = pqc_keygen("SLH-DSA-SHA2-128s").expect("keygen");
         let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
         assert!(!raw.is_empty(), "raw private key must not be empty");
-        let guard = load_raw_private_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        let key = load_raw_private_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
+        let raw2 = key.raw_private_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw private key must match");
     }
 
@@ -673,8 +436,8 @@ mod tests {
         let (_, spki_der, _) = pqc_keygen("SLH-DSA-SHA2-128s").expect("keygen");
         let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
         assert!(!raw.is_empty(), "raw public key must not be empty");
-        let guard = load_raw_public_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        let key = load_raw_public_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
+        let raw2 = key.raw_public_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw public key must match");
     }
 

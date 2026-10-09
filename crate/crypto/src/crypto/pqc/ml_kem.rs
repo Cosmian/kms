@@ -1,4 +1,4 @@
-use std::{os::raw::c_long, ptr};
+use std::ptr;
 
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -7,6 +7,8 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
+use foreign_types::ForeignType;
+use openssl::pkey::PKey;
 
 use super::{create_pqc_key_pair, ml_kem_algorithm_name, pqc_keygen};
 use crate::{crypto::KeyPair, error::CryptoError};
@@ -49,32 +51,15 @@ pub fn create_ml_kem_key_pair(
 /// The `public_key_der` should be SPKI (`SubjectPublicKeyInfo`) DER bytes.
 #[expect(unsafe_code)]
 pub fn ml_kem_encapsulate(public_key_der: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
-    // Guard: an empty slice has a dangling .as_ptr(); passing it to d2i_PUBKEY
-    // is UB — return a clean error instead.
+    // Reject empty input up front with an operation-specific error.
     if public_key_der.is_empty() {
         return Err(CryptoError::Default(
             "ML-KEM encapsulate: empty public key DER".to_owned(),
         ));
     }
-    unsafe {
-        // Load the public key from DER
-        let mut der_ptr = public_key_der.as_ptr();
-        let raw = openssl_sys::d2i_PUBKEY(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            c_long::try_from(public_key_der.len())
-                .map_err(|e| CryptoError::Default(format!("DER length overflow: {e}")))?,
-        );
-        if raw.is_null() {
-            return Err(CryptoError::Default(
-                "ML-KEM encapsulate: failed to load public key from DER".to_owned(),
-            ));
-        }
-        // SAFETY: PKeyGuard takes ownership and calls EVP_PKEY_free on drop,
-        // so the key is freed even if `ml_kem_encapsulate_raw` panics.
-        let pkey = super::PKeyGuard(raw);
-        ml_kem_encapsulate_raw(pkey.as_ptr())
-    }
+    let pkey = PKey::public_key_from_der(public_key_der)?;
+    // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
+    unsafe { ml_kem_encapsulate_raw(pkey.as_ptr()) }
 }
 
 /// ML-KEM encapsulation using a raw `EVP_PKEY` pointer.
@@ -163,25 +148,9 @@ pub fn ml_kem_decapsulate(
             "ML-KEM decapsulate: empty ciphertext".to_owned(),
         ));
     }
-    unsafe {
-        // Load the private key from PKCS#8 DER
-        let mut der_ptr = private_key_der.as_ptr();
-        let raw = openssl_sys::d2i_AutoPrivateKey(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            c_long::try_from(private_key_der.len())
-                .map_err(|e| CryptoError::Default(format!("DER length overflow: {e}")))?,
-        );
-        if raw.is_null() {
-            return Err(CryptoError::Default(
-                "ML-KEM decapsulate: failed to load private key from DER".to_owned(),
-            ));
-        }
-        // SAFETY: PKeyGuard takes ownership and calls EVP_PKEY_free on drop,
-        // so the key is freed even if `ml_kem_decapsulate_raw` panics.
-        let pkey = super::PKeyGuard(raw);
-        ml_kem_decapsulate_raw(pkey.as_ptr(), ciphertext)
-    }
+    let pkey = PKey::private_key_from_der(private_key_der)?;
+    // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
+    unsafe { ml_kem_decapsulate_raw(pkey.as_ptr(), ciphertext) }
 }
 
 /// ML-KEM decapsulation using a raw `EVP_PKEY` pointer.
