@@ -151,6 +151,8 @@ if [ "${BENCH_CRITERION}" = "true" ]; then
         "${ALGORITHM_ARGS[@]}"
 fi
 
+export BENCH_HSM_BACKEND="none"
+export BENCH_COMMAND_USED="mise run bench:load${usage_args:+ $usage_args}"
 bench_generate_report "${BENCH_PORT:-0}" "ckms_bench" "false" "false" "false" "${KMS_BASE_URL}"
 
 print_success "Load benchmark completed"

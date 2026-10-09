@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-08
+**Generated**: 2026-10-09
 
 ---
 
@@ -10,6 +10,8 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-07 23:12:31 UTC |
+| HSM backend | SoftHSM2 |
+| Command | `mise run bench:hsm --hsm-model softhsm2` |
 | Build | release / non-fips |
 | HTTP workers (Actix-web) | 32 |
 | Database | SQLite (temporary, single benchmark run) |
@@ -120,8 +122,8 @@ graph TB
 - **ckms**: Concurrent load generator
 - **KMIP Endpoint**: HTTP protocol handler
 - **Software Crypto**: Handles data encryption/decryption with unwrapped keys
-- **KEK**: HSM-resident Key Encryption Key (used to wrap/unwrap data keys)
-- **PKCS#11 Slot**: HSM backend for KEK unwrap operations
+- **KEK**: SoftHSM2-resident Key Encryption Key (used to wrap/unwrap data keys)
+- **PKCS#11 Slot**: SoftHSM2 backend for KEK unwrap operations
 - **Key Storage**: Database of wrapped keys
 
 ---
@@ -170,7 +172,7 @@ All encrypt/decrypt benchmarks use a **fixed-size random payload**. Sizes repres
 | Sign / Verify — all algorithms | 32 bytes | Message is hashed internally |
 | JOSE JWS / MAC | 32 bytes | |
 
-### Load test (`ckms bench --load`)
+### Load test (`mise run bench:hsm --hsm-model softhsm2`)
 
 The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side KMS latency from client-side encoding overhead.
 Recorded metrics per *(protocol, operation, concurrency)* triple:

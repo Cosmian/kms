@@ -157,7 +157,8 @@ if [ "${BENCH_DELEGATED}" != "true" ]; then
       "${ALGORITHM_ARGS[@]}" \
       --cooldown-time "${BENCH_COOLDOWN}"
   fi
-
+  export BENCH_HSM_BACKEND="${BENCH_HSM_MODEL}"
+  export BENCH_COMMAND_USED="mise run bench:hsm --hsm-model ${BENCH_HSM_MODEL}${usage_args:+ $usage_args}"
   bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm_kek_${BENCH_HSM_MODEL}" "false" "true"
 
   print_success "HSM-backed KEK load benchmark completed (KEK: ${HSM_KEK_UID})"
@@ -323,6 +324,8 @@ else
   fi
 fi
 
+export BENCH_HSM_BACKEND="${BENCH_HSM_MODEL}"
+export BENCH_COMMAND_USED="mise run bench:hsm --delegated --hsm-model ${BENCH_HSM_MODEL}${usage_args:+ $usage_args}"
 bench_generate_report "${BENCH_PORT}" "ckms_bench_hsm_delegated_${BENCH_HSM_MODEL}" "true"
 
 print_success "HSM-delegated crypto load benchmark completed"

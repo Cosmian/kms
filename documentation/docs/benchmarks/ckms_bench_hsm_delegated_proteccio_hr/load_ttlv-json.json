@@ -1,0 +1,3 @@
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":1,"throughput_rps":36.85,"p50_ms":27.512,"p95_ms":28.490,"p99_ms":29.326}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":32,"throughput_rps":1196.25,"p50_ms":26.430,"p95_ms":29.417,"p99_ms":31.762}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":64,"throughput_rps":1775.15,"p50_ms":35.572,"p95_ms":44.981,"p99_ms":50.922}

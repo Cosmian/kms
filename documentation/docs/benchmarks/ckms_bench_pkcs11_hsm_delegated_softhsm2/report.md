@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-08
+**Generated**: 2026-10-09
 
 ---
 
@@ -10,6 +10,8 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-07 22:25:18 UTC |
+| HSM backend | SoftHSM2 |
+| Command | `mise run bench:pkcs11 --delegated --hsm-model softhsm2` |
 | Build | bench / non-fips |
 | Database | SQLite (temporary, single benchmark run) |
 | CPU | Intel(R) Core(TM) i9-14900T @ 857 MHz |
@@ -95,10 +97,10 @@ graph TB
 
     subgraph hsm["SoftHSM2"]
         slot["PKCS#11 Slot"]
-        keys["HSM Keys<br/>(Resident)"]
+        keys["ECDSA<br/>RSA<br/>EdDSA<br/>AES<br/>(Resident)"]
     end
 
-    ckms -->|C_Sign/C_Encrypt| lib
+    ckms -->|C_Sign/C_Verify/C_Encrypt/C_Decrypt/C_GenerateKey| lib
     lib -->|HTTP| kmip
     kmip --> oracle
     oracle -->|PKCS#11| slot
@@ -113,11 +115,11 @@ graph TB
 
 **Components**:
 
-- **ckms**: PKCS#11 load test driver
+- **ckms**: PKCS#11 load test driver (`mise run bench:pkcs11 --delegated --hsm-model softhsm2`)
 - **cosmian_pkcs11.so**: PKCS#11 provider bridge
 - **KMIP Endpoint**: Server-side protocol handler
-- **CryptoOracle**: Routes operations to HSM-resident keys (C_Sign, C_Encrypt directly on hardware)
-- **PKCS#11 Slot**: HSM backend for key storage and cryptographic ops
+- **CryptoOracle**: Routes operations to HSM-resident keys (C_Sign/C_Verify/C_Encrypt/C_Decrypt/C_GenerateKey on SoftHSM2)
+- **PKCS#11 Slot**: SoftHSM2 backend for key storage and cryptographic ops
 
 ---
 
@@ -139,7 +141,7 @@ This delegated variant provisions `hsm::<slot>::...` keys. After the provider se
 
 ### Real Cryptoki C ABI, one session per worker
 
-The benchmark subcommand `ckms pkcs11 bench` (driven by `mise bench:pkcs11 --delegated`) `dlopen()`s the built `cosmian_pkcs11` shared library, resolves the v3.1 function table through `C_GetInterface`, and calls it directly — the same code path a real PKCS#11 consumer application uses, as opposed to `mise bench:load`, which drives the KMIP REST API directly through the `ckms` client library.
+The benchmark subcommand `ckms pkcs11 bench` (driven by `mise run bench:pkcs11 --delegated --hsm-model softhsm2`) `dlopen()`s the built `cosmian_pkcs11` shared library, resolves the v3.1 function table through `C_GetInterface`, and calls it directly — the same code path a real PKCS#11 consumer application uses, as opposed to `mise bench:load`, which drives the KMIP REST API directly through the `ckms` client library.
 
 By default each worker thread owns a dedicated `C_OpenSession` handle. The provider looks the handle up in its session map and serializes only access to that individual session with a per-session lock, so unrelated worker sessions can progress independently. `--shared-session` is an opt-in comparison mode that reproduces the former single-session contention model; it is not the default methodology.
 
@@ -147,17 +149,18 @@ For the Ed25519 Sign path measured in this report, `C_MessageSignInit` runs once
 
 ### HSM-resident key execution
 
-With `--delegated`, provisioning assigns `hsm::<slot>::...` UIDs and persists discovery tags in a versioned PKCS#11 `CKA_LABEL` envelope while retaining the raw key ID in `CKA_ID`. The provider locates those tagged keys through KMS, while Encrypt, Decrypt, Sign, Verify, and key generation are executed by the KMS `CryptoOracle` on the SoftHSM2 token. For `--mode all`, key-creation, encrypt, sign, and verify run against separate fresh tokens so cumulative SoftHSM2 key generation does not contaminate later measurements.
+With `--delegated`, provisioning assigns `hsm::<slot>::...` UIDs and persists discovery tags in a versioned PKCS#11 `CKA_LABEL` envelope while retaining the raw key ID in `CKA_ID`. The provider locates those tagged keys through KMS, while operations are executed by the KMS `CryptoOracle` on the SoftHSM2 backend. For full test suites on simulator tokens, submodes run against separate fresh tokens so cumulative key generation does not contaminate later measurements.
 
 ### Independent operations
 
-Unlike the software/HSM reports above, where `encrypt` and `sign-verify` each measure a single named request, this report measures every Cryptoki operation **independently**: `encrypt` (`C_EncryptInit`/`C_Encrypt`), `decrypt` (`C_DecryptInit`/`C_Decrypt`, against ciphertext produced once during setup — not timed), Ed25519 `sign` (`C_MessageSignInit` once + `C_SignMessage` per message), RSA `sign` (`C_SignInit`/`C_Sign`), `verify` (`C_VerifyInit`/`C_Verify`), and `key-creation` (`C_GenerateKey`+`C_DestroyObject`, ephemeral AES key per iteration) each get their own concurrency sweep and their own row/chart below.
+Unlike the software/HSM reports where requests may be bundled, this report measures each Cryptoki operation **independently**:
 
-`C_VerifyInit`/`C_Verify` are implemented and benchmarked through the same real Cryptoki function table. Verify rows are therefore ordinary measured operations, not placeholders or unsupported-operation probes.
+- **Encryption/Decryption**: `C_EncryptInit`/`C_Encrypt` and `C_DecryptInit`/`C_Decrypt` against pre-generated ciphertext
+- **Sign**: `C_SignInit`/`C_Sign` (or `C_MessageSignInit`/`C_SignMessage` for Ed25519) crossing the synchronous PKCS#11 boundary
+- **Verify**: `C_VerifyInit`/`C_Verify` implemented and benchmarked through the real Cryptoki function table
+- **Key Creation**: symmetric `C_GenerateKey` with immediate `C_DestroyObject` per iteration
 
-`C_GenerateKeyPair` is not implemented either (asymmetric keys are always created through the KMS REST API, not PKCS#11), so `key-creation` only covers the one Cryptoki key-creation path the provider does support: symmetric `C_GenerateKey`.
-
-### Load test (`mise bench:pkcs11 --delegated`)
+### Load test (`mise run bench:pkcs11 --delegated --hsm-model softhsm2`)
 
 The load test sweeps a configurable list of concurrency levels, mirroring `mise bench:load`'s own sweep mechanics exactly: at each level *N* concurrent OS threads call the target Cryptoki function in a tight loop for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements, followed by a **cooldown** (default: 2 s) before the next level.
 Recorded metrics per *(operation, concurrency)* pair:
