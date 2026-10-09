@@ -6,14 +6,17 @@
 
 use actix_web::HttpResponse;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::{
-    csr_attrs::csr_challenge_password,
-    scep_cms::{
-        FAIL_INFO_BAD_CERT_ID, FAIL_INFO_BAD_MESSAGE_CHECK, FAIL_INFO_BAD_REQUEST,
-        MESSAGE_TYPE_CERT_REP, MESSAGE_TYPE_PKCS_REQ, MESSAGE_TYPE_RENEWAL_REQ, NONCE_LEN,
-        PKI_STATUS_FAILURE, PKI_STATUS_SUCCESS, ParsedPkiMessage, ScepAttrs,
-        build_signed_pkimessage, certs_only_der, decrypt_envelope, envelope_for_recipient,
-        parse_signed_pkimessage,
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+    crypto::KmsRng,
+    openssl::{
+        csr_attrs::csr_challenge_password,
+        scep_cms::{
+            FAIL_INFO_BAD_CERT_ID, FAIL_INFO_BAD_MESSAGE_CHECK, FAIL_INFO_BAD_REQUEST,
+            MESSAGE_TYPE_CERT_REP, MESSAGE_TYPE_PKCS_REQ, MESSAGE_TYPE_RENEWAL_REQ, NONCE_LEN,
+            PKI_STATUS_FAILURE, PKI_STATUS_SUCCESS, ParsedPkiMessage, ScepAttrs,
+            build_signed_pkimessage, certs_only_der, decrypt_envelope, envelope_for_recipient,
+            parse_signed_pkimessage,
+        },
     },
 };
 use cosmian_logger::{info, warn};
@@ -66,9 +69,10 @@ fn pki_message_response(der: Vec<u8>) -> HttpResponse {
     HttpResponse::Ok().content_type(CT_PKI_MESSAGE).body(der)
 }
 
-fn fresh_nonce() -> KResult<[u8; NONCE_LEN]> {
+fn fresh_nonce(rng: &KmsRng) -> KResult<[u8; NONCE_LEN]> {
     let mut nonce = [0_u8; NONCE_LEN];
-    openssl::rand::rand_bytes(&mut nonce)?;
+    // Sent to the client in clear: public DRBG.
+    rng.fill_public_bytes(&mut nonce)?;
     Ok(nonce)
 }
 
@@ -106,7 +110,7 @@ pub(super) async fn pki_operation(kms: &KMS, message_der: &[u8]) -> KResult<Http
                 &ca_cert,
                 &ca_key,
                 &envelope,
-                &cert_rep_attrs(&parsed, PKI_STATUS_SUCCESS, None)?,
+                &cert_rep_attrs(kms, &parsed, PKI_STATUS_SUCCESS, None)?,
             )?
         }
         Err(rejection) => {
@@ -118,7 +122,7 @@ pub(super) async fn pki_operation(kms: &KMS, message_der: &[u8]) -> KResult<Http
                 &ca_cert,
                 &ca_key,
                 &[],
-                &cert_rep_attrs(&parsed, PKI_STATUS_FAILURE, Some(rejection.fail_info))?,
+                &cert_rep_attrs(kms, &parsed, PKI_STATUS_FAILURE, Some(rejection.fail_info))?,
             )?
         }
     };
@@ -126,6 +130,7 @@ pub(super) async fn pki_operation(kms: &KMS, message_der: &[u8]) -> KResult<Http
 }
 
 fn cert_rep_attrs(
+    kms: &KMS,
     request: &ParsedPkiMessage,
     status: u8,
     fail_info: Option<u8>,
@@ -135,7 +140,7 @@ fn cert_rep_attrs(
         message_type: MESSAGE_TYPE_CERT_REP,
         pki_status: Some(status),
         fail_info,
-        sender_nonce: fresh_nonce()?,
+        sender_nonce: fresh_nonce(&kms.rng)?,
         recipient_nonce: Some(request.attrs.sender_nonce),
     })
 }

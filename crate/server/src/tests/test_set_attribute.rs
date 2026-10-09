@@ -45,9 +45,8 @@ use cosmian_kms_server_database::reexport::{
             requests::create_symmetric_key_kmip_object,
         },
     },
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::log_init;
@@ -97,7 +96,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     let clap_config = https_clap_config();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     // Create key
     let mut symmetric_key = vec![0; 32];

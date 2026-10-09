@@ -119,7 +119,6 @@ opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
 proteccio_pkcs11_loader = { workspace = true }
-rand = { workspace = true }
 regex = { workspace = true, features = ["std", "unicode-perl"] }
 reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
   "json",

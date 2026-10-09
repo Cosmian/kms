@@ -26,3 +26,11 @@
 - `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented; issuance is synchronous.
   EST over plain HTTP is not refused (a startup warning is logged when Basic bootstrap runs without TLS).
 - The CLI (`ckms`) and the Web UI for these endpoints follow in separate pull requests.
+
+### Security
+
+- SCEP `CertRep` `senderNonce` now comes from the `KmsRng` public DRBG instead of `openssl::rand::rand_bytes`.
+- Configuration-wizard certificate serials now come from `KmsRng` and are 159-bit RFC 5280 serials (previously 128 bits from `BigNum::rand`).
+- Anonymization word tokens and noise generators are drawn from, or seeded by, `KmsRng`; the unused PKCS#11 `random_label` helper is removed.
+- The root `clippy.toml` now bans every ambient entropy source (OpenSSL `rand` / `BigNum` rand, `rand::rng`, `thread_rng`, `OsRng`, `getrandom`, `from_entropy`, `cookie::Key::generate`, non-cryptographic PRGs) with no suppression allowed, test fixtures included. Seeded PRGs are allowed only through `KmsRng::seeded_csrng` or `from_seed` with `KmsRng` bytes.
+- New CI job "KmsRng Policy" (`mise run audit:rng-policy`) rejects lint suppressions, lint-level overrides in Cargo manifests and any additional `clippy.toml`.

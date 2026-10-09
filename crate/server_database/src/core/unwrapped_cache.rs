@@ -209,9 +209,8 @@ mod tests {
         extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
-    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    use cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     };
     use cosmian_kms_interfaces::UserId;
     use cosmian_logger::log_init;
@@ -240,7 +239,7 @@ mod tests {
         )
         .await?;
 
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
 
         // create a symmetric key with tags
         let mut symmetric_key_bytes = vec![0; 32];

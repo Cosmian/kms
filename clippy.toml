@@ -1,17 +1,67 @@
-# All key material, nonces/IVs and secret tokens MUST come from `KmsRng`
-# (crate/crypto/src/crypto/rng/mod.rs). See
+# Randomness policy: every random byte (keys, seeds, nonces/IVs, salts, serials, tokens, test fixtures)
+# comes from `KmsRng` (crate/crypto/src/crypto/rng/mod.rs). See
 # documentation/adr/2026-10-10-keep-kmsrng-openssl-backed-over-csrng.md.
 #
-# Retained uses are marked inline with `#[allow(clippy::disallowed_..., reason = "...")]`.
+# Banned: every ambient entropy source reachable from workspace code (OpenSSL, OS, thread-local and
+# getrandom RNGs, and the constructors that seed from them) plus non-cryptographic PRGs. Cryptographic
+# PRGs seeded explicitly (`from_seed` with bytes from `KmsRng`, e.g. `KmsRng::seeded_csrng`) are allowed.
+#
+# These lints are never suppressed and this is the only clippy.toml (a nested one replaces this file
+# instead of extending it): `mise run audit:rng-policy` enforces both in CI.
+#
+# `allow-invalid = true`: rand / rand_core / getrandom exist in several versions with different APIs and
+# not every crate depends on every banned crate, so some paths do not resolve everywhere. Clippy matches
+# real crate names only (the `rand_08` rename is matched through `rand::`).
 
 disallowed-methods = [
-    { path = "openssl::rand::rand_bytes", reason = "requests strength 0 and never fails closed; use KmsRng::fill_bytes/random_vec" },
-    { path = "openssl::rand::rand_priv_bytes", reason = "requests strength 0 and never fails closed; use KmsRng::fill_bytes/random_vec" },
+    # OpenSSL: strength 0, never fails closed
+    { path = "openssl::rand::rand_bytes", reason = "use KmsRng::fill_bytes (secrets) or fill_public_bytes (sent to clients)", allow-invalid = true },
+    { path = "openssl::rand::rand_priv_bytes", reason = "use KmsRng::fill_bytes", allow-invalid = true },
+    { path = "openssl::bn::BigNumRef::rand", reason = "build the BigNum from KmsRng bytes (BigNum::from_slice)", allow-invalid = true },
+    { path = "openssl::bn::BigNumRef::pseudo_rand", reason = "build the BigNum from KmsRng bytes (BigNum::from_slice)", allow-invalid = true },
+    { path = "openssl::bn::BigNumRef::rand_range", reason = "build the BigNum from KmsRng bytes (BigNum::from_slice)", allow-invalid = true },
+    { path = "openssl::bn::BigNumRef::pseudo_rand_range", reason = "build the BigNum from KmsRng bytes (BigNum::from_slice)", allow-invalid = true },
+    { path = "openssl_sys::RAND_bytes", reason = "only KmsRng may call OpenSSL's RAND API", allow-invalid = true },
+    { path = "openssl_sys::RAND_priv_bytes", reason = "only KmsRng may call OpenSSL's RAND API", allow-invalid = true },
+    { path = "openssl_sys::BN_rand", reason = "build the BIGNUM from KmsRng bytes", allow-invalid = true },
+    { path = "openssl_sys::BN_pseudo_rand", reason = "build the BIGNUM from KmsRng bytes", allow-invalid = true },
+    { path = "openssl_sys::BN_rand_range", reason = "build the BIGNUM from KmsRng bytes", allow-invalid = true },
+    { path = "openssl_sys::BN_pseudo_rand_range", reason = "build the BIGNUM from KmsRng bytes", allow-invalid = true },
+    # rand 0.8 / 0.9 / 0.10: thread-local RNG seeded from the OS
+    { path = "rand::rng", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::thread_rng", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::random", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::random_iter", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::random_range", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::random_bool", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::random_ratio", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::fill", reason = "use KmsRng", allow-invalid = true },
+    { path = "rand::make_rng", reason = "seed the PRG with from_seed and bytes from KmsRng", allow-invalid = true },
+    # rand_core 0.6 / 0.9 / 0.10: seeding from the OS, or from a guessable integer
+    { path = "rand_core::SeedableRng::from_entropy", reason = "use KmsRng::seeded_csrng or from_seed with KmsRng bytes", allow-invalid = true },
+    { path = "rand_core::SeedableRng::from_os_rng", reason = "use KmsRng::seeded_csrng or from_seed with KmsRng bytes", allow-invalid = true },
+    { path = "rand_core::SeedableRng::try_from_os_rng", reason = "use KmsRng::seeded_csrng or from_seed with KmsRng bytes", allow-invalid = true },
+    { path = "rand_core::SeedableRng::seed_from_u64", reason = "a u64 seed is guessable; seed from KmsRng", allow-invalid = true },
+    # getrandom 0.2 / 0.3 / 0.4: OS entropy, bypasses OpenSSL
+    { path = "getrandom::getrandom", reason = "use KmsRng", allow-invalid = true },
+    { path = "getrandom::getrandom_uninit", reason = "use KmsRng", allow-invalid = true },
+    { path = "getrandom::fill", reason = "use KmsRng", allow-invalid = true },
+    { path = "getrandom::fill_uninit", reason = "use KmsRng", allow-invalid = true },
+    { path = "getrandom::u32", reason = "use KmsRng", allow-invalid = true },
+    { path = "getrandom::u64", reason = "use KmsRng", allow-invalid = true },
+    # std (unstable today): OS entropy
+    { path = "std::random::random", reason = "use KmsRng", allow-invalid = true },
+    # cookie (actix-web): thread-local RNG
+    { path = "cookie::Key::generate", reason = "build the key from KmsRng bytes (Key::from)", allow-invalid = true },
+    { path = "cookie::Key::try_generate", reason = "build the key from KmsRng bytes (Key::from)", allow-invalid = true },
 ]
 
 disallowed-types = [
-    { path = "cosmian_crypto_core::CsRng", reason = "ChaCha12 via getrandom, not an SP 800-90A DRBG; use KmsRng" },
-    { path = "rand::rngs::StdRng", reason = "not OpenSSL-backed; use KmsRng" },
-    { path = "rand_08::rngs::StdRng", reason = "not OpenSSL-backed (rand 0.8 alias); use KmsRng" },
-    { path = "rand::rngs::ThreadRng", reason = "not OpenSSL-backed; use KmsRng" },
+    { path = "rand::rngs::ThreadRng", reason = "OS-seeded thread-local RNG; use KmsRng", allow-invalid = true },
+    { path = "rand_core::OsRng", reason = "OS entropy, bypasses OpenSSL; use KmsRng", allow-invalid = true },
+    { path = "getrandom::SysRng", reason = "OS entropy, bypasses OpenSSL; use KmsRng", allow-invalid = true },
+    { path = "std::random::DefaultRandomSource", reason = "OS entropy; use KmsRng", allow-invalid = true },
+    { path = "rand::rngs::SmallRng", reason = "not a CSPRNG", allow-invalid = true },
+    { path = "rand::rngs::Xoshiro128PlusPlus", reason = "not a CSPRNG", allow-invalid = true },
+    { path = "rand::rngs::Xoshiro256PlusPlus", reason = "not a CSPRNG", allow-invalid = true },
 ]

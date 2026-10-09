@@ -255,6 +255,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Live DB tests**: `docker compose up -d <service>` before running tests that need a backend (postgres :5432, mysql :3306, redis :6379, etc.).
 - **Broad feature rollout**: for any feature that spans server + CLI/UI, deliver it in one branch/PR but as independent, separately buildable commits (server, then CLI, then Web UI) — see "Feature rollout order & commit layering" below.
 - **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
+- **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed (CI: mise run audit:rng-policy) — see .github/instructions/rust.instructions.md § Randomness.
 
 For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.

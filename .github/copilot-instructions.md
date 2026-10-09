@@ -89,6 +89,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Unit tests go in a `#[cfg(test)]` submodule in the same file.
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
+- Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed (CI: `mise run audit:rng-policy`) — see `.github/instructions/rust.instructions.md` § Randomness.
 
 ## Feature rollout order & commit layering
 

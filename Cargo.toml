@@ -85,6 +85,10 @@ refining_impl_trait = "deny"
 [workspace.lints.clippy]
 # Main clippy categories
 pedantic = { level = "deny", priority = 90 }
+# KmsRng policy (clippy.toml): pinned above every group so no group-level allow can switch them off;
+# `mise run audit:rng-policy` requires these two lines.
+disallowed_methods = { level = "deny", priority = 100 }
+disallowed_types = { level = "deny", priority = 100 }
 all = { level = "deny", priority = 80 }
 suspicious = { level = "deny", priority = 70 }
 complexity = { level = "deny", priority = 60 }

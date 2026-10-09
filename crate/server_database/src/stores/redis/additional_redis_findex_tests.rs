@@ -14,9 +14,11 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng, RandomFixedSizeCBytes, Secret, SymmetricKey,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng,
+    reexport::cosmian_crypto_core::{
+        RandomFixedSizeCBytes, Secret, SymmetricKey, reexport::rand_core::RngCore,
+    },
 };
 use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
 use cosmian_logger::trace;
@@ -504,7 +506,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     trace!("test_objects_db");
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let client = redis::Client::open(get_redis_url())?;
     let mgr = ConnectionManager::new(client).await?;
 
@@ -560,7 +562,7 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
 
 pub(crate) async fn test_permissions_db() -> DbResult<()> {
     // generate the findex key
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let findex_master_key = Secret::random(&mut rng);
 
     let redis_url = get_redis_url();
@@ -775,7 +777,7 @@ pub(crate) async fn test_permissions_db() -> DbResult<()> {
 
 pub(crate) async fn test_corner_case() -> DbResult<()> {
     // generate the findex key
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let findex_master_key = Secret::random(&mut rng);
 
     let redis_url = get_redis_url();
@@ -848,7 +850,7 @@ pub(crate) async fn test_corner_case() -> DbResult<()> {
 pub(crate) async fn test_live_count_counter() -> DbResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let redis_url = get_redis_url();
     // `clear_database: true` issues a FLUSHDB so each run starts clean.
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
@@ -979,7 +981,7 @@ pub(crate) async fn test_live_count_counter() -> DbResult<()> {
 pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let redis_url = get_redis_url();
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
     let db = RedisWithFindex::instantiate(&redis_url, master_key, true).await?;
@@ -1096,7 +1098,7 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
 /// through `find_wrapped_by` (used by key rotation).
 pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let redis_url = get_redis_url();
 
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
@@ -1190,7 +1192,7 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
     use crate::stores::migrate::{DbState, Migrate as _};
 
     cosmian_logger::log_init(option_env!("RUST_LOG"));
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     // Use a dedicated logical Redis database: this test deliberately leaves the database in
     // refused (non-ready / legacy) states, which must never leak into the default database
     // shared with the other Redis tests and with later runs.

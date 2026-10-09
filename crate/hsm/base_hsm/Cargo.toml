@@ -30,7 +30,6 @@ lru = { workspace = true }
 # `kms_hsm.rs`) does not depend on openssl — DER encoding there is done manually.
 openssl = { workspace = true }
 pkcs11-sys = { workspace = true }
-rand = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
