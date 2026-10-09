@@ -33,7 +33,7 @@ HEC_TOKEN="$(python3 -c 'import uuid; print(uuid.uuid4())')"
 
 print_status "Starting ephemeral Splunk container (no volume, --rm)"
 # splunk/splunk has no native arm64 manifest; force amd64 (emulated via Rosetta/QEMU
-# on Apple Silicon, native on GitHub Actions ubuntu-latest runners).
+# on Apple Silicon, native on GitHub Actions ubuntu-24.04 runners).
 # SPLUNK_GENERAL_TERMS is required in addition to SPLUNK_START_ARGS since the image
 # started enforcing acceptance of the current Splunk General Terms separately.
 # Pinned to the current stable release (not :latest) so this test stays reproducible;

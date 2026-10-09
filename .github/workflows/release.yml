@@ -72,7 +72,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   prepare:
     name: Prepare release branch & bump versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_branch: ${{ steps.vars.outputs.release_branch }}
 
@@ -268,7 +268,7 @@ jobs:
     needs: [prepare, update-nix-hashes, update-log-index]
     # nix-update-hashes.yml runs a Linux+macOS matrix internally; GitHub waits
     # for all instances before starting trigger-packaging.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
 
@@ -364,7 +364,7 @@ jobs:
   commit-sbom:
     name: Retrieve & commit SBOM
     needs: [prepare, trigger-packaging]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -413,7 +413,7 @@ jobs:
   sync-branches:
     name: git-flow release finish ${{ inputs.new_version }}
     needs: [prepare, trigger-packaging, commit-sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.

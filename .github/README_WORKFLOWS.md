@@ -91,7 +91,7 @@ Comprehensive testing across platforms and configurations.
 ```mermaid
 flowchart TB
     test_all["test_all.yml"]
-    subgraph nix_matrix["test-nix (Matrix) — ubuntu-latest"]
+    subgraph nix_matrix["test-nix (Matrix) — ubuntu-24.04"]
         nix_types["Test types: sqlite · mysql · psql<br/>google_cse · redis (non-fips) · pykmip"]
         nix_feat["Features: fips · non-fips"]
         nix_steps["1. Install Nix<br/>2. Checkout code<br/>3. Start Docker<br/>4. nix.sh test <type>"]
@@ -325,7 +325,7 @@ Publishes Rust crates to crates.io.
 ```mermaid
 flowchart TB
     cp["cargo-publish.yml"]
-    pub["publish — ubuntu-latest"]
+    pub["publish — ubuntu-24.04"]
     steps["1. Free disk space (Android/.NET/Haskell/Docker)<br/>2. Checkout code<br/>3. Dry-run (non-tags): cargo publish --dry-run<br/>4. Actual publish (tags): cargo workspaces publish --from-git"]
     cp --> pub --> steps
 ```
