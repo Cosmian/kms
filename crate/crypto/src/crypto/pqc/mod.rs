@@ -157,11 +157,7 @@ fn pqc_keygen_seeded(
         // If FIPS provider was explicitly requested via propquery ("fips=yes"),
         // verify that the operation was approved by checking the FIPS indicator.
         if let Some(pq) = propquery {
-            let pq_bytes = pq.as_bytes();
-            if pq_bytes
-                .split(|&b| b == b',' || b == b' ')
-                .any(|part| part == b"fips=yes")
-            {
+            if requests_fips_provider(pq.as_bytes()) {
                 let mut indicator: std::ffi::c_int = 0;
                 let get_params = [
                     openssl_sys::OSSL_PARAM {
@@ -179,7 +175,10 @@ fn pqc_keygen_seeded(
                         return_size: 0,
                     },
                 ];
-                if EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()) <= 0 || indicator != 1 {
+                if !fips_indicator_approved(
+                    EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()),
+                    indicator,
+                ) {
                     openssl_sys::EVP_PKEY_free(raw_pkey);
                     return Err(CryptoError::Default(format!(
                         "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
@@ -190,6 +189,22 @@ fn pqc_keygen_seeded(
 
         Ok(PKey::from_ptr(raw_pkey))
     }
+}
+
+/// Whether a property query explicitly requires the FIPS provider (`fips=yes` term).
+fn requests_fips_provider(propquery: &[u8]) -> bool {
+    propquery
+        .split(|&b| b == b',' || b == b' ')
+        .any(|part| part == b"fips=yes")
+}
+
+/// Fail-closed FIPS indicator decision: approved only if `EVP_PKEY_CTX_get_params` succeeded
+/// (return value > 0) AND the `fips-indicator` value is exactly 1.
+const fn fips_indicator_approved(
+    get_params_ret: std::ffi::c_int,
+    indicator: std::ffi::c_int,
+) -> bool {
+    get_params_ret > 0 && indicator == 1
 }
 
 /// Convert an optional string slice propquery to an optional `CString`.
@@ -950,5 +965,30 @@ mod tests {
             result.is_err(),
             "requesting fips=yes without loaded FIPS provider must fail"
         );
+    }
+
+    #[test]
+    fn fips_indicator_is_fail_closed() {
+        // read OK + approved
+        assert!(fips_indicator_approved(1, 1));
+        // read OK but explicitly unapproved
+        assert!(!fips_indicator_approved(1, 0));
+        // read failed (provider does not expose the param): must NOT pass, whatever the buffer holds
+        assert!(!fips_indicator_approved(0, 1));
+        assert!(!fips_indicator_approved(-1, 1));
+        assert!(!fips_indicator_approved(0, 0));
+        // unexpected indicator values are not approval
+        assert!(!fips_indicator_approved(1, 2));
+    }
+
+    #[test]
+    fn requests_fips_provider_matches_only_exact_term() {
+        assert!(requests_fips_provider(b"fips=yes"));
+        assert!(requests_fips_provider(b"provider=fips, fips=yes"));
+        assert!(requests_fips_provider(b"a=b,fips=yes"));
+        assert!(!requests_fips_provider(b"fips=no"));
+        assert!(!requests_fips_provider(b"provider=default"));
+        assert!(!requests_fips_provider(b"xfips=yes"));
+        assert!(!requests_fips_provider(b""));
     }
 }
