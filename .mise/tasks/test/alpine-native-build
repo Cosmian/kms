@@ -47,6 +47,17 @@ require_cmd perl "perl not found — apk add perl first (needed by crate/crypto/
 
 print_header "Native Alpine build: ${VARIANT_NAME} ($(cat /etc/alpine-release))"
 
+# Pin the link mode explicitly rather than relying on rustc's per-host default
+# (crt-static is the musl default, which would silently make the FIPS build static).
+# Mirrors nix/kms-server-musl.nix and .mise/tasks/test/musl-crosscheck:
+#   FIPS     => dynamic musl (-crt-static): the FIPS provider is loaded via dlopen.
+#   non-FIPS => fully static musl (+crt-static).
+if [ "$VARIANT" = "fips" ]; then
+  export RUSTFLAGS="-C target-feature=-crt-static${RUSTFLAGS:+ ${RUSTFLAGS}}"
+else
+  export RUSTFLAGS="-C target-feature=+crt-static${RUSTFLAGS:+ ${RUSTFLAGS}}"
+fi
+
 print_status "Building cosmian_kms (server)…"
 cargo build --release -p cosmian_kms_server --no-default-features \
   "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
@@ -60,9 +71,37 @@ CLI_BIN="${CARGO_TARGET_DIR:-target}/release/ckms"
 [ -x "$SERVER_BIN" ] || print_error "Build did not produce an executable at $SERVER_BIN"
 [ -x "$CLI_BIN" ] || print_error "Build did not produce an executable at $CLI_BIN"
 
-print_status "Binary info (server):"
-file "$SERVER_BIN" || true
-ldd "$SERVER_BIN" 2>&1 || true # musl's own ldd; "not a dynamic executable" is expected if statically linked
+# Assert the same variant-specific ELF invariant the Nix derivations enforce in
+# their installCheckPhase (nix/kms-server-musl.nix, nix/cli-musl.nix):
+#   non-FIPS => fully static musl: no INTERP (PT_INTERP) segment at all.
+#   FIPS     => dynamic musl: INTERP is exactly the real Alpine loader path
+#               /lib/ld-musl-<arch>.so.1 (needed so the FIPS provider can be dlopen'ed).
+# Any mismatch, or a failure of readelf itself, fails the task.
+assert_elf_linkage() {
+  local bin="$1" headers interp
+  headers=$(readelf -lW "$bin") || print_error "readelf failed on $bin — cannot verify linkage."
+  interp=$(printf '%s\n' "$headers" | sed -n 's/^.*interpreter: \(.*\)\]$/\1/p')
+  if [ "$VARIANT" = "non-fips" ]; then
+    if printf '%s\n' "$headers" | grep -q "INTERP"; then
+      print_error "$bin: expected a fully static musl binary (no INTERP segment), got interpreter: ${interp:-<unparsed>}"
+    fi
+    print_status "$bin: confirmed fully static musl binary (no dynamic linker)."
+  else
+    local expected
+    expected="/lib/ld-musl-$(uname -m).so.1"
+    [ -n "$interp" ] || print_error "$bin: expected a dynamic musl binary (INTERP ${expected}), but it has no interpreter (statically linked?)."
+    [ "$interp" = "$expected" ] || print_error "$bin: expected interpreter ${expected}, got: ${interp}"
+    print_status "$bin: confirmed dynamic musl binary, interpreter ${interp}."
+  fi
+}
+
+print_status "Verifying ELF linkage (${VARIANT_NAME})…"
+require_cmd readelf "readelf not found — apk add binutils first (included in build-base)."
+assert_elf_linkage "$SERVER_BIN"
+assert_elf_linkage "$CLI_BIN"
+
+# Informational only (the assertions above are authoritative).
+if command -v file >/dev/null 2>&1; then file "$SERVER_BIN" "$CLI_BIN"; fi
 
 print_status "Running --version (genuinely native — no interpreter/arch mismatch is possible here)…"
 "$SERVER_BIN" --version
