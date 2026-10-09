@@ -108,7 +108,7 @@ if [ -L "$OUT_LINK" ] && [ -n "$(find "$(readlink -f "$OUT_LINK")/bin" -maxdepth
   echo "Reusing existing derivation at $OUT_LINK"
 else
   echo "Building Nix derivation ($NIX_ATTR)…"
-  nix-build -I "nixpkgs=${NIXPKGS_ARG}" --option substituters "" \
+  nix-build -I "nixpkgs=${NIXPKGS_ARG}" --option substituters "" --no-build-output \
     "$REPO_ROOT/default.nix" -A "$NIX_ATTR" -o "$OUT_LINK"
 fi
 REAL_OUT=$(readlink -f "$OUT_LINK")
