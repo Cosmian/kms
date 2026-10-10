@@ -133,6 +133,11 @@ impl tracing::Subscriber for PanicSubscriber {
 fn panic_boundary() -> Result<(), Box<dyn std::error::Error>> {
     const CASE_ENV: &str = "KMS_PKCS11_PANIC_TEST_CASE";
     if let Ok(case) = std::env::var(CASE_ENV) {
+        if case.starts_with("session_map") {
+            sessions::assert_create_after_poison();
+            assert_eq!(C_PanicBoundaryTest(0), CKR_OK);
+            return Ok(());
+        }
         if case == "normal" {
             assert_eq!(C_PanicBoundaryTest(0), CKR_OK);
             assert_eq!(C_PanicBoundaryTest(4), CKR_ARGUMENTS_BAD);
@@ -176,6 +181,7 @@ fn panic_boundary() -> Result<(), Box<dyn std::error::Error>> {
             }),
         };
         assert_eq!(result, pkcs11_sys::CKR_GENERAL_ERROR);
+        assert_eq!(C_PanicBoundaryTest(0), pkcs11_sys::CKR_GENERAL_ERROR);
         tracing::subscriber::with_default(PanicSubscriber("span".to_owned()), || {
             assert_eq!(C_PanicBoundaryTest(0), pkcs11_sys::CKR_GENERAL_ERROR);
             assert_eq!(C_GetFunctionStatus(0), pkcs11_sys::CKR_GENERAL_ERROR);
@@ -195,10 +201,20 @@ fn panic_boundary() -> Result<(), Box<dyn std::error::Error>> {
             "format",
             "payload",
             "concurrent",
+            "session_map",
+            "session_map_ignored",
         ] {
             let output = std::process::Command::new(std::env::current_exe()?)
                 .args(["--exact", "tests::panic_boundary", "--nocapture"])
                 .env(CASE_ENV, case)
+                .env(
+                    "COSMIAN_PKCS11_IGNORE_SESSIONS",
+                    if case == "session_map_ignored" {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                )
                 .output()?;
             assert!(
                 output.status.success(),

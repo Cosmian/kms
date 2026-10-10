@@ -728,7 +728,7 @@ cryptoki_fn!(
         if flags & CKF_SERIAL_SESSION == 0 {
             return Err(ModuleError::SessionParallelNotSupported);
         }
-        let handle = sessions::create(flags);
+        let handle = sessions::create(flags)?;
         // phSession may be in a packed Oracle struct (misaligned) — use write_unaligned
         // to avoid Rust's debug-mode alignment panic in write_volatile/write.
         unsafe {

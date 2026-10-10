@@ -96,9 +96,7 @@ pub(crate) fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
         ctx.owner_client_config.clone()
     });
 
-    Ok(CliBackend::instantiate(KmsClient::new_with_config(
-        owner_client_conf,
-    )?))
+    CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)
 }
 
 async fn create_keys(
@@ -571,7 +569,7 @@ fn test_gnupg_card_key_discovery() -> Pkcs11Result<()> {
         (ctx.owner_client_config.clone(), rsa_sk_id, cert_id)
     });
 
-    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)?;
 
     let private_keys = backend.find_all_private_keys()?;
     assert!(
@@ -608,7 +606,7 @@ fn test_rsa_pkcs_raw_signs_digest_info() -> Pkcs11Result<()> {
         let (sk_id, pk_id) = create_rsa_gnupg_keypair(&kms_rest_client, 2048).await;
         (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
-    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)?;
 
     let message = b"CKM_RSA_PKCS DigestInfo round trip";
     let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), message)
@@ -658,7 +656,7 @@ fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
         (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
 
-    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)?;
     let data = b"hello ssh world, this is a test message for RSA signing";
     let signature = backend.remote_sign(
         &sk_id,
@@ -716,7 +714,7 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
         (ctx.owner_client_config.clone(), sk_id)
     });
 
-    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)?;
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
     let signature = backend.remote_sign(
@@ -770,7 +768,7 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
         )
     });
 
-    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)?;
 
     // Private key discovery
     let private_keys = backend.find_all_private_keys()?;

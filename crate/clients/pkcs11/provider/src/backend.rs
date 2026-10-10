@@ -60,13 +60,15 @@ pub(crate) struct CliBackend {
 }
 
 impl CliBackend {
-    /// Instantiate a new `CliBackend` using the
-    pub(crate) fn instantiate(kms_rest_client: KmsClient) -> Self {
-        let vendor_id = crate::kms_object::query_vendor_id(&kms_rest_client);
-        Self {
+    /// Keeps the vendor fallback while propagating local runtime construction failure.
+    pub(crate) fn instantiate(
+        kms_rest_client: KmsClient,
+    ) -> crate::error::result::Pkcs11Result<Self> {
+        let vendor_id = crate::kms_object::query_vendor_id(&kms_rest_client)?;
+        Ok(Self {
             kms_rest_client,
             vendor_id,
-        }
+        })
     }
 
     fn get_key_size_and_algorithm(attributes: &Attributes) -> ModuleResult<(usize, KeyAlgorithm)> {

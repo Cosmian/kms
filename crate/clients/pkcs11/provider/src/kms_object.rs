@@ -34,7 +34,7 @@ use ckms::{
         },
         cosmian_kms_crypto::reexport::cosmian_crypto_core::{
             CsRng,
-            reexport::rand_core::{RngCore, SeedableRng},
+            reexport::rand_core::{OsRng, RngCore, SeedableRng},
         },
     },
 };
@@ -60,24 +60,30 @@ const AES_GCM_TAG_LENGTH: usize = 16;
 /// Shared Tokio runtime — created once, reused for every blocking KMS call.
 /// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
 ///
-/// Also entered (via `RUNTIME.enter()`) around synchronous `KmsClient` construction in
+/// Also entered (via `runtime()?.enter()`) around synchronous `KmsClient` construction in
 /// `C_GetFunctionList`: that entrypoint is invoked directly by PKCS#11 consumers (e.g. SAP
 /// ASE) with no Tokio runtime active, and the underlying `hyper` client requires one.
-pub(crate) static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> =
-    std::sync::LazyLock::new(|| {
-        tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-            // Runtime creation can only fail due to OS resource exhaustion; no
-            // recovery is possible, so terminate the process immediately.
-            eprintln!("FATAL: failed to create Tokio runtime: {e}");
-            std::process::abort()
-        })
-    });
+static RUNTIME: std::sync::LazyLock<std::io::Result<tokio::runtime::Runtime>> =
+    std::sync::LazyLock::new(tokio::runtime::Runtime::new);
+
+/// Returns the cached runtime or its construction error without aborting the host.
+pub(crate) fn runtime() -> Pkcs11Result<&'static tokio::runtime::Runtime> {
+    runtime_result(&RUNTIME)
+}
+
+fn runtime_result(
+    result: &std::io::Result<tokio::runtime::Runtime>,
+) -> Pkcs11Result<&tokio::runtime::Runtime> {
+    result
+        .as_ref()
+        .map_err(|error| Pkcs11Error::ServerError(error.to_string()))
+}
 
 /// Query the KMS server for its vendor identification string.
 ///
 /// Falls back to `VENDOR_ID_COSMIAN` if the server doesn't report one.
-pub(crate) fn query_vendor_id(client: &KmsClient) -> String {
-    RUNTIME
+pub(crate) fn query_vendor_id(client: &KmsClient) -> Pkcs11Result<String> {
+    Ok(runtime()?
         .block_on(async {
             let request = Query {
                 query_function: Some(vec![QueryFunction::QueryServerInformation]),
@@ -88,7 +94,7 @@ pub(crate) fn query_vendor_id(client: &KmsClient) -> String {
                 .ok()
                 .and_then(|resp| resp.vendor_identification)
         })
-        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned())
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned()))
 }
 
 /// Write-once, read-many holder for sensitive key material.
@@ -165,7 +171,7 @@ pub(crate) fn locate_kms_objects(
     vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<String>> {
-    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, vendor_id, tags))
+    runtime()?.block_on(locate_kms_objects_async(kms_rest_client, vendor_id, tags))
 }
 
 pub(crate) async fn locate_kms_objects_async(
@@ -185,7 +191,7 @@ pub(crate) fn get_kms_secret_data_objects(
     vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_secret_data_objects_async(
+    runtime()?.block_on(get_kms_secret_data_objects_async(
         kms_rest_client,
         vendor_id,
         tags,
@@ -202,7 +208,7 @@ pub(crate) fn get_kms_certificate_objects(
     vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_certificate_objects_async(
+    runtime()?.block_on(get_kms_certificate_objects_async(
         kms_rest_client,
         vendor_id,
         tags,
@@ -313,7 +319,7 @@ pub(crate) fn get_kms_disk_encryption_data_objects(
     vendor_id: &str,
     disk_encryption_tag: &str,
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_disk_encryption_data_objects_async(
+    runtime()?.block_on(get_kms_disk_encryption_data_objects_async(
         kms_rest_client,
         vendor_id,
         disk_encryption_tag,
@@ -426,7 +432,7 @@ pub(crate) fn get_kms_object(
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(get_kms_object_async(
+    runtime()?.block_on(get_kms_object_async(
         kms_client,
         vendor_id,
         object_id_or_tags,
@@ -511,7 +517,7 @@ pub(crate) fn kms_import_symmetric_key(
     sensitive: bool,
     label: Option<&str>,
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(kms_import_symmetric_key_async(
+    runtime()?.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
         vendor_id,
         algorithm,
@@ -519,6 +525,10 @@ pub(crate) fn kms_import_symmetric_key(
         sensitive,
         label,
     ))
+}
+
+fn seeded_rng(entropy: impl RngCore) -> Pkcs11Result<CsRng> {
+    Ok(CsRng::from_rng(entropy).map_err(std::io::Error::other)?)
 }
 
 /// Creates a new KMS key.
@@ -541,13 +551,15 @@ pub(crate) async fn kms_import_symmetric_key_async(
             "unsupported key algorithm: {algorithm:?}"
         )));
     };
+    let key_bits = key_length
+        .checked_mul(8)
+        .ok_or_else(|| Pkcs11Error::Conversion("key length overflow".to_owned()))?;
+    let cryptographic_length = Some(i32::try_from(key_bits)?);
     let tags = label.map(|l| vec![l.to_owned()]).unwrap_or_default();
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = seeded_rng(OsRng)?;
     let mut key = vec![0_u8; key_length];
     rng.fill_bytes(&mut key);
-
-    let cryptographic_length = Some(i32::try_from(key_length * 8)?);
 
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -587,7 +599,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         let request = symmetric_key_create_request(
             vendor_id,
             label.map(|label| UniqueIdentifier::TextString(label.to_owned())),
-            key_length * 8,
+            key_bits,
             cryptographic_algorithm,
             &tags,
             sensitive,
@@ -633,7 +645,7 @@ pub(crate) fn kms_import_object(
     label: &str,
     data: &[u8],
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(kms_import_object_async(
+    runtime()?.block_on(kms_import_object_async(
         kms_rest_client,
         vendor_id,
         label,
@@ -701,7 +713,7 @@ pub(crate) fn kms_revoke_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
+    runtime()?.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_revoke_object_async(
@@ -727,7 +739,7 @@ pub(crate) fn kms_destroy_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
+    runtime()?.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_destroy_object_async(
@@ -752,7 +764,7 @@ pub(crate) fn kms_encrypt(
     data: Vec<u8>,
 ) -> Pkcs11Result<Vec<u8>> {
     let mut output =
-        RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, false))?;
+        runtime()?.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, false))?;
     if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
         output.ciphertext.extend_from_slice(&output.tag);
     }
@@ -765,7 +777,7 @@ pub(crate) fn kms_encrypt_message(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<MessageEncryptionOutput> {
-    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, true))
+    runtime()?.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, true))
 }
 
 async fn kms_encrypt_async(
@@ -853,7 +865,7 @@ pub(crate) fn kms_decrypt(
     decrypt_ctx: &DecryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Zeroizing<Vec<u8>>> {
-    RUNTIME.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
+    runtime()?.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
 }
 
 pub(crate) async fn kms_decrypt_async(
@@ -940,7 +952,7 @@ pub(crate) fn kms_sign(
     key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<Vec<u8>> {
     let runtime_block_on = profiling::phase(SignPhase::RuntimeBlockOn);
-    let result = RUNTIME.block_on(kms_sign_async(
+    let result = runtime()?.block_on(kms_sign_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
@@ -1379,7 +1391,7 @@ pub(crate) fn kms_verify(
     signature: &[u8],
     key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_verify_async(
+    runtime()?.block_on(kms_verify_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
@@ -1444,7 +1456,7 @@ pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
 ) -> Pkcs11Result<Attributes> {
-    RUNTIME.block_on(get_kms_object_attributes_async(kms_client, object_id))
+    runtime()?.block_on(get_kms_object_attributes_async(kms_client, object_id))
 }
 
 pub(crate) async fn get_kms_object_attributes_async(
@@ -1520,6 +1532,71 @@ pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_setup_runtime_failure_is_cached() {
+        let creations = std::sync::atomic::AtomicUsize::new(0);
+        let cache = std::sync::LazyLock::new(|| {
+            creations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::other("runtime unavailable"))
+        });
+        for _ in 0..2 {
+            assert!(matches!(
+                runtime_result(&cache),
+                Err(Pkcs11Error::ServerError(_))
+            ));
+        }
+        assert_eq!(creations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    struct NoEntropy;
+
+    impl RngCore for NoEntropy {
+        fn next_u32(&mut self) -> u32 {
+            std::panic::resume_unwind(Box::new("unexpected entropy method"));
+        }
+        fn next_u64(&mut self) -> u64 {
+            std::panic::resume_unwind(Box::new("unexpected entropy method"));
+        }
+        fn fill_bytes(&mut self, _: &mut [u8]) {
+            std::panic::resume_unwind(Box::new("unexpected entropy method"));
+        }
+        fn try_fill_bytes(&mut self, _: &mut [u8]) -> Result<(), ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::reexport::cosmian_crypto_core::reexport::rand_core::Error>{
+            Err(ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::reexport::cosmian_crypto_core::reexport::rand_core::Error::new(std::io::Error::other("entropy unavailable")))
+        }
+    }
+
+    #[test]
+    fn test_setup_entropy_failure_is_returned() {
+        assert!(matches!(
+            seeded_rng(NoEntropy),
+            Err(Pkcs11Error::ServerError(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_setup_key_length_checked_before_allocation() -> Pkcs11Result<()> {
+        let client = KmsClient::new_with_config(KmsClientConfig::default())?;
+        for length in [usize::MAX, usize::try_from(i32::MAX)?] {
+            if !matches!(
+                kms_import_symmetric_key_async(
+                    &client,
+                    VENDOR_ID_COSMIAN,
+                    KeyAlgorithm::Aes256,
+                    length,
+                    true,
+                    None
+                )
+                .await,
+                Err(Pkcs11Error::Conversion(_) | Pkcs11Error::TryFromInt(_))
+            ) {
+                return Err(Pkcs11Error::Default(
+                    "oversized key length was not rejected before allocation".to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn test_ecdsa_der_to_raw_p256() -> Result<(), Box<dyn std::error::Error>> {

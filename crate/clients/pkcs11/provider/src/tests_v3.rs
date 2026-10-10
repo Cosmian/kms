@@ -118,7 +118,7 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
     });
 
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
-    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    let backend = CliBackend::instantiate(kms_rest_client.clone())?;
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
     let signature = backend.remote_sign(
@@ -174,7 +174,7 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
     });
 
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
-    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    let backend = CliBackend::instantiate(kms_rest_client.clone())?;
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x24_u8; 32];
     let signature = backend.remote_sign(
@@ -227,7 +227,7 @@ fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
     });
 
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
-    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    let backend = CliBackend::instantiate(kms_rest_client.clone())?;
     let data = b"hello HSM-KEK world, this is a test message for Ed25519 signing".to_vec();
     let signature = backend.remote_sign(
         &sk_id,
@@ -356,7 +356,7 @@ fn test_ed25519_key_discovery() -> Pkcs11Result<()> {
         (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
 
-    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?)?;
 
     let private_keys = backend.find_all_private_keys()?;
     assert!(
@@ -1097,7 +1097,7 @@ fn test_hsm_kek_rsa_pss_sign() -> Pkcs11Result<()> {
     });
 
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
-    let backend = CliBackend::instantiate(kms_rest_client.clone());
+    let backend = CliBackend::instantiate(kms_rest_client.clone())?;
     // CKM_RSA_PKCS_PSS is a "bare" PSS mechanism (PKCS#11 v3.1 §6.4.7): it
     // "operate[s] only on the part of PKCS #1 that involves block formatting
     // and RSA, given a hash value; it does not compute a hash value on the
@@ -1161,7 +1161,7 @@ fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     });
 
     let kms_rest_client = KmsClient::new_with_config(owner_client_conf)?;
-    let backend = CliBackend::instantiate(kms_rest_client);
+    let backend = CliBackend::instantiate(kms_rest_client)?;
     let prehash = [0x77_u8; 32];
     let signature = backend.remote_sign(
         &sk_id,
