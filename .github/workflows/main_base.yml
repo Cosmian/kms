@@ -71,6 +71,40 @@ jobs:
           fi
           cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
 
+  # EST / SCEP interoperability against third-party clients (micromdm scepclient with an
+  # Apple SCEP profile check, globalsign estclient) on macOS; Linux runs them in `test_all.yml`.
+  interop-macos:
+    name: Interop (macOS) - ${{ matrix.type }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [scep-interop, est-interop]
+
+    steps:
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      # estclient / scepclient are Go programs built by the interop scripts
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Interop test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -ex
+          mise run test:${{ matrix.type }} --variant fips
+
   test: # Run all tests
     if: github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]' || startsWith(github.ref,
       'refs/tags/')

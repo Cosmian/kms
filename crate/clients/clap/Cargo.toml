@@ -52,6 +52,7 @@ jsonwebtoken = { workspace = true }
 leb128 = { workspace = true }
 libc = "0.2"
 libloading = { workspace = true }
+openssl = { workspace = true }
 pem = { workspace = true }
 pkcs11-sys = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls-tls", "cookies"] }
@@ -70,7 +71,6 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"
-openssl = { workspace = true }
 serial_test = "3.0"
 tempfile = "3.19"
 test_kms_server = { path = "../../test_kms_server" }

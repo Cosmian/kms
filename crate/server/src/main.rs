@@ -542,6 +542,14 @@ ocsp_cache_ttl_secs = 86400
 ocsp_nonce_policy = "optional"
 ocsp_include_cert_chain = true
 ocsp_archive_cutoff_secs = 0
+
+[est]
+est_enabled = false
+est_require_client_cert = true
+
+[scep]
+scep_enabled = false
+scep_allow_renewal_without_challenge = true
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

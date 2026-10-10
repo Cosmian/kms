@@ -88,15 +88,14 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 
-## Feature rollout order & PR cascade
+## Feature rollout order & commit layering
 
-For any feature spanning server + CLI/UI: implement and PR the **server** side first
-(`crate/server/`, `crate/kmip/`), then the **CLI** (`crate/clients/`) in its own PR, then
-the **Web UI** (`ui/`) in its own PR. Never bundle server and CLI/UI changes for the same
-feature in one PR. When branches must exist before the server PR merges, stack them
-(each branch based on the previous one); use `gh stack view`/`gh stack submit` to manage
-the stack, but never `gh stack sync` (or any rebase-then-force-push flow) — update
-downstream branches with a regular merge instead, per the force-push prohibition below.
+For any feature spanning server + CLI/UI: use one branch and one PR, but make independent
+commits per layer, in this order: **server** (`crate/server/`, `crate/kmip/`), then **CLI**
+(`crate/clients/`), then **Web UI** (`ui/`). Each commit must build and pass hooks on its own
+and must not mix layers. Do not open separate or stacked PRs per layer. Pushed commits are
+never rewritten (see force-push prohibition below): if a layer was bundled by mistake, leave
+it and apply the layering to subsequent commits.
 
 ## Force-push prohibition
 

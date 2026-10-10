@@ -762,6 +762,19 @@ Crate path: `crate/server`
 | `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
+| `warn` | `EST enabled without est_template: only the baseline policy applies (RSA >= 2048, no CA:TRUE, <= 365 days; any EKU, CN and SAN)` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `EST HTTP Basic bootstrap is enabled but TLS is not: credentials would travel in clear text (RFC 7030 requires TLS)` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `EST simpleenroll rejected: no valid client authentication` | `src/routes/est/enroll.rs` | - | - |
+| `warn` | `EST simplereenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
+| `warn` | `SCEP enabled without scep_template: only the baseline policy applies (RSA >= 2048, no CA:TRUE, <= 365 days; any EKU, CN and SAN)` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `SCEP request {} rejected (failInfo={}): {}` | `src/routes/scep/pki_operation.rs` | - | - |
+| `warn` | `SCEP: unreadable pkiMessage: {e}` | `src/routes/scep/pki_operation.rs` | `e` | - |
+| `info` | `GET /.well-known/est/cacerts` | `src/routes/est/cacerts.rs` | - | - |
+| `info` | `GET /.well-known/est/csrattrs` | `src/routes/est/csrattrs.rs` | - | - |
+| `info` | `POST /.well-known/est/simpleenroll ({} bytes)` | `src/routes/est/enroll.rs` | - | - |
+| `info` | `POST /.well-known/est/simplereenroll ({} bytes)` | `src/routes/est/enroll.rs` | - | - |
+| `info` | `SCEP PKIOperation: messageType={} transactionID={}` | `src/routes/scep/pki_operation.rs` | - | - |
+| `debug` | `enrollment: issued certificate {uid} from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `ca_uid` | - |
 
 ### `cosmian_kms_server_database`
 

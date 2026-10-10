@@ -10,6 +10,7 @@ pub(crate) mod cng_verify;
 pub mod console;
 pub mod derive_key;
 pub mod elliptic_curves;
+pub mod est;
 #[cfg(feature = "non-fips")]
 pub mod fpe;
 pub mod google;

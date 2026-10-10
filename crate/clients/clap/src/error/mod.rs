@@ -86,7 +86,6 @@ pub enum KmsCliError {
     Unauthorized(String),
     #[error(transparent)]
     UtilsError(#[from] UtilsError),
-    #[cfg(test)]
     #[error(transparent)]
     OpenSSL(#[from] openssl::error::ErrorStack),
 }

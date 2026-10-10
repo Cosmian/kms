@@ -1852,6 +1852,7 @@ dependencies = [
  "proteccio_pkcs11_loader",
  "rand 0.10.2",
  "rand_chacha 0.10.0",
+ "regex",
  "reqwest 0.12.28",
  "scratchstack-aws-signature",
  "serde",

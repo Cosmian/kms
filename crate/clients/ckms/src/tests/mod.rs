@@ -23,6 +23,7 @@ mod derive_key;
 mod discover_versions;
 mod elliptic_curve;
 mod error_messages;
+mod est;
 mod forward_proxy_tests;
 #[cfg(feature = "non-fips")]
 mod fpe;

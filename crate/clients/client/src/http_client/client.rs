@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http_body_util::{BodyExt, Full};
@@ -489,6 +490,33 @@ impl HttpClient {
             .header("Content-Type", content_type);
         builder = self.apply_default_headers(builder);
         let request = builder
+            .body(Full::new(Bytes::from(body)))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST request with raw bytes, `Content-Type`, and HTTP Basic authentication
+    /// (RFC 7617). Does not attach this client's own default headers (bearer/vault token,
+    /// custom headers): Basic credentials are a standalone identity for bootstrap flows such as
+    /// EST initial enrollment (RFC 7030 §3.2.3), not a KMS session.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_bytes_with_basic_auth(
+        &self,
+        url: &str,
+        body: Vec<u8>,
+        content_type: &str,
+        username: &str,
+        password: &str,
+    ) -> HttpClientResult<HttpResponse> {
+        let credentials = STANDARD.encode(format!("{username}:{password}"));
+        let request = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", content_type)
+            .header("Authorization", format!("Basic {credentials}"))
             .body(Full::new(Bytes::from(body)))
             .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
 

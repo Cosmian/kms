@@ -389,19 +389,15 @@ async fn authorize_ca_use(kms: &KMS, ca_sk_uid: &str, user: &UserId) -> SpireRes
 
 /// Reject a CSR that requests its own `basicConstraints` extension.
 fn reject_csr_basic_constraints(csr_pem: &str) -> SpireResult<()> {
-    use x509_parser::{
-        pem::parse_x509_pem,
-        prelude::{FromDer, ParsedExtension, X509CertificationRequest},
-    };
+    use x509_parser::pem::parse_x509_pem;
+
+    use crate::core::operations::certify::template::csr_basic_constraints;
 
     let (_, pem) = parse_x509_pem(csr_pem.as_bytes())
         .map_err(|e| SpireApiError::BadRequest(format!("invalid CSR PEM: {e}")))?;
-    let (_, csr) = X509CertificationRequest::from_der(&pem.contents)
-        .map_err(|e| SpireApiError::BadRequest(format!("invalid CSR: {e}")))?;
-    let has_basic_constraints = csr.requested_extensions().is_some_and(|mut exts| {
-        exts.any(|ext| matches!(ext, ParsedExtension::BasicConstraints(_)))
-    });
-    if has_basic_constraints {
+    let basic_constraints = csr_basic_constraints(&pem.contents)
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
+    if basic_constraints.is_some() {
         return Err(SpireApiError::BadRequest(
             "CSR must not request basicConstraints; the server sets CA:TRUE, pathlen:0".to_owned(),
         ));

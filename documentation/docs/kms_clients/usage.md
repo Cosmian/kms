@@ -25,6 +25,7 @@ Commands:
   cng            Manage the Windows CNG Key Storage Provider (KSP)
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+  est            Interact with the KMS EST (RFC 7030) enrollment endpoints as a client
   google         Manage google elements. Handle key pairs and identities from Gmail API
   locate         Locate cryptographic objects inside the KMS
   login          Login to the KMS server identity provider.

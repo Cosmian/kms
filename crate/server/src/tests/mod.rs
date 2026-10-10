@@ -7,6 +7,7 @@ mod crl_tests;
 #[cfg(feature = "non-fips")]
 mod curve_25519_tests;
 mod derive_key_tests;
+mod enrollment_tests;
 pub(crate) mod google_cse;
 mod health_endpoint;
 mod hsm;
