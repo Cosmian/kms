@@ -14,6 +14,8 @@ on:
         required: true
         type: string
         default: 1.97.0
+  push: # TEMPORARY: lets this workflow run from the alpine branch before it exists on the default branch
+    branches: [alpine]
   workflow_dispatch:
     inputs:
       toolchain:
@@ -52,6 +54,34 @@ jobs:
 
       - name: List keys
         run: gpg -K
+
+      # The pinned nixpkgs fetches acl/attr (needed to build the musl cross toolchain's
+      # build-platform coreutils from source) from mirror.easyname.at, whose TLS
+      # certificate has expired — `nix-build` then fails with "certificate has expired"
+      # (curl error 60). Fixed-output derivations are content-addressed, so adding the
+      # identical tarballs (fetched from the upstream Savannah host) to the store makes
+      # the derivations valid without rebuilding them; the expected store paths below
+      # are asserted so a hash mismatch fails loudly instead of being silently ignored.
+      # Remove once the pinned nixpkgs no longer references mirror.easyname.at.
+      - name: Seed Nix store with acl/attr sources (mirror.easyname.at certificate expired)
+        shell: bash
+        run: |
+          set -euo pipefail
+          seed() {
+            local url="$1" expected="$2" file
+            file="$(mktemp -d)/$(basename "$url")"
+            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$file" "$url"
+            actual="$(nix-store --add-fixed sha256 "$file")"
+            if [ "$actual" != "$expected" ]; then
+              echo "ERROR: $url produced $actual, expected $expected" >&2
+              exit 1
+            fi
+            echo "Seeded $actual"
+          }
+          seed https://download.savannah.nongnu.org/releases/acl/acl-2.3.2.tar.gz \
+            /nix/store/kfa6p4i5dmvgirqw87557qbg53xif0qh-acl-2.3.2.tar.gz
+          seed https://download.savannah.nongnu.org/releases/attr/attr-2.5.2.tar.gz \
+            /nix/store/hskjhnyx00gy9hk9napqkv0qzvpa20sy-attr-2.5.2.tar.gz
 
       - name: Package with GPG signature
         run: mise run package:apk --variant ${{ matrix.features }}
