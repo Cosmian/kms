@@ -172,9 +172,24 @@ fi
 
 # ── Step 4: Start Db2 via docker compose ─────────────────────────────────────
 echo
-echo "==> Starting Db2 container via docker compose…"
+echo "==> Pulling Db2 image (icr.io can be slow/flaky — retrying on failure)…"
 echo "    Image: ${DB2_DOCKER_IMAGE} (with LICENSE=accept)"
 export DB2_DOCKER_IMAGE DB2_CONTAINER_NAME DB2_INSTANCE_PWD DB2_DBNAME
+DB2_PULLED=false
+for _pull_attempt in 1 2 3 4 5; do
+  if docker compose -f "${REPO_ROOT}/docker-compose.yml" pull db2-tde; then
+    DB2_PULLED=true
+    break
+  fi
+  echo "WARNING: Db2 image pull failed (attempt ${_pull_attempt}/5), retrying in 20s…" >&2
+  sleep 20
+done
+if [ "${DB2_PULLED}" = false ]; then
+  echo "ERROR: Could not pull ${DB2_DOCKER_IMAGE} after 5 attempts (icr.io unreachable?)." >&2
+  exit 1
+fi
+
+echo "==> Starting Db2 container via docker compose…"
 docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d db2-tde
 
 echo "Waiting for Db2 to initialize (up to 300 s — Db2 startup is slow)…"
