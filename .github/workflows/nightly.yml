@@ -62,3 +62,15 @@ jobs:
     secrets: inherit
     with:
       toolchain: 1.97.0
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # All refs: the Alpine apk pipeline is independent of the glibc hash-update
+  # and packaging pipeline (musl vendor hashes are not touched by
+  # nix-update-hashes.yml), so it starts immediately, with no `needs:`.
+  # ─────────────────────────────────────────────────────────────────────────
+  packaging-apk:
+    if: github.repository == 'Cosmian/kms'
+    uses: ./.github/workflows/packaging-apk.yml
+    secrets: inherit
+    with:
+      toolchain: 1.97.0

@@ -290,6 +290,13 @@ jobs:
             --repo Cosmian/kms \
             --ref "$BRANCH"
 
+          # Independent, fire-and-forget: nothing later in this workflow
+          # depends on the Alpine apk pipeline.
+          echo "Dispatching packaging-apk.yml on branch '$BRANCH'…"
+          gh workflow run packaging-apk.yml \
+            --repo Cosmian/kms \
+            --ref "$BRANCH"
+
           # Wait a few seconds for the run to register in the API
           sleep 10
 

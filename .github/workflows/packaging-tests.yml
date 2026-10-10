@@ -160,48 +160,6 @@ jobs:
             exit $rc
           fi
 
-  # Proves the Nix-built Alpine apk packages install (`apk add`) and run on real
-  # Alpine. See .mise/scripts/test/test_alpine_musl.sh for the full sequence:
-  # installed-binary --version/--info pre-checks, server start, /version and UI
-  # checks, FIPS/legacy-provider log checks, AES/RSA/EC round-trips, and PQC for
-  # non-FIPS (SLH-DSA as a musl thread-stack-size canary).
-  alpine-packages-test:
-    name: In Docker alpine:${{ matrix.alpine-tag }}-${{ matrix.features }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        features: [fips, non-fips]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-        alpine-tag: ['3.20', '3.21', latest]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - name: Download apk artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: apk_${{ matrix.features }}_${{ matrix.runner }}
-
-      - name: Locate apk packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          SERVER_APK=$(find "result-apk-server-${{ matrix.features }}" -name "cosmian-kms-server-*.apk")
-          CLI_APK=$(find "result-apk-cli-${{ matrix.features }}" -name "cosmian-kms-cli-*.apk")
-          echo "SERVER_APK=$(pwd)/${SERVER_APK}" >> "$GITHUB_ENV"
-          echo "CLI_APK=$(pwd)/${CLI_APK}" >> "$GITHUB_ENV"
-
-      - name: Install packages and run installed binaries in Alpine ${{ matrix.alpine-tag }}
-        shell: bash
-        run: |
-          bash .mise/scripts/test/test_alpine_musl.sh \
-            --variant ${{ matrix.features }} \
-            --server-apk "${SERVER_APK}" \
-            --cli-apk "${CLI_APK}" \
-            --alpine-tag ${{ matrix.alpine-tag }}
-
   systemd-packages-test:
     name: Use GH runners ${{ matrix.features }}-${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     runs-on: ${{ matrix.runner }}
