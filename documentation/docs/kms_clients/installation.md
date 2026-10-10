@@ -44,6 +44,46 @@
     ckms --version
     ```
 
+=== "Alpine Linux (amd64)"
+
+    Download the package and its detached GPG signature, verify it, then install it
+    (musl build, no `gcompat` shim required). The `.apk` is signed out-of-band with the
+    Eviden release key rather than with an `abuild` key, so `apk` cannot check it itself
+    and `--allow-untrusted` is required: **the `gpg --verify` step is therefore the only
+    authenticity check — do not skip it.** Obtain `cosmian-kms-public.asc` from a source
+    independent of the package download (see
+    [Verifying release signatures](../installation/installation_getting_started.md#verifying-release-signatures)).
+
+    ```console title="On local machine"
+    apk add --no-cache gnupg wget
+    gpg --import cosmian-kms-public.asc
+    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/non-fips/cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/non-fips/cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk.asc
+    gpg --verify cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk.asc cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk \
+      && apk add --allow-untrusted ./cosmian-kms-cli-non-fips_5.28.0-r0_x86_64.apk
+    ckms --version
+    ```
+
+=== "Alpine Linux (arm64)"
+
+    Download the package and its detached GPG signature, verify it, then install it
+    (musl build, no `gcompat` shim required). The `.apk` is signed out-of-band with the
+    Eviden release key rather than with an `abuild` key, so `apk` cannot check it itself
+    and `--allow-untrusted` is required: **the `gpg --verify` step is therefore the only
+    authenticity check — do not skip it.** Obtain `cosmian-kms-public.asc` from a source
+    independent of the package download (see
+    [Verifying release signatures](../installation/installation_getting_started.md#verifying-release-signatures)).
+
+    ```console title="On local machine"
+    apk add --no-cache gnupg wget
+    gpg --import cosmian-kms-public.asc
+    wget https://package.cosmian.com/kms/5.28.0/apk/arm64/non-fips/cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk
+    wget https://package.cosmian.com/kms/5.28.0/apk/arm64/non-fips/cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk.asc
+    gpg --verify cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk.asc cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk \
+      && apk add --allow-untrusted ./cosmian-kms-cli-non-fips_5.28.0-r0_aarch64.apk
+    ckms --version
+    ```
+
 === "MacOS (Apple Silicon)"
 
     Download the DMG installer and install it:

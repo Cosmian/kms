@@ -1,0 +1,7 @@
+# Configuration for /etc/init.d/cosmian_kms
+
+# Path to the KMS server TOML configuration file.
+#COSMIAN_KMS_CONF="/etc/cosmian/kms.toml"
+
+# Extra command-line arguments passed to cosmian_kms.
+#command_args=""
