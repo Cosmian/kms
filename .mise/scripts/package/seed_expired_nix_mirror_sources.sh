@@ -35,7 +35,11 @@ nix derivation show --recursive "${drvs[@]}" | python3 -c '
 import json, sys
 
 prefixes = tuple(sys.argv[1:])
-for name, drv in json.load(sys.stdin).items():
+data = json.load(sys.stdin)
+# Newer Nix wraps the derivations: {"version": N, "derivations": {...}}.
+for name, drv in data.get("derivations", data).items():
+    if not isinstance(drv, dict):
+        continue
     out = drv.get("outputs", {}).get("out", {})
     if out.get("hash") is None:
         continue
