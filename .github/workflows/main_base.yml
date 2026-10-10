@@ -93,6 +93,11 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
+      # estclient / scepclient are Go programs built by the interop scripts
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
       - name: Interop test
         env:
           GITHUB_TOKEN: ${{ github.token }}
