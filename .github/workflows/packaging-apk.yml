@@ -14,6 +14,8 @@ on:
         required: true
         type: string
         default: 1.97.0
+  push: # TEMPORARY: lets this workflow run from the alpine branch before it exists on the default branch
+    branches: [alpine]
   workflow_dispatch:
     inputs:
       toolchain:
@@ -62,7 +64,7 @@ jobs:
         shell: bash
         run: |
           libc=$([ "${{ matrix.features }}" = fips ] && echo dynamic || echo static)
-          .github/reusable_scripts/seed_expired_nix_mirror_sources.sh \
+          .mise/scripts/package/seed_expired_nix_mirror_sources.sh \
             "kms-server-${{ matrix.features }}-musl-${libc}" \
             "kms-cli-${{ matrix.features }}-musl-${libc}"
 
