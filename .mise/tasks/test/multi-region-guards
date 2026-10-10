@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+#MISE description="Validate the multi-region active-active PostgreSQL deployment model (issue #1187 guards)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--configs <paths>" env="KMS_MULTI_REGION_CONFIGS" help="Space-separated KMS server TOML config paths to validate (optional; self-test used when absent)"
+#USAGE flag "--skip-live" help="Skip the Docker/pgEdge live guards and behavioral tests"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/multi_region_guards.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+PG1_URL="${KMS_PGEDGE_1_URL:-postgresql://kms:kms@127.0.0.1:6432/kms}"
+PG2_URL="${KMS_PGEDGE_2_URL:-postgresql://kms:kms@127.0.0.1:6433/kms}"
+PG1_PORT="${KMS_SLOT_PGEDGE_1_PORT:-6432}"
+PG2_PORT="${KMS_SLOT_PGEDGE_2_PORT:-6433}"
+
+print_header "Multi-region active-active PostgreSQL guards (${VARIANT_NAME})"
+
+# ── 1. Static source guards (always run, no infrastructure needed) ────────────
+mr_run_guard "source model wiring" mr_guard_source_model "${REPO_ROOT}"
+
+# ── 2. Static config guards (operator configs, or a self-test when absent) ────
+CONFIG_FILES=()
+if [ -n "${usage_configs:-}" ]; then
+  # Intentional word splitting: --configs is a space-separated list.
+  # shellcheck disable=SC2206
+  CONFIG_FILES=(${usage_configs})
+fi
+
+if [ "${#CONFIG_FILES[@]}" -gt 0 ]; then
+  print_status "Validating ${#CONFIG_FILES[@]} operator config(s): ${CONFIG_FILES[*]}"
+  mr_run_guard "config topology" mr_guard_config_topology "${CONFIG_FILES[@]}"
+  mr_run_guard "config backend" mr_guard_config_backend "${CONFIG_FILES[@]}"
+  mr_run_guard "config clear_database" mr_guard_config_clear_database "${CONFIG_FILES[@]}"
+  mr_run_guard "config ceremony keys" mr_guard_config_ceremony_keys "${CONFIG_FILES[@]}"
+  mr_run_guard "config incompatible features" mr_guard_config_incompatible_features "${CONFIG_FILES[@]}"
+else
+  print_info "No --configs provided — running the config-guard detector self-test instead"
+  mr_run_guard "config guard self-test" mr_self_test_config_guards
+fi
+
+# ── 3. Live DB guards + behavioral proofs (Docker + pgEdge) ────────────────────
+LIVE_CHECKS_SKIPPED=false
+
+if [ "${usage_skip_live:-false}" = "true" ]; then
+  print_warning "--skip-live set — skipping pgEdge live guards and behavioral tests"
+  LIVE_CHECKS_SKIPPED=true
+elif ! docker_ready; then
+  print_warning "Docker is not installed or not running — skipping pgEdge live guards and behavioral tests"
+  LIVE_CHECKS_SKIPPED=true
+else
+  # Build the behavioral test binaries while the containers are still down: a
+  # long first build (cold nix-shell) must not outlive the pgEdge containers.
+  print_status "Pre-building behavioral test binaries (containers stay down during the build)..."
+  if ! mr_prebuild_behavioral_tests "${REPO_ROOT}"; then
+    print_error "Pre-build of the pgEdge behavioral test binaries failed"
+  fi
+
+  print_status "Starting pgEdge containers (pgedge1:${PG1_PORT} / pgedge2:${PG2_PORT})..."
+  docker compose --profile pgedge up -d pgedge-1 pgedge-2
+
+  _mr_live_cleanup() {
+    docker compose --profile pgedge stop pgedge-1 pgedge-2 2>/dev/null || true
+  }
+  trap _mr_live_cleanup EXIT
+
+  if ! _wait_for_port 127.0.0.1 "${PG1_PORT}" 30; then
+    print_warning "pgedge-1 (port ${PG1_PORT}) not reachable — skipping live guards"
+    LIVE_CHECKS_SKIPPED=true
+  elif ! _wait_for_port 127.0.0.1 "${PG2_PORT}" 30; then
+    print_warning "pgedge-2 (port ${PG2_PORT}) not reachable — skipping live guards"
+    LIVE_CHECKS_SKIPPED=true
+  elif ! mr_guard_pg_container_ready pgedge1 30 || ! mr_guard_pg_container_ready pgedge2 30; then
+    print_warning "pgEdge containers not ready — skipping live guards"
+    LIVE_CHECKS_SKIPPED=true
+  else
+    # Behavioral proofs first: they instantiate the KMS schema, wire Spock full-mesh
+    # replication, and exercise the four issue #1187 acceptance behaviors.
+    mr_run_guard "behavioral: object-state conflict merge + grants LWW" \
+      mr_guard_db_state_and_grants "${REPO_ROOT}" "${PG1_URL}" "${PG2_URL}"
+    mr_run_guard "behavioral: CRL issuance gating" \
+      mr_guard_crl_gating "${REPO_ROOT}" "${PG1_URL}" "${PG2_URL}"
+    if [ "${VARIANT}" = "non-fips" ]; then
+      mr_run_guard "behavioral: CO ceremony activation gating" \
+        mr_guard_ceremony_gating "${REPO_ROOT}" "${PG1_URL}" "${PG2_URL}"
+    else
+      print_info "CO ceremony gating proof runs with --variant non-fips (ceremony machinery is non-FIPS-gated)"
+    fi
+
+    # Live DB guards validate the replicated schema state left by the proofs.
+    mr_run_guard "live: replicated-table PRIMARY KEYs (pgedge1)" mr_guard_primary_keys pgedge1
+    mr_run_guard "live: replicated-table PRIMARY KEYs (pgedge2)" mr_guard_primary_keys pgedge2
+    mr_run_guard "live: monotonic state trigger (pgedge1)" mr_guard_state_monotonic_trigger pgedge1
+    mr_run_guard "live: monotonic state trigger (pgedge2)" mr_guard_state_monotonic_trigger pgedge2
+    mr_run_guard "live: Spock wiring (pgedge1)" mr_guard_spock_wiring pgedge1
+    mr_run_guard "live: Spock wiring (pgedge2)" mr_guard_spock_wiring pgedge2
+  fi
+fi
+
+# ── Report ─────────────────────────────────────────────────────────────────────
+if [ "${#MR_GUARD_FAILURES[@]}" -gt 0 ]; then
+  echo ''
+  echo "FAILED guards: ${MR_GUARD_FAILURES[*]}" >&2
+  exit 1
+fi
+
+if [ "${LIVE_CHECKS_SKIPPED}" = "true" ]; then
+  print_warning "INCOMPLETE: static guards passed, but required live checks were skipped"
+  exit 1
+fi
+
+print_success "All multi-region active-active guards passed"

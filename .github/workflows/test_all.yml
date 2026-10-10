@@ -22,29 +22,23 @@ jobs:
           - percona
           - mariadb
           - psql
+          - pgedge
+          - multi-region-guards
           - otel
           - redis
-          - pykmip
-          - wasm
-          - xks
-          - azure-ekm
-          - ui
-          - gcp-cmek
-          - openssh
+          - client-protocol
+          - pkcs11-clients
+          - cloud
+          - web
           - gnupg
-          - luks
-          - veracrypt
-          - jose
           - iris
           - db2
           - ase
           - secret_cosmian_kms
           - spire
-          - kmip-go
           - cef
           - monitoring
-          - ocsp
-          - pki-revocation
+          - pki
           - siem
           - audit
         features: [fips, non-fips]
@@ -52,29 +46,12 @@ jobs:
           # redis is exclusively for non-fips
           - type: redis
             features: fips
-          # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
-          - type: pykmip
-            features: fips
-          # aws_xks relies on curl SigV4 + non-FIPS build flags
-          - type: xks
-            features: fips
-          # azure_ekm is only run with non-fips
-          - type: azure-ekm
-            features: fips
-          # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
-          - type: openssh
-            features: fips
+          # aws_xks, azure_ekm, jose, luks, openssh, pykmip, and veracrypt are non-fips-only;
+          # they run inside the "cloud"/"client-protocol"/"pkcs11-clients" groups, which skip
+          # each non-fips-only member internally (reason_non_fips_only) and still run their
+          # fips-capable members (gcp-cmek, kmip-go) on fips.
           # gnupg OpenPGP tests force non-fips
           - type: gnupg
-            features: fips
-          # luks disk-encryption PKCS#11 tests force non-fips
-          - type: luks
-            features: fips
-          # veracrypt disk-encryption PKCS#11 tests force non-fips
-          - type: veracrypt
-            features: fips
-          # jose (REST crypto + jwcrypto interop) runs only with non-fips
-          - type: jose
             features: fips
           # iris requires non-fips (PKCS#12 + full TLS stack)
           - type: iris
@@ -96,6 +73,10 @@ jobs:
           # monitoring tests work with both variants, but run non-fips only to avoid
           # duplicating Docker-heavy test time (OTel + VictoriaMetrics + Grafana).
           - type: monitoring
+            features: fips
+          # multi-region guards re-run the pgEdge behavioral proofs plus the guard
+          # layers; non-fips only to avoid duplicating the pgEdge job time.
+          - type: multi-region-guards
             features: fips
           # siem integration tests are format-agnostic (same audit output in both variants);
           # run non-fips only to avoid duplicating test time.

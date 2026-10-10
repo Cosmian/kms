@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#MISE description="Run PKI & revocation tests (ocsp, pki-revocation)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+print_header "Running PKI & revocation tests (${VARIANT_NAME})"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+
+PASSED=()
+FAILED=()
+
+# Runs $name ($@ as the command). Never aborts the aggregator on failure.
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: $name"
+  if "$@"; then
+    print_success "$name passed"
+    PASSED+=("$name")
+  else
+    print_warning "$name FAILED (continuing...)"
+    FAILED+=("$name")
+  fi
+}
+
+run_step "ocsp" bash "${TASK_DIR}/ocsp" --variant "${VARIANT}" --link "${LINK}"
+run_step "pki-revocation" bash "${TASK_DIR}/pki-revocation" --variant "${VARIANT}" --link "${LINK}"
+
+echo ''
+echo '============================================'
+print_success "Passed:  ${#PASSED[@]}"
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo "  FAILED steps: ${FAILED[*]}" >&2
+  echo '============================================' >&2
+  exit 1
+fi
+echo '============================================'
+
+print_success "PKI & revocation tests completed"
