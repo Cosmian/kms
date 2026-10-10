@@ -58,6 +58,12 @@ rustPlatform.buildRustPackage rec {
   doCheck = false; # see kms-server-musl.nix: validated via Alpine-container smoke test instead
   doInstallCheck = true; # runs installCheckPhase below: ELF linkage assertions + .sha256 files
 
+  # Fully static builds: rustc links with `-static-pie`, but nixpkgs' cc-wrapper only
+  # skips its hardening `-pie` when it sees `-static`/`-shared` — not `-static-pie`.
+  # The extra `-pie` turns the result into a dynamically-linked PIE (with INTERP),
+  # failing installCheckPhase. rustc already emits the right PIE/static-pie flags itself.
+  hardeningDisable = lib.optional muslCrtStatic "pie";
+
   src = filteredSrc;
   cargoSha256 = cargoHash;
   buildType = "release";

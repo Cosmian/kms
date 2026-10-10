@@ -62,7 +62,7 @@ let
   libcTag = if muslCrtStatic then "musl-static" else "musl-dynamic";
   variant = "${baseVariant}-${libcTag}";
 
-  hostPlatform = pkgsMusl.stdenv.hostPlatform;
+  inherit (pkgsMusl.stdenv) hostPlatform;
   archTag = if hostPlatform.isAarch64 then "aarch64" else "x86_64";
   # musl triple, e.g. "x86_64-unknown-linux-musl" / "aarch64-unknown-linux-musl".
   muslTriple = hostPlatform.config;
@@ -160,6 +160,12 @@ rustPlatform.buildRustPackage rec {
   pname = "cosmian-kms-server-${libcTag}";
   inherit version;
   auditable = false;
+
+  # Fully static builds: rustc links with `-static-pie`, but nixpkgs' cc-wrapper only
+  # skips its hardening `-pie` when it sees `-static`/`-shared` — not `-static-pie`.
+  # The extra `-pie` turns the result into a dynamically-linked PIE (with INTERP),
+  # failing installCheckPhase. rustc already emits the right PIE/static-pie flags itself.
+  hardeningDisable = lib.optional muslCrtStatic "pie";
 
   src = filteredSrc;
 
