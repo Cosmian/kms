@@ -1,0 +1,2 @@
+{"protocol":"pkcs11","operation":"sign/ecdsa-p256","concurrency":1,"throughput_rps":175.31,"p50_ms":5.665,"p95_ms":6.067,"p99_ms":6.508}
+{"protocol":"pkcs11","operation":"verify/ecdsa-p256","concurrency":1,"throughput_rps":101.33,"p50_ms":9.819,"p95_ms":10.299,"p99_ms":10.675}
