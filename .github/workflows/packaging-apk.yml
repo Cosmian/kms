@@ -14,8 +14,6 @@ on:
         required: true
         type: string
         default: 1.97.0
-  push: # TEMPORARY: lets this workflow run from the alpine branch before it exists on the default branch
-    branches: [alpine]
   workflow_dispatch:
     inputs:
       toolchain:
