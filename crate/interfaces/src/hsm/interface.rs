@@ -11,8 +11,8 @@ use cosmian_kmip::kmip_2_1::{
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
-    SigningKeyMetadata, crypto_oracle::EncryptedContent,
+    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, MacAlgorithm,
+    MacKeyMetadata, SigningAlgorithm, SigningKeyMetadata, crypto_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms
@@ -495,6 +495,78 @@ pub trait HSM: Send + Sync {
         signature: &[u8],
     ) -> InterfaceResult<bool>;
 
+    /// Compute a MAC over `data` using the given key in the HSM, resolving the HSM-specific MAC
+    /// mechanism from the key's own on-HSM metadata within the SAME checked-out PKCS#11 session
+    /// as the MAC operation itself. See `sign_with_metadata` for the rationale.
+    ///
+    /// The default implementation returns `InterfaceError::NotSupported`, preserving today's
+    /// behavior for every HSM backend that does not override it (issue #1215).
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key to use for MAC computation
+    /// * `resolve_algorithm` - called once, synchronously, with the key's on-HSM metadata
+    ///   (`MacKeyMetadata`) resolved during this call's own session checkout; must select the
+    ///   concrete `MacAlgorithm` (or return an `Err`, which aborts the MAC before any
+    ///   `C_SignInit` call and is propagated to the caller)
+    /// * `data` - the data to authenticate
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - the MAC bytes
+    async fn mac_with_metadata(
+        &self,
+        _slot_id: usize,
+        _key_id: &[u8],
+        _resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        _data: &[u8],
+    ) -> InterfaceResult<Vec<u8>> {
+        Err(InterfaceError::NotSupported(
+            "MAC generation via this HSM backend is not supported".to_owned(),
+        ))
+    }
+
+    /// Verify a MAC using the given key in the HSM, resolving the HSM-specific MAC mechanism
+    /// from the key's own on-HSM metadata within the SAME checked-out PKCS#11 session as the
+    /// verify operation itself. See `sign_with_metadata` for the rationale.
+    ///
+    /// The default implementation returns `InterfaceError::NotSupported`, preserving today's
+    /// behavior for every HSM backend that does not override it (issue #1215).
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key to use for MAC verification
+    /// * `resolve_algorithm` - called once, synchronously, with the key's `MacKeyMetadata`
+    ///   resolved during this call's own session checkout; must select the concrete
+    ///   `MacAlgorithm` the MAC was produced with (or return an `Err`, which aborts the verify
+    ///   before any `C_VerifyInit` call)
+    /// * `data` - the data that was authenticated
+    /// * `mac_data` - the MAC to verify
+    /// # Returns
+    /// * `InterfaceResult<bool>` - `true` if the MAC is valid, `false` for a cryptographically
+    ///   invalid MAC. Returns `Err` for any other failure, including an unsupported mechanism or
+    ///   an error returned by `resolve_algorithm`.
+    async fn verify_mac_with_metadata(
+        &self,
+        _slot_id: usize,
+        _key_id: &[u8],
+        _resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        _data: &[u8],
+        _mac_data: &[u8],
+    ) -> InterfaceResult<bool> {
+        Err(InterfaceError::NotSupported(
+            "MAC verification via this HSM backend is not supported".to_owned(),
+        ))
+    }
+
     /// Generate cryptographically secure random bytes using the HSM RNG.
     ///
     /// # Arguments
@@ -555,4 +627,206 @@ pub trait HSM: Send + Sync {
     /// # Returns
     /// * `Option<&dyn std::any::Any>` - A trait object that can be downcast to `Arc<HsmLib>`
     fn hsm_lib(&self) -> Option<&dyn std::any::Any>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type MacAlgorithmResolver = Box<
+        dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm> + Send + Sync + 'static,
+    >;
+
+    /// An `HSM` implementor that overrides nothing beyond the required methods — every real
+    /// vendor backend today (`BaseHsm<P>`) is in exactly this situation for MAC generate/verify.
+    struct NoopHsm;
+
+    #[async_trait]
+    impl HSM for NoopHsm {
+        async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn get_supported_algorithms(
+            &self,
+            _slot_id: usize,
+        ) -> InterfaceResult<Vec<CryptoAlgorithm>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn create_key<'a>(
+            &'a self,
+            _slot_id: usize,
+            _id: &'a [u8],
+            _algorithm: HsmKeyAlgorithm,
+            _key_length_in_bits: usize,
+            _sensitive: bool,
+            _tags: &'a HashSet<String>,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn create_keypair<'a>(
+            &'a self,
+            _slot_id: usize,
+            _ids: HsmKeyPairIds<'a>,
+            _algorithm: HsmKeypairAlgorithm,
+            _key_length_in_bits: usize,
+            _sensitive: bool,
+            _tags: &'a HashSet<String>,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn export(
+            &self,
+            _slot_id: usize,
+            _object_id: &[u8],
+        ) -> InterfaceResult<Option<HsmObject>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn delete(&self, _slot_id: usize, _object_id: &[u8]) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn find(
+            &self,
+            _slot_id: usize,
+            _object_filter: HsmObjectFilter,
+        ) -> InterfaceResult<Vec<Vec<u8>>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn encrypt<'a>(
+            &'a self,
+            _slot_id: usize,
+            _key_id: &'a [u8],
+            _algorithm: CryptoAlgorithm,
+            _data: &'a [u8],
+            _iv_counter_nonce: &'a [u8],
+        ) -> InterfaceResult<EncryptedContent> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn decrypt(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _algorithm: CryptoAlgorithm,
+            _data: &[u8],
+        ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn get_key_type(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+        ) -> InterfaceResult<Option<KeyType>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn get_key_metadata(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+        ) -> InterfaceResult<Option<KeyMetadata>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn sign_with_metadata(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _resolve_algorithm: Box<
+                dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                    + Send
+                    + Sync
+                    + 'static,
+            >,
+            _data: &[u8],
+        ) -> InterfaceResult<Vec<u8>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn verify_with_metadata(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _resolve_algorithm: Box<
+                dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                    + Send
+                    + Sync
+                    + 'static,
+            >,
+            _data: &[u8],
+            _signature: &[u8],
+        ) -> InterfaceResult<bool> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn generate_random(&self, _slot_id: usize, _len: usize) -> InterfaceResult<Vec<u8>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn seed_random(&self, _slot_id: usize, _seed: &[u8]) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn set_key_dates(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _start_date: Option<time::Date>,
+            _end_date: Option<time::Date>,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn set_key_label(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _label: &str,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        fn hsm_lib(&self) -> Option<&dyn std::any::Any> {
+            None
+        }
+    }
+
+    /// Resolver that fails with a non-`NotSupported` error: the trait defaults must return
+    /// `NotSupported` without ever invoking it.
+    fn failing_resolver() -> MacAlgorithmResolver {
+        Box::new(|_metadata: &MacKeyMetadata| {
+            Err(InterfaceError::Default(
+                "resolve_algorithm must not be called by the default implementation".to_owned(),
+            ))
+        })
+    }
+
+    /// Issue #1215: any `HSM` implementor that does not override `mac_with_metadata` /
+    /// `verify_mac_with_metadata` must keep today's "not supported" behavior — every current
+    /// vendor backend (`BaseHsm<P>`) is such an implementor.
+    #[tokio::test]
+    async fn test_mac_default_is_not_supported() {
+        let result = NoopHsm
+            .mac_with_metadata(0, b"key", failing_resolver(), b"data")
+            .await;
+
+        assert!(matches!(result, Err(InterfaceError::NotSupported(_))));
+    }
+
+    /// Issue #1215: same guarantee as `test_mac_default_is_not_supported`, for MAC verify.
+    #[tokio::test]
+    async fn test_verify_mac_default_is_not_supported() {
+        let result = NoopHsm
+            .verify_mac_with_metadata(0, b"key", failing_resolver(), b"data", b"mac")
+            .await;
+
+        assert!(matches!(result, Err(InterfaceError::NotSupported(_))));
+    }
 }

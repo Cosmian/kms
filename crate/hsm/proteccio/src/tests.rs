@@ -57,6 +57,7 @@ fn test_hsm_proteccio_all() -> HResult<()> {
     shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
+    shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
@@ -192,6 +193,24 @@ fn test_hsm_proteccio_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
 fn test_hsm_proteccio_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
+}
+
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
+/// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms without touching any of
+/// the pre-existing ECDSA/RSA signing coverage above.
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
+fn test_hsm_proteccio_concurrent_sign_does_not_degrade() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
+    shared::concurrent_sign_does_not_degrade(&slot)
 }
 
 #[test]

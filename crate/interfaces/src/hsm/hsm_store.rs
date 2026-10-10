@@ -26,7 +26,8 @@ use zeroize::Zeroizing;
 use crate::{
     AtomicOperation, CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
     HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial,
-    KeyType, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
+    KeyType, MacAlgorithm, MacKeyMetadata, ObjectWithMetadata, ObjectsStore, SigningAlgorithm,
+    SigningKeyMetadata, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
@@ -950,28 +951,72 @@ impl CryptoOracle for HsmStore {
     async fn mac(
         &self,
         uid: &str,
-        _data: &[u8],
-        _cryptographic_parameters: Option<
+        data: &[u8],
+        cryptographic_parameters: Option<
             &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
         >,
     ) -> InterfaceResult<Vec<u8>> {
-        Err(InterfaceError::NotSupported(format!(
-            "MAC via HSM is not yet implemented for key: {uid}"
-        )))
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let uid = uid.to_owned();
+        let cryptographic_parameters = cryptographic_parameters.cloned();
+        let resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        > = Box::new(move |metadata: &MacKeyMetadata| {
+            if metadata.key_type != KeyType::AesKey {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "MAC: key {uid} is a {:?}, expected a symmetric key",
+                    metadata.key_type
+                )));
+            }
+            let algorithm = MacAlgorithm::from_kmip(cryptographic_parameters.as_ref())?;
+            debug!("mac: using algorithm {algorithm:?} for key {uid}");
+            Ok(algorithm)
+        });
+        self.hsm
+            .mac_with_metadata(slot_id, key_id.as_bytes(), resolve_algorithm, data)
+            .await
     }
 
     async fn mac_verify(
         &self,
         uid: &str,
-        _data: &[u8],
-        _mac_data: &[u8],
-        _cryptographic_parameters: Option<
+        data: &[u8],
+        mac_data: &[u8],
+        cryptographic_parameters: Option<
             &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
         >,
     ) -> InterfaceResult<bool> {
-        Err(InterfaceError::NotSupported(format!(
-            "MACVerify via HSM is not yet implemented for key: {uid}"
-        )))
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let uid = uid.to_owned();
+        let cryptographic_parameters = cryptographic_parameters.cloned();
+        let resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        > = Box::new(move |metadata: &MacKeyMetadata| {
+            if metadata.key_type != KeyType::AesKey {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "MACVerify: key {uid} is a {:?}, expected a symmetric key",
+                    metadata.key_type
+                )));
+            }
+            let algorithm = MacAlgorithm::from_kmip(cryptographic_parameters.as_ref())?;
+            debug!("mac_verify: using algorithm {algorithm:?} for key {uid}");
+            Ok(algorithm)
+        });
+        self.hsm
+            .verify_mac_with_metadata(
+                slot_id,
+                key_id.as_bytes(),
+                resolve_algorithm,
+                data,
+                mac_data,
+            )
+            .await
     }
 }
 
@@ -1812,16 +1857,20 @@ mod tests {
     #[cfg(feature = "non-fips")]
     use crate::EcPrivateKeyMaterial;
     use crate::{
-        CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
-        HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult,
-        KeyMaterial, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm, SigningKeyMetadata,
-        UserId, crypto_oracle::EncryptedContent, hsm::HsmStore,
+        CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HashingAlgorithm, HsmKeyAlgorithm,
+        HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError,
+        InterfaceResult, KeyMaterial, KeyMetadata, KeyType, MacAlgorithm, MacKeyMetadata,
+        ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
+        crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
     type SigningAlgorithmResolver = Box<
         dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
             + Send
             + Sync
             + 'static,
+    >;
+    type MacAlgorithmResolver = Box<
+        dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm> + Send + Sync + 'static,
     >;
 
     // ── mockall-generated test double for HSM ─────────────────────────────────
@@ -1908,6 +1957,21 @@ mod tests {
                 resolve_algorithm: SigningAlgorithmResolver,
                 data: &[u8],
                 signature: &[u8],
+            ) -> InterfaceResult<bool>;
+            async fn mac_with_metadata(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                resolve_algorithm: MacAlgorithmResolver,
+                data: &[u8],
+            ) -> InterfaceResult<Vec<u8>>;
+            async fn verify_mac_with_metadata(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                resolve_algorithm: MacAlgorithmResolver,
+                data: &[u8],
+                mac_data: &[u8],
             ) -> InterfaceResult<bool>;
             async fn generate_random(
                 &self,
@@ -2448,6 +2512,100 @@ mod tests {
             return Err(InterfaceError::Default(format!(
                 "expected an InvalidRequest error for a non-RSA key type, got: {result:?}"
             )));
+        }
+        Ok(())
+    }
+
+    /// `CryptoOracle::mac` must delegate to `HSM::mac_with_metadata` for a symmetric key,
+    /// closing the previously-unconditional `InterfaceError::NotSupported` gap (issue #1215).
+    #[tokio::test]
+    async fn test_mac_delegates_to_hsm_mac_with_metadata() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_mac_with_metadata()
+            .returning(|_slot_id, _key_id, resolve_algorithm, _data| {
+                let metadata = MacKeyMetadata {
+                    key_type: KeyType::AesKey,
+                };
+                let algorithm = resolve_algorithm(&metadata)?;
+                if algorithm == MacAlgorithm::HmacSha256 {
+                    Ok(vec![1, 2, 3, 4])
+                } else {
+                    Err(InterfaceError::Default(format!(
+                        "expected HmacSha256, got {algorithm:?}"
+                    )))
+                }
+            });
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let parameters = CryptographicParameters {
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        };
+
+        let mac_data = store
+            .mac("hsm::0::key1", b"data", Some(&parameters))
+            .await?;
+
+        if mac_data != vec![1, 2, 3, 4] {
+            return Err(InterfaceError::Default(format!(
+                "expected mac data [1,2,3,4], got {mac_data:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `CryptoOracle::mac` must reject a non-symmetric key type before ever reaching the HSM's
+    /// real MAC call, enforced by `resolve_algorithm` returning an `Err`.
+    #[tokio::test]
+    async fn test_mac_rejects_non_symmetric_key_type() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_mac_with_metadata()
+            .returning(|_slot_id, _key_id, resolve_algorithm, _data| {
+                let metadata = MacKeyMetadata {
+                    key_type: KeyType::RsaPrivateKey,
+                };
+                resolve_algorithm(&metadata)?;
+                Ok(vec![])
+            });
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+
+        let result = store.mac("hsm::0::key1", b"data", None).await;
+
+        if !matches!(result, Err(InterfaceError::InvalidRequest(_))) {
+            return Err(InterfaceError::Default(format!(
+                "expected an InvalidRequest error for a non-symmetric key type, got: {result:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `CryptoOracle::mac_verify` must delegate to `HSM::verify_mac_with_metadata` for a
+    /// symmetric key (issue #1215).
+    #[tokio::test]
+    async fn test_mac_verify_delegates_to_hsm_verify_mac_with_metadata() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_verify_mac_with_metadata().returning(
+            |_slot_id, _key_id, resolve_algorithm, _data, _mac_data| {
+                let metadata = MacKeyMetadata {
+                    key_type: KeyType::AesKey,
+                };
+                resolve_algorithm(&metadata)?;
+                Ok(true)
+            },
+        );
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let parameters = CryptographicParameters {
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..CryptographicParameters::default()
+        };
+
+        let valid = store
+            .mac_verify("hsm::0::key1", b"data", b"mac", Some(&parameters))
+            .await?;
+
+        if !valid {
+            return Err(InterfaceError::Default(
+                "expected mac_verify to report a valid MAC".to_owned(),
+            ));
         }
         Ok(())
     }
