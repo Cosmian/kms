@@ -104,7 +104,7 @@ jobs:
         include:
           # Docker services required per test type (types without an entry need no containers)
           - type: psql
-            docker: postgres
+            docker: postgres postgres-mtls
           - type: mysql
             docker: mysql
           - type: percona
