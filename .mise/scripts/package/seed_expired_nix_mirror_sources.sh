@@ -46,7 +46,9 @@ for name, drv in data.get("derivations", data).items():
     env = drv.get("env", {})
     for url in (env.get("urls") or env.get("url") or "").split():
         if url.startswith(prefixes):
-            if out.get("hashAlgo") != "sha256" or out.get("method") != "flat":
+            # Newer Nix stores an SRI hash ("sha256-...") and no separate hashAlgo.
+            algo = out.get("hashAlgo") or out["hash"].split("-")[0]
+            if algo != "sha256" or out.get("method") != "flat":
                 sys.exit(f"unsupported fixed-output mode for {name}: {out}")
             print(f"/nix/store/{name}\t{url}")
 ' "${BAD_PREFIXES[@]}" | while IFS=$'\t' read -r drv url; do
