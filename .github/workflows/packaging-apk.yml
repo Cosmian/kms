@@ -14,6 +14,8 @@ on:
         required: true
         type: string
         default: 1.97.0
+  push: # TEMPORARY: lets this workflow run from the alpine branch before it exists on the default branch
+    branches: [alpine]
   workflow_dispatch:
     inputs:
       toolchain:
@@ -53,33 +55,18 @@ jobs:
       - name: List keys
         run: gpg -K
 
-      # The pinned nixpkgs fetches acl/attr (needed to build the musl cross toolchain's
-      # build-platform coreutils from source) from mirror.easyname.at, whose TLS
-      # certificate has expired — `nix-build` then fails with "certificate has expired"
-      # (curl error 60). Fixed-output derivations are content-addressed, so adding the
-      # identical tarballs (fetched from the upstream Savannah host) to the store makes
-      # the derivations valid without rebuilding them; the expected store paths below
-      # are asserted so a hash mismatch fails loudly instead of being silently ignored.
+      # The pinned nixpkgs downloads several sources (acl, attr, lzip, ...) needed to build
+      # the musl cross toolchain from mirror.easyname.at, whose TLS certificate has expired
+      # ("certificate has expired", curl error 60). Pre-seed the Nix store with the
+      # identical files from upstream Savannah; see the script for details.
       # Remove once the pinned nixpkgs no longer references mirror.easyname.at.
-      - name: Seed Nix store with acl/attr sources (mirror.easyname.at certificate expired)
+      - name: Seed Nix store with sources from the expired mirror.easyname.at
         shell: bash
         run: |
-          set -euo pipefail
-          seed() {
-            local url="$1" expected="$2" file
-            file="$(mktemp -d)/$(basename "$url")"
-            curl --retry 5 --retry-delay 5 --retry-all-errors -fsSL -o "$file" "$url"
-            actual="$(nix-store --add-fixed sha256 "$file")"
-            if [ "$actual" != "$expected" ]; then
-              echo "ERROR: $url produced $actual, expected $expected" >&2
-              exit 1
-            fi
-            echo "Seeded $actual"
-          }
-          seed https://download.savannah.nongnu.org/releases/acl/acl-2.3.2.tar.gz \
-            /nix/store/kfa6p4i5dmvgirqw87557qbg53xif0qh-acl-2.3.2.tar.gz
-          seed https://download.savannah.nongnu.org/releases/attr/attr-2.5.2.tar.gz \
-            /nix/store/hskjhnyx00gy9hk9napqkv0qzvpa20sy-attr-2.5.2.tar.gz
+          libc=$([ "${{ matrix.features }}" = fips ] && echo dynamic || echo static)
+          .github/reusable_scripts/seed_expired_nix_mirror_sources.sh \
+            "kms-server-${{ matrix.features }}-musl-${libc}" \
+            "kms-cli-${{ matrix.features }}-musl-${libc}"
 
       - name: Package with GPG signature
         run: mise run package:apk --variant ${{ matrix.features }}
