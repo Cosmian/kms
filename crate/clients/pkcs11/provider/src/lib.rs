@@ -6,7 +6,7 @@ use cosmian_pkcs11_module::{
     ModuleError,
     pkcs11::{
         FUNC_LIST, FUNC_LIST_3_0, FUNC_LIST_3_0_V3_0, PKCS11_INTERFACE, PKCS11_INTERFACE_V3_0,
-        PKCS11_INTERFACE_V3_0_MINOR, interface_name_matches,
+        PKCS11_INTERFACE_V3_0_MINOR, ffi_guard, interface_name_matches,
     },
     traits::{register_backend, register_backend_if_absent, register_login_fn, register_pin_mode},
 };
@@ -16,7 +16,10 @@ use pkcs11_sys::{
     CKR_FUNCTION_FAILED, CKR_OK, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 
-use crate::{kms_object::get_kms_config, logging::initialize_logging};
+use crate::{
+    kms_object::{get_kms_config, runtime},
+    logging::initialize_logging,
+};
 
 /// Number of `CK_INTERFACE` entries `C_GetInterfaceList` publishes: the same "PKCS 11" function
 /// table under both the implemented Cryptoki version and `{3, 0}`. See `C_GetInterface` for why
@@ -37,12 +40,16 @@ enum BackendRegistration {
     PreserveExisting,
 }
 
-fn register_client(client: KmsClient, registration: BackendRegistration) {
-    let backend = Box::new(backend::CliBackend::instantiate(client));
+fn register_client(client: KmsClient, registration: BackendRegistration) -> Result<(), CK_RV> {
+    let backend = Box::new(
+        backend::CliBackend::instantiate(client)
+            .map_err(|error| CK_RV::from(ModuleError::from(error)))?,
+    );
     match registration {
         BackendRegistration::Replace => register_backend(backend),
         BackendRegistration::PreserveExisting => register_backend_if_absent(backend),
     }
+    Ok(())
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill: populates the `FUNC_LIST_3_0*` tables exactly once,
@@ -127,8 +134,8 @@ fn dll_directory() -> Option<PathBuf> {
 
 /// Performs the KMS backend/config initialization that `C_GetFunctionList` used to do inline.
 /// Returns `Err(CKR_FUNCTION_FAILED)` if the KMS client cannot be instantiated (e.g. missing or
-/// invalid configuration), rather than panicking — a Rust panic across an `extern "C"` boundary
-/// is UB and crashes the host process (ORA-07445 on Oracle).
+/// invalid configuration). An uncaught Rust panic reaching an `extern "C"` boundary aborts
+/// the host process (ORA-07445 on Oracle).
 ///
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): this initialization is shared
 /// with `C_GetInterfaceList`/`C_GetInterface` below, so that a v3.0-aware caller that skips
@@ -184,6 +191,12 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
         }
     };
 
+    let _runtime_guard = runtime()
+        .map_err(|error| {
+            cosmian_logger::error!("failed to initialize PKCS#11 runtime: {error}");
+            CK_RV::from(ModuleError::from(error))
+        })?
+        .enter();
     let use_pin = config.pkcs11_use_pin_as_access_token.unwrap_or(false);
     if use_pin {
         // Mode 2 — OIDC pin: register a pre-auth backend so metadata calls
@@ -199,14 +212,15 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
                 return Err(CKR_FUNCTION_FAILED);
             }
         };
-        register_client(base_client, registration);
+        register_client(base_client, registration)?;
         register_pin_mode(true);
         register_login_fn(Box::new(move |token: &str| {
             let mut cfg = config.clone();
             cfg.http_config.access_token = Some(token.to_owned());
+            let _runtime_guard = runtime().map_err(ModuleError::from)?.enter();
             let kms_client =
                 KmsClient::new_with_config(cfg).map_err(|e| ModuleError::Backend(Box::new(e)))?;
-            register_backend(Box::new(backend::CliBackend::instantiate(kms_client)));
+            register_backend(Box::new(backend::CliBackend::instantiate(kms_client)?));
             Ok(())
         }));
     } else {
@@ -224,7 +238,7 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
                 return Err(CKR_FUNCTION_FAILED);
             }
         };
-        register_client(kms_client, registration);
+        register_client(kms_client, registration)?;
     }
     Ok(())
 }
@@ -233,23 +247,24 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
 /// This function is the first one called by the PKCS#11 library client
 /// to get the PKCS#11 functions list.
 /// Returns `CKR_FUNCTION_FAILED` if the KMS client cannot be instantiated
-/// (e.g. missing or invalid configuration), rather than panicking — a Rust
-/// panic across an `extern "C"` boundary is UB and crashes the host process
-/// (ORA-07445 on Oracle).
+/// (e.g. missing or invalid configuration). Unexpected unwinding panics return
+/// `CKR_GENERAL_ERROR` and require host restart.
 #[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
-    if pp_function_list.is_null() {
-        return CKR_ARGUMENTS_BAD;
-    }
-    if let Err(rv) = ensure_backend_registered(BackendRegistration::Replace) {
-        return rv;
-    }
-    unsafe {
-        FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
-        *pp_function_list = addr_of_mut!(FUNC_LIST);
-    }
-    CKR_OK
+    ffi_guard(|| {
+        if pp_function_list.is_null() {
+            return CKR_ARGUMENTS_BAD;
+        }
+        if let Err(rv) = ensure_backend_registered(BackendRegistration::Replace) {
+            return rv;
+        }
+        unsafe {
+            FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
+            *pp_function_list = addr_of_mut!(FUNC_LIST);
+        }
+        CKR_OK
+    })
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): standard v3.0
@@ -272,29 +287,31 @@ pub unsafe extern "C" fn C_GetInterfaceList(
     p_interfaces_list: CK_INTERFACE_PTR,
     pul_count: CK_ULONG_PTR,
 ) -> CK_RV {
-    if pul_count.is_null() {
-        return CKR_ARGUMENTS_BAD;
-    }
-    if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
-        return rv;
-    }
-    ensure_func_list_3_0_registered();
-    // SAFETY: `pul_count` is non-null (checked above); `p_interfaces_list` is written only when
-    // non-null and `*pul_count >= INTERFACE_COUNT`, so the caller's array holds both entries.
-    unsafe {
-        if p_interfaces_list.is_null() {
-            *pul_count = INTERFACE_COUNT;
-            return CKR_OK;
+    ffi_guard(|| {
+        if pul_count.is_null() {
+            return CKR_ARGUMENTS_BAD;
         }
-        if *pul_count < INTERFACE_COUNT {
-            *pul_count = INTERFACE_COUNT;
-            return CKR_BUFFER_TOO_SMALL;
+        if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
+            return rv;
         }
-        *p_interfaces_list = PKCS11_INTERFACE;
-        p_interfaces_list.add(1).write(PKCS11_INTERFACE_V3_0);
-        *pul_count = INTERFACE_COUNT;
-    }
-    CKR_OK
+        ensure_func_list_3_0_registered();
+        // SAFETY: `pul_count` is non-null (checked above); `p_interfaces_list` is written only when
+        // non-null and `*pul_count >= INTERFACE_COUNT`, so the caller's array holds both entries.
+        unsafe {
+            if p_interfaces_list.is_null() {
+                *pul_count = INTERFACE_COUNT;
+                return CKR_OK;
+            }
+            if *pul_count < INTERFACE_COUNT {
+                *pul_count = INTERFACE_COUNT;
+                return CKR_BUFFER_TOO_SMALL;
+            }
+            *p_interfaces_list = PKCS11_INTERFACE;
+            p_interfaces_list.add(1).write(PKCS11_INTERFACE_V3_0);
+            *pul_count = INTERFACE_COUNT;
+        }
+        CKR_OK
+    })
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): standard v3.0 interface-lookup
@@ -329,53 +346,55 @@ pub unsafe extern "C" fn C_GetInterface(
     pp_interface: CK_INTERFACE_PTR_PTR,
     flags: CK_FLAGS,
 ) -> CK_RV {
-    if pp_interface.is_null() {
-        return CKR_ARGUMENTS_BAD;
-    }
-    if flags != 0 {
-        // This module's interfaces make no special guarantees (e.g. fork-safety); no interface
-        // exists that satisfies a non-zero flag request.
-        return CKR_ARGUMENTS_BAD;
-    }
-    if !p_interface_name.is_null() {
-        // SAFETY: PKCS#11 requires `pInterfaceName` to reference a NUL-terminated string.
-        // `interface_name_matches` additionally stops at the length of the only name that
-        // could match, so a host that forgets the terminator causes a bounded read rather
-        // than the unbounded walk `CStr::from_ptr` would perform.
-        if !unsafe { interface_name_matches(p_interface_name) } {
+    ffi_guard(|| {
+        if pp_interface.is_null() {
             return CKR_ARGUMENTS_BAD;
         }
-    }
-    let interface: CK_INTERFACE_PTR = if p_version.is_null() {
-        addr_of_mut!(PKCS11_INTERFACE)
-    } else {
-        // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
-        // safety contract.
-        let version = unsafe { *p_version };
-        // Same major version required; minor version must not exceed what this module
-        // implements (3.1) — a v3.1 implementation must still satisfy a backward-compatible
-        // caller explicitly requesting {major: 3, minor: 0}, per this function's own doc
-        // comment above. An exact-match check here would reject that valid request.
-        if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
+        if flags != 0 {
+            // This module's interfaces make no special guarantees (e.g. fork-safety); no interface
+            // exists that satisfies a non-zero flag request.
             return CKR_ARGUMENTS_BAD;
         }
-        if version.minor == CRYPTOKI_VERSION_MINOR {
+        if !p_interface_name.is_null() {
+            // SAFETY: PKCS#11 requires `pInterfaceName` to reference a NUL-terminated string.
+            // `interface_name_matches` additionally stops at the length of the only name that
+            // could match, so a host that forgets the terminator causes a bounded read rather
+            // than the unbounded walk `CStr::from_ptr` would perform.
+            if !unsafe { interface_name_matches(p_interface_name) } {
+                return CKR_ARGUMENTS_BAD;
+            }
+        }
+        let interface: CK_INTERFACE_PTR = if p_version.is_null() {
             addr_of_mut!(PKCS11_INTERFACE)
-        } else if version.minor == PKCS11_INTERFACE_V3_0_MINOR {
-            addr_of_mut!(PKCS11_INTERFACE_V3_0)
         } else {
-            return CKR_ARGUMENTS_BAD;
+            // SAFETY: caller guarantees p_version points to a valid CK_VERSION per this function's
+            // safety contract.
+            let version = unsafe { *p_version };
+            // Same major version required; minor version must not exceed what this module
+            // implements (3.1) — a v3.1 implementation must still satisfy a backward-compatible
+            // caller explicitly requesting {major: 3, minor: 0}, per this function's own doc
+            // comment above. An exact-match check here would reject that valid request.
+            if version.major != CRYPTOKI_VERSION_MAJOR || version.minor > CRYPTOKI_VERSION_MINOR {
+                return CKR_ARGUMENTS_BAD;
+            }
+            if version.minor == CRYPTOKI_VERSION_MINOR {
+                addr_of_mut!(PKCS11_INTERFACE)
+            } else if version.minor == PKCS11_INTERFACE_V3_0_MINOR {
+                addr_of_mut!(PKCS11_INTERFACE_V3_0)
+            } else {
+                return CKR_ARGUMENTS_BAD;
+            }
+        };
+        if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
+            return rv;
         }
-    };
-    if let Err(rv) = ensure_backend_registered(BackendRegistration::PreserveExisting) {
-        return rv;
-    }
-    ensure_func_list_3_0_registered();
-    // SAFETY: `pp_interface` is non-null (checked above) and writable per the safety contract.
-    unsafe {
-        *pp_interface = interface;
-    }
-    CKR_OK
+        ensure_func_list_3_0_registered();
+        // SAFETY: `pp_interface` is non-null (checked above) and writable per the safety contract.
+        unsafe {
+            *pp_interface = interface;
+        }
+        CKR_OK
+    })
 }
 
 #[cfg(test)]

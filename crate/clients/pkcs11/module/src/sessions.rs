@@ -1139,6 +1139,21 @@ pub(crate) fn create(flags: CK_FLAGS) -> ModuleResult<CK_SESSION_HANDLE> {
     }
 }
 
+#[cfg(test)]
+/// Exercises either creation path with a poisoned map in an isolated child.
+pub(crate) fn assert_create_after_poison() {
+    let panic = std::panic::catch_unwind(|| {
+        if let Ok(_guard) = SESSIONS.write() {
+            std::panic::resume_unwind(Box::new("session map fault"));
+        }
+    });
+    assert!(panic.is_err());
+    assert!(matches!(
+        create(pkcs11_sys::CKF_SERIAL_SESSION),
+        Err(ModuleError::Context { .. })
+    ));
+}
+
 pub(crate) fn exists(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
     Ok(SESSIONS
         .read()
