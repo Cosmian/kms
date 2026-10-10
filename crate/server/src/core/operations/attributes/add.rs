@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::policy::{check_attribute_grant, check_attribute_read_only};
+use super::policy::{check_grant, check_read_only};
 use crate::{
     core::{
         KMS,
@@ -37,7 +37,12 @@ pub(crate) async fn add_attribute(
     let object_handle = from_request(Some(&request.unique_identifier), "Add Attribute")?;
 
     // Read-only guard — these attributes are server-managed.
-    check_attribute_read_only(&request.new_attribute, KmipOperation::AddAttribute)?;
+    check_read_only(
+        request
+            .new_attribute
+            .edit_policy(KmipOperation::AddAttribute),
+        KmipOperation::AddAttribute,
+    )?;
     if let Attribute::RotateName(name) = &request.new_attribute {
         if name.contains('@') {
             return Err(KmsError::InvalidRequest(
@@ -76,7 +81,7 @@ pub(crate) async fn add_attribute(
     let is_adding_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
         && !ObjectHandle::from(owm.id()).is_hsm();
 
-    check_attribute_grant(
+    check_grant(
         kms,
         &owm,
         user,

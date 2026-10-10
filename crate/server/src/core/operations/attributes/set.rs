@@ -17,7 +17,7 @@ use time::OffsetDateTime;
 /// `SECS_PER_DAY - 1`, used for ceiling integer division of seconds into whole days.
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
-use super::policy::{check_attribute_grant, check_attribute_read_only};
+use super::policy::{check_grant, check_read_only};
 use crate::{
     core::{
         KMS,
@@ -63,7 +63,12 @@ pub(crate) async fn set_attribute(
     let object_handle = from_request(request.unique_identifier.as_ref(), "Set Attribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
-    check_attribute_read_only(&request.new_attribute, KmipOperation::SetAttribute)?;
+    check_read_only(
+        request
+            .new_attribute
+            .edit_policy(KmipOperation::SetAttribute),
+        KmipOperation::SetAttribute,
+    )?;
     if let Attribute::RotateName(name) = &request.new_attribute {
         if name.contains('@') {
             return Err(KmsError::InvalidRequest(
@@ -145,7 +150,7 @@ pub(crate) async fn set_attribute(
     let is_setting_positive_rotate_interval_on_sql = matches!(&request.new_attribute, Attribute::RotateInterval(v) if *v > 0)
         && !ObjectHandle::from(owm.id()).is_hsm();
 
-    check_attribute_grant(
+    check_grant(
         kms,
         &owm,
         user,

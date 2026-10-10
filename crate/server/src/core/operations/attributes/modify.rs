@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::policy::{check_attribute_grant, check_attribute_read_only};
+use super::policy::{check_grant, check_read_only};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -45,7 +45,12 @@ pub(crate) async fn modify_attribute(
     let object_handle = from_request(request.unique_identifier.as_ref(), "ModifyAttribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
-    check_attribute_read_only(&request.new_attribute, KmipOperation::ModifyAttribute)?;
+    check_read_only(
+        request
+            .new_attribute
+            .edit_policy(KmipOperation::ModifyAttribute),
+        KmipOperation::ModifyAttribute,
+    )?;
     if let Attribute::RotateName(name) = &request.new_attribute {
         if name.contains('@') {
             return Err(KmsError::InvalidRequest(
@@ -83,7 +88,7 @@ pub(crate) async fn modify_attribute(
 
     let mut attributes = owm.attributes_mut().clone();
 
-    check_attribute_grant(
+    check_grant(
         kms,
         &owm,
         user,

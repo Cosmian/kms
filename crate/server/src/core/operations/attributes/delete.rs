@@ -9,9 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::trace;
 
-use super::policy::{
-    check_attribute_grant, check_attribute_read_only, check_tag_grant, check_tag_read_only,
-};
+use super::policy::check_read_only;
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -48,8 +46,10 @@ pub(crate) async fn delete_attribute(
 
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
-        check_attribute_read_only(&attribute, KmipOperation::DeleteAttribute)?;
-        check_attribute_grant(kms, &owm, user, KmipOperation::DeleteAttribute, &attribute).await?;
+        check_read_only(
+            attribute.edit_policy(KmipOperation::DeleteAttribute),
+            KmipOperation::DeleteAttribute,
+        )?;
         match_delete_attribute! {
             attribute, attributes,
             simple {
@@ -156,8 +156,10 @@ pub(crate) async fn delete_attribute(
             match attribute_reference {
                 AttributeReference::Standard(tag) => {
                     // Read-only guard — server-managed tags cannot be deleted by the user.
-                    check_tag_read_only(tag, KmipOperation::DeleteAttribute)?;
-                    check_tag_grant(kms, &owm, user, KmipOperation::DeleteAttribute, tag).await?;
+                    check_read_only(
+                        tag.edit_policy(KmipOperation::DeleteAttribute),
+                        KmipOperation::DeleteAttribute,
+                    )?;
                     match_delete_attribute_by_tag! {
                         tag, attributes,
                         simple {
