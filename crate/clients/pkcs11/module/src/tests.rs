@@ -45,6 +45,172 @@ use crate::{
     },
 };
 
+cryptoki_fn!(
+    fn C_PanicBoundaryTest(fault: CK_ULONG) {
+        match fault {
+            1 => std::panic::resume_unwind(Box::new("body fault")),
+            2 => return Err(ModuleError::Backend(Box::new(PanicOnFormat))),
+            3 => std::panic::resume_unwind(Box::new(PanicOnDrop)),
+            4 => return Err(ModuleError::BadArguments("expected error".to_owned())),
+            _ => {}
+        }
+        Ok(())
+    }
+);
+
+cryptoki_fn!(
+    unsafe fn C_UnsafePanicBoundaryTest() {
+        std::panic::resume_unwind(Box::new("unsafe body fault"));
+    }
+);
+
+#[derive(Debug)]
+struct PanicOnFormat;
+
+impl std::fmt::Display for PanicOnFormat {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::panic::resume_unwind(Box::new("format fault"));
+    }
+}
+
+impl std::error::Error for PanicOnFormat {}
+
+struct PanicOnDrop;
+
+impl Drop for PanicOnDrop {
+    fn drop(&mut self) {
+        std::panic::resume_unwind(Box::new("payload drop fault"));
+    }
+}
+
+struct FormatVisitor;
+
+impl tracing::field::Visit for FormatVisitor {
+    fn record_debug(&mut self, _: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        std::hint::black_box(format!("{value:?}"));
+    }
+}
+
+struct PanicSubscriber(String);
+
+impl tracing::Subscriber for PanicSubscriber {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        if self.0 == "span" {
+            std::panic::resume_unwind(Box::new("span fault"));
+        }
+        tracing::span::Id::from_u64(1)
+    }
+
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, event: &tracing::Event<'_>) {
+        if self.0 == "return" {
+            std::panic::resume_unwind(Box::new("return fault"));
+        }
+        if self.0 == "format" {
+            event.record(&mut FormatVisitor);
+        }
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {
+        if self.0 == "exit" {
+            std::panic::resume_unwind(Box::new("exit fault"));
+        }
+    }
+    fn try_close(&self, _: tracing::span::Id) -> bool {
+        if self.0 == "close" {
+            std::panic::resume_unwind(Box::new("close fault"));
+        }
+        true
+    }
+}
+
+#[test]
+fn panic_boundary() -> Result<(), Box<dyn std::error::Error>> {
+    const CASE_ENV: &str = "KMS_PKCS11_PANIC_TEST_CASE";
+    if let Ok(case) = std::env::var(CASE_ENV) {
+        if case == "normal" {
+            assert_eq!(C_PanicBoundaryTest(0), CKR_OK);
+            assert_eq!(C_PanicBoundaryTest(4), CKR_ARGUMENTS_BAD);
+            assert_eq!(
+                pkcs11::ffi_guard(|| pkcs11_sys::CKR_GENERAL_ERROR),
+                pkcs11_sys::CKR_GENERAL_ERROR
+            );
+            assert_eq!(C_PanicBoundaryTest(0), CKR_OK);
+            return Ok(());
+        }
+        let result = match case.as_str() {
+            "body" => C_PanicBoundaryTest(1),
+            "payload" => C_PanicBoundaryTest(3),
+            "unsafe" => {
+                // SAFETY: this test export takes no pointers or other caller preconditions.
+                unsafe { C_UnsafePanicBoundaryTest() }
+            }
+            "concurrent" => {
+                let admitted = Arc::new(std::sync::Barrier::new(2));
+                let worker_admitted = Arc::clone(&admitted);
+                let (release, released) = std::sync::mpsc::channel();
+                let worker = std::thread::spawn(move || {
+                    pkcs11::ffi_guard(|| {
+                        worker_admitted.wait();
+                        if released.recv().is_err() {
+                            return pkcs11_sys::CKR_FUNCTION_FAILED;
+                        }
+                        CKR_OK
+                    })
+                });
+                admitted.wait();
+                assert_eq!(C_PanicBoundaryTest(1), pkcs11_sys::CKR_GENERAL_ERROR);
+                release.send(())?;
+                match worker.join() {
+                    Ok(result) => result,
+                    Err(payload) => std::panic::resume_unwind(payload),
+                }
+            }
+            _ => tracing::subscriber::with_default(PanicSubscriber(case.clone()), || {
+                C_PanicBoundaryTest(if case == "format" { 2 } else { 0 })
+            }),
+        };
+        assert_eq!(result, pkcs11_sys::CKR_GENERAL_ERROR);
+        tracing::subscriber::with_default(PanicSubscriber("span".to_owned()), || {
+            assert_eq!(C_PanicBoundaryTest(0), pkcs11_sys::CKR_GENERAL_ERROR);
+            assert_eq!(C_GetFunctionStatus(0), pkcs11_sys::CKR_GENERAL_ERROR);
+            assert_eq!(C_Initialize(ptr::null_mut()), pkcs11_sys::CKR_GENERAL_ERROR);
+            assert_eq!(C_Finalize(ptr::null_mut()), pkcs11_sys::CKR_GENERAL_ERROR);
+            assert!(!INITIALIZED.load(Ordering::SeqCst));
+        });
+    } else {
+        for case in [
+            "normal",
+            "body",
+            "unsafe",
+            "span",
+            "return",
+            "exit",
+            "close",
+            "format",
+            "payload",
+            "concurrent",
+        ] {
+            let output = std::process::Command::new(std::env::current_exe()?)
+                .args(["--exact", "tests::panic_boundary", "--nocapture"])
+                .env(CASE_ENV, case)
+                .output()?;
+            assert!(
+                output.status.success(),
+                "{case}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn function_list_reports_pkcs11_2_40() {
     // SAFETY: the test only reads the immutable version fields of the global
