@@ -762,6 +762,8 @@ Crate path: `crate/server`
 | `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
+| `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
+| `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
