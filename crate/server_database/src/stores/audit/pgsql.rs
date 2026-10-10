@@ -47,16 +47,13 @@ use deadpool_postgres::{
     Config as PgConfig, GenericClient as _, ManagerConfig, Pool, RecyclingMethod,
 };
 use openssl::hash::{Hasher, MessageDigest};
-use tokio_postgres::{GenericClient, NoTls, error::SqlState};
+use tokio_postgres::{GenericClient, error::SqlState};
 
 use super::{AUDIT_QUERIES, row::event_from_row};
 use crate::{
     db_error,
     error::{DbError, DbResult},
-    stores::sql::{
-        build_pg_tls_connector, extract_query_params, is_pg_retryable_error, pg_retry_backoff_ms,
-        rebuild_url_without_ssl_params,
-    },
+    stores::sql::{is_pg_retryable_error, pg_retry_backoff_ms, prepare_pg_connection},
 };
 
 macro_rules! get_audit_query {
@@ -102,61 +99,35 @@ const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_milli
 /// (there, a tail window; here, one page at a time).
 const AUDIT_PAGE_SIZE: i64 = 1_000;
 
-/// Builds a 1-connection pool for `url`. `sslmode=disable` connects in the clear; any other
-/// mode (default `prefer`) negotiates TLS honoring `sslmode`/`sslrootcert`/`sslcert`/`sslkey`
-/// via `sql::build_pg_tls_connector` — identical behavior to the object-store connection.
+/// Builds a 1-connection pool for `url`, honoring `sslmode`/`sslrootcert`/`sslcert`/`sslkey`
+/// exactly like the object-store connection (see `prepare_pg_connection`).
 fn build_pool(url: &str, max_size: usize, recycling_method: RecyclingMethod) -> DbResult<Pool> {
-    let query_params = extract_query_params(url);
-    let clean_url = rebuild_url_without_ssl_params(url, &query_params);
+    let (url, tls) = prepare_pg_connection(url)?;
 
     let mut cfg = PgConfig::new();
-    cfg.url = Some(clean_url);
+    cfg.url = Some(url);
     cfg.manager = Some(ManagerConfig { recycling_method });
     cfg.pool = Some(deadpool_postgres::PoolConfig {
         max_size,
         ..Default::default()
     });
 
-    let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
-    if sslmode == "disable" {
-        cfg.create_pool(None, NoTls)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))
-    } else {
-        let connector = build_pg_tls_connector(&query_params)?;
-        cfg.create_pool(None, connector)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))
-    }
+    cfg.create_pool(None, tls)
+        .map_err(|e| DbError::DatabaseError(e.to_string()))
 }
 
 /// Opens a single, unpooled `PostgreSQL` session for holding the instance's advisory
 /// lock — see the module docs for why this must never share a connection with the pool.
 async fn connect_dedicated_session(url: &str) -> DbResult<tokio_postgres::Client> {
-    let query_params = extract_query_params(url);
-    let clean_url = rebuild_url_without_ssl_params(url, &query_params);
-    let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
-
-    let client = if sslmode == "disable" {
-        let (client, connection) = tokio_postgres::connect(&clean_url, NoTls)
-            .await
-            .map_err(DbError::from)?;
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                error!("audit: dedicated advisory-lock session ended unexpectedly: {e}");
-            }
-        });
-        client
-    } else {
-        let connector = build_pg_tls_connector(&query_params)?;
-        let (client, connection) = tokio_postgres::connect(&clean_url, connector)
-            .await
-            .map_err(DbError::from)?;
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                error!("audit: dedicated advisory-lock session ended unexpectedly: {e}");
-            }
-        });
-        client
-    };
+    let (url, tls) = prepare_pg_connection(url)?;
+    let (client, connection) = tokio_postgres::connect(&url, tls)
+        .await
+        .map_err(DbError::from)?;
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            error!("audit: dedicated advisory-lock session ended unexpectedly: {e}");
+        }
+    });
     Ok(client)
 }
 
@@ -982,10 +953,13 @@ mod live_tests {
 
     use cosmian_kms_access::audit::{AuditEvent, AuditResult, audit_now, compute_row_hash};
     use cosmian_kms_interfaces::{AuditSink, ChainHead, WriteOutcome};
+    use deadpool_postgres::RecyclingMethod;
     use tokio_postgres::NoTls;
     use uuid::Uuid;
 
-    use super::{AUDIT_PAGE_SIZE, PgAuditReader, PgAuditSink};
+    use super::{
+        AUDIT_PAGE_SIZE, PgAuditReader, PgAuditSink, build_pool, connect_dedicated_session,
+    };
     use crate::DbError;
 
     /// Live audit database URL. Defaults to the repository's dedicated `docker-compose`
@@ -1707,6 +1681,38 @@ mod live_tests {
             result_b.is_err(),
             "a second writer must be rejected while the first still holds the \
              instance's advisory lock"
+        );
+    }
+
+    /// `postgres-audit` has no TLS, so `sslmode=require` must fail instead of downgrading.
+    fn require_tls_audit_url() -> String {
+        let url = audit_url();
+        let base = url.split('?').next().unwrap_or(&url);
+        format!("{base}?sslmode=require")
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_tls_require_refused_by_pool() {
+        let pool = build_pool(&require_tls_audit_url(), 1, RecyclingMethod::Verified).unwrap();
+        let message = pool
+            .get()
+            .await
+            .err()
+            .map_or_else(String::new, |e| e.to_string());
+        assert!(message.contains("TLS"), "pool connect error: {message:?}");
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
+    async fn pg_audit_tls_require_refused_by_dedicated_session() {
+        let message = connect_dedicated_session(&require_tls_audit_url())
+            .await
+            .err()
+            .map_or_else(String::new, |e| e.to_string());
+        assert!(
+            message.contains("TLS"),
+            "session connect error: {message:?}"
         );
     }
 

@@ -8,6 +8,7 @@
       - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
       - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
       - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
+      - [COSMIAN-2026-029 — PostgreSQL `sslmode` ignored, connections silently fall back to plaintext](#cosmian-2026-029--postgresql-sslmode-ignored-connections-silently-fall-back-to-plaintext)
       - [COSMIAN-2026-028 — SSRF check bypass via `kms_public_url` prefix match in CRL fetching](#cosmian-2026-028--ssrf-check-bypass-via-kms_public_url-prefix-match-in-crl-fetching)
       - [COSMIAN-2026-027 — CRL/OCSP revocation status could be lost, stale or wrong](#cosmian-2026-027--crlocsp-revocation-status-could-be-lost-stale-or-wrong)
       - [COSMIAN-2026-026 — PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`](#cosmian-2026-026--pkcs11-module-buffer-overflows-in-c_getattributevalue-and-c_encrypt)
@@ -143,6 +144,25 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 **Impact:** Plaintext key compromise by users holding only read-only (`Get`) grants on sensitive keys.
 
 **Mitigation:** Upgrade to 5.28.0. `Tag::Sensitive`, `Tag::Extractable`, `Tag::AlwaysSensitive`, and `Tag::NeverExtractable` are now enforced as read-only under both value and reference variants of `DeleteAttribute`. `SetAttribute`, `ModifyAttribute`, and `AddAttribute` now enforce `user_can_perform_operation` specifically for the requested attribute operation, rejecting changes from callers relying solely on generic `Get` grants.
+
+---
+
+#### COSMIAN-2026-029 — PostgreSQL `sslmode` ignored, connections silently fall back to plaintext
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | Pending |
+| Affected   | from 5.15.0 through 5.28.0 |
+| Fixed in   | Unreleased |
+| Found by   | Internal code review |
+| References | [Branch changelog](https://github.com/Cosmian/kms/blob/develop/CHANGELOG/fix_pgsql_sslmode_enforcement.md) |
+
+**Summary:** The `PostgreSQL` object store removed `sslmode` from the connection URL and never passed it to the driver, which then used its default (`prefer`): TLS if the server offers it, plaintext otherwise. `sslmode=require`, `verify-ca` and `verify-full` therefore did not make TLS mandatory. In addition, `verify-ca` also checked the server hostname, and unknown `sslmode` values were accepted silently. The `PostgreSQL` audit backend, unreleased at the time, shared the same code and is fixed in the same change.
+
+**Impact:** An operator who configured `sslmode=require` or stricter could still have the KMS-to-database connection (object store traffic, credentials) established without TLS, for example when the server had TLS disabled or an on-path party stripped the TLS negotiation.
+
+**Mitigation:** Upgrade to the first release containing this fix. `sslmode` is now enforced: `require`, `verify-ca` and `verify-full` fail at startup when TLS is unavailable, `verify-ca` and `verify-full` verify the certificate chain, `verify-full` also checks the hostname, and unknown values are rejected. Until then, enforce TLS on the `PostgreSQL` server side (`hostssl` rules in `pg_hba.conf`) and restrict network access to the database.
 
 ---
 
@@ -903,6 +923,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths |
 | GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite |
 | GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant |
+| COSMIAN-2026-029 | High     | 5.15.0 – 5.28.0   | Unreleased | PostgreSQL `sslmode` ignored, connections silently fall back to plaintext |
 | COSMIAN-2026-028 | High     | 5.27.0 – 5.27.1   | 5.28.0   | SSRF check bypass via `kms_public_url` prefix match in CRL fetching |
 | COSMIAN-2026-027 | High     | 5.27.0 – 5.27.1   | 5.28.0   | CRL/OCSP revocation status could be lost, stale or wrong |
 | COSMIAN-2026-026 | High     | 5.17.0 – 5.27.1   | 5.28.0   | PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt` |
