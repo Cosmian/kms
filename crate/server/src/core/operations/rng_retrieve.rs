@@ -32,10 +32,11 @@ pub(crate) async fn rng_retrieve(
         return Ok(RNGRetrieveResponse { data: Vec::new() });
     }
 
-    // Fill with unified KMS RNG via kms.rng.fill_bytes()
+    // RNGRetrieve output is handed to clients: use the public DRBG, never the private one
+    // that generates keys.
     let mut data = vec![0_u8; req_len];
     kms.rng
-        .fill_bytes(&mut data)
+        .fill_public_bytes(&mut data)
         .map_err(|e| KmsError::ServerError(format!("KmsRng failed: {e}")))?;
     Ok(RNGRetrieveResponse { data })
 }

@@ -11,8 +11,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Is there a single RNG abstraction in the server? | Yes: `KmsRng`, one instance shared by the whole server |
-| What does `KmsRng` use underneath? | OpenSSL `RAND_bytes` in the default library context, behind a mutex |
+| Is there a single RNG abstraction in the server? | Partly: `KmsRng` (one shared instance) is used for keys, seeds, serials, split keys and `RNGRetrieve`. Some call sites (symmetric nonces/keys in `symmetric_ciphers.rs`, JOSE, OpenPGP, AWS XKS, `ui_auth`) call OpenSSL `rand_bytes` directly: same OpenSSL DRBG hierarchy, but not through `KmsRng`. A few non-OpenSSL generators remain (see [Random generators outside OpenSSL](#random-generators-outside-openssl)) |
+| What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (keys, seeds) and `RAND_bytes_ex` (`RNGRetrieve` output), each requesting 256-bit security strength; no lock, no state of its own |
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
 | Is the entropy source ESV-validated? | Not claimed. Entropy comes from the operating system through OpenSSL, and no ESV certificate is referenced |
@@ -38,7 +38,7 @@ lists five CMVP-testable **shall** requirements (RS1–RS5); three bear directly
   destroyed before the algorithm terminates."
 
 SP 800-227 does **not** cover ML-DSA or SLH-DSA — those are digital signature schemes (FIPS 204, FIPS 205),
-not KEMs; their key-generation entropy remains governed by the general SP 800-133r3 and FIPS 140-3 IG D.H–D.K
+not KEMs; their key-generation entropy remains governed by the general SP 800-133r2 and FIPS 140-3 IG D.H–D.K
 guidance listed below. CMVP's companion testing guidance for KEMs is FIPS 140-3 Implementation Guidance
 Annex D.S, "Key Encapsulation Mechanisms" (see [References](#references)). See
 [What SP 800-227 requires that is not implemented in source code](#what-sp-800-227-requires-that-is-not-implemented-in-source-code)
@@ -52,7 +52,7 @@ The broader standards landscape:
 | NIST SP 800-90A | Deterministic random bit generators (DRBG) |
 | NIST SP 800-90B | Entropy source testing and validation |
 | NIST SP 800-90C | RBG constructions |
-| NIST SP 800-133r3 | Cryptographic key generation |
+| NIST SP 800-133r2 | Cryptographic key generation (§4: keys come from an approved RBG instantiated at a sufficient security strength) |
 | FIPS 140-3 Implementation Guidance | Entropy source requirements for modules (Annex D.S covers KEMs specifically) |
 
 The algorithms concerned are ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205) and the hybrid KEMs
@@ -60,18 +60,51 @@ X25519-ML-KEM-768 and X448-ML-KEM-1024.
 
 ## What `KmsRng` is
 
-`KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) is a thin, thread-safe wrapper around OpenSSL's random
-generator. It offers:
+`KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) is a stateless, thread-safe wrapper around OpenSSL's DRBG
+hierarchy (AES-256 CTR-DRBG: a primary DRBG seeded by the operating system, plus per-thread public and
+private DRBGs). It offers:
 
-- `fill_bytes`: fills a buffer using OpenSSL `RAND_bytes`, holding an internal mutex for the call.
-- `random_vec`: the same, returning a `Zeroizing<Vec<u8>>`.
-- `reseed`: mixes caller-supplied data into OpenSSL's generator with `RAND_add`.
+- `fill_bytes` / `random_vec`: secret values (keys, seeds, split-key material, serial numbers), drawn from
+  OpenSSL's **private** DRBG with `RAND_priv_bytes_ex`. `random_vec` returns a `Zeroizing<Vec<u8>>`.
+- `fill_public_bytes`: values handed to clients (KMIP `RNGRetrieve`), drawn from OpenSSL's **public** DRBG with
+  `RAND_bytes_ex`, so output visible to a client never comes from the generator that produces keys.
+- `reseed`: passes caller-supplied data to `RAND_add`. In OpenSSL 3.6 built with an entropy source this is
+  downgraded to **additional input** of an immediate reseed of the primary DRBG (`crypto/rand/rand_lib.c`);
+  per SP 800-90A r1 §8.7.2 additional input cannot lower the DRBG's security strength, and it is credited with
+  zero bits of entropy. Each `RNGSeed` therefore forces a reseed from the operating system; the operation is
+  not rate-limited.
+
+Every generate call requests 256 bits of security strength (SP 800-133r2 §4; SP 800-90A r1 §9.3.1 makes
+the DRBG return an error if it cannot provide it), so a weaker DRBG fails closed instead of silently
+serving lower-strength bits.
 
 The server creates one `Arc<KmsRng>` at startup (`KMS.rng`).
 
 !!! note
-    The mutex only serializes access to OpenSSL calls that OpenSSL already makes thread-safe. It is not an
-    entropy or compliance mechanism.
+    Earlier versions serialised every call behind a `Mutex<()>`. OpenSSL's RAND API is already thread-safe, so
+    the lock only added contention and a permanent-failure mode if a thread panicked while holding it. It was
+    removed. `KmsRng` is not an entropy or compliance mechanism.
+
+### Which provider serves the DRBG
+
+`KmsRng` claims nothing about FIPS unless the DRBG is actually served by the FIPS provider. A FIPS-mode
+build's generated `openssl.cnf` previously activated the **default** provider next to `fips`
+(`[default_sect] activate = 1`), and the DRBG behind `RAND_bytes` was then the default provider's, not the
+validated module's. `crate/crypto/build.rs` no longer activates it, and the integration test
+`crate/crypto/tests/fips_rng_provider.rs` asserts that the primary, public and private DRBGs report provider
+`fips` with strength ≥ 256. The Nix build's `openssl.cnf` (`nix/openssl.nix`) configures only `fips` and `base`; this
+was not re-verified at run time here.
+
+### Random generators outside OpenSSL
+
+Not everything goes through OpenSSL's DRBG. As found by code search:
+
+- `create_split_key.rs` seeds a `ChaCha20Rng` with 32 bytes from `KmsRng` and uses it to produce the XOR
+  shares: ChaCha20 is not an SP 800-90A DRBG, so the shares are not "output of an approved RBG" in the sense
+  of SP 800-133r2 §4.
+- `cosmian_crypto_core::CsRng` (ChaCha12) is used by `ceremony_keys.rs` (unconditionally compiled, AES-GCM
+  nonces), the Redis store, the `ecies` module and `kms_object.rs` (PKCS#11 provider key bytes).
+- `rand::rng()` (ChaCha12) generates `C_GenerateRandom` output in the PKCS#11 module.
 
 ## What uses `KmsRng`
 
@@ -104,7 +137,7 @@ key-pair rekeying, and certificate generation:
 ```mermaid
 flowchart TD
     A["Symmetric keys, serials,<br/>split keys, RNGRetrieve"]
-    B["KmsRng<br/>mutex + RAND_bytes"]
+    B["KmsRng<br/>RAND_priv_bytes_ex / RAND_bytes_ex"]
     C["PQC key generation<br/>ML-KEM, ML-DSA"]
     D["PQC key generation<br/>SLH-DSA, Hybrid KEM"]
     E["OpenSSL EVP_PKEY_CTX<br/>set_params seed"]
@@ -426,7 +459,7 @@ unmodified source, integrity check), which this page does not assert.
 - FIPS 204: Module-Lattice-Based Digital Signature Standard
 - FIPS 205: Stateless Hash-Based Digital Signature Standard
 - NIST SP 800-90A, SP 800-90B, SP 800-90C: Random bit generation
-- NIST SP 800-133r3: Recommendation for Cryptographic Key Generation
+- NIST SP 800-133r2: Recommendation for Cryptographic Key Generation
 - OpenSSL `README-FIPS.md`: <https://github.com/openssl/openssl/blob/master/README-FIPS.md>
 - NIST CMVP Certificate #4985 — OpenSSL FIPS Provider 3.1.2, FIPS 140-3 Non-Proprietary Security Policy (July 2025): <https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp4985.pdf>
 - `OSSL_PROVIDER-FIPS` (OpenSSL 3.5 manual page): <https://docs.openssl.org/3.5/man7/OSSL_PROVIDER-FIPS>

@@ -409,9 +409,11 @@ fn build_and_install_openssl(
                     &format!(".include {}", fipsmodule_path),
                 );
             }
-            if cnf.contains("# activate = 1") {
-                cnf = cnf.replace("# activate = 1", "activate = 1");
-            }
+            // Do NOT uncomment `# activate = 1` globally: the stock openssl.cnf has one in
+            // `[default_sect]`, which would load the non-validated default provider next to the
+            // FIPS provider. Algorithms (including the CTR-DRBG behind `RAND_bytes`) could then be
+            // served by the default provider instead of the FIPS provider. Only `fips` and `base`
+            // (seed source, encoders) are activated, as in the Nix build.
             if cnf.contains("# fips = fips_sect") {
                 cnf = cnf.replace(
                     "# fips = fips_sect",
