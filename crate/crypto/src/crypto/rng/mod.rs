@@ -95,11 +95,16 @@ impl KmsRng {
     ///
     /// # Arguments
     ///
-    /// * `seed` - Seed material to incorporate (typically 32+ bytes for strong entropy)
+    /// * `seed` - Seed material to mix into the DRBG state (not credited as entropy)
     ///
     /// # Errors
     ///
     /// Returns `CryptoError` on failure (rarely, in practice).
+    ///
+    /// # Entropy credit
+    ///
+    /// The seed is mixed in as additional input and is credited with zero bits of entropy,
+    /// because it typically comes from an untrusted KMIP client.
     #[expect(unsafe_code)]
     pub fn reseed(&self, seed: &[u8]) -> Result<(), CryptoError> {
         if seed.is_empty() {
@@ -111,8 +116,9 @@ impl KmsRng {
             .map_err(|e| CryptoError::Default(format!("Failed to acquire RNG lock: {e}")))?;
         let seed_len_i32 = i32::try_from(seed.len())
             .map_err(|e| CryptoError::Default(format!("seed length exceeds i32: {e}")))?;
-        #[expect(clippy::as_conversions, clippy::cast_precision_loss)]
-        let entropy_estimate = seed.len() as f64;
+        // Client-supplied seed material is never credited as entropy (0.0 bits): it only
+        // mixes into the DRBG state and can never lower its strength.
+        let entropy_estimate = 0.0_f64;
         // SAFETY: RAND_add accepts a pointer to bytes, a valid length, and an entropy estimate.
         // seed is a valid byte slice; seed.as_ptr() is non-null and valid for seed.len() bytes.
         unsafe {

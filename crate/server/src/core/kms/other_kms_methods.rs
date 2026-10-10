@@ -201,9 +201,9 @@ impl KMS {
                         };
 
                         let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
-                        self.rng.fill_bytes(&mut symmetric_key).map_err(|e| {
-                            KmsError::InvalidRequest(format!("KMS RNG failed: {e}"))
-                        })?;
+                        self.rng
+                            .fill_bytes(&mut symmetric_key)
+                            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
                         let object = create_symmetric_key_kmip_object(
                             vendor_id,
                             &symmetric_key,
@@ -487,7 +487,7 @@ impl KMS {
         let mut secret_data = Zeroizing::from(vec![0; 32]);
         self.rng
             .fill_bytes(&mut secret_data)
-            .map_err(|e| KmsError::InvalidRequest(format!("KMS RNG failed: {e}")))?;
+            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
         let object = Object::SecretData(SecretData {
             secret_data_type: SecretDataType::Seed,
             key_block: KeyBlock {

@@ -17,6 +17,7 @@ use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
         cosmian_kmip::kmip_2_1::kmip_objects::Object,
+        cosmian_kms_crypto::crypto::KmsRng,
         cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
     },
 };
@@ -53,8 +54,6 @@ const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
 // order as `ServerParams::hsm_instances`.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
-
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 
 use crate::{
     config::{AuditBackendParams, OpenTelemetryConfig, ServerParams},
@@ -132,6 +131,7 @@ impl KMS {
         &self.params.vendor_identification
     }
 
+    /// Instantiate a new KMS instance with the given server parameters.
     /// # Arguments
     /// * `server_params` - The server parameters built from the configuration file or command line arguments.
     /// # Returns

@@ -36,7 +36,7 @@ pub(crate) async fn rng_retrieve(
     let mut data = vec![0_u8; req_len];
     kms.rng
         .fill_bytes(&mut data)
-        .map_err(|e| KmsError::InvalidRequest(format!("KmsRng failed: {e}")))?;
+        .map_err(|e| KmsError::ServerError(format!("KmsRng failed: {e}")))?;
     Ok(RNGRetrieveResponse { data })
 }
 

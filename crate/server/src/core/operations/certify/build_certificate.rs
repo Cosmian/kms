@@ -42,12 +42,12 @@ const X509_VERSION3: i32 = 2;
 
 pub(crate) fn build_and_sign_certificate(
     kms: &KMS,
-    vendor_id: &str,
     issuer: &Issuer,
     subject: &Subject,
     request: Certify,
     kms_public_url: Option<&str>,
 ) -> KResult<(Object, HashSet<String>, Attributes)> {
+    let vendor_id = kms.vendor_id();
     debug!("Building and signing certificate");
     // recover the attributes
     let mut attributes = request.attributes.unwrap_or_default();
@@ -452,7 +452,7 @@ fn generate_serial_number(kms: &KMS) -> KResult<Asn1Integer> {
     let mut serial_number_bytes = [0_u8; 20];
     kms.rng
         .fill_bytes(&mut serial_number_bytes)
-        .map_err(|e| KmsError::InvalidRequest(format!("KMS RNG failed: {e}")))?;
+        .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
     // Clear the high bit (positive INTEGER) and set the lowest one so the encoding
     // keeps the full 20 octets and the serial can never be zero.
     if let Some(first) = serial_number_bytes.first_mut() {

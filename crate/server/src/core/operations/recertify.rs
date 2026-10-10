@@ -196,7 +196,6 @@ impl RekeyOperation for CertificateRekey {
         // Build and sign the new certificate
         let (certificate_object, tags, attributes) = build_and_sign_certificate(
             kms,
-            kms.vendor_id(),
             &issuer,
             &subject,
             certify_request,

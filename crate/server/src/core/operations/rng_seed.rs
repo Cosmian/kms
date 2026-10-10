@@ -23,7 +23,7 @@ pub(crate) async fn rng_seed(
     if !request.data.is_empty() {
         kms.rng
             .reseed(&request.data)
-            .map_err(|e| KmsError::InvalidRequest(format!("KmsRng reseed failed: {e}")))?;
+            .map_err(|e| KmsError::ServerError(format!("KmsRng reseed failed: {e}")))?;
     }
 
     // Report how much seed data was consumed (as per KMIP vectors expectations).

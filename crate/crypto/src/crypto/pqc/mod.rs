@@ -191,11 +191,13 @@ fn pqc_keygen_seeded(
     }
 }
 
-/// Whether a property query explicitly requires the FIPS provider (`fips=yes` term).
+/// Whether a property query explicitly requires the FIPS provider: the `fips=yes` term or
+/// the bare name `fips` (OpenSSL parses a name without a value as boolean true). Other values
+/// such as `fips=true` are plain strings in OpenSSL and do not select the FIPS provider.
 fn requests_fips_provider(propquery: &[u8]) -> bool {
     propquery
         .split(|&b| b == b',' || b == b' ')
-        .any(|part| part == b"fips=yes")
+        .any(|part| part == b"fips=yes" || part == b"fips")
 }
 
 /// Fail-closed FIPS indicator decision: approved only if `EVP_PKEY_CTX_get_params` succeeded
@@ -986,9 +988,16 @@ mod tests {
         assert!(requests_fips_provider(b"fips=yes"));
         assert!(requests_fips_provider(b"provider=fips, fips=yes"));
         assert!(requests_fips_provider(b"a=b,fips=yes"));
+        // OpenSSL treats a bare property name as boolean true.
+        assert!(requests_fips_provider(b"fips"));
+        assert!(requests_fips_provider(b"a=b, fips"));
         assert!(!requests_fips_provider(b"fips=no"));
+        // Only the literal `yes` is a boolean true in OpenSSL; these are plain strings.
+        assert!(!requests_fips_provider(b"fips=true"));
+        assert!(!requests_fips_provider(b"fips=1"));
         assert!(!requests_fips_provider(b"provider=default"));
         assert!(!requests_fips_provider(b"xfips=yes"));
+        assert!(!requests_fips_provider(b"xfips"));
         assert!(!requests_fips_provider(b""));
     }
 }
