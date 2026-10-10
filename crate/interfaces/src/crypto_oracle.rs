@@ -55,6 +55,13 @@ pub struct EncryptionKeyMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Minimal on-HSM key metadata used to resolve a MAC algorithm.
+pub struct MacKeyMetadata {
+    /// PKCS#11 key type used to select the MAC algorithm family; must be `KeyType::AesKey`.
+    pub key_type: KeyType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CryptoAlgorithm {
     AesCbc,
     AesGcm,
@@ -564,6 +571,57 @@ impl SigningAlgorithm {
             }),
             other => Err(InterfaceError::InvalidRequest(format!(
                 "Unsupported hashing algorithm for RSASSA-PSS signing: {other:?}"
+            ))),
+        }
+    }
+}
+
+/// MAC algorithms supported by the crypto oracle / HSM.
+///
+/// Each variant maps directly to a PKCS#11 HMAC mechanism (e.g. `CKM_SHA256_HMAC`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacAlgorithm {
+    HmacSha1,
+    HmacSha224,
+    HmacSha256,
+    HmacSha384,
+    HmacSha512,
+    HmacSha3224,
+    HmacSha3256,
+    HmacSha3384,
+    HmacSha3512,
+}
+
+impl MacAlgorithm {
+    /// Derive a `MacAlgorithm` from KMIP `CryptographicParameters`.
+    ///
+    /// Unlike `SigningAlgorithm::from_kmip`, there is no stored-key fallback: an HSM-resident
+    /// symmetric key carries no registered hash size, so the caller must supply
+    /// `hashing_algorithm` explicitly (matching the existing software-MAC requirement, which
+    /// also errors with "Hashing algorithm is required" when parameters are absent).
+    ///
+    /// No FIPS-mode restriction is applied here: NIST SP 800-131A Rev. 2 Table 7 marks
+    /// HMAC-SHA-1 and HMAC-SHA-224 as "Acceptable" for MAC use.
+    ///
+    /// # Errors
+    /// Returns `InterfaceError::InvalidRequest` if the hashing algorithm is missing or is not
+    /// a supported HMAC hash.
+    pub fn from_kmip(params: Option<&CryptographicParameters>) -> Result<Self, InterfaceError> {
+        let hashing_algorithm = params.and_then(|p| p.hashing_algorithm).ok_or_else(|| {
+            InterfaceError::InvalidRequest("Hashing algorithm is required".to_owned())
+        })?;
+        match hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(Self::HmacSha1),
+            HashingAlgorithm::SHA224 => Ok(Self::HmacSha224),
+            HashingAlgorithm::SHA256 => Ok(Self::HmacSha256),
+            HashingAlgorithm::SHA384 => Ok(Self::HmacSha384),
+            HashingAlgorithm::SHA512 => Ok(Self::HmacSha512),
+            HashingAlgorithm::SHA3224 => Ok(Self::HmacSha3224),
+            HashingAlgorithm::SHA3256 => Ok(Self::HmacSha3256),
+            HashingAlgorithm::SHA3384 => Ok(Self::HmacSha3384),
+            HashingAlgorithm::SHA3512 => Ok(Self::HmacSha3512),
+            other => Err(InterfaceError::InvalidRequest(format!(
+                "Unsupported hashing algorithm for HMAC: {other:?}"
             ))),
         }
     }
