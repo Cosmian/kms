@@ -62,6 +62,8 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Rust Refactor | `/rust-refactor` | Find duplication in Rust code and consolidate with Traits, Generics, macros. Ranked impact/risk plan before touching code. |
 | Rust Simplify | `/rust-simplify [path]` | Find simplification opportunities: nested control flow, long functions, dead code, bool param traps, iterator anti-patterns, and Clippy-flagged complexity. Ranked list before touching code. |
 | Rust Patterns | `/rust-patterns` | KMS-specific Rust design patterns: newtype, builder, command, trait abstraction, key lifecycle state machine. |
+| Rust Signature Design | `/rust-signature-design` | Classify function parameters, flag omitted/swapped/drifting-argument defects, and pick the narrowest struct/enum fix before `clippy::too_many_arguments` forces an `#[allow]`. |
+| Rust Clone Audit | `/rust-clone-audit` | Classify `.clone()`/`.to_owned()`/`.to_vec()` call sites (handle, thread-move, Copy-type, borrow-checker-dodge, API-forced); pick borrow vs. `Arc`/`Rc` vs. `Cow` vs. keep before accepting a clone. |
 | Rust Error Propagation | `/rust-error-propagation [path]` | Review fallible Rust paths for missed `?` propagation, error conversion, and lost context. |
 | Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review/rust-async-refactor.md`. |
 | CI Efficiency | `/ci-efficiency` | Audit GitHub Actions workflows for waste (missing caches, over-broad triggers, no concurrency cancellation). |
