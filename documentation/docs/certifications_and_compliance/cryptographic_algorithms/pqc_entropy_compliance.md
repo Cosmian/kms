@@ -176,7 +176,6 @@ cargo test -p cosmian_kms_crypto --lib --features non-fips pqc
    and passes it via `OSSL_PARAM` to `EVP_PKEY_generate`.
 2. **Safe OpenSSL Migration (Issue #894)**: Replaced raw BIO serialization (`evp_pkey_to_pkcs8_der`, `evp_pkey_to_spki_der`)
    and raw buffer extraction with safe native `openssl::pkey::PKey` methods.
-3. **Issue #1251 Audit**: Documented remaining FFI/unsafe blocks where `rust-openssl` lacks safe wrappers (upstream PRs #2649, #2646, #2636, #2611).
 
 ### Remaining to reach ESV / CMVP validation
 
@@ -244,11 +243,13 @@ Mapping each entropy/FIPS-relevant requirement to Eviden KMS's current code:
 - **RS4 — not met, two independent gaps:**
   1. `KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) draws from OpenSSL's `RAND_bytes` with no SP 800-90B
      ESV-validated entropy source backing it (its own doc comment states this explicitly).
-  2. **Library support exists; no caller uses it.** `pqc_keygen_seeded`, `pqc_keygen` and `pqc_keygen_raw`
-     (`crate/crypto/src/crypto/pqc/mod.rs`) accept an optional OpenSSL property query (e.g. `"fips=yes"`) and
-     seeded keygen checks the `fips-indicator`. Every production caller passes `None`, so the default provider
-     is always selected, and `pqc` is absent from FIPS-mode builds. Even once a CMVP-validated, PQC-capable
-     FIPS provider exists, nothing in the server currently asks for it.
+  2. **Library support exists; deliberately not wired to callers.** `pqc_keygen_seeded`, `pqc_keygen` and
+     `pqc_keygen_raw` (`crate/crypto/src/crypto/pqc/mod.rs`) accept an optional OpenSSL property query (e.g.
+     `"fips=yes"`) and seeded keygen checks the `fips-indicator`, failing closed. Every production caller passes
+     `None`, so the default provider is always selected. This is intentional, not an oversight: the only
+     CMVP-validated OpenSSL FIPS provider (3.1.2, Certificate #4985) contains no ML-KEM, ML-DSA or SLH-DSA, so
+     passing `"fips=yes"` today would make every PQC key generation fail. The caller change is blocked on a
+     validated PQC-capable FIPS provider existing, not on engineering work in this repository.
 - **RS5 — already met for Eviden's own code; not applicable beyond it.** `generate_pqc_seed`
   (`crate/crypto/src/crypto/pqc/mod.rs`) returns a `Zeroizing<Vec<u8>>`, so the seed Eviden generates
   and hands to OpenSSL is destroyed on drop. The additional intermediate values RS5 covers (matrix `A`, NTT
@@ -310,7 +311,7 @@ Only under conditions none of which are met today, and only partially:
 - Mechanically, `crate/crypto/build.rs` already supports substituting a pre-built OpenSSL: if the `OPENSSL_DIR`
   environment variable points at a directory containing `ssl/openssl.cnf` and `lib/ossl-modules`, the build
   script skips compiling its own OpenSSL and links against that directory instead
-  (`crate/crypto/build.rs` lines 51-62). A customer could point this at their own OpenSSL installation.
+  (`crate/crypto/build.rs` lines 61-72). A customer could point this at their own OpenSSL installation.
 - However, swapping the OpenSSL build alone does not confer FIPS/ESV compliance unless **all** of the following
   additionally hold, none of which exist today:
   1. The customer's OpenSSL build must itself be an exact, unmodified copy of a CMVP-validated FIPS 140-3
@@ -393,18 +394,25 @@ given OpenSSL build if that build's own published FIPS 140-3 Security Policy exp
 certificate number in its RBG/Entropy section — a fact that must be checked per-release, never assumed from
 the FIPS validation status or the version number alone.
 
-### A broader gap found during this research: Eviden's own default build already uses an uncertified OpenSSL version
+### Default build: FIPS provider pinned to the validated OpenSSL 3.1.2
 
-Independent of PQC, `crate/crypto/build.rs` compiles OpenSSL's FIPS provider **from the vendored OpenSSL 3.6.2
-source tree** (`Configure enable-fips`) whenever the `non-fips` Cargo feature is absent — i.e., in Eviden's
-default "FIPS mode" build. The only two CMVP-validated OpenSSL FIPS Provider certificates found are
-Certificate #4985 (version 3.1.2, Active, FIPS 140-3) and Certificate #4282 (versions 3.0.8/3.0.9, **Historical**, FIPS
-140-2 — "should not be included by Federal Agencies in new procurements"). **Neither covers OpenSSL 3.6.2.**
-Per OpenSSL's own `README-FIPS.md`, a FIPS provider must ONLY be generated from a version holding a valid FIPS
-certificate; Eviden's default build does not meet this today, for any algorithm, not only PQC. This is a
-known gap discovered during this research, beyond PQC scope; it is flagged here and left unremediated —
-`documentation/docs/certifications_and_compliance/fips.md` should be separately audited for any claim this
-contradicts, as a follow-up not covered by this plan.
+Independent of PQC, Eviden's default "FIPS mode" build (the `non-fips` Cargo feature absent) must load a FIPS
+provider built from a version holding a CMVP certificate. The only two CMVP-validated OpenSSL FIPS Provider
+certificates found are Certificate #4985 (version 3.1.2, Active, FIPS 140-3) and Certificate #4282 (versions
+3.0.8/3.0.9, **Historical**, FIPS 140-2). Neither covers OpenSSL 3.6.2, and OpenSSL's own `README-FIPS.md`
+states that a FIPS provider must ONLY be generated from a version holding a valid FIPS certificate.
+
+`crate/crypto/build.rs` therefore builds two separate OpenSSL trees in FIPS mode:
+
+- the main library, **OpenSSL 3.6.2**, configured **without** `enable-fips`, which is what Eviden links against;
+- the FIPS provider, built from the validated **OpenSSL 3.1.2** source (`OPENSSL_FIPS_*` constants, SHA-256
+  pinned), whose `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` are copied into the main prefix and loaded
+  at runtime.
+
+This matches the Nix build (`nix/common.nix`: "Always link against OpenSSL 3.6.2; the FIPS provider (3.1.2) is
+loaded at runtime"). Building from the validated source is necessary but not sufficient for a validated
+claim: the module must also be built and operated as the Security Policy describes (operating environment,
+unmodified source, integrity check), which this page does not assert.
 
 ## See also
 

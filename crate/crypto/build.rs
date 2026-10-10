@@ -18,6 +18,16 @@ const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.
 const OPENSSL_MAIN_SHA256: &str =
     "aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f";
 
+// The FIPS provider MUST be built from a version holding a CMVP certificate (OpenSSL
+// `README-FIPS.md`). The newest validated OpenSSL FIPS Provider is 3.1.2 (FIPS 140-3,
+// NIST CMVP Certificate #4985), so it is built separately from the main 3.6.2 library
+// and loaded at runtime, exactly as the Nix build does (`nix/common.nix`).
+const OPENSSL_FIPS_VERSION: &str = "3.1.2";
+const OPENSSL_FIPS_TARBALL: &str = "openssl-3.1.2.tar.gz";
+const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
+const OPENSSL_FIPS_SHA256: &str =
+    "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
+
 fn main() {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
@@ -79,7 +89,8 @@ fn main() {
     let _ = fs::create_dir_all(&build_root);
     let _ = fs::create_dir_all(&main_prefix);
 
-    // Build main OpenSSL (3.6.2) if not present
+    // Build main OpenSSL (3.6.2) if not present. It never contains a FIPS provider built from
+    // the 3.6.2 sources: that provider is not CMVP-validated.
     if !main_prefix.join("lib/libcrypto.a").exists() {
         let _ = build_and_install_openssl(
             &workspace_root,
@@ -90,7 +101,7 @@ fn main() {
             OPENSSL_MAIN_SHA256,
             &main_prefix,
             // enable_fips=
-            fips_mode,
+            false,
             // enable_legacy=
             !fips_mode,
         );
@@ -99,7 +110,41 @@ fn main() {
     // Normalize provider layout
     normalize_provider_layout(&main_prefix);
     if fips_mode {
-        integrate_assets_into_main(&main_prefix, None);
+        // Build the CMVP-validated FIPS provider (3.1.2) in its own prefix, then copy
+        // `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` into the main prefix.
+        let fips_prefix = target_dir.join(format!(
+            "openssl-fips-provider-{}-{os}-{arch}",
+            OPENSSL_FIPS_VERSION
+        ));
+        let _ = fs::create_dir_all(&fips_prefix);
+        let mod_ext = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        if !fips_prefix
+            .join(format!("lib/ossl-modules/fips.{mod_ext}"))
+            .exists()
+            && !fips_prefix
+                .join(format!("lib64/ossl-modules/fips.{mod_ext}"))
+                .exists()
+        {
+            let _ = build_and_install_openssl(
+                &workspace_root,
+                &build_root,
+                OPENSSL_FIPS_VERSION,
+                OPENSSL_FIPS_TARBALL,
+                OPENSSL_FIPS_URL,
+                OPENSSL_FIPS_SHA256,
+                &fips_prefix,
+                // enable_fips=
+                true,
+                // enable_legacy=
+                false,
+            );
+        }
+        normalize_provider_layout(&fips_prefix);
+        integrate_assets_into_main(&main_prefix, Some(&fips_prefix));
         // Always re-patch openssl.cnf to use the local fipsmodule.cnf path.
         // This is needed when the nix build has overwritten openssl.cnf with the
         // production path (/usr/local/cosmian/lib/ssl/fipsmodule.cnf).
