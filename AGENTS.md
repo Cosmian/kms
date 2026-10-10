@@ -251,7 +251,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
 - **Commit scope**: minimal, focused changes — don't refactor surrounding code alongside a bug fix.
 - **Live DB tests**: `docker compose up -d <service>` before running tests that need a backend (postgres :5432, mysql :3306, redis :6379, etc.).
-- **Broad feature rollout order**: for any feature that spans server + CLI/UI, implement and PR the server side first, then CLI/UI separately — see "Feature rollout order & PR cascade" below.
+- **Broad feature rollout**: for any feature that spans server + CLI/UI, deliver it in one branch/PR but as independent, separately buildable commits (server, then CLI, then Web UI) — see "Feature rollout order & commit layering" below.
 - **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
 
 For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
@@ -265,36 +265,23 @@ For FIPS feature-flag gating discipline, multi-standard algorithm compliance, an
 - Keep full, release, and pre-release gates complete; use skips only for confirmed inapplicable scope and record the reason.
 - Do not claim model selection, latency targets, percentages, or token savings unless the platform supports the measurement and actual usage data was observed.
 
-### Feature rollout order & PR cascade
+### Feature rollout order & commit layering
 
 For any feature broad enough to touch both the server and its clients (CLI and/or Web UI),
-development **must** be split and sequenced as follows — never bundle server and
-CLI/UI changes for the same feature into one commit or one PR:
+use **one branch and one PR**, but split the work into **independent commits**, one per layer:
 
-1. **Server first.** Implement the server-side change in full (KMIP operation, REST route,
-   core logic, database changes) and open a dedicated PR for it. Run the full section 5
-   workflow (tests, clippy, sync rules, changelog) on that PR before moving on.
-2. **CLI next.** Once the server change exists (merged, or at minimum stacked on top of
-   its branch), implement the CLI change (`crate/clients/clap/`, `crate/clients/ckms/`)
-   in its own, separate PR.
-3. **Web UI last.** Implement the Web UI change (`ui/src/`) in its own, separate PR, stacked
-   after (or on top of) the CLI PR. CLI and UI may be split into two independent PRs even
-   though `cli-ui-sync.instructions.md` requires them to stay functionally in sync.
-4. **Cascade/stack the PRs.** When server, CLI, and UI branches must exist before the
-   server PR merges, stack them: each subsequent branch is based on the previous one's
-   branch (not `main`), so the PRs form a dependency chain. Use `gh stack view` /
-   `gh stack submit` to inspect and open the chain. **Do not use `gh stack sync`** (or any
-   equivalent rebase-then-force-push tool) to update already-pushed downstream branches —
-   it rewrites history and force-pushes with `--force-with-lease`, which the force-push
-   prohibition below strictly forbids. Instead, when an earlier PR in the chain merges or
-   gains new commits, update each downstream branch with a regular **merge** (not a
-   rebase): `git checkout <downstream-branch> && git merge origin/<upstream-branch>`,
-   resolve any conflicts in the merge commit, then a normal fast-forward
-   `git push origin <downstream-branch>`. This keeps every branch's history append-only
-   and preserves already-pushed commits and their review state. Do not squash unrelated
-   layers together to avoid stacking.
-5. Do not skip this ordering for "small" broad features — if a change touches both
-   `crate/server/` (or `crate/kmip/`) and either `crate/clients/` or `ui/`, split it.
+1. **Server commit first.** Implement the server-side change in full (KMIP operation, REST
+   route, core logic, database changes). Run the full section 5 workflow (tests, clippy,
+   sync rules, changelog) for it.
+2. **CLI commit next** (`crate/clients/clap/`, `crate/clients/ckms/`, generated CLI docs).
+3. **Web UI commit last** (`ui/src/`, locale files).
+4. **Each commit must stand alone**: it builds, passes pre-commit hooks and its own tests, and
+   touches only its layer (plus that layer's changelog entry and docs). Never mix layers in one
+   commit. Keep CLI and UI functionally in sync as required by `cli-ui-sync.instructions.md`
+   across the commits of the same PR.
+5. Do not open separate or stacked PRs per layer for the same feature. Commits already pushed
+   are never rewritten (see "Force-push prohibition"): if a layer was bundled by mistake,
+   leave it and apply the layering to subsequent commits.
 
 ### Force-push prohibition
 
