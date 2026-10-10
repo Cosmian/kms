@@ -194,6 +194,7 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, test_cfg.threads)?;
+    shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &test_cfg)?;
