@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::{RecommendedCurve, UniqueIdentifier, ValidityIndicator},
     requests::create_ec_key_pair_request,
 };
-use cosmian_logger::info;
+use cosmian_logger::{info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -54,7 +54,10 @@ async fn create_sign_verify(kms: &Arc<KMS>, slot: usize, curve: RecommendedCurve
     );
     let pk_uid = create_response.public_key_unique_identifier.clone();
 
-    let sign_response = kms
+    // Capability-probe like the HSM-layer test (`base_hsm::tests_shared`): some PKCS#11 libraries
+    // (e.g. Kryoptic builds without PKCS#11 v3.0 `CKM_EDDSA`, mechanism 4183) cannot sign EdDSA.
+    // The CreateKeyPair reachability above is still asserted; only the Sign/Verify leg is skipped.
+    let sign_result = kms
         .sign(
             Sign {
                 unique_identifier: Some(UniqueIdentifier::TextString(sk_uid)),
@@ -63,7 +66,17 @@ async fn create_sign_verify(kms: &Arc<KMS>, slot: usize, curve: RecommendedCurve
             },
             &UserId::from(ADMIN),
         )
-        .await?;
+        .await;
+    let sign_response = match sign_result {
+        Ok(response) => response,
+        Err(error) if error.to_string().contains("does not support mechanism") => {
+            warn!(
+                "HSM EdDSA: {curve:?} Sign unavailable on this PKCS#11 library, skipping: {error}"
+            );
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
     let signature = sign_response
         .signature_data
         .ok_or_else(|| KmsError::ServerError("missing signature_data".to_owned()))?;

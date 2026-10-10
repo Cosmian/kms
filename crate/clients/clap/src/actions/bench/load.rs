@@ -251,32 +251,36 @@ pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
         .collect()
 }
 
+/// Selection of what to benchmark: mode, protocol, payload size and name filter.
+#[derive(Clone, Copy)]
+struct LoadOpSpec<'a> {
+    /// Benchmark mode (operation categories to prepare).
+    mode: BenchMode,
+    /// Wire protocol(s) to exercise.
+    protocol: &'a BenchProtocol,
+    /// Plaintext size in bytes for encrypt operations.
+    plaintext_size: usize,
+    /// Optional operation-name filter.
+    filter: Option<&'a super::types::BenchFilter>,
+}
+
 /// Prepare one representative operation per applicable mode category.
-// Mirrors `bench_load`: every argument is an independent borrowed input
-// threaded from `bench_load`; a one-use parameter struct would only add boilerplate.
-#[expect(clippy::too_many_arguments)]
 fn prepare_load_ops(
     rt: &Runtime,
     client: &KmsClient,
-    mode: BenchMode,
-    protocol: &BenchProtocol,
-    plaintext_size: usize,
     hsm_prefix: Option<&str>,
-    filter: Option<&super::types::BenchFilter>,
+    spec: &LoadOpSpec<'_>,
     ledger: &HsmKeyLedger,
 ) -> Vec<PreparedLoadOp> {
     if let Some(hsm_prefix) = hsm_prefix {
-        return prepare_hsm_load_ops(
-            rt,
-            client,
-            mode,
-            protocol,
-            plaintext_size,
-            hsm_prefix,
-            filter,
-            ledger,
-        );
+        return prepare_hsm_load_ops(rt, client, hsm_prefix, spec, ledger);
     }
+    let LoadOpSpec {
+        mode,
+        protocol,
+        plaintext_size,
+        filter,
+    } = *spec;
 
     let mut ops = Vec::new();
     let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
@@ -535,18 +539,20 @@ fn prepare_load_ops(
 /// JOSE is not supported here: the `POST /v1/crypto/keys` endpoint has no way
 /// to request a caller-chosen `kid`, so an `hsm::`-prefixed key cannot be
 /// created through it.
-// Same signature as `prepare_load_ops`, which delegates to this function.
-#[expect(clippy::too_many_arguments)]
+// `prepare_load_ops` delegates to this function when `--hsm` is active.
 fn prepare_hsm_load_ops(
     rt: &Runtime,
     client: &KmsClient,
-    mode: BenchMode,
-    protocol: &BenchProtocol,
-    plaintext_size: usize,
     hsm_prefix: &str,
-    filter: Option<&super::types::BenchFilter>,
+    spec: &LoadOpSpec<'_>,
     ledger: &HsmKeyLedger,
 ) -> Vec<PreparedLoadOp> {
+    let LoadOpSpec {
+        mode,
+        protocol,
+        plaintext_size,
+        filter,
+    } = *spec;
     let mut ops = Vec::new();
     let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
     let needs_key_create = matches!(mode, BenchMode::KeyCreation | BenchMode::All);
@@ -960,11 +966,13 @@ pub(super) fn bench_load(
     let ops = prepare_load_ops(
         rt,
         client,
-        mode,
-        protocol,
-        plaintext_size,
         hsm_prefix,
-        filter,
+        &LoadOpSpec {
+            mode,
+            protocol,
+            plaintext_size,
+            filter,
+        },
         &ledger,
     );
     if ops.is_empty() {

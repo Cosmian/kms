@@ -209,6 +209,28 @@ pub struct Session {
     hsm_capabilities: HsmCapabilities,
 }
 
+/// HKDF (RFC 5869) parameters for [`Session::derive_hkdf_key`].
+#[derive(Debug, Clone, Copy)]
+pub struct HkdfParams<'a> {
+    /// HMAC hash mechanism used as the HKDF PRF (e.g. `CKM_SHA256`).
+    pub prf_hash: CK_MECHANISM_TYPE,
+    /// Optional HKDF salt bytes (`None` uses the all-zero salt).
+    pub salt: Option<&'a [u8]>,
+    /// HKDF "info" context bytes.
+    pub info: &'a [u8],
+}
+
+/// Description of the key produced by [`Session::derive_hkdf_key`].
+#[derive(Debug, Clone, Copy)]
+pub struct DerivedKeySpec<'a> {
+    /// The `CKA_ID`/`CKA_LABEL` to assign to the derived key.
+    pub id: &'a [u8],
+    /// Length in bytes of the derived key.
+    pub len_bytes: usize,
+    /// If `true`, the derived key is marked non-extractable.
+    pub sensitive: bool,
+}
+
 impl Session {
     pub fn new(
         hsm: Arc<crate::hsm_lib::HsmLib>,
@@ -2238,23 +2260,24 @@ impl Session {
     ///
     /// # Arguments
     /// * `base_key_handle` - handle of the secret key to derive from (the HKDF "IKM").
-    /// * `prf_hash` - the HMAC hash mechanism to use as the HKDF PRF (e.g. `CKM_SHA256`).
-    /// * `salt` - optional HKDF salt bytes.
-    /// * `info` - HKDF "info" context bytes.
-    /// * `derived_key_len_bytes` - length in bytes of the derived AES key (16 or 32).
-    /// * `derived_key_id` - the `CKA_ID`/`CKA_LABEL` to assign to the derived key.
-    /// * `sensitive` - if `true`, the derived key is marked non-extractable.
-    #[expect(clippy::too_many_arguments)]
+    /// * `hkdf` - HKDF PRF hash, optional salt and info context.
+    /// * `derived` - identifier, length and sensitivity of the derived key.
     pub fn derive_hkdf_key(
         &self,
         base_key_handle: CK_OBJECT_HANDLE,
-        prf_hash: CK_MECHANISM_TYPE,
-        salt: Option<&[u8]>,
-        info: &[u8],
-        derived_key_len_bytes: usize,
-        derived_key_id: &[u8],
-        sensitive: bool,
+        hkdf: HkdfParams<'_>,
+        derived: DerivedKeySpec<'_>,
     ) -> HResult<CK_OBJECT_HANDLE> {
+        let HkdfParams {
+            prf_hash,
+            salt,
+            info,
+        } = hkdf;
+        let DerivedKeySpec {
+            id: derived_key_id,
+            len_bytes: derived_key_len_bytes,
+            sensitive,
+        } = derived;
         let mut salt_bytes = salt.unwrap_or(&[]).to_vec();
         let mut info_bytes = info.to_vec();
         let mut hkdf_params = CK_HKDF_PARAMS {

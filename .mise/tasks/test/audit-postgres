@@ -33,11 +33,15 @@ if ! _wait_for_port 127.0.0.1 "${KMS_SLOT_AUDIT_POSTGRES_PORT}" 30; then
   print_error "postgres-audit (port ${KMS_SLOT_AUDIT_POSTGRES_PORT}) did not become reachable"
 fi
 
+# The official postgres image first runs a temporary init server that listens on the unix
+# socket only, stops it, then starts the real server. A unix-socket `pg_isready` therefore
+# succeeds against the temporary server, which shuts down right after. Probe over TCP
+# (`-h 127.0.0.1`) so only the final server counts as ready.
 print_status "Waiting for the kms_audit database to accept connections..."
 _audit_db_ready=false
 for _i in $(seq 1 30); do
   if docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
-    pg_isready -U kms_audit -d kms_audit -q 2>/dev/null; then
+    pg_isready -h 127.0.0.1 -U kms_audit -d kms_audit -q 2>/dev/null; then
     _audit_db_ready=true
     break
   fi
@@ -52,9 +56,19 @@ fi
 # see accumulated rows from the previous run. Drop before testing so every run starts
 # from a genuinely empty schema (`ensure_schema()` recreates it on the next connect()).
 print_status "Dropping kms_audit_events/kms_audit_control for a clean run..."
-docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
-  psql -U kms_audit -d kms_audit -v ON_ERROR_STOP=1 \
-  -c "DROP TABLE IF EXISTS kms_audit_events, kms_audit_control CASCADE;"
+_audit_dropped=false
+for _i in $(seq 1 10); do
+  if docker compose --project-directory "${REPO_ROOT}" exec -T postgres-audit \
+    psql -h 127.0.0.1 -U kms_audit -d kms_audit -v ON_ERROR_STOP=1 \
+    -c "DROP TABLE IF EXISTS kms_audit_events, kms_audit_control CASCADE;"; then
+    _audit_dropped=true
+    break
+  fi
+  sleep 1
+done
+if [ "${_audit_dropped}" != "true" ]; then
+  print_error "could not drop the kms_audit tables for a clean run"
+fi
 
 # Cargo exits 0 when a name filter matches nothing; fail instead of passing silently.
 _require_tests_passed() {

@@ -17,7 +17,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        KeyPair, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
+        KeyPair, KeyPairIdentity, VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE,
         cover_crypt::attributes::access_structure_from_attributes,
     },
     error::CryptoError,
@@ -28,17 +28,19 @@ pub type KmipKeyUidObject = (String, Object);
 
 /// Generate a new Covercrypt master keypair the attributes of a `CreateKeyPair`
 /// operation.
-#[expect(clippy::too_many_arguments)]
 pub fn create_master_keypair(
-    vendor_id: &str,
+    identity: KeyPairIdentity<'_>,
     cover_crypt: &Covercrypt,
-    private_key_uid: String,
-    public_key_uid: &str,
-    mut common_attributes: Attributes,
-    msk_attributes: Option<Attributes>,
-    mpk_attributes: Option<Attributes>,
     sensitive: bool,
 ) -> Result<KeyPair, CryptoError> {
+    let KeyPairIdentity {
+        vendor_id,
+        private_key_uid,
+        public_key_uid,
+        mut common_attributes,
+        private_key_attributes: msk_attributes,
+        public_key_attributes: mpk_attributes,
+    } = identity;
     let access_structure = access_structure_from_attributes(vendor_id, &common_attributes)?;
 
     debug!("server: access_structure: {access_structure:?}");
@@ -64,7 +66,7 @@ pub fn create_master_keypair(
         vendor_id,
         &mpk.serialize()?,
         mpk_attributes.unwrap_or(common_attributes),
-        private_key_uid,
+        private_key_uid.to_owned(),
     )?;
 
     Ok(KeyPair((msk_owm, mpk_owm)))

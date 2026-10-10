@@ -176,6 +176,7 @@ nav:
       - FIPS 140-3: certifications_and_compliance/fips.md
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
+          - PQC Entropy Source Validation (ESV) Compliance: certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:

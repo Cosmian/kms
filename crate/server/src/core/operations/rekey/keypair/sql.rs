@@ -183,8 +183,13 @@ impl RekeyOperation for SqlKeypairRekeyer {
             public_protection_storage_masks: None,
         };
 
-        let key_pair =
-            generate_key_pair(kms.vendor_id(), create_kp_request, &new_sk_uid, &new_pk_uid)?;
+        let key_pair = generate_key_pair(
+            kms.vendor_id(),
+            create_kp_request,
+            &new_sk_uid,
+            &new_pk_uid,
+            &kms.rng,
+        )?;
 
         Ok([
             ReplacementObject {

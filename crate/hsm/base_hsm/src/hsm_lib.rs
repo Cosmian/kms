@@ -691,7 +691,7 @@ mod function_table_fallback_tests {
     };
 
     use super::HsmLib;
-    use crate::{HError, HResult};
+    use crate::{DerivedKeySpec, HError, HResult, HkdfParams};
 
     /// Monotonic counter giving each `compile_minimal_pkcs11_shim()` invocation a
     /// unique output filename. Required because this module now has several
@@ -932,12 +932,16 @@ mod function_table_fallback_tests {
 
         let Err(err) = session.derive_hkdf_key(
             1,
-            pkcs11_sys::CKM_SHA256,
-            None,
-            b"info",
-            32,
-            b"derived",
-            true,
+            HkdfParams {
+                prf_hash: pkcs11_sys::CKM_SHA256,
+                salt: None,
+                info: b"info",
+            },
+            DerivedKeySpec {
+                id: b"derived",
+                len_bytes: 32,
+                sensitive: true,
+            },
         ) else {
             return Err(HError::Default(
                 "deriving via CKM_HKDF_DERIVE on a v2.40-only library must fail".to_owned(),

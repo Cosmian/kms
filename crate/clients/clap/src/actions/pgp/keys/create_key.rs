@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use cosmian_kmip::kmip_2_1::{
     kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
-    requests::pgp_key_create_request,
+    requests::{PgpKeyCreateCommon, pgp_key_create_request},
 };
 use cosmian_kms_client::KmsClient;
 
@@ -80,14 +80,16 @@ impl CreatePgpKeyAction {
         let vendor_id = kms_rest_client.config.vendor_id.as_str();
 
         let create_request = pgp_key_create_request(
-            vendor_id,
             key_id,
             algorithm,
             cryptographic_length,
             self.user_id.as_deref(),
-            &self.tags,
-            self.sensitive,
-            self.wrapping_key_id.as_ref(),
+            PgpKeyCreateCommon {
+                vendor_id,
+                tags: &self.tags,
+                sensitive: self.sensitive,
+                wrap_key_id: self.wrapping_key_id.as_ref(),
+            },
         )?;
 
         let response = kms_rest_client

@@ -8,7 +8,9 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
     kmip_2_1::{kmip_objects::ObjectType, kmip_types::UniqueIdentifier},
-    reexport::cosmian_kms_client_utils::locate_utils::build_locate_request,
+    reexport::cosmian_kms_client_utils::locate_utils::{
+        LocateCriteria, ObjectLinkIds, build_locate_request,
+    },
 };
 use strum::IntoEnumIterator;
 
@@ -98,13 +100,17 @@ impl LocateObjectsAction {
         let request = build_locate_request(
             kms_rest_client.config.vendor_id.as_str(),
             self.tags.clone(),
-            self.cryptographic_algorithm,
-            self.cryptographic_length,
-            self.key_format_type,
-            self.object_type,
-            self.public_key_id.as_deref(),
-            self.private_key_id.as_deref(),
-            self.certificate_id.as_deref(),
+            &LocateCriteria {
+                cryptographic_algorithm: self.cryptographic_algorithm,
+                cryptographic_length: self.cryptographic_length,
+                key_format_type: self.key_format_type,
+                object_type: self.object_type,
+            },
+            &ObjectLinkIds {
+                certificate_id: self.certificate_id.clone(),
+                private_key_id: self.private_key_id.clone(),
+                public_key_id: self.public_key_id.clone(),
+            },
         )?;
 
         let response = kms_rest_client.locate(request).await?;

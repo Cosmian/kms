@@ -6,8 +6,9 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
     kmip_2_1::{kmip_types::UniqueIdentifier, requests::import_object_request},
     read_bytes_from_file,
-    reexport::cosmian_kms_client_utils::import_utils::{
-        ImportKeyFormat, KeyUsage, prepare_key_import_elements,
+    reexport::cosmian_kms_client_utils::{
+        import_utils::{ImportKeyFormat, KeyMaterialSource, KeyUsage, prepare_key_import_elements},
+        locate_utils::ObjectLinkIds,
     },
 };
 
@@ -120,11 +121,15 @@ impl ImportSecretDataOrKeyAction {
         let (object, import_attributes) = prepare_key_import_elements(
             vendor_id,
             &self.key_usage,
-            &self.key_format,
-            key_bytes,
-            &self.certificate_id,
-            &self.private_key_id,
-            &self.public_key_id,
+            KeyMaterialSource {
+                format: &self.key_format,
+                bytes: key_bytes,
+            },
+            &ObjectLinkIds {
+                certificate_id: self.certificate_id.clone(),
+                private_key_id: self.private_key_id.clone(),
+                public_key_id: self.public_key_id.clone(),
+            },
             self.wrapping_key_id.as_ref(),
         )?;
         let object_type: ObjectType = object.object_type();

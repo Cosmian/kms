@@ -5,7 +5,10 @@ use cosmian_kms_client_utils::{
     attributes_utils::{
         LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
     },
-    certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
+    certificate_utils::{
+        Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
+        build_re_certify_request,
+    },
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
@@ -18,11 +21,12 @@ use cosmian_kms_client_utils::{
         prepare_key_export_elements, tag_from_object,
     },
     import_utils::{
-        CertificateInputFormat, ImportKeyFormat, KeyUsage, build_private_key_from_der_bytes,
-        build_usage_mask_from_key_usage, prepare_certificate_attributes,
-        prepare_key_import_elements, read_object_from_json_ttlv_bytes,
+        CertificateInputFormat, ImportKeyFormat, KeyMaterialSource, KeyUsage,
+        build_private_key_from_der_bytes, build_usage_mask_from_key_usage,
+        prepare_certificate_attributes, prepare_key_import_elements,
+        read_object_from_json_ttlv_bytes,
     },
-    locate_utils::build_locate_request,
+    locate_utils::{LocateCriteria, ObjectLinkIds, build_locate_request},
     reexport::cosmian_kmip::{
         kmip_0::{
             self,
@@ -55,12 +59,12 @@ use cosmian_kms_client_utils::{
                 VendorAttributeValue,
             },
             requests::{
-                build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
-                create_rsa_key_pair_request, create_secret_data_kmip_object,
-                create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
-                get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
-                get_rsa_public_key_request, import_object_request, pgp_key_create_request,
-                secret_data_create_request, symmetric_key_create_request,
+                PgpKeyCreateCommon, build_revoke_key_request, create_ec_key_pair_request,
+                create_pqc_key_pair_request, create_rsa_key_pair_request,
+                create_secret_data_kmip_object, create_symmetric_key_kmip_object, decrypt_request,
+                encrypt_request, get_ec_private_key_request, get_ec_public_key_request,
+                get_rsa_private_key_request, get_rsa_public_key_request, import_object_request,
+                pgp_key_create_request, secret_data_create_request, symmetric_key_create_request,
             },
         },
         ttlv::{TTLV, from_ttlv, to_ttlv},
@@ -778,13 +782,17 @@ pub fn locate_ttlv_request(
     let request = build_locate_request(
         vendor_id,
         tags,
-        cryptographic_algorithm,
-        cryptographic_length,
-        key_format_type,
-        object_type,
-        public_key_id.as_deref(),
-        private_key_id.as_deref(),
-        certificate_id.as_deref(),
+        &LocateCriteria {
+            cryptographic_algorithm,
+            cryptographic_length,
+            key_format_type,
+            object_type,
+        },
+        &ObjectLinkIds {
+            certificate_id,
+            private_key_id,
+            public_key_id,
+        },
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
     to_wasm_ttlv(&request)
@@ -1165,14 +1173,16 @@ pub fn create_pgp_key_ttlv_request(
     };
 
     let request = pgp_key_create_request(
-        vendor_id,
         key_id,
         algo,
         cryptographic_length,
         user_id.as_deref(),
-        &tags,
-        sensitive,
-        wrap_key_id.as_ref(),
+        PgpKeyCreateCommon {
+            vendor_id,
+            tags: &tags,
+            sensitive,
+            wrap_key_id: wrap_key_id.as_ref(),
+        },
     )
     .map_err(|e| JsValue::from_str(&format!("OpenPGP Key request creation failed: {e}")))?;
 
@@ -1803,11 +1813,15 @@ pub fn import_ttlv_request(
     let (object, import_attributes) = prepare_key_import_elements(
         vendor_id,
         &key_usage,
-        &key_format,
-        key_bytes,
-        &certificate_id,
-        &private_key_id,
-        &public_key_id,
+        KeyMaterialSource {
+            format: &key_format,
+            bytes: key_bytes,
+        },
+        &ObjectLinkIds {
+            certificate_id,
+            private_key_id,
+            public_key_id,
+        },
         wrapping_key_id.as_ref(),
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
@@ -2249,21 +2263,44 @@ pub fn certify_ttlv_request(
     let issuer_certificate_id = none_if_empty(issuer_certificate_id);
     let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
         .map_err(|e| JsValue::from(e.to_string()))?;
+    let source = if let Some(request) = certificate_signing_request {
+        CertificationSource::Csr {
+            request,
+            format: certificate_signing_request_format,
+        }
+    } else if let Some(id) = public_key_id_to_certify {
+        CertificationSource::PublicKey {
+            id,
+            subject_name: subject_name.ok_or_else(|| {
+                JsValue::from("subject name is required when certifying a public key")
+            })?,
+        }
+    } else if let Some(certificate_id) = certificate_id_to_re_certify {
+        CertificationSource::ReCertify { certificate_id }
+    } else if generate_key_pair {
+        CertificationSource::GenerateKeyPair {
+            subject_name: subject_name.ok_or_else(|| {
+                JsValue::from("subject name is required when generating a keypair")
+            })?,
+            algorithm,
+        }
+    } else {
+        return Err(JsValue::from(
+            "Supply a certificate signing request, a public key id or an existing certificate id \
+             or request a keypair to be generated",
+        ));
+    };
     let request = build_certify_request(
         vendor_id,
-        &certificate_id,
-        &certificate_signing_request_format,
-        &certificate_signing_request,
-        &public_key_id_to_certify,
-        &certificate_id_to_re_certify,
-        generate_key_pair,
-        &subject_name,
-        algorithm,
-        &issuer_private_key_id,
-        &issuer_certificate_id,
-        number_of_days,
-        &certificate_extensions,
-        &tags,
+        &CertifyRequestParams {
+            certificate_id,
+            source,
+            issuer_private_key_id,
+            issuer_certificate_id,
+            number_of_days,
+            certificate_extensions,
+            tags,
+        },
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
     to_wasm_ttlv(&request)

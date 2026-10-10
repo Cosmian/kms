@@ -7,7 +7,8 @@ pub use error::{HError, HResult};
 pub use hsm_lib::{HsmLib, Info};
 pub use pkcs11_v3::InterfaceDescriptor;
 pub use session::{
-    AesKeySize, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize, RsaOaepDigest, Session,
+    AesKeySize, DerivedKeySpec, HkdfParams, HsmEncryptionAlgorithm, HsmSigningAlgorithm,
+    RsaKeySize, RsaOaepDigest, Session,
 };
 pub(crate) use slots::SessionGuard;
 pub use slots::{ObjectHandlesCache, SlotManager};

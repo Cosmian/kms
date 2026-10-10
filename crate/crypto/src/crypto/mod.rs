@@ -26,11 +26,14 @@ pub mod openpgp;
 pub mod password_derivation;
 #[cfg(feature = "non-fips")]
 pub mod pqc;
+pub mod rng;
 pub mod rsa;
 pub mod secret;
 pub mod split_key;
 pub mod symmetric;
 pub mod wrap;
+
+pub use rng::KmsRng;
 
 pub trait EncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError>;
@@ -80,6 +83,24 @@ impl KeyPair {
     pub const fn public_key_mut(&mut self) -> &mut Object {
         &mut self.0.1
     }
+}
+
+/// Identity and attribute data shared by every key-pair generation routine:
+/// the vendor, the unique identifiers of both keys and the attributes
+/// to apply to the pair and to each of its members.
+pub struct KeyPairIdentity<'a> {
+    /// Vendor identifier used to namespace vendor attributes
+    pub vendor_id: &'a str,
+    /// Unique identifier of the private key
+    pub private_key_uid: &'a str,
+    /// Unique identifier of the public key
+    pub public_key_uid: &'a str,
+    /// Attributes common to both keys
+    pub common_attributes: Attributes,
+    /// Attributes specific to the private key
+    pub private_key_attributes: Option<Attributes>,
+    /// Attributes specific to the public key
+    pub public_key_attributes: Option<Attributes>,
 }
 
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";

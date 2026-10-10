@@ -17,6 +17,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
+use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -168,7 +169,14 @@ pub(crate) async fn create_split_key(
         )));
     }
 
-    let mut rng = rand::make_rng::<ChaCha20Rng>();
+    // Seed ChaCha20Rng from the unified KMS RNG
+    let seed_bytes = kms
+        .rng
+        .random_vec(32)
+        .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
+    let mut seed_array = Zeroizing::new([0_u8; 32]);
+    seed_array.copy_from_slice(&seed_bytes);
+    let mut rng = ChaCha20Rng::from_seed(*seed_array);
 
     let raw_shares: Vec<Zeroizing<Vec<u8>>> = match request.split_key_method {
         SplitKeyMethod::XOR => {
