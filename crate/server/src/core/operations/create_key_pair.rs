@@ -13,8 +13,8 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_
 };
 use cosmian_kms_server_database::reexport::{cosmian_kms_crypto::crypto::{
     elliptic_curves::operation::{
-        create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair
-    }, rsa::operation::create_rsa_key_pair, KeyPair
+        EcKeySpec, create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair
+    }, rsa::operation::create_rsa_key_pair, KeyPair, KeyPairIdentity
 }};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
@@ -273,40 +273,52 @@ pub(super) fn generate_key_pair(
                 // Sources:
                 // - NIST.SP.800-186 - Section 3.2.1.1
                 RecommendedCurve::P192 => create_approved_ecc_key_pair(
-                    vendor_id,
-                    private_key_uid,
-                    public_key_uid,
-                    curve,
-                    &cryptographic_algorithm,
-                    common_attributes,
-                    request.private_key_attributes,
-                    request.public_key_attributes,
+                    KeyPairIdentity {
+                        vendor_id,
+                        private_key_uid,
+                        public_key_uid,
+                        common_attributes,
+                        private_key_attributes: request.private_key_attributes,
+                        public_key_attributes: request.public_key_attributes,
+                    },
+                    EcKeySpec {
+                        curve,
+                        cryptographic_algorithm,
+                    },
                 ),
                 RecommendedCurve::P224
                 | RecommendedCurve::P256
                 | RecommendedCurve::P384
                 | RecommendedCurve::P521 => create_approved_ecc_key_pair(
-                    vendor_id,
-                    private_key_uid,
-                    public_key_uid,
-                    curve,
-                    &cryptographic_algorithm,
-                    common_attributes,
-                    request.private_key_attributes,
-                    request.public_key_attributes,
+                    KeyPairIdentity {
+                        vendor_id,
+                        private_key_uid,
+                        public_key_uid,
+                        common_attributes,
+                        private_key_attributes: request.private_key_attributes,
+                        public_key_attributes: request.public_key_attributes,
+                    },
+                    EcKeySpec {
+                        curve,
+                        cryptographic_algorithm,
+                    },
                 ),
                 #[cfg(feature = "non-fips")]
                 RecommendedCurve::SECP224K1
                 | RecommendedCurve::SECP256K1
                 | RecommendedCurve::SECP192K1 => create_secp_key_pair(
-                    vendor_id,
-                    private_key_uid,
-                    public_key_uid,
-                    curve,
-                    &cryptographic_algorithm,
-                    common_attributes,
-                    request.private_key_attributes,
-                    request.public_key_attributes,
+                    KeyPairIdentity {
+                        vendor_id,
+                        private_key_uid,
+                        public_key_uid,
+                        common_attributes,
+                        private_key_attributes: request.private_key_attributes,
+                        public_key_attributes: request.public_key_attributes,
+                    },
+                    EcKeySpec {
+                        curve,
+                        cryptographic_algorithm,
+                    },
                 ),
                 #[cfg(feature = "non-fips")]
                 RecommendedCurve::CURVE25519 => create_x25519_key_pair(
@@ -442,12 +454,14 @@ pub(super) fn generate_key_pair(
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024 => create_ml_kem_key_pair(
             cryptographic_algorithm,
-            vendor_id,
-            private_key_uid,
-            public_key_uid,
-            common_attributes,
-            request.private_key_attributes,
-            request.public_key_attributes,
+            KeyPairIdentity {
+                vendor_id,
+                private_key_uid,
+                public_key_uid,
+                common_attributes,
+                private_key_attributes: request.private_key_attributes,
+                public_key_attributes: request.public_key_attributes,
+            },
             Some(rng),
         ),
         #[cfg(feature = "non-fips")]
@@ -455,24 +469,28 @@ pub(super) fn generate_key_pair(
         | CryptographicAlgorithm::MLDSA_65
         | CryptographicAlgorithm::MLDSA_87 => create_ml_dsa_key_pair(
             cryptographic_algorithm,
-            vendor_id,
-            private_key_uid,
-            public_key_uid,
-            common_attributes,
-            request.private_key_attributes,
-            request.public_key_attributes,
+            KeyPairIdentity {
+                vendor_id,
+                private_key_uid,
+                public_key_uid,
+                common_attributes,
+                private_key_attributes: request.private_key_attributes,
+                public_key_attributes: request.public_key_attributes,
+            },
             Some(rng),
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::X25519MLKEM768 | CryptographicAlgorithm::X448MLKEM1024 => {
             create_hybrid_kem_key_pair(
                 cryptographic_algorithm,
-                vendor_id,
-                private_key_uid,
-                public_key_uid,
-                common_attributes,
-                request.private_key_attributes,
-                request.public_key_attributes,
+                KeyPairIdentity {
+                    vendor_id,
+                    private_key_uid,
+                    public_key_uid,
+                    common_attributes,
+                    private_key_attributes: request.private_key_attributes,
+                    public_key_attributes: request.public_key_attributes,
+                },
                 Some(rng),
             )
         }
@@ -490,12 +508,14 @@ pub(super) fn generate_key_pair(
         | CryptographicAlgorithm::SLHDSA_SHAKE_256s
         | CryptographicAlgorithm::SLHDSA_SHAKE_256f => create_slh_dsa_key_pair(
             cryptographic_algorithm,
-            vendor_id,
-            private_key_uid,
-            public_key_uid,
-            common_attributes,
-            request.private_key_attributes,
-            request.public_key_attributes,
+            KeyPairIdentity {
+                vendor_id,
+                private_key_uid,
+                public_key_uid,
+                common_attributes,
+                private_key_attributes: request.private_key_attributes,
+                public_key_attributes: request.public_key_attributes,
+            },
             Some(rng),
         ),
         #[cfg(feature = "non-fips")]
@@ -517,13 +537,15 @@ pub(super) fn generate_key_pair(
                 .unwrap_or_default();
 
             create_master_keypair(
-                vendor_id,
+                KeyPairIdentity {
+                    vendor_id,
+                    private_key_uid,
+                    public_key_uid,
+                    common_attributes,
+                    private_key_attributes: request.private_key_attributes,
+                    public_key_attributes: request.public_key_attributes,
+                },
                 &Covercrypt::default(),
-                private_key_uid.to_owned(),
-                public_key_uid,
-                common_attributes,
-                request.private_key_attributes,
-                request.public_key_attributes,
                 sensitive,
             )
         }

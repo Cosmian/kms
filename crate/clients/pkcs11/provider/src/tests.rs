@@ -17,7 +17,7 @@ use ckms::{
         cosmian_kms_client::{
             KmsClient,
             reexport::cosmian_kms_client_utils::certificate_utils::{
-                Algorithm, build_certify_request,
+                CertificationSource, CertifyRequestParams, build_certify_request,
             },
         },
     },
@@ -546,20 +546,19 @@ fn test_gnupg_card_key_discovery() -> Pkcs11Result<()> {
 
         let certify_request = build_certify_request(
             VENDOR_ID_COSMIAN,
-            &None,
-            &None,
-            &None,
-            &Some(rsa_pk_id.clone()),
-            &None,
-            false,
-            &Some("CN=gnupg-smartcard-test,O=Cosmian".to_owned()),
-            Algorithm::RSA2048,
-            // No issuer: the server self-signs using the PrivateKeyLink of the public key.
-            &None,
-            &None,
-            365,
-            &None,
-            &[COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned()],
+            &CertifyRequestParams {
+                certificate_id: None,
+                source: CertificationSource::PublicKey {
+                    id: rsa_pk_id.clone(),
+                    subject_name: "CN=gnupg-smartcard-test,O=Cosmian".to_owned(),
+                },
+                // No issuer: the server self-signs using the PrivateKeyLink of the public key.
+                issuer_private_key_id: None,
+                issuer_certificate_id: None,
+                number_of_days: 365,
+                certificate_extensions: None,
+                tags: vec![COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned()],
+            },
         )
         .expect("failed to build certify request");
         let cert_id = kms_rest_client

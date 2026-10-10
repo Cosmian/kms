@@ -23,7 +23,7 @@ use openssl::pkey::{PKey, Private};
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::{KeyPair, KmsRng},
+    crypto::{KeyPair, KeyPairIdentity, KmsRng},
     error::CryptoError,
 };
 
@@ -544,23 +544,49 @@ fn slh_dsa_algorithm_name(algorithm: CryptographicAlgorithm) -> Result<&'static 
     }
 }
 
-/// Build a KMIP key pair from key bytes.
-#[expect(clippy::too_many_arguments)]
-fn create_pqc_key_pair(
-    vendor_id: &str,
-    private_key_der: &Zeroizing<Vec<u8>>,
-    public_key_der: &[u8],
+/// Raw key material of a freshly generated PQC key pair.
+#[derive(Clone, Copy)]
+struct PqcKeyMaterial<'a> {
+    private_key_der: &'a Zeroizing<Vec<u8>>,
+    public_key_der: &'a [u8],
     cryptographic_length: i32,
-    cryptographic_algorithm: CryptographicAlgorithm,
     key_format_type: KeyFormatType,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    mut common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+}
+
+/// Algorithm and default usage masks applied to a PQC key pair.
+#[derive(Clone, Copy)]
+struct PqcKeyPolicy {
+    cryptographic_algorithm: CryptographicAlgorithm,
     private_key_usage_mask: CryptographicUsageMask,
     public_key_usage_mask: CryptographicUsageMask,
+}
+
+/// Build a KMIP key pair from key bytes.
+fn create_pqc_key_pair(
+    identity: KeyPairIdentity<'_>,
+    material: PqcKeyMaterial<'_>,
+    policy: PqcKeyPolicy,
 ) -> Result<KeyPair, CryptoError> {
+    let KeyPairIdentity {
+        vendor_id,
+        private_key_uid,
+        public_key_uid,
+        mut common_attributes,
+        private_key_attributes,
+        public_key_attributes,
+    } = identity;
+    let PqcKeyMaterial {
+        private_key_der,
+        public_key_der,
+        cryptographic_length,
+        key_format_type,
+    } = material;
+    let PqcKeyPolicy {
+        cryptographic_algorithm,
+        private_key_usage_mask,
+        public_key_usage_mask,
+    } = policy;
+
     // Recover tags and clean them from common attributes
     let tags = common_attributes.remove_tags(vendor_id).unwrap_or_default();
     Attributes::check_user_tags(&tags)?;

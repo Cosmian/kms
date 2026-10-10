@@ -280,21 +280,30 @@ pub fn create_derivation_object_request(object_type: ObjectType) -> Result<Creat
     })
 }
 
+/// Parameters shared by the creation requests of an `OpenPGP` key: the vendor
+/// identifier, the tags, the sensitivity and the optional wrapping key.
+pub struct PgpKeyCreateCommon<'a, T> {
+    /// Vendor identifier used to name the vendor attributes
+    pub vendor_id: &'a str,
+    /// Tags to associate with the key
+    pub tags: T,
+    /// Whether the key must be created as sensitive (not extractable)
+    pub sensitive: bool,
+    /// Identifier of the key used to wrap the created key, if any
+    pub wrap_key_id: Option<&'a String>,
+}
+
 /// Build a `Create` request for an `OpenPGP` key (`ObjectType::PGPKey`).
 ///
 /// `algorithm` must be `CryptographicAlgorithm::RSA` or `CryptographicAlgorithm::Ed25519`;
 /// the server rejects anything else. For RSA, `cryptographic_length` must be 2048, 3072
 /// or 4096. `user_id` populates the `pgp-user-id` vendor attribute.
-#[expect(clippy::too_many_arguments)]
 pub fn pgp_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
-    vendor_id: &str,
     key_id: Option<UniqueIdentifier>,
     algorithm: CryptographicAlgorithm,
     cryptographic_length: Option<i32>,
     user_id: Option<&str>,
-    tags: T,
-    sensitive: bool,
-    wrap_key_id: Option<&String>,
+    common: PgpKeyCreateCommon<'_, T>,
 ) -> Result<Create, KmipError> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::PGPKey),
@@ -307,20 +316,20 @@ pub fn pgp_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 | CryptographicUsageMask::Decrypt,
         ),
         activation_date: Some(time_normalize()?),
-        sensitive: sensitive.then_some(true),
+        sensitive: common.sensitive.then_some(true),
         unique_identifier: key_id,
         ..Attributes::default()
     };
-    attributes.set_tags(vendor_id, tags)?;
+    attributes.set_tags(common.vendor_id, common.tags)?;
     if let Some(user_id) = user_id {
         attributes.set_vendor_attribute(
-            vendor_id,
+            common.vendor_id,
             VENDOR_ATTR_PGP_USER_ID,
             VendorAttributeValue::TextString(user_id.to_owned()),
         );
     }
-    if let Some(wrap_key_id) = wrap_key_id {
-        attributes.set_wrapping_key_id(vendor_id, wrap_key_id);
+    if let Some(wrap_key_id) = common.wrap_key_id {
+        attributes.set_wrapping_key_id(common.vendor_id, wrap_key_id);
     }
     Ok(Create {
         object_type: ObjectType::PGPKey,

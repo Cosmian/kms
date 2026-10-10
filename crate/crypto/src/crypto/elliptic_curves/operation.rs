@@ -31,7 +31,7 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::KeyPair,
+    crypto::{KeyPair, KeyPairIdentity},
     crypto_bail,
     error::{CryptoError, result::CryptoResult},
 };
@@ -256,6 +256,23 @@ pub fn to_ec_private_key(
     }))
 }
 
+/// Curve and algorithm selection for an elliptic-curve key pair.
+#[derive(Clone, Copy)]
+pub struct EcKeySpec {
+    /// The elliptic curve to generate the key pair on
+    pub curve: RecommendedCurve,
+    /// The cryptographic algorithm recorded on both keys
+    pub cryptographic_algorithm: CryptographicAlgorithm,
+}
+
+/// Freshly generated raw key material handed to [`create_ec_key_pair`].
+#[derive(Clone, Copy)]
+struct EcKeyMaterial<'a> {
+    private_key_bytes: &'a Zeroizing<Vec<u8>>,
+    private_key_num_bits: u32,
+    public_key_bytes: &'a [u8],
+}
+
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
 #[cfg(feature = "non-fips")]
 pub fn create_x25519_key_pair(
@@ -274,17 +291,23 @@ pub fn create_x25519_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
-        vendor_id,
-        &private_key_bytes,
-        private_key_num_bits,
-        &public_key_bytes,
-        private_key_uid,
-        public_key_uid,
-        RecommendedCurve::CURVE25519,
-        *cryptographic_algorithm,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
+        KeyPairIdentity {
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            private_key_attributes,
+            public_key_attributes,
+        },
+        EcKeySpec {
+            curve: RecommendedCurve::CURVE25519,
+            cryptographic_algorithm: *cryptographic_algorithm,
+        },
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits,
+            public_key_bytes: &public_key_bytes,
+        },
     )
 }
 
@@ -409,18 +432,11 @@ pub fn ecdh_key_agreement(
 /// Generate a SEC 2 Key Pair. Not FIPS 140-3 compliant.
 /// SEC 2: Recommended Elliptic Curve Domain Parameters: <https://www.secg.org/sec2-v2.pdf>
 #[cfg(feature = "non-fips")]
-#[expect(clippy::too_many_arguments)]
 pub fn create_secp_key_pair(
-    vendor_id: &str,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    curve: RecommendedCurve,
-    cryptographic_algorithm: &CryptographicAlgorithm,
-    common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    identity: KeyPairIdentity<'_>,
+    spec: EcKeySpec,
 ) -> Result<KeyPair, CryptoError> {
-    let curve_nid = match curve {
+    let curve_nid = match spec.curve {
         RecommendedCurve::SECP224K1 => Nid::SECP224K1,
         RecommendedCurve::SECP256K1 => Nid::SECP256K1,
         RecommendedCurve::SECP192K1 => Nid::SECP192K1,
@@ -442,17 +458,13 @@ pub fn create_secp_key_pair(
             .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?;
 
     create_ec_key_pair(
-        vendor_id,
-        &private_key_bytes,
-        private_key_num_bits,
-        &public_key_bytes,
-        private_key_uid,
-        public_key_uid,
-        curve,
-        *cryptographic_algorithm,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
+        identity,
+        spec,
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits,
+            public_key_bytes: &public_key_bytes,
+        },
     )
 }
 
@@ -474,17 +486,23 @@ pub fn create_x448_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
-        vendor_id,
-        &private_key_bytes,
-        private_key_num_bits,
-        &public_key_bytes,
-        private_key_uid,
-        public_key_uid,
-        RecommendedCurve::CURVE448,
-        *cryptographic_algorithm,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
+        KeyPairIdentity {
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            private_key_attributes,
+            public_key_attributes,
+        },
+        EcKeySpec {
+            curve: RecommendedCurve::CURVE448,
+            cryptographic_algorithm: *cryptographic_algorithm,
+        },
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits,
+            public_key_bytes: &public_key_bytes,
+        },
     )
 }
 
@@ -527,17 +545,23 @@ pub fn create_ed25519_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
-        vendor_id,
-        &private_key_bytes,
-        private_key_num_bits,
-        &public_key_bytes,
-        private_key_uid,
-        public_key_uid,
-        RecommendedCurve::CURVEED25519,
-        CryptographicAlgorithm::Ed25519,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
+        KeyPairIdentity {
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            private_key_attributes,
+            public_key_attributes,
+        },
+        EcKeySpec {
+            curve: RecommendedCurve::CURVEED25519,
+            cryptographic_algorithm: CryptographicAlgorithm::Ed25519,
+        },
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits,
+            public_key_bytes: &public_key_bytes,
+        },
     )
 }
 
@@ -580,38 +604,42 @@ pub fn create_ed448_key_pair(
     let public_key_bytes = private_key.raw_public_key()?;
 
     create_ec_key_pair(
-        vendor_id,
-        &private_key_bytes,
-        private_key_num_bits,
-        &public_key_bytes,
-        private_key_uid,
-        public_key_uid,
-        RecommendedCurve::CURVEED448,
-        CryptographicAlgorithm::Ed448,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
+        KeyPairIdentity {
+            vendor_id,
+            private_key_uid,
+            public_key_uid,
+            common_attributes,
+            private_key_attributes,
+            public_key_attributes,
+        },
+        EcKeySpec {
+            curve: RecommendedCurve::CURVEED448,
+            cryptographic_algorithm: CryptographicAlgorithm::Ed448,
+        },
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits,
+            public_key_bytes: &public_key_bytes,
+        },
     )
 }
 
-#[expect(clippy::too_many_arguments)]
+/// Generate an approved (FIPS 140-3 compliant, where the curve allows) NIST
+/// elliptic-curve key pair. In FIPS builds the usage masks and the algorithm
+/// are validated against the approved set.
 pub fn create_approved_ecc_key_pair(
-    vendor_id: &str,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    curve: RecommendedCurve,
-    cryptographic_algorithm: &CryptographicAlgorithm,
-    common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    identity: KeyPairIdentity<'_>,
+    spec: EcKeySpec,
 ) -> Result<KeyPair, CryptoError> {
     #[cfg(not(feature = "non-fips"))]
     {
         // Cryptographic Usage Masks
-        let private_key_mask = private_key_attributes
+        let private_key_mask = identity
+            .private_key_attributes
             .as_ref()
             .and_then(|attr| attr.cryptographic_usage_mask);
-        let public_key_mask = public_key_attributes
+        let public_key_mask = identity
+            .public_key_attributes
             .as_ref()
             .and_then(|attr| attr.cryptographic_usage_mask);
 
@@ -619,7 +647,7 @@ pub fn create_approved_ecc_key_pair(
         check_ecc_mask_algorithm_compliance(
             private_key_mask,
             public_key_mask,
-            *cryptographic_algorithm,
+            spec.cryptographic_algorithm,
             &[
                 CryptographicAlgorithm::EC,
                 CryptographicAlgorithm::ECDSA,
@@ -628,7 +656,7 @@ pub fn create_approved_ecc_key_pair(
         )?;
     }
 
-    let curve_nid = match curve {
+    let curve_nid = match spec.curve {
         #[cfg(feature = "non-fips")]
         RecommendedCurve::P192 => Nid::X9_62_PRIME192V1,
         RecommendedCurve::P224 => Nid::SECP224R1,
@@ -655,37 +683,42 @@ pub fn create_approved_ecc_key_pair(
             .public_key()
             .to_bytes(&group, PointConversionForm::COMPRESSED, &mut ctx)?;
     create_ec_key_pair(
-        vendor_id,
-        &private_key_bytes,
-        private_key_num_bits,
-        &public_key_bytes,
-        private_key_uid,
-        public_key_uid,
-        curve,
-        *cryptographic_algorithm,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
+        identity,
+        spec,
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits,
+            public_key_bytes: &public_key_bytes,
+        },
     )
 }
 
 // Re-export sign helper from elliptic_curves module root
 pub use crate::crypto::elliptic_curves::sign::ecdsa_sign;
 
-#[expect(clippy::too_many_arguments)]
 fn create_ec_key_pair(
-    vendor_id: &str,
-    private_key_bytes: &Zeroizing<Vec<u8>>,
-    private_key_num_bits: u32,
-    public_key_bytes: &[u8],
-    private_key_uid: &str,
-    public_key_uid: &str,
-    curve: RecommendedCurve,
-    cryptographic_algorithm: CryptographicAlgorithm,
-    mut common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    identity: KeyPairIdentity<'_>,
+    spec: EcKeySpec,
+    material: EcKeyMaterial<'_>,
 ) -> Result<KeyPair, CryptoError> {
+    let KeyPairIdentity {
+        vendor_id,
+        private_key_uid,
+        public_key_uid,
+        mut common_attributes,
+        private_key_attributes,
+        public_key_attributes,
+    } = identity;
+    let EcKeySpec {
+        curve,
+        cryptographic_algorithm,
+    } = spec;
+    let EcKeyMaterial {
+        private_key_bytes,
+        private_key_num_bits,
+        public_key_bytes,
+    } = material;
+
     // Cryptographic Usage Masks
     let private_key_mask = private_key_attributes
         .as_ref()
@@ -776,18 +809,23 @@ mod tests {
     #[cfg(not(feature = "non-fips"))]
     use openssl::provider::Provider;
 
+    use super::{
+        EcKeySpec, create_approved_ecc_key_pair, create_ed25519_key_pair, ecdh_key_agreement,
+    };
     #[cfg(not(feature = "non-fips"))]
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
-    use super::{create_approved_ecc_key_pair, create_ed25519_key_pair, ecdh_key_agreement};
     #[cfg(feature = "non-fips")]
     use super::{create_x448_key_pair, create_x25519_key_pair, x25519_key_agreement};
     #[cfg(not(feature = "non-fips"))]
     use crate::crypto::elliptic_curves::operation::create_ed448_key_pair;
     #[cfg(feature = "non-fips")]
     use crate::crypto::elliptic_curves::{X448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH};
-    use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
     #[cfg(feature = "non-fips")]
     use crate::pad_be_bytes;
+    use crate::{
+        crypto::KeyPairIdentity,
+        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+    };
 
     #[test]
     fn test_ed25519_keypair_generation() {
@@ -1056,25 +1094,33 @@ mod tests {
         };
 
         let keypair1 = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "sk_uid1",
-            "pk_uid1",
-            curve,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes.clone()),
-            Some(public_key_attributes.clone()),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "sk_uid1",
+                public_key_uid: "pk_uid1",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes.clone()),
+                public_key_attributes: Some(public_key_attributes.clone()),
+            },
+            EcKeySpec {
+                curve,
+                cryptographic_algorithm: algorithm,
+            },
         )
         .unwrap();
         let keypair2 = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "sk_uid2",
-            "pk_uid2",
-            curve,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "sk_uid2",
+                public_key_uid: "pk_uid2",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve,
+                cryptographic_algorithm: algorithm,
+            },
         )
         .unwrap();
 
@@ -1466,14 +1512,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey01",
+                public_key_uid: "privkey01",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P256,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1488,14 +1538,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey02",
-            "privkey02",
-            RecommendedCurve::P384,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey02",
+                public_key_uid: "privkey02",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P384,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1510,14 +1564,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey03",
-            "privkey03",
-            RecommendedCurve::P521,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey03",
+                public_key_uid: "privkey03",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P521,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1532,14 +1590,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey04",
-            "privkey04",
-            RecommendedCurve::P521,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey04",
+                public_key_uid: "privkey04",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P521,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1582,14 +1644,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey01",
+                public_key_uid: "privkey01",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P256,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1621,14 +1687,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey01",
+                public_key_uid: "privkey01",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P256,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1654,14 +1724,18 @@ mod tests {
         };
 
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey01",
+                public_key_uid: "privkey01",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P256,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1685,14 +1759,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey01",
+                public_key_uid: "privkey01",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P256,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());
@@ -1714,14 +1792,18 @@ mod tests {
             ..Attributes::default()
         };
         let res = create_approved_ecc_key_pair(
-            VENDOR_ID_COSMIAN,
-            "pubkey01",
-            "privkey01",
-            RecommendedCurve::P256,
-            &algorithm,
-            Attributes::default(),
-            Some(private_key_attributes),
-            Some(public_key_attributes),
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: "pubkey01",
+                public_key_uid: "privkey01",
+                common_attributes: Attributes::default(),
+                private_key_attributes: Some(private_key_attributes),
+                public_key_attributes: Some(public_key_attributes),
+            },
+            EcKeySpec {
+                curve: RecommendedCurve::P256,
+                cryptographic_algorithm: algorithm,
+            },
         );
 
         assert!(res.is_err());

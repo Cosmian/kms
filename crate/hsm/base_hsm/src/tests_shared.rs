@@ -36,8 +36,8 @@ use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 
 use crate::{
-    AesKeySize, BaseHsm, HError, HResult, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize,
-    RsaOaepDigest, Session, SlotManager, hsm_call,
+    AesKeySize, BaseHsm, DerivedKeySpec, HError, HResult, HkdfParams, HsmEncryptionAlgorithm,
+    HsmSigningAlgorithm, RsaKeySize, RsaOaepDigest, Session, SlotManager, hsm_call,
 };
 
 /// Returns the library path for a given HSM, checking environment variable override first.
@@ -1728,12 +1728,16 @@ where
     let ikm = session.generate_generic_secret_key(b"hkdf-ikm", 32, false)?;
     let derived = session.derive_hkdf_key(
         ikm,
-        CKM_SHA256,
-        Some(b"salt"),
-        b"info",
-        32,
-        b"hkdf-derived",
-        false,
+        HkdfParams {
+            prf_hash: CKM_SHA256,
+            salt: Some(b"salt"),
+            info: b"info",
+        },
+        DerivedKeySpec {
+            id: b"hkdf-derived",
+            len_bytes: 32,
+            sensitive: false,
+        },
     )?;
     assert_ne!(derived, 0);
     Ok(())

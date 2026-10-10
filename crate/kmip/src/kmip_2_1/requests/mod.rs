@@ -8,7 +8,7 @@ mod revoke;
 mod validate;
 
 pub use create::{
-    create_derivation_object_request, create_secret_data_kmip_object,
+    PgpKeyCreateCommon, create_derivation_object_request, create_secret_data_kmip_object,
     create_symmetric_key_kmip_object, pgp_key_create_request, secret_data_create_request,
     symmetric_key_create_request,
 };

@@ -85,6 +85,24 @@ impl KeyPair {
     }
 }
 
+/// Identity and attribute data shared by every key-pair generation routine:
+/// the vendor, the unique identifiers of both keys and the attributes
+/// to apply to the pair and to each of its members.
+pub struct KeyPairIdentity<'a> {
+    /// Vendor identifier used to namespace vendor attributes
+    pub vendor_id: &'a str,
+    /// Unique identifier of the private key
+    pub private_key_uid: &'a str,
+    /// Unique identifier of the public key
+    pub public_key_uid: &'a str,
+    /// Attributes common to both keys
+    pub common_attributes: Attributes,
+    /// Attributes specific to the private key
+    pub private_key_attributes: Option<Attributes>,
+    /// Attributes specific to the public key
+    pub public_key_attributes: Option<Attributes>,
+}
+
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_STRUCTURE: &str = "cover_crypt_access_structure";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";

@@ -1,17 +1,17 @@
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    },
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
 };
 use openssl::{
     pkey::{PKey, Private, Public},
     sign::{Signer, Verifier},
 };
 
-use super::{create_pqc_key_pair, ml_dsa_algorithm_name, pqc_keygen};
-use crate::{crypto::KeyPair, error::CryptoError};
+use super::{PqcKeyMaterial, PqcKeyPolicy, create_pqc_key_pair, ml_dsa_algorithm_name, pqc_keygen};
+use crate::{
+    crypto::{KeyPair, KeyPairIdentity},
+    error::CryptoError,
+};
 
 /// Create an ML-DSA key pair.
 ///
@@ -21,33 +21,26 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// key generation context (per FIPS 204 §6.1 and OpenSSL `ml_dsa_kmgmt.c`), generating
 /// the key pair deterministically from that seed. When `None`, OpenSSL draws entropy
 /// directly from its own default DRBG.
-#[expect(clippy::too_many_arguments)]
 pub fn create_ml_dsa_key_pair(
     algorithm: CryptographicAlgorithm,
-    vendor_id: &str,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    identity: KeyPairIdentity<'_>,
     rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = ml_dsa_algorithm_name(algorithm)?;
     let (private_key_der, public_key_der, num_bits) = pqc_keygen(algorithm_name, rng, None)?;
     create_pqc_key_pair(
-        vendor_id,
-        &private_key_der,
-        &public_key_der,
-        i32::try_from(num_bits)?,
-        algorithm,
-        KeyFormatType::PKCS8,
-        private_key_uid,
-        public_key_uid,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
-        CryptographicUsageMask::Sign,
-        CryptographicUsageMask::Verify,
+        identity,
+        PqcKeyMaterial {
+            private_key_der: &private_key_der,
+            public_key_der: &public_key_der,
+            cryptographic_length: i32::try_from(num_bits)?,
+            key_format_type: KeyFormatType::PKCS8,
+        },
+        PqcKeyPolicy {
+            cryptographic_algorithm: algorithm,
+            private_key_usage_mask: CryptographicUsageMask::Sign,
+            public_key_usage_mask: CryptographicUsageMask::Verify,
+        },
     )
 }
 
@@ -74,6 +67,8 @@ pub fn ml_dsa_verify(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+    use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 
     use super::*;
 
@@ -143,12 +138,14 @@ mod tests {
     fn ml_dsa_create_key_pair() {
         let key_pair = create_ml_dsa_key_pair(
             CryptographicAlgorithm::MLDSA_65,
-            "cosmian",
-            "sk-uid",
-            "pk-uid",
-            Attributes::default(),
-            None,
-            None,
+            KeyPairIdentity {
+                vendor_id: "cosmian",
+                private_key_uid: "sk-uid",
+                public_key_uid: "pk-uid",
+                common_attributes: Attributes::default(),
+                private_key_attributes: None,
+                public_key_attributes: None,
+            },
             None,
         )
         .expect("create key pair");

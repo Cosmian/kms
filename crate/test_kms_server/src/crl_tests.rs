@@ -12,7 +12,9 @@ use cosmian_kms_client::{
     },
     reexport::{
         cosmian_kms_access::access::Access,
-        cosmian_kms_client_utils::certificate_utils::{Algorithm, build_certify_request},
+        cosmian_kms_client_utils::certificate_utils::{
+            Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
+        },
     },
 };
 use openssl::x509::X509Crl;
@@ -62,19 +64,18 @@ async fn fetch_crl_der(client: &KmsClient, ca_cert_id: &str, validity_days: u32)
 async fn create_named_ca(client: &KmsClient, cn: &str, res: &mut TestResources) -> String {
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        true,
-        &Some(format!("CN={cn},O=Cosmian")),
-        Algorithm::NistP256,
-        &None,
-        &None,
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: format!("CN={cn},O=Cosmian"),
+                algorithm: Algorithm::NistP256,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
     let resp = client.certify(certify).await.unwrap();
@@ -117,19 +118,18 @@ impl TestResources {
 async fn create_ca(client: &KmsClient, res: &mut TestResources) -> String {
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        true,
-        &Some("CN=TestCA-CRL,O=Cosmian".to_owned()),
-        Algorithm::NistP256,
-        &None,
-        &None,
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: "CN=TestCA-CRL,O=Cosmian".to_owned(),
+                algorithm: Algorithm::NistP256,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -165,19 +165,18 @@ async fn issue_cert(
     // Certify with the CA
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,                               // certificate_id (output hint)
-        &None,                               // CSR format
-        &None,                               // CSR
-        &Some(pub_key_id),                   // public_key_id_to_certify
-        &None,                               // certificate_id_to_re_certify
-        false,                               // generate_key_pair
-        &Some(format!("CN={cn},O=Cosmian")), // subject_name
-        Algorithm::NistP256,                 // algorithm
-        &None,                               // issuer_private_key_id
-        &Some(ca_cert_id.to_owned()),        // issuer_certificate_id
-        365,                                 // number_of_days
-        &None,                               // certificate_extensions
-        &[],                                 // tags
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::PublicKey {
+                id: pub_key_id,
+                subject_name: format!("CN={cn},O=Cosmian"),
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: Some(ca_cert_id.to_owned()),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -327,19 +326,18 @@ async fn test_crl_validation_lifecycle() {
 
     let certify_ca = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        true,
-        &Some("CN=CRL-Test-CA,O=Cosmian".to_owned()),
-        Algorithm::NistP256,
-        &None,
-        &None,
-        365,
-        &Some(ext_config.as_bytes().to_vec()),
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: "CN=CRL-Test-CA,O=Cosmian".to_owned(),
+                algorithm: Algorithm::NistP256,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            certificate_extensions: Some(ext_config.as_bytes().to_vec()),
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -367,19 +365,18 @@ async fn test_crl_validation_lifecycle() {
 
     let certify_ee = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &Some(ee_pub_id),
-        &None,
-        false,
-        &Some("CN=ee.example.com,O=Cosmian".to_owned()),
-        Algorithm::NistP256,
-        &None,
-        &Some(ca_cert_id.clone()),
-        365,
-        &Some(ee_ext_config.as_bytes().to_vec()),
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::PublicKey {
+                id: ee_pub_id,
+                subject_name: "CN=ee.example.com,O=Cosmian".to_owned(),
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: Some(ca_cert_id.clone()),
+            number_of_days: 365,
+            certificate_extensions: Some(ee_ext_config.as_bytes().to_vec()),
+            tags: vec![],
+        },
     )
     .unwrap();
 

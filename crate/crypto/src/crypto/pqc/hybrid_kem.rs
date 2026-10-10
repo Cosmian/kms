@@ -2,17 +2,17 @@ use std::ptr;
 
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    },
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
 };
 
 use super::{
-    create_pqc_key_pair, hybrid_kem_algorithm_name, load_raw_private_key, load_raw_public_key,
-    pqc_keygen_raw,
+    PqcKeyMaterial, PqcKeyPolicy, create_pqc_key_pair, hybrid_kem_algorithm_name,
+    load_raw_private_key, load_raw_public_key, pqc_keygen_raw,
 };
-use crate::{crypto::KeyPair, error::CryptoError};
+use crate::{
+    crypto::{KeyPair, KeyPairIdentity},
+    error::CryptoError,
+};
 
 /// Create a hybrid KEM key pair.
 ///
@@ -27,33 +27,26 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// `rng` is unused for hybrid KEMs: OpenSSL 3.6.2 generates composite keys atomically
 /// without exposing a seed parameter (see `mlx_kmgmt.c`). Key generation draws from
 /// OpenSSL's internal default DRBG.
-#[expect(clippy::too_many_arguments)]
 pub fn create_hybrid_kem_key_pair(
     algorithm: CryptographicAlgorithm,
-    vendor_id: &str,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    identity: KeyPairIdentity<'_>,
     rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let algorithm_name = hybrid_kem_algorithm_name(algorithm)?;
     let (private_key_raw, public_key_raw, num_bits) = pqc_keygen_raw(algorithm_name, rng, None)?;
     create_pqc_key_pair(
-        vendor_id,
-        &private_key_raw,
-        &public_key_raw,
-        i32::try_from(num_bits)?,
-        algorithm,
-        KeyFormatType::Raw,
-        private_key_uid,
-        public_key_uid,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
-        CryptographicUsageMask::Unrestricted,
-        CryptographicUsageMask::Unrestricted,
+        identity,
+        PqcKeyMaterial {
+            private_key_der: &private_key_raw,
+            public_key_der: &public_key_raw,
+            cryptographic_length: i32::try_from(num_bits)?,
+            key_format_type: KeyFormatType::Raw,
+        },
+        PqcKeyPolicy {
+            cryptographic_algorithm: algorithm,
+            private_key_usage_mask: CryptographicUsageMask::Unrestricted,
+            public_key_usage_mask: CryptographicUsageMask::Unrestricted,
+        },
     )
 }
 
@@ -228,6 +221,8 @@ unsafe fn decapsulate_raw(
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+    use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+
     use super::*;
 
     fn encaps_decaps_roundtrip(algorithm: CryptographicAlgorithm) {
@@ -254,12 +249,14 @@ mod tests {
     fn hybrid_kem_create_key_pair() {
         let key_pair = create_hybrid_kem_key_pair(
             CryptographicAlgorithm::X25519MLKEM768,
-            "cosmian",
-            "sk-uid",
-            "pk-uid",
-            Attributes::default(),
-            None,
-            None,
+            KeyPairIdentity {
+                vendor_id: "cosmian",
+                private_key_uid: "sk-uid",
+                public_key_uid: "pk-uid",
+                common_attributes: Attributes::default(),
+                private_key_attributes: None,
+                public_key_attributes: None,
+            },
             None,
         )
         .expect("create key pair");

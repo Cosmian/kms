@@ -11,7 +11,9 @@ use cosmian_kms_client::{
         kmip_types::{RecommendedCurve, UniqueIdentifier},
         requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
     },
-    reexport::cosmian_kms_client_utils::certificate_utils::{Algorithm, build_certify_request},
+    reexport::cosmian_kms_client_utils::certificate_utils::{
+        Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
+    },
 };
 use openssl::x509::X509;
 
@@ -73,19 +75,18 @@ async fn create_ca(
     let subject = format!("CN={cn},O=TestCA");
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        true,
-        &Some(subject),
-        algorithm,
-        &None,
-        &None,
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: subject,
+                algorithm,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -209,19 +210,18 @@ async fn certify_keypair(
     let subject = format!("CN={subject_cn},O=Test");
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        true,
-        &Some(subject),
-        algorithm,
-        &issuer_sk_id.map(String::from),
-        &issuer_cert_id.map(String::from),
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: subject,
+                algorithm,
+            },
+            issuer_private_key_id: issuer_sk_id.map(String::from),
+            issuer_certificate_id: issuer_cert_id.map(String::from),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -569,19 +569,18 @@ async fn certify_pubkey(
     let subject = format!("CN={subject_cn},O=Test");
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &Some(pub_key_id),
-        &None,
-        false,
-        &Some(subject),
-        algorithm,
-        &issuer_sk_id.map(String::from),
-        &issuer_cert_id.map(String::from),
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::PublicKey {
+                id: pub_key_id,
+                subject_name: subject,
+            },
+            issuer_private_key_id: issuer_sk_id.map(String::from),
+            issuer_certificate_id: issuer_cert_id.map(String::from),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -771,19 +770,18 @@ async fn test_certify_pubkey_ca_signed_mldsa() {
     let subject = "CN=MLDSA-PK-CA,O=Test".to_owned();
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &Some(pub_key_id),
-        &None,
-        false,
-        &Some(subject),
-        Algorithm::MlDsa65,
-        &Some(ca_sk),
-        &Some(ca_cert),
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::PublicKey {
+                id: pub_key_id,
+                subject_name: subject,
+            },
+            issuer_private_key_id: Some(ca_sk),
+            issuer_certificate_id: Some(ca_cert),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -827,19 +825,18 @@ async fn test_certify_pubkey_ca_signed_slhdsa() {
     let subject = "CN=SLHDSA-PK-CA,O=Test".to_owned();
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &Some(pub_key_id),
-        &None,
-        false,
-        &Some(subject),
-        Algorithm::SlhDsaSha2128s,
-        &Some(ca_sk),
-        &Some(ca_cert),
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::PublicKey {
+                id: pub_key_id,
+                subject_name: subject,
+            },
+            issuer_private_key_id: Some(ca_sk),
+            issuer_certificate_id: Some(ca_cert),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -882,19 +879,18 @@ async fn test_certify_pubkey_ca_signed_mlkem() {
     let subject = "CN=MLKEM-PK-CA,O=Test".to_owned();
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &Some(pub_key_id),
-        &None,
-        false,
-        &Some(subject),
-        Algorithm::MlKem768,
-        &Some(ca_sk),
-        &Some(ca_cert),
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::PublicKey {
+                id: pub_key_id,
+                subject_name: subject,
+            },
+            issuer_private_key_id: Some(ca_sk),
+            issuer_certificate_id: Some(ca_cert),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -939,19 +935,17 @@ async fn certify_renewal(
     // Now re-certify
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &Some(original_cert_id),
-        false,
-        &None,
-        algorithm,
-        &issuer_sk_id.map(String::from),
-        &issuer_cert_id.map(String::from),
-        730,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::ReCertify {
+                certificate_id: original_cert_id,
+            },
+            issuer_private_key_id: issuer_sk_id.map(String::from),
+            issuer_certificate_id: issuer_cert_id.map(String::from),
+            number_of_days: 730,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -1124,24 +1118,22 @@ async fn certify_csr(
     csr_pem: &[u8],
     ca_sk_id: &str,
     ca_cert_id: &str,
-    algorithm: Algorithm,
     res: &mut TestResources,
 ) -> String {
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &Some("pem".to_owned()),
-        &Some(csr_pem.to_vec()),
-        &None,
-        &None,
-        false,
-        &None,
-        algorithm,
-        &Some(ca_sk_id.to_owned()),
-        &Some(ca_cert_id.to_owned()),
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::Csr {
+                request: csr_pem.to_vec(),
+                format: Some("pem".to_owned()),
+            },
+            issuer_private_key_id: Some(ca_sk_id.to_owned()),
+            issuer_certificate_id: Some(ca_cert_id.to_owned()),
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -1162,15 +1154,7 @@ async fn test_certify_csr_ca_signed_rsa() {
 
     let csr_pem = include_bytes!("../../../test_data/certificates/csr/test_rsa2048.csr.pem");
 
-    let cert_id = certify_csr(
-        &client,
-        csr_pem,
-        &ca_sk,
-        &ca_cert,
-        Algorithm::RSA2048,
-        &mut res,
-    )
-    .await;
+    let cert_id = certify_csr(&client, csr_pem, &ca_sk, &ca_cert, &mut res).await;
 
     let der = get_certificate_der(&client, &cert_id).await;
     let x509 = X509::from_der(&der).unwrap();
@@ -1191,15 +1175,7 @@ async fn test_certify_csr_ca_signed_ec() {
 
     let csr_pem = include_bytes!("../../../test_data/certificates/csr/test_ec_p256.csr.pem");
 
-    let cert_id = certify_csr(
-        &client,
-        csr_pem,
-        &ca_sk,
-        &ca_cert,
-        Algorithm::NistP256,
-        &mut res,
-    )
-    .await;
+    let cert_id = certify_csr(&client, csr_pem, &ca_sk, &ca_cert, &mut res).await;
 
     let der = get_certificate_der(&client, &cert_id).await;
     let x509 = X509::from_der(&der).unwrap();
@@ -1220,15 +1196,7 @@ async fn test_certify_csr_ca_signed_ed25519() {
 
     let csr_pem = include_bytes!("../../../test_data/certificates/csr/test_ed25519.csr.pem");
 
-    let cert_id = certify_csr(
-        &client,
-        csr_pem,
-        &ca_sk,
-        &ca_cert,
-        Algorithm::Ed25519,
-        &mut res,
-    )
-    .await;
+    let cert_id = certify_csr(&client, csr_pem, &ca_sk, &ca_cert, &mut res).await;
 
     let der = get_certificate_der(&client, &cert_id).await;
     let x509 = X509::from_der(&der).unwrap();
@@ -1251,19 +1219,18 @@ async fn test_negative_kem_self_sign_rejected() {
     let subject = "CN=KEM-SELF,O=Test".to_owned();
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        true,
-        &Some(subject),
-        Algorithm::MlKem768,
-        &None,
-        &None,
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: subject,
+                algorithm: Algorithm::MlKem768,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
@@ -1286,19 +1253,18 @@ async fn test_negative_csr_without_issuer() {
 
     let certify = build_certify_request(
         VENDOR_ID_COSMIAN,
-        &None,
-        &Some("pem".to_owned()),
-        &Some(csr_pem.to_vec()),
-        &None,
-        &None,
-        false,
-        &None,
-        Algorithm::RSA2048,
-        &None, // no issuer private key
-        &None, // no issuer certificate
-        365,
-        &None,
-        &[],
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::Csr {
+                request: csr_pem.to_vec(),
+                format: Some("pem".to_owned()),
+            },
+            issuer_private_key_id: None, // no issuer private key
+            issuer_certificate_id: None, // no issuer certificate
+            number_of_days: 365,
+            certificate_extensions: None,
+            tags: vec![],
+        },
     )
     .unwrap();
 
