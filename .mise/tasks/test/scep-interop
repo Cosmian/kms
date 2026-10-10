@@ -17,6 +17,15 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 
+# The scepclient is built with Go: use the Nix shell's Go unless one is already on PATH
+# (the macOS CI job installs it with actions/setup-go and has no Nix).
+if ! has_cmd go; then
+  source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+  export WITH_GO=1
+  # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+  ensure_nix_shell
+fi
+
 REPO_ROOT="$(get_repo_root)"
 bash "${REPO_ROOT}/.mise/scripts/test/test_scep_interop.sh" \
   --variant "${usage_variant:-fips}" --link "${usage_link:-static}"
