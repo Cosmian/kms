@@ -1927,6 +1927,34 @@
         "error404": "未找到颁发者 '{{issuerId}}' 的 CRL。吊销证书时系统会自动生成 CRL。若尚未吊销任何证书，CRL 可能不存在。",
         "success": "CRL 下载成功（{{bytes}} 字节，{{format}} 格式）"
     },
+    "estCaCerts": {
+        "title": "EST CA 证书",
+        "alertMessage": "从公开的 EST 端点下载 CA 证书链。",
+        "alertDescription": "无需身份验证。响应内容为服务器返回的原始 PKCS#7 「仅证书」 包（RFC 7030 §4.1）；可使用 `openssl pkcs7 -inform DER -in <file> -print_certs` 提取各个 PEM 证书。",
+        "submit": "下载 CA 证书",
+        "responseTitle": "EST CA 证书结果",
+        "error404": "此服务器未启用 EST。",
+        "success": "CA 证书链下载成功（{{bytes}} 字节）。"
+    },
+    "estEnroll": {
+        "title": "EST 注册",
+        "intro": "将 PKCS#10 证书签名请求提交到 EST simpleenroll 端点（RFC 7030 §4.2.1），并下载签发的证书。",
+        "csrFile": "证书签名请求",
+        "csrFileHelp": "上传所选格式的 PKCS#10 CSR。",
+        "uploadCsrFile": "上传 CSR 文件",
+        "pleaseUploadCsr": "请上传证书签名请求",
+        "csrFormat": "CSR 格式",
+        "formatPem": "PEM（文本）",
+        "formatDer": "DER（二进制）",
+        "username": "引导用户名",
+        "usernameHelp": "HTTP Basic 用户名，仅当服务器设置 est_require_client_cert = false 时被接受。两个字段均留空则使用当前会话配置的 TLS 客户端证书进行身份验证。",
+        "password": "引导密码",
+        "submit": "注册",
+        "responseTitle": "EST 注册结果",
+        "error404": "此服务器未启用 EST。",
+        "error401": "EST 身份验证失败：请检查引导凭据，或确认已配置 TLS 客户端证书。",
+        "success": "证书签发成功（{{bytes}} 字节）。"
+    },
     "pgpKeysCreate": {
         "title": "创建 OpenPGP 密钥",
         "intro": "创建新的 OpenPGP 可传输私钥 (v4)。该密钥在 KMS 内部以未受口令保护的形式生成。",
