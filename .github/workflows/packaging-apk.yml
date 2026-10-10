@@ -2,8 +2,8 @@
 name: Packaging - Alpine apk
 
 # Isolated from packaging.yml on purpose: the Nix-built musl toolchain is
-# compiled from source (no binary substituters) and takes ~2 hours per
-# (features, runner). The musl vendor hashes are not touched by
+# slow to build per (features, runner) even with the stdenv substituted from
+# cache.nixos.org. The musl vendor hashes are not touched by
 # nix-update-hashes.yml, so this pipeline has no reason to wait for it nor
 # for the glibc deb/rpm/pkcs11-zip packaging steps.
 

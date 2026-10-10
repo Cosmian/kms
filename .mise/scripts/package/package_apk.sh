@@ -108,7 +108,12 @@ if [ -L "$OUT_LINK" ] && [ -n "$(find "$(readlink -f "$OUT_LINK")/bin" -maxdepth
   echo "Reusing existing derivation at $OUT_LINK"
 else
   echo "Building Nix derivation ($NIX_ATTR)…"
-  nix-build -I "nixpkgs=${NIXPKGS_ARG}" --option substituters "" --no-build-output \
+  # Do NOT pass --option substituters "": without the binary cache Nix
+  # bootstraps the whole stdenv (~670 derivations) and fetches sources from
+  # third-party mirrors that expire or vanish (expired mirror.easyname.at
+  # certificate, docbook.org catalog.xml 404). Fixed-output hashes keep the
+  # substituted artifacts verifiable.
+  nix-build -I "nixpkgs=${NIXPKGS_ARG}" --no-build-output \
     "$REPO_ROOT/default.nix" -A "$NIX_ATTR" -o "$OUT_LINK"
 fi
 REAL_OUT=$(readlink -f "$OUT_LINK")
