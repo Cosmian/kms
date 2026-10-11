@@ -1,11 +1,11 @@
 ---
 name: Packaging - Alpine apk
 
-# Isolated from packaging.yml on purpose: the Nix-built musl toolchain is
+# Separate file from packaging.yml on purpose: the Nix-built musl toolchain is
 # slow to build per (features, runner) even with the stdenv substituted from
-# cache.nixos.org. The musl vendor hashes are not touched by
-# nix-update-hashes.yml, so this pipeline has no reason to wait for it nor
-# for the glibc deb/rpm/pkcs11-zip packaging steps.
+# cache.nixos.org, and it must not gate the glibc deb/rpm/pkcs11-zip packaging.
+# packaging.yml calls this workflow (job `apk`, no `needs:`), so every
+# packaging.yml run also runs it, in parallel.
 
 on:
   workflow_call:
