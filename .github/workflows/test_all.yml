@@ -297,6 +297,10 @@ jobs:
           - softhsm2
           - kryoptic
         features: [fips, non-fips]
+        exclude:
+          # Kryoptic HSM backend always built in non-fips
+          - type: kryoptic
+            features: fips
 
     steps:
       - uses: actions/checkout@v7
