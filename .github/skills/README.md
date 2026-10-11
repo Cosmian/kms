@@ -67,6 +67,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Rust Error Propagation | `/rust-error-propagation [path]` | Review fallible Rust paths for missed `?` propagation, error conversion, and lost context. |
 | Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review/rust-async-refactor.md`. |
 | CI Efficiency | `/ci-efficiency` | Audit GitHub Actions workflows for waste (missing caches, over-broad triggers, no concurrency cancellation). |
+| CI Dedupe | `/ci-dedupe` | Audit GitHub Actions workflows for duplicated step blocks; recommend/extract local composite actions under `.github/actions/` to simplify workflow YAML. |
 
 ### Documentation
 

@@ -1,0 +1,21 @@
+---
+name: Docker login (GHCR)
+description: >
+  Log in to ghcr.io via docker/login-action using the caller's GitHub token.
+  Composite actions cannot read the `secrets` context directly (see
+  actions/runner ADR 1144), so the token is a required input.
+
+inputs:
+  github-token:
+    description: Token used as the docker/login-action password (typically secrets.GITHUB_TOKEN).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Login to GHCR
+      uses: docker/login-action@v4.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github-token }}
