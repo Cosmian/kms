@@ -127,6 +127,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     container:
       image: alpine:3.21
+      credentials:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -183,14 +186,18 @@ jobs:
   # installed-binary --version/--info pre-checks, server start, /version and UI
   # checks, FIPS/legacy-provider log checks, AES/RSA/EC round-trips, and PQC for
   # non-FIPS (SLH-DSA as a musl thread-stack-size canary).
+  # `features` is looped inside the job (not a matrix axis): it does not change which
+  # alpine:<tag> base image is pulled, so the second `docker build` reuses the local layer cache.
   alpine-packages-test:
-    name: In Docker alpine:${{ matrix.alpine-tag }}-${{ matrix.features }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
+    name: In Docker alpine:${{ matrix.alpine-tag }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     needs: apk
     runs-on: ${{ matrix.runner }}
+    env:
+      # The `secrets` context is unavailable in step-level `if:`; expose via env instead.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
       matrix:
-        features: [fips, non-fips]
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
         alpine-tag: ['3.20', '3.21', latest]
     steps:
@@ -198,28 +205,40 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Download apk artifact
+      - name: Docker login (Docker Hub)
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Download apk artifact (fips)
         uses: actions/download-artifact@v8
         with:
-          name: apk_${{ matrix.features }}_${{ matrix.runner }}
+          name: apk_fips_${{ matrix.runner }}
+          path: fips
 
-      - name: Locate apk packages
+      - name: Download apk artifact (non-fips)
+        uses: actions/download-artifact@v8
+        with:
+          name: apk_non-fips_${{ matrix.runner }}
+          path: non-fips
+
+      - name: Install packages and run installed binaries in Alpine ${{ matrix.alpine-tag }} (fips/non-fips)
         shell: bash
         run: |
           set -euo pipefail
-          SERVER_APK=$(find "result-apk-server-${{ matrix.features }}" -name "cosmian-kms-server-*.apk")
-          CLI_APK=$(find "result-apk-cli-${{ matrix.features }}" -name "cosmian-kms-cli-*.apk")
-          echo "SERVER_APK=$(pwd)/${SERVER_APK}" >> "$GITHUB_ENV"
-          echo "CLI_APK=$(pwd)/${CLI_APK}" >> "$GITHUB_ENV"
-
-      - name: Install packages and run installed binaries in Alpine ${{ matrix.alpine-tag }}
-        shell: bash
-        run: |
-          bash .mise/scripts/test/test_alpine_musl.sh \
-            --variant ${{ matrix.features }} \
-            --server-apk "${SERVER_APK}" \
-            --cli-apk "${CLI_APK}" \
-            --alpine-tag ${{ matrix.alpine-tag }}
+          for features in fips non-fips; do
+            echo "::group::${features}"
+            SERVER_APK=$(find "${features}/result-apk-server-${features}" -name "cosmian-kms-server-*.apk")
+            CLI_APK=$(find "${features}/result-apk-cli-${features}" -name "cosmian-kms-cli-*.apk")
+            bash .mise/scripts/test/test_alpine_musl.sh \
+              --variant "${features}" \
+              --server-apk "$(pwd)/${SERVER_APK}" \
+              --cli-apk "$(pwd)/${CLI_APK}" \
+              --alpine-tag ${{ matrix.alpine-tag }}
+            echo "::endgroup::"
+          done
 
   # Publishes the Alpine-compatible apk packages (server + CLI) built once per
   # (features, runner) in the `apk` job above.
