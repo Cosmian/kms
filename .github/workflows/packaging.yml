@@ -383,5 +383,6 @@ jobs:
   tests:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
+    secrets: inherit
     with:
       toolchain: 1.97.0
