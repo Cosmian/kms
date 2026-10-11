@@ -48,6 +48,7 @@ fn test_hsm_smartcardhsm_all() -> HResult<()> {
     shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
+    shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
@@ -147,6 +148,13 @@ fn test_hsm_smartcardhsm_rsa_oaep_encrypt() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
     // Use the digest supported by the selected build variant.
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)
+}
+
+#[test]
+#[ignore = "Requires Linux, SmartcardHSM PKCS#11 library, and HSM environment"]
+fn test_hsm_smartcardhsm_aes_gcm_encrypt() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SmartcardHsmCapabilityProvider>(&cfg()?)?;
+    shared::aes_gcm_encrypt(&slot)
 }
 
 #[test]

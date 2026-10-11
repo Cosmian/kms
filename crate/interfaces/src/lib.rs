@@ -8,7 +8,7 @@ mod user_id;
 pub use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 pub use crypto_oracle::{
     CryptoAlgorithm, CryptoOracle, EncryptedContent, EncryptionKeyMetadata, KeyMetadata,
-    SigningAlgorithm, SigningKeyMetadata,
+    MacAlgorithm, MacKeyMetadata, SigningAlgorithm, SigningKeyMetadata,
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{

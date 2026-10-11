@@ -66,6 +66,16 @@ _kryoptic_cdylib_filename() {
 # Uniformizing on that same build removes the dependency on the ambient
 # system OpenSSL version entirely, making this suite reproducible across
 # local machines and CI.
+#
+# The NON-FIPS prefix is used for every variant, never the FIPS one. The FIPS
+# prefix's openssl.cnf activates `fips.so`; the KMS test binary (static OpenSSL,
+# FIPS provider) and the kryoptic cdylib (its own static OpenSSL copy) would then
+# both dlopen that same module in one process. The FIPS module keeps its core
+# dispatch table in file-scope globals, so the two OpenSSL copies corrupt each
+# other and the KMS default context intermittently loses CTR-DRBG ("unable to
+# fetch drbg"), failing every KmsRng call. The non-FIPS prefix only uses the
+# built-in default provider (no shared module), and kryoptic is only the token
+# simulator, so its own OpenSSL flavour is irrelevant to what the KMS tests.
 _kryoptic_ensure_repo_openssl() {
   require_cmd cargo
   require_cmd pkg-config
@@ -74,37 +84,20 @@ _kryoptic_ensure_repo_openssl() {
   repo_root="$(get_repo_root "${MISE_CONFIG_ROOT:-.}")"
   target_dir="${CARGO_TARGET_DIR:-${repo_root}/target}"
 
-  # `FEATURES_FLAG` is normally set by `kms_init_env` (empty array for fips,
-  # `(--features non-fips)` for non-fips). Default to empty under `set -u` if
-  # this function is ever invoked without it having run first.
-  local -a features_flag=()
-  if [ "${FEATURES_FLAG+set}" = "set" ]; then
-    features_flag=("${FEATURES_FLAG[@]}")
-  fi
-
-  print_status "Building this workspace's OpenSSL 3.6.2 (cargo build -p cosmian_kms_crypto), \
-if not already built"
-  (cd "$repo_root" && cargo build -p cosmian_kms_crypto "${features_flag[@]}")
+  print_status "Building this workspace's non-FIPS OpenSSL 3.6.2 (cargo build -p cosmian_kms_crypto \
+--features non-fips), if not already built"
+  (cd "$repo_root" && cargo build -p cosmian_kms_crypto --features non-fips)
 
   # Mirrors crate/crypto/build.rs's prefix naming: `openssl-<version>-<os>-<arch>`
   # for FIPS, `openssl-non-fips-<version>-<os>-<arch>` for non-FIPS. Globbed
   # rather than reconstructed from `uname`, so this does not need to track the
   # pinned OpenSSL version or the os/arch string conventions independently.
-  local prefix glob_desc candidates
-  local glob_pattern
-  if [ "${VARIANT:-fips}" = "non-fips" ]; then
-    glob_desc="${target_dir}/openssl-non-fips-*"
-    candidates=("${target_dir}"/openssl-non-fips-*)
-  else
-    glob_desc="${target_dir}/openssl-[0-9]*"
-    glob_pattern="${target_dir}/openssl-[0-9]*"
-    # shellcheck disable=SC2206 # intentional glob expansion of a version-numbered prefix
-    candidates=($glob_pattern)
-  fi
+  local prefix candidates
+  candidates=("${target_dir}"/openssl-non-fips-*)
   prefix="${candidates[0]:-}"
   if [ -z "$prefix" ] || [ ! -d "$prefix" ]; then
-    print_error "Could not locate this workspace's built OpenSSL prefix under ${target_dir} \
-(expected a directory matching ${glob_desc})"
+    print_error "Could not locate this workspace's non-FIPS OpenSSL prefix under ${target_dir} \
+(expected a directory matching ${target_dir}/openssl-non-fips-*)"
   fi
   if [ ! -f "${prefix}/lib/pkgconfig/openssl.pc" ]; then
     print_error "No openssl.pc found under ${prefix}/lib/pkgconfig; this workspace's OpenSSL \
@@ -180,6 +173,23 @@ kryoptic_build_cdylib() {
   fi
   if [ ! -f "$artifact" ]; then
     print_error "kryoptic cdylib artifact not found at expected path ${artifact} after build"
+  fi
+
+  # Fail fast on a stale artifact: Cargo may reuse a cached cdylib whose static OpenSSL still
+  # has the FIPS prefix baked in as OPENSSLDIR (e.g. a cached temp dir from before the
+  # non-FIPS switch). That copy would load `fips.so` next to the KMS's own and reproduce the
+  # "unable to fetch drbg" failure, so refuse to run rather than report a misleading result.
+  if ! grep -aqF "${KRYOPTIC_BUILD_OPENSSL_SOURCES}/ssl" "$artifact"; then
+    print_error "${artifact} was not built against ${KRYOPTIC_BUILD_OPENSSL_SOURCES}; it is stale. \
+Run 'cargo clean -p ossl-sys -p kryoptic-lib' in ${src_dir} (or delete ${src_dir}/target) and retry"
+  fi
+
+  # An explicit OPENSSL_CONF overrides the baked-in OPENSSLDIR for BOTH the KMS and the
+  # kryoptic OpenSSL copies, so a FIPS config would make them share `fips.so` again.
+  if [ -n "${OPENSSL_CONF:-}" ]; then
+    print_warning "OPENSSL_CONF=${OPENSSL_CONF} is set: kryoptic's OpenSSL will read it too. If it \
+activates the FIPS provider, kryoptic and the KMS share fips.so and the KMS RNG can fail with \
+'unable to fetch drbg'. Unset it for this task unless it is default-provider only."
   fi
 
   KRYOPTIC_PKCS11_LIB="$artifact"

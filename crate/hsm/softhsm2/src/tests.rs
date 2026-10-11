@@ -50,7 +50,15 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
+    shared::generate_aes_key(&slot)?;
+    shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)?;
+    shared::rsa_pkcs_encrypt(&slot)?;
+    // `rsa_oaep_encrypt` is deliberately NOT called here: SoftHSM2 rejects CKM_RSA_PKCS_OAEP
+    // with explicit mechanism parameters (CKR_ARGUMENTS_BAD, return code 7) — see the
+    // comment above `concurrent_sign_does_not_degrade`. Its standalone test fails the same
+    // way on this build.
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
@@ -67,6 +75,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // manifest) and SHA-1 (see resident_rsa2048_encrypt_oaep_sha1 manifest) on this
     // SoftHSM2 build. `multi_threaded_rsa` uses RSA-OAEP encrypt/decrypt, so it is
     // skipped entirely here rather than gated by FIPS variant.
+    shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;

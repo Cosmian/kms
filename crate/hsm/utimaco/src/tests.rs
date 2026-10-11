@@ -194,6 +194,28 @@ fn test_hsm_utimaco_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
 }
 
+/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
+/// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms. Not added to
+/// `test_hsm_utimaco_all`: see the exclusion comment on that function — EC/ECDSA-adjacent
+/// mechanisms combined with the rest of the aggregator are documented to abort the simulator.
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
+}
+
+/// Not added to `test_hsm_utimaco_all`: this helper generates a P-256 EC keypair and signs
+/// with ECDSA internally — the same mechanism combination the aggregator's exclusion comment
+/// documents as aborting the simulator (`CKR_DEVICE_REMOVED`).
+#[test]
+#[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
+fn test_hsm_utimaco_concurrent_sign_does_not_degrade() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<UtimacoCapabilityProvider>(&cfg()?)?;
+    shared::concurrent_sign_does_not_degrade(&slot)
+}
+
 #[test]
 #[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
 fn test_hsm_utimaco_list_objects() -> HResult<()> {

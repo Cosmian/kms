@@ -68,6 +68,7 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
+    shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
@@ -211,6 +212,13 @@ fn test_hsm_crypt2pay_eddsa_sign_all_curves() -> HResult<()> {
 fn test_hsm_crypt2pay_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_concurrent_sign_does_not_degrade() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::concurrent_sign_does_not_degrade(&slot)
 }
 
 #[test]
