@@ -935,7 +935,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                     mag = super::KmipBigInt::from(new_big);
                                 }
                                 let new_child = TTLV {
-                                    tag: current_tag.clone(),
+                                    tag: current_tag,
                                     value: TTLValue::BigInteger(mag),
                                 };
                                 for _ in i..=last_same_tag_index {

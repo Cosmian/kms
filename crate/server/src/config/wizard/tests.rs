@@ -46,6 +46,8 @@ fn test_generate_self_signed_pki_creates_all_files() {
     assert!(paths.server_cert.exists(), "server.crt must exist");
     assert!(paths.server_key.exists(), "server.key must exist");
     assert!(paths.client_cert.exists(), "client.crt must exist");
+    assert!(paths.client_key.exists(), "client.key must exist");
+    assert_eq!(paths.client_key, tmp.path().join("client.key"));
 
     // All written files must be non-empty.
     for p in [
@@ -53,6 +55,7 @@ fn test_generate_self_signed_pki_creates_all_files() {
         &paths.server_cert,
         &paths.server_key,
         &paths.client_cert,
+        &paths.client_key,
     ] {
         assert!(
             std::fs::metadata(p).unwrap().len() > 0,
@@ -168,6 +171,15 @@ fn test_generated_cert_chain_is_valid() {
     assert!(
         server_cert.public_key().unwrap().public_eq(&server_key),
         "server private key must correspond to the server certificate"
+    );
+
+    // Client private key (needed together with the client cert for mTLS) must
+    // match the client certificate's public key.
+    let client_key =
+        PKey::private_key_from_pem(&std::fs::read(&paths.client_key).unwrap()).unwrap();
+    assert!(
+        client_cert.public_key().unwrap().public_eq(&client_key),
+        "client private key must correspond to the client certificate"
     );
 }
 

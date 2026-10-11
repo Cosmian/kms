@@ -68,6 +68,7 @@ path = "${AUDIT_JSONL}"
 EOF
 
 kms_start_from_bin "${kms_bin}"
+# shellcheck disable=SC2034 # consumed by the sourced audit_e2e.sh helpers
 ckms_conf=$(kms_write_ckms_conf)
 
 # ── Exercise KMIP operations ──────────────────────────────────────────────────

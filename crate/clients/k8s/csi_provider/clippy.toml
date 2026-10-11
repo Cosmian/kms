@@ -1,0 +1,3 @@
+# `tonic::Status` (the error type of every generated gRPC method in `src/provider.rs`)
+# is 176 bytes, above clippy's default `large-error-threshold` of 128.
+large-error-threshold = 192

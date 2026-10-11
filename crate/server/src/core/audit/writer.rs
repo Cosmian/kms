@@ -25,6 +25,10 @@ pub(super) async fn writer_loop<S: AuditSink>(
     let mut last_capped_log: Option<std::time::Instant> = None;
 
     while let Some(msg) = rx.recv().await {
+        // `WriterMsg::Flush` only exists in test builds (see `store.rs`): in production
+        // `WriterMsg` has the single `Event` variant, so the irrefutable `let` below
+        // extracts exactly the draft that the test-build `match` arm does.
+        #[cfg(test)]
         let draft = match msg {
             WriterMsg::Event(draft) => *draft,
             WriterMsg::Flush(ack) => {
@@ -34,6 +38,10 @@ pub(super) async fn writer_loop<S: AuditSink>(
                 continue;
             }
         };
+        #[cfg(not(test))]
+        let WriterMsg::Event(draft) = msg;
+        #[cfg(not(test))]
+        let draft = *draft;
 
         if sink.is_write_capacity_exceeded() {
             let now = std::time::Instant::now();

@@ -110,7 +110,7 @@ impl CryptoOpSpec for EncryptOp {
         }
     }
 
-    async fn execute_local(
+    fn execute_local(
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
@@ -274,7 +274,7 @@ pub(super) fn encrypt_bulk(
         }
         Object::PublicKey { .. } => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(plaintext.clone());
+                request.data = Some(plaintext);
                 let response = encrypt_with_public_key(&request, server_params, owm, rng)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
@@ -283,7 +283,7 @@ pub(super) fn encrypt_bulk(
             certificate_value, ..
         }) => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(plaintext.clone());
+                request.data = Some(plaintext);
                 let response = encrypt_with_certificate(
                     &request,
                     server_params,

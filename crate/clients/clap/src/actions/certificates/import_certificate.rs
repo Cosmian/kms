@@ -332,7 +332,7 @@ impl ImportCertificateAction {
                 let attributes = import_attributes.get_or_insert_with(Attributes::default);
                 attributes.set_link(
                     LinkType::CertificateLink,
-                    LinkedObjectIdentifier::TextString(id.clone()),
+                    LinkedObjectIdentifier::TextString(id),
                 );
             }
             // Set activation_date to now if activate flag is set

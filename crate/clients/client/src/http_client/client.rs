@@ -704,3 +704,51 @@ mod default_header_tests {
         assert!(client.default_headers.get("X-Vault-Token").is_none());
     }
 }
+
+#[cfg(test)]
+mod response_tests {
+    use super::{Bytes, HeaderMap, HttpResponse};
+
+    fn response(body: &'static [u8]) -> HttpResponse {
+        HttpResponse {
+            status: http::StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: Bytes::from_static(body),
+        }
+    }
+
+    #[test]
+    fn json_failure_reports_deserialization_context() {
+        let res: Result<serde_json::Map<String, serde_json::Value>, _> =
+            response(b"not json").json();
+        let message = res.err().map(|e| e.to_string()).unwrap_or_default();
+        assert!(
+            message.starts_with("Failed to deserialize response body as JSON: "),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn json_success_deserializes_the_body() {
+        let res: Result<serde_json::Value, _> = response(br#"{"a":1}"#).json();
+        assert_eq!(res.ok(), Some(serde_json::json!({"a": 1})));
+    }
+
+    #[test]
+    fn text_failure_reports_utf8_context() {
+        let message = response(&[0xff, 0xfe, 0xfd])
+            .text()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            message.starts_with("Response body is not UTF-8: "),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn text_success_returns_the_body() {
+        assert_eq!(response(b"hello").text().ok().as_deref(), Some("hello"));
+    }
+}

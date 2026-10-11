@@ -717,6 +717,98 @@ pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
+fn expect_rejected<T>(result: &HResult<T>, what: &str) -> HResult<()> {
+    if result.is_ok() {
+        return Err(HError::Default(format!("{what} must be rejected")));
+    }
+    Ok(())
+}
+
+/// Single-operation multi-part AES-CBC (`C_EncryptInit` + `C_EncryptUpdate`* +
+/// `C_EncryptFinal`, and the decrypt counterpart) must be byte-identical to the
+/// single-shot `C_Encrypt` / `C_Decrypt` path whatever the part length, including
+/// part lengths that are not a multiple of the AES block size.
+pub fn aes_cbc_multi_part(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let key_id = Uuid::new_v4().to_string();
+    let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
+
+    let data_1k = generate_random_data::<1024>()?;
+    let data_8k = generate_random_data::<8192>()?;
+    let empty: [u8; 0] = [];
+
+    for (data, part_lengths) in [
+        (data_1k.as_slice(), &[16_usize, 100, 1024][..]),
+        (data_8k.as_slice(), &[16, 128, 1000, 8192, 100_000][..]),
+        (&empty[..], &[16][..]),
+    ] {
+        let single = session.encrypt(sk, HsmEncryptionAlgorithm::AesCbc, data, None)?;
+        let iv: [u8; 16] = single
+            .iv
+            .clone()
+            .unwrap_or_default()
+            .try_into()
+            .map_err(|e| HError::Default(format!("IV must be exactly 16 bytes long: {e:?}")))?;
+        for &part_length in part_lengths {
+            let multi = session.encrypt_aes_cbc_multi_part(sk, iv, data, part_length)?;
+            assert_eq!(
+                multi.ciphertext,
+                single.ciphertext,
+                "ciphertext differs for {} bytes in parts of {part_length}",
+                data.len()
+            );
+            assert_eq!(multi.iv, single.iv);
+            assert_eq!(multi.tag, None);
+
+            let plaintext =
+                session.decrypt_aes_cbc_multi_part(sk, &iv, &single.ciphertext, part_length)?;
+            assert_eq!(plaintext.as_slice(), data, "part length {part_length}");
+        }
+        // Cross-check against the single-shot decrypt of a multi-part ciphertext.
+        let multi = session.encrypt_aes_cbc_multi_part(sk, iv, data, 48)?;
+        let roundtrip = session.decrypt(
+            sk,
+            HsmEncryptionAlgorithm::AesCbc,
+            [iv.as_slice(), multi.ciphertext.as_slice()]
+                .concat()
+                .as_slice(),
+        )?;
+        assert_eq!(roundtrip.as_slice(), data);
+    }
+
+    // Invalid inputs are rejected before any HSM operation is started.
+    let iv = [0_u8; 16];
+    expect_rejected(
+        &session.encrypt_aes_cbc_multi_part(sk, iv, &data_1k, 0),
+        "zero part length",
+    )?;
+    expect_rejected(
+        &session.decrypt_aes_cbc_multi_part(sk, &iv, &[0_u8; 17], 16),
+        "ciphertext that is not a multiple of the block size",
+    )?;
+    expect_rejected(
+        &session.decrypt_aes_cbc_multi_part(sk, &[0_u8; 8], &[0_u8; 16], 16),
+        "IV of the wrong length",
+    )?;
+
+    // A corrupted ciphertext fails at unpadding, and the session stays usable
+    // (no operation left active) for a following operation.
+    let enc = session.encrypt_aes_cbc_multi_part(sk, iv, &data_1k, 64)?;
+    let mut corrupted = enc.ciphertext.clone();
+    if let Some(last) = corrupted.last_mut() {
+        *last ^= 0xff;
+    }
+    // CBC without authentication: the corruption only surfaces through the padding check
+    // (it can legitimately pass with probability ~1/256), so only check reuse of the session.
+    drop(session.decrypt_aes_cbc_multi_part(sk, &iv, &corrupted, 64));
+    let again = session.decrypt_aes_cbc_multi_part(sk, &iv, &enc.ciphertext, 64)?;
+    assert_eq!(again.as_slice(), data_1k);
+
+    info!("Successfully multi-part encrypted/decrypted with AES CBC");
+    Ok(())
+}
+
 pub fn rsa_pkcs_v15_sign(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
@@ -1332,6 +1424,9 @@ pub fn multi_threaded_rsa(
     Ok(())
 }
 
+/// Number of throughput measurements attempted by [`concurrent_sign_does_not_degrade`].
+const MAX_ATTEMPTS: usize = 3;
+
 /// Assert that concurrent HSM signing does not experience throughput collapse under concurrency (8 threads vs 1 thread).
 pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> {
     use std::{
@@ -1382,67 +1477,77 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
             ));
         };
 
-    let mut rates = Vec::new();
-    for threads in [1, 8] {
-        let stop_flag = Arc::new(AtomicBool::new(false));
-        let ops_counter = Arc::new(AtomicU64::new(0));
-        let mut handles = Vec::with_capacity(threads);
+    // Throughput is measured against wall-clock time, so a single sample is sensitive to
+    // unrelated load on the machine. A genuine degradation shows up in every attempt, a
+    // transient load spike in at most one: succeed if any attempt reaches the threshold.
+    for attempt in 1..=MAX_ATTEMPTS {
+        let mut rates = Vec::new();
+        for threads in [1, 8] {
+            let stop_flag = Arc::new(AtomicBool::new(false));
+            let ops_counter = Arc::new(AtomicU64::new(0));
+            let mut handles = Vec::with_capacity(threads);
 
-        let duration = Duration::from_secs(3);
-        let start = Instant::now();
+            let duration = Duration::from_secs(3);
+            let start = Instant::now();
 
-        for _ in 0..threads {
-            let slot = Arc::clone(slot);
-            let stop = Arc::clone(&stop_flag);
-            let ops = Arc::clone(&ops_counter);
-            let signing_input = signing_input.clone().into_owned();
+            for _ in 0..threads {
+                let slot = Arc::clone(slot);
+                let stop = Arc::clone(&stop_flag);
+                let ops = Arc::clone(&ops_counter);
+                let signing_input = signing_input.clone().into_owned();
 
-            let handle = thread::spawn(move || -> HResult<()> {
-                while !stop.load(Ordering::Relaxed) {
-                    let session = slot.checkout_session()?;
-                    let _sig = {
-                        let res = session.sign(sk, sign_algorithm, &signing_input)?;
-                        slot.checkin_session(session);
-                        res
-                    };
-                    ops.fetch_add(1, Ordering::Relaxed);
-                }
-                Ok(())
-            });
-            handles.push(handle);
+                let handle = thread::spawn(move || -> HResult<()> {
+                    while !stop.load(Ordering::Relaxed) {
+                        let session = slot.checkout_session()?;
+                        let _sig = {
+                            let res = session.sign(sk, sign_algorithm, &signing_input)?;
+                            slot.checkin_session(session);
+                            res
+                        };
+                        ops.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Ok(())
+                });
+                handles.push(handle);
+            }
+
+            thread::sleep(duration);
+            stop_flag.store(true, Ordering::Relaxed);
+
+            for handle in handles {
+                handle
+                    .join()
+                    .map_err(|e| HError::Default(format!("Thread panicked: {e:?}")))??;
+            }
+
+            let elapsed = start.elapsed().as_secs_f64();
+            let count = ops_counter.load(Ordering::Relaxed);
+            let count_as_f64 = count
+                .to_string()
+                .parse::<f64>()
+                .map_err(|e| HError::Default(format!("Failed converting operation count: {e}")))?;
+            let ops_per_sec = count_as_f64 / elapsed;
+            rates.push(ops_per_sec);
         }
 
-        thread::sleep(duration);
-        stop_flag.store(true, Ordering::Relaxed);
-
-        for handle in handles {
-            handle
-                .join()
-                .map_err(|e| HError::Default(format!("Thread panicked: {e:?}")))??;
+        let rate_1 = *rates
+            .first()
+            .ok_or_else(|| HError::Default("Missing 1-thread rate sample".to_owned()))?;
+        let rate_8 = *rates
+            .get(1)
+            .ok_or_else(|| HError::Default("Missing 8-thread rate sample".to_owned()))?;
+        info!(
+            "Concurrent sign attempt {attempt}/{MAX_ATTEMPTS}: 1 thread = {rate_1:.1} ops/s, 8 threads \
+         = {rate_8:.1} ops/s"
+        );
+        if rate_8 >= rate_1 * 0.8 {
+            return Ok(());
         }
-
-        let elapsed = start.elapsed().as_secs_f64();
-        let count = ops_counter.load(Ordering::Relaxed);
-        let count_as_f64 = count
-            .to_string()
-            .parse::<f64>()
-            .map_err(|e| HError::Default(format!("Failed converting operation count: {e}")))?;
-        let ops_per_sec = count_as_f64 / elapsed;
-        rates.push(ops_per_sec);
     }
-
-    let rate_1 = *rates
-        .first()
-        .ok_or_else(|| HError::Default("Missing 1-thread rate sample".to_owned()))?;
-    let rate_8 = *rates
-        .get(1)
-        .ok_or_else(|| HError::Default("Missing 8-thread rate sample".to_owned()))?;
-    info!("Concurrent sign rates: 1 thread = {rate_1:.1} ops/s, 8 threads = {rate_8:.1} ops/s");
-    assert!(
-        rate_8 >= rate_1 * 0.8,
-        "Concurrent sign degraded at 8 threads ({rate_8:.1} ops/s) vs 1 thread ({rate_1:.1} ops/s)"
-    );
-    Ok(())
+    Err(HError::Default(format!(
+        "Concurrent sign degraded at 8 threads (below 80% of the 1-thread rate) in all \
+         {MAX_ATTEMPTS} attempts"
+    )))
 }
 
 pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {

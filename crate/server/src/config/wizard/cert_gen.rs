@@ -30,7 +30,6 @@ pub struct CertPaths {
     pub server_cert: PathBuf,
     pub server_key: PathBuf,
     pub client_cert: PathBuf,
-    #[allow(dead_code)]
     pub client_key: PathBuf,
 }
 

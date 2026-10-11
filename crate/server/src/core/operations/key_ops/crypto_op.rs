@@ -220,12 +220,14 @@ pub(crate) trait CryptoOpSpec {
     }
 
     /// Execute the operation locally using unwrapped key material.
+    ///
+    /// Local execution is pure CPU work on in-memory key material, hence synchronous.
     fn execute_local(
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
         user: &UserId,
-    ) -> impl std::future::Future<Output = KResult<Self::Response>> + Send;
+    ) -> KResult<Self::Response>;
 
     /// Execute the operation via a crypto oracle (HSM / external key store).
     fn execute_oracle(
@@ -490,7 +492,7 @@ impl KMS {
         // COSMIAN-2026-015 does not apply here: the key is not wrapped, so nothing
         // is unwrapped and no key material is ever written back to storage.
         if !owm.object().is_wrapped() && owm.attributes().usage_limits.is_none() {
-            return Op::execute_local(self, owm, request, user).await;
+            return Op::execute_local(self, owm, request, user);
         }
 
         // Slow path: the key is wrapped and/or carries usage limits, so a clone is
@@ -519,7 +521,7 @@ impl KMS {
             local_owm.set_object(unwrapped);
         }
 
-        let res = Op::execute_local(self, &local_owm, request, user).await?;
+        let res = Op::execute_local(self, &local_owm, request, user)?;
 
         // Persist usage limits: `owm.object()` is still wrapped, avoiding
         // plaintext leakage; `local_owm.attributes_mut()` has the decremented

@@ -286,7 +286,7 @@ fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
             .take(plaintext_len)
             .map(char::from)
             .collect();
-        let alphabet = Alphabet::try_from(&plaintext)?;
+        let alphabet: Alphabet = plaintext.parse()?;
         // Skip inputs that don't satisfy the FF1 minimum-length constraint for
         // the derived alphabet. This can happen when the random string has few
         // unique characters (e.g. 5 unique chars require length ≥ 9).
@@ -376,10 +376,10 @@ fn test_negative_cases() -> Result<(), FPEError> {
 
     // Invalid alphabet: too few characters
     assert!(
-        Alphabet::try_from("a").is_err(),
+        "a".parse::<Alphabet>().is_err(),
         "single-char alphabet must fail"
     );
-    assert!(Alphabet::try_from("").is_err(), "empty alphabet must fail");
+    assert!("".parse::<Alphabet>().is_err(), "empty alphabet must fail");
 
     // Plaintext too short: alpha_lower has 26 chars, min_plaintext_length(26) == 5
     let key = random_key();

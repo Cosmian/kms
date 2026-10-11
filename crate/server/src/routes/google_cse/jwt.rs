@@ -146,6 +146,9 @@ pub(super) fn decode_jwt_authorization_token(
         .kid
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
+    let jwt_headers = JwtTokenHeaders::from_token(token)?;
+    jwt_headers.validate()?;
+
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
 
     trace!("Try to validate token from issuer: {issuer_uri:?}");
@@ -200,15 +203,7 @@ pub(super) fn decode_jwt_authorization_token(
 
     let user_claims = token_data.claims;
 
-    let jwt_headers = serde_json::to_value(token_data.header)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}")))
-        .and_then(|v| {
-            serde_json::from_value(v).map_err(|err| {
-                KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}"))
-            })
-        })?;
     trace!("valid_jwt user claims: {:?}", user_claims);
-    trace!("valid_jwt headers: {:?}", jwt_headers);
 
     // Audience post-check in non-test, non-insecure builds
     #[cfg(all(not(test), not(feature = "insecure")))]
@@ -795,6 +790,147 @@ mod tests {
 
         let result = decode_jwt_authorization_token(&jwt_config, &token);
         assert!(result.is_err(), "should reject a token with a wrong issuer");
+    }
+
+    /// Build a `JwtConfig` + RSA key pair + valid claims for the decode-path tests below.
+    fn header_test_setup(
+        kid: &str,
+    ) -> (Arc<JwtConfig>, Rsa<openssl::pkey::Private>, MinimalClaims) {
+        let issuer = "gsuitecse-tokenissuer-gmail@system.gserviceaccount.com";
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwt_config = Arc::new(JwtConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks: build_jwks_manager_with_key(kid, &rsa),
+            jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+            accept_spiffe_subject: false,
+        });
+        let now = now_usize();
+        let claims = MinimalClaims {
+            iss: issuer.to_owned(),
+            aud: "cse-authorization".to_owned(),
+            email: "user@example.com".to_owned(),
+            role: Some("reader".to_owned()),
+            iat: now,
+            exp: now + 3600,
+        };
+        (jwt_config, rsa, claims)
+    }
+
+    /// Sign `claims` with the given, fully caller-controlled JOSE header.
+    fn sign_with_header(
+        header: &Header,
+        claims: &MinimalClaims,
+        rsa: &Rsa<openssl::pkey::Private>,
+    ) -> String {
+        let encoding_key = EncodingKey::from_rsa_der(&rsa.private_key_to_der().unwrap());
+        encode(header, claims, &encoding_key).unwrap()
+    }
+
+    /// A valid token yields both the claims and the parsed JOSE headers.
+    #[test]
+    fn test_decode_returns_headers_for_valid_token() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-001");
+        let token = sign_test_jwt("hdr-kid-001", &claims, &rsa);
+
+        let (user_claim, headers) = decode_jwt_authorization_token(&jwt_config, &token).unwrap();
+        assert_eq!(user_claim.email.as_deref(), Some("user@example.com"));
+        let dbg = format!("{headers:?}");
+        assert!(dbg.contains("alg: Some(\"RS256\")"), "{dbg}");
+        assert!(dbg.contains("kid: Some(\"hdr-kid-001\")"), "{dbg}");
+        assert!(dbg.contains("typ: Some(\"JWT\")"), "{dbg}");
+    }
+
+    /// A token without `kid` is rejected before any key lookup.
+    #[test]
+    fn test_decode_rejects_missing_kid() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-002");
+        let token = sign_with_header(&Header::new(Algorithm::RS256), &claims, &rsa);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(err.to_string().contains("kid"), "unexpected error: {err}");
+    }
+
+    /// A token signed by a key that is not the JWKS one is rejected.
+    #[test]
+    fn test_decode_rejects_bad_signature() {
+        let (jwt_config, _rsa, claims) = header_test_setup("hdr-kid-003");
+        let other_key = Rsa::generate(2048).unwrap();
+        let token = sign_test_jwt("hdr-kid-003", &claims, &other_key);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(
+            err.to_string().contains("Cannot validate token"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// A `kid` absent from the JWKS is rejected.
+    #[test]
+    fn test_decode_rejects_unknown_kid() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-004");
+        let token = sign_test_jwt("some-other-kid", &claims, &rsa);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(
+            err.to_string().contains("some-other-kid"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// A token carrying `crit` (RFC 7515 §4.1.11) is rejected: no critical extension is
+    /// implemented. `jsonwebtoken::Header` parses `crit` but never enforces it, and the
+    /// test builds the header segment by hand so it can be forged; the rejection
+    /// happens before the signature is checked.
+    #[test]
+    fn test_decode_rejects_crit_header() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-005");
+        let token = sign_test_jwt("hdr-kid-005", &claims, &rsa);
+        let forged_header = general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"alg":"RS256","typ":"JWT","kid":"hdr-kid-005","crit":["b64"]}"#);
+        let forged = format!(
+            "{forged_header}.{}",
+            token.split_once('.').map(|(_, rest)| rest).unwrap()
+        );
+
+        let result = decode_jwt_authorization_token(&jwt_config, &forged);
+        assert!(result.is_err(), "a token with `crit` must be rejected");
+    }
+
+    /// Nested JWTs (`cty: JWT`) are rejected.
+    #[test]
+    fn test_decode_rejects_nested_jwt() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-006");
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("hdr-kid-006".to_owned());
+        header.cty = Some("JWT".to_owned());
+        let token = sign_with_header(&header, &claims, &rsa);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(
+            err.to_string().contains("Nested"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Embedded key material (`x5u`, `x5c`, `x5t`) is ignored: the token still
+    /// validates against the JWKS key, and is not validated against the embedded one.
+    #[test]
+    fn test_decode_ignores_embedded_key_material() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-007");
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("hdr-kid-007".to_owned());
+        header.x5u = Some("https://attacker.example.com/cert.pem".to_owned());
+        header.x5c = Some(vec!["QUJD".to_owned()]);
+        header.x5t = Some("thumbprint".to_owned());
+        let token = sign_with_header(&header, &claims, &rsa);
+        let (user_claim, _headers) = decode_jwt_authorization_token(&jwt_config, &token).unwrap();
+        assert_eq!(user_claim.email.as_deref(), Some("user@example.com"));
+
+        // same header, signed by an attacker key: rejected despite the embedded material
+        let attacker = Rsa::generate(2048).unwrap();
+        let forged = sign_with_header(&header, &claims, &attacker);
+        let result = decode_jwt_authorization_token(&jwt_config, &forged);
+        assert!(result.is_err(), "a forged signature must be rejected");
     }
 
     /// Claims matching a KACLS-to-KACLS migration JWT created by `create_jwt`.

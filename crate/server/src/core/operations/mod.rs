@@ -47,14 +47,14 @@ pub(crate) use check::check;
 pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use create_split_key::create_split_key;
-pub(crate) use decrypt::decrypt;
+pub(crate) use decrypt::{DecryptOp, decrypt};
 pub(crate) use derive_key::derive_key;
 pub(crate) use destroy::destroy_operation;
 #[cfg(feature = "non-fips")]
 pub(crate) use destroy::recursively_destroy_object;
 pub(crate) use discover_versions::discover_versions;
 pub(crate) use dispatch::dispatch;
-pub(crate) use encrypt::encrypt;
+pub(crate) use encrypt::{EncryptOp, encrypt};
 pub(crate) use export::export;
 pub(crate) use export_get::export_get;
 pub(crate) use get::get;

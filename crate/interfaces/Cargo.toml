@@ -18,8 +18,8 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.28.0" }
-cosmian_kms_access = { path = "../access", version = "5.28.0" }
+cosmian_kmip = { workspace = true }
+cosmian_kms_access = { workspace = true }
 cosmian_logger = { workspace = true }
 num-bigint-dig = { workspace = true, features = ["std", "rand", "serde", "zeroize"] }
 openssl = { workspace = true }
@@ -29,7 +29,7 @@ time = { workspace = true }
 zeroize = { workspace = true, default-features = true }
 
 [dev-dependencies]
-mockall = "0.13"
+mockall = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [features]

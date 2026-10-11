@@ -187,7 +187,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         )
         .await
         .context("find (bad cryptographic_algorithm)")?;
-    assert!(found.is_empty());
+    assert_eq!(found.len(), 0);
 
     // Find bad key format type
 
@@ -206,7 +206,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         )
         .await
         .context("find (bad key_format_type)")?;
-    assert!(found.is_empty());
+    assert_eq!(found.len(), 0);
 
     Ok(())
 }

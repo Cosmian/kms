@@ -219,7 +219,13 @@ pub fn run_configure_wizard() -> KResult<()> {
             "  Self-signed client certificate: {}",
             client_cert.display()
         );
-        println!("  Distribute this certificate to clients that need to authenticate via mTLS.\n");
+        if let Some(client_key) = tls_result.generated_client_key {
+            println!("  Matching client private key:    {}", client_key.display());
+        }
+        println!(
+            "  Distribute this certificate (and its private key, securely) to clients that need \
+             to authenticate via mTLS.\n"
+        );
     }
 
     println!("Start the server with:");

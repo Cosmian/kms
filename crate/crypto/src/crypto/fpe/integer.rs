@@ -68,7 +68,7 @@ impl Integer {
             radix,
             digits,
             max_value,
-            numeric_alphabet: Alphabet::try_from(alphabet)?,
+            numeric_alphabet: alphabet.parse()?,
         })
     }
 

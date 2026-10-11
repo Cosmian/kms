@@ -21,18 +21,18 @@ default = []
 non-fips = []
 
 [dependencies]
-const-oid = "0.9.6"
-cosmian_kms_crypto = { path = "../../../crypto", version = "5.28.0" }
+const-oid = { workspace = true }
+cosmian_kms_crypto = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 log = { workspace = true, default-features = false }
 openssl = { workspace = true }
-p256 = { version = "0.13.2", default-features = false, features = [
+p256 = { workspace = true, features = [
   "arithmetic",
   "pkcs8",
   "std",
 ] }
-pkcs1 = "0.7.5"
+pkcs1 = { workspace = true }
 pkcs11-sys = { workspace = true }
 rand = { workspace = true }
 strum_macros = { workspace = true }
@@ -42,4 +42,4 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_logger = { workspace = true }
-serial_test = { version = "3.2.0", default-features = true }
+serial_test = { workspace = true }

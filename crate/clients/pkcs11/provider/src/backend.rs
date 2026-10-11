@@ -108,12 +108,7 @@ impl CliBackend {
     }
 
     fn create_public_key_from_id(&self, id: &str) -> Option<Arc<dyn PublicKey>> {
-        let kms_object = match get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            id,
-            KeyFormatType::PKCS8,
-        ) {
+        let kms_object = match get_kms_object(&self.kms_rest_client, id, KeyFormatType::PKCS8) {
             Ok(o) => o,
             Err(e) => {
                 warn!("create_public_key_from_id: failed to export public key {id}: {e}, skipping");
@@ -308,12 +303,7 @@ impl Backend for CliBackend {
     fn find_private_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
         let id = require_id(query, "find_private_key")?;
-        let kms_object = get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &id,
-            KeyFormatType::PKCS8,
-        )?;
+        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
     }
 
@@ -377,12 +367,7 @@ impl Backend for CliBackend {
     fn find_public_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
         trace!("find_public_key: {:?}", query);
         let id = require_id(query, "find_public_key")?;
-        let kms_object = get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &id,
-            KeyFormatType::PKCS8,
-        )?;
+        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PublicKey::try_from_kms_object(&kms_object)?))
     }
 
@@ -451,7 +436,6 @@ impl Backend for CliBackend {
         let id = require_id(query, "find_symmetric_key")?;
         let kms_object = get_kms_object(
             &self.kms_rest_client,
-            &self.vendor_id,
             &id,
             KeyFormatType::TransparentSymmetricKey,
         )?;
@@ -481,12 +465,7 @@ impl Backend for CliBackend {
     fn find_data_object(&self, query: SearchOptions) -> ModuleResult<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
         let id = require_id(query, "find_data_object")?;
-        match get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &id,
-            KeyFormatType::Raw,
-        ) {
+        match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::Raw) {
             Ok(kms_object) => Ok(Some(Arc::new(Pkcs11DataObject::try_from_kms_object(
                 kms_object,
             )?))),

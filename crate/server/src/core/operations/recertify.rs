@@ -265,15 +265,15 @@ impl RekeyOperation for CertificateRekey {
         Ok(())
     }
 
-    async fn rewrap_new_objects(
+    fn rewrap_new_objects(
         &self,
         _kms: &KMS,
         _user: &UserId,
         _replacements: &mut [ReplacementObject; 1],
         _wrap_specs: &[Option<KeyWrappingSpecification>],
-    ) -> KResult<()> {
-        // Certificates are never wrapped — no-op.
-        Ok(())
+    ) -> impl Future<Output = KResult<()>> {
+        // Certificates are never wrapped — no-op, hence an already-completed future.
+        std::future::ready(Ok(()))
     }
 
     async fn finalize_dependants(

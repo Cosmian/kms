@@ -77,7 +77,7 @@ pub(crate) async fn get_attributes(
                 }
             }
             match &best_any {
-                None => best_any = Some((id.clone(), ts)),
+                None => best_any = Some((id, ts)),
                 Some((best_id, best_ts)) => {
                     let replace = match (ts, *best_ts) {
                         (Some(a), Some(b)) => a > b || (a == b && id > *best_id),
@@ -86,7 +86,7 @@ pub(crate) async fn get_attributes(
                         (None, Some(_)) => false,
                     };
                     if replace {
-                        best_any = Some((id.clone(), ts));
+                        best_any = Some((id, ts));
                     }
                 }
             }

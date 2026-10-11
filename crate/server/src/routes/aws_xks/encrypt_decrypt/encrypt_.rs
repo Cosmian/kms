@@ -198,7 +198,7 @@ pub(crate) async fn encrypt(
         request.requestMetadata.kmsRequestId,
         request.requestMetadata.awsPrincipalArn
     );
-    debug!("encrypt request: {:?}", request.requestMetadata);
+    debug!("encrypt request: {}", request.requestMetadata);
     let kms = kms.into_inner();
     match encrypt_inner(req_http, request, key_id, &kms)
         .await
