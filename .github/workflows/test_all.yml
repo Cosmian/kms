@@ -299,7 +299,7 @@ jobs:
         features: [fips, non-fips]
         exclude:
           # Kryoptic HSM backend always built in non-fips
-          - type: kryoptic
+          - hsm-type: kryoptic
             features: fips
 
     steps:
