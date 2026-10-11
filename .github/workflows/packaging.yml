@@ -114,6 +114,15 @@ jobs:
     uses: ./.github/workflows/packaging-kubernetes.yml
     secrets: inherit
 
+  # Alpine apk pipeline. No `needs:`: it runs in parallel with the glibc
+  # packages (musl vendor hashes are independent of nix-update-hashes.yml).
+  # Called here so that every packaging.yml run also runs packaging-apk.yml.
+  apk:
+    uses: ./.github/workflows/packaging-apk.yml
+    secrets: inherit
+    with:
+      toolchain: 1.97.0
+
   publish-release:
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')

@@ -208,12 +208,11 @@ Tests packaged binaries across multiple Linux distributions.
 ```mermaid
 flowchart TB
     pt["packaging-tests.yml"]
-    subgraph matrix["packages-test (Matrix)"]
-        containers["Containers:<br/>Ubuntu: 25.04, 24.04, 22.04, 20.04<br/>Debian: trixie, bookworm, bullseye, buster<br/>Rocky Linux: 10, 9, 8"]
-        feat["Features: fips · non-fips"]
-        link["Link: static · dynamic"]
+    subgraph matrix["packages-test (Matrix: container × runner, 14 legs)"]
+        containers["Containers:<br/>Ubuntu: 25.04, 24.04, 22.04<br/>Debian: trixie, bookworm<br/>Rocky Linux: 10, 9"]
         run["Runners: ubuntu-24.04 · ubuntu-24.04-arm"]
-        steps["1. Download packages · 2. Install (dpkg/rpm)<br/>3. Test binary · 4. Smoke test server"]
+        loop["In-job loop: features (fips · non-fips) × link (static · dynamic)<br/>one Docker Hub image pull per leg"]
+        steps["1. Download packages · 2. Install (dpkg/rpm)<br/>3. Test binary · 4. Smoke test server · 5. Remove package"]
     end
     pt --> matrix
 ```

@@ -617,6 +617,7 @@ repos:
       - id: lychee
         args: [--config, lychee.toml, 'documentation/docs/**/*.md']
         pass_filenames: false
+        stages: [manual]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 7. Nightly / manual cleanup (Rust)

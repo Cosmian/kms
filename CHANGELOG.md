@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - Add comprehensive 24-test GnuPG interoperability matrix in `pgp_gnupg_tests.rs`: keys generated in GnuPG imported into KMS for Decrypt and Sign, keys generated in KMS exported to GnuPG for Decrypt and Verify, subkey signature verification, binary and ASCII-armored inputs, RFC 3156 PGP/MIME encrypted and signed email round-trips, and negative tests pinning server operational boundaries
 - Add end-to-end shell test script `.mise/scripts/test/test_gnupg.sh` and CI matrix job `gnupg` (non-fips only) in `.github/workflows/test_all.yml`
 
+### ⚙️ CI
+
+- Reduce Docker Hub pull-rate-limit exposure: authenticate Docker Hub pulls with the new `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repository secrets (`test_all.yml` `test-nix` login step skipped when secrets are absent, e.g. fork PRs; `container.credentials` on `packages-test` and `alpine-native-build`), and collapse the `features`/`link` (`packages-test`) and `features` (`alpine-packages-test`) matrix axes into in-job loops so each leg pulls its base image once (`packages-test` 56 → 14 legs, `alpine-packages-test` 12 → 6 legs; same combinations still tested)
+
 ## [5.28.0] - 2026-09-30
 
 ### 🔒 Security
