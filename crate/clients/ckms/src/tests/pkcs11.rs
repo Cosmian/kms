@@ -22,6 +22,9 @@ use crate::tests::utils::{
 
 static BUILD_PKCS11: Once = Once::new();
 
+/// Path of an already-built provider library to test instead of building one.
+const PREBUILT_PKCS11_ENV: &str = "COSMIAN_PKCS11_LIB";
+
 /// Ensures the `libcosmian_pkcs11` shared library (cdylib) is built.
 /// Mirrors the pattern from `ensure_binary.rs`.
 #[allow(clippy::print_stdout)]
@@ -33,6 +36,10 @@ fn ensure_pkcs11_lib() {
 
 #[allow(clippy::print_stdout)]
 fn build_pkcs11_lib() {
+    // A prebuilt artifact under test must not be overwritten by a rebuild.
+    if env::var_os(PREBUILT_PKCS11_ENV).is_some() {
+        return;
+    }
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let workspace_root = Path::new(manifest_dir)
         .parent()
@@ -49,7 +56,7 @@ fn build_pkcs11_lib() {
         .current_dir(workspace_root);
 
     if !cfg!(debug_assertions) {
-        cmd.arg("--release");
+        cmd.arg("--profile").arg("pkcs11-provider");
     }
 
     #[cfg(feature = "non-fips")]
@@ -83,6 +90,9 @@ fn build_pkcs11_lib() {
 
 /// Returns the expected path to the built PKCS#11 shared library.
 fn pkcs11_lib_path() -> PathBuf {
+    if let Some(path) = env::var_os(PREBUILT_PKCS11_ENV) {
+        return PathBuf::from(path);
+    }
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let workspace_root = Path::new(manifest_dir)
         .parent()
@@ -93,7 +103,7 @@ fn pkcs11_lib_path() -> PathBuf {
     let profile = if cfg!(debug_assertions) {
         "debug"
     } else {
-        "release"
+        "pkcs11-provider"
     };
 
     let lib_name = if cfg!(target_os = "macos") {
@@ -104,7 +114,11 @@ fn pkcs11_lib_path() -> PathBuf {
         "libcosmian_pkcs11.so"
     };
 
-    workspace_root.join("target").join(profile).join(lib_name)
+    let target_dir = env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || workspace_root.join("target"),
+        |dir| workspace_root.join(dir),
+    );
+    target_dir.join(profile).join(lib_name)
 }
 
 // ---------------------------------------------------------------------------
@@ -372,4 +386,171 @@ fn assert_mechanism_names_covered(stdout: &str, expected_names: usize) {
         "expected {expected_names} distinct CKM_* mechanism names in the report, found {}",
         names.len()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Real-library panic containment (fresh child process per call path)
+// ---------------------------------------------------------------------------
+
+const FAULT_CASE_ENV: &str = "COSMIAN_PKCS11_FAULT_CASE";
+// PKCS#11 v2.40 values.
+const CKR_OK: std::ffi::c_ulong = 0;
+const CKR_GENERAL_ERROR: std::ffi::c_ulong = 5;
+const CKF_SERIAL_SESSION: std::ffi::c_ulong = 4;
+
+type InitFn = unsafe extern "C" fn(*mut std::ffi::c_void) -> std::ffi::c_ulong;
+type OpenSessionFn = unsafe extern "C" fn(
+    std::ffi::c_ulong,
+    std::ffi::c_ulong,
+    *mut std::ffi::c_void,
+    *mut std::ffi::c_void,
+    *mut std::ffi::c_ulong,
+) -> std::ffi::c_ulong;
+type RandomFn =
+    unsafe extern "C" fn(std::ffi::c_ulong, *mut u8, std::ffi::c_ulong) -> std::ffi::c_ulong;
+type StatusFn = unsafe extern "C" fn(std::ffi::c_ulong) -> std::ffi::c_ulong;
+type DiscoverFn = unsafe extern "C" fn(*mut *const usize) -> std::ffi::c_ulong;
+
+/// Resolves `name` by symbol (`direct`) or through its slot in the PKCS#11 function list.
+///
+/// # Safety
+/// `T` must be the exact signature of the exported function and `table` the list it returned.
+#[expect(unsafe_code)] // FFI test host: calling the cdylib under test needs raw pointers
+unsafe fn resolve<T: Copy>(
+    lib: &libloading::Library,
+    table: *const usize,
+    direct: bool,
+    name: &[u8],
+    slot: usize,
+) -> T {
+    if direct {
+        // SAFETY: caller guarantees `T` matches the exported function.
+        return unsafe { *lib.get::<T>(name).expect("symbol not exported") };
+    }
+    // SAFETY: a data-pointer view of the symbol yields its address.
+    let address = unsafe {
+        *lib.get::<*const std::ffi::c_void>(name)
+            .expect("symbol not exported")
+    };
+    // SAFETY: the 2.40 list is a version header word followed by one pointer per function.
+    let entry = unsafe { table.add(1 + slot) };
+    // SAFETY: `entry` is inside the list returned by the library.
+    assert_eq!(
+        unsafe { *entry },
+        address.addr(),
+        "slot {slot} is not {name:?}"
+    );
+    // SAFETY: the slot holds the verified exported function.
+    unsafe { entry.cast::<T>().read() }
+}
+
+#[expect(unsafe_code)] // FFI test host: calling the cdylib under test needs raw pointers
+fn run_fault_child(direct: bool) {
+    // CK_ULONG must be able to exceed isize::MAX to force a capacity overflow, not a real allocation.
+    let oversized = std::ffi::c_ulong::MAX;
+    if usize::try_from(oversized).map_or(true, |size| size <= isize::MAX.unsigned_abs()) {
+        return;
+    }
+    // SAFETY: loads the library under test; its initializers only set up statics.
+    let lib = unsafe { libloading::Library::new(pkcs11_lib_path()) }.expect("load provider");
+    // SAFETY: `C_GetFunctionList` has this signature.
+    let discover: DiscoverFn = unsafe {
+        *lib.get::<DiscoverFn>(b"C_GetFunctionList\0")
+            .expect("discovery")
+    };
+    let mut table: *const usize = std::ptr::null();
+    // SAFETY: `table` is a valid out-pointer.
+    assert_eq!(unsafe { discover(&raw mut table) }, CKR_OK);
+
+    // SAFETY: each type is the PKCS#11 signature of the named function and slot (v2.40 order).
+    let (init, finalize, open_session, random, status) = unsafe {
+        (
+            resolve::<InitFn>(&lib, table, direct, b"C_Initialize\0", 0),
+            resolve::<InitFn>(&lib, table, direct, b"C_Finalize\0", 1),
+            resolve::<OpenSessionFn>(&lib, table, direct, b"C_OpenSession\0", 12),
+            resolve::<RandomFn>(&lib, table, direct, b"C_GenerateRandom\0", 64),
+            resolve::<StatusFn>(&lib, table, direct, b"C_GetFunctionStatus\0", 65),
+        )
+    };
+    let mut session: std::ffi::c_ulong = 0;
+    let mut bytes = [0_u8; 16];
+    // SAFETY: valid pointers and lengths for the calls below.
+    unsafe {
+        assert_eq!(init(std::ptr::null_mut()), CKR_OK);
+        assert_eq!(
+            open_session(
+                1,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut session
+            ),
+            CKR_OK
+        );
+        assert_eq!(
+            random(session, bytes.as_mut_ptr(), 16),
+            CKR_OK,
+            "healthy call failed"
+        );
+        // The length overflows Vec capacity before the buffer is touched.
+        assert_eq!(
+            random(session, bytes.as_mut_ptr(), oversized),
+            CKR_GENERAL_ERROR
+        );
+        assert_eq!(
+            random(session, bytes.as_mut_ptr(), 16),
+            CKR_GENERAL_ERROR,
+            "work after fault"
+        );
+        assert_eq!(status(session), CKR_GENERAL_ERROR, "stub after fault");
+        assert_eq!(
+            finalize(std::ptr::null_mut()),
+            CKR_GENERAL_ERROR,
+            "finalize after fault"
+        );
+        assert_eq!(
+            init(std::ptr::null_mut()),
+            CKR_GENERAL_ERROR,
+            "re-init after fault"
+        );
+        assert_eq!(
+            discover(&raw mut table),
+            CKR_GENERAL_ERROR,
+            "discovery after fault"
+        );
+    }
+}
+
+/// A panic inside the shipped-profile library is contained and the library stays refused.
+#[test]
+fn test_pkcs11_real_library_contains_panic() {
+    if let Ok(case) = env::var(FAULT_CASE_ENV) {
+        run_fault_child(case == "direct");
+        return;
+    }
+    ensure_pkcs11_lib();
+    let conf = env::temp_dir().join(format!("pkcs11_fault_{}.toml", std::process::id()));
+    std::fs::write(
+        &conf,
+        "[http_config]\nserver_url = \"http://127.0.0.1:1\"\n",
+    )
+    .expect("Failed to write temp config");
+    for case in ["direct", "table"] {
+        let output = Command::new(env::current_exe().expect("test binary"))
+            .args([
+                "--exact",
+                "tests::pkcs11::test_pkcs11_real_library_contains_panic",
+                "--nocapture",
+            ])
+            .env(FAULT_CASE_ENV, case)
+            .env("CKMS_CONF", &conf)
+            .output()
+            .expect("spawn fault child");
+        assert!(
+            output.status.success(),
+            "{case}: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
