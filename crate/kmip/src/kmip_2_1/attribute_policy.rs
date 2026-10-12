@@ -12,10 +12,8 @@ pub enum AttributeEditPolicy {
 }
 
 impl Tag {
-    /// Edit restriction this KMS applies to the attribute under one of the four
-    /// attribute-edit operations; other operations are not meaningful here.
-    ///
-    /// `Allowed` leaves per-attribute validation and object permissions in force.
+    /// Edit restrictions for the four attribute-edit operations. Unlisted tags default
+    /// to `Allowed`; new attributes still require policy review and object authorization.
     #[must_use]
     pub const fn edit_policy(self, operation: KmipOperation) -> AttributeEditPolicy {
         use AttributeEditPolicy::{Allowed, RequiresGrant, ServerManaged};
