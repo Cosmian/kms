@@ -45,6 +45,7 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
+use super::pgp_ops;
 #[cfg(feature = "non-fips")]
 use crate::core::operations::algorithm_policy::{
     enforce_ecies_fixed_suite_for_attributes, enforce_ecies_fixed_suite_for_pkey_id,
@@ -83,6 +84,9 @@ impl CryptoOpSpec for EncryptOp {
             return owm.has_usage_mask(CryptographicUsageMask::Encrypt, true);
         }
         if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Encrypt, false);
+        }
+        if let Object::PGPKey { .. } = owm.object() {
             return owm.has_usage_mask(CryptographicUsageMask::Encrypt, false);
         }
         false
@@ -190,6 +194,7 @@ fn encrypt_single(
     match owm.object() {
         Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
         Object::PublicKey { .. } => encrypt_with_public_key(request, server_params, owm),
+        Object::PGPKey { .. } => pgp_ops::pgp_encrypt(owm, request),
         Object::Certificate(Certificate {
             certificate_value, ..
         }) => encrypt_with_certificate(request, server_params, owm.id(), certificate_value),

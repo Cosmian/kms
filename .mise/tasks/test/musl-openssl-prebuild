@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#MISE description="Build a minimal OpenSSL for the musl cross-check (test:musl-crosscheck prerequisite)"
+#USAGE flag "-o --out-dir <out_dir>" env="OUT_DIR" help="Install prefix" default="/tmp/musl-openssl-crosscheck"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# ---------------------------------------------------------------------------
+# `test:musl-crosscheck` needs a working OPENSSL_DIR before Cargo can even
+# resolve the dependency graph (the standalone `openssl`/`openssl-sys` crate —
+# used directly by cosmian_kms_crypto, cosmian_kms_server, etc. — needs it
+# independently of crate/crypto/build.rs, which only builds OpenSSL for its
+# own crate's linking needs). This script builds a small, non-FIPS OpenSSL
+# from the same source tarball/hash crate/crypto/build.rs uses, with
+# `musl-gcc` as the compiler, for use ONLY as OPENSSL_DIR in the cross-check —
+# it is not FIPS-validated and must never be shipped or used for anything
+# other than this CI cross-check build.
+# ---------------------------------------------------------------------------
+
+OPENSSL_VERSION="3.6.2"
+OPENSSL_URL="https://package.cosmian.com/openssl/openssl-${OPENSSL_VERSION}.tar.gz"
+OPENSSL_SHA256="aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f"
+
+require_cmd curl
+require_cmd perl
+require_cmd make
+require_cmd musl-gcc "musl-gcc not found — install musl-tools first (apt-get install -y musl-tools)."
+
+EXTRA_CFLAGS=""
+case "$(uname -m)" in
+  x86_64) OPENSSL_TARGET="linux-x86_64" ;;
+  aarch64 | arm64)
+    OPENSSL_TARGET="linux-aarch64"
+    # GCC >= 10 defaults to -moutline-atomics on aarch64: it emits a runtime
+    # LSE-atomics detector (lse-init.o, pulled from the host's static
+    # libgcc.a) that calls glibc's internal `__getauxval` symbol. musl-gcc
+    # wraps the host's (glibc-targeted) gcc/libgcc but links against musl,
+    # which does not export that symbol, so *any* output that pulls in
+    # libgcc.a (providers/legacy.so, apps/openssl, fuzz test binaries, ...)
+    # fails with "undefined reference to `__getauxval'". This throwaway
+    # cross-check build never needs LSE runtime dispatch, so disable it
+    # outright rather than patching in a stub symbol.
+    EXTRA_CFLAGS="-mno-outline-atomics"
+    ;;
+  *) print_error "Unsupported architecture: $(uname -m)" ;;
+esac
+
+OUT_DIR="${usage_out_dir:-/tmp/musl-openssl-crosscheck}"
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+
+print_header "Building OpenSSL ${OPENSSL_VERSION} (musl-gcc, ${OPENSSL_TARGET}) for the cross-check"
+
+if [ -f "${OUT_DIR}/lib/libcrypto.a" ]; then
+  mkdir -p "${OUT_DIR}/ssl" "${OUT_DIR}/lib/ossl-modules"
+  [ -f "${OUT_DIR}/ssl/openssl.cnf" ] || echo "# placeholder: satisfies crate/crypto/build.rs's external-OpenSSL-dir detection" >"${OUT_DIR}/ssl/openssl.cnf"
+  print_status "Reusing existing build at ${OUT_DIR}"
+  print_success "Musl OpenSSL ready at ${OUT_DIR}"
+  exit 0
+fi
+
+TARBALL="${WORK_DIR}/openssl-${OPENSSL_VERSION}.tar.gz"
+curl -fsSL "${OPENSSL_URL}" -o "${TARBALL}"
+ACTUAL_SHA256="$(sha256sum "${TARBALL}" | awk '{print $1}')"
+[ "${ACTUAL_SHA256}" = "${OPENSSL_SHA256}" ] || print_error "OpenSSL tarball hash mismatch: expected ${OPENSSL_SHA256}, got ${ACTUAL_SHA256}"
+
+tar -C "${WORK_DIR}" -xf "${TARBALL}"
+SRC_DIR="${WORK_DIR}/openssl-${OPENSSL_VERSION}"
+mkdir -p "${OUT_DIR}"
+
+(
+  cd "${SRC_DIR}"
+  # musl-gcc's specs file replaces the default include search path with
+  # musl's own sysroot (/usr/include/<arch>-linux-musl), which does not
+  # contain the Linux kernel UAPI headers (linux/mman.h etc. — provided by
+  # the `linux-libc-dev` package at the generic /usr/include/linux/ path).
+  # OpenSSL's crypto/mem_sec.c needs these. Copy just that one subtree into
+  # musl's sysroot rather than adding -I/usr/include wholesale, which would
+  # also pull in glibc's own (incompatible) libc headers ahead of musl's.
+  MUSL_INCLUDE_DIR="/usr/include/$(uname -m)-linux-musl"
+  GNU_INCLUDE_DIR="/usr/include/$(uname -m)-linux-gnu"
+  if [ -d "${MUSL_INCLUDE_DIR}" ] && [ ! -e "${MUSL_INCLUDE_DIR}/linux" ]; then
+    # musl-tools installs this sysroot as root-owned; CI runners execute as
+    # a non-root user (GitHub Actions' passwordless `sudo` is available
+    # there), so these copies need sudo. When already root (e.g. local
+    # Docker-based testing), skip sudo entirely — it is not guaranteed to
+    # be installed in a minimal root container.
+    SUDO=""
+    [ "$(id -u)" != "0" ] && SUDO="sudo"
+    $SUDO cp -r /usr/include/linux "${MUSL_INCLUDE_DIR}/linux"
+    $SUDO cp -r /usr/include/asm-generic "${MUSL_INCLUDE_DIR}/asm-generic" 2>/dev/null || true
+    # linux/mman.h etc. further include the arch-specific "asm/..." headers
+    # (e.g. asm/mman.h), which on Debian/Ubuntu live under the glibc
+    # multiarch directory, not /usr/include directly.
+    [ -d "${GNU_INCLUDE_DIR}/asm" ] && $SUDO cp -r "${GNU_INCLUDE_DIR}/asm" "${MUSL_INCLUDE_DIR}/asm"
+  fi
+  # `no-tests` skips both test/ and fuzz/ — neither is needed just to produce
+  # libcrypto/libssl/apps for use as a Rust OPENSSL_DIR, and (on aarch64,
+  # belt-and-suspenders alongside -mno-outline-atomics above) the fuzz
+  # harnesses are an extra place the same __getauxval problem could resurface.
+  # Confirmed OpenSSL-version-stable Configure option, not a make-target name
+  # that could silently drift across OpenSSL releases.
+  CC=musl-gcc perl ./Configure no-shared no-fips no-tests ${EXTRA_CFLAGS:+"$EXTRA_CFLAGS"} \
+    --prefix="${OUT_DIR}" --openssldir="${OUT_DIR}/ssl" --libdir=lib "${OPENSSL_TARGET}"
+  make -j"$(nproc)" depend
+  make -j"$(nproc)"
+  make install_sw
+)
+
+# crate/crypto/build.rs builds its own *separate*, internal copy of OpenSSL
+# (for cosmian_kms_crypto's statically-embedded libcrypto/libssl) using
+# whatever `cc`/`gcc` is first on PATH — it has no cross-compilation
+# awareness of its own and does not consult musl-gcc. Left alone, that would
+# silently produce a *glibc*-targeted static OpenSSL and link it into this
+# musl target, failing with undefined references to glibc-only symbols
+# (__memcpy_chk, fopen64, __isoc23_strtol, ...). build.rs *does* skip its own
+# build when OPENSSL_DIR already looks like a full external install — the
+# same heuristic it uses to detect Nix's OpenSSL (see build.rs: `if
+# conf_path.exists() && modules_dir.exists() { ...skip...}`) — so satisfy
+# that heuristic here with the (otherwise-unused by this cross-check)
+# ssl/openssl.cnf + lib/ossl-modules/ paths, redirecting it to the musl
+# OpenSSL this script just built instead of building its own.
+mkdir -p "${OUT_DIR}/ssl" "${OUT_DIR}/lib/ossl-modules"
+[ -f "${OUT_DIR}/ssl/openssl.cnf" ] || echo "# placeholder: satisfies crate/crypto/build.rs's external-OpenSSL-dir detection" >"${OUT_DIR}/ssl/openssl.cnf"
+
+print_success "Musl OpenSSL ready at ${OUT_DIR}"

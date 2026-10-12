@@ -89,7 +89,7 @@ impl RotateNameCache {
         hsm_negative_ttl: Duration,
         max_capacity: NonZeroUsize,
     ) -> Self {
-        let max_capacity = u64::try_from(max_capacity.get()).map_or(u64::MAX, |capacity| capacity);
+        let max_capacity = u64::try_from(max_capacity.get()).unwrap_or(u64::MAX);
         Self {
             inner: Cache::builder()
                 .max_capacity(max_capacity)

@@ -686,12 +686,14 @@ MDEOF
 }
 
 # Snapshot machine and benchmark configuration into an env.json file.
-# Usage: bench_collect_env <out_file>
+# Usage: bench_collect_env <out_file> [hsm_backend] [command_used]
 # Reads globals: BUILD_MODE, BENCH_VARIANT, BENCH_HTTP_WORKERS, BENCH_MODE,
 #                BENCH_PROTOCOL, BENCH_TIME, BENCH_CONCURRENCY,
-#                BENCH_WARMUP, BENCH_COOLDOWN
+#                BENCH_WARMUP, BENCH_COOLDOWN, BENCH_COMMAND_USED, BENCH_HSM_BACKEND
 bench_collect_env() {
   local out_file="$1"
+  local hsm_backend="${2:-${BENCH_HSM_BACKEND:-}}"
+  local command_used="${3:-${BENCH_COMMAND_USED:-}}"
 
   # Pass all bench globals as prefixed env vars so the Python snippet can read
   # them safely through os.environ (avoids bash quoting/expansion issues inside
@@ -705,6 +707,8 @@ bench_collect_env() {
     _BENCH_CONCURRENCY="${BENCH_CONCURRENCY:-1,2,4,8,16}" \
     _BENCH_WARMUP="${BENCH_WARMUP:-5}" \
     _BENCH_COOLDOWN="${BENCH_COOLDOWN:-2}" \
+    _BENCH_HSM_BACKEND="${hsm_backend}" \
+    _BENCH_COMMAND_USED="${command_used}" \
     python3 - >"${out_file}" <<'PYEOF'
 import json, os, re, subprocess
 from datetime import datetime, timezone
@@ -766,6 +770,8 @@ env = {
     "build_mode":        g("_BENCH_BUILD_MODE", "release"),
     "variant":           g("_BENCH_VARIANT", "non-fips"),
     "http_workers":      http_workers,
+    "hsm_backend":       g("_BENCH_HSM_BACKEND", None) or None,
+    "command":           g("_BENCH_COMMAND_USED", None) or None,
     "bench_mode":        g("_BENCH_MODE", "all"),
     "bench_protocol":    g("_BENCH_PROTOCOL", "all"),
     "bench_time_s":      _int("_BENCH_TIME", 20),
@@ -845,7 +851,7 @@ bench_generate_report() {
   mkdir -p "${report_dir}/${version}"
 
   echo "Collecting environment data..."
-  bench_collect_env "${report_dir}/${version}/env.json"
+  bench_collect_env "${report_dir}/${version}/env.json" "${BENCH_HSM_BACKEND:-}" "${BENCH_COMMAND_USED:-}"
 
   local found=0
   for f in "${crit_home}"/load_*.json; do
@@ -870,6 +876,12 @@ bench_generate_report() {
   fi
   if [ "${is_pkcs11}" = "true" ]; then
     plot_args+=("--pkcs11")
+  fi
+  if [ -n "${BENCH_HSM_BACKEND:-}" ]; then
+    plot_args+=("--hsm-backend" "${BENCH_HSM_BACKEND}")
+  fi
+  if [ -n "${BENCH_COMMAND_USED:-}" ]; then
+    plot_args+=("--command" "${BENCH_COMMAND_USED}")
   fi
   python3 "${plot_script}" "${plot_args[@]}" || {
     echo "WARNING: report generation failed — raw data is in ${report_dir}/${version}/"

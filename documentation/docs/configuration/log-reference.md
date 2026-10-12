@@ -750,6 +750,7 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
 | `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `import pgp_key: uid={}` | `src/core/operations/import.rs` | - | - |
 | `error` | `AuditFileStore: audit sink failed to resume ({e}) — audit logging is disabled for this process` | `src/core/audit/store.rs` | `e` | Only reachable if the recovered log file's metadata cannot be `stat`'d at all (lock acquisition and recovery/open faults retry indefinitely and never reach here). The writer task exits and audit logging stays off for the rest of the process lifetime — it is not retried. |
 | `error` | `AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped` | `src/core/audit/file_sink.rs` | `id`: sentinel event ID<br>`e`: I/O error | A torn-write-recovered or reanchor sentinel written during recovery (before the writer task exists) failed to persist; the chain does not advance past this `id` and the sentinel is dropped. |
 | `debug` | `AuditFileStore: sink '{}' is at capacity — event dropped` | `src/core/audit/writer.rs` | sink name (`AuditSink::name()`) | Throttled to at most once every 500ms while blocked events keep arriving after the sink reports `is_write_capacity_exceeded() == true`. |
@@ -761,6 +762,8 @@ Crate path: `crate/server`
 | `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
+| `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
+| `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1052,6 +1055,8 @@ Crate path: `crate/interfaces`
 | `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
 | `debug` | `Creating {algorithm:?} keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: KMIP `CryptographicAlgorithm` requested for the keypair (RSA, ECDSA, Ed25519, ...); `uid`: HSM-resident unique identifier the keypair will be stored under | Logged before delegating `CreateKeyPair` to the HSM; generalized from an RSA-only message to cover the EC/Ed25519 keypair creation support added in this change |
 | `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
+| `debug` | `mac: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
+| `debug` | `mac_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 
 ### `cosmian_kms_access`
 
@@ -1441,6 +1446,7 @@ Crate path: `ui/src/`
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
+| `error` | `Error loading OpenPGP algorithms from WASM:` | `actions/Pgp/PgpKeysCreate.tsx` | - | - |
 
 ---
 

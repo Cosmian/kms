@@ -17,6 +17,7 @@ use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
         cosmian_kmip::kmip_2_1::kmip_objects::Object,
+        cosmian_kms_crypto::crypto::KmsRng,
         cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
     },
 };
@@ -119,6 +120,9 @@ pub struct KMS {
     /// across server restarts.  The `fetch_add` ensures uniqueness even when
     /// two CRLs are generated within the same second.
     pub(crate) crl_counter: Arc<AtomicU64>,
+
+    /// Unified cryptographic RNG for all KMS operations.
+    pub(crate) rng: Arc<KmsRng>,
 }
 
 impl KMS {
@@ -303,6 +307,9 @@ impl KMS {
             Arc::new(AtomicU64::new(ts_seed.max(db_max + 1)))
         };
 
+        // Instantiate the unified KMS RNG.
+        let rng = Arc::new(KmsRng::new());
+
         Ok(Self {
             params: server_params.clone(),
             database,
@@ -312,6 +319,7 @@ impl KMS {
             metrics,
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,
+            rng,
         })
     }
 

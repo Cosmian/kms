@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-08
+**Generated**: 2026-10-09
 
 ---
 
@@ -10,6 +10,8 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-07 23:46:16 UTC |
+| HSM backend | SoftHSM2 |
+| Command | `mise run bench:hsm --delegated --hsm-model softhsm2` |
 | Build | release / non-fips |
 | HTTP workers (Actix-web) | 32 |
 | Database | SQLite (temporary, single benchmark run) |
@@ -95,12 +97,12 @@ graph TB
 
     subgraph hsm["SoftHSM2"]
         pkcs11["PKCS#11 Slot"]
-        hsm_keys["RSA-2048<br/>ECDSA-P256<br/>(HSM-resident)"]
+        hsm_keys["RSA<br/>ECDSA<br/>EdDSA<br/>AES<br/>(HSM-resident)"]
     end
 
     ckms -->|HTTP| kmip
     kmip --> oracle
-    oracle -->|C_Sign/C_Encrypt| pkcs11
+    oracle -->|C_Sign/C_Encrypt/C_GenerateKey| pkcs11
     pkcs11 --> hsm_keys
 
     style ckms fill:#4A90E2
@@ -111,17 +113,17 @@ graph TB
 
 **Components**:
 
-- **ckms**: Concurrent load generator
+- **ckms**: Concurrent load generator (`mise run bench:hsm --delegated --hsm-model softhsm2`)
 - **KMIP Endpoint**: HTTP protocol handler
-- **CryptoOracle**: Routes crypto ops directly to HSM (no software fallback)
-- **PKCS#11 Slot**: HSM engine for sign/encrypt operations
+- **CryptoOracle**: Routes crypto ops directly to SoftHSM2 (no software fallback)
+- **PKCS#11 Slot**: SoftHSM2 engine for C_Sign/C_Encrypt/C_GenerateKey operations
 - **HSM-Resident Keys**: Keys generated on and never leave hardware
 
 ---
 
 ## Protocols
 
-This report benchmarks cryptographic operations delegated to an HSM (PKCS#11) via the KMS `CryptoOracle`, exercised over a single wire protocol: **ttlv-json**.
+This report benchmarks cryptographic operations delegated to an HSM (SoftHSM2) via the KMS `CryptoOracle`, exercised over a single wire protocol: **ttlv-json**.
 
 | Protocol | Transport | Encoding | Endpoint | Description |
 |---|---|---|---|---|
@@ -139,56 +141,47 @@ This report benchmarks cryptographic operations delegated to an HSM (PKCS#11) vi
 
 ### HSM delegation model
 
-Every operation in this report is executed against an `hsm::<slot>::<uuid>` unique identifier. The KMS server routes both key generation (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`) for such keys to the HSM's `CryptoOracle` (PKCS#11) instead of executing them in KMS software — the benchmarked latency/throughput is therefore dominated by the PKCS#11 round-trip to the HSM, not by in-process OpenSSL. `Verify` is not implemented for HSM-resident keys at all yet, for any algorithm, and is intentionally excluded from this report.
+Every operation in this report is executed against an `hsm::<slot>::<uuid>` unique identifier. The KMS server routes both key generation (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`) for such keys to the HSM's `CryptoOracle` (PKCS#11) on SoftHSM2 instead of executing them in KMS software — the benchmarked latency/throughput is therefore dominated by the PKCS#11 round-trip to the HSM, not by in-process OpenSSL.
 
-> **Reference HSM:** SoftHSM2 (a software PKCS#11 simulator), single SoftHSM2 token per benchmark run. A hardware HSM will exhibit different absolute numbers (typically bound by the HSM's own internal parallelism and network/PCIe transport latency rather than loopback TCP), but the same operations and request shapes apply unchanged.
+> **HSM Backend:** SoftHSM2 (software PKCS#11 simulator). A hardware HSM will exhibit different absolute numbers bound by hardware crypto acceleration and transport latency.
 
-### Algorithm coverage and SoftHSM2-specific constraints
+### Algorithm coverage and SoftHSM2 constraints
 
-Every algorithm variant of the KMS's `CryptoAlgorithm` (encrypt) and `SigningAlgorithm` (sign) oracle enums reachable via an ordinary (non-prehashed-digest-only) KMIP request is covered:
+Operations benchmarked in this scenario:
 
 | Category | Algorithms covered | Notes |
 |---|---|---|
-| Encrypt | AES-GCM, AES-CBC, RSA-OAEP-SHA256, RSA-OAEP-SHA1, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |
-| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512 hash-and-sign) | 2048-bit RSA |
-| Sign | ECDSA P-256 / P-384 | **Prehashed only** (`digested_data`): SoftHSM2 2.6.1 implements only the raw `CKM_ECDSA` mechanism, not the combined `CKM_ECDSA_SHA*` hash-and-sign mechanisms |
-| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS only; pure, un-hashed `CKM_EDDSA` — the full message is sent, never a digest |
-| Key creation | AES-256, RSA-2048, EC P-256, Ed25519, Ed448 | P-521 excluded — see below |
-
-Two gaps are **not** HSM-delegation limitations and are excluded for unrelated reasons:
-
-- **P-521 key creation**: `crate/crypto/src/crypto/elliptic_curves/operation.rs` derives the KMIP `CryptographicLength` from the generated private scalar's serialized byte length rather than the curve's nominal bit length, which can under-count P-521 keys by one byte and makes `HSM::create_keypair` reject the result — a pre-existing bug unrelated to HSM delegation, tracked as a follow-up.
-- **Bare `SigningAlgorithm::RsaPkcsV15`** (a raw `CKM_RSA_PKCS` sign over a caller-supplied `DigestInfo` blob) has no ordinary KMIP request shape that reaches it — `padding_method: PKCS1v15` without an explicit digest always resolves to one of the hash-and-sign variants above, which exercise the same PKCS#11 mechanism family end-to-end.
+| Encrypt | AES-GCM, AES-CBC, RSA-OAEP, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |
+| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512) | 2048-bit RSA |
+| Sign | ECDSA P-256 | Prehashed message digest |
+| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS pure un-hashed CKM_EDDSA |
+| Key creation | AES-256, RSA-2048 | Dynamic unique identifiers per iteration |
 
 ### Payload sizes
 
-All encrypt benchmarks use a **64-byte** fixed-size random payload (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA, a 32-byte SHA-256 digest of that same message) — small enough that the RSA-2048 modulus bounds every RSA variant without truncation.
+All encrypt benchmarks use a **64-byte** fixed-size random payload (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA, a 32-byte SHA-256 digest of that same message).
 
 ### SoftHSM2 per-token degradation (key creation only)
 
-Concurrent/cumulative RSA and EC key **generation** against a single SoftHSM2 token progressively degrades that token — later PKCS#11 operations, even unrelated `Encrypt`/`Sign` calls against different keys, can slow from milliseconds to *minutes* per request. This is a SoftHSM2 limitation (a software simulator, not built for heavy concurrent/cumulative key generation on one token), not a KMS defect. Mitigations applied to keep this report reproducible:
-
-- Load-test key-creation concurrency is capped at 4 regardless of the requested sweep (`PreparedLoadOp::max_concurrency`).
-- The `bench/hsm --delegated` task runs `key-creation`, `encrypt`, and `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh token) when `--mode all` (the default), so key-creation load never contaminates the encrypt/sign token; results are merged into this single report afterward.
+Concurrent/cumulative key generation against a single SoftHSM2 token progressively degrades that token in simulators. Key-creation concurrency is capped and mode isolation is applied.
 
 ### Why ttlv-json only (no ttlv-bytes)
 
-An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes` for every HSM-delegated operation, sharing one HSM-resident key between the two protocol variants and measuring `ttlv-json`'s full concurrency sweep before `ttlv-bytes`'s. Every single result inverted the expected direction — `ttlv-json` appeared *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary TTLV is consistently faster, since it skips JSON parsing). Root cause: the `ttlv-bytes` sweep always ran second against the same already-active HSM session/token, so it inherited whatever cumulative SoftHSM2 degradation the `ttlv-json` sweep had already caused (the same class of per-token degradation described above, triggered here by sustained Encrypt/Sign call volume rather than key generation) — a test-ordering artefact, not a real protocol difference. This report therefore benchmarks `ttlv-json` only, until the harness can measure both protocols under equivalent conditions (e.g. independent SoftHSM2 tokens per protocol).
+An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes` for every HSM-delegated operation, sharing one HSM-resident key between the two protocol variants and measuring `ttlv-json`'s full concurrency sweep before `ttlv-bytes`'s. Every single result inverted the expected direction — `ttlv-json` appeared *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary TTLV is consistently faster, since it skips JSON parsing). This report therefore benchmarks `ttlv-json` only, until the harness can measure both protocols under equivalent conditions.
 
-### Load test (`ckms bench --load --hsm`)
+### Load test (`mise run bench:hsm --delegated --hsm-model softhsm2`)
 
-The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side (and HSM-side) latency from client-side encoding overhead. Key **creation** cannot be pre-serialised the same way — the HSM has no auto-generated ID, so each iteration builds a fresh request with a distinct `hsm::` unique identifier.
-Recorded metrics per *(protocol, operation, concurrency)* triple:
+The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side (and HSM-side) latency from client-side encoding overhead. Recorded metrics per *(protocol, operation, concurrency)* triple:
 
 - **Throughput** — requests per second (req/s)
 - **p50 / p95 / p99** — round-trip latency percentiles (ms)
 
 ### Criterion micro-benchmarks (`ckms bench --hsm`)
 
-Criterion (Rust, v0.5) measures the **round-trip latency of a single request** from the ckms client library through the KMS server (and, for these benchmarks, onward to the HSM) and back over a loopback TCP connection. The server is started once and kept alive across all benchmarks in the suite.
-The reported value is the **mean ± 95 % confidence interval** over a configurable number of samples (preset `quick`: 3 s warm-up + 5 s measurement per benchmark).
+Criterion (Rust, v0.5) measures the **round-trip latency of a single request** from the ckms client library through the KMS server (and onward to the HSM) and back over a loopback TCP connection.
+ The reported value is the **mean ± 95 % confidence interval** over a configurable number of samples.
 
-> **Infrastructure note:** The load test and criterion benchmarks both use a **local SQLite** backend (temporary, discarded after the run) for the KMS server's own metadata store — the key material itself resides on the HSM, never in SQLite. Throughput figures will differ on a production deployment backed by PostgreSQL or Redis-Findex, and even more so against a hardware HSM instead of SoftHSM2.
+> **Infrastructure note:** The load test and criterion benchmarks both use a **local SQLite** backend (temporary, discarded after the run) for the KMS server metadata store — key material resides on SoftHSM2.
 
 ---
 

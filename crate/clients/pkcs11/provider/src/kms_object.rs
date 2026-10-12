@@ -970,6 +970,55 @@ type SignatureKmipParams = (
     Option<Vec<u8>>,
 );
 
+/// DER `DigestInfo` prefixes (RFC 8017 §9.2 note 1) of the hash functions a PKCS#1 v1.5
+/// signature may be computed over, with the expected digest length and matching KMIP
+/// signature algorithm.
+const DIGEST_INFO_PREFIXES: [(&[u8], usize, DigitalSignatureAlgorithm); 4] = [
+    (
+        &[
+            0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04,
+            0x14,
+        ],
+        20,
+        DigitalSignatureAlgorithm::SHA1WithRSAEncryption,
+    ),
+    (
+        &[
+            0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x01, 0x05, 0x00, 0x04, 0x20,
+        ],
+        32,
+        DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+    ),
+    (
+        &[
+            0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x02, 0x05, 0x00, 0x04, 0x30,
+        ],
+        48,
+        DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+    ),
+    (
+        &[
+            0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x03, 0x05, 0x00, 0x04, 0x40,
+        ],
+        64,
+        DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+    ),
+];
+
+/// Splits `data` into `(signature algorithm, digest)` if it is exactly a DER `DigestInfo`
+/// for SHA-1/256/384/512, i.e. a known prefix followed by a digest of the matching length.
+fn split_digest_info(data: &[u8]) -> Option<(DigitalSignatureAlgorithm, &[u8])> {
+    DIGEST_INFO_PREFIXES
+        .iter()
+        .find_map(|(prefix, digest_len, algorithm)| {
+            let digest = data.strip_prefix(*prefix)?;
+            (digest.len() == *digest_len).then_some((*algorithm, digest))
+        })
+}
+
 /// Maps a PKCS#11 `SignatureAlgorithm`/payload pair to the KMIP `CryptographicParameters` and
 /// `data`/`digested_data` fields used by both the `Sign` and `SignatureVerify` KMIP operations.
 ///
@@ -998,10 +1047,25 @@ fn signature_algorithm_to_kmip_params(
             // CKM_EDDSA: raw message, Ed25519/Ed448 handles hashing internally
             (None, Some(data.to_vec()), None)
         }
-        SignatureAlgorithm::RsaRaw | SignatureAlgorithm::RsaPkcs1v15Raw => {
-            // CKM_RSA_PKCS: pass raw bytes, server uses stored key attributes
+        SignatureAlgorithm::RsaRaw => {
+            // CKM_RSA_X_509: pass raw bytes, server uses stored key attributes
             (None, Some(data.to_vec()), None)
         }
+        SignatureAlgorithm::RsaPkcs1v15Raw => match split_digest_info(data) {
+            // CKM_RSA_PKCS (PKCS#11 §6.1.6): the input is a DER `DigestInfo` that only needs
+            // PKCS#1 v1.5 block formatting. Callers such as `gnupg-pkcs11-scd` and OpenSSH
+            // send exactly that, so forward the digest as `digested_data` to avoid the
+            // server hashing the `DigestInfo` a second time.
+            Some((digital_signature_algorithm, digest)) => {
+                let cp = CryptographicParameters {
+                    digital_signature_algorithm: Some(digital_signature_algorithm),
+                    ..Default::default()
+                };
+                (Some(cp), None, Some(digest.to_vec()))
+            }
+            // Not a recognised `DigestInfo`: pass the bytes as a message.
+            None => (None, Some(data.to_vec()), None),
+        },
         SignatureAlgorithm::RsaPkcs1v15Sha1 => {
             let cp = CryptographicParameters {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::SHA1WithRSAEncryption),

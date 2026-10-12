@@ -110,8 +110,7 @@ impl RekeyOperation for SqlSymmetricRekeyer {
             attributes: gen_attrs,
             protection_storage_masks: None,
         };
-        let (_, new_object, new_tags) =
-            KMS::create_symmetric_key_and_tags(kms.vendor_id(), &create_request)?;
+        let (_, new_object, new_tags) = kms.create_symmetric_key_and_tags(&create_request)?;
 
         let new_uid = UniqueIdentifier::rotation_successor(
             candidate.owm.attributes().rotate_name.as_deref(),

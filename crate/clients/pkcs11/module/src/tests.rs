@@ -1003,8 +1003,8 @@ fn get_attribute_value_buffer_too_small_does_not_overflow() {
         },
         CKR_BUFFER_TOO_SMALL
     );
-    let reported_len = template[0].ulValueLen;
-    assert_eq!(reported_len, CK_UNAVAILABLE_INFORMATION);
+    let unavailable_length = template[0].ulValueLen;
+    assert_eq!(unavailable_length, CK_UNAVAILABLE_INFORMATION);
     assert!(buffer.iter().all(|b| *b == 0xAA), "buffer was written");
 
     // Size query then a correctly sized buffer still work.
@@ -1013,8 +1013,8 @@ fn get_attribute_value_buffer_too_small_does_not_overflow() {
         unsafe { C_GetAttributeValue(session_h, key_handle, template.as_mut_ptr(), 1) },
         CKR_OK
     );
-    let query_len = template[0].ulValueLen;
-    assert_eq!(query_len, 13);
+    let required_length = template[0].ulValueLen;
+    assert_eq!(required_length, 13);
     template[0].pValue = buffer.as_mut_ptr().cast::<std::ffi::c_void>();
     assert_eq!(
         unsafe { C_GetAttributeValue(session_h, key_handle, template.as_mut_ptr(), 1) },

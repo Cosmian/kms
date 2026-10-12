@@ -267,9 +267,13 @@ else
 fi
 
 if [ "${BENCH_DELEGATED}" = "true" ]; then
+  export BENCH_HSM_BACKEND="${BENCH_HSM_MODEL}"
+  export BENCH_COMMAND_USED="mise run bench:pkcs11 --delegated --hsm-model ${BENCH_HSM_MODEL}${usage_args:+ $usage_args}"
   bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11_hsm_delegated_${BENCH_HSM_MODEL}" "true" "false" "true" "${KMS_BASE_URL}"
   print_success "HSM-delegated PKCS#11 load benchmark completed"
 else
+  export BENCH_HSM_BACKEND="none"
+  export BENCH_COMMAND_USED="mise run bench:pkcs11${usage_args:+ $usage_args}"
   bench_generate_report "${BENCH_PORT:-0}" "ckms_bench_pkcs11" "false" "false" "true" "${KMS_BASE_URL}"
   print_success "PKCS#11 load benchmark completed"
 fi

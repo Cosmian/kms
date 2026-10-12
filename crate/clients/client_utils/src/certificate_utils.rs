@@ -141,22 +141,64 @@ pub enum Algorithm {
     MlKem768Curve25519,
 }
 
-#[expect(clippy::too_many_arguments)]
+/// What the `Certify` request certifies, and the data needed to do so.
+#[derive(Debug, Clone)]
+pub enum CertificationSource {
+    /// Certify a certificate signing request
+    Csr {
+        /// The bytes of the certificate signing request
+        request: Vec<u8>,
+        /// The format of the request: `"der"` for DER, anything else (or none) for PEM
+        format: Option<String>,
+    },
+    /// Certify an existing public key
+    PublicKey {
+        /// The unique identifier of the public key to certify
+        id: String,
+        /// The subject name of the certificate, as an RFC 4514-style subject line
+        subject_name: String,
+    },
+    /// Re-certify (renew in place) an existing certificate
+    ReCertify {
+        /// The unique identifier of the certificate to re-certify
+        certificate_id: String,
+    },
+    /// Generate a new key pair and certify its public key
+    GenerateKeyPair {
+        /// The subject name of the certificate, as an RFC 4514-style subject line
+        subject_name: String,
+        /// The algorithm of the key pair to generate
+        algorithm: Algorithm,
+    },
+}
+
+/// Parameters of a `Certify` request.
+#[derive(Debug, Clone)]
+pub struct CertifyRequestParams {
+    /// The unique identifier to assign to the generated certificate
+    pub certificate_id: Option<String>,
+    /// What to certify
+    pub source: CertificationSource,
+    /// The unique identifier of the issuer's private key
+    pub issuer_private_key_id: Option<String>,
+    /// The unique identifier of the issuer's certificate
+    pub issuer_certificate_id: Option<String>,
+    /// The requested validity period of the certificate, in days
+    pub number_of_days: usize,
+    /// The bytes of an X509 extension file to apply to the certificate
+    pub certificate_extensions: Option<Vec<u8>>,
+    /// The tags to associate with the certificate
+    pub tags: Vec<String>,
+}
+
+/// Build a KMIP `Certify` request.
+///
+/// # Errors
+/// Returns an error if the number of days is out of range, if a subject name
+/// cannot be parsed, or if the tags or the activation date cannot be set.
 pub fn build_certify_request(
     vendor_id: &str,
-    certificate_id: &Option<String>,
-    certificate_signing_request_format: &Option<String>,
-    certificate_signing_request: &Option<Vec<u8>>,
-    public_key_id_to_certify: &Option<String>,
-    certificate_id_to_re_certify: &Option<String>,
-    generate_key_pair: bool,
-    subject_name: &Option<String>,
-    algorithm: Algorithm,
-    issuer_private_key_id: &Option<String>,
-    issuer_certificate_id: &Option<String>,
-    number_of_days: usize,
-    certificate_extensions: &Option<Vec<u8>>,
-    tags: &[String],
+    params: &CertifyRequestParams,
 ) -> Result<Certify, UtilsError> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::Certificate),
@@ -164,7 +206,7 @@ pub fn build_certify_request(
     };
 
     // set the issuer certificate id
-    if let Some(issuer_certificate_id) = &issuer_certificate_id {
+    if let Some(issuer_certificate_id) = &params.issuer_certificate_id {
         attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
@@ -172,7 +214,7 @@ pub fn build_certify_request(
     }
 
     // set the issuer private key id
-    if let Some(issuer_private_key_id) = &issuer_private_key_id {
+    if let Some(issuer_private_key_id) = &params.issuer_private_key_id {
         attributes.set_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(issuer_private_key_id.clone()),
@@ -182,237 +224,230 @@ pub fn build_certify_request(
     // set the number of requested days
     attributes.set_requested_validity_days(
         vendor_id,
-        i32::try_from(number_of_days).map_err(|_e| {
+        i32::try_from(params.number_of_days).map_err(|_e| {
             UtilsError::Default("number of days must be a positive integer".to_owned())
         })?,
     );
 
     // A certificate id has been provided
-    if let Some(certificate_id) = &certificate_id {
+    if let Some(certificate_id) = &params.certificate_id {
         attributes.unique_identifier = Some(UniqueIdentifier::TextString(certificate_id.clone()));
     }
 
     attributes.activation_date = Some(time_normalize()?);
-    attributes.set_tags(vendor_id, tags)?;
+    attributes.set_tags(vendor_id, &params.tags)?;
 
     let mut certificate_request_value = None;
     let mut certificate_request_type = None;
     let mut unique_identifier = None;
 
-    if let Some(certificate_signing_request) = &certificate_signing_request {
-        certificate_request_value = Some(certificate_signing_request.clone());
-        certificate_request_type = match certificate_signing_request_format.as_deref() {
-            Some("der") => Some(CertificateRequestType::PKCS10),
-            _ => Some(CertificateRequestType::PEM),
-        };
-    } else if let Some(public_key_to_certify) = &public_key_id_to_certify {
-        attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
-            subject_name.as_ref().ok_or_else(|| {
-                UtilsError::Default(
-                    "subject name is required when certifying a public key".to_owned(),
-                )
-            })?,
-        )?);
-        unique_identifier = Some(UniqueIdentifier::TextString(public_key_to_certify.clone()));
-    } else if let Some(certificate_id_to_renew) = &certificate_id_to_re_certify {
-        unique_identifier = Some(UniqueIdentifier::TextString(
-            certificate_id_to_renew.clone(),
-        ));
-    } else if generate_key_pair {
-        attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
-            subject_name.as_ref().ok_or_else(|| {
-                UtilsError::Default("subject name is required when generating a keypair".to_owned())
-            })?,
-        )?);
-        match algorithm {
-            #[cfg(feature = "non-fips")]
-            Algorithm::RSA1024 => {
-                rsa_algorithm(&mut attributes, 1024);
-            }
-            Algorithm::RSA2048 => {
-                rsa_algorithm(&mut attributes, 2048);
-            }
-            Algorithm::RSA3072 => {
-                rsa_algorithm(&mut attributes, 3072);
-            }
-            Algorithm::RSA4096 => {
-                rsa_algorithm(&mut attributes, 4096);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::NistP192 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::EC,
-                    RecommendedCurve::P192,
-                );
-            }
-            Algorithm::NistP224 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::EC,
-                    RecommendedCurve::P224,
-                );
-            }
-            Algorithm::NistP256 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::EC,
-                    RecommendedCurve::P256,
-                );
-            }
-            Algorithm::NistP384 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::EC,
-                    RecommendedCurve::P384,
-                );
-            }
-            Algorithm::NistP521 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::EC,
-                    RecommendedCurve::P521,
-                );
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::Ed25519 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::Ed25519,
-                    RecommendedCurve::CURVEED25519,
-                );
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::Ed448 => {
-                ec_algorithm(
-                    &mut attributes,
-                    CryptographicAlgorithm::Ed448,
-                    RecommendedCurve::CURVEED448,
-                );
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlDsa44 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_44);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlDsa65 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_65);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlDsa87 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_87);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaSha2128s => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_128s);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaSha2128f => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_128f);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaSha2192s => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_192s);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaSha2192f => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_192f);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaSha2256s => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_256s);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaSha2256f => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_256f);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaShake128s => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_128s);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaShake128f => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_128f);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaShake192s => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_192s);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaShake192f => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_192f);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaShake256s => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_256s);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::SlhDsaShake256f => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_256f);
-            }
-            // ML-KEM and hybrid KEM — used as subject key (must be CA-signed, not self-signed)
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem512 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_512);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem768 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_768);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem1024 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_1024);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::X25519MlKem768 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::X25519MLKEM768);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::X448MlKem1024 => {
-                pqc_algorithm(&mut attributes, CryptographicAlgorithm::X448MLKEM1024);
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem512P256 => {
-                configurable_kem_algorithm(
-                    &mut attributes,
-                    RecommendedCurve::P256,
-                    CryptographicAlgorithm::MLKEM_512,
-                );
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem768P256 => {
-                configurable_kem_algorithm(
-                    &mut attributes,
-                    RecommendedCurve::P256,
-                    CryptographicAlgorithm::MLKEM_768,
-                );
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem512Curve25519 => {
-                configurable_kem_algorithm(
-                    &mut attributes,
-                    RecommendedCurve::CURVE25519,
-                    CryptographicAlgorithm::MLKEM_512,
-                );
-            }
-            #[cfg(feature = "non-fips")]
-            Algorithm::MlKem768Curve25519 => {
-                configurable_kem_algorithm(
-                    &mut attributes,
-                    RecommendedCurve::CURVE25519,
-                    CryptographicAlgorithm::MLKEM_768,
-                );
+    match &params.source {
+        CertificationSource::Csr { request, format } => {
+            certificate_request_value = Some(request.clone());
+            certificate_request_type = match format.as_deref() {
+                Some("der") => Some(CertificateRequestType::PKCS10),
+                _ => Some(CertificateRequestType::PEM),
+            };
+        }
+        CertificationSource::PublicKey { id, subject_name } => {
+            attributes.certificate_attributes =
+                Some(CertificateAttributes::parse_subject_line(subject_name)?);
+            unique_identifier = Some(UniqueIdentifier::TextString(id.clone()));
+        }
+        CertificationSource::ReCertify { certificate_id } => {
+            unique_identifier = Some(UniqueIdentifier::TextString(certificate_id.clone()));
+        }
+        CertificationSource::GenerateKeyPair {
+            subject_name,
+            algorithm,
+        } => {
+            attributes.certificate_attributes =
+                Some(CertificateAttributes::parse_subject_line(subject_name)?);
+            let algorithm = *algorithm;
+            match algorithm {
+                #[cfg(feature = "non-fips")]
+                Algorithm::RSA1024 => {
+                    rsa_algorithm(&mut attributes, 1024);
+                }
+                Algorithm::RSA2048 => {
+                    rsa_algorithm(&mut attributes, 2048);
+                }
+                Algorithm::RSA3072 => {
+                    rsa_algorithm(&mut attributes, 3072);
+                }
+                Algorithm::RSA4096 => {
+                    rsa_algorithm(&mut attributes, 4096);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::NistP192 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P192,
+                    );
+                }
+                Algorithm::NistP224 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P224,
+                    );
+                }
+                Algorithm::NistP256 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P256,
+                    );
+                }
+                Algorithm::NistP384 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P384,
+                    );
+                }
+                Algorithm::NistP521 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::EC,
+                        RecommendedCurve::P521,
+                    );
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::Ed25519 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::Ed25519,
+                        RecommendedCurve::CURVEED25519,
+                    );
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::Ed448 => {
+                    ec_algorithm(
+                        &mut attributes,
+                        CryptographicAlgorithm::Ed448,
+                        RecommendedCurve::CURVEED448,
+                    );
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlDsa44 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_44);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlDsa65 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_65);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlDsa87 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_87);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaSha2128s => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_128s);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaSha2128f => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_128f);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaSha2192s => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_192s);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaSha2192f => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_192f);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaSha2256s => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_256s);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaSha2256f => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_256f);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaShake128s => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_128s);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaShake128f => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_128f);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaShake192s => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_192s);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaShake192f => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_192f);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaShake256s => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_256s);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::SlhDsaShake256f => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_256f);
+                }
+                // ML-KEM and hybrid KEM — used as subject key (must be CA-signed, not self-signed)
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem512 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_512);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem768 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_768);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem1024 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_1024);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::X25519MlKem768 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::X25519MLKEM768);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::X448MlKem1024 => {
+                    pqc_algorithm(&mut attributes, CryptographicAlgorithm::X448MLKEM1024);
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem512P256 => {
+                    configurable_kem_algorithm(
+                        &mut attributes,
+                        RecommendedCurve::P256,
+                        CryptographicAlgorithm::MLKEM_512,
+                    );
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem768P256 => {
+                    configurable_kem_algorithm(
+                        &mut attributes,
+                        RecommendedCurve::P256,
+                        CryptographicAlgorithm::MLKEM_768,
+                    );
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem512Curve25519 => {
+                    configurable_kem_algorithm(
+                        &mut attributes,
+                        RecommendedCurve::CURVE25519,
+                        CryptographicAlgorithm::MLKEM_512,
+                    );
+                }
+                #[cfg(feature = "non-fips")]
+                Algorithm::MlKem768Curve25519 => {
+                    configurable_kem_algorithm(
+                        &mut attributes,
+                        RecommendedCurve::CURVE25519,
+                        CryptographicAlgorithm::MLKEM_768,
+                    );
+                }
             }
         }
-    } else {
-        return Err(UtilsError::Default(
-            "Supply a certificate signing request, a public key id or an existing certificate id \
-             or request a keypair to be generated"
-                .to_owned(),
-        ));
     }
 
-    if let Some(extension_file) = certificate_extensions {
+    if let Some(extension_file) = &params.certificate_extensions {
         attributes.set_x509_extension_file(vendor_id, extension_file.clone());
     }
 

@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-08
+**Generated**: 2026-10-09
 
 ---
 
@@ -10,6 +10,8 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-08 00:43:34 UTC |
+| HSM backend | None (Software) |
+| Command | `mise run bench:load` |
 | Build | release / non-fips |
 | Database | SQLite (temporary, single benchmark run) |
 | CPU | Intel(R) Core(TM) i9-14900T @ 1,435 MHz |
@@ -152,7 +154,7 @@ All encrypt/decrypt benchmarks use a **fixed-size random payload**. Sizes repres
 | Sign / Verify — all algorithms | 32 bytes | Message is hashed internally |
 | JOSE JWS / MAC | 32 bytes | |
 
-### Load test (`ckms bench --load`)
+### Load test (`mise run bench:load`)
 
 The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side KMS latency from client-side encoding overhead.
 Recorded metrics per *(protocol, operation, concurrency)* triple:

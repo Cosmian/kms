@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#MISE description="Run SmartcardHSM tests (requires a physical smart card reader, Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+if [ "$(uname)" != "Linux" ]; then
+  print_error "SmartcardHSM tests require Linux"
+fi
+
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "Running SmartcardHSM tests (${VARIANT_NAME})"
+
+# Requires a physical smart card reader with an initialized SmartcardHSM token attached to
+# this machine — there is no software simulator or cloud-hosted equivalent, so this task
+# cannot run on standard CI runners; it exists for developers with physical hardware.
+# HSM_USER_PASSWORD and HSM_SLOT_ID must already be exported by the caller (see
+# crate/hsm/smartcardhsm/src/tests.rs's own doc comment for the exact recipe).
+
+require_cmd cargo
+
+cargo test \
+  -p smartcardhsm_pkcs11_loader \
+  --features smartcardhsm \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- --nocapture tests::test_hsm_smartcardhsm_all --ignored --exact
+
+print_success "SmartcardHSM tests completed"

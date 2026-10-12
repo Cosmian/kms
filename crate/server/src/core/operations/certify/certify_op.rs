@@ -45,7 +45,7 @@ pub(crate) async fn certify(
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(
-        kms.vendor_id(),
+        kms,
         &issuer,
         &subject,
         request,

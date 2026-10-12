@@ -19,7 +19,10 @@ workspace = true
 doctest = false
 
 [features]
-non-fips = ["cosmian_kms_client_utils/non-fips"]
+non-fips = [
+    "cosmian_kms_client_utils/non-fips",
+    "cosmian_kms_client_utils/openpgp-export",
+]
 
 [dependencies]
 actix-web = { workspace = true, features = ["macros"] }

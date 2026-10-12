@@ -158,6 +158,7 @@ pub(crate) async fn recursively_destroy_object(
             || effective_state == State::Destroyed_Compromised
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
+                && object_type != ObjectType::PGPKey
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey
@@ -224,6 +225,7 @@ pub(crate) async fn recursively_destroy_object(
 
         match object_type {
             ObjectType::SymmetricKey
+            | ObjectType::PGPKey
             | ObjectType::Certificate
             | ObjectType::SecretData
             | ObjectType::OpaqueObject
@@ -360,7 +362,7 @@ pub(crate) async fn recursively_destroy_object(
                 )
                 .await?;
             }
-            x => kms_bail!(KmsError::NotSupported(format!(
+            x @ ObjectType::CertificateRequest => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
             ))),
         }

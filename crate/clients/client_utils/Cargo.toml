@@ -21,6 +21,7 @@ doctest = false
 
 [features]
 non-fips = ["cosmian_kmip/non-fips"]
+openpgp-export = ["non-fips", "dep:pgp"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -30,6 +31,7 @@ cosmian_kmip = { path = "../../kmip", version = "5.28.0" }
 cosmian_kms_access = { path = "../../access", version = "5.28.0" }
 cosmian_logger = { workspace = true }
 pem = { workspace = true }
+pgp = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

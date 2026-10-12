@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-07
+**Generated**: 2026-10-09
 
 ---
 
@@ -10,6 +10,8 @@
 | Field | Value |
 |---|---|
 | Date | 2026-10-07 21:33:38 UTC |
+| HSM backend | None (Software) |
+| Command | `mise run bench:pkcs11` |
 | Build | bench / non-fips |
 | Database | SQLite (temporary, single benchmark run) |
 | CPU | Intel(R) Core(TM) i9-14900T @ 800 MHz |
@@ -136,7 +138,7 @@ The caller-facing protocol benchmarked here is the `cosmian_pkcs11` provider's r
 
 ### Real Cryptoki C ABI, one session per worker
 
-The benchmark subcommand `ckms pkcs11 bench` (driven by `mise bench:pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared library, resolves the v3.1 function table through `C_GetInterface`, and calls it directly — the same code path a real PKCS#11 consumer application uses, as opposed to `mise bench:load`, which drives the KMIP REST API directly through the `ckms` client library.
+The benchmark subcommand `ckms pkcs11 bench` (driven by `mise run bench:pkcs11`) `dlopen()`s the built `cosmian_pkcs11` shared library, resolves the v3.1 function table through `C_GetInterface`, and calls it directly — the same code path a real PKCS#11 consumer application uses, as opposed to `mise bench:load`, which drives the KMIP REST API directly through the `ckms` client library.
 
 By default each worker thread owns a dedicated `C_OpenSession` handle. The provider looks the handle up in its session map and serializes only access to that individual session with a per-session lock, so unrelated worker sessions can progress independently. `--shared-session` is an opt-in comparison mode that reproduces the former single-session contention model; it is not the default methodology.
 
@@ -144,13 +146,14 @@ For the Ed25519 Sign path measured in this report, `C_MessageSignInit` runs once
 
 ### Independent operations
 
-Unlike the software/HSM reports above, where `encrypt` and `sign-verify` each measure a single named request, this report measures every Cryptoki operation **independently**: `encrypt` (`C_EncryptInit`/`C_Encrypt`), `decrypt` (`C_DecryptInit`/`C_Decrypt`, against ciphertext produced once during setup — not timed), Ed25519 `sign` (`C_MessageSignInit` once + `C_SignMessage` per message), RSA `sign` (`C_SignInit`/`C_Sign`), `verify` (`C_VerifyInit`/`C_Verify`), and `key-creation` (`C_GenerateKey`+`C_DestroyObject`, ephemeral AES key per iteration) each get their own concurrency sweep and their own row/chart below.
+Unlike the software/HSM reports where requests may be bundled, this report measures each Cryptoki operation **independently**:
 
-`C_VerifyInit`/`C_Verify` are implemented and benchmarked through the same real Cryptoki function table. Verify rows are therefore ordinary measured operations, not placeholders or unsupported-operation probes.
+- **Encryption/Decryption**: `C_EncryptInit`/`C_Encrypt` and `C_DecryptInit`/`C_Decrypt` against pre-generated ciphertext
+- **Sign**: `C_SignInit`/`C_Sign` (or `C_MessageSignInit`/`C_SignMessage` for Ed25519) crossing the synchronous PKCS#11 boundary
+- **Verify**: `C_VerifyInit`/`C_Verify` implemented and benchmarked through the real Cryptoki function table
+- **Key Creation**: symmetric `C_GenerateKey` with immediate `C_DestroyObject` per iteration
 
-`C_GenerateKeyPair` is not implemented either (asymmetric keys are always created through the KMS REST API, not PKCS#11), so `key-creation` only covers the one Cryptoki key-creation path the provider does support: symmetric `C_GenerateKey`.
-
-### Load test (`mise bench:pkcs11`)
+### Load test (`mise run bench:pkcs11`)
 
 The load test sweeps a configurable list of concurrency levels, mirroring `mise bench:load`'s own sweep mechanics exactly: at each level *N* concurrent OS threads call the target Cryptoki function in a tight loop for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements, followed by a **cooldown** (default: 2 s) before the next level.
 Recorded metrics per *(operation, concurrency)* pair:

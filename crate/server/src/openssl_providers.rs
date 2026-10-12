@@ -302,7 +302,8 @@ fn decode_ppccap(hex: &str) -> String {
 
 /// Initialize OpenSSL providers for test environments.
 ///
-/// In non-FIPS mode with OpenSSL >= 3.0: loads the legacy provider for old PKCS#12 formats.
+/// In non-FIPS mode with OpenSSL >= 3.0: loads the legacy provider for old PKCS#12 formats
+/// (falls back to a warning if it can't be loaded — see [`init_openssl_providers`]).
 /// In non-FIPS mode with OpenSSL < 3.0: loads the default provider.
 /// In FIPS mode: no-op (FIPS provider is loaded via openssl.cnf).
 ///
@@ -313,19 +314,31 @@ fn decode_ppccap(hex: &str) -> String {
 pub fn init_openssl_providers_for_tests() {
     use std::sync::OnceLock;
 
+    use cosmian_logger::warn;
     use openssl::provider::Provider;
 
-    // Keep provider alive for program lifetime — it must not be dropped
-    static PROVIDER: OnceLock<Provider> = OnceLock::new();
+    // Keep provider alive for program lifetime — it must not be dropped. `None` means
+    // the legacy provider could not be loaded (see init_openssl_providers) rather than
+    // "not yet initialized".
+    static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
     PROVIDER.get_or_init(|| {
         let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
         if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
             // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
-            Provider::try_load(None, "legacy", true).expect("Failed to load legacy provider")
+            match Provider::try_load(None, "legacy", true) {
+                Ok(provider) => Some(provider),
+                Err(e) => {
+                    warn!(
+                        "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats \
+                         are unsupported in this test run. All other algorithms are unaffected."
+                    );
+                    None
+                }
+            }
         } else {
             // OpenSSL < 3.0: load the default provider
-            Provider::load(None, "default").expect("Failed to load default provider")
+            Some(Provider::load(None, "default").expect("Failed to load default provider"))
         }
     });
 }
@@ -334,6 +347,48 @@ pub fn init_openssl_providers_for_tests() {
 #[cfg(not(feature = "non-fips"))]
 pub const fn init_openssl_providers_for_tests() {
     // No-op in FIPS mode
+}
+
+/// Resolve a fallible provider-load `result` into the `Option<T>` fallback semantics used by
+/// [`init_openssl_providers`]: a failure is tolerated (returns `Ok(None)`, invoking
+/// `log_warning` once) only when `dlopen_impossible` is `true`; on every other target the
+/// failure is propagated unchanged as `Err`.
+///
+/// Deliberately generic over `T`/`E` (not `Provider`/`ErrorStack`) and free of any `OnceLock`
+/// or real OpenSSL call, so this branching decision — the actual bug surface of the
+/// musl/crt-static fallback — can be unit-tested directly for both outcomes, without needing
+/// a real legacy-provider failure or a musl/crt-static build to reach it. See the `tests`
+/// module below.
+#[cfg(feature = "non-fips")]
+fn resolve_optional_provider<T, E>(
+    result: Result<T, E>,
+    dlopen_impossible: bool,
+    log_warning: impl FnOnce(&E),
+) -> Result<Option<T>, E> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(e) if dlopen_impossible => {
+            log_warning(&e);
+            Ok(None)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Run `load` at most once and cache its outcome in `cell`; later calls are no-ops.
+///
+/// `Ok(None)` (a tolerated failure, see [`resolve_optional_provider`]) is cached like any
+/// other success so the load is never retried; an `Err` is returned to the caller and
+/// nothing is cached. Generic and `cell`-injected so tests can use a local `OnceLock`.
+#[cfg(feature = "non-fips")]
+fn init_optional_provider_once<T, E>(
+    cell: &std::sync::OnceLock<Option<T>>,
+    load: impl FnOnce() -> Result<Option<T>, E>,
+) -> Result<(), E> {
+    if cell.get().is_none() {
+        drop(cell.set(load()?));
+    }
+    Ok(())
 }
 
 /// Initialize OpenSSL providers for production KMS server.
@@ -350,7 +405,12 @@ pub const fn init_openssl_providers_for_tests() {
 ///
 /// # Errors
 ///
-/// Returns an error if the provider fails to load.
+/// Returns an error if the FIPS provider (FIPS mode) or the default provider
+/// (non-FIPS mode, pre-3.0 OpenSSL) fails to load. In non-FIPS mode with OpenSSL >= 3.0, a
+/// *legacy* provider load failure propagates as an error on every target **except** a fully
+/// static musl build (`target_env = "musl"` + `target_feature = "crt-static"`, i.e. the
+/// non-FIPS Alpine `.apk`), where `dlopen` can never succeed and the failure is instead
+/// logged as a warning — see below.
 pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
     use std::sync::OnceLock;
 
@@ -369,21 +429,143 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
 
     #[cfg(feature = "non-fips")]
     {
-        static PROVIDER: OnceLock<Provider> = OnceLock::new();
+        use cosmian_logger::warn;
 
-        if PROVIDER.get().is_none() {
+        // OpenSSL's "legacy" module is a separate shared object loaded via `dlopen`.
+        // That can never succeed on a fully static musl binary (the non-FIPS Alpine
+        // `.apk` package): musl's static libc has no dynamic linker at all, so `dlopen`
+        // always fails there, regardless of `OPENSSL_MODULES`. Every *other* target
+        // (glibc static/dynamic OpenSSL linking, dynamic musl, macOS, …) keeps a working
+        // dynamic linker, so a load failure there is a genuine misconfiguration (e.g. a
+        // broken `OPENSSL_MODULES` path) and must keep failing loudly at startup, as
+        // before — only this exact target combination gets the silent, logged fallback.
+        const LEGACY_PROVIDER_DLOPEN_IMPOSSIBLE: bool =
+            cfg!(all(target_env = "musl", target_feature = "crt-static"));
+
+        // `None` means the legacy provider failed to load on a target where that is
+        // expected (see `LEGACY_PROVIDER_DLOPEN_IMPOSSIBLE` above) rather than "not yet
+        // initialized".
+        static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
+
+        init_optional_provider_once(&PROVIDER, || {
             let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
-            let provider = if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
-                // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
+            if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
+                // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats.
                 info!("Load legacy provider");
-                Provider::try_load(None, "legacy", true)?
+                resolve_optional_provider(
+                    Provider::try_load(None, "legacy", true),
+                    LEGACY_PROVIDER_DLOPEN_IMPOSSIBLE,
+                    |e| {
+                        warn!(
+                            "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 \
+                             formats are unsupported on this build. All other algorithms \
+                             (including PQC and Covercrypt) are unaffected."
+                        );
+                    },
+                )
             } else {
                 // OpenSSL < 3.0: load the default provider
                 info!("Load default provider");
-                Provider::load(None, "default")?
-            };
-            drop(PROVIDER.set(provider));
+                Ok(Some(Provider::load(None, "default")?))
+            }
+        })
+    }
+}
+
+#[cfg(all(test, feature = "non-fips"))]
+// `clippy::expect_used` is `deny`d workspace-wide (see `Cargo.toml`'s
+// `[workspace.lints.clippy]`); `.expect("reason")` in test assertions is the sanctioned
+// exception called out in `rust.instructions.md`'s error-handling rules.
+#[expect(clippy::expect_used)]
+mod tests {
+    use super::{init_openssl_providers, resolve_optional_provider};
+
+    /// `init_openssl_providers` must never hard-fail in non-FIPS mode on a normal
+    /// (dynamically-linked) test/dev target, and must be idempotent (safe to call more
+    /// than once — e.g. once per Actix worker thread).
+    ///
+    /// This only exercises the success path (the legacy provider loads fine on a normal
+    /// dev/CI machine); it cannot reach the musl/crt-static fallback branch, nor the
+    /// propagate-the-error branch. Those are covered directly and deterministically by the
+    /// `resolve_optional_provider` tests below instead.
+    #[test]
+    fn test_init_openssl_providers_succeeds_and_is_idempotent() {
+        init_openssl_providers().expect("first call must succeed");
+        init_openssl_providers().expect("second call must also succeed (OnceLock guard)");
+    }
+
+    /// On every target *except* a fully static musl build, a failed load must propagate as
+    /// `Err` rather than being silently swallowed — this is the exact regression finding #1
+    /// of the alpine-branch review fixed (the fallback had no scoping at all).
+    #[test]
+    fn test_resolve_optional_provider_propagates_error_when_dlopen_not_impossible() {
+        let result: Result<u8, &str> = Err("legacy module not found");
+        let mut warned = false;
+        let resolved = resolve_optional_provider(result, false, |_| warned = true);
+        assert_eq!(resolved, Err("legacy module not found"));
+        assert!(
+            !warned,
+            "must not log a reassuring warning when the failure is actually being propagated"
+        );
+    }
+
+    /// On a fully static musl build (`dlopen_impossible = true`), a failed load must be
+    /// tolerated: turned into `Ok(None)` with the warning callback invoked exactly once.
+    #[test]
+    fn test_resolve_optional_provider_falls_back_when_dlopen_impossible() {
+        let result: Result<u8, &str> = Err("legacy module not found");
+        let mut warned = false;
+        let resolved = resolve_optional_provider(result, true, |_| warned = true);
+        assert_eq!(resolved, Ok(None));
+        assert!(warned, "must log a warning when tolerating the failure");
+    }
+
+    /// A successful load must always be returned as `Some(value)`, regardless of
+    /// `dlopen_impossible`, and must never invoke the warning callback.
+    #[test]
+    fn test_resolve_optional_provider_success_ignores_dlopen_impossible_flag() {
+        for dlopen_impossible in [false, true] {
+            let result: Result<u8, &str> = Ok(42);
+            let mut warned = false;
+            let resolved = resolve_optional_provider(result, dlopen_impossible, |_| warned = true);
+            assert_eq!(resolved, Ok(Some(42)));
+            assert!(!warned, "must not warn on a successful load");
         }
-        Ok(())
+    }
+
+    /// A failing loader on a dlopen-impossible target must make initialization return
+    /// `Ok(())`, cache the failure as `None`, and never invoke the loader again.
+    #[test]
+    fn test_init_optional_provider_once_caches_tolerated_failure_without_retry() {
+        use std::{cell::Cell, sync::OnceLock};
+
+        use super::init_optional_provider_once;
+
+        let cell: OnceLock<Option<u8>> = OnceLock::new();
+        let calls = Cell::new(0_u32);
+        let failing_loader = || {
+            calls.set(calls.get() + 1);
+            resolve_optional_provider(Err::<u8, _>("legacy module not found"), true, |_| {})
+        };
+
+        assert_eq!(init_optional_provider_once(&cell, failing_loader), Ok(()));
+        assert_eq!(cell.get(), Some(&None), "Err must be cached as None");
+        assert_eq!(init_optional_provider_once(&cell, failing_loader), Ok(()));
+        assert_eq!(calls.get(), 1, "loader must not be retried after caching");
+    }
+
+    /// When the failure is propagated, it is returned and nothing is cached.
+    #[test]
+    fn test_init_optional_provider_once_propagates_error_without_caching() {
+        use std::sync::OnceLock;
+
+        use super::init_optional_provider_once;
+
+        let cell: OnceLock<Option<u8>> = OnceLock::new();
+        let result = init_optional_provider_once(&cell, || {
+            resolve_optional_provider(Err::<u8, _>("boom"), false, |_| {})
+        });
+        assert_eq!(result, Err("boom"));
+        assert!(cell.get().is_none());
     }
 }

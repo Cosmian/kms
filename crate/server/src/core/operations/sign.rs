@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
+use super::pgp_ops;
 use crate::{
     core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
@@ -54,6 +55,9 @@ impl CryptoOpSpec for SignOp {
         if let Object::PrivateKey { .. } = owm.object() {
             return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
         }
+        if let Object::PGPKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
+        }
         false
     }
 
@@ -65,6 +69,7 @@ impl CryptoOpSpec for SignOp {
     ) -> KResult<Self::Response> {
         match owm.object() {
             Object::PrivateKey { .. } => sign_with_private_key(request, owm),
+            Object::PGPKey { .. } => pgp_ops::pgp_sign(owm, request),
             other => Err(KmsError::NotSupported(format!(
                 "signing with keys of type: {} is not supported",
                 other.object_type()

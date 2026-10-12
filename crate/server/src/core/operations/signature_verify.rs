@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Public};
 
+use super::pgp_ops;
 use crate::{
     core::{
         KMS,
@@ -72,6 +73,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
             Object::PublicKey { .. } | Object::PrivateKey { .. } => {
                 owm.has_usage_mask(CryptographicUsageMask::Verify, true)
             }
+            Object::PGPKey { .. } => owm.has_usage_mask(CryptographicUsageMask::Verify, true),
             _ => false,
         }
     }
@@ -82,6 +84,9 @@ impl CryptoOpSpec for SignatureVerifyOp {
         request: &Self::Request,
         _user: &UserId,
     ) -> KResult<Self::Response> {
+        if matches!(owm.object(), Object::PGPKey { .. }) {
+            return pgp_ops::pgp_signature_verify(owm, request);
+        }
         let verification_key = extract_verification_key(owm.object())?;
 
         // Resolve cryptographic parameters: prefer request values, but fall back to
