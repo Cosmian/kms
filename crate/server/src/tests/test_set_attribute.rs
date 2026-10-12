@@ -120,6 +120,26 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
         )
         .await?;
 
+    let initial_date = get_attributes(&kms, &uid, Tag::InitialDate).await?;
+    let error = set_attribute(
+        &kms,
+        &uid,
+        Attribute::InitialDate(OffsetDateTime::UNIX_EPOCH),
+    )
+    .await
+    .expect_err("setting InitialDate must fail as read-only");
+    assert!(matches!(
+        error,
+        KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+    ));
+    assert_eq!(
+        get_attributes(&kms, &uid, Tag::InitialDate)
+            .await?
+            .attributes
+            .initial_date,
+        initial_date.attributes.initial_date
+    );
+
     // Start tests
     //
     let timestamp = 42;
@@ -264,7 +284,13 @@ async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KR
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));
 
-    set_attribute(kms, uid, Attribute::CryptographicLength(256)).await?;
+    let error = set_attribute(kms, uid, Attribute::CryptographicLength(64))
+        .await
+        .expect_err("setting CryptographicLength must fail as read-only");
+    assert!(matches!(
+        error,
+        KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+    ));
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));

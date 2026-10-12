@@ -40,7 +40,7 @@ impl Tag {
                 | Self::Fresh
                 | Self::LastChangeDate
                 | Self::OriginalCreationDate,
-                ModifyAttribute | DeleteAttribute,
+                SetAttribute | ModifyAttribute | DeleteAttribute,
             )
             // Add rejects `State` later with a different error, so it is not listed for Add.
             | (Self::State, SetAttribute | ModifyAttribute | DeleteAttribute)
@@ -78,36 +78,39 @@ mod tests {
         (Tag::RotateLatest, [ServerManaged; 4]),
         (
             Tag::UniqueIdentifier,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::ObjectType,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::CryptographicLength,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::CertificateLength,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::Digest,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::InitialDate,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
-        (Tag::Fresh, [Allowed, Allowed, ServerManaged, ServerManaged]),
+        (
+            Tag::Fresh,
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
+        ),
         (
             Tag::LastChangeDate,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::OriginalCreationDate,
-            [Allowed, Allowed, ServerManaged, ServerManaged],
+            [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
             Tag::State,
