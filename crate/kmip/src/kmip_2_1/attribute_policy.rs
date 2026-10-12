@@ -20,6 +20,7 @@ impl Tag {
         use KmipOperation::{AddAttribute, DeleteAttribute, ModifyAttribute, SetAttribute};
 
         match (self, operation) {
+            // Sensitivity history is server-managed (KMIP 2.1 4.3 and 4.33).
             (
                 Self::AlwaysSensitive
                 | Self::NeverExtractable
@@ -28,6 +29,8 @@ impl Tag {
                 | Self::RotateLatest,
                 _,
             )
+            // Read-only metadata: KMIP 2.1 4.15, 4.21, 4.25; Set follows 6.1.51.
+            // Add retains legacy initialization behavior, not a blanket KMIP allowance.
             | (
                 Self::UniqueIdentifier
                 | Self::ObjectType
