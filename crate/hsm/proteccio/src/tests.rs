@@ -58,7 +58,7 @@ fn test_hsm_proteccio_all() -> HResult<()> {
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
     shared::concurrent_sign_does_not_degrade(&slot)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;

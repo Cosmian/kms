@@ -38,7 +38,7 @@ use std::{
 };
 
 use cosmian_kms_base_hsm::{
-    AesKeySize, BaseHsm, HsmSigningAlgorithm,
+    AesKeySize, BaseHsm, DerivedKeySpec, HkdfParams, HsmSigningAlgorithm,
     hsm_capabilities::{HsmCapabilities, HsmProvider},
 };
 use libloading::Library;
@@ -295,12 +295,16 @@ fn check_hkdf_derive(hsm: &BaseHsm<KryopticCapabilityProvider>) {
     let derived = session
         .derive_hkdf_key(
             ikm,
-            CKM_SHA256,
-            Some(b"salt"),
-            b"info",
-            32,
-            b"hkdf-derived",
-            false,
+            HkdfParams {
+                prf_hash: CKM_SHA256,
+                salt: Some(b"salt"),
+                info: b"info",
+            },
+            DerivedKeySpec {
+                id: b"hkdf-derived",
+                len_bytes: 32,
+                sensitive: false,
+            },
         )
         .expect("kryoptic must support CKM_HKDF_DERIVE (v3.0)");
     assert_ne!(derived, 0);

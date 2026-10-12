@@ -76,7 +76,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // SoftHSM2 build. `multi_threaded_rsa` uses RSA-OAEP encrypt/decrypt, so it is
     // skipped entirely here rather than gated by FIPS variant.
     shared::concurrent_sign_does_not_degrade(&slot)?;
-    shared::get_key_metadata(&slot)?;
+    shared::get_key_metadata(&slot, true)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
