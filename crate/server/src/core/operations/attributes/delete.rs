@@ -46,10 +46,7 @@ pub(crate) async fn delete_attribute(
 
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
-        check_read_only(
-            attribute.edit_policy(KmipOperation::DeleteAttribute),
-            KmipOperation::DeleteAttribute,
-        )?;
+        check_read_only(attribute.tag(), KmipOperation::DeleteAttribute)?;
         match_delete_attribute! {
             attribute, attributes,
             simple {
@@ -156,10 +153,7 @@ pub(crate) async fn delete_attribute(
             match attribute_reference {
                 AttributeReference::Standard(tag) => {
                     // Read-only guard — server-managed tags cannot be deleted by the user.
-                    check_read_only(
-                        tag.edit_policy(KmipOperation::DeleteAttribute),
-                        KmipOperation::DeleteAttribute,
-                    )?;
+                    check_read_only(Some(tag), KmipOperation::DeleteAttribute)?;
                     match_delete_attribute_by_tag! {
                         tag, attributes,
                         simple {

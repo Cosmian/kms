@@ -1,4 +1,4 @@
-use crate::kmip_2_1::{KmipOperation, kmip_attributes::Attribute, kmip_types::Tag};
+use crate::kmip_2_1::{KmipOperation, kmip_types::Tag};
 
 /// Policy governing client modification of attributes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,22 +50,12 @@ impl Tag {
     }
 }
 
-impl Attribute {
-    /// Untagged compatibility and vendor attributes retain their existing edit policy.
-    #[must_use]
-    pub const fn edit_policy(&self, operation: KmipOperation) -> AttributeEditPolicy {
-        match self.tag() {
-            Some(tag) => tag.edit_policy(operation),
-            None => AttributeEditPolicy::Allowed,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use AttributeEditPolicy::{Allowed, RequiresGrant, ServerManaged};
 
     use super::*;
+    use crate::kmip_2_1::kmip_attributes::Attribute;
 
     #[test]
     fn legacy_attribute_index_keeps_original_tag_support() {

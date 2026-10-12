@@ -1,17 +1,17 @@
 use cosmian_kms_interfaces::ObjectWithMetadata;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
-    kmip_2_1::{KmipOperation, attribute_policy::AttributeEditPolicy, kmip_attributes::Attribute},
+    kmip_2_1::{
+        KmipOperation, attribute_policy::AttributeEditPolicy, kmip_attributes::Attribute,
+        kmip_types::Tag,
+    },
 };
 
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Rejects attributes the server manages for this operation.
-pub(crate) fn check_read_only(
-    policy: AttributeEditPolicy,
-    operation: KmipOperation,
-) -> KResult<()> {
-    if policy != AttributeEditPolicy::ServerManaged {
+pub(crate) fn check_read_only(tag: Option<Tag>, operation: KmipOperation) -> KResult<()> {
+    if tag.map(|tag| tag.edit_policy(operation)) != Some(AttributeEditPolicy::ServerManaged) {
         return Ok(());
     }
     let verb = match operation {
@@ -34,7 +34,8 @@ pub(crate) async fn check_grant(
     operation: KmipOperation,
     attribute: &Attribute,
 ) -> KResult<()> {
-    if attribute.edit_policy(operation) != AttributeEditPolicy::RequiresGrant
+    if attribute.tag().map(|tag| tag.edit_policy(operation))
+        != Some(AttributeEditPolicy::RequiresGrant)
         || kms
             .user_can_perform_operation(owm, user, &operation)
             .await?

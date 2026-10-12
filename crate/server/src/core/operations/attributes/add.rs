@@ -37,12 +37,7 @@ pub(crate) async fn add_attribute(
     let object_handle = from_request(Some(&request.unique_identifier), "Add Attribute")?;
 
     // Read-only guard — these attributes are server-managed.
-    check_read_only(
-        request
-            .new_attribute
-            .edit_policy(KmipOperation::AddAttribute),
-        KmipOperation::AddAttribute,
-    )?;
+    check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
     if let Attribute::RotateName(name) = &request.new_attribute {
         if name.contains('@') {
             return Err(KmsError::InvalidRequest(

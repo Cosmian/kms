@@ -45,12 +45,7 @@ pub(crate) async fn modify_attribute(
     let object_handle = from_request(request.unique_identifier.as_ref(), "ModifyAttribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
-    check_read_only(
-        request
-            .new_attribute
-            .edit_policy(KmipOperation::ModifyAttribute),
-        KmipOperation::ModifyAttribute,
-    )?;
+    check_read_only(request.new_attribute.tag(), KmipOperation::ModifyAttribute)?;
     if let Attribute::RotateName(name) = &request.new_attribute {
         if name.contains('@') {
             return Err(KmsError::InvalidRequest(
