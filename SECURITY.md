@@ -5,6 +5,7 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-030: SetAttribute permits changes to read-only metadata](#cosmian-2026-030-setattribute-permits-changes-to-read-only-metadata)
       - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
       - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
       - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
@@ -88,6 +89,25 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-030: SetAttribute permits changes to read-only metadata
+
+| Field | Value |
+| --- | --- |
+| Severity | Moderate |
+| Published | Pending |
+| Affected | 5.28.0 confirmed; earlier releases not assessed |
+| Fixed in | 5.29.0 |
+| Found by | Internal code review |
+| References | [Regression test](crate/server/src/tests/test_set_attribute.rs), [TTLV vector](test_data/vectors/negative/set_attribute/readonly_initial_date), [Branch changelog](CHANGELOG/refactor_attribute-edit-policy.md) |
+
+**Summary:** `SetAttribute` accepted client updates to read-only provenance attributes, including `InitialDate`, `CryptographicLength`, and `Digest`, despite the restrictions already applied by `ModifyAttribute`.
+
+**Impact:** Consumers of the stored attributes could receive incorrect creation dates or key metadata. The affected behavior is confirmed in the tagged 5.28.0 release; earlier releases have not been assessed.
+
+**Mitigation:** Upgrade to 5.29.0 when available. The fix returns `Attribute_Read_Only` before mutation. Until then, restrict KMS object access to trusted clients.
+
+---
 
 #### GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths
 
@@ -900,6 +920,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| COSMIAN-2026-030 | Moderate | 5.28.0 confirmed | 5.29.0 | SetAttribute permits changes to read-only metadata |
 | GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths |
 | GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite |
 | GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant |

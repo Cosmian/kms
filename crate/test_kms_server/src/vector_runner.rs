@@ -3868,6 +3868,12 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_neg_set_attribute_readonly_initial_date() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/readonly_initial_date").await
+    }
+
+    #[tokio::test]
     async fn test_neg_hsm_rotate_offset_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/set_attribute/hsm_rotate_offset_rejected").await

@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**653 vectors** across 16 categories (including KAT):
+**654 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -468,6 +468,7 @@ replays the steps sequentially.
 | Negative / SetAttribute | `negative/set_attribute/hsm_rotate_offset_rejected` | Tests that SetAttribute rotate_offset on an HSM-resident key is rejected | 4 |
 | Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_initial_date` | Rejects SetAttribute of InitialDate and verifies the original date is preserved | 6 |
 | Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
 | Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
 | Negative / Sign | `negative/sign/invalid_message` | Tests that Sign returns Invalid_Message error as per KMIP spec | 1 |
