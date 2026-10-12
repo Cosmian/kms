@@ -113,19 +113,11 @@ pub(crate) async fn delete_attribute(
                 X509CertificateSubject => x_509_certificate_subject,
             }
             custom {
-                Attribute::AlwaysSensitive(_) => {
+                Attribute::AlwaysSensitive(_) | Attribute::CryptographicLength(_) => {
                     // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
                     return Err(KmsError::Kmip21Error(
                         ErrorReason::Attribute_Read_Only,
-                        "DENIED: AlwaysSensitive is server-managed and cannot be deleted by the \
-                         user"
-                            .to_owned(),
-                    ));
-                }
-                Attribute::CryptographicLength(_) => {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Attribute_Read_Only,
-                        "DENIED: CryptographicLength is server-managed and cannot be deleted by the \
+                        "DENIED: this attribute is server-managed and cannot be deleted by the \
                          user"
                             .to_owned(),
                     ));

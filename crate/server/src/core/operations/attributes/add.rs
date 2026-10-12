@@ -202,11 +202,11 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.description = Some(description);
             }
-            Attribute::AlwaysSensitive(_) => {
+            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) => {
                 // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Attribute_Read_Only,
-                    "DENIED: AlwaysSensitive is server-managed and cannot be added by the user"
+                    "DENIED: this attribute is server-managed and cannot be added by the user"
                         .to_owned(),
                 ));
             }
@@ -229,13 +229,6 @@ pub(crate) async fn add_attribute(
                     ));
                 }
                 attributes.apply_extractable(extractable);
-            }
-            Attribute::NeverExtractable(_) => {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: NeverExtractable is server-managed and cannot be added by the user"
-                        .to_owned(),
-                ));
             }
             Attribute::State(_state) => {
                 return Err(KmsError::InvalidRequest(

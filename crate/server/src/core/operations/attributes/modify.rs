@@ -155,11 +155,11 @@ pub(crate) async fn modify_attribute(
             X509CertificateIdentifier => x_509_certificate_identifier,
         }
         custom {
-            Attribute::AlwaysSensitive(_) => {
+            Attribute::AlwaysSensitive(_) | Attribute::State(_) => {
                 // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Attribute_Read_Only,
-                    "DENIED: AlwaysSensitive is server-managed and cannot be modified by the user"
+                    "DENIED: this attribute is server-managed and cannot be modified by the user"
                         .to_owned(),
                 ));
             }
@@ -212,14 +212,6 @@ pub(crate) async fn modify_attribute(
                         attributes.name = Some(vec![name]);
                     }
                 }
-            }
-            Attribute::State(_state) => {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "ModifyAttribute: State is a server-managed attribute and cannot be \
-                     modified directly. Use Revoke and Destroy to change the object state."
-                        .to_owned(),
-                ));
             }
         }
     }

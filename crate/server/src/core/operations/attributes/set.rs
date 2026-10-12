@@ -218,11 +218,11 @@ pub(crate) async fn set_attribute(
             X509CertificateIdentifier => x_509_certificate_identifier,
         }
         custom {
-            Attribute::AlwaysSensitive(_) => {
+            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
                 // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Attribute_Read_Only,
-                    "DENIED: AlwaysSensitive is server-managed and cannot be set by the user"
+                    "DENIED: this attribute is server-managed and cannot be set by the user"
                         .to_owned(),
                 ));
             }
@@ -235,13 +235,6 @@ pub(crate) async fn set_attribute(
             Attribute::Extractable(extractable) => {
                 trace!("Set Attribute: Extractable: {:?}", extractable);
                 attributes.apply_extractable(extractable);
-            }
-            Attribute::NeverExtractable(_) => {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: NeverExtractable is server-managed and cannot be set by the user"
-                        .to_owned(),
-                ));
             }
             Attribute::Link(link) => {
                 trace!("Set Attribute: Link: {}", link.linked_object_identifier);
@@ -261,13 +254,6 @@ pub(crate) async fn set_attribute(
                 if !names.iter().any(|n| n == &name) {
                     names.push(name);
                 }
-            }
-            Attribute::State(_state) => {
-                return Err(KmsError::InvalidRequest(
-                    "Set Attribute: State is server-managed and cannot be set directly. Use \
-                     Revoke and Destroy to change the object state"
-                        .to_owned(),
-                ));
             }
         }
     }
