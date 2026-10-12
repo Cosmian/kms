@@ -155,6 +155,10 @@ incremental = false # Disable incremental compilation for determinism
 debug = 0 # No debug info (timestamps/paths)
 overflow-checks = true # Catch integer overflows in release builds (ANSSI LANG-ARITH)
 
+[profile.pkcs11-provider]
+inherits = "release"
+panic = "unwind"
+
 [profile.bench]
 # Flamegraph-friendly profile: max-speed optimizations + symbol visibility.
 # Overrides release for the following reasons:
@@ -173,7 +177,6 @@ codegen-units = 1       # Keep single CGU for realistic inlining
 [profile.dev]
 strip = "debuginfo"
 incremental = false
-panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
 
 # proc-macros and build-scripts
 [profile.dev.build-override]

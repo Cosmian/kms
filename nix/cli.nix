@@ -85,8 +85,8 @@ rustPlatform.buildRustPackage (
       echo "== cargo build ckms (release) =="
       cargo build --release -p ckms --no-default-features ${featuresFlag}
 
-      echo "== cargo build cosmian_pkcs11 (release) =="
-      cargo build --release -p cosmian_pkcs11 --no-default-features ${featuresFlag}
+      echo "== cargo build cosmian_pkcs11 (pkcs11-provider: release + unwind) =="
+      cargo build --profile pkcs11-provider -p cosmian_pkcs11 --no-default-features ${featuresFlag}
 
       ${mkRelinkSnippet ''
         echo "== Re-linking ckms with system dynamic linker: $DL =="
@@ -94,9 +94,9 @@ rustPlatform.buildRustPackage (
           -- -C link-arg=-Wl,--dynamic-linker,$DL
 
         echo "== Re-linking libcosmian_pkcs11.so without Nix RPATH =="
-        cargo rustc --release -p cosmian_pkcs11 --lib --no-default-features ${featuresFlag} \
+        cargo rustc --profile pkcs11-provider -p cosmian_pkcs11 --lib --no-default-features ${featuresFlag} \
           -- -C link-arg=-Wl,-soname,libcosmian_pkcs11.so
-        patchelf --remove-rpath "target/release/libcosmian_pkcs11.so" 2>/dev/null || true
+        patchelf --remove-rpath "target/pkcs11-provider/libcosmian_pkcs11.so" 2>/dev/null || true
       ''}
     '';
 
@@ -104,9 +104,9 @@ rustPlatform.buildRustPackage (
       mkdir -p "$out/bin" "$out/lib"
       cp "target/release/ckms" "$out/bin/"
       if [ "$(uname)" = "Linux" ]; then
-        cp "target/release/libcosmian_pkcs11.so" "$out/lib/"
+        cp "target/pkcs11-provider/libcosmian_pkcs11.so" "$out/lib/"
       elif [ "$(uname)" = "Darwin" ]; then
-        cp "target/release/libcosmian_pkcs11.dylib" "$out/lib/"
+        cp "target/pkcs11-provider/libcosmian_pkcs11.dylib" "$out/lib/"
       fi
     '';
 
