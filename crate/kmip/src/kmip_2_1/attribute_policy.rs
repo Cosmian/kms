@@ -66,78 +66,56 @@ mod tests {
         assert!(serde_json::from_str::<Tag>("\"AttributeIndex\"").is_err());
     }
 
-    /// Expected policy per (tag, [Add, Set, Modify, Delete]), transcribed from the guards this table replaced.
-    const MATRIX: &[(Tag, [AttributeEditPolicy; 4])] = &[
-        (Tag::AlwaysSensitive, [ServerManaged; 4]),
-        (Tag::NeverExtractable, [ServerManaged; 4]),
-        (Tag::RotateGeneration, [ServerManaged; 4]),
-        (Tag::RotateDate, [ServerManaged; 4]),
-        (Tag::RotateLatest, [ServerManaged; 4]),
+    /// Expected policy per (tags, [Add, Set, Modify, Delete]).
+    const MATRIX: &[(&[Tag], [AttributeEditPolicy; 4])] = &[
         (
-            Tag::UniqueIdentifier,
+            &[
+                Tag::AlwaysSensitive,
+                Tag::NeverExtractable,
+                Tag::RotateGeneration,
+                Tag::RotateDate,
+                Tag::RotateLatest,
+            ],
+            [ServerManaged; 4],
+        ),
+        (
+            &[
+                Tag::UniqueIdentifier,
+                Tag::ObjectType,
+                Tag::CryptographicLength,
+                Tag::CertificateLength,
+                Tag::Digest,
+                Tag::InitialDate,
+                Tag::Fresh,
+                Tag::LastChangeDate,
+                Tag::OriginalCreationDate,
+                Tag::State,
+            ],
             [Allowed, ServerManaged, ServerManaged, ServerManaged],
         ),
         (
-            Tag::ObjectType,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::CryptographicLength,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::CertificateLength,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::Digest,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::InitialDate,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::Fresh,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::LastChangeDate,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::OriginalCreationDate,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::State,
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
-        ),
-        (
-            Tag::RotateAutomatic,
+            &[Tag::RotateAutomatic],
             [ServerManaged, Allowed, Allowed, ServerManaged],
         ),
         (
-            Tag::Sensitive,
+            &[Tag::Sensitive, Tag::Extractable],
             [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
         ),
         (
-            Tag::Extractable,
-            [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
+            &[Tag::Comment, Tag::Name, Tag::Link, Tag::LinkType],
+            [Allowed; 4],
         ),
-        (Tag::Comment, [Allowed; 4]),
-        (Tag::Name, [Allowed; 4]),
-        (Tag::Link, [Allowed; 4]),
-        (Tag::LinkType, [Allowed; 4]),
     ];
 
     #[test]
-    fn edit_policy_matches_previous_guards() {
+    fn edit_policy_matches_operation_rules() {
         use KmipOperation::{AddAttribute, DeleteAttribute, ModifyAttribute, SetAttribute};
-        for (tag, expected) in MATRIX {
-            let ops = [AddAttribute, SetAttribute, ModifyAttribute, DeleteAttribute];
-            for (op, want) in ops.into_iter().zip(expected) {
-                assert_eq!(tag.edit_policy(op), *want, "{tag:?} / {op:?}");
+        for (tags, expected) in MATRIX {
+            for tag in *tags {
+                let ops = [AddAttribute, SetAttribute, ModifyAttribute, DeleteAttribute];
+                for (op, want) in ops.into_iter().zip(expected) {
+                    assert_eq!(tag.edit_policy(op), *want, "{tag:?} / {op:?}");
+                }
             }
         }
     }
