@@ -42,10 +42,6 @@ pub(crate) async fn check_grant(
     {
         return Ok(());
     }
-    let name = match attribute {
-        Attribute::Extractable(_) => "Extractable",
-        _ => "Sensitive",
-    };
     let (verb, operation_name) = match operation {
         KmipOperation::AddAttribute => ("adding", "AddAttribute"),
         KmipOperation::SetAttribute => ("modifying", "SetAttribute"),
@@ -54,7 +50,23 @@ pub(crate) async fn check_grant(
     Err(KmsError::Kmip21Error(
         ErrorReason::Permission_Denied,
         format!(
-            "DENIED: {verb} {name} attribute requires ownership or explicit {operation_name} grant"
+            "DENIED: {verb} {attribute} attribute requires ownership or explicit {operation_name} grant"
         ),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attribute_labels_exclude_values() {
+        for (attribute, expected) in [
+            (Attribute::Sensitive(true), "Sensitive"),
+            (Attribute::Extractable(false), "Extractable"),
+            (Attribute::Comment("private value".to_owned()), "Comment"),
+        ] {
+            assert_eq!(attribute.to_string(), expected);
+        }
+    }
 }
