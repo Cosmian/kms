@@ -156,6 +156,7 @@ debug = 0 # No debug info (timestamps/paths)
 overflow-checks = true # Catch integer overflows in release builds (ANSSI LANG-ARITH)
 
 [profile.pkcs11-provider]
+# Loaded into foreign hosts: must unwind so FFI entry points can catch panics.
 inherits = "release"
 panic = "unwind"
 
