@@ -25,6 +25,8 @@ mod locate;
 mod migrate;
 mod ms_dke;
 mod mtls_db;
+#[cfg(feature = "non-fips")]
+mod pqc_import_tests;
 mod revoke_tests;
 mod secret_data_tests;
 mod security_regression;
