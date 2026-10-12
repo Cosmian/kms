@@ -1422,7 +1422,7 @@ pub enum Attribute {
 }
 
 impl Attribute {
-    /// Standard KMIP [`Tag`] for this attribute, or `None` for vendor attributes.
+    /// Existing KMIP 2.1 tag, or `None` for vendor attributes and legacy `AttributeIndex`.
     #[must_use]
     pub const fn tag(&self) -> Option<Tag> {
         match self {
@@ -1431,7 +1431,6 @@ impl Attribute {
             Self::AlwaysSensitive(_) => Some(Tag::AlwaysSensitive),
             Self::ApplicationSpecificInformation(_) => Some(Tag::ApplicationSpecificInformation),
             Self::ArchiveDate(_) => Some(Tag::ArchiveDate),
-            Self::AttributeIndex(_) => Some(Tag::AttributeIndex),
             Self::CertificateAttributes(_) => Some(Tag::CertificateAttributes),
             Self::CertificateType(_) => Some(Tag::CertificateType),
             Self::CertificateLength(_) => Some(Tag::CertificateLength),
@@ -1488,7 +1487,7 @@ impl Attribute {
             Self::State(_) => Some(Tag::State),
             Self::UniqueIdentifier(_) => Some(Tag::UniqueIdentifier),
             Self::UsageLimits(_) => Some(Tag::UsageLimits),
-            Self::VendorAttribute(_) => None,
+            Self::AttributeIndex(_) | Self::VendorAttribute(_) => None,
             Self::X509CertificateIdentifier(_) => Some(Tag::X509CertificateIdentifier),
             Self::X509CertificateIssuer(_) => Some(Tag::X509CertificateIssuer),
             Self::X509CertificateSubject(_) => Some(Tag::X509CertificateSubject),

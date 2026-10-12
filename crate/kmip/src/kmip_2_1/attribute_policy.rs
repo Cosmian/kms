@@ -51,7 +51,7 @@ impl Tag {
 }
 
 impl Attribute {
-    /// Edit restriction for this attribute; vendor attributes carry no standard tag and are unrestricted.
+    /// Untagged compatibility and vendor attributes retain their existing edit policy.
     #[must_use]
     pub const fn edit_policy(&self, operation: KmipOperation) -> AttributeEditPolicy {
         match self.tag() {
@@ -66,6 +66,12 @@ mod tests {
     use AttributeEditPolicy::{Allowed, RequiresGrant, ServerManaged};
 
     use super::*;
+
+    #[test]
+    fn legacy_attribute_index_keeps_original_tag_support() {
+        assert_eq!(Attribute::AttributeIndex(1).tag(), None);
+        assert!(serde_json::from_str::<Tag>("\"AttributeIndex\"").is_err());
+    }
 
     /// Expected policy per (tag, [Add, Set, Modify, Delete]), transcribed from the guards this table replaced.
     const MATRIX: &[(Tag, [AttributeEditPolicy; 4])] = &[
