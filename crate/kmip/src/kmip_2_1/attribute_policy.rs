@@ -30,7 +30,7 @@ impl Tag {
                 _,
             )
             // Read-only metadata: KMIP 2.1 4.15, 4.21, 4.25; Set follows 6.1.51.
-            // Add retains legacy initialization behavior, not a blanket KMIP allowance.
+            // Add retains legacy rules, including State's later handler rejection.
             | (
                 Self::UniqueIdentifier
                 | Self::ObjectType
@@ -40,11 +40,10 @@ impl Tag {
                 | Self::InitialDate
                 | Self::Fresh
                 | Self::LastChangeDate
-                | Self::OriginalCreationDate,
+                | Self::OriginalCreationDate
+                | Self::State,
                 SetAttribute | ModifyAttribute | DeleteAttribute,
             )
-            // Add rejects `State` later with a different error, so it is not listed for Add.
-            | (Self::State, SetAttribute | ModifyAttribute | DeleteAttribute)
             | (Self::RotateAutomatic, AddAttribute | DeleteAttribute)
             | (Self::Sensitive | Self::Extractable, DeleteAttribute) => ServerManaged,
             (Self::Sensitive | Self::Extractable, _) => RequiresGrant,
@@ -63,7 +62,10 @@ mod tests {
     #[test]
     fn legacy_attribute_index_keeps_original_tag_support() {
         assert_eq!(Attribute::AttributeIndex(1).tag(), None);
-        assert!(serde_json::from_str::<Tag>("\"AttributeIndex\"").is_err());
+        assert!(matches!(
+            serde_json::from_str::<Tag>("\"AttributeIndex\""),
+            Err(error) if error.is_data()
+        ));
     }
 
     /// Expected policy per (tags, [Add, Set, Modify, Delete]).
