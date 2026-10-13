@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::policy::{check_grant, check_read_only};
+use super::policy::{check_grant, check_read_only, check_rotate_name, read_only_error};
 use crate::{
     core::{
         KMS,
@@ -38,14 +38,7 @@ pub(crate) async fn add_attribute(
 
     // Read-only guard — these attributes are server-managed.
     check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
-    if let Attribute::RotateName(name) = &request.new_attribute {
-        if name.contains('@') {
-            return Err(KmsError::InvalidRequest(
-                "AddAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
-                    .to_owned(),
-            ));
-        }
-    }
+    check_rotate_name(&request.new_attribute, "AddAttribute")?;
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -204,11 +197,7 @@ pub(crate) async fn add_attribute(
             }
             Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) => {
                 // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: this attribute is server-managed and cannot be added by the user"
-                        .to_owned(),
-                ));
+                return Err(read_only_error(KmipOperation::AddAttribute));
             }
             Attribute::Sensitive(sensitive) => {
                 trace!("Sensitive: {:?}", sensitive);

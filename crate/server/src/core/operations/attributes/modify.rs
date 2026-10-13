@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::policy::{check_grant, check_read_only};
+use super::policy::{check_grant, check_read_only, check_rotate_name, read_only_error};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -46,14 +46,7 @@ pub(crate) async fn modify_attribute(
 
     // Read-only guard — must be checked before the DB round-trip.
     check_read_only(request.new_attribute.tag(), KmipOperation::ModifyAttribute)?;
-    if let Attribute::RotateName(name) = &request.new_attribute {
-        if name.contains('@') {
-            return Err(KmsError::InvalidRequest(
-                "ModifyAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
-                    .to_owned(),
-            ));
-        }
-    }
+    check_rotate_name(&request.new_attribute, "ModifyAttribute")?;
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -157,11 +150,7 @@ pub(crate) async fn modify_attribute(
         custom {
             Attribute::AlwaysSensitive(_) | Attribute::State(_) => {
                 // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: this attribute is server-managed and cannot be modified by the user"
-                        .to_owned(),
-                ));
+                return Err(read_only_error(KmipOperation::ModifyAttribute));
             }
             Attribute::Sensitive(sensitive) => {
                 // Setting Sensitive also (re)computes the server-managed

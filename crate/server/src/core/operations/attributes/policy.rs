@@ -9,21 +9,38 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
-/// Rejects attributes the server manages for this operation.
-pub(crate) fn check_read_only(tag: Option<Tag>, operation: KmipOperation) -> KResult<()> {
-    if tag.map(|tag| tag.edit_policy(operation)) != Some(AttributeEditPolicy::ServerManaged) {
-        return Ok(());
-    }
+/// Error for an attribute the server manages for this operation.
+pub(crate) fn read_only_error(operation: KmipOperation) -> KmsError {
     let verb = match operation {
         KmipOperation::AddAttribute => "added",
         KmipOperation::SetAttribute => "set",
         KmipOperation::DeleteAttribute => "deleted",
         _ => "modified",
     };
-    Err(KmsError::Kmip21Error(
+    KmsError::Kmip21Error(
         ErrorReason::Attribute_Read_Only,
         format!("DENIED: this attribute is server-managed and cannot be {verb} by the user"),
-    ))
+    )
+}
+
+/// Rejects attributes the server manages for this operation.
+pub(crate) fn check_read_only(tag: Option<Tag>, operation: KmipOperation) -> KResult<()> {
+    if tag.map(|tag| tag.edit_policy(operation)) == Some(AttributeEditPolicy::ServerManaged) {
+        return Err(read_only_error(operation));
+    }
+    Ok(())
+}
+
+/// Rejects `rotate_name` values containing `@`, which is reserved for keyset versioning.
+pub(crate) fn check_rotate_name(attribute: &Attribute, operation: &str) -> KResult<()> {
+    match attribute {
+        Attribute::RotateName(name) if name.contains('@') => {
+            Err(KmsError::InvalidRequest(format!(
+                "{operation}: rotate_name must not contain '@' (reserved for keyset versioning)"
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Requires ownership or an explicit grant for attributes the policy marks `RequiresGrant`.

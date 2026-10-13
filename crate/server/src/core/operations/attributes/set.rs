@@ -1,13 +1,10 @@
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            KmipOperation,
-            kmip_attributes::Attribute,
-            kmip_objects::ObjectType,
-            kmip_operations::{SetAttribute, SetAttributeResponse},
-            kmip_types::UniqueIdentifier,
-        },
+    cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_objects::ObjectType,
+        kmip_operations::{SetAttribute, SetAttributeResponse},
+        kmip_types::UniqueIdentifier,
     },
     cosmian_kms_interfaces::{ObjectWithMetadata, SECS_PER_DAY},
 };
@@ -17,7 +14,7 @@ use time::OffsetDateTime;
 /// `SECS_PER_DAY - 1`, used for ceiling integer division of seconds into whole days.
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
-use super::policy::{check_grant, check_read_only};
+use super::policy::{check_grant, check_read_only, check_rotate_name, read_only_error};
 use crate::{
     core::{
         KMS,
@@ -64,14 +61,7 @@ pub(crate) async fn set_attribute(
 
     // Read-only guard — must be checked before the DB round-trip.
     check_read_only(request.new_attribute.tag(), KmipOperation::SetAttribute)?;
-    if let Attribute::RotateName(name) = &request.new_attribute {
-        if name.contains('@') {
-            return Err(KmsError::InvalidRequest(
-                "SetAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
-                    .to_owned(),
-            ));
-        }
-    }
+    check_rotate_name(&request.new_attribute, "SetAttribute")?;
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -220,11 +210,7 @@ pub(crate) async fn set_attribute(
         custom {
             Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
                 // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: this attribute is server-managed and cannot be set by the user"
-                        .to_owned(),
-                ));
+                return Err(read_only_error(KmipOperation::SetAttribute));
             }
             Attribute::Sensitive(sensitive) => {
                 // Setting Sensitive also (re)computes the server-managed

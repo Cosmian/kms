@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::trace;
 
-use super::policy::check_read_only;
+use super::policy::{check_read_only, read_only_error};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -115,12 +115,7 @@ pub(crate) async fn delete_attribute(
             custom {
                 Attribute::AlwaysSensitive(_) | Attribute::CryptographicLength(_) => {
                     // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Attribute_Read_Only,
-                        "DENIED: this attribute is server-managed and cannot be deleted by the \
-                         user"
-                            .to_owned(),
-                    ));
+                    return Err(read_only_error(KmipOperation::DeleteAttribute));
                 }
                 Attribute::Link(requested_link) => {
                     attributes.remove_link(requested_link.link_type);
