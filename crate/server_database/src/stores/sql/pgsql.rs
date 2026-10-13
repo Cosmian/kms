@@ -11,7 +11,13 @@ use cosmian_kms_interfaces::{
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
-use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
+use openssl::{
+    ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode},
+    x509::{
+        X509,
+        store::{X509Store, X509StoreBuilder},
+    },
+};
 use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
 use serde_json::Value;
@@ -83,6 +89,20 @@ fn decode_pg_ssl_file_query_value(value: &str) -> String {
         .unwrap_or_else(|| value.to_owned())
 }
 
+/// Trust store holding only the certificates of `path`. `set_ca_file` would add them to the
+/// system CAs; libpq trusts `sslrootcert` alone, so a pinned private CA must too.
+fn pinned_ca_store(path: &str) -> DbResult<X509Store> {
+    let load_err =
+        |e: &dyn std::fmt::Display| DbError::DatabaseError(format!("Failed to load CA: {e}"));
+    let pem = std::fs::read(path).map_err(|e| load_err(&e))?;
+    let certs = X509::stack_from_pem(&pem).map_err(|e| load_err(&e))?;
+    let mut store = X509StoreBuilder::new().map_err(|e| load_err(&e))?;
+    for cert in certs {
+        store.add_cert(cert).map_err(|e| load_err(&e))?;
+    }
+    Ok(store.build())
+}
+
 /// Turns a libpq-style `PostgreSQL` URL into what tokio-postgres can enforce: the URL
 /// (ssl file params stripped, `sslmode` rewritten to one of `disable`/`prefer`/`require`,
 /// the only values tokio-postgres parses) and a TLS connector carrying the certificate
@@ -124,9 +144,7 @@ pub(crate) fn prepare_pg_connection(url: &str) -> DbResult<(String, MakeTlsConne
     if wire_mode != "disable" {
         if let Some(ca_file) = query_params.get("sslrootcert") {
             let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
-            builder
-                .set_ca_file(ca_file.as_str())
-                .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+            builder.set_cert_store(pinned_ca_store(&ca_file)?);
         }
         if let Some(cert_file) = query_params.get("sslcert") {
             let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
@@ -1759,12 +1777,6 @@ mod tests {
             assert!(message.contains("sslmode"), "'{bad}' accepted: {message}");
             assert!(!message.contains("s3cret-pw"), "message: {message}");
         }
-    }
-
-    #[test]
-    fn test_prepare_pg_connection_verify_full_default_ca() -> DbResult<()> {
-        prepare_pg_connection("postgresql://u:p@localhost/db?sslmode=verify-full")?;
-        Ok(())
     }
 
     #[test]

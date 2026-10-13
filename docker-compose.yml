@@ -121,6 +121,13 @@ services:
           -c ssl_ca_file=/var/lib/postgresql/ca.crt \
           -c ssl_min_protocol_version=TLSv1.2 \
           -c listen_addresses='*'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -U kms -d kms
+      interval: 2s
+      timeout: 5s
+      retries: 30
   mysql-mtls:
     image: mysql:8.0
     ports:

@@ -158,11 +158,11 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | Internal code review |
 | References | [Branch changelog](https://github.com/Cosmian/kms/blob/develop/CHANGELOG/fix_pgsql_sslmode_enforcement.md) |
 
-**Summary:** The `PostgreSQL` object store removed `sslmode` from the connection URL and never passed it to the driver, which then used its default (`prefer`): TLS if the server offers it, plaintext otherwise. `sslmode=require`, `verify-ca` and `verify-full` therefore did not make TLS mandatory. In addition, `verify-ca` also checked the server hostname, and unknown `sslmode` values were accepted silently. The `PostgreSQL` audit backend, unreleased at the time, shared the same code and is fixed in the same change.
+**Summary:** The `PostgreSQL` object store removed `sslmode` from the connection URL and never passed it to the driver, which then used its default (`prefer`): TLS if the server offers it, plaintext otherwise. `sslmode=require`, `verify-ca` and `verify-full` therefore did not make TLS mandatory. In addition, `verify-ca` also checked the server hostname, `sslrootcert` added its CA to the system CA list instead of replacing it, and unknown `sslmode` values were accepted silently. The `PostgreSQL` audit backend, unreleased at the time, shared the same code and is fixed in the same change.
 
 **Impact:** An operator who configured `sslmode=require` or stricter could still have the KMS-to-database connection (object store traffic, credentials) established without TLS, for example when the server had TLS disabled or an on-path party stripped the TLS negotiation.
 
-**Mitigation:** Upgrade to the first release containing this fix. `sslmode` is now enforced: `require`, `verify-ca` and `verify-full` fail at startup when TLS is unavailable, `verify-ca` and `verify-full` verify the certificate chain, `verify-full` also checks the hostname, and unknown values are rejected. Until then, enforce TLS on the `PostgreSQL` server side (`hostssl` rules in `pg_hba.conf`) and restrict network access to the database.
+**Mitigation:** Upgrade to the first release containing this fix. `sslmode` is now enforced: `require`, `verify-ca` and `verify-full` fail at startup when TLS is unavailable, `verify-ca` and `verify-full` verify the certificate chain, `sslrootcert` pins the trusted CA, `verify-full` also checks the hostname, and unknown values are rejected. Until then, enforce TLS on the `PostgreSQL` server side (`hostssl` rules in `pg_hba.conf`) and restrict network access to the database.
 
 ---
 

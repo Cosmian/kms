@@ -347,7 +347,8 @@ PostgreSQL TLS is configured using the standard `libpq`-style query parameters i
     - `verify-full` – the server certificate is verified against the CA **and** the hostname must match.
       This is the recommended mode for production.
 
-    Any other `sslmode` value is rejected at startup. All certificates must be in **PEM** format.
+    Any other `sslmode` value is rejected at startup. When `sslrootcert` is set, only that CA is
+    trusted (the system CA store is not consulted). All certificates must be in **PEM** format.
 
 ### MySQL / MariaDB TLS / mTLS
 
