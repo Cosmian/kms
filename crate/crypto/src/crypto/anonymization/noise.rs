@@ -1,4 +1,8 @@
 use chrono::{DateTime, TimeZone};
+#[allow(
+    clippy::disallowed_types,
+    reason = "differential-privacy noise is not secret material or a key/nonce/token"
+)]
 use rand::{Rng, rngs::StdRng};
 use rand_distr::{
     Distribution, Normal, StandardNormal, StandardUniform, Uniform, num_traits::Float,
@@ -97,6 +101,10 @@ where
     rand_distr::StandardNormal: rand_distr::Distribution<F>,
 {
     method: NoiseMethod<F>,
+    #[allow(
+        clippy::disallowed_types,
+        reason = "differential-privacy noise is not secret material or a key/nonce/token"
+    )]
     rng: StdRng,
 }
 

@@ -5,22 +5,22 @@ use cosmian_kmip::{
     kmip_2_1::kmip_types::CryptographicAlgorithm,
 };
 use cosmian_logger::{info, trace};
-use openssl::{
-    rand::rand_bytes,
-    symm::{
-        Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
-        decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
-        encrypt_aead as openssl_encrypt_aead,
-    },
+use openssl::symm::{
+    Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
+    decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
+    encrypt_aead as openssl_encrypt_aead,
 };
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use super::aes_gcm_siv_not_openssl;
 use crate::{
-    crypto::symmetric::{
-        rfc3394::{rfc3394_unwrap, rfc3394_wrap},
-        rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+    crypto::{
+        KmsRng,
+        symmetric::{
+            rfc3394::{rfc3394_unwrap, rfc3394_wrap},
+            rfc5649::{rfc5649_unwrap, rfc5649_wrap},
+        },
     },
     crypto_bail,
     error::{CryptoError, result::CryptoResult},
@@ -432,16 +432,16 @@ impl SymCipher {
 }
 
 /// Generate a random nonce for the given symmetric cipher.
-pub fn random_nonce(sym_cipher: SymCipher) -> Result<Vec<u8>, CryptoError> {
+pub fn random_nonce(rng: &KmsRng, sym_cipher: SymCipher) -> Result<Vec<u8>, CryptoError> {
     let mut nonce = vec![0; sym_cipher.nonce_size()];
-    rand_bytes(&mut nonce)?;
+    rng.fill_bytes(&mut nonce)?;
     Ok(nonce)
 }
 
 /// Generate a random key for the given symmetric cipher.
-pub fn random_key(sym_cipher: SymCipher) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+pub fn random_key(rng: &KmsRng, sym_cipher: SymCipher) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
     let mut key = Zeroizing::from(vec![0; sym_cipher.key_size()]);
-    rand_bytes(&mut key)?;
+    rng.fill_bytes(&mut key)?;
     Ok(key)
 }
 

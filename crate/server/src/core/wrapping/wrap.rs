@@ -310,7 +310,12 @@ async fn wrap_using_kms(
         object.key_block()?.key_format_type
     );
     // wrap the object
-    wrap_object_with_key(object, &wrapping_key_object, key_wrapping_specification)?;
+    wrap_object_with_key(
+        object,
+        &wrapping_key_object,
+        key_wrapping_specification,
+        &kms.rng,
+    )?;
     Ok(())
 }
 

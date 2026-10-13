@@ -11,7 +11,7 @@
 
 | Question | Answer |
 |----------|--------|
-| Is there a single RNG abstraction in the server? | Partly: `KmsRng` (one shared instance) is used for keys, seeds, serials, split keys and `RNGRetrieve`. Some call sites (symmetric nonces/keys in `symmetric_ciphers.rs`, JOSE, OpenPGP, AWS XKS, `ui_auth`) call OpenSSL `rand_bytes` directly: same OpenSSL DRBG hierarchy, but not through `KmsRng`. A few non-OpenSSL generators remain (see [Random generators outside OpenSSL](#random-generators-outside-openssl)) |
+| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (non-secret anonymization values, OpenSSL-internal keygen, Covercrypt, HSM-session nonces) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans the other generators |
 | What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (keys, seeds) and `RAND_bytes_ex` (`RNGRetrieve` output), each requesting 256-bit security strength; no lock, no state of its own |
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
@@ -95,16 +95,29 @@ validated module's. `crate/crypto/build.rs` no longer activates it, and the inte
 `fips` with strength ≥ 256. The Nix build's `openssl.cnf` (`nix/openssl.nix`) configures only `fips` and `base`; this
 was not re-verified at run time here.
 
-### Random generators outside OpenSSL
+### Random generators outside `KmsRng`
 
-Not everything goes through OpenSSL's DRBG. As found by code search:
+`KmsRng` is the sole production path for key material, nonces/IVs and secret tokens. Third-party APIs that
+demand an infallible `rand_core` generator (OpenPGP through the `pgp` crate, ECIES `SalsaSealBox` through
+`cosmian_crypto_core`) are fed by a ChaCha12 stream **seeded with 256 bits drawn from `KmsRng`**; the
+workspace `clippy.toml` bans `openssl::rand::rand_bytes`, `cosmian_crypto_core::CsRng` and `rand` `StdRng` /
+`ThreadRng`, with explicit inline exceptions for those seed-stretching uses and for test fixtures.
 
-- `create_split_key.rs` seeds a `ChaCha20Rng` with 32 bytes from `KmsRng` and uses it to produce the XOR
-  shares: ChaCha20 is not an SP 800-90A DRBG, so the shares are not "output of an approved RBG" in the sense
-  of SP 800-133r2 §4.
-- `cosmian_crypto_core::CsRng` (ChaCha12) is used by `ceremony_keys.rs` (unconditionally compiled, AES-GCM
-  nonces), the Redis store, the `ecies` module and `kms_object.rs` (PKCS#11 provider key bytes).
-- `rand::rng()` (ChaCha12) generates `C_GenerateRandom` output in the PKCS#11 module.
+Documented exceptions where no `KmsRng` injection point exists:
+
+- **Non-secret values**: anonymization noise (`NoiseGenerator`, differential-privacy noise) and word-token
+  labels (`anonymization/word.rs`), and the label of the unused `random_label` helper of the PKCS#11 module.
+- **RSA / EC / EdDSA key generation, SLH-DSA and hybrid KEM composite keygen**: OpenSSL generates these
+  atomically from its own default DRBG (the same hierarchy `KmsRng` calls into, served by the FIPS provider
+  in FIPS builds; asserted by `crate/crypto/tests/fips_rng_provider.rs`).
+- **Covercrypt**: `Covercrypt::setup()` in `cosmian_cover_crypt` 16.0.0 locks an internal `rng` field and has no
+  constructor parameter or setter that accepts an external RNG (verified in the vendored source,
+  `src/abe/api.rs`). It is the same category as hybrid-KEM composite keygen.
+- **Hardware security modules**: the nonces/IVs for AES-GCM/AES-CBC encryption performed through the PKCS#11
+  HSM session (`crate/hsm/base_hsm`) come from the operating system RNG (`rand::rngs::SysRng`), not `KmsRng`;
+  that crate deliberately does not depend on OpenSSL in production code.
+- **PKCS#11 `C_GenerateRandom` on the server** (KMIP `PKCS11` operation passthrough) is not implemented and
+  returns `CKR_FUNCTION_NOT_SUPPORTED`: it fails closed.
 
 ## What uses `KmsRng`
 
@@ -112,8 +125,15 @@ Not everything goes through OpenSSL's DRBG. As found by code search:
 |----------|----------|
 | Symmetric key generation | `core/kms/other_kms_methods.rs` |
 | `SecretData` seed generation | `core/kms/other_kms_methods.rs` |
+| Symmetric nonces/IVs and keys (`random_nonce`, `random_key`) | `crypto/symmetric/symmetric_ciphers.rs`; `core/operations/encrypt.rs`; CLI `actions/symmetric/` |
+| Key wrapping (AES-GCM nonce, `CKM_RSA_AES_KEY_WRAP` KEK, ECIES) | `crypto/wrap/wrap_key.rs`, `crypto/rsa/ckm_rsa_aes_key_wrap.rs`, `crypto/elliptic_curves/ecies/` |
 | Certificate serial numbers | `core/operations/certify/build_certificate.rs` |
-| Split key seeding | `core/operations/create_split_key.rs` |
+| Split keys | `core/operations/create_split_key.rs`, `crypto/split_key/mod.rs` |
+| OpenPGP key generation, encryption, signing (seed of the `pgp` PRG) | `crypto/openpgp/mod.rs` |
+| JOSE CEK/IV; AWS XKS IV | `routes/jose/`, `routes/aws_xks/encrypt_decrypt/encrypt_.rs` |
+| UI login PKCE verifier, CSRF token, nonce; ephemeral session cookie key | `routes/ui_auth.rs`, `start_kms_server.rs` |
+| Redis object nonces; ceremony-record nonces | `server_database/src/stores/redis/objects_db.rs`, `server_database/src/ceremony_keys.rs` |
+| PKCS#11 `C_GenerateRandom`, provider-generated symmetric key bytes | `clients/pkcs11/module` (`Backend::generate_random`), `clients/pkcs11/provider` |
 | KMIP `RNGRetrieve` | `core/operations/rng_retrieve.rs` |
 | KMIP `RNGSeed` | `core/operations/rng_seed.rs` (calls `reseed`) |
 

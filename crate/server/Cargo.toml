@@ -100,7 +100,6 @@ fs4 = "0.13"
 futures = { workspace = true }
 governor = { version = "0.10", features = ["std"] }
 rand = { workspace = true }
-rand_chacha = "0.10"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 ipnet = { version = "2", features = ["serde"] }

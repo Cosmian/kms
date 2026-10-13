@@ -1236,7 +1236,11 @@ pub async fn prepare_kms_server(
              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
              random secret value."
         );
-        Key::generate()
+        let random_key_bytes = kms_server
+            .rng
+            .random_vec(64)
+            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
+        Key::from(random_key_bytes.as_slice())
     };
 
     // Clone kms_server for HttpServer closure

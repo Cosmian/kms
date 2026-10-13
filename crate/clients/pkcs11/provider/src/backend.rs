@@ -28,8 +28,9 @@ use crate::{
     kms_object::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_import_object,
-        kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
+        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_generate_random,
+        kms_import_object, kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify,
+        locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -622,6 +623,10 @@ impl Backend for CliBackend {
         Ok(Arc::new(Pkcs11SymmetricKey::try_from_kms_object(
             kms_object,
         )?))
+    }
+
+    fn generate_random(&self, buf: &mut [u8]) -> ModuleResult<()> {
+        Ok(kms_generate_random(&self.kms_rest_client, buf)?)
     }
 
     fn create_object(&self, label: &str, data: &[u8]) -> ModuleResult<Arc<dyn DataObject>> {

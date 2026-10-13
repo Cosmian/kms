@@ -18,7 +18,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_IV_LENGTH,
 };
-use openssl::{rand::rand_bytes, sha::Sha256};
+use openssl::sha::Sha256;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 use zeroize::Zeroizing;
@@ -280,7 +280,7 @@ pub(crate) async fn encrypt_inner(
     // Supplied Nonce or new one.
     let nonce: [u8; AES_256_GCM_IV_LENGTH] = {
         let mut iv = [0; AES_256_GCM_IV_LENGTH];
-        rand_bytes(&mut iv)?;
+        kms.rng.fill_bytes(&mut iv)?;
         iv
     };
     let aead = match request.additionalAuthenticatedData {

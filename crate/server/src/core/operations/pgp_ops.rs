@@ -20,10 +20,13 @@ mod imp {
                 },
             },
         },
-        cosmian_kms_crypto::crypto::openpgp::{
-            PgpKeyProfile, generate_openpgp_secret_key, openpgp_decrypt, openpgp_encrypt,
-            openpgp_key_metadata, openpgp_normalize, openpgp_public_from_secret,
-            openpgp_sign_detached, openpgp_verify_detached,
+        cosmian_kms_crypto::crypto::{
+            KmsRng,
+            openpgp::{
+                PgpKeyProfile, generate_openpgp_secret_key, openpgp_decrypt, openpgp_encrypt,
+                openpgp_key_metadata, openpgp_normalize, openpgp_public_from_secret,
+                openpgp_sign_detached, openpgp_verify_detached,
+            },
         },
         cosmian_kms_interfaces::ObjectWithMetadata,
     };
@@ -34,6 +37,7 @@ mod imp {
     pub(crate) fn create_pgp_key_and_tags(
         vendor_id: &str,
         request: &Create,
+        rng: &KmsRng,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         let profile = match request.attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::RSA) => {
@@ -77,7 +81,7 @@ mod imp {
             format!("Cosmian KMS <{uid}@kms.cosmian.com>")
         };
 
-        let armored_secret = generate_openpgp_secret_key(profile, &user_id)
+        let armored_secret = generate_openpgp_secret_key(rng, profile, &user_id)
             .map_err(|e| KmsError::Default(e.to_string()))?;
 
         let (alg, len, version) =
@@ -253,6 +257,7 @@ mod imp {
     pub(crate) fn pgp_encrypt(
         owm: &ObjectWithMetadata,
         request: &Encrypt,
+        rng: &KmsRng,
     ) -> KResult<EncryptResponse> {
         let data = request.data.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
@@ -268,7 +273,7 @@ mod imp {
         };
 
         let ciphertext =
-            openpgp_encrypt(bytes, data).map_err(|e| KmsError::Default(e.to_string()))?;
+            openpgp_encrypt(rng, bytes, data).map_err(|e| KmsError::Default(e.to_string()))?;
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -312,7 +317,11 @@ mod imp {
         })
     }
 
-    pub(crate) fn pgp_sign(owm: &ObjectWithMetadata, request: &Sign) -> KResult<SignResponse> {
+    pub(crate) fn pgp_sign(
+        owm: &ObjectWithMetadata,
+        request: &Sign,
+        rng: &KmsRng,
+    ) -> KResult<SignResponse> {
         let key_block = owm.object().key_block()?;
         if key_block.key_format_type != KeyFormatType::OpenPgpSecretKey {
             return Err(KmsError::NotSupported(
@@ -344,8 +353,8 @@ mod imp {
             kms_bail!("Sign: invalid key material structure");
         };
 
-        let sig =
-            openpgp_sign_detached(bytes, data).map_err(|e| KmsError::Default(e.to_string()))?;
+        let sig = openpgp_sign_detached(rng, bytes, data)
+            .map_err(|e| KmsError::Default(e.to_string()))?;
 
         Ok(SignResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -420,6 +429,7 @@ mod imp {
             },
             kmip_types::KeyFormatType,
         },
+        cosmian_kms_crypto::crypto::KmsRng,
         cosmian_kms_interfaces::ObjectWithMetadata,
     };
 
@@ -428,6 +438,7 @@ mod imp {
     pub(crate) fn create_pgp_key_and_tags(
         _vendor_id: &str,
         _request: &Create,
+        _rng: &KmsRng,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         Err(KmsError::NotSupported(
             "OpenPGP (PGP Key) support requires a non-FIPS build".to_owned(),
@@ -455,6 +466,7 @@ mod imp {
     pub(crate) fn pgp_encrypt(
         _owm: &ObjectWithMetadata,
         _request: &Encrypt,
+        _rng: &KmsRng,
     ) -> KResult<EncryptResponse> {
         Err(KmsError::NotSupported(
             "OpenPGP (PGP Key) support requires a non-FIPS build".to_owned(),
@@ -470,7 +482,11 @@ mod imp {
         ))
     }
 
-    pub(crate) fn pgp_sign(_owm: &ObjectWithMetadata, _request: &Sign) -> KResult<SignResponse> {
+    pub(crate) fn pgp_sign(
+        _owm: &ObjectWithMetadata,
+        _request: &Sign,
+        _rng: &KmsRng,
+    ) -> KResult<SignResponse> {
         Err(KmsError::NotSupported(
             "OpenPGP (PGP Key) support requires a non-FIPS build".to_owned(),
         ))

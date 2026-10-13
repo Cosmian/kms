@@ -62,14 +62,14 @@ impl CryptoOpSpec for SignOp {
     }
 
     async fn execute_local(
-        _kms: &KMS,
+        kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
         _user: &UserId,
     ) -> KResult<Self::Response> {
         match owm.object() {
             Object::PrivateKey { .. } => sign_with_private_key(request, owm),
-            Object::PGPKey { .. } => pgp_ops::pgp_sign(owm, request),
+            Object::PGPKey { .. } => pgp_ops::pgp_sign(owm, request, &kms.rng),
             other => Err(KmsError::NotSupported(format!(
                 "signing with keys of type: {} is not supported",
                 other.object_type()

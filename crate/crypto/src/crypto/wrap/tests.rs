@@ -1,3 +1,7 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures: key material under test is generated locally"
+)]
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
 #[cfg(feature = "non-fips")]
@@ -28,7 +32,10 @@ use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 #[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use crate::{
-    crypto::wrap::{unwrap_key_block, wrap_object_with_key},
+    crypto::{
+        KmsRng,
+        wrap::{unwrap_key_block, wrap_object_with_key},
+    },
     crypto_bail,
     error::{CryptoError, result::CryptoResult},
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
@@ -144,6 +151,7 @@ fn wrap_test(
                 encoding_option: None,
                 ..Default::default()
             },
+            &KmsRng::new(),
         )?;
         assert_ne!(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
@@ -175,6 +183,7 @@ fn wrap_test(
                 encoding_option: Some(EncodingOption::TTLVEncoding),
                 ..Default::default()
             },
+            &KmsRng::new(),
         )?;
         assert_ne!(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
@@ -236,6 +245,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
         &mut data_encryption_key,
         &key_encryption_key,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -286,6 +296,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         &mut data_encryption_key,
         wrap_key_pair.public_key(),
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -350,6 +361,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
         &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -397,6 +409,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
         &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -444,6 +457,7 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
         &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
