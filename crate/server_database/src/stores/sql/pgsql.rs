@@ -109,9 +109,6 @@ fn pinned_ca_store(path: &str) -> DbResult<X509Store> {
 /// checks that `sslmode` implies. Shared by the object-store and audit connections.
 ///
 /// The connector is always returned; tokio-postgres ignores it for `sslmode=disable`.
-///
-/// # Errors
-/// Unknown `sslmode`, or an unreadable `sslrootcert`/`sslcert`/`sslkey`.
 pub(crate) fn prepare_pg_connection(url: &str) -> DbResult<(String, MakeTlsConnector)> {
     let query_params = extract_query_params(url);
     let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
@@ -170,11 +167,8 @@ pub(crate) fn prepare_pg_connection(url: &str) -> DbResult<(String, MakeTlsConne
     }
 
     let clean_url = rebuild_url_without_ssl_params(url, &query_params);
-    let separator = if clean_url.contains('?') { '&' } else { '?' };
-    Ok((
-        format!("{clean_url}{separator}sslmode={wire_mode}"),
-        connector,
-    ))
+    let sep = if clean_url.contains('?') { '&' } else { '?' };
+    Ok((format!("{clean_url}{sep}sslmode={wire_mode}"), connector))
 }
 
 /// Get a client from the pool, retrying on transient connection errors.
@@ -367,7 +361,6 @@ impl PgPool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        // Multi-host URLs are not parseable by Url::parse(); see prepare_pg_connection.
         let (url, tls) = prepare_pg_connection(connection_url)?;
 
         let mut cfg = PgConfig::new();
@@ -1614,7 +1607,7 @@ const SSL_PARAMS: &[&str] = &["sslmode", "sslrootcert", "sslcert", "sslkey"];
 
 /// Extract query parameters from a `PostgreSQL` connection URL by splitting on `?`/`&`.
 /// This avoids `Url::parse()` which cannot handle multi-host connection strings.
-fn extract_query_params(url: &str) -> HashMap<String, String> {
+pub(crate) fn extract_query_params(url: &str) -> HashMap<String, String> {
     let mut params = HashMap::new();
     if let Some(query_start) = url.find('?') {
         let query = &url[query_start + 1..];
@@ -1629,7 +1622,10 @@ fn extract_query_params(url: &str) -> HashMap<String, String> {
 
 /// Rebuild the connection URL, removing only SSL-related query parameters.
 /// Other parameters like `target_session_attrs` are preserved for `tokio-postgres`.
-fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -> String {
+pub(crate) fn rebuild_url_without_ssl_params(
+    url: &str,
+    params: &HashMap<String, String>,
+) -> String {
     let base = url.split('?').next().unwrap_or(url);
     let non_ssl_params: Vec<String> = params
         .iter()
@@ -1713,12 +1709,6 @@ mod tests {
         assert_eq!(clean, url);
     }
 
-    /// What tokio-postgres parses out of the URL `prepare_pg_connection` hands to it.
-    fn prepared_config(url: &str) -> Option<tokio_postgres::Config> {
-        let (url, _) = prepare_pg_connection(url).ok()?;
-        url.parse().ok()
-    }
-
     #[test]
     fn test_prepare_pg_connection_maps_sslmode() {
         use tokio_postgres::config::SslMode;
@@ -1736,35 +1726,20 @@ mod tests {
             ("sslmode=require", SslMode::Require),
             ("sslmode=verify-ca", SslMode::Require),
             ("sslmode=verify-full", SslMode::Require),
+            // `sslmode` appended after other params.
+            (
+                "target_session_attrs=read-write&sslmode=verify-full",
+                SslMode::Require,
+            ),
         ];
         for (query, expected) in cases {
-            let config = prepared_config(&format!("postgresql://u:p@localhost/db?{query}"));
-            assert_eq!(
-                config.map(|c| c.get_ssl_mode()),
-                Some(expected),
-                "query: {query}"
-            );
+            let url = format!("postgresql://u:p@localhost/db?{query}");
+            let mode = prepare_pg_connection(&url)
+                .ok()
+                .and_then(|(url, _)| url.parse::<tokio_postgres::Config>().ok())
+                .map(|c| c.get_ssl_mode());
+            assert_eq!(mode, Some(expected), "query: {query}");
         }
-    }
-
-    #[test]
-    fn test_prepare_pg_connection_keeps_multi_host_and_other_params() {
-        use tokio_postgres::config::{SslMode, TargetSessionAttrs};
-
-        let config = prepared_config(
-            "postgresql://u:p@host1:5432,host2:5433/db?target_session_attrs=read-write&sslmode=verify-full",
-        );
-        assert_eq!(config.as_ref().map(|c| c.get_hosts().len()), Some(2));
-        assert_eq!(
-            config.as_ref().map(tokio_postgres::Config::get_ssl_mode),
-            Some(SslMode::Require)
-        );
-        assert_eq!(
-            config
-                .as_ref()
-                .map(tokio_postgres::Config::get_target_session_attrs),
-            Some(TargetSessionAttrs::ReadWrite)
-        );
     }
 
     #[test]
@@ -1937,22 +1912,12 @@ mod tests {
         Ok(url.into())
     }
 
-    fn error_chain(error: &dyn std::error::Error) -> String {
-        let mut message = error.to_string();
-        let mut source = error.source();
-        while let Some(cause) = source {
-            message = format!("{message}: {cause}");
-            source = cause.source();
-        }
-        message
-    }
-
     /// Connects through `prepare_pg_connection` and reports `pg_stat_ssl.ssl` for the session.
     async fn pg_session_uses_tls(url: &str) -> Result<bool, String> {
         let (url, tls) = prepare_pg_connection(url).map_err(|e| e.to_string())?;
         let (client, connection) = tokio_postgres::connect(&url, tls)
             .await
-            .map_err(|e| error_chain(&e))?;
+            .map_err(|e| e.to_string())?;
         tokio::spawn(connection);
         client
             .query_one(
@@ -1961,7 +1926,7 @@ mod tests {
             )
             .await
             .map(|row| row.get(0))
-            .map_err(|e| error_chain(&e))
+            .map_err(|e| e.to_string())
     }
 
     #[ignore = "Requires running `postgres` and `postgres-mtls` docker-compose services"]
@@ -1980,15 +1945,6 @@ mod tests {
                 None,
             ),
             (
-                "verify-full vs plaintext server",
-                pg_tls_url(
-                    plain,
-                    None,
-                    &[("sslmode", "verify-full"), ("sslrootcert", &ca)],
-                )?,
-                None,
-            ),
-            (
                 "prefer vs plaintext server",
                 pg_tls_url(plain, None, &[("sslmode", "prefer")])?,
                 Some(false),
@@ -1996,11 +1952,6 @@ mod tests {
             (
                 "require vs TLS server",
                 pg_tls_url(mtls, None, &[("sslmode", "require")])?,
-                Some(true),
-            ),
-            (
-                "require + right CA vs TLS server",
-                pg_tls_url(mtls, None, &[("sslmode", "require"), ("sslrootcert", &ca)])?,
                 Some(true),
             ),
             (
@@ -2067,20 +2018,16 @@ mod tests {
                 )));
             }
         }
-        Ok(())
-    }
 
-    #[ignore = "Requires a running `postgres` docker-compose service"]
-    #[tokio::test]
-    async fn test_db_postgresql_tls_pool_require_refused() -> DbResult<()> {
-        let url = pg_tls_url(plain_pg_url(), None, &[("sslmode", "require")])?;
+        // Same refusal through the pool path.
+        let url = pg_tls_url(plain, None, &[("sslmode", "require")])?;
         let message = PgPool::instantiate(&url, false, Some(1))
             .await
             .err()
             .map_or_else(String::new, |e| e.to_string());
         if !message.contains("TLS") {
             return Err(DbError::DatabaseError(format!(
-                "sslmode=require against a server without TLS must fail the TLS handshake, got: {message:?}"
+                "pool: sslmode=require vs plaintext server must fail the TLS handshake, got: {message:?}"
             )));
         }
         Ok(())

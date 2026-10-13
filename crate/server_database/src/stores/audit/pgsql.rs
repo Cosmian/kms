@@ -1693,27 +1693,18 @@ mod live_tests {
 
     #[tokio::test]
     #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_audit_tls_require_refused_by_pool() {
-        let pool = build_pool(&require_tls_audit_url(), 1, RecyclingMethod::Verified).unwrap();
-        let message = pool
-            .get()
+    async fn pg_audit_tls_require_refused() {
+        let url = require_tls_audit_url();
+        let pool = build_pool(&url, 1, RecyclingMethod::Verified).unwrap();
+        let pool_err = pool.get().await.err().map(|e| e.to_string());
+        let session_err = connect_dedicated_session(&url)
             .await
             .err()
-            .map_or_else(String::new, |e| e.to_string());
-        assert!(message.contains("TLS"), "pool connect error: {message:?}");
-    }
-
-    #[tokio::test]
-    #[ignore = "Requires a running PostgreSQL instance (KMS_AUDIT_POSTGRES_URL)"]
-    async fn pg_audit_tls_require_refused_by_dedicated_session() {
-        let message = connect_dedicated_session(&require_tls_audit_url())
-            .await
-            .err()
-            .map_or_else(String::new, |e| e.to_string());
-        assert!(
-            message.contains("TLS"),
-            "session connect error: {message:?}"
-        );
+            .map(|e| e.to_string());
+        for (what, message) in [("pool", pool_err), ("session", session_err)] {
+            let message = message.unwrap_or_default();
+            assert!(message.contains("TLS"), "{what} connect error: {message:?}");
+        }
     }
 
     /// A rolling update where the incoming instance starts before the outgoing one's
