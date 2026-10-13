@@ -206,8 +206,8 @@ pub fn rekey_edit_action_from_attributes(
 #[cfg(test)]
 mod tests {
     use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
-    use cosmian_kms_client_utils::cover_crypt_utils::{
-        CoverCryptEncryptionHint, CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
+    use cosmian_kms_client_utils::cover_crypt_rekey_utils::{
+        CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
     };
 
     use super::{RekeyEditAction, rekey_edit_action_from_attributes};
@@ -217,19 +217,10 @@ mod tests {
 
     const VENDOR: &str = "cosmian";
 
-    fn hint(hint: EncryptionHint) -> CoverCryptEncryptionHint {
-        match hint {
-            EncryptionHint::Classic => CoverCryptEncryptionHint::Classic,
-            EncryptionHint::PostQuantum => CoverCryptEncryptionHint::PostQuantum,
-            EncryptionHint::Hybridized => CoverCryptEncryptionHint::Hybridized,
-        }
-    }
-
     /// The client-side mirror (`cosmian_kms_client_utils`, usable from WASM) of each
     /// server-side action. Exhaustive on purpose: a new `RekeyEditAction` variant doesn't
     /// compile until the mirror gets it too.
     fn mirror(action: &RekeyEditAction) -> CoverCryptRekeyAction {
-        let attr = |a: &QualifiedAttribute| a.to_string();
         match action {
             RekeyEditAction::RekeyAccessPolicy(ap) => {
                 CoverCryptRekeyAction::RekeyAccessPolicy(ap.clone())
@@ -238,31 +229,23 @@ mod tests {
                 CoverCryptRekeyAction::PruneAccessPolicy(ap.clone())
             }
             RekeyEditAction::DeleteAttribute(attrs) => {
-                CoverCryptRekeyAction::DeleteAttribute(attrs.iter().map(attr).collect())
+                CoverCryptRekeyAction::DeleteAttribute(attrs.clone())
             }
             RekeyEditAction::DisableAttribute(attrs) => {
-                CoverCryptRekeyAction::DisableAttribute(attrs.iter().map(attr).collect())
+                CoverCryptRekeyAction::DisableAttribute(attrs.clone())
             }
-            RekeyEditAction::AddAttribute(attrs) => CoverCryptRekeyAction::AddAttribute(
-                attrs
-                    .iter()
-                    .map(|(a, h, after)| (attr(a), hint(*h), after.clone()))
-                    .collect(),
-            ),
-            RekeyEditAction::RenameAttribute(attrs) => CoverCryptRekeyAction::RenameAttribute(
-                attrs
-                    .iter()
-                    .map(|(a, name)| (attr(a), name.clone()))
-                    .collect(),
-            ),
-            RekeyEditAction::AddAnarchy(dim, attrs) => CoverCryptRekeyAction::AddAnarchy(
-                dim.clone(),
-                attrs.iter().map(|(a, h)| (attr(a), hint(*h))).collect(),
-            ),
-            RekeyEditAction::AddHierarchy(dim, attrs) => CoverCryptRekeyAction::AddHierarchy(
-                dim.clone(),
-                attrs.iter().map(|(a, h)| (attr(a), hint(*h))).collect(),
-            ),
+            RekeyEditAction::AddAttribute(attrs) => {
+                CoverCryptRekeyAction::AddAttribute(attrs.clone())
+            }
+            RekeyEditAction::RenameAttribute(attrs) => {
+                CoverCryptRekeyAction::RenameAttribute(attrs.clone())
+            }
+            RekeyEditAction::AddAnarchy(dim, attrs) => {
+                CoverCryptRekeyAction::AddAnarchy(dim.clone(), attrs.clone())
+            }
+            RekeyEditAction::AddHierarchy(dim, attrs) => {
+                CoverCryptRekeyAction::AddHierarchy(dim.clone(), attrs.clone())
+            }
         }
     }
 

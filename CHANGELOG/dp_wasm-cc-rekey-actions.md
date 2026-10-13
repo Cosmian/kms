@@ -6,17 +6,26 @@
   request, for the Web UI and other WASM consumers: `rekey_cc_access_policy_ttlv_request`,
   `prune_cc_access_policy_ttlv_request`, `add_cc_attribute_ttlv_request`, `rename_cc_attribute_ttlv_request`,
   `disable_cc_attribute_ttlv_request`, `remove_cc_attribute_ttlv_request` and `add_cc_dimension_ttlv_request`
-  (anarchic or hierarchical dimension, one encryption hint per attribute). Encryption hints are given as
-  `Classic`, `PostQuantum` or `Hybridized`.
-- Add `CoverCryptRekeyAction`, `CoverCryptEncryptionHint` and `build_covercrypt_rekey_keypair_request` to
-  `cosmian_kms_client_utils`: a copy of the server-side `RekeyEditAction` that does not depend on
-  `cosmian_cover_crypt`, so it can be used from WASM, and that serializes to the same vendor attribute.
+  (anarchic or hierarchical dimension, one encryption hint per attribute). Qualified attributes are written
+  `Dimension::name` and rejected client-side when malformed; encryption hints are given as `Classic`,
+  `PostQuantum` or `Hybridized`. Like Covercrypt itself, these exports are only built with `non-fips`.
+- Add a `non-fips` `cover_crypt_rekey_utils` module to `cosmian_kms_client_utils` (`CoverCryptRekeyAction`,
+  `build_covercrypt_rekey_keypair_request`, hint and qualified-attribute parsers): a copy of the server-side
+  `RekeyEditAction` built on `cosmian_cover_crypt`'s own `EncryptionHint` and `QualifiedAttribute`, so it
+  serializes to the same vendor attribute. `cosmian_cover_crypt` is used with its default features, which no
+  longer pull OpenSSL, so it builds for WASM.
+
+## Build
+
+- Pin `cosmian_cover_crypt` as a workspace dependency on a `develop` revision of `cover_crypt` (16.0.1, optional
+  OpenSSL dependency), until a release ships it.
 
 ## Testing
 
 ### Client / WASM
 
-- Add one `wasm_bindings` test per new Covercrypt re-key export, including a dimension with mixed encryption hints.
+- Add one `wasm_bindings` test per new Covercrypt re-key export, including a dimension with mixed encryption hints
+  and a malformed qualified attribute.
 - Add tests in `cosmian_kms_crypto` checking, for every `RekeyEditAction` variant, that the client-side request is
   identical to the server-side one and is read back as the same action. The conversion is an exhaustive `match`,
   so a new variant will not compile until the copy is updated.

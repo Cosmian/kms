@@ -252,6 +252,7 @@ fn test_cc_requests() {
 
 /// The Covercrypt action a `ReKeyKeyPair` request carries — its `cover_crypt_rekey_action`
 /// vendor attribute, decoded from hex.
+#[cfg(feature = "non-fips")]
 fn cc_rekey_action(request: &JsValue) -> String {
     fn find(node: &serde_json::Value, found_name: &mut bool) -> Option<String> {
         match node {
@@ -282,6 +283,7 @@ fn cc_rekey_action(request: &JsValue) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen_test]
 fn test_cc_rekey_requests() {
     let action = |r: Result<JsValue, JsValue>| cc_rekey_action(&r.unwrap());
@@ -302,7 +304,7 @@ fn test_cc_rekey_requests() {
     assert_eq!(
         action(w::add_cc_attribute_ttlv_request(
             "msk",
-            "D::b".to_owned(),
+            "D::b",
             "Classic",
             Some("a".to_owned())
         )),
@@ -312,7 +314,7 @@ fn test_cc_rekey_requests() {
     assert_eq!(
         action(w::add_cc_attribute_ttlv_request(
             "msk",
-            "D::b".to_owned(),
+            "D::b",
             "post-quantum",
             Some(String::new())
         )),
@@ -321,23 +323,17 @@ fn test_cc_rekey_requests() {
     assert_eq!(
         action(w::rename_cc_attribute_ttlv_request(
             "msk",
-            "D::a".to_owned(),
+            "D::a",
             "z".to_owned()
         )),
         r#"{"RenameAttribute":[["D::a","z"]]}"#
     );
     assert_eq!(
-        action(w::disable_cc_attribute_ttlv_request(
-            "msk",
-            "D::a".to_owned()
-        )),
+        action(w::disable_cc_attribute_ttlv_request("msk", "D::a")),
         r#"{"DisableAttribute":["D::a"]}"#
     );
     assert_eq!(
-        action(w::remove_cc_attribute_ttlv_request(
-            "msk",
-            "D::a".to_owned()
-        )),
+        action(w::remove_cc_attribute_ttlv_request("msk", "D::a")),
         r#"{"DeleteAttribute":["D::a"]}"#
     );
     assert_eq!(
@@ -370,7 +366,8 @@ fn test_cc_rekey_requests() {
         )
         .is_err()
     );
-    assert!(w::add_cc_attribute_ttlv_request("msk", "D::b".to_owned(), "quantum", None).is_err());
+    assert!(w::add_cc_attribute_ttlv_request("msk", "D::b", "quantum", None).is_err());
+    assert!(w::disable_cc_attribute_ttlv_request("msk", "no-dimension").is_err());
 }
 
 #[wasm_bindgen_test]
