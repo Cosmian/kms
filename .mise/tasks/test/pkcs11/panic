@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#MISE description="Check that the shipped-profile PKCS#11 library contains an internal panic (child-process host)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--lib <path>" help="Prebuilt libcosmian_pkcs11 to test (e.g. the Nix output) instead of building one"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/pkcs11_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+ensure_nix_shell
+
+require_cmd cargo "Cargo is required to build and test the PKCS#11 library."
+
+if [ -n "${usage_lib:-}" ]; then
+  [ -f "${usage_lib}" ] || print_error "PKCS#11 library not found: ${usage_lib}"
+  # cargo test runs from the package directory, so the path must be absolute.
+  COSMIAN_PKCS11_LIB="$(cd "$(dirname "${usage_lib}")" && pwd)/$(basename "${usage_lib}")"
+else
+  print_header "Building the shipped-profile PKCS#11 library (${VARIANT_NAME})"
+  cargo build -p cosmian_pkcs11 --profile pkcs11-provider ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  COSMIAN_PKCS11_LIB="$(get_cosmian_pkcs11_lib "" pkcs11-provider)"
+fi
+export COSMIAN_PKCS11_LIB
+print_status "Library under test: ${COSMIAN_PKCS11_LIB}"
+
+print_header "Running the real-library panic containment test"
+cargo test -p ckms --lib ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} test_pkcs11_real_library -- --nocapture
+
+print_success "PKCS#11 library contains internal panics"

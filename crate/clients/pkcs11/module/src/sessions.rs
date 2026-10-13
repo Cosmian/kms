@@ -1025,11 +1025,12 @@ fn ignore_sessions() -> bool {
         == "true"
 }
 
-#[expect(clippy::expect_used)]
-pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
+pub(crate) fn create(flags: CK_FLAGS) -> ModuleResult<CK_SESSION_HANDLE> {
     if ignore_sessions() {
         {
-            let mut session_map = SESSIONS.write().expect("failed locking the sessions map");
+            let mut session_map = SESSIONS
+                .write()
+                .context("failed locking the sessions map")?;
             if session_map.is_empty() {
                 session_map.insert(
                     0,
@@ -1040,12 +1041,12 @@ pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
                 );
             }
         }
-        0
+        Ok(0)
     } else {
         let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
         SESSIONS
             .write()
-            .expect("failed locking the sessions map")
+            .context("failed locking the sessions map")?
             .insert(
                 handle,
                 Arc::new(sync::Mutex::new(Session {
@@ -1053,8 +1054,23 @@ pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
                     ..Default::default()
                 })),
             );
-        handle
+        Ok(handle)
     }
+}
+
+#[cfg(test)]
+/// Exercises either creation path with a poisoned map in an isolated child.
+pub(crate) fn assert_create_after_poison() {
+    let panic = std::panic::catch_unwind(|| {
+        if let Ok(_guard) = SESSIONS.write() {
+            std::panic::resume_unwind(Box::new("session map fault"));
+        }
+    });
+    assert!(panic.is_err());
+    assert!(matches!(
+        create(pkcs11_sys::CKF_SERIAL_SESSION),
+        Err(ModuleError::Context { .. })
+    ));
 }
 
 pub(crate) fn exists(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {

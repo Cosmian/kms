@@ -302,12 +302,11 @@ build_or_reuse_cli() {
   }
 
   CLI_PKCS11_SO_OUT="$REAL_CLI/lib/libcosmian_pkcs11.so"
-  if [ -f "$CLI_PKCS11_SO_OUT" ]; then
-    echo "Reusing/built CLI OK: ckms binary and libcosmian_pkcs11.so present"
-  else
-    echo "Reusing/built CLI OK: ckms binary present (libcosmian_pkcs11.so not found, may be expected)"
-    CLI_PKCS11_SO_OUT=""
-  fi
+  [ -f "$CLI_PKCS11_SO_OUT" ] || {
+    echo "ERROR: PKCS#11 library not found: $CLI_PKCS11_SO_OUT" >&2
+    exit 1
+  }
+  echo "Reusing/built CLI OK: ckms binary and libcosmian_pkcs11.so present"
 }
 
 # Build (or reuse) the Web UI once per variant, independent from server builds.
