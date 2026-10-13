@@ -307,10 +307,10 @@ impl ObjectsDB {
                     invocation.arg(expected.as_deref().unwrap_or_default());
                     invocation.arg(self.encrypt_object(uid, value)?);
                 }
-                ScriptOp::Delete { uid } => {
+                ScriptOp::Delete { uid, expected } => {
                     invocation.key(Self::object_key(uid));
                     invocation.arg("D");
-                    invocation.arg(Vec::<u8>::new());
+                    invocation.arg(expected.as_deref().unwrap_or_default());
                     invocation.arg(Vec::<u8>::new());
                 }
             }
@@ -344,14 +344,19 @@ pub(crate) enum ScriptOp {
         expected: Option<Vec<u8>>,
         value: RedisDbObject,
     },
-    /// Unconditional delete (idempotent; no precondition).
-    Delete { uid: String },
+    /// Delete the key if it still equals `expected` (`None` = key must be
+    /// absent, making the delete a no-op), so a concurrent write is not erased
+    /// on the strength of a stale baseline.
+    Delete {
+        uid: String,
+        expected: Option<Vec<u8>>,
+    },
 }
 
 impl ScriptOp {
     fn uid(&self) -> &str {
         match self {
-            Self::Create { uid, .. } | Self::Cas { uid, .. } | Self::Delete { uid } => uid,
+            Self::Create { uid, .. } | Self::Cas { uid, .. } | Self::Delete { uid, .. } => uid,
         }
     }
 }
@@ -379,7 +384,7 @@ pub(crate) enum AtomicScriptOutcome {
 ///
 /// `ARGV` is laid out as triples per operation, in `KEYS` order:
 /// `mode ('C'|'U'|'D')`, `expected` (CAS baseline, `''` = must-be-absent,
-/// unused for `C`/`D`), `new value` (unused for `D`).
+/// unused for `C`), `new value` (unused for `D`).
 const ATOMIC_CAS_LUA: &str = r"
 local n = #KEYS
 for i = 1, n do
@@ -393,7 +398,7 @@ for i = 1, n do
 end
 for i = 1, n do
     local mode = ARGV[3 * (i - 1) + 1]
-    if mode == 'U' then
+    if mode == 'U' or mode == 'D' then
         local expected = ARGV[3 * (i - 1) + 2]
         local current = redis.call('GET', KEYS[i])
         if current == false then

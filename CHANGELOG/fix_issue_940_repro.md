@@ -12,3 +12,6 @@
   state and retry the whole batch (bounded), eliminating lost tag updates.
 - Findex keywords are written only after the object write is confirmed, and `Upsert`
   now removes stale keywords, so a removed tag no longer selects the object.
+- `Delete` inside a batch is now guarded by the same compare-and-swap as other writes.
+- `find` / `list_uids_for_tags` discard stale Findex hits whose stored tags no longer match.
+- The #940 repro tests are `#[ignore]`d like the other Redis tests (run with `--ignored`).

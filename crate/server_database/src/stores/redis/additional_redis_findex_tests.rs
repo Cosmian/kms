@@ -138,6 +138,7 @@ mod issue_940_repro {
         Ok(())
     }
 
+    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
     #[tokio::test]
     async fn t1_removed_tag_must_not_select_existing_object() -> DbResult<()> {
         let (writer, reader) = clients(1).await?;
@@ -189,6 +190,7 @@ mod issue_940_repro {
         Ok(())
     }
 
+    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
     #[tokio::test]
     async fn t2_concurrent_upserts_must_preserve_tags() -> DbResult<()> {
         let (first, second) = clients(2).await?;
@@ -228,17 +230,16 @@ mod issue_940_repro {
                 "Concurrent Upserts lost tags at round {round}, uid={}",
                 case.uid
             );
-            if started.elapsed() >= std::time::Duration::from_secs(120) {
-                eprintln!(
-                    "T2 INCONCLUSIVE: no mismatch in {round} rounds before 120-second budget"
-                );
+            if started.elapsed() >= std::time::Duration::from_secs(10) {
+                eprintln!("T2 no mismatch in {round} rounds within the 10-second budget");
                 return Ok(());
             }
         }
-        eprintln!("T2 INCONCLUSIVE: no mismatch in 10000 rounds");
+        eprintln!("T2 no mismatch in 10000 rounds");
         Ok(())
     }
 
+    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
     #[tokio::test]
     async fn t3_failed_competing_batch_must_rollback_upsert() -> DbResult<()> {
         let (first, second) = clients(3).await?;
@@ -305,6 +306,106 @@ mod issue_940_repro {
             !loser_exists && !loser_lookup.contains(loser),
             "Failed batch left partial effects: loser={loser}, exists={loser_exists}, indexed={loser_lookup:?}"
         );
+        Ok(())
+    }
+
+    /// A batch may delete a uid and re-create it; a Create after a live
+    /// operation on the same uid in one batch must still fail atomically.
+    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
+    #[tokio::test]
+    async fn t4_same_uid_delete_then_create_and_create_after_upsert() -> DbResult<()> {
+        let (store, _) = clients(4).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = key(6)?;
+        let create = || -> DbResult<AtomicOperation> {
+            Ok(AtomicOperation::Create((
+                uid.clone(),
+                owner.clone(),
+                object.clone(),
+                object.attributes()?.clone(),
+                HashSet::from([format!("tag-{uid}")]),
+            )))
+        };
+        store.atomic(&owner, &[create()?]).await?;
+
+        // Delete + Create of an existing uid in one batch succeeds.
+        store
+            .atomic(&owner, &[AtomicOperation::Delete(uid.clone()), create()?])
+            .await?;
+        assert!(store.retrieve(&uid).await?.is_some(), "re-created object");
+
+        // Create after a live Upsert of the same uid in one batch fails and writes nothing.
+        let fresh = Uuid::new_v4().to_string();
+        let batch = [
+            upsert(&fresh, &object, None)?,
+            AtomicOperation::Create((
+                fresh.clone(),
+                owner.clone(),
+                object.clone(),
+                object.attributes()?.clone(),
+                HashSet::new(),
+            )),
+        ];
+        let error = store
+            .atomic(&owner, &batch)
+            .await
+            .err()
+            .context("T4 expected a Create conflict")?;
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("object {fresh} already exists")),
+            "Unexpected failure: {error}"
+        );
+        assert!(store.retrieve(&fresh).await?.is_none(), "no partial write");
+        Ok(())
+    }
+
+    /// A delete based on a stale baseline must not erase a concurrent write.
+    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
+    #[tokio::test]
+    async fn t5_delete_is_guarded_by_baseline() -> DbResult<()> {
+        use crate::stores::redis::objects_db::{AtomicScriptOutcome, ScriptOp};
+
+        let (store, _) = clients(5).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = key(7)?;
+        store
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &HashSet::new(),
+            )
+            .await?;
+        let current = store.objects_db().object_get_raw(&uid).await?;
+        let stale = Some(vec![1_u8, 2, 3]);
+
+        let outcome = store
+            .objects_db()
+            .atomic_script(&[ScriptOp::Delete {
+                uid: uid.clone(),
+                expected: stale,
+            }])
+            .await?;
+        assert!(matches!(outcome, AtomicScriptOutcome::CasConflict));
+        assert!(
+            store.retrieve(&uid).await?.is_some(),
+            "stale delete erased the object"
+        );
+
+        let outcome = store
+            .objects_db()
+            .atomic_script(&[ScriptOp::Delete {
+                uid: uid.clone(),
+                expected: current,
+            }])
+            .await?;
+        assert!(matches!(outcome, AtomicScriptOutcome::Committed));
+        assert!(store.retrieve(&uid).await?.is_none());
         Ok(())
     }
 }

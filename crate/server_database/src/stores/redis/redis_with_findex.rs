@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map::Entry},
     sync::Arc,
 };
 
@@ -21,7 +21,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, UserId,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, error, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
@@ -164,6 +164,17 @@ type IndexDiff<'a> = (&'a str, HashSet<Keyword>, Option<HashSet<Keyword>>);
 
 /// Upper bound on whole-batch retries after lost CAS races.
 const MAX_ATOMIC_CAS_ATTEMPTS: u32 = 64;
+
+/// `true` if the stored object carries every tag in `tags`. Used to discard
+/// stale Findex hits (the index is written after the object, see `try_atomic`).
+fn has_all_tags(object: &RedisDbObject, tags: &HashSet<String>) -> bool {
+    tags.iter().all(|tag| {
+        object
+            .tags
+            .as_ref()
+            .is_some_and(|stored| stored.contains(tag))
+    })
+}
 
 impl RedisWithFindex {
     pub(crate) async fn instantiate(
@@ -312,25 +323,23 @@ impl RedisWithFindex {
         states: &'a mut HashMap<String, UidState>,
         uid: &str,
     ) -> DbResult<&'a mut UidState> {
-        if !states.contains_key(uid) {
-            let baseline_raw = self.objects_db.object_get_raw(uid).await?;
-            let baseline = baseline_raw
-                .as_deref()
-                .map(|raw| self.objects_db.decrypt_object(uid, raw))
-                .transpose()?;
-            states.insert(
-                uid.to_owned(),
-                UidState {
+        let state = match states.entry(uid.to_owned()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let baseline_raw = self.objects_db.object_get_raw(uid).await?;
+                let baseline = baseline_raw
+                    .as_deref()
+                    .map(|raw| self.objects_db.decrypt_object(uid, raw))
+                    .transpose()?;
+                entry.insert(UidState {
                     precondition: Precondition::Cas,
                     baseline_raw,
                     current: baseline.clone(),
                     baseline,
-                },
-            );
-        }
-        states
-            .get_mut(uid)
-            .ok_or_else(|| db_error!("atomic: uid state vanished"))
+                })
+            }
+        };
+        Ok(state)
     }
 
     /// One attempt at applying `operations` atomically. Returns `Retry` on a
@@ -486,7 +495,10 @@ impl RedisWithFindex {
                 });
                 index_diffs.push((uid, old_keywords, Some(value.keywords())));
             } else {
-                script_ops.push(ScriptOp::Delete { uid: uid.clone() });
+                script_ops.push(ScriptOp::Delete {
+                    uid: uid.clone(),
+                    expected: state.baseline_raw.clone(),
+                });
                 index_diffs.push((uid, old_keywords, None));
             }
         }
@@ -495,25 +507,35 @@ impl RedisWithFindex {
             AtomicScriptOutcome::CreateConflict(uid) => db_bail!("object {uid} already exists"),
             AtomicScriptOutcome::CasConflict => Ok(AtomicAttempt::Retry),
             AtomicScriptOutcome::Committed => {
-                for (uid, old_keywords, new_keywords) in index_diffs {
-                    match new_keywords {
-                        Some(new_keywords) => {
-                            self.update_findex_keywords(uid, &old_keywords, &new_keywords)
-                                .await?;
+                // The object writes are committed: a failure past this point leaves
+                // the Findex index and/or counters behind, so say which uids.
+                let post_commit = async {
+                    for (uid, old_keywords, new_keywords) in index_diffs {
+                        match new_keywords {
+                            Some(new_keywords) => {
+                                self.update_findex_keywords(uid, &old_keywords, &new_keywords)
+                                    .await?;
+                            }
+                            None => self.delete_findex_keywords(uid, &old_keywords).await?,
                         }
-                        None => self.delete_findex_keywords(uid, &old_keywords).await?,
                     }
+                    self.objects_db.adjust_live_count(live_delta).await?;
+                    self.objects_db
+                        .adjust_active_key_count(active_key_delta)
+                        .await
+                };
+                let uids: Vec<String> = operations
+                    .iter()
+                    .map(|op| op.get_object_uid().to_owned())
+                    .collect();
+                if let Err(e) = post_commit.await {
+                    error!(
+                        "atomic: objects {uids:?} were committed but the Findex index or counters \
+                         could not be updated (index/counters need repair): {e}"
+                    );
+                    return Err(e);
                 }
-                self.objects_db.adjust_live_count(live_delta).await?;
-                self.objects_db
-                    .adjust_active_key_count(active_key_delta)
-                    .await?;
-                Ok(AtomicAttempt::Committed(
-                    operations
-                        .iter()
-                        .map(|op| op.get_object_uid().to_owned())
-                        .collect(),
-                ))
+                Ok(AtomicAttempt::Committed(uids))
             }
         }
     }
@@ -864,10 +886,14 @@ impl ObjectsStore for RedisWithFindex {
         user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        for _ in 0..MAX_ATOMIC_CAS_ATTEMPTS {
+        for attempt in 0..MAX_ATOMIC_CAS_ATTEMPTS {
             match self.try_atomic(user, operations).await? {
                 AtomicAttempt::Committed(uids) => return Ok(uids),
-                AtomicAttempt::Retry => {}
+                // Short growing pause so writers hammering one uid de-synchronise.
+                AtomicAttempt::Retry => {
+                    tokio::time::sleep(std::time::Duration::from_millis(u64::from(attempt.min(8))))
+                        .await;
+                }
             }
         }
         Err(db_error!(
@@ -911,13 +937,23 @@ impl ObjectsStore for RedisWithFindex {
         let uids = intersect_all_refs(&indexed_values_set)
             .into_iter()
             .collect::<HashSet<&IndexedValue>>();
-        Ok(uids
+        let uids = uids
             .into_iter()
             .map(|uid| {
                 String::from_utf8(uid.to_vec())
                     .map_err(|e| db_error!(format!("Invalid uid. Error: {e:?}")))
             })
-            .collect::<DbResult<HashSet<String>>>()?)
+            .collect::<DbResult<HashSet<String>>>()?;
+        // The index is updated after the object write, so a concurrent tag change
+        // can leave a stale hit: keep only objects that really carry every tag.
+        Ok(self
+            .objects_db
+            .objects_get(&uids)
+            .await?
+            .into_iter()
+            .filter(|(_, object)| has_all_tags(object, tags))
+            .map(|(uid, _)| uid)
+            .collect())
     }
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -930,6 +966,8 @@ impl ObjectsStore for RedisWithFindex {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let searched_tags =
+            researched_attributes.map_or_else(HashSet::new, |attrs| attrs.get_tags(vendor_id));
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
                 let tags = attributes.get_tags(vendor_id);
@@ -996,7 +1034,8 @@ impl ObjectsStore for RedisWithFindex {
         Ok(redis_db_objects
             .into_iter()
             .filter(|(uid, redis_db_object)| {
-                state.is_none_or(|state| redis_db_object.state == state)
+                has_all_tags(redis_db_object, &searched_tags)
+                    && state.is_none_or(|state| redis_db_object.state == state)
                     && (if redis_db_object.owner == *user {
                         true
                     } else {
@@ -1585,7 +1624,83 @@ impl PermissionsStore for RedisWithFindex {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::stores::redis::findex::IndexedValue;
+    use cosmian_findex::IndexADT as _;
+    use cosmian_kmip::kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+    };
+    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+        CsRng, Secret, reexport::rand_core::SeedableRng,
+    };
+    use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
+    use uuid::Uuid;
+
+    use crate::{
+        stores::{
+            REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+            redis::{
+                RedisWithFindex,
+                findex::{IndexedValue, Keyword},
+            },
+        },
+        tests::get_redis_url,
+    };
+
+    /// A Findex hit whose tag the stored object does not carry (stale index entry,
+    /// e.g. from out-of-order post-commit index updates) must not be returned.
+    #[allow(clippy::panic_in_result_fn)] // test assertions must panic; `?` keeps setup errors readable
+    #[ignore = "Requires a running Redis instance"]
+    #[tokio::test]
+    async fn stale_findex_hit_is_filtered_out() -> crate::error::DbResult<()> {
+        let mut rng = CsRng::from_entropy();
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let real_tag = format!("real-{uid}");
+        let stale_tag = format!("stale-{uid}");
+        let object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[7_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
+        store
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &HashSet::from([real_tag.clone()]),
+            )
+            .await?;
+        store
+            .findex
+            .insert(
+                Keyword::from(stale_tag.as_bytes()),
+                [IndexedValue::from(uid.as_bytes())],
+            )
+            .await?;
+
+        let real = store
+            .list_uids_for_tags(&HashSet::from([real_tag.clone()]))
+            .await?;
+        let stale = store
+            .list_uids_for_tags(&HashSet::from([stale_tag.clone()]))
+            .await?;
+        assert!(real.contains(&uid), "real tag must select the object");
+        assert!(stale.is_empty(), "stale hit returned: {stale:?}");
+
+        let mut attributes = Attributes::default();
+        attributes.set_tags(VENDOR_ID_COSMIAN, HashSet::from([stale_tag]))?;
+        let found = store
+            .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?;
+        assert!(found.is_empty(), "find returned stale hit: {found:?}");
+        Ok(())
+    }
 
     #[test]
     fn test_intersect() {
