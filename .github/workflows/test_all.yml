@@ -226,6 +226,15 @@ jobs:
         run: |
           mise run test:pkcs11:support --variant non-fips
 
+      # Real-library panic containment: loads the shipped-profile
+      # (pkcs11-provider) cdylib in child processes and checks that an internal
+      # panic returns CKR_GENERAL_ERROR instead of killing the host. Same matrix
+      # piggyback as the support report above.
+      - name: 'Test (PKCS#11 panic containment: shipped-profile library)'
+        if: matrix.type == 'ase' && matrix.features == 'non-fips'
+        run: |
+          mise run test:pkcs11:panic --variant non-fips
+
   # Test types that depend on upstream-only secrets / external services. Kept out of
   # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
   # job is skipped on forks, where those secrets do not exist.

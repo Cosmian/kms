@@ -22,3 +22,4 @@
 ## Testing
 
 - Add subprocess tests that load the real shipped-profile library through direct exports and through the function table, trigger a contained panic, and check that later calls are refused.
+- Add `mise run test:pkcs11:panic [--lib <path>]`, run in CI, which builds the `pkcs11-provider` library (or tests a prebuilt one such as the Nix output) and fails if an internal panic is not contained.
