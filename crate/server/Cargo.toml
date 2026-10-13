@@ -55,6 +55,7 @@ non-fips = [
   "cosmian_kms_server_database/non-fips",
   "aws_cloudhsm_pkcs11_loader/non-fips",
   "crypt2pay_pkcs11_loader/non-fips",
+  "luna_pkcs11_loader/non-fips",
   "proteccio_pkcs11_loader/non-fips",
   "smartcardhsm_pkcs11_loader/non-fips",
   "softhsm2_pkcs11_loader/non-fips",
@@ -129,6 +130,7 @@ serde = { workspace = true }
 serde_ignored = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+luna_pkcs11_loader = { workspace = true }
 smartcardhsm_pkcs11_loader = { workspace = true }
 softhsm2_pkcs11_loader = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

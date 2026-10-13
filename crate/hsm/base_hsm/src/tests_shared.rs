@@ -3,7 +3,12 @@
 #![allow(clippy::panic_in_result_fn)]
 #![allow(clippy::missing_panics_doc)]
 
-use std::{collections::HashMap, ptr, sync::Arc, thread};
+use std::{
+    collections::{HashMap, HashSet},
+    ptr,
+    sync::Arc,
+    thread,
+};
 
 use cosmian_kms_interfaces::{
     EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
@@ -209,13 +214,61 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
+/// `CKA_ID` prefix of every object created by these shared tests.
+const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
+
+/// A fresh, unique `CKA_ID` for an object created by these shared tests.
+fn test_object_id() -> String {
+    format!("{TEST_OBJECT_ID_PREFIX}{}", Uuid::new_v4())
+}
+
+/// Handles of the objects currently on the slot.
+///
+/// Suites running on a shared HSM partition snapshot the slot with this helper before their tests
+/// and clean up with [`destroy_created_since`]: [`destroy_all`] would also destroy other users'
+/// objects.
+pub fn object_handles(slot: &Arc<SlotManager>) -> HResult<HashSet<CK_OBJECT_HANDLE>> {
+    let session = slot.open_session(true)?;
+    Ok(session
+        .list_objects(HsmObjectFilter::Any)?
+        .into_iter()
+        .collect())
+}
+
+/// Destroy the objects these tests created on the slot since the `before` snapshot of
+/// [`object_handles`]: new objects whose id (`Session::get_object_id`: `CKA_ID`, or `CKA_LABEL`)
+/// starts with [`TEST_OBJECT_ID_PREFIX`]. Objects another user creates on a shared partition
+/// meanwhile are left alone.
+pub fn destroy_created_since<S: std::hash::BuildHasher>(
+    slot: &Arc<SlotManager>,
+    before: &HashSet<CK_OBJECT_HANDLE, S>,
+) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let created: Vec<CK_OBJECT_HANDLE> = session
+        .list_objects(HsmObjectFilter::Any)?
+        .into_iter()
+        .filter(|handle| !before.contains(handle))
+        // An unreadable CKA_ID is not provably ours: keep the object.
+        .filter(|handle| {
+            matches!(session.get_object_id(*handle),
+                Ok(Some(id)) if id.starts_with(TEST_OBJECT_ID_PREFIX.as_bytes()))
+        })
+        .collect();
+    for handle in &created {
+        session.destroy_object(*handle)?;
+    }
+    info!("Destroyed {} objects created by the tests", created.len());
+    Ok(())
+}
+
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     let supports_exportable_keys = slot.capabilities().supports_aes_sensitive_attribute;
     log_init(None);
     let session = slot.open_session(true)?;
     if supports_exportable_keys {
-        let key_id = Uuid::new_v4().to_string();
+        let key_id = test_object_id();
         let key_handle =
             session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
         info!("Generated exportable AES key: {}", key_id);
@@ -249,7 +302,7 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     }
 
     // Generate a sensitive AES key
-    let key_id = Uuid::new_v4().to_string();
+    let key_id = test_object_id();
     let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?;
     info!("Generated sensitive AES key: {}", key_id);
     // assert the key handles are identical
@@ -279,7 +332,7 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
 #[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let session = slot.open_session(true)?;
     let (sk_handle, pk_handle) = session.generate_rsa_key_pair(
@@ -324,7 +377,7 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     }
 
     // sensitive keypair
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -359,7 +412,7 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
         (EcCurve::P384, 384),
         (EcCurve::P521, 521),
     ] {
-        let sk_id = Uuid::new_v4().to_string();
+        let sk_id = test_object_id();
         let pk_id = sk_id.clone() + "_pk";
         // Capability-probe per curve rather than hard-failing the whole test: some
         // PKCS#11 libraries implement only a subset of NIST curves (e.g. Kryoptic
@@ -416,7 +469,7 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
         assert_eq!(meta.key_length_in_bits, expected_bits);
 
         // sensitive keypair: private key material must not be exportable
-        let sensitive_sk_id = Uuid::new_v4().to_string();
+        let sensitive_sk_id = test_object_id();
         let sensitive_pk_id = sensitive_sk_id.clone() + "_pk";
         session.generate_ec_key_pair(
             sensitive_sk_id.as_bytes(),
@@ -437,13 +490,13 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
         info!("RSA-OAEP key wrap not supported by this HSM (capability), skipping");
         return Ok(());
     }
-    let key_id = Uuid::new_v4().to_string();
+    let key_id = test_object_id();
     let session = slot.open_session(true)?;
     // The AES key being wrapped must be explicitly non-sensitive as well as
     // extractable (PKCS#11 `C_WrapKey` precondition).
     let symmetric_key =
         session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -454,9 +507,12 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
     )?;
     let encrypted_key = session.wrap_aes_key_with_rsa_oaep(pk, symmetric_key, digest)?;
     assert_eq!(encrypted_key.len(), 2048 / 8);
+    let unwrapped_key_label = test_object_id();
     let decrypted_key =
-        session.unwrap_aes_key_with_rsa_oaep(sk, &encrypted_key, "another_label", digest)?;
+        session.unwrap_aes_key_with_rsa_oaep(sk, &encrypted_key, &unwrapped_key_label, digest)?;
     info!("Unwrapped symmetric key with handle: {}", decrypted_key);
+    // This test's own object: destroy it here, as suites using `destroy_all` would anyway.
+    session.destroy_object(decrypted_key)?;
     Ok(())
 }
 
@@ -464,7 +520,7 @@ pub fn rsa_pkcs_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -485,7 +541,7 @@ pub fn rsa_oaep_encrypt(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResu
     log_init(None);
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -539,7 +595,7 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
-    let key_id = Uuid::new_v4().to_string();
+    let key_id = test_object_id();
     let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let enc = session.encrypt(sk, HsmEncryptionAlgorithm::AesGcm, data, None)?;
@@ -566,7 +622,7 @@ pub fn aes_cbc_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
-    let key_id = Uuid::new_v4().to_string();
+    let key_id = test_object_id();
     let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let iv = [7_u8; 16];
@@ -593,7 +649,7 @@ pub fn aes_cbc_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
 pub fn aes_cbc_multi_round(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
-    let key_id = Uuid::new_v4().to_string();
+    let key_id = test_object_id();
     let sk = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
     info!("AES key handle: {sk}");
     let data_1k = generate_random_data::<1024>()?;
@@ -822,7 +878,7 @@ pub fn rsa_pkcs_v15_sign(slot: &Arc<SlotManager>) -> HResult<()> {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
         0x10,
     ];
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, _pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -842,7 +898,7 @@ pub fn rsa_sha256_sign(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
     let data = b"Hello, World!";
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, _pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -871,7 +927,7 @@ pub fn rsa_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     let supported_mechanisms = slot.get_supported_mechanisms()?;
     let session = slot.open_session(true)?;
     let data = b"test data for signing";
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, _pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -939,7 +995,7 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
     let supported_mechanisms = slot.get_supported_mechanisms()?;
     let session = slot.open_session(true)?;
     let data = b"test data for RSA-PSS signing";
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, _pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -1096,7 +1152,7 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
 
     let mut tested = 0;
     for curve in [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521] {
-        let sk_id = Uuid::new_v4().to_string();
+        let sk_id = test_object_id();
         let pk_id = sk_id.clone() + "_pk";
         let (sk, pk) = match session.generate_ec_key_pair(
             sk_id.as_bytes(),
@@ -1236,7 +1292,7 @@ pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
             warn!("{curve:?} (CKM_EDDSA) not supported by HSM, skipping");
             continue;
         }
-        let sk_id = Uuid::new_v4().to_string();
+        let sk_id = test_object_id();
         let pk_id = sk_id.clone() + "_pk";
         let (sk, pk) =
             session.generate_ec_key_pair(sk_id.as_bytes(), pk_id.as_bytes(), curve, true, None)?;
@@ -1392,7 +1448,7 @@ pub fn multi_threaded_rsa(
         let handle = thread::spawn(move || {
             let session = slot.open_session(true)?;
             let data = b"Hello, World!";
-            let sk_id = Uuid::new_v4().to_string();
+            let sk_id = test_object_id();
             let pk_id = sk_id.clone() + "_pk";
             let (sk, pk) = session.generate_rsa_key_pair(
                 sk_id.as_bytes(),
@@ -1437,7 +1493,7 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
     log_init(None);
     let supported_mechanisms = slot.get_supported_mechanisms()?;
 
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let session0 = slot.open_session(true)?;
     let (sk, _pk) = session0.generate_ec_key_pair(
@@ -1553,60 +1609,64 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
 pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
-    session.clear_object_handles()?;
-    destroy_destroyable_objects(&session)?;
-    session.clear_object_handles()?;
-    let baseline_objects = session.list_objects(HsmObjectFilter::Any)?;
-    let base_count = baseline_objects.len();
-    let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk";
-    let (_sk, _pk) = session.generate_rsa_key_pair(
-        sk_id.as_bytes(),
-        pk_id.as_bytes(),
+    // Count only the objects this test creates (by CKA_ID), so other users' objects on a
+    // shared partition, existing or created meanwhile, change nothing.
+    let rsa_2048_sk_id = test_object_id();
+    let rsa_2048_pk_id = rsa_2048_sk_id.clone() + "_pk";
+    let rsa_3072_sk_id = test_object_id();
+    let rsa_3072_pk_id = rsa_3072_sk_id.clone() + "_pk";
+    let aes_id = test_object_id();
+    let mine: HashSet<&[u8]> = [
+        &rsa_2048_sk_id,
+        &rsa_2048_pk_id,
+        &rsa_3072_sk_id,
+        &rsa_3072_pk_id,
+        &aes_id,
+    ]
+    .into_iter()
+    .map(String::as_bytes)
+    .collect();
+    let count = |filter: HsmObjectFilter| -> HResult<usize> {
+        session.clear_object_handles()?;
+        Ok(session
+            .list_objects(filter)?
+            .into_iter()
+            // Other objects may lack the attributes `get_object_id` reads: they are not ours.
+            .filter(|handle| {
+                matches!(session.get_object_id(*handle),
+                    Ok(Some(id)) if mine.contains(id.as_slice()))
+            })
+            .count())
+    };
+    session.generate_rsa_key_pair(
+        rsa_2048_sk_id.as_bytes(),
+        rsa_2048_pk_id.as_bytes(),
         RsaKeySize::Rsa2048,
         false,
         None,
     )?;
-    session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), base_count + 2);
-    let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
-    assert_eq!(objects.len(), 2);
-    let objects = session.list_objects(HsmObjectFilter::RsaPublicKey)?;
-    assert_eq!(objects.len(), 1);
-    let objects = session.list_objects(HsmObjectFilter::RsaPrivateKey)?;
-    assert_eq!(objects.len(), 1);
-    let objects = session.list_objects(HsmObjectFilter::AesKey)?;
-    assert_eq!(objects.len(), 0);
+    assert_eq!(count(HsmObjectFilter::Any)?, 2);
+    assert_eq!(count(HsmObjectFilter::RsaKey)?, 2);
+    assert_eq!(count(HsmObjectFilter::RsaPublicKey)?, 1);
+    assert_eq!(count(HsmObjectFilter::RsaPrivateKey)?, 1);
+    assert_eq!(count(HsmObjectFilter::AesKey)?, 0);
     // add another keypair
-    let sk_id = Uuid::new_v4().to_string();
-    let pk_id = sk_id.clone() + "_pk";
-    let (_sk, _pk) = session.generate_rsa_key_pair(
-        sk_id.as_bytes(),
-        pk_id.as_bytes(),
+    session.generate_rsa_key_pair(
+        rsa_3072_sk_id.as_bytes(),
+        rsa_3072_pk_id.as_bytes(),
         RsaKeySize::Rsa3072,
         false,
         None,
     )?;
-    session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), base_count + 4);
-    let objects = session.list_objects(HsmObjectFilter::RsaKey)?;
-    assert_eq!(objects.len(), 4);
-    let objects = session.list_objects(HsmObjectFilter::RsaPublicKey)?;
-    assert_eq!(objects.len(), 2);
-    let objects = session.list_objects(HsmObjectFilter::RsaPrivateKey)?;
-    assert_eq!(objects.len(), 2);
-    let objects = session.list_objects(HsmObjectFilter::AesKey)?;
-    assert_eq!(objects.len(), 0);
+    assert_eq!(count(HsmObjectFilter::Any)?, 4);
+    assert_eq!(count(HsmObjectFilter::RsaKey)?, 4);
+    assert_eq!(count(HsmObjectFilter::RsaPublicKey)?, 2);
+    assert_eq!(count(HsmObjectFilter::RsaPrivateKey)?, 2);
+    assert_eq!(count(HsmObjectFilter::AesKey)?, 0);
     // add an AES key
-    let key_id = Uuid::new_v4().to_string();
-    let _key = session.generate_sensitive_aes_key(key_id.as_bytes(), AesKeySize::Aes256)?;
-    session.clear_object_handles()?;
-    let objects = session.list_objects(HsmObjectFilter::Any)?;
-    assert_eq!(objects.len(), base_count + 5);
-    let objects = session.list_objects(HsmObjectFilter::AesKey)?;
-    assert_eq!(objects.len(), 1);
+    session.generate_sensitive_aes_key(aes_id.as_bytes(), AesKeySize::Aes256)?;
+    assert_eq!(count(HsmObjectFilter::Any)?, 5);
+    assert_eq!(count(HsmObjectFilter::AesKey)?, 1);
     info!("Listed all objects");
     Ok(())
 }
@@ -1616,7 +1676,7 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     let session = slot.open_session(true)?;
 
     // generate an AES key
-    let key_id = Uuid::new_v4().to_string();
+    let key_id = test_object_id();
     let key_handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, true, None)?;
     // get the key basics
     let key_type = session
@@ -1662,7 +1722,7 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     }
 
     // generate an RSA keypair
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let (sk, pk) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
@@ -1724,10 +1784,10 @@ where
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .map_err(|e| HError::Default(e.to_string()))?;
-    let valid_key_id_0 = Uuid::new_v4().to_string();
-    let valid_key_id_1 = Uuid::new_v4().to_string();
-    let valid_key_id_2 = Uuid::new_v4().to_string();
-    let valid_key_id_3 = Uuid::new_v4().to_string();
+    let valid_key_id_0 = test_object_id();
+    let valid_key_id_1 = test_object_id();
+    let valid_key_id_2 = test_object_id();
+    let valid_key_id_3 = test_object_id();
     let slot = get_slot(hsm, cfg)?;
     let session = slot.open_session(true)?;
 
@@ -1830,7 +1890,9 @@ where
     log_init(None);
     let slot = get_slot(hsm, cfg)?;
     let session = slot.open_session(true)?;
-    let ikm = session.generate_generic_secret_key(b"hkdf-ikm", 32, false)?;
+    let ikm_id = test_object_id();
+    let derived_id = test_object_id();
+    let ikm = session.generate_generic_secret_key(ikm_id.as_bytes(), 32, false)?;
     let derived = session.derive_hkdf_key(
         ikm,
         HkdfParams {
@@ -1839,7 +1901,7 @@ where
             info: b"info",
         },
         DerivedKeySpec {
-            id: b"hkdf-derived",
+            id: derived_id.as_bytes(),
             len_bytes: 32,
             sensitive: false,
         },
@@ -1890,7 +1952,7 @@ fn generate_incompatible_key_pair(
     let ec_params: [u8; 11] = [
         0x06, 0x09, 0x2b, 0x24, 0x03, 0x03, 0x02, 0x08, 0x01, 0x01, 0x03,
     ]; // brainpoolP192r1
-    let sk_id = Uuid::new_v4().to_string();
+    let sk_id = test_object_id();
     let pk_id = sk_id.clone() + "_pk";
     let mut pub_key_handle = CK_OBJECT_HANDLE::default();
     let mut priv_key_handle = CK_OBJECT_HANDLE::default();

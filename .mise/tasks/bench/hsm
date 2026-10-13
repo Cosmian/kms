@@ -16,7 +16,7 @@
 #USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle), instead of a software KEK-wrap. See task docs below for the difference."
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run Criterion micro-benchmarks before/alongside the load sweep"
 #USAGE flag "--speed <speed>"       env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "quick" "normal" "sanity" }
-#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for this benchmark; KEK-wrap and --delegated both support every model" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" }
+#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for this benchmark; KEK-wrap and --delegated both support every model" { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "aws_cloudhsm" "luna" }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
@@ -110,7 +110,9 @@ bench_register_cleanup
 # Applies to both the default KEK-wrap mode and --delegated: neither is
 # restricted to a subset of HSM models.
 export WITH_HSM=1
-ensure_nix_shell
+# Nix only provides the build toolchain (and SoftHSM2): with KMS_SKIP_BUILD=1 the
+# prebuilt target/<mode>/ binaries and host tools (python3, curl) are used directly.
+[ "${KMS_SKIP_BUILD:-}" = "1" ] || ensure_nix_shell
 bench_prepare_hsm "${BENCH_HSM_MODEL}"
 
 # Build both server and ckms.

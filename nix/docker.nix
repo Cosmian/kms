@@ -298,6 +298,12 @@ pkgs.dockerTools.buildLayeredImage {
     ensure_writable_dir usr/local/cosmian/lib
     ensure_writable_dir usr/local/cosmian/lib/ossl-modules
     ensure_writable_dir usr/local/cosmian/lib/ssl
+    # C++ runtime for vendor PKCS#11 libraries loaded at runtime (e.g. Thales Luna
+    # libCryptoki2_64.so), from the toolchain of the image glibc. The Nix loader only searches
+    # Nix store paths: it finds this directory through LD_LIBRARY_PATH (see config.Env).
+    ensure_writable_dir usr/local/cosmian/lib/hsm
+    cp -L ${pkgs.stdenv.cc.cc.lib}/lib/libstdc++.so.6 ${pkgs.stdenv.cc.cc.lib}/lib/libgcc_s.so.1 \
+      usr/local/cosmian/lib/hsm/
     if [ -n "${opensslDrvPath}" ] && [ -d ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules ]; then
       cp -L ${opensslDrvPath}/usr/local/cosmian/lib/ossl-modules/* usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
     elif [ -d ${actualKmsServer}/usr/local/cosmian/lib/ossl-modules ]; then
@@ -395,6 +401,8 @@ pkgs.dockerTools.buildLayeredImage {
       "TZDIR=${pkgs.tzdata}/share/zoneinfo"
       "OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf"
       "OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules"
+      # C++ runtime for vendor PKCS#11 libraries (see fakeRootCommands)
+      "LD_LIBRARY_PATH=/usr/local/cosmian/lib/hsm"
       # Default CORS origins for the Web UI served from the container itself.
       # Covers IPv4 localhost (127.0.0.1, 0.0.0.0) and IPv6 equivalents (::1, [::]).
       # Users can override by setting KMS_CORS_ALLOWED_ORIGINS at runtime.

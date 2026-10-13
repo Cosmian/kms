@@ -333,7 +333,7 @@ impl Session {
             sk_id.as_bytes(),
             pk_id.as_bytes(),
             RsaKeySize::Rsa2048,
-            false,
+            true, // sensitive: some HSMs (e.g. Luna) refuse extractable private keys
             None,
         )?;
 
@@ -906,26 +906,8 @@ impl Session {
             pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
             ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
         };
-        let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-        let split_at = ciphertext
-            .len()
-            .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
-            .ok_or_else(|| {
-                HError::Default("Failed to extract GCM authentication tag".to_owned())
-            })?;
-        Ok(EncryptedContent {
-            iv: Some(nonce.to_vec()),
-            ciphertext: ciphertext
-                .get(..split_at)
-                .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
-                .to_vec(),
-            tag: Some(
-                ciphertext
-                    .get(split_at..)
-                    .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
-                    .to_vec(),
-            ),
-        })
+        let output = self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+        split_aes_gcm_output(nonce, plaintext.len(), &output)
     }
 
     /// Encrypt data using the specified key and algorithm
@@ -3940,9 +3922,78 @@ impl Drop for Session {
     }
 }
 
+/// Split a `CKM_AES_GCM` encryption output into IV, ciphertext and tag.
+///
+/// Standard PKCS#11 output is `ciphertext || tag` and the IV is the `pIv` buffer.
+/// Thales Luna in FIPS mode ignores the caller IV, generates its own and appends it:
+/// `ciphertext || tag || iv`. Only a 96-bit generated IV (Luna firmware >= 7.9.3 with
+/// `ulIvBits = 96`) fits the 12-byte IV of the KMS ciphertext format; any other output
+/// length is rejected instead of being split at the wrong offset.
+fn split_aes_gcm_output(
+    nonce: [u8; AES_GCM_IV_LENGTH],
+    plaintext_len: usize,
+    output: &[u8],
+) -> HResult<EncryptedContent> {
+    let tag_end = plaintext_len + AES_GCM_AUTH_TAG_LENGTH;
+    let iv = if output.len() == tag_end {
+        nonce.to_vec()
+    } else if output.len() == tag_end + AES_GCM_IV_LENGTH {
+        output
+            .get(tag_end..)
+            .ok_or_else(|| HError::Default("Failed to extract HSM-generated IV".to_owned()))?
+            .to_vec()
+    } else {
+        return Err(HError::Default(format!(
+            "Unexpected AES-GCM output length {} for a {plaintext_len}-byte plaintext: \
+             HSM-generated IVs other than 96 bits (e.g. Luna FIPS mode before firmware 7.9.3) \
+             are not supported",
+            output.len()
+        )));
+    };
+    Ok(EncryptedContent {
+        iv: Some(iv),
+        ciphertext: output
+            .get(..plaintext_len)
+            .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
+            .to_vec(),
+        tag: Some(
+            output
+                .get(plaintext_len..tag_end)
+                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                .to_vec(),
+        ),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_aes_gcm_output_handles_standard_and_hsm_appended_iv() {
+        let nonce = [7_u8; AES_GCM_IV_LENGTH];
+        let ct = [1_u8; 5];
+        let tag = [2_u8; AES_GCM_AUTH_TAG_LENGTH];
+        let hsm_iv = [3_u8; AES_GCM_IV_LENGTH];
+        let split = |out: &[u8]| {
+            split_aes_gcm_output(nonce, ct.len(), out)
+                .ok()
+                .map(|c| (c.iv, c.ciphertext, c.tag))
+        };
+
+        // Standard PKCS#11: IV is the caller nonce.
+        assert_eq!(
+            split(&[ct.as_slice(), &tag].concat()),
+            Some((Some(nonce.to_vec()), ct.to_vec(), Some(tag.to_vec())))
+        );
+        // Luna FIPS mode: the HSM-generated IV appended after the tag wins over the nonce.
+        assert_eq!(
+            split(&[ct.as_slice(), &tag, &hsm_iv].concat()),
+            Some((Some(hsm_iv.to_vec()), ct.to_vec(), Some(tag.to_vec())))
+        );
+        // 16-byte HSM IV (Luna FIPS before firmware 7.9.3) does not fit the format.
+        assert_eq!(split(&[ct.as_slice(), &tag, &[3_u8; 16]].concat()), None);
+    }
 
     #[test]
     fn rsa_pkcs_pss_params_defaults_salt_length_to_digest_length() {

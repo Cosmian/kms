@@ -38,10 +38,11 @@ TMP_DIR=""
 BENCH_DEB_BINARY=""
 BENCH_DEB_OSSL_MODS=""
 OPENSSL_MODULES_DIR=""
-BENCH_HSM_PASSWORD=""
+BENCH_HSM_PASSWORD="${BENCH_HSM_PASSWORD:-}"
 BENCH_VPN_PID_FILES=()
 
-# Build only the ckms CLI (no server).
+# Build only the ckms CLI (no server). KMS_SKIP_BUILD=1 reuses the existing binary
+# (e.g. built on another machine and copied into target/<mode>/).
 # Usage: bench_build_ckms [release|debug]
 # Sets: CARGO_TARGET_DIR, CKMS_BIN
 bench_build_ckms() {
@@ -53,17 +54,26 @@ bench_build_ckms() {
   # shellcheck disable=SC2119
   repo_root="$(get_repo_root)"
 
-  echo "Building ckms CLI (${build_mode})..."
-  cargo build -p ckms \
-    "${cargo_args[@]}" \
-    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+  else
+    echo "Building ckms CLI (${build_mode})..."
+    cargo build -p ckms \
+      "${cargo_args[@]}" \
+      ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  fi
 
   CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${repo_root}/target}"
   CKMS_BIN="${CARGO_TARGET_DIR}/${build_mode}/ckms"
+  [ -x "${CKMS_BIN}" ] || {
+    echo "ERROR: ${CKMS_BIN} not found" >&2
+    return 1
+  }
   export CARGO_TARGET_DIR CKMS_BIN
 }
 
-# Build KMS server and ckms CLI.
+# Build KMS server and ckms CLI. KMS_SKIP_BUILD=1 reuses the existing binaries
+# (e.g. built on another machine and copied into target/<mode>/).
 # Usage: bench_build_binaries [release|debug]
 # Sets: CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN
 bench_build_binaries() {
@@ -75,14 +85,24 @@ bench_build_binaries() {
   # shellcheck disable=SC2119
   repo_root="$(get_repo_root)"
 
-  echo "Building cosmian_kms server and ckms CLI (${build_mode})..."
-  cargo build -p cosmian_kms_server -p ckms \
-    "${cargo_args[@]}" \
-    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+  else
+    echo "Building cosmian_kms server and ckms CLI (${build_mode})..."
+    cargo build -p cosmian_kms_server -p ckms \
+      "${cargo_args[@]}" \
+      ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  fi
 
   CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${repo_root}/target}"
   KMS_BIN="${CARGO_TARGET_DIR}/${build_mode}/cosmian_kms"
   CKMS_BIN="${CARGO_TARGET_DIR}/${build_mode}/ckms"
+  for bin in "${KMS_BIN}" "${CKMS_BIN}"; do
+    [ -x "${bin}" ] || {
+      echo "ERROR: ${bin} not found" >&2
+      return 1
+    }
+  done
   export CARGO_TARGET_DIR KMS_BIN CKMS_BIN
 }
 
@@ -439,6 +459,11 @@ assert fns.C_Finalize(None) == 0
   else
     HSM_SLOT_ID="${custom_slot:-1}"
     export HSM_SLOT_ID
+    # An empty PIN is a failed login on a real HSM and counts toward partition lockout.
+    if [ -z "${custom_password}" ]; then
+      echo "ERROR: no HSM password for ${hsm_model}: set BENCH_HSM_PASSWORD or ~/.cosmian/${hsm_model}.sh" >&2
+      return 1
+    fi
     _BENCH_HSM_PASSWORD="${custom_password}"
   fi
 }
