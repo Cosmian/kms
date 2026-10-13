@@ -375,11 +375,9 @@ mod tests {
     }
 
     #[test]
-    fn ml_kem_pkey_guard_freed_on_encapsulate_bad_key() {
-        // Exercises the PKeyGuard drop path when `ml_kem_encapsulate_raw` returns Err
-        // immediately after a successful `d2i_PUBKEY`.  We use a valid-looking SPKI DER
-        // for a different key type (RSA-1024 stub — any non-ML-KEM key will do) so that
-        // `d2i_PUBKEY` succeeds but `EVP_PKEY_encapsulate_init` fails.
+    fn ml_kem_encapsulate_wrong_algorithm_returns_err() {
+        // Exercises the error path when `ml_kem_encapsulate` receives a valid
+        // SPKI DER for a non-ML-KEM key type.
         // We generate a real ML-DSA key and try to KEM-encapsulate it — reusing the
         // same well-formed SPKI but wrong algorithm.
         let (_, pub_der, _) = super::super::pqc_keygen("ML-DSA-44", None, None).unwrap();
