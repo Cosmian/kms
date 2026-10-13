@@ -179,7 +179,7 @@ fn parse_attributes(attributes: &str) -> Result<Vec<ObjectSpec>, CsiProviderErro
         ))
     })?;
 
-    let specs: Vec<ObjectSpec> = serde_yaml::from_str(&attrs.objects).map_err(|e| {
+    let specs: Vec<ObjectSpec> = serde_saphyr::from_str(&attrs.objects).map_err(|e| {
         CsiProviderError::InvalidAttributes(format!("objects field is not valid YAML: {e}"))
     })?;
 

@@ -136,7 +136,7 @@ impl OperatorConfig {
     pub fn from_file(path: &str) -> Result<Self, OperatorError> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| OperatorError::Config(format!("cannot read config file {path}: {e}")))?;
-        serde_yaml::from_str(&content)
+        serde_saphyr::from_str(&content)
             .map_err(|e| OperatorError::Config(format!("invalid config YAML: {e}")))
     }
 
