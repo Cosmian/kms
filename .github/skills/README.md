@@ -51,7 +51,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **CI Fix Loop** | `/ci-fix` | Fixes a supplied run or current HEAD; reads failed jobs, batches fixes into one commit per pass, and follows only the resulting commit's CI. Stops after 3 repeated failures. |
-| **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and maps them to the applicable sync rule numbers (4.1–4.18), pointing to the normative checklist in `.github/instructions/*.instructions.md` for each (auto-applied via `applyTo` when editing a matching file). Only rule 4.8 (non-FIPS gating) has no instruction file and is checked in full by this skill. |
+| **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and maps them to the applicable sync rule numbers (4.1–4.19), pointing to the normative checklist in `.github/instructions/*.instructions.md` for each (auto-applied via `applyTo` when editing a matching file). Only rule 4.8 (non-FIPS gating) has no instruction file and is checked in full by this skill. |
 | KMS Test Vector | `/kms-test-vector` | Walk through the full test vector workflow: directory, `manifest.toml`, TTLV steps, `vector_runner.rs` registration, README count update. |
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md` with correct sections, component grouping, and PR/issue links. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |

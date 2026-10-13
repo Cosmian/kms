@@ -173,6 +173,8 @@ repos:
       - id: name-tests-test
         args: [--pytest-test-first]
       - id: requirements-txt-fixer
+        # `.txt` files are pip-compile --generate-hashes lockfiles: never reorder them.
+        exclude: ^\.mise/scripts/(test|docs)/requirements.*\.txt$
       - id: sort-simple-yaml
       - id: trailing-whitespace
         exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
@@ -202,6 +204,57 @@ repos:
         stages: [pre-push]
       - id: cargo-machete
         types: [rust]
+
+  # ── Supply-chain protection ───────────────────────────────────────────
+  # See CONTRIBUTING.md "Supply-chain / dependency policy".
+  - repo: local
+    hooks:
+      - id: cargo-vet
+        name: cargo vet check (new/bumped crates need an exemption or audit)
+        entry: cargo vet check --locked
+        language: system
+        pass_filenames: false
+        files: ^(Cargo\.(lock|toml)|crate/.*/Cargo\.toml|supply-chain/.*)$
+
+      - id: github-actions-sha-pin
+        name: GitHub Actions must be pinned to a full commit SHA
+        description: 'Fails on any "uses: owner/repo@ref" whose ref is not a 40-hex commit SHA.'
+        language: pygrep
+        entry: 'uses:\s+(?!\./)[^\s@#]+@(?![0-9a-f]{40}(\s|$))\S+'
+        files: ^\.github/(workflows|actions)/.*\.ya?ml$
+
+      - id: docker-base-image-digest-pin
+        name: Docker base images must be pinned by digest
+        description: 'Fails on a "FROM image:tag" without "@sha256:<digest>" (scratch excepted).'
+        language: pygrep
+        entry: '(?i)^\s*FROM\s+(?:--\S+\s+)*(?!--)(?!scratch\b)(?![^\s@]*@sha256:[0-9a-f]{64})\S+'
+        files: ^\.mise/scripts/(docker|edb_tde)/.*Dockerfile[^/]*$
+        # TODO(#1265): Dockerfile.edb is still on a tag. Resolving its digest needs an
+        # EDB_SUBSCRIPTION_TOKEN (registry returns 401 anonymously). Remove this exclude
+        # once `FROM ...edb-postgres-advanced:17@sha256:<digest>` is committed.
+        exclude: ^\.mise/scripts/edb_tde/Dockerfile\.edb$
+
+      - id: no-curl-pipe-shell
+        name: No unverified `curl | sh` bootstrap
+        description: Download the script, verify its SHA-256, then run it.
+        language: pygrep
+        entry: '^(?!\s*#).*\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b'
+        files: ^(\.github/(workflows|actions)/.*\.ya?ml|\.mise/.*|scripts/.*)$
+
+      - id: pip-audit-lockfiles
+        name: pip-audit on hash-pinned Python requirements
+        entry: bash -c 'for f in "$@"; do pip-audit -r "$f" || exit 1; done' --
+        language: system
+        files: ^\.mise/scripts/(test|docs)/requirements.*\.txt$
+        stages: [pre-push]
+
+      - id: govulncheck
+        name: govulncheck (kmip-go test module)
+        entry: bash -c 'cd .mise/scripts/kmip-go && govulncheck -test ./...'
+        language: system
+        pass_filenames: false
+        files: ^\.mise/scripts/kmip-go/(go\.(mod|sum)|.*\.go)$
+        stages: [pre-push]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 4. Testing (slow, conditional on changed crate)
@@ -666,7 +719,7 @@ repos:
 
       - id: release-update-readme-kmip
         name: Release - update README KMIP table
-        entry: bash -c "pip install --quiet -r .mise/scripts/docs/requirements.txt && python3 .mise/scripts/docs/update_readme_kmip.py"
+        entry: bash -c "pip install --quiet --require-hashes -r .mise/scripts/docs/requirements.txt && python3 .mise/scripts/docs/update_readme_kmip.py"
         language: system
         pass_filenames: false
         always_run: true

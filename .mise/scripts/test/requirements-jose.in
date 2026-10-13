@@ -1,0 +1,14 @@
+cryptography>=50.0.0,<51.0.0
+# Frozen Python dependencies for the JOSE interoperability test suite.
+#
+# Freeze policy:
+#   - Pin jwcrypto to a known-good minor series (<2.0) to prevent accidental
+#     breakage from upstream major changes.
+#   - jwcrypto 1.5.7 (released 2026-04-07) fixes CVE-2026-39373 / GHSA-fjrm-76x2-c4q4
+#     (JWE ZIP decompression bomb — decompressed output size was not bounded).
+#   - cryptography is pinned to the 50.x series; 50.0.0 is the first release
+#     fixing CVE-2026-69247 / PYSEC-2026-3552 (PKCS#7 EnvelopedData decryption
+#     Bleichenbacher oracle via distinguishable errors/timing). The ceiling was
+#     raised from 49.x (which fixed CVE-2026-69249 / GHSA-jwv3-5hgf-82ww,
+#     exponential certificate path-building) to pick up this fix.
+jwcrypto==1.5.7

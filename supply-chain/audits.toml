@@ -1,0 +1,60 @@
+
+# cargo-vet audits file
+
+[audits]
+
+[[trusted.cosmian_config_utils]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2025-04-17"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_cover_crypt]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2022-10-10"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_crypto_core]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2022-08-22"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_findex]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2022-09-28"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_logger]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2025-04-17"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_openssl_provider]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2026-02-13"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_rust_curve25519_provider]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2026-02-13"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.cosmian_sse_memories]]
+criteria = "safe-to-deploy"
+user-id = 138394 # Manuthor
+start = "2025-08-06"
+end = "2027-10-15"
+notes = "Cosmian-maintained crate (own organisation)"
