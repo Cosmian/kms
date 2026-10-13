@@ -1,19 +1,18 @@
-## Breaking Changes
+## Security
 
-### Database
-- `sslmode` is now enforced for `PostgreSQL` connections: a URL that requires TLS fails at startup when TLS cannot be established, and unknown `sslmode` values are rejected.
-- With `sslrootcert`, only that CA is trusted. `sslmode=require` together with `sslrootcert` also verifies the server certificate (libpq behaviour).
+- Stricter `sslmode` handling for `PostgreSQL` connections: `require`, `verify-ca` and `verify-full` fail at startup when a TLS connection cannot be established, and unknown values are rejected. If your URL uses one of these modes, check that the `PostgreSQL` server accepts TLS before upgrading.
 
 ## Bug Fixes
 
 ### Database
+- `sslrootcert` now trusts only the given CA instead of adding it to the system CAs.
+- `sslmode=require` together with `sslrootcert` verifies the server certificate (libpq behaviour).
 - `sslmode=verify-ca` no longer checks the server hostname; `verify-full` still does.
-- `sslmode=allow` is accepted and behaves like `prefer`.
 
-## Tests
+## Testing
 
 - Added live `PostgreSQL` TLS tests covering every `sslmode`; the `psql` test task now starts the `postgres-mtls` container.
 
 ## Documentation
 
-- Updated the `PostgreSQL` `sslmode` reference in the database configuration page.
+- Documented `sslmode=allow` (behaves like `prefer`) and the `sslrootcert` trust behaviour in the `PostgreSQL` configuration page.
