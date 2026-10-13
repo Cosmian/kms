@@ -490,6 +490,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
     share_ids: &[String],
     user: &UserId,
 ) -> KResult<()> {
+    crate::core::require_leader_region(kms, "Crypto Officer ceremony activation")?;
     let co_cfg = &kms.params.crypto_officer;
 
     if co_cfg.users.is_empty() {
