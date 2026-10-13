@@ -1,6 +1,11 @@
 use std::{cell::RefCell, str::FromStr};
 
 use base64::{Engine as _, engine::general_purpose};
+#[cfg(feature = "non-fips")]
+use cosmian_kms_client_utils::cover_crypt_rekey_utils::{
+    CoverCryptRekeyAction, EncryptionHint, QualifiedAttribute,
+    build_covercrypt_rekey_keypair_request, parse_encryption_hint, parse_qualified_attribute,
+};
 use cosmian_kms_client_utils::{
     attributes_utils::{
         LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
@@ -8,7 +13,6 @@ use cosmian_kms_client_utils::{
     certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
-        CoverCryptEncryptionHint, CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
     },
     create_utils::{Curve, SymmetricAlgorithm, prepare_sym_key_elements},
@@ -1856,8 +1860,9 @@ pub fn decrypt_cc_ttlv_request(
 // per `ckms cc` command (`keys rekey`/`prune`, `access-structure add-attribute`/…/
 // `add-dimension`). Their response parses with `parse_rekey_keypair_ttlv_response`. A
 // qualified attribute is written `"Dimension::name"`; an encryption hint is `Classic`,
-// `PostQuantum` or `Hybridized`.
+// `PostQuantum` or `Hybridized`. Non-FIPS builds only, like Covercrypt itself.
 
+#[cfg(feature = "non-fips")]
 fn cc_rekey_ttlv_request(
     master_secret_key_id: &str,
     action: &CoverCryptRekeyAction,
@@ -1868,13 +1873,19 @@ fn cc_rekey_ttlv_request(
     to_wasm_ttlv(&request)
 }
 
-fn cc_encryption_hint(encryption_hint: &str) -> Result<CoverCryptEncryptionHint, JsValue> {
-    CoverCryptEncryptionHint::from_str(encryption_hint)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+#[cfg(feature = "non-fips")]
+fn cc_encryption_hint(encryption_hint: &str) -> Result<EncryptionHint, JsValue> {
+    parse_encryption_hint(encryption_hint).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[cfg(feature = "non-fips")]
+fn cc_attribute(attribute: &str) -> Result<QualifiedAttribute, JsValue> {
+    parse_qualified_attribute(attribute).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Renew the master secrets of every right `access_policy` covers — user keys are then
 /// refreshed by the server (`ckms cc keys rekey`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn rekey_cc_access_policy_ttlv_request(
     master_secret_key_id: &str,
@@ -1888,6 +1899,7 @@ pub fn rekey_cc_access_policy_ttlv_request(
 
 /// Remove all but the latest master secret of every right `access_policy` covers
 /// (`ckms cc keys prune`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn prune_cc_access_policy_ttlv_request(
     master_secret_key_id: &str,
@@ -1902,17 +1914,18 @@ pub fn prune_cc_access_policy_ttlv_request(
 /// Add `attribute` (`"Dimension::name"`) to an existing dimension — in a hierarchical one,
 /// ranked right above the existing attribute named `after` (`None`: at the very bottom)
 /// (`ckms cc access-structure add-attribute`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn add_cc_attribute_ttlv_request(
     master_secret_key_id: &str,
-    attribute: String,
+    attribute: &str,
     encryption_hint: &str,
     after: Option<String>,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
         master_secret_key_id,
         &CoverCryptRekeyAction::AddAttribute(vec![(
-            attribute,
+            cc_attribute(attribute)?,
             cc_encryption_hint(encryption_hint)?,
             none_if_empty(after),
         )]),
@@ -1921,47 +1934,51 @@ pub fn add_cc_attribute_ttlv_request(
 
 /// Rename `attribute` (`"Dimension::name"`) to `new_name` (unqualified)
 /// (`ckms cc access-structure rename-attribute`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn rename_cc_attribute_ttlv_request(
     master_secret_key_id: &str,
-    attribute: String,
+    attribute: &str,
     new_name: String,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
         master_secret_key_id,
-        &CoverCryptRekeyAction::RenameAttribute(vec![(attribute, new_name)]),
+        &CoverCryptRekeyAction::RenameAttribute(vec![(cc_attribute(attribute)?, new_name)]),
     )
 }
 
 /// Stop encrypting under `attribute` (`"Dimension::name"`) — existing ciphertexts still
 /// decrypt (`ckms cc access-structure disable-attribute`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn disable_cc_attribute_ttlv_request(
     master_secret_key_id: &str,
-    attribute: String,
+    attribute: &str,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
         master_secret_key_id,
-        &CoverCryptRekeyAction::DisableAttribute(vec![attribute]),
+        &CoverCryptRekeyAction::DisableAttribute(vec![cc_attribute(attribute)?]),
     )
 }
 
 /// Remove `attribute` (`"Dimension::name"`) from the access structure
 /// (`ckms cc access-structure remove-attribute`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn remove_cc_attribute_ttlv_request(
     master_secret_key_id: &str,
-    attribute: String,
+    attribute: &str,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
         master_secret_key_id,
-        &CoverCryptRekeyAction::DeleteAttribute(vec![attribute]),
+        &CoverCryptRekeyAction::DeleteAttribute(vec![cc_attribute(attribute)?]),
     )
 }
 
 /// Add a new dimension named `dimension` with `attributes` (unqualified names, lowest first
 /// if `hierarchical`), `encryption_hints[i]` being the hint of `attributes[i]` — both must
 /// have the same length (`ckms cc access-structure add-dimension`).
+#[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn add_cc_dimension_ttlv_request(
     master_secret_key_id: &str,
@@ -1980,7 +1997,12 @@ pub fn add_cc_dimension_ttlv_request(
     let attributes = attributes
         .into_iter()
         .zip(encryption_hints)
-        .map(|(name, hint)| Ok((format!("{dimension}::{name}"), cc_encryption_hint(&hint)?)))
+        .map(|(name, hint)| {
+            Ok((
+                QualifiedAttribute::new(&dimension, &name),
+                cc_encryption_hint(&hint)?,
+            ))
+        })
         .collect::<Result<_, JsValue>>()?;
     cc_rekey_ttlv_request(
         master_secret_key_id,

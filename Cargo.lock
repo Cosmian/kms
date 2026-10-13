@@ -1322,8 +1322,8 @@ dependencies = [
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "16.0.0"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=tbz%2Fremove-mandatory-openssl-dep#7f6b0aea47599abc2b035feecaad1754fee75886"
+version = "16.0.1"
+source = "git+https://github.com/Cosmian/cover_crypt.git?rev=bbb4126e4bf71470405604949fa121940d414e91#bbb4126e4bf71470405604949fa121940d414e91"
 dependencies = [
  "cosmian_crypto_core",
  "cosmian_openssl_provider",
@@ -1510,6 +1510,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
+ "cosmian_cover_crypt",
  "cosmian_kmip",
  "cosmian_kms_access",
  "cosmian_logger",
