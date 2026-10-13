@@ -23,6 +23,9 @@ impl HsmProvider for AzureCloudHsmCapabilityProvider {
             supports_aes_gcm_caller_iv: false,
             max_label_len: None,
             skip_finalize_on_drop: true,
+            // Same Cavium/Liquidsec PKCS#11 stack as AWS CloudHSM and Crypt2pay: reading
+            // CKA_START_DATE/CKA_END_DATE fails with CKR_ATTRIBUTE_TYPE_INVALID.
+            supports_key_dates: false,
             ..HsmCapabilities::default()
         }
     }
