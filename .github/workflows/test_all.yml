@@ -420,6 +420,12 @@ jobs:
           # route to the HSM's private VNet IP; prepare_azure_cloudhsm.sh maps the
           # hostname and starts a VPN tunnel only if the HSM is not already reachable.
           AZURE_CLOUD_HSM_HSM_IP: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IP }}
+          # Space-separated private IPs of every cluster node (not just the primary
+          # above): azcloudhsm_client dials siblings directly by IP once logged in,
+          # bypassing azcloudhsm_resource.cfg/hostname mapping, so the VPN route must
+          # reach all of them or key generation fails quorum ("Required number of
+          # servers(3) not available"). Optional: skipped (return 0) if unset.
+          AZURE_CLOUD_HSM_HSM_IPS: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IPS }}
           AZURE_CLOUD_HSM_OVPN_CONF: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_OVPN_CONF }}
           HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
           HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
