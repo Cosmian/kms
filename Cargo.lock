@@ -1323,7 +1323,7 @@ dependencies = [
 [[package]]
 name = "cosmian_cover_crypt"
 version = "16.0.1"
-source = "git+https://github.com/Cosmian/cover_crypt.git?rev=bbb4126e4bf71470405604949fa121940d414e91#bbb4126e4bf71470405604949fa121940d414e91"
+source = "git+https://github.com/Cosmian/cover_crypt.git?rev=bd2cab02b11fdef9535d22732d00915fcc86b1aa#bd2cab02b11fdef9535d22732d00915fcc86b1aa"
 dependencies = [
  "cosmian_crypto_core",
  "cosmian_openssl_provider",

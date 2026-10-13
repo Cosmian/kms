@@ -206,7 +206,7 @@ criterion = { version = "0.6", default-features = false, features = [
   "async_tokio",
 ] }
 cosmian_config_utils = "0.7"
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", rev = "bbb4126e4bf71470405604949fa121940d414e91" } # develop, until a release ships the optional OpenSSL dependency
+cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt.git", rev = "bd2cab02b11fdef9535d22732d00915fcc86b1aa" } # develop, until a release ships the optional OpenSSL dependency
 cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
 cosmian_logger = "0.8"
 der = { version = "0.7", default-features = false }
