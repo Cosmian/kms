@@ -103,19 +103,11 @@ fn pinned_ca_store(path: &str) -> DbResult<X509Store> {
     Ok(store.build())
 }
 
-/// Turns a libpq-style `PostgreSQL` URL into what tokio-postgres can enforce: the URL
-/// (ssl file params stripped, `sslmode` rewritten to one of `disable`/`prefer`/`require`,
-/// the only values tokio-postgres parses) and a TLS connector carrying the certificate
-/// checks that `sslmode` implies. Shared by the object-store and audit connections.
-///
-/// The connector is always returned; tokio-postgres ignores it for `sslmode=disable`.
-pub(crate) fn prepare_pg_connection(url: &str) -> DbResult<(String, MakeTlsConnector)> {
-    let query_params = extract_query_params(url);
+/// `(mode for tokio-postgres, verify chain, verify hostname)` implied by the URL's `sslmode`.
+fn pg_tls_policy(query_params: &HashMap<String, String>) -> DbResult<(&'static str, bool, bool)> {
     let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
-
-    // (mode for tokio-postgres, verify chain, verify hostname). libpq only verifies the
-    // chain for plain `require` when a root cert is given.
-    let (wire_mode, verify_chain, verify_hostname) = match sslmode {
+    // libpq only verifies the chain for plain `require` when a root cert is given.
+    Ok(match sslmode {
         "disable" => ("disable", false, false),
         // tokio-postgres has no `allow`; `prefer` can only add encryption.
         "allow" | "prefer" => ("prefer", false, false),
@@ -128,7 +120,23 @@ pub(crate) fn prepare_pg_connection(url: &str) -> DbResult<(String, MakeTlsConne
                  require, verify-ca, verify-full"
             )));
         }
-    };
+    })
+}
+
+/// Whether connecting with this URL authenticates the server certificate.
+pub(crate) fn pg_url_verifies_server_cert(url: &str) -> bool {
+    pg_tls_policy(&extract_query_params(url)).is_ok_and(|(_, verify_chain, _)| verify_chain)
+}
+
+/// Turns a libpq-style `PostgreSQL` URL into what tokio-postgres can enforce: the URL
+/// (ssl file params stripped, `sslmode` rewritten to one of `disable`/`prefer`/`require`,
+/// the only values tokio-postgres parses) and a TLS connector carrying the certificate
+/// checks that `sslmode` implies. Shared by the object-store and audit connections.
+///
+/// The connector is always returned; tokio-postgres ignores it for `sslmode=disable`.
+pub(crate) fn prepare_pg_connection(url: &str) -> DbResult<(String, MakeTlsConnector)> {
+    let query_params = extract_query_params(url);
+    let (wire_mode, verify_chain, verify_hostname) = pg_tls_policy(&query_params)?;
 
     let mut builder = SslConnector::builder(SslMethod::tls())
         .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
@@ -1751,6 +1759,26 @@ mod tests {
                 .map_or_else(String::new, |e| e.to_string());
             assert!(message.contains("sslmode"), "'{bad}' accepted: {message}");
             assert!(!message.contains("s3cret-pw"), "message: {message}");
+        }
+    }
+
+    #[test]
+    fn test_pg_url_verifies_server_cert() {
+        let base = "postgresql://u:p@h/db";
+        for (query, verified) in [
+            ("", false),
+            ("?sslmode=disable", false),
+            ("?sslmode=prefer", false),
+            ("?sslmode=require", false),
+            ("?sslmode=require&sslrootcert=/ca.pem", true),
+            ("?sslmode=verify-ca&sslrootcert=/ca.pem", true),
+            ("?sslmode=verify-full&sslrootcert=/ca.pem", true),
+        ] {
+            assert_eq!(
+                pg_url_verifies_server_cert(&format!("{base}{query}")),
+                verified,
+                "{query}"
+            );
         }
     }
 

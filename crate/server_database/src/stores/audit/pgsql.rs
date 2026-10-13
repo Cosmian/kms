@@ -42,7 +42,7 @@ use cosmian_kms_access::audit::{
 use cosmian_kms_interfaces::{
     AuditSink, ChainHead, InterfaceError, InterfaceResult, SealReason, WriteOutcome,
 };
-use cosmian_logger::error;
+use cosmian_logger::{error, warn};
 use deadpool_postgres::{
     Config as PgConfig, GenericClient as _, ManagerConfig, Pool, RecyclingMethod,
 };
@@ -53,7 +53,10 @@ use super::{AUDIT_QUERIES, row::event_from_row};
 use crate::{
     db_error,
     error::{DbError, DbResult},
-    stores::sql::{is_pg_retryable_error, pg_retry_backoff_ms, prepare_pg_connection},
+    stores::sql::{
+        is_pg_retryable_error, pg_retry_backoff_ms, pg_url_verifies_server_cert,
+        prepare_pg_connection,
+    },
 };
 
 macro_rules! get_audit_query {
@@ -177,6 +180,13 @@ impl PgAuditSink {
             return Err(db_error!(
                 "audit: --audit-instance-id must be between 1 and 255 characters"
             ));
+        }
+
+        if !pg_url_verifies_server_cert(url) {
+            warn!(
+                "audit: PostgreSQL server certificate is not verified; use \
+                 sslmode=verify-full&sslrootcert=<ca.pem> in --audit-postgres-url"
+            );
         }
 
         let pool = build_pool(url, AUDIT_POOL_SIZE, RecyclingMethod::Fast)?;
