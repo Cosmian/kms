@@ -24,8 +24,17 @@ source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_azure_cloudhsm.sh"
 
 print_header "Running Azure Cloud HSM tests (${VARIANT_NAME})"
 
-cargo test -p azure_cloud_hsm_pkcs11_loader \
+if command -v dpkg-query >/dev/null 2>&1; then
+  print_status "Azure Cloud HSM SDK: $(dpkg-query -W -f='${Version}' azure-cloud-hsm-client 2>/dev/null || printf 'unknown')"
+fi
+print_status "Azure Cloud HSM daemon: $(pgrep -af azcloudhsm_client | sed 's/[[:space:]]\+/ /g' || printf 'not found')"
+
+if ! cargo test -p azure_cloud_hsm_pkcs11_loader \
   --features azure_cloud_hsm \
-  -- --nocapture tests::test_hsm_azure_cloud_hsm_all --ignored --exact
+  -- --nocapture tests::test_hsm_azure_cloud_hsm_all --ignored --exact; then
+  print_warning "Azure Cloud HSM daemon log (last 200 lines)"
+  sudo tail -n 200 /tmp/azcloudhsm_client.log 2>/dev/null || print_warning "Daemon log unavailable"
+  exit 1
+fi
 
 print_success "Azure Cloud HSM tests completed"
