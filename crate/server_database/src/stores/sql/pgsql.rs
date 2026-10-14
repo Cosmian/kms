@@ -397,6 +397,16 @@ impl PgPool {
             )
             .await
             .map_err(DbError::from)?;
+        // Add the RBAC `domain` column to databases created before it existed (idempotent).
+        // Written inline rather than via the shared `add-column-domain` query because that
+        // one has no `IF NOT EXISTS` (SQLite does not support it). A constant default is
+        // added without rewriting the table on PostgreSQL 11+.
+        client
+            .batch_execute(
+                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS domain VARCHAR(255) NOT NULL DEFAULT '';",
+            )
+            .await
+            .map_err(DbError::from)?;
         // Add activated_by column to crypto_officer_activations (idempotent).
         // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
         client

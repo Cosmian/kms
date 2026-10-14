@@ -684,7 +684,7 @@ failure_mode = "continue"
 [audit.file]
 
 [opa]
-# OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA gates access; for operations on existing objects, a legacy DB grant is also required). For object-creation operations (`Create`, `CreateKeyPair`, `Import`, `Register`) in `"enforcing"` mode, OPA's allow decision is sufficient — no DB grant exists yet. Ignored when `--opa-url` is not set
+# OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial, error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it after OPA allows. Ignored when `--opa-url` is not set
 opa_mode = "disabled"
 
 

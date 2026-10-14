@@ -16,7 +16,7 @@ that can be used alone or together.
 | :--: | ---- | ----------- |
 | **1** | [Native KMS only](mode1.md) | Default. Suitable for single-tenant or air-gapped deployments. |
 | **2** | [Exclusive OPA](mode2.md) | Multi-tenant or regulated environments where all access decisions must go through OPA. |
-| **3** | [OPA + Native KMS](mode3.md) | Layered security: OPA enforces role policy first, then per-object ownership/grants apply. |
+| **3** | [OPA + Native KMS](mode3.md) | OPA is authoritative for JWT users. Native Crypto Officers (and the key ceremony) and HSM-backed objects also use the native KMS permission logic. |
 
 The OPA modes require the **Eviden Authentication Server** (JWT issuer) and an
 **OPA sidecar** running the reference Rego policy. See the
@@ -40,7 +40,9 @@ unrestricted access:
 !!! note "Interaction with OPA modes"
     The CryptoOfficer activation ceremony operates exclusively inside the native
     KMS gate. In Mode 2 (exclusive OPA) the ceremony has no effect; in Mode 3
-    it takes effect only after OPA has allowed the request.
+    native Crypto Officers (including the ceremony candidates listed in
+    `crypto_officer_users`) skip OPA on non-HSM objects and are evaluated by the
+    native KMS gate only. On HSM-backed objects OPA is consulted first.
 
 ---
 

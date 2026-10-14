@@ -1,9 +1,15 @@
 # Mode 3 — Enforcing (OPA + Native KMS)
 
-When the OPA server is configured with `opa_mode = "enforcing"`, **both** authorization
-systems must allow the request. OPA acts as the first gate; if it denies, the request
-is rejected immediately. If OPA allows, the native KMS permission system runs as a
-second gate with **veto power**.
+When the OPA server is configured with `opa_mode = "enforcing"`, **OPA is the authoritative
+policy engine**. A denial, an error or a timeout is final, and for most requests an allow is
+sufficient: the native KMS permission system (ownership, grants) is **not** consulted afterwards.
+It still applies in two cases:
+
+- **Native Crypto Officers** (activated officers and the ceremony candidates listed in
+  `crypto_officer_users`) acting on non-HSM objects skip OPA and are evaluated by the native KMS
+  permission system only, so the [key ceremony](key_ceremony.md) keeps working without JWT roles.
+- **HSM-backed objects** must also pass the native KMS permission system (owner, HSM admin or
+  explicit grant) after OPA has allowed the request.
 
 ```toml
 # kms.toml — Mode 3
@@ -30,18 +36,18 @@ flowchart LR
     end
 
     subgraph AuthServer["Authentication Verifier"]
-        IDP["Cosmian Auth Verifier\n(JWT issuer — roles, as_rid)"]
+        IDP["Cosmian Auth Verifier<br/>(JWT issuer — roles, as_rid)"]
     end
 
     subgraph PolicyServer["Policy Plane"]
-        OPA["OPA Server\nPOST /v1/data/kms/allow"]
-        Rego["kms.rego\n(role definitions)"]
+        OPA["OPA Server<br/>POST /v1/data/kms/allow"]
+        Rego["kms.rego<br/>(role definitions)"]
         OPA -.- Rego
     end
 
     subgraph KMSServer["KMS Server"]
-        KMS["Cosmian KMS\n:9998"]
-        DB[("SQLite / PostgreSQL\n/ Redis-Findex")]
+        KMS["Cosmian KMS<br/>:9998"]
+        DB[("SQLite / PostgreSQL<br/>/ Redis-Findex")]
         KMS -.- DB
     end
 
@@ -58,12 +64,34 @@ flowchart LR
 
 ## When to use Mode 3
 
-- **Migration path** — you have an existing Mode 1 deployment with fine-grained grants
-  and want to layer RBAC guardrails without discarding them.
-- **Defence in depth** — role-based rules prevent broad misuse; per-object grants
-  enforce least-privilege on individual keys.
-- **Compliance** — some standards require both role-based and object-level access
-  control to be active simultaneously.
+Mode 3 behaves like [Mode 2](mode2.md) for external (JWT) users acting on non-HSM objects. Choose it
+over Mode 2 when:
+
+- **Native Crypto Officers must keep working** — the Crypto Officer role and the split-key ceremony are
+  configured in the KMS (`crypto_officer_users`), not through JWT roles, so they must not depend on the
+  OPA policy.
+- **HSM-backed keys are in use** — OPA gates access first, and the HSM-admin and explicit-grant rules
+  still apply to the keys stored in an HSM.
+
+!!! warning "Per-object grants do not restrict OPA-allowed access"
+    On non-HSM objects an OPA allow is final: ownership and the grants created with
+    `ckms access-rights grant` are not checked afterwards, and a grant never overrides an OPA denial.
+    To restrict access per object, express the rule in the Rego policy (for example with
+    `input.is_owner`).
+
+---
+
+## Who decides what
+
+*Native Crypto Officer* means a user listed in `crypto_officer_users`, whether already activated or
+still waiting for the ceremony to complete.
+
+| Caller | Object | Decided by |
+| ------ | ------ | ---------- |
+| Activated Crypto Officer | non-HSM | Native KMS only: OPA is skipped, ownership bypass |
+| Ceremony candidate, not yet activated | non-HSM | Native KMS only: OPA is skipped, owner or explicit grant |
+| Any other caller | non-HSM, or no object (for example `Create`) | OPA only: an allow is sufficient |
+| Any caller, including Crypto Officers | HSM-backed | OPA first; the native KMS check (owner, HSM admin or explicit grant) must also allow |
 
 ---
 
@@ -88,18 +116,21 @@ sequenceDiagram
     DB-->>KMS: ObjectWithMetadata (owner, domain, grants)
 
     rect rgb(255, 240, 240)
-        Note over KMS,OPA: Gate 1 — OPA
+        Note over KMS,OPA: OPA evaluation (skipped for native Crypto Officers on non-HSM objects)
         KMS->>OPA: POST /v1/data/kms/allow
         OPA->>OPA: Evaluate kms.rego
         OPA-->>KMS: {result: true/false}
     end
 
-    alt OPA denies or unreachable
+    alt OPA denies, errors or times out
         KMS-->>Client: Error: Access Denied
-    else OPA allows
+    else OPA allows a non-HSM object (or an operation without an object)
+        KMS->>DB: Execute KMIP operation
+        KMS-->>Client: KMIP response (success)
+    else OPA allows an HSM-backed object
         rect rgb(240, 255, 240)
-            Note over KMS,DB: Gate 2 — Native KMS
-            KMS->>KMS: Check owner / grants / HSM admin
+            Note over KMS,DB: Native KMS check
+            KMS->>KMS: Check owner / HSM admin / explicit grant
         end
         alt Native KMS allows
             KMS->>DB: Execute KMIP operation
@@ -110,66 +141,87 @@ sequenceDiagram
     end
 ```
 
+Native Crypto Officers acting on a non-HSM object skip the OPA step and go straight to the native
+KMS check, as the decision flowchart below shows.
+
 ---
 
-## Dual-gate decision flowchart
+## Decision flowchart
 
 ```mermaid
 flowchart TD
-    Start([KMIP request arrives]) --> OPA{Gate 1: OPA allows?}
-    OPA -->|No / unreachable| Deny([Denied])
-    OPA -->|Yes| KMS{Gate 2: Native KMS allows?}
+    Start([KMIP request arrives]) --> CO{"Native Crypto Officer<br/>on a non-HSM object?"}
+    CO -->|Yes| KMS{"Native KMS<br/>check allows?"}
+    CO -->|No| OPA{"OPA allows?"}
+    OPA -->|"No, error or timeout"| Deny([Denied])
+    OPA -->|Yes| HSM{"HSM-backed<br/>object?"}
+    HSM -->|No| Allow([Granted])
+    HSM -->|Yes| KMS
     KMS -->|No| Deny
-    KMS -->|Yes| Allow([Granted])
+    KMS -->|Yes| Allow
 ```
 
-### Gate 1 detail — OPA evaluation
+### OPA evaluation
 
-Same as [Mode 2](mode2.md): role hierarchy, domain scoping, owner override.
+Same as [Mode 2](mode2.md): role hierarchy, domain scoping, owner override. The decision is final and
+fail-closed: an error or a 5-second timeout is a denial.
 
-### Gate 2 detail — Native KMS evaluation
+### Native KMS evaluation
 
-Same as [Mode 1](mode1.md): owner → HSM admin → explicit grant → Get wildcard.
+Same as [Mode 1](mode1.md): owner → activated Crypto Officer (non-HSM objects) → HSM admin (HSM-backed
+objects) → explicit grant → Get wildcard (non-HSM objects).
 
-The ceremony super-admin (Shamir split-key) operates exclusively within Gate 2 and is
+The ceremony super-admin (Shamir split-key) operates exclusively within the native KMS check and is
 invisible to OPA.
 
 ---
 
 ## Interaction scenarios
 
-| OPA decision | Native KMS decision | Final result | Explanation |
-| :----------: | :-----------------: | :----------: | ----------- |
-| Allow        | Allow (owner)       | **Granted**  | Both gates pass |
-| Allow        | Allow (grant)       | **Granted**  | Role allows + explicit grant exists |
-| Allow        | Deny                | **Denied**   | Role allows but no object-level permission |
-| Deny         | _(not evaluated)_   | **Denied**   | Short-circuit: OPA veto |
-| Unreachable  | _(not evaluated)_   | **Denied**   | Fail-closed: OPA down |
-| Allow        | Allow (HSM admin)   | **Granted**  | HSM admin passes Gate 2 |
-| Allow        | Allow (ceremony SA) | **Granted**  | Ceremony super-admin passes Gate 2 |
+*Other caller* means anyone who is not a native Crypto Officer.
+
+| Caller and object | OPA decision | Native KMS decision | Final result | Explanation |
+| ----------------- | :----------: | :-----------------: | :----------: | ----------- |
+| Other caller, non-HSM object | Allow | *(not evaluated)* | **Granted** | An OPA allow is sufficient: no ownership or grant check |
+| Other caller, non-HSM object | Deny | *(not evaluated)* | **Denied** | OPA veto |
+| Any request that reaches OPA | Unreachable, error or timeout | *(not evaluated)* | **Denied** | Fail-closed: OPA down |
+| Activated Crypto Officer, non-HSM object | *(skipped)* | Allow (ownership bypass) | **Granted** | Native Crypto Officers do not depend on OPA |
+| Ceremony candidate, not yet activated, non-HSM object | *(skipped)* | Allow (owner or grant) | **Granted** | The ceremony keeps working without JWT roles |
+| Ceremony candidate, not yet activated, non-HSM object | *(skipped)* | Deny | **Denied** | Neither owner nor explicit grant |
+| Any caller, HSM-backed object | Allow | Allow (owner, HSM admin or grant) | **Granted** | Both must allow |
+| Any caller, HSM-backed object | Allow | Deny | **Denied** | The native KMS check vetoes the OPA allow |
+| Any caller, HSM-backed object | Deny | *(not evaluated)* | **Denied** | OPA veto |
 
 ---
 
 ## Practical example
 
-Alice has `CryptoOfficer` role in domain `acme.com` and was granted `encrypt` on key
-`key-123` (also in domain `acme.com`).
+Alice's JWT carries the `CryptoOfficer` role and the domain `acme.com`, and she is not listed in
+`crypto_officer_users`. `key-123` belongs to Bob, is in the domain `acme.com`, is not HSM-backed, and
+Alice holds no grant on it. The examples use the reference `kms.rego` policy.
+
+Alice destroys `key-123`:
 
 ```text
-Gate 1 (OPA): CryptoOfficer + same domain + "encrypt" in crypto_officer_ops → Allow ✓
-Gate 2 (KMS): Alice has explicit "encrypt" grant on key-123 → Allow ✓
-Final: Granted
+OPA:        CryptoOfficer + same domain + "destroy" in crypto_officer_ops → Allow ✓
+Native KMS: not evaluated (non-HSM object, Alice is not a native Crypto Officer)
+Final:      Granted
 ```
 
-Now Alice tries `destroy` on `key-123`:
+Alice is neither the owner nor a grantee, yet the request is granted: in Mode 3 an OPA allow on a
+non-HSM object is final.
+
+Alice encrypts with `key-123`:
 
 ```text
-Gate 1 (OPA): CryptoOfficer + same domain + "destroy" in crypto_officer_ops → Allow ✓
-Gate 2 (KMS): Alice has no "destroy" grant and is not owner → Deny ✗
-Final: Denied
+OPA:        CryptoOfficer + same domain, but "encrypt" is not in crypto_officer_ops → Deny ✗
+Native KMS: not evaluated
+Final:      Denied
 ```
 
-OPA role allows it, but the native KMS gate vetoes because no explicit grant exists.
+An `encrypt` grant on `key-123` would not change the result, because a grant never overrides an OPA
+denial. Alice would need the `User` role (`encrypt` belongs to `user_ops` in the reference policy), or
+the policy would have to be extended.
 
 ---
 
@@ -177,18 +229,19 @@ OPA role allows it, but the native KMS gate vetoes because no explicit grant exi
 
 | Aspect | Mode 2 (Exclusive) | Mode 3 (Enforcing) |
 | ------ | :----------------: | :----------------: |
-| OPA consulted | Yes | Yes |
-| Native KMS consulted | No | Yes (second gate) |
+| OPA consulted | Yes, for every request | Yes, except for native Crypto Officers on non-HSM objects |
 | OPA deny = final deny | Yes | Yes |
-| Native KMS can veto | N/A | **Yes** |
-| Ceremony super-admin | Suspended | Active (in Gate 2) |
-| Per-object grants used | No | **Yes** |
-| HSM admin bypass | No | **Yes** (in Gate 2) |
+| OPA allow sufficient | Yes | Yes, except on HSM-backed objects |
+| Native KMS consulted | No | Only for native Crypto Officers (non-HSM objects) and HSM-backed objects |
+| Native KMS can veto an OPA allow | N/A | Only on HSM-backed objects |
+| Ceremony super-admin | Suspended | Active (native Crypto Officers skip OPA) |
+| Per-object grants used | No | Only for native Crypto Officers and HSM-backed objects |
+| HSM admin bypass | No | **Yes** (HSM-backed objects, after OPA allows) |
 
 ---
 
 ## See also
 
 - [Authorization overview](index.md) — role model, JWT claims, OPA input document
-- [Mode 1 — Native KMS permissions](mode1.md) — details on Gate 2 logic
-- [Mode 2 — Exclusive OPA](mode2.md) — details on Gate 1 logic
+- [Mode 1 — Native KMS permissions](mode1.md) — details on the native KMS evaluation
+- [Mode 2 — Exclusive OPA](mode2.md) — details on the OPA evaluation

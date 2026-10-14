@@ -9,7 +9,7 @@
 - Add support for CSR-based Certify TTL: the `requested_validity_days` vendor attribute is now honoured on CSR-based `Certify` requests (the `build_and_sign_certificate` path already read it; this release adds regression tests and a matching `ttlDays int` parameter to `github.com/Cosmian/kmip-go`'s `Certify()` function, closing the SPIRE / kmip-go limitation documented at <https://github.com/spiffe/spire/pull/7235#discussion_r3829548963>)
 - Wire OPA authorization into `user_has_permission()` with mode-dependent behavior:
     - Exclusive: OPA is the sole decision maker
-    - Enforcing: both OPA and legacy KMS permission logic must allow
+    - Enforcing: OPA is authoritative (a denial, error or timeout is final and an allow is sufficient); native Crypto Officers skip OPA on non-HSM objects and use the legacy KMS permission logic, and HSM-backed objects must also pass it after OPA allows
 - Add `build_opa_input()` helper that constructs the OPA input document from request context
 - Add `kms.rego` Rego policy supporting role-based domain-scoped access control
 - Extract JWT `roles` and `as_domain` claims into `AuthenticatedUser` for OPA context
@@ -21,7 +21,7 @@
     - `index.md`: overview, mode table, architecture diagram, role model, domain model, JWT claims, OPA input document, ceremony note, config reference
     - `mode1.md`: native KMS permissions (ownership, grants, HSM, privileged users) with sequence and flowchart diagrams
     - `mode2.md`: exclusive OPA mode with sequence diagram, Rego evaluation flowchart, fail-closed diagram, debug endpoint
-    - `mode3.md`: enforcing dual-gate mode with sequence diagram, compound decision flowchart, interaction scenarios table
+    - `mode3.md`: enforcing mode (OPA-authoritative, with the native KMS check for native Crypto Officers and HSM-backed objects) with sequence diagram, decision flowchart, interaction scenarios table
 - Remove `is_super_admin` from OPA input document — ceremony super-admin is fully decoupled from OPA (native KMS gate only)
 - Remove `is_super_admin` allow rule and `super_admin_ceremony` reason from `kms.rego`
 - Update `OPA-middleware.md` SA3 section to reflect full decoupling
@@ -31,7 +31,7 @@
 
 - Add `domain: String` field to `ObjectWithMetadata` struct
 - Extend `ObjectsStore::create()` trait with `domain: &str` parameter
-- Add schema migration for existing databases (ALTER TABLE ADD COLUMN domain)
+- Add schema migration for existing databases: `ALTER TABLE objects ADD COLUMN domain` on SQLite, PostgreSQL (`IF NOT EXISTS`) and MySQL/MariaDB (after checking that the column is missing)
 - Add `roles: Vec<String>` and `domain: Option<String>` fields to `AuthenticatedUser`
 - `UserClaim` (JWT deserialization) now includes `roles` and `domain` (alias `as_domain`) fields
 

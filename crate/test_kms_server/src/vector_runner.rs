@@ -5711,12 +5711,12 @@ ObjectType = "SymmetricKey"
         .await
     }
 
-    /// Multi-tenant isolation in **enforcing** (dual-gate) mode: `CryptoOfficer`
+    /// Multi-tenant isolation in **enforcing** mode: `CryptoOfficer`
     /// from `kms-opa-other` must not access a key created in `kms-opa-test`.
     ///
     /// Proves that domain isolation is not an exclusive-mode artefact.  In
-    /// enforcing mode both OPA and the native KMS gate must allow.  OPA's
-    /// `same_domain` check fails first → access denied.
+    /// enforcing mode OPA is authoritative for external users on non-HSM
+    /// objects, so OPA's `same_domain` check denies the access.
     ///
     /// Ref: kms.rego `same_domain` (ANSI/INCITS 359 §4.2;
     ///      NIST SP 800-53 Rev 5 AC-3, AC-4, SC-28).
@@ -5998,13 +5998,13 @@ ObjectType = "SymmetricKey"
         .await
     }
 
-    // ── Enforcing mode: Gate 2 (KMS legacy) no longer re-denies OPA-approved ops ──
+    // ── Enforcing mode: the KMS legacy check no longer re-denies OPA-approved ops ──
 
     /// OPA enforcing: Auditor (non-owner, same domain) can `GetAttributes` on a key
     /// they don't own.
     ///
     /// Regression test for the bug where in enforcing mode the KMS legacy ownership
-    /// check (Gate 2) re-denied operations that OPA Gate 1 already approved.
+    /// check re-denied operations that OPA had already approved.
     /// Symptom: Web UI Locate page showed all fields as N/A except the UID.
     ///
     /// After the fix: OPA approval is authoritative for non-HSM objects in enforcing
@@ -6061,7 +6061,7 @@ ObjectType = "SymmetricKey"
                             cfg.opa.opa_url = Some(opa_url_c);
                             cfg.opa.opa_mode = opa_mode.to_owned();
                             if add_co_users {
-                                // Privileged cert CO: KMS bypasses OPA Gate 1 in enforcing mode.
+                                // Privileged cert CO: KMS bypasses OPA in enforcing mode.
                                 cfg.roles.crypto_officer_users =
                                     Some(vec!["owner.client@acme.com".to_owned()]);
                             }
@@ -6086,7 +6086,7 @@ ObjectType = "SymmetricKey"
     ///
     /// A bearer token with `roles: []` (no role assigned) is sent. OPA evaluates
     /// no allow rule → deny. Proves that a misconfigured or role-free token cannot
-    /// bypass Gate 1 in enforcing mode.
+    /// bypass OPA in enforcing mode.
     #[tokio::test]
     #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
     async fn test_vec_opa_mode_enforcing_empty_roles_denied() -> Result<(), KmsClientError> {
@@ -6138,7 +6138,7 @@ ObjectType = "SymmetricKey"
     /// OPA enforcing: Auditor role denied Create.
     ///
     /// `Create` is not in `auditor_ops` (auditors are read-only). Even in enforcing
-    /// mode, OPA Gate 1 blocks the operation before KMS Gate 2 is reached.
+    /// mode, OPA denies the operation and the denial is final.
     #[tokio::test]
     #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
     async fn test_vec_opa_mode_enforcing_auditor_create_denied() -> Result<(), KmsClientError> {
@@ -6194,8 +6194,8 @@ ObjectType = "SymmetricKey"
     /// OPA enforcing: native KMS CO (cert, in `crypto_officer_users`) allowed Create.
     ///
     /// The server is configured with `crypto_officer_users = ["owner.client@acme.com"]`.
-    /// The privileged cert user bypasses OPA Gate 1 (KMS native trust in enforcing mode),
-    /// then passes Gate 2 as the object owner → Create succeeds.
+    /// The privileged cert user bypasses OPA (KMS native trust in enforcing mode) and is
+    /// evaluated by the native KMS permission logic → Create succeeds.
     ///
     /// Counterpart to `test_vec_opa_mode_exclusive_native_co_cert_denied`: shows that
     /// the same cert user IS allowed in enforcing mode when explicitly privileged.

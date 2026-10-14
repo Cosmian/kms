@@ -17,7 +17,7 @@ Three modes:
 |------|------|-----------|
 | 1 | `Disabled` | OPA is not called; existing KMS permission system runs unchanged |
 | 2 | `Exclusive` | Only OPA decides; KMS permission system is skipped |
-| 3 | `Enforcing` | OPA runs first; if true, KMS permission system also runs; both must allow |
+| 3 | `Enforcing` | OPA is authoritative: a denial, error or timeout is final and an allow is sufficient. Exceptions: native Crypto Officers on non-HSM objects skip OPA and use the KMS permission system; HSM-backed objects must also pass the KMS permission system after OPA allows |
 
 Fail-closed: if OPA is configured but unreachable, the request is denied.
 
@@ -73,7 +73,9 @@ OPA evaluates kms.rego → {"result": true}
 
 KMS applies mode logic:
   Exclusive:  allow = opa_result
-  Enforcing:  allow = opa_result AND kms_result
+  Enforcing:  native Crypto Officer, non-HSM object:  allow = kms_result  (OPA skipped)
+              HSM-backed object:                      allow = opa_result AND kms_result
+              any other request:                      allow = opa_result
 ```
 
 Non-JWT auth (mTLS, API token): KMS sends `"roles": []` → all role-based rules are false → fail-closed.
@@ -256,7 +258,7 @@ The KMS ceremony super-admin (Shamir split-key) and OPA RBAC are **fully indepen
 - OPA has no visibility into the ceremony state.
 - In Mode 1 (Disabled): ceremony super-admin operates as before (early return in native KMS check).
 - In Mode 2 (Exclusive): ceremony has no effect — OPA is the sole decision maker.
-- In Mode 3 (Enforcing): ceremony super-admin takes effect inside Gate 2 (native KMS), only after OPA has already allowed.
+- In Mode 3 (Enforcing): native Crypto Officers (including ceremony candidates listed in `crypto_officer_users`) skip OPA on non-HSM objects and are evaluated by the native KMS check only.
 
 The JWT `SuperAdmin` role (assigned by auth admin) and the ceremony super-admin (Shamir activation) are distinct concepts with different trust anchors and different enforcement paths.
 
@@ -527,7 +529,7 @@ impl OpaClient {
 
 ```text
 --opa-url   <URL>   OPA sidecar base URL (enables OPA integration)
---opa-mode  <MODE>  "exclusive" or "enforcing" [default: "enforcing"]
+--opa-mode  <MODE>  "exclusive" or "enforcing" [default: "disabled"]
 ```
 
 **Step 20** — `crate/server/src/core/retrieve_object_utils.rs`
@@ -539,20 +541,27 @@ In `user_has_permission()` — SA3 integration:
 //   line 225: if kms.is_super_admin(user).await? { return Ok(true); }
 //   ... normal HSM + DB checks ...
 
-// Mode 2/3 (Exclusive/Enforcing) — OPA is the sole gate:
+// Mode 2/3 (Exclusive/Enforcing) — OPA decides:
 if kms.opa_client.is_some() {
-    // Skip the is_super_admin() early return — SA3 feeds it into OPA input instead
-    let input = build_input(kms, user, owm, operation_type).await?;
-    //   ↑ build_input calls kms.is_super_admin(user) → sets input.is_super_admin
-    let opa_ok = kms.opa_client.as_ref().unwrap()
-        .query(&input).await.unwrap_or(false); // fail-closed
-    match kms.params.opa_mode {
-        OpaMode::Exclusive => return Ok(opa_ok),
-        OpaMode::Enforcing => {
-            if !opa_ok { return Ok(false) }
-            // fall through to HSM admin + DB grant checks
+    // Enforcing only: native Crypto Officers (activated, or listed in `crypto_officer.users`)
+    // acting on non-HSM objects skip OPA and use the legacy checks below.
+    let skip_opa = kms.params.opa_mode == OpaMode::Enforcing && is_native_co(kms, user, owm).await?;
+    if !skip_opa {
+        // Skip the is_super_admin() early return — SA3 feeds it into OPA input instead
+        let input = build_input(kms, user, owm, operation_type).await?;
+        //   ↑ build_input calls kms.is_super_admin(user) → sets input.is_super_admin
+        let opa_ok = kms.opa_client.as_ref().unwrap()
+            .query(&input).await.unwrap_or(false); // fail-closed
+        match kms.params.opa_mode {
+            OpaMode::Exclusive => return Ok(opa_ok),
+            OpaMode::Enforcing => {
+                if !opa_ok { return Ok(false) }
+                // An OPA allow is final for non-HSM objects: no ownership / DB grant check
+                if !is_hsm(owm) { return Ok(true) }
+                // HSM-backed objects fall through to HSM admin + DB grant checks
+            }
+            OpaMode::Disabled => unreachable!(),
         }
-        OpaMode::Disabled => unreachable!(),
     }
 } else {
     // Mode 0 — existing super-admin bypass + normal logic

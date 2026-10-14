@@ -166,5 +166,5 @@ If the response contains `"denied"`, no rule matched.
 ## See also
 
 - [Authorization overview](index.md) — role model, JWT claims, OPA input document
-- [Mode 3 — Enforcing](mode3.md) — dual-gate mode (OPA + native KMS)
+- [Mode 3 — Enforcing](mode3.md) — OPA stays authoritative; native Crypto Officers and HSM-backed objects also use the native KMS check
 - Rego policy source: `test_data/opa/kms.rego`

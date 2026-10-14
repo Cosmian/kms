@@ -254,6 +254,22 @@ impl MySqlPool {
             conn.query_drop(sql).await.map_err(DbError::from)?;
         }
 
+        // Add the RBAC `domain` column to databases created before it existed.
+        // `CREATE TABLE IF NOT EXISTS` above leaves an existing `objects` table untouched,
+        // and every object insert/select references `domain`, so this must run first.
+        // MySQL 8.0 does not support `ADD COLUMN IF NOT EXISTS`, hence the SHOW COLUMNS check.
+        let has_domain_sql = MYSQL_QUERIES.get("has-column-domain").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-domain".to_owned())
+        })?;
+        let domain_rows: Vec<mysql_async::Row> =
+            conn.query(has_domain_sql).await.map_err(DbError::from)?;
+        if domain_rows.is_empty() {
+            let add_domain = MYSQL_QUERIES.get("add-column-domain").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-domain".to_owned())
+            })?;
+            conn.query_drop(add_domain).await.map_err(DbError::from)?;
+        }
+
         // Optional: clear database content for tests to ensure isolation
         if clear_database {
             for name in [

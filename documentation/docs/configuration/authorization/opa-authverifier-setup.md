@@ -1,8 +1,8 @@
 # OPA + Authentication Verifier Setup
 
 Step-by-step configuration guide for running Mode 2 (exclusive OPA) or
-Mode 3 (enforcing OPA + native KMS) with an OPA sidecar and the Cosmian
-Authentication Verifier as the JWT issuer.
+Mode 3 (enforcing OPA, with the native KMS permission system kept for Crypto Officers and HSM-backed objects)
+with an OPA sidecar and the Cosmian Authentication Verifier as the JWT issuer.
 
 ---
 
@@ -308,7 +308,7 @@ Look for `ensure_auth` (JWT parsing), `retrieve_object_utils` (OPA input), and
 | `401 Unauthorized` | JWT missing or signature invalid | Check `--jwt-auth-provider` issuer and JWKS URI |
 | `403` — OPA deny | Role not in JWT or cross-domain | Check `roles` claim; verify `as_rid` matches `object_domain` |
 | `403` — OPA unreachable | OPA not running or wrong port | Check `KMS_OPA_URL`; run `curl http://localhost:8181/health` |
-| `403` — Native KMS deny | Mode 3: no DB grant | Add grant with `ckms access-rights grant`, or switch to Mode 2 |
+| `403` — Native KMS deny | Mode 3, HSM-backed object (OPA allowed) or native Crypto Officer candidate: no ownership, HSM-admin right or grant | Add a grant with `ckms access-rights grant` |
 | Empty `roles: []` in OPA | mTLS or API-token auth | Roles only come from JWT |
 | `roles` not in JWT | Authentication Verifier not configured | Check that the realm emits `roles` and `as_rid` claims — see the [Authentication Verifier docs](https://docs.cosmian.com/authentication_verifier/installation.html) |
 

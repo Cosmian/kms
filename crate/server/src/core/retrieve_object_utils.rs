@@ -302,6 +302,16 @@ fn build_opa_input(
 }
 
 /// Check if a user has permission to perform an operation on an object.
+///
+/// When OPA is configured, its mode decides which checks run:
+///  * `disabled`: only the KMS permission logic below runs.
+///  * `exclusive`: OPA alone decides; the KMS permission logic is skipped.
+///  * `enforcing`: OPA alone decides (a denial, error or timeout is final, an allow is
+///    sufficient), except for native Crypto Officers and ceremony candidates acting on non-HSM
+///    objects, who skip OPA and use the KMS permission logic, and for HSM-backed objects, which
+///    must also pass the KMS permission logic after OPA allows.
+///
+/// KMS permission logic:
 ///  If the user is the owner of the object, it will always return true.
 ///  For non-HSM objects, having the `Get` permission implies all other operations.
 ///  For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
@@ -347,13 +357,13 @@ pub(crate) async fn user_has_permission(
             }
             OpaMode::Enforcing => {
                 // ── Native KMS CO bypass ────────────────────────────────────────────
-                // Users listed in `crypto_officer_users` bypass OPA Gate 1 in
+                // Users listed in `crypto_officer_users` bypass OPA in
                 // enforcing mode regardless of whether they have completed the ceremony.
                 //
-                // Rationale: OPA Gate 1 enforces JWT role/domain policy for external
+                // Rationale: OPA enforces JWT role/domain policy for external
                 // users.  CO candidates are KMS-native — enrolled via server TOML config,
                 // not via JWT — and therefore operate outside OPA's role model.
-                // Requiring them to pass OPA Gate 1 creates a chicken-and-egg deadlock
+                // Requiring them to pass OPA creates a chicken-and-egg deadlock
                 // during the ceremony: candidates must Get peer shares to call
                 // JoinSplitKey, but `is_crypto_officer()` returns `false` until
                 // the ceremony completes.
@@ -362,8 +372,8 @@ pub(crate) async fn user_has_permission(
                 //   a) activated COs   (`is_crypto_officer()` = true)
                 //   b) ceremony candidates listed in `co_users` (not yet activated)
                 //
-                // Both groups fall through to the legacy KMS gate, which enforces
-                // ownership and explicit DB grant checks — so bypassing OPA Gate 1
+                // Both groups are evaluated by the legacy KMS permission logic, which
+                // enforces ownership and explicit DB grant checks — so bypassing OPA
                 // does NOT grant unconditional access.
                 //
                 // HSM keys are excluded: their access model is separate and requires
@@ -378,7 +388,7 @@ pub(crate) async fn user_has_permission(
                             .iter()
                             .any(|u| u == user.as_str()));
                 if !is_native_co {
-                    // ── OPA Gate 1 ────────────────────────────────────────────────────
+                    // ── OPA ────────────────────────────────────────────────────
                     let opa_ctx = get_opa_user_context();
                     let input = build_opa_input(
                         user,

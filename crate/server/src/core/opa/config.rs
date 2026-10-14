@@ -13,8 +13,11 @@ pub(crate) enum OpaMode {
     Disabled,
     /// OPA is the sole decision maker; KMS permission logic is skipped entirely.
     Exclusive,
-    /// OPA runs first; if it denies, the request is denied immediately.
-    /// If it allows, the KMS permission logic also runs (both must allow).
+    /// OPA is authoritative and fails closed: a denial (or an error/timeout) is final, and an
+    /// allow is sufficient, with no ownership or grant check.
+    /// The KMS permission logic still applies in two cases: native Crypto Officers (and the
+    /// ceremony candidates listed in `crypto_officer.users`) acting on non-HSM objects skip OPA
+    /// and use it alone, and HSM-backed objects must pass it after OPA allows.
     Enforcing,
 }
 

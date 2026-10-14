@@ -78,10 +78,11 @@ Three modes are supported, selected via `--opa-url` (enables OPA) and
 |---|---|---|
 | **Disabled** | *(absent `--opa-url`)* | OPA is not called; only legacy DB grants decide. |
 | **Exclusive** | `exclusive` | OPA is the sole decision maker; the legacy DB grant table is not consulted.  Suitable for greenfield deployments that manage all access through policy. |
-| **Enforcing** | `enforcing` *(default)* | OPA runs first.  If OPA denies → deny immediately.  If OPA allows → the legacy DB grant check also runs for operations on existing objects (belt-and-suspenders).  For object-creation operations (`Create`, `CreateKeyPair`, `Import`, `Register`) OPA's approval is sufficient because no DB grant exists yet. |
+| **Enforcing** | `enforcing` | OPA is authoritative.  If OPA denies (or errors, or times out) → deny.  If OPA allows → allow, with no ownership or DB grant check, except on HSM-backed objects, where the legacy HSM-admin / grant check must also allow.  Native Crypto Officers (activated, or listed in `crypto_officer.users`) acting on non-HSM objects skip OPA and use the legacy KMS permission logic. |
 
-`Enforcing` is the recommended production mode: it layers OPA policy on top of
-the existing fine-grained grant model without discarding it.
+`Enforcing` differs from `Exclusive` only for native Crypto Officers and HSM-backed objects,
+which keep using the legacy KMS permission logic.  Per-object grants never veto an OPA allow
+on a non-HSM object.
 
 ### Input document
 
@@ -174,9 +175,9 @@ logical async task and survives `.await` migration safely.
   per-request, policy-attributed audit record independently of KMS logs.
 - **POS-004 Backward compatibility**: `Disabled` mode (no `--opa-url`) leaves
   existing deployments completely unchanged.
-- **POS-005 Belt-and-suspenders in `Enforcing` mode**: Both OPA policy and the
-  legacy per-object grant table must allow an operation, reducing the risk of
-  policy misconfiguration silently widening access.
+- **POS-005 Native KMS role kept in `Enforcing` mode**: Native Crypto Officers and the
+  split-key ceremony keep working without JWT roles, and HSM-backed keys stay under the
+  HSM-admin / explicit-grant rules even when OPA allows.
 - **POS-006 Separation of duties**: The Auditor / CryptoOfficer SSD constraint is
   expressed in the Rego policy comment as a role-assignment-time requirement;
   enforcement is policy-level, not hard-coded.
@@ -199,10 +200,11 @@ logical async task and survives `.await` migration safely.
   API tokens) provide no JWT `roles` claim, so `input.roles` is empty.  The Rego
   policy can grant access to owners or on `is_owner`, but pure role-based rules
   will fail-closed for those auth methods unless the policy explicitly handles them.
-- **NEG-004 `Enforcing` mode asymmetry**: Object-creation operations bypass the legacy
-  DB grant check because no object exists yet; all other operations require both
-  OPA and a DB grant.  This asymmetry must be kept in mind when debugging access
-  denials.
+- **NEG-004 `Enforcing` mode is not a dual gate**: An OPA allow on a non-HSM object is
+  sufficient, with no ownership or DB grant check, so per-object grants cannot veto an
+  OPA decision; a policy that must honour them has to encode them in Rego (for example
+  through `input.is_owner`).  Only native Crypto Officers and HSM-backed objects are
+  evaluated by the legacy KMS permission logic.
 
 ## Alternatives Considered
 
@@ -244,9 +246,10 @@ logical async task and survives `.await` migration safely.
   `as_domain` / `as_rid` claim via `OpaUserContext`.  Existing objects upgraded from
   pre-OPA KMS versions will have an empty domain string; the Rego policy must handle
   `object_domain == ""` gracefully (e.g., allow owner access regardless of domain).
-- **IMP-003**: The `domain` column is added to all database backends (SQLite, PostgreSQL,
-  MySQL, Redis-findex) via `ALTER TABLE ADD COLUMN domain TEXT NOT NULL DEFAULT ''`.
-  This migration is applied automatically on server startup.
+- **IMP-003**: The `domain` column is added to the SQL backends (SQLite, PostgreSQL, MySQL/MariaDB)
+  with `ALTER TABLE objects ADD COLUMN domain` when an existing database is opened, so the migration
+  is applied automatically on server startup (`IF NOT EXISTS` on PostgreSQL, a `SHOW COLUMNS` check
+  on MySQL/MariaDB). Redis-findex has no schema and does not persist the domain.
 - **IMP-004**: `enforce_create_permission` explicitly preserves KMS-native CryptoOfficer
   access (`crypto_officer.users` list) for the `Create` right even when OPA is active,
   so split-key ceremony participants retain their ability to create key shares.
@@ -267,3 +270,36 @@ logical async task and survives `.await` migration safely.
 - **REF-010**: NIST SP 800-53 Rev 5 AC-5, AC-6, AU-9 — Separation of duties, least privilege, audit
 - **REF-011**: RFC 9068 §2.2.3.1 — `roles` claim in JWT access tokens
 - **REF-012**: [PR #998](https://github.com/Cosmian/kms/pull/998) — implementation PR
+
+---
+
+## Amendment — 2026-10-13: `Enforcing` mode is authoritative, not a dual gate
+
+### Problem
+
+This ADR, the `--opa-mode` help text and the Mode 3 documentation described `Enforcing` as a *dual gate*: OPA **and**
+the native KMS permission system both had to allow the request. The shipped behaviour differs. Commit `b61a88f2`
+("test: add new OPA test scenarios", 2026-08-19) made `user_has_permission()` return `true` as soon as OPA allows a
+non-HSM object. Before that change, the ownership/grant check re-denied role-based access that OPA had explicitly
+granted (for example a `CryptoOfficer` reading `GetAttributes` on a peer's key), which left every field of the Web UI
+Locate page except the UID at N/A.
+
+### Decision
+
+Keep the behaviour of the code and align the documentation, the help text and this ADR to it:
+
+- **OPA is authoritative.** A denial, an error or a timeout is final (fail-closed).
+- **An OPA allow is sufficient** for non-HSM objects and for object-less operations such as `Create`. No ownership or
+  DB grant check follows, so a per-object grant never vetoes an OPA allow and never overrides an OPA denial. A policy
+  that must honour ownership has to express it in Rego (for example through `input.is_owner`).
+- **Native Crypto Officers keep the legacy path.** Activated officers and ceremony candidates listed in
+  `crypto_officer.users` skip OPA on non-HSM objects, so the key ceremony does not depend on JWT roles.
+- **HSM-backed objects need both.** OPA must allow, then the legacy owner / HSM-admin / explicit-grant check must also
+  allow, because OPA does not evaluate HSM administration.
+
+`Enforcing` therefore differs from `Exclusive` only for native Crypto Officers and HSM-backed objects.
+
+### Consequences
+
+Operators who want per-object grants to restrict access on non-HSM objects must either run with OPA disabled or encode
+the rule in the Rego policy: a grant created with `ckms access-rights grant` neither widens nor narrows what OPA allows.
