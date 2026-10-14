@@ -73,6 +73,34 @@ fn with_debug<T>(f: impl FnOnce() -> T) -> T {
     tracing::subscriber::with_default(subscriber, f)
 }
 
+#[derive(Clone)]
+struct Capture(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Capture {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Run `f` under a DEBUG subscriber and return its result with the captured log text.
+fn with_captured_debug<T>(f: impl FnOnce() -> T) -> (T, String) {
+    let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let writer = Capture(Arc::clone(&buf));
+    let subscriber = tracing_subscriber::fmt::Subscriber::builder()
+        .with_writer(move || writer.clone())
+        .with_ansi(false)
+        .with_env_filter(tracing_subscriber::EnvFilter::new("debug"))
+        .finish();
+    let result = tracing::subscriber::with_default(subscriber, f);
+    let text = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+    (result, text)
+}
+
 fn pending(import_blob: Option<Vec<u8>>, algorithm: KeyAlgorithm) -> PendingCreation {
     PendingCreation {
         algorithm,
@@ -554,4 +582,22 @@ mod with_server {
         assert_imported(&client, "char-imp-der", unhex(RSA_DER_HEX));
         assert_imported(&client, "char-imp-rsa3", unhex(RSA3_BLOB_HEX));
     }
+}
+
+#[test]
+fn characterization_finalize_logs_import_blob_prefix() {
+    let mut short = pending_ctx(Some(b"RSA3abc".to_vec()), KeyAlgorithm::Rsa { bits: 2048 });
+    let (result, log) = with_captured_debug(|| short.finalize());
+    assert!(result.is_err());
+    assert!(log.contains(
+        "DEBUG cosmian_cng::key: CNG KSP: finalize import blob len=7, first_bytes=[82, 83, 65, 51, 97, 98, 99] "
+    ));
+
+    let blob: Vec<u8> = (0_u8..30).collect();
+    let mut long = pending_ctx(Some(blob), KeyAlgorithm::Rsa { bits: 2048 });
+    let (result, log) = with_captured_debug(|| long.finalize());
+    assert!(result.is_err());
+    assert!(log.contains(
+        "DEBUG cosmian_cng::key: CNG KSP: finalize import blob len=30, first_bytes=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] "
+    ));
 }
