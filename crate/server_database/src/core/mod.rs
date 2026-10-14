@@ -433,3 +433,7 @@ impl DatabaseHealth for RedisFindexHealthProbe {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mod_characterization_tests.rs"]
+mod characterization_tests;

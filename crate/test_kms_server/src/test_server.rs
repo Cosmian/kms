@@ -1733,3 +1733,7 @@ async fn test_start_server_from_toml() -> Result<(), KmsClientError> {
     assert!(!version.is_empty(), "Server should return a version");
     context.stop_server().await
 }
+
+#[cfg(test)]
+#[path = "test_server_characterization_tests.rs"]
+mod characterization_tests;
