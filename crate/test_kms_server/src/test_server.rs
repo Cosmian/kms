@@ -74,7 +74,7 @@ pub(crate) static ONCE_PQC_TLS: OnceCell<TestsContext> = OnceCell::const_new();
 /// Ensure localhost bypasses any corporate proxy for tests.
 /// When `HTTP_PROXY`/`HTTPS_PROXY` are set, add standard loopback hosts
 /// to `NO_PROXY` so local test servers are reachable.
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
 fn ensure_no_proxy_for_localhost() {
     let has_http_proxy = env::var_os("HTTP_PROXY").is_some()
         || env::var_os("http_proxy").is_some()
@@ -118,7 +118,7 @@ fn ensure_no_proxy_for_localhost() {
 
 /// As a last resort for reliability, clear proxy env vars for the test process
 /// so localhost traffic is never sent through a corporate proxy.
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "std::env::remove_var is unsafe in edition 2024")]
 fn disable_proxies_for_tests() {
     // Only clear if a proxy is set; keep environment untouched otherwise.
     let has_proxy = env::var_os("HTTP_PROXY").is_some()
@@ -561,7 +561,6 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
 /// # Panics
 /// - if the `workspace_dir` does not exist
 /// - if the `kek_id` is empty
-#[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static TestsContext {
     trace!("Starting test server with Utimaco HSM and KEK");
     Box::pin(ONCE_SERVER_WITH_KEK.get_or_try_init(|| async move {
@@ -598,17 +597,19 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
 
 pub(crate) static ONCE_SERVER_WITH_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 
-/// Read the HSM slot id from the `HSM_SLOT_ID` environment variable.
-///
-/// # Panics
-/// Panics if the variable is missing or not a valid `usize`.
-#[allow(clippy::expect_used, clippy::panic)]
-fn get_hsm_slot_id() -> usize {
-    let raw = env::var("HSM_SLOT_ID")
-        .expect("HSM_SLOT_ID environment variable must be set to run HSM+KEK tests");
-    raw.parse::<usize>().unwrap_or_else(|_| {
-        panic!("HSM_SLOT_ID '{raw}' is not a valid usize");
+/// Read a slot id from the environment variable `name`.
+fn env_slot_id(name: &str) -> Result<usize, KmsClientError> {
+    let raw = env::var(name).map_err(|e| {
+        KmsClientError::UnexpectedError(format!("{name} must be set to run HSM tests: {e}"))
+    })?;
+    raw.parse::<usize>().map_err(|e| {
+        KmsClientError::UnexpectedError(format!("{name} '{raw}' is not a valid usize: {e}"))
     })
+}
+
+/// Read the HSM slot id from the `HSM_SLOT_ID` environment variable.
+fn get_hsm_slot_id() -> Result<usize, KmsClientError> {
+    env_slot_id("HSM_SLOT_ID")
 }
 
 fn get_hsm_model() -> String {
@@ -624,7 +625,7 @@ fn get_hsm_password() -> String {
 /// Mirrors [`create_kek_in_db`] but uses generic HSM configuration and reads
 /// the slot from `HSM_SLOT_ID`.
 async fn create_hsm_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
-    let slot = get_hsm_slot_id();
+    let slot = get_hsm_slot_id()?;
     let model = get_hsm_model();
     let password = get_hsm_password();
     let workspace_dir = std::env::temp_dir().join(format!(
@@ -695,13 +696,12 @@ async fn create_hsm_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
 /// - if `HSM_SLOT_ID` is not set
 /// - if the `workspace_dir` does not exist
 /// - if the `kek_id` is empty
-#[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsContext {
     trace!("Starting test server with HSM and KEK");
-    let slot = get_hsm_slot_id();
     let model = get_hsm_model();
     let password = get_hsm_password();
     Box::pin(ONCE_SERVER_WITH_HSM_KEK.get_or_try_init(|| async move {
+        let slot = get_hsm_slot_id()?;
         let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
         trace!(
             "HSM key encryption key created: {kek_id} in workspace {}",
@@ -744,11 +744,10 @@ pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsC
 /// Returns an error if the server fails to start.
 ///
 /// # Panics
-/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`, if `workspace_dir`
-/// does not exist, or if `kek_id` is empty after bootstrap.
+/// Panics if `workspace_dir` does not exist, or if `kek_id` is empty after bootstrap.
 pub async fn start_default_test_kms_server_with_hsm_and_kek_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_hsm_slot_id();
+    let slot = get_hsm_slot_id()?;
     let model = get_hsm_model();
     let password = get_hsm_password();
     let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
@@ -847,13 +846,10 @@ pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
 /// `TestsContext` each call.
 ///
 /// # Errors
-/// Returns an error if the server fails to start.
-///
-/// # Panics
-/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
+/// Returns an error if the server fails to start or `HSM_SLOT_ID` is missing or invalid.
 pub async fn start_default_test_kms_server_with_hsm_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_hsm_slot_id();
+    let slot = get_hsm_slot_id()?;
     let model = get_hsm_model();
     let password = get_hsm_password();
     // Use a unique directory for workspace/tmp (certs, temp files) but a
@@ -901,13 +897,10 @@ pub async fn start_default_test_kms_server_with_hsm_for_vectors()
 /// which would have triggered the self-wrap error prior to the fix.
 ///
 /// # Errors
-/// Returns an error if the server fails to start.
-///
-/// # Panics
-/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
+/// Returns an error if the server fails to start or `HSM_SLOT_ID` is missing or invalid.
 pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_hsm_slot_id();
+    let slot = get_hsm_slot_id()?;
     let model = get_hsm_model();
     let password = get_hsm_password();
     let workspace_dir = std::env::temp_dir().join(format!(
@@ -954,24 +947,14 @@ pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
 /// environment variables (set by `test_hsm_softhsm2.sh`).
 ///
 /// # Panics
-/// Panics if any of the slot ID environment variables are missing or not valid integers.
-#[expect(clippy::expect_used, clippy::indexing_slicing)]
+/// Aborts the process if any of the slot ID environment variables are missing or not valid integers.
 pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static TestsContext {
     trace!("Starting test server with three SoftHSM2 instances");
     ONCE_SERVER_WITH_THREE_SOFTHSM2
         .get_or_try_init(|| async move {
-            let slot1: usize = env::var("HSM_SLOT_ID_1")
-                .expect("HSM_SLOT_ID_1 must be set")
-                .parse()
-                .expect("HSM_SLOT_ID_1 must be a valid usize");
-            let slot2: usize = env::var("HSM_SLOT_ID_2")
-                .expect("HSM_SLOT_ID_2 must be set")
-                .parse()
-                .expect("HSM_SLOT_ID_2 must be a valid usize");
-            let slot3: usize = env::var("HSM_SLOT_ID_3")
-                .expect("HSM_SLOT_ID_3 must be set")
-                .parse()
-                .expect("HSM_SLOT_ID_3 must be a valid usize");
+            let slot1 = env_slot_id("HSM_SLOT_ID_1")?;
+            let slot2 = env_slot_id("HSM_SLOT_ID_2")?;
+            let slot3 = env_slot_id("HSM_SLOT_ID_3")?;
 
             let password = env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned());
 
@@ -983,11 +966,11 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
             config.hsm.hsm_password = vec![password.clone()];
 
             // Patch [[hsm_instances]] with slots 2 and 3
-            if config.hsm_instances.len() >= 2 {
-                config.hsm_instances[0].hsm_slot = vec![slot2];
-                config.hsm_instances[0].hsm_password = vec![password.clone()];
-                config.hsm_instances[1].hsm_slot = vec![slot3];
-                config.hsm_instances[1].hsm_password = vec![password];
+            if let [first, second, ..] = config.hsm_instances.as_mut_slice() {
+                first.hsm_slot = vec![slot2];
+                first.hsm_password = vec![password.clone()];
+                second.hsm_slot = vec![slot3];
+                second.hsm_password = vec![password];
             }
 
             apply_test_db_override(&mut config);
@@ -1708,7 +1691,6 @@ fn generate_user_conf_from_opts(
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[allow(clippy::unwrap_in_result)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
     let context = start_test_server(
@@ -1721,7 +1703,10 @@ async fn test_start_server() -> Result<(), KmsClientError> {
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[allow(clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 #[tokio::test]
 async fn test_start_server_from_toml() -> Result<(), KmsClientError> {
     let config_path = Path::new("../../test_data/configs/server/auth/plain.toml");
