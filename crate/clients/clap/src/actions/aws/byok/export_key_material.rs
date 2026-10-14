@@ -47,7 +47,10 @@ pub struct ExportByokAction {
 }
 
 impl ExportByokAction {
-    #[allow(clippy::print_stdout, clippy::or_fun_call)] // the kms console wrapper forces a println but this function does not want a line return for proper display
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<String> {
         let (wrapping_cryptographic_parameters, key_arn) =
             self.resolve_kek_wrapping_params(&kms_client).await?;

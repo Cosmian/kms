@@ -71,7 +71,7 @@ impl PrepareRequest {
             last_ticket_value: None,
             expected_response_is_missing_iv_error: false,
             last_uid: None,
-            test_name: test_name.to_string(),
+            test_name: test_name.to_owned(),
         }
     }
 }
@@ -941,7 +941,7 @@ fn fallback_substitute_with_last_uid(
         if let UniqueIdentifier::TextString(s) = uid {
             if let Some(idx) = parse_uid_placeholder_index(test_name, s) {
                 if !uid_map.contains_key(&idx) {
-                    *s = last.to_string();
+                    *s = last.to_owned();
                 }
             }
         }
@@ -1045,7 +1045,7 @@ fn fallback_substitute_with_last_uid_v14(
     let maybe_fix_uid = |uid: &mut String| {
         if let Some(idx) = parse_uid_placeholder_index(test_name, uid) {
             if !uid_map.contains_key(&idx) {
-                *uid = last.to_string();
+                *uid = last.to_owned();
             }
         }
     };

@@ -1,3 +1,8 @@
+#![expect(
+    clippy::expect_used,
+    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
+)]
+
 use std::{
     sync::Mutex,
     time::{Duration, Instant},

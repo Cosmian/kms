@@ -1,11 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::print_stdout,
-    clippy::panic_in_result_fn,
-    clippy::unwrap_in_result,
-    clippy::expect_used
-)]
-
 use std::{
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -111,15 +103,15 @@ async fn import_google_cse_demo_key_and_grant(ctx: &TestsContext) -> KmsCliResul
         ),
         replace_existing: true,
         unwrap: true,
-        key_id: Some("google_cse".to_string()),
+        key_id: Some("google_cse".to_owned()),
         ..Default::default()
     }
     .run(ctx.get_owner_client())
     .await?;
 
     GrantAccess {
-        user: "*".to_string(),
-        object_uid: Some("google_cse".to_string()),
+        user: "*".to_owned(),
+        object_uid: Some("google_cse".to_owned()),
         operations: vec![KmipOperation::Get],
     }
     .run(ctx.get_owner_client())
@@ -158,13 +150,13 @@ async fn hsm_google_cse_private_key_sign() -> KmsCliResult<()> {
     let digest = "gXIjp2D7tR4WvHJBXaINWLekf5k5AeKRw4zkySYDDYs="; // base64
 
     let req = PrivateKeySignRequest {
-        authentication: "test".to_string(),
-        authorization: "test".to_string(),
-        algorithm: "SHA256withRSA".to_string(),
-        digest: digest.to_string(),
+        authentication: "test".to_owned(),
+        authorization: "test".to_owned(),
+        algorithm: "SHA256withRSA".to_owned(),
+        digest: digest.to_owned(),
         rsa_pss_salt_length: None,
-        reason: "Gmail".to_string(),
-        wrapped_private_key: wrapped_private_key.to_string(),
+        reason: "Gmail".to_owned(),
+        wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
     debug!("private key sign request post");
@@ -221,13 +213,13 @@ async fn hsm_google_cse_encrypt_and_private_key_decrypt() -> KmsCliResult<()> {
         include_str!("../../../../../../documentation/docs/google_cse/test_wrapped_private_key");
 
     let req = PrivateKeyDecryptRequest {
-        authentication: "test".to_string(),
-        authorization: "test".to_string(),
-        algorithm: "RSA/ECB/PKCS1Padding".to_string(),
+        authentication: "test".to_owned(),
+        authorization: "test".to_owned(),
+        algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
         encrypted_data_encryption_key: encrypted_dek_b64,
         rsa_oaep_label: None,
-        reason: "Gmail".to_string(),
-        wrapped_private_key: wrapped_private_key.to_string(),
+        reason: "Gmail".to_owned(),
+        wrapped_private_key: wrapped_private_key.to_owned(),
     };
 
     let resp: PrivateKeyDecryptResponse = owner
@@ -255,9 +247,9 @@ async fn hsm_google_cse_wrap_unwrap_key() -> KmsCliResult<()> {
     let dek_b64 = "wHrlNOTI9mU6PBdqiq7EQA=="; // arbitrary base64 key
 
     let wrap_req = WrapRequest {
-        authentication: "test".to_string(),
-        authorization: "test".to_string(),
-        key: dek_b64.to_string(),
+        authentication: "test".to_owned(),
+        authorization: "test".to_owned(),
+        key: dek_b64.to_owned(),
         reason: String::new(),
     };
     let wrap_resp: WrapResponse = owner
@@ -265,8 +257,8 @@ async fn hsm_google_cse_wrap_unwrap_key() -> KmsCliResult<()> {
         .await?;
 
     let unwrap_req = UnwrapRequest {
-        authentication: "test".to_string(),
-        authorization: "test".to_string(),
+        authentication: "test".to_owned(),
+        authorization: "test".to_owned(),
         wrapped_key: wrap_resp.wrapped_key,
         reason: String::new(),
     };
@@ -444,9 +436,9 @@ async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
 
     let p_wrap = PrivilegedWrapRequest {
         authentication: token.clone(),
-        key: dek_b64.to_string(),
+        key: dek_b64.to_owned(),
         perimeter_id: String::new(),
-        resource_name: resource_name.to_string(),
+        resource_name: resource_name.to_owned(),
         reason: String::new(),
     };
     let w: PrivilegedWrapResponse = ctx
@@ -458,7 +450,7 @@ async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
 
     let p_unwrap = PrivilegedUnwrapRequest {
         authentication: token,
-        resource_name: resource_name.to_string(),
+        resource_name: resource_name.to_owned(),
         wrapped_key: w.wrapped_key,
         reason: String::new(),
     };
@@ -505,13 +497,13 @@ async fn hsm_google_cse_privileged_private_key_decrypt() -> KmsCliResult<()> {
 
     let req = PrivilegedPrivateKeyDecryptRequest {
         authentication: token,
-        algorithm: "RSA/ECB/PKCS1Padding".to_string(),
+        algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
         encrypted_data_encryption_key: encrypted_dek_b64,
         rsa_oaep_label: None,
-        reason: "Gmail".to_string(),
-        wrapped_private_key: wrapped_private_key.to_string(),
+        reason: "Gmail".to_owned(),
+        wrapped_private_key: wrapped_private_key.to_owned(),
         spki_hash: spki_hash_b64,
-        spki_hash_algorithm: "SHA-256".to_string(),
+        spki_hash_algorithm: "SHA-256".to_owned(),
     };
 
     let resp: PrivilegedPrivateKeyDecryptResponse = ctx

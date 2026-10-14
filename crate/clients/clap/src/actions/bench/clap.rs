@@ -15,7 +15,7 @@ use super::{
         bench_hsm_sign_verify, bench_key_creation, bench_sign_verify,
     },
     load::{
-        LoadResult, bench_load, generate_html_output, generate_load_json_output,
+        LoadBenchParams, LoadResult, bench_load, generate_html_output, generate_load_json_output,
         generate_markdown_load_output_combined, parse_concurrency_levels, print_load_results,
     },
     output::{
@@ -95,15 +95,17 @@ impl BenchAction {
                     let results = bench_load(
                         &rt,
                         &client,
-                        mode,
-                        proto,
-                        &concurrency_levels,
-                        warmup,
-                        duration,
-                        cooldown,
-                        load_plaintext_size,
-                        hsm_prefix.as_deref(),
-                        Some(&filter),
+                        &LoadBenchParams {
+                            mode,
+                            protocol: proto,
+                            concurrency_levels: &concurrency_levels,
+                            warmup,
+                            duration,
+                            cooldown,
+                            plaintext_size: load_plaintext_size,
+                            hsm_prefix: hsm_prefix.as_deref(),
+                            filter: Some(&filter),
+                        },
                     );
                     if results.is_empty() {
                         continue;
@@ -159,27 +161,48 @@ impl BenchAction {
             let (saved_stdout_fd, saved_stderr_fd): (Option<i32>, Option<i32>) =
                 match effective_format {
                     BenchFormat::Json => {
-                        #[allow(unsafe_code)]
+                        #[expect(
+                            unsafe_code,
+                            reason = "libc fd redirection to silence criterion output"
+                        )]
                         let s = unsafe { libc::dup(1) };
-                        #[allow(unsafe_code)]
+                        #[expect(
+                            unsafe_code,
+                            reason = "libc fd redirection to silence criterion output"
+                        )]
                         unsafe {
                             libc::dup2(2, 1)
                         };
                         (if s < 0 { None } else { Some(s) }, None)
                     }
                     BenchFormat::Compact => {
-                        #[allow(unsafe_code)]
+                        #[expect(
+                            unsafe_code,
+                            reason = "libc fd redirection to silence criterion output"
+                        )]
                         let devnull = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY) };
                         if devnull >= 0 {
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             let se = unsafe { libc::dup(2) };
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             unsafe {
                                 libc::dup2(devnull, 2)
                             };
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             let so = unsafe { libc::dup(1) };
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             unsafe {
                                 libc::dup2(2, 1);
                                 libc::close(devnull);
@@ -255,7 +278,10 @@ impl BenchAction {
 
             // Restore stderr (compact mode silenced criterion's warnings).
             if let Some(saved) = saved_stderr_fd {
-                #[allow(unsafe_code)]
+                #[expect(
+                    unsafe_code,
+                    reason = "libc fd redirection to silence criterion output"
+                )]
                 unsafe {
                     libc::dup2(saved, 2);
                     libc::close(saved);
@@ -264,7 +290,10 @@ impl BenchAction {
 
             // Restore stdout before we emit the report.
             if let Some(saved) = saved_stdout_fd {
-                #[allow(unsafe_code)]
+                #[expect(
+                    unsafe_code,
+                    reason = "libc fd redirection to silence criterion output"
+                )]
                 unsafe {
                     libc::dup2(saved, 1);
                     libc::close(saved);

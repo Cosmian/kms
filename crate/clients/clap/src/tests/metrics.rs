@@ -39,7 +39,7 @@ async fn test_count_active_keys() -> KmsCliResult<()> {
     // Revoke then destroy the first key
     RevokeKeyAction {
         reason: RevokeReasonArgs {
-            revocation_reason: "test revoke".to_string(),
+            revocation_reason: "test revoke".to_owned(),
             reason_code: RevocationReasonCode::Unspecified,
         },
         key_id: Some(first_uid.clone()),
@@ -114,7 +114,7 @@ async fn test_revoked_keys_not_active() -> KmsCliResult<()> {
     // Revoke all keys with the tag in a single operation
     RevokeKeyAction {
         reason: RevokeReasonArgs {
-            revocation_reason: "test revoke all".to_string(),
+            revocation_reason: "test revoke all".to_owned(),
             reason_code: RevocationReasonCode::Unspecified,
         },
         key_id: None,
