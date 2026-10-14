@@ -3,9 +3,9 @@ use time::{OffsetDateTime, macros::datetime};
 
 use crate::ttlv::{KmipBigInt, KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv};
 
-fn node(tag: &str, value: TTLValue) -> TTLV {
+fn node(tag: &'static str, value: TTLValue) -> TTLV {
     TTLV {
-        tag: tag.to_owned(),
+        tag: tag.into(),
         value,
     }
 }
@@ -29,7 +29,7 @@ fn kmip1_tree() -> TTLV {
                 "CryptographicAlgorithm",
                 TTLValue::Enumeration(KmipEnumerationVariant {
                     value: 3,
-                    name: "AES".to_owned(),
+                    name: "AES".into(),
                 }),
             ),
             node("Sensitive", TTLValue::Boolean(true)),

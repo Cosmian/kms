@@ -38,17 +38,6 @@ fn structure_header(tag: [u8; 3], content_len: u32) -> Vec<u8> {
     h
 }
 
-/// Build a complete well-formed Structure containing one Integer child.
-///
-/// The structure uses tag `0x42_007B` (`RequestMessage`), enclosing one `BatchCount` Integer.
-#[allow(dead_code)]
-fn valid_structure_with_integer() -> Vec<u8> {
-    let child = integer_item(); // 16 bytes
-    let mut buf = structure_header([0x42, 0x00, 0x7B], child.len() as u32);
-    buf.extend_from_slice(&child);
-    buf
-}
-
 /// Build `depth` nested Structures (tag `0x42_007B`), each wrapping the next.
 /// The innermost Structure contains a single `BatchCount` Integer leaf.
 ///
@@ -61,12 +50,15 @@ fn nested_structures(depth: usize) -> Vec<u8> {
 
     // Start from the inside: one empty structure containing the Integer leaf.
     let inner_content = leaf;
-    let mut inner: Vec<u8> = structure_header([0x42, 0x00, 0x7B], inner_content.len() as u32);
+    let mut inner: Vec<u8> = structure_header(
+        [0x42, 0x00, 0x7B],
+        u32::try_from(inner_content.len()).unwrap(),
+    );
     inner.extend_from_slice(&inner_content);
 
     // Wrap `depth - 1` more times (total: `depth` Structure headers are present)
     for _ in 1..depth {
-        let content_len = inner.len() as u32;
+        let content_len = u32::try_from(inner.len()).unwrap();
         let mut outer = structure_header([0x42, 0x00, 0x7B], content_len);
         outer.extend_from_slice(&inner);
         inner = outer;
@@ -239,7 +231,7 @@ fn w11_structure_length_zero_with_extra_bytes() {
 #[test]
 fn w12_depth_exactly_at_limit() {
     use crate::ttlv::MAX_TTLV_DEPTH;
-    let depth = MAX_TTLV_DEPTH as usize;
+    let depth = usize::try_from(MAX_TTLV_DEPTH).unwrap();
     let data = nested_structures(depth);
     let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
     assert!(
@@ -254,7 +246,7 @@ fn w12_depth_exactly_at_limit() {
 #[test]
 fn w13_depth_one_over_limit() {
     use crate::ttlv::MAX_TTLV_DEPTH;
-    let depth = (MAX_TTLV_DEPTH + 1) as usize;
+    let depth = usize::try_from(MAX_TTLV_DEPTH + 1).unwrap();
     let data = nested_structures(depth);
     let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
     assert!(

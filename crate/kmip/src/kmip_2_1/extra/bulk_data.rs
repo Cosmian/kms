@@ -23,9 +23,8 @@ impl BulkData {
 
     /// If the data starts with the sequence 0x8787, it MAY be a `BulkData`
     #[must_use]
-    #[expect(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]
     pub const fn is_bulk_data(data: &[u8]) -> bool {
-        data.len() > 2 && data[0] == 0x87 && data[1] == 0x87
+        matches!(data, [0x87, 0x87, _, ..])
     }
 
     pub fn serialize(&self) -> KmipResult<Zeroizing<Vec<u8>>> {
@@ -38,7 +37,6 @@ impl BulkData {
         Ok(Zeroizing::new(se.finalize().to_vec()))
     }
 
-    #[expect(clippy::indexing_slicing)]
     pub fn deserialize(serialized: &[u8]) -> Result<Self, KmipError> {
         if !Self::is_bulk_data(serialized) {
             trace!("Not a BulkData");
@@ -47,7 +45,7 @@ impl BulkData {
                 "Not a BulkData".to_owned(),
             ));
         }
-        let data = &serialized[2..];
+        let data = serialized.get(2..).unwrap_or_default();
         let mut de = Deserializer::new(data);
         let v = usize::try_from(de.read_leb128_u64()?)?;
         // Each element requires at least 1 byte (a zero-length LEB128 prefix);
@@ -96,7 +94,6 @@ impl From<BulkData> for Vec<Zeroizing<Vec<u8>>> {
     }
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use crate::kmip_2_1::extra::BulkData;
