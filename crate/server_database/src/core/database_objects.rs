@@ -1539,3 +1539,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "database_objects_characterization_tests.rs"]
+mod characterization_tests;

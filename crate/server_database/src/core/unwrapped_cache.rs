@@ -397,3 +397,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "unwrapped_cache_characterization_tests.rs"]
+mod characterization_tests;

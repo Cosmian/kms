@@ -204,3 +204,7 @@ mod tests {
         assert_eq!(redact_connection_string("not-a-url"), "not-a-url");
     }
 }
+
+#[cfg(test)]
+#[path = "main_db_params_characterization_tests.rs"]
+mod characterization_tests;

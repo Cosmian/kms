@@ -1837,3 +1837,7 @@ mod tests {
         expect_crl_issuers(&SqlitePool::instantiate(&file, true, None).await?, 0).await
     }
 }
+
+#[cfg(test)]
+#[path = "sqlite_characterization_tests.rs"]
+mod characterization_tests;
