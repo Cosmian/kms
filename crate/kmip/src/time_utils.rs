@@ -33,7 +33,6 @@ pub fn time_normalize() -> Result<OffsetDateTime, KmipError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

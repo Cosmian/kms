@@ -23,14 +23,5 @@ pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, TtlvTy
 pub(crate) use wire::MAX_TTLV_DEPTH;
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::as_conversions,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::expect_used
-)]
 #[cfg(test)]
 mod tests;

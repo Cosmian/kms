@@ -757,7 +757,10 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
             }
 
-            #[expect(clippy::many_single_char_names)]
+            #[expect(
+                clippy::many_single_char_names,
+                reason = "names follow the KMIP DH/RSA key-value fields (p, q, g, j, y, x)"
+            )]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
