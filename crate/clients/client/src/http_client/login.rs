@@ -671,3 +671,7 @@ mod oauth_response_tests {
         assert!(response.is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "login_characterization_tests.rs"]
+mod characterization_tests;

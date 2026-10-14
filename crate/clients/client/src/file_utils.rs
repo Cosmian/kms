@@ -285,3 +285,7 @@ pub fn write_bulk_encrypted_data(
         Ok(())
     })
 }
+
+#[cfg(test)]
+#[path = "file_utils_characterization_tests.rs"]
+mod characterization_tests;
