@@ -1,4 +1,5 @@
 //! Characterization tests for `cosmian_pkcs11_module::sessions` behavior.
+#![expect(unsafe_code, reason = "tests call the PKCS#11 C ABI entry points")]
 
 use std::{ptr, sync::Arc};
 
@@ -425,8 +426,8 @@ fn characterization_sessions_decrypt_buffer_size_negotiation_and_too_small() {
 
 #[test]
 fn characterization_sessions_create_incremental_handle() {
-    let handle1 = sessions::create(CKF_SERIAL_SESSION);
-    let handle2 = sessions::create(CKF_SERIAL_SESSION);
+    let handle1 = sessions::create(CKF_SERIAL_SESSION).unwrap();
+    let handle2 = sessions::create(CKF_SERIAL_SESSION).unwrap();
     assert_ne!(handle1, 0);
     assert_ne!(handle2, 0);
     assert_ne!(handle1, handle2);

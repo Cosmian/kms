@@ -1,5 +1,3 @@
-#![allow(clippy::as_conversions)]
-
 use std::{
     collections::HashMap,
     fmt::Display,

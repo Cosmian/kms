@@ -1,5 +1,12 @@
-#![allow(clippy::as_conversions)]
-#![allow(clippy::as_ptr_cast_mut)]
+#![expect(
+    clippy::missing_panics_doc,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    unsafe_code,
+    reason = "test harness reused by other crates' tests; compiled outside cfg(test)"
+)]
+
+use std::ffi::c_void;
 
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_INVALID_HANDLE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
@@ -12,7 +19,16 @@ use crate::{
     pkcs11::{C_Decrypt, C_DecryptInit, C_Encrypt, C_EncryptInit, C_GenerateKey},
 };
 
-#[expect(clippy::missing_panics_doc)]
+/// Converts a Rust length to the `CK_ULONG` the C API expects.
+pub(crate) fn ck_len(len: usize) -> CK_ULONG {
+    CK_ULONG::try_from(len).expect("length fits in CK_ULONG")
+}
+
+/// Hands a read-only value to the C API as the untyped pointer `CK_ATTRIBUTE` requires.
+pub(crate) const fn ck_ptr<T>(value: &T) -> CK_VOID_PTR {
+    std::ptr::from_ref(value).cast_mut().cast::<c_void>()
+}
+
 #[must_use]
 pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
     // The parameter buffer must outlive `mechanism` since `pParameter` only stores a raw
@@ -21,36 +37,38 @@ pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
     let mut parameter = [0_u8; 16];
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_KEY_GEN,
-        pParameter: parameter.as_mut_ptr().cast::<std::ffi::c_void>(),
+        pParameter: parameter.as_mut_ptr().cast::<c_void>(),
         ulParameterLen: 16,
     };
-    let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
+    let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;
 
+    let label = "sk_id";
+    let key_len: CK_ULONG = 16;
     let mut sym_key_template = vec![
         CK_ATTRIBUTE {
             type_: CKA_KEY_TYPE,
-            pValue: std::ptr::from_ref(&CKK_AES) as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+            pValue: ck_ptr(&CKK_AES),
+            ulValueLen: ck_len(size_of::<CK_KEY_TYPE>()),
         },
         CK_ATTRIBUTE {
             type_: CKA_LABEL,
-            pValue: "sk_id".as_ptr() as CK_VOID_PTR,
-            ulValueLen: "sk_id".len() as CK_ULONG,
+            pValue: label.as_ptr().cast_mut().cast::<c_void>(),
+            ulValueLen: ck_len(label.len()),
         },
         CK_ATTRIBUTE {
             type_: CKA_SENSITIVE,
-            pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+            pValue: ck_ptr(&CK_TRUE),
+            ulValueLen: ck_len(size_of::<CK_BBOOL>()),
         },
         CK_ATTRIBUTE {
             type_: CKA_EXTRACTABLE,
-            pValue: std::ptr::from_ref(&CK_TRUE) as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_BBOOL>() as CK_ULONG,
+            pValue: ck_ptr(&CK_TRUE),
+            ulValueLen: ck_len(size_of::<CK_BBOOL>()),
         },
         CK_ATTRIBUTE {
             type_: CKA_VALUE_LEN,
-            pValue: std::ptr::from_ref(&(16 as CK_ULONG)) as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+            pValue: ck_ptr(&key_len),
+            ulValueLen: ck_len(size_of::<CK_ULONG>()),
         },
     ];
 
@@ -59,9 +77,9 @@ pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
         unsafe {
             C_GenerateKey(
                 session_h,
-                pMechanism,
+                p_mechanism,
                 sym_key_template.as_mut_ptr(),
-                sym_key_template.len() as CK_ULONG,
+                ck_len(sym_key_template.len()),
                 &raw mut key_handle,
             )
         },
@@ -74,7 +92,6 @@ pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
 }
 
 /// Encryption test: call to `C_EncryptInit` and `C_Encrypt`
-#[expect(clippy::missing_panics_doc)]
 #[must_use]
 pub fn test_encrypt(
     session_h: CK_ULONG,
@@ -87,17 +104,17 @@ pub fn test_encrypt(
     let mut iv = [0_u8; AES_IV_SIZE];
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
-        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+        pParameter: iv.as_mut_ptr().cast::<c_void>(),
+        ulParameterLen: ck_len(AES_IV_SIZE),
     };
-    let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
+    let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;
 
     let mut encrypted_data = vec![0_u8; plaintext.len() + AES_IV_SIZE];
-    let mut encrypted_data_len = encrypted_data.len() as CK_ULONG;
+    let mut encrypted_data_len = ck_len(encrypted_data.len());
     let mut pt = plaintext;
 
     assert_eq!(
-        unsafe { C_EncryptInit(session_h, pMechanism, key_handle) },
+        unsafe { C_EncryptInit(session_h, p_mechanism, key_handle) },
         CKR_OK
     );
 
@@ -106,7 +123,7 @@ pub fn test_encrypt(
             C_Encrypt(
                 session_h,
                 pt.as_mut_ptr(),
-                pt.len() as CK_ULONG,
+                ck_len(pt.len()),
                 encrypted_data.as_mut_ptr(),
                 &raw mut encrypted_data_len,
             )
@@ -120,11 +137,6 @@ pub fn test_encrypt(
 }
 
 /// Decryption test: call to `C_DecryptInit` and `C_Decrypt`
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::missing_panics_doc,
-    clippy::indexing_slicing
-)]
 #[must_use]
 pub fn test_decrypt(
     session_h: CK_ULONG,
@@ -137,17 +149,17 @@ pub fn test_decrypt(
     let mut iv = [0_u8; AES_IV_SIZE];
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
-        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+        pParameter: iv.as_mut_ptr().cast::<c_void>(),
+        ulParameterLen: ck_len(AES_IV_SIZE),
     };
-    let pMechanism: CK_MECHANISM_PTR = &raw mut mechanism;
+    let p_mechanism: CK_MECHANISM_PTR = &raw mut mechanism;
 
     let mut encrypted_data = encrypted_data;
     let mut decrypted_data = vec![0_u8; encrypted_data.len()];
-    let mut decrypted_data_len = decrypted_data.len() as CK_ULONG;
+    let mut decrypted_data_len = ck_len(decrypted_data.len());
 
     assert_eq!(
-        unsafe { C_DecryptInit(session_h, pMechanism, key_handle) },
+        unsafe { C_DecryptInit(session_h, p_mechanism, key_handle) },
         CKR_OK
     );
 
@@ -156,7 +168,7 @@ pub fn test_decrypt(
             C_Decrypt(
                 session_h,
                 encrypted_data.as_mut_ptr(),
-                encrypted_data.len() as CK_ULONG,
+                ck_len(encrypted_data.len()),
                 decrypted_data.as_mut_ptr(),
                 &raw mut decrypted_data_len,
             )
@@ -166,5 +178,7 @@ pub fn test_decrypt(
 
     // Expect decrypted_data_len to be the length of the decrypted data.
     assert_ne!(decrypted_data_len, 0);
-    decrypted_data[..decrypted_data_len as usize].to_vec()
+    let decrypted_len =
+        usize::try_from(decrypted_data_len).expect("decrypted length fits in usize");
+    decrypted_data[..decrypted_len].to_vec()
 }
