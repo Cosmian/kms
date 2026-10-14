@@ -13,13 +13,13 @@ This skill is a router: post-implementation checks point to `AGENTS.md` §5 inst
 
 - Run `GH_PAGER=cat gh issue view <N> --repo Cosmian/kms --json title,body,labels,assignees,comments,closedByPullRequestsReferences`. Do not use `--comments` alone: it omits the issue body.
 - Run `GH_PAGER=cat gh pr list --repo Cosmian/kms --state open --search "<N> in:body"` and check `closedByPullRequestsReferences` for linked PRs. If an open PR already addresses the issue, stop (step 13).
-- Category: `bug` if the issue carries the `bug` label, otherwise `enhancement` (`CONTRIBUTING.md` "Issue Lifecycle").
+- Category: `bug` if the issue carries the `bug` label, otherwise `enhancement` (`CONTRIBUTING.md` "Issue Lifecycle"). If the issue is unlabeled but describes behavior that contradicts documented behavior, treat it as a `bug` and say so in the PR body.
 - Extract the acceptance criteria. For bugs, also extract the reproduction steps, the affected version, and whether that version is a tagged release (needed for `AGENTS.md` §5 step 5, SECURITY.md).
 - Stop if an enhancement has no acceptance criteria, or a bug has no reproduction steps, and neither can be derived from linked code or tests.
 
 ## 2. Reproduce (bugs only)
 
-- Write a failing test at the lowest layer that shows the bug: unit test in the `#[cfg(test)]` module of the faulty file, otherwise a crate integration test, otherwise a test vector (`/kms-test-vector`). Running only the reporter's steps is allowed when no automated test can express the bug, for example UI-only or packaging bugs.
+- Do steps 3 and 4 (plan, then create the branch) before writing any file, so the failing test never lands on the checked-out branch. Then write a failing test at the lowest layer that shows the bug: unit test in the `#[cfg(test)]` module of the faulty file, otherwise a crate integration test, otherwise a test vector (`/kms-test-vector`). Running only the reporter's steps is allowed when no automated test can express the bug, for example UI-only or packaging bugs.
 - Record the result: confirmed (with code path) / not reproduced / insufficient detail.
 - If the result is not reproduced or insufficient detail, stop (step 13). Report the attempt and the environment you used.
 - Keep the failing test. Step 6 must turn it green, and it ships in the PR as the regression test.
@@ -45,7 +45,7 @@ Route by plan content:
 
 ## 4. Rollout split and branch
 
-- Run `git status --porcelain`. If it shows uncommitted changes unrelated to this issue, stop (step 13). Then run `git fetch origin`.
+- Run `git status --porcelain`. If it shows uncommitted changes to files related to this issue, stop (step 13). Unrelated pre-existing changes (for example a `test_data` submodule pointer) may stay; never stage them. Stage files by explicit path only. Then run `git fetch origin`.
 - `<slug>`: lowercase kebab-case of the issue title, at most 5 words, followed by `-<N>`. Prefix: `fix/` for a bug, `feat/` for an enhancement.
 - Single layer: `git switch -c <prefix>/<slug> origin/develop`.
 - Multiple layers: follow `AGENTS.md` "Feature rollout order & PR cascade". Create the server branch `<prefix>/<slug>` from `origin/develop`. Create the CLI branch `<prefix>/<slug>-cli` from the server branch. Create the UI branch `<prefix>/<slug>-ui` from the CLI branch. Run steps 5–12 per branch, server first.
@@ -61,7 +61,7 @@ Route by plan content:
 This extends `AGENTS.md` §5 step 1. Run all lines that apply:
 
 - The step 2 regression test and every step 3 test: green.
-- Code gated by `non-fips`, or code shared by both variants: run the targeted test with and without `--features non-fips`.
+- Code gated by `non-fips`, or code shared by both variants: run the targeted test with and without `--features non-fips`. Test modules gated by `#[cfg(feature = "non-fips")]` (for example `tests::ttlv_tests`) match 0 tests without that flag; check the `N passed` count is above 0.
 - Database code: `docker compose up -d <service>`, then the backend test (`AGENTS.md` §2 "Database test environment").
 - CLI: `cargo test -p ckms <test-name>`.
 - UI: the three layers in `AGENTS.md` §8.1 "UI test layers"; E2E via `mise run test:ui --variant non-fips`.
