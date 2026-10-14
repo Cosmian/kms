@@ -288,10 +288,20 @@ fn test_get_function_list_rejects_null_output() {
 }
 
 #[test]
+#[serial]
 #[expect(unsafe_code)]
 pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
+
+    // `C_GetFunctionList` instantiates the backend and queries the KMS: point it at the test
+    // server, otherwise it blocks forever on a server that is not running.
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment (the lock is re-entrant for callers that are themselves `#[serial]`).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
 
     if !INITIALIZED.load(Ordering::SeqCst) {
         let func_list = &mut CK_FUNCTION_LIST::default();
@@ -301,6 +311,23 @@ pub(crate) fn test_init() {
             C_GetFunctionList(&mut std::ptr::from_mut(func_list));
         }
     }
+}
+
+#[test]
+#[serial]
+fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
+    let backend = initialize_backend()?;
+
+    // Larger than the KMS per-request `RNGRetrieve` limit (64 KiB) so the request is chunked.
+    let mut first = vec![0_u8; 70_000];
+    let mut second = vec![0_u8; 70_000];
+    backend.generate_random(&mut first)?;
+    backend.generate_random(&mut second)?;
+
+    assert_ne!(first, second, "two calls must not return the same bytes");
+    // The two chunks of one call (65_536 + 4_464 bytes) must not be a repeat of each other.
+    assert_ne!(first.get(..4_464), first.get(65_536..));
+    Ok(())
 }
 
 #[test]

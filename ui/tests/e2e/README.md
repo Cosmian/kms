@@ -674,7 +674,7 @@ Covers:
 - Navigation to get/set/modify/delete attribute pages
 - `child_id` link: set+delete; set+modify
 - Name attribute (KMIP standard, issue #746): set; set → get (not hex); set → modify → delete
-- `cryptographic_length`: set → get → modify
+- `cryptographic_length`: set rejected → get (unchanged) → modify rejected
 - `key_usage`: set → delete
 - `cryptographic_algorithm`: set
 - Multiple link attributes on one key

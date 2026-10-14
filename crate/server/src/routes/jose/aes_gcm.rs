@@ -3,10 +3,8 @@
 //! Used by the RSA-OAEP path where the CEK is ephemeral (never stored in the KMS DB).
 //! The `dir` path delegates to the KMIP Encrypt/Decrypt pipeline instead.
 
-use openssl::{
-    rand::rand_bytes,
-    symm::{Cipher, decrypt_aead, encrypt_aead},
-};
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
+use openssl::symm::{Cipher, decrypt_aead, encrypt_aead};
 use zeroize::Zeroizing;
 
 use super::{CryptoApiError, JoseEncAlgorithm, cek_size_bytes};
@@ -36,10 +34,13 @@ fn cipher_for_enc(enc: JoseEncAlgorithm) -> Cipher {
 /// Generate a random CEK of the appropriate size for the given `enc` algorithm.
 ///
 /// The returned key is wrapped in `Zeroizing` so it is wiped on drop.
-pub(crate) fn generate_cek(enc: JoseEncAlgorithm) -> Result<Zeroizing<Vec<u8>>, CryptoApiError> {
+pub(crate) fn generate_cek(
+    enc: JoseEncAlgorithm,
+    rng: &KmsRng,
+) -> Result<Zeroizing<Vec<u8>>, CryptoApiError> {
     let len = cek_size_bytes(enc);
     let mut cek = Zeroizing::new(vec![0_u8; len]);
-    rand_bytes(&mut cek).map_err(|e| {
+    rng.fill_bytes(&mut cek).map_err(|e| {
         CryptoApiError::InternalError(format!("Failed to generate random CEK: {e}"))
     })?;
     Ok(cek)
@@ -55,6 +56,7 @@ pub(crate) fn aes_gcm_encrypt(
     enc: JoseEncAlgorithm,
     plaintext: &[u8],
     aad: &[u8],
+    rng: &KmsRng,
 ) -> Result<AesGcmOutput, CryptoApiError> {
     let cipher = cipher_for_enc(enc);
 
@@ -69,7 +71,7 @@ pub(crate) fn aes_gcm_encrypt(
 
     // Generate random IV
     let mut iv = vec![0_u8; AES_GCM_IV_LEN];
-    rand_bytes(&mut iv)
+    rng.fill_bytes(&mut iv)
         .map_err(|e| CryptoApiError::InternalError(format!("Failed to generate random IV: {e}")))?;
 
     // Encrypt
@@ -119,4 +121,35 @@ pub(crate) fn aes_gcm_decrypt(
     })?;
 
     Ok(Zeroizing::new(plaintext))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encrypt_draws_a_fresh_iv_and_round_trips() {
+        let rng = KmsRng::new();
+        let enc = JoseEncAlgorithm::A256GCM;
+        let cek = generate_cek(enc, &rng).unwrap();
+
+        let first = aes_gcm_encrypt(&cek, enc, b"plaintext", b"aad", &rng).unwrap();
+        let second = aes_gcm_encrypt(&cek, enc, b"plaintext", b"aad", &rng).unwrap();
+
+        assert_eq!(first.iv.len(), AES_GCM_IV_LEN);
+        assert_ne!(first.iv, second.iv, "the IV must not be reused");
+        let plaintext =
+            aes_gcm_decrypt(&cek, enc, &first.iv, &first.ciphertext, &first.tag, b"aad").unwrap();
+        assert_eq!(plaintext.as_slice(), b"plaintext");
+    }
+
+    #[test]
+    fn each_cek_is_fresh() {
+        let rng = KmsRng::new();
+        let a = generate_cek(JoseEncAlgorithm::A128GCM, &rng).unwrap();
+        let b = generate_cek(JoseEncAlgorithm::A128GCM, &rng).unwrap();
+        assert_eq!(a.len(), 16);
+        assert_ne!(a.as_slice(), b.as_slice());
+    }
 }

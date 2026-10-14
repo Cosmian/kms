@@ -19,7 +19,7 @@ use ckms::{
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
                     Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
-                    Revoke, Sign, SignatureVerify,
+                    RNGRetrieve, Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -32,10 +32,7 @@ use ckms::{
         cosmian_kms_client::{
             ExportObjectParams, KmsClient, KmsClientConfig, batch_export_objects, export_object,
         },
-        cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-            CsRng,
-            reexport::rand_core::{RngCore, SeedableRng},
-        },
+        cosmian_kms_crypto::crypto::KmsRng,
     },
 };
 use cosmian_logger::{debug, error, trace};
@@ -521,6 +518,38 @@ pub(crate) fn kms_import_symmetric_key(
     ))
 }
 
+/// Maximum number of bytes the KMS accepts in a single KMIP `RNGRetrieve` request.
+const MAX_RNG_RETRIEVE_BYTES: usize = 64 * 1024;
+
+/// Fill `buf` with random bytes retrieved from the KMS (KMIP `RNGRetrieve`), splitting the
+/// request so that no single call exceeds the server limit.
+pub(crate) fn kms_generate_random(kms_rest_client: &KmsClient, buf: &mut [u8]) -> Pkcs11Result<()> {
+    RUNTIME.block_on(kms_generate_random_async(kms_rest_client, buf))
+}
+
+async fn kms_generate_random_async(
+    kms_rest_client: &KmsClient,
+    buf: &mut [u8],
+) -> Pkcs11Result<()> {
+    for chunk in buf.chunks_mut(MAX_RNG_RETRIEVE_BYTES) {
+        let response = kms_rest_client
+            .rng_retrieve(RNGRetrieve {
+                data_length: i32::try_from(chunk.len())?,
+            })
+            .await?;
+        let data = Zeroizing::new(response.data);
+        if data.len() != chunk.len() {
+            return Err(Pkcs11Error::Default(format!(
+                "RNGRetrieve returned {} bytes, expected {}",
+                data.len(),
+                chunk.len()
+            )));
+        }
+        chunk.copy_from_slice(&data);
+    }
+    Ok(())
+}
+
 /// Creates a new KMS key.
 /// At first, the key is locally created and then imported to the KMS. There are 2 reasons why:
 /// - 1/ a key with `sensitive` flag cannot be extracted and then cannot be exported afterwards
@@ -543,9 +572,13 @@ pub(crate) async fn kms_import_symmetric_key_async(
     };
     let tags = label.map(|l| vec![l.to_owned()]).unwrap_or_default();
 
-    let mut rng = CsRng::from_entropy();
-    let mut key = vec![0_u8; key_length];
-    rng.fill_bytes(&mut key);
+    // The key is generated here and then imported into the KMS: draw it from the private DRBG
+    // (`KmsRng::fill_bytes`), which is the generator reserved for key material. `RNGRetrieve`
+    // output comes from the public DRBG and is meant for values handed to clients.
+    let mut key = Zeroizing::new(vec![0_u8; key_length]);
+    KmsRng::new()
+        .fill_bytes(&mut key)
+        .map_err(|e| Pkcs11Error::Default(format!("failed to generate the key: {e}")))?;
 
     let cryptographic_length = Some(i32::try_from(key_length * 8)?);
 
@@ -573,9 +606,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::new(key),
-                },
+                key_material: KeyMaterial::TransparentSymmetricKey { key },
                 attributes: Some(attributes.clone()),
             }),
             cryptographic_length,

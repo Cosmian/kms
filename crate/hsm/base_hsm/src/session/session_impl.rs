@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
     HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
@@ -34,7 +35,6 @@ use pkcs11_sys::{
     CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
     CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
-use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -60,8 +60,8 @@ const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    SysRng
-        .try_fill_bytes(&mut bytes)
+    KmsRng::new()
+        .fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)
 }

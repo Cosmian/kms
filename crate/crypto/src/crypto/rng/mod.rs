@@ -28,17 +28,22 @@ unsafe extern "C" {
 
 /// Thread-safe KMS random number generator, a thin wrapper around OpenSSL's DRBG hierarchy.
 ///
-/// `KmsRng` is instantiated once during KMS startup and shared via `Arc<KmsRng>`. It is used for:
-/// - Symmetric key and `SecretData` seed generation
-/// - Split keys
+/// `KmsRng` is the single source of randomness for key material, nonces/IVs and secret tokens.
+/// Because it is zero-sized, the server shares one `Arc<KmsRng>` (`KMS::rng`) while other code
+/// (CLI, database layer, PKCS#11 module) may construct `KmsRng::new()` locally at no cost. It is
+/// used for:
+/// - Symmetric key and `SecretData` seed generation, nonces and IVs
+/// - Key wrapping (KEK, nonces) and split keys
 /// - Certificate serial numbers
 /// - KMIP RNG operations (`RNGRetrieve`, `RNGSeed`)
 /// - PQC key generation seed injection for ML-KEM and ML-DSA
+/// - Seeding the pseudo-random generators that third-party APIs require (`OpenPGP`, ECIES
+///   `SalsaSealBox`)
+/// - Session/OIDC tokens and AES-GCM/JOSE content keys and IVs
 ///
-/// SLH-DSA and hybrid KEM do not draw seeds from `KmsRng`: OpenSSL generates their key
-/// material from its own default DRBG. Several other call sites also call
-/// `openssl::rand::rand_bytes` directly; they reach the same OpenSSL DRBG hierarchy but not
-/// through this type.
+/// SLH-DSA, hybrid KEM, RSA/EC/EdDSA key generation and Covercrypt do not draw from `KmsRng`:
+/// OpenSSL (or the Covercrypt library, which exposes no way to inject an RNG) generates their
+/// key material internally.
 ///
 /// # Design
 ///

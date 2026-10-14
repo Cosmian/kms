@@ -1,14 +1,12 @@
 use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_MIN_RSA_MODULUS_LENGTH;
-use openssl::{
-    pkey::{PKey, Private, Public},
-    rand::rand_bytes,
-};
+use openssl::pkey::{PKey, Private, Public};
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
+        KmsRng,
         rsa::ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},
         symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap},
     },
@@ -35,13 +33,14 @@ pub const AES_KWP_KEY_LENGTH: usize = 0x20;
 ///
 /// Send `c|wk` where `|` is the concatenation operator.
 pub fn ckm_rsa_aes_key_wrap(
+    rng: &KmsRng,
     pubkey: &PKey<Public>,
     hash_fn: HashingAlgorithm,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
     // Generate temporary AES key.
     let mut kek = Zeroizing::from(vec![0_u8; AES_KWP_KEY_LENGTH]);
-    rand_bytes(&mut kek)?;
+    rng.fill_bytes(&mut kek)?;
 
     // Encapsulate it using RSA-OAEP.
     let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, hash_fn, None, &kek)?;
@@ -201,6 +200,7 @@ FQIDAQAB
             Zeroizing::from(openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?);
 
         let wrapped_key = ckm_rsa_aes_key_wrap(
+            &crate::crypto::KmsRng::new(),
             &pub_key,
             HashingAlgorithm::SHA256,
             priv_key_to_wrap.as_ref(),
@@ -622,7 +622,12 @@ vKJMiWk/TowEqm5zcvCeTsPlceZdxidTBNB/EPCSxIHpycyzT3pQ4ehI
         let secret_bytes = priv_key.private_key_to_pkcs8()?;
 
         let pub_key = PKey::public_key_from_pem(KEK_FOR_BYOK.as_bytes())?;
-        let wrapped_key = ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA1, &secret_bytes)?;
+        let wrapped_key = ckm_rsa_aes_key_wrap(
+            &crate::crypto::KmsRng::new(),
+            &pub_key,
+            HashingAlgorithm::SHA1,
+            &secret_bytes,
+        )?;
 
         // Generate .byok file
         let _byok_value = json!({

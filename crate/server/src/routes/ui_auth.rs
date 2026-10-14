@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use actix_session::Session;
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -11,12 +12,13 @@ use url::Url;
 
 use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
+    core::KMS,
     middlewares::{JwtConfig, UserId, reject_reserved_aws_xks_identity, validate_jwt_svid},
 };
 
-fn random_b64url(len_bytes: usize) -> Result<String, ()> {
+fn random_b64url(rng: &KmsRng, len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
-    openssl::rand::rand_bytes(&mut buf).map_err(|_e| ())?;
+    rng.fill_bytes(&mut buf).map_err(|_e| ())?;
     Ok(URL_SAFE_NO_PAD.encode(&buf))
 }
 
@@ -30,6 +32,7 @@ pub(crate) async fn login(
     session: Session,
     oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
+    kms: web::Data<Arc<KMS>>,
 ) -> HttpResponse {
     let Some(ref discovered) = oidc_runtime.discovered else {
         return HttpResponse::InternalServerError()
@@ -43,14 +46,14 @@ pub(crate) async fn login(
 
     let redirect_url = format!("{}/ui/callback", kms_url.as_str());
 
-    let Ok(pkce_verifier) = random_b64url(32) else {
+    let Ok(pkce_verifier) = random_b64url(&kms.rng, 32) else {
         return HttpResponse::InternalServerError().body("Failed to create PKCE verifier");
     };
     let pkce_challenge = pkce_challenge_from_verifier(&pkce_verifier);
-    let Ok(csrf_token) = random_b64url(16) else {
+    let Ok(csrf_token) = random_b64url(&kms.rng, 16) else {
         return HttpResponse::InternalServerError().body("Failed to create CSRF token");
     };
-    let Ok(nonce) = random_b64url(16) else {
+    let Ok(nonce) = random_b64url(&kms.rng, 16) else {
         return HttpResponse::InternalServerError().body("Failed to create nonce");
     };
 

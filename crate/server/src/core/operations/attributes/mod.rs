@@ -5,6 +5,7 @@ mod delete;
 mod get;
 mod get_list;
 mod modify;
+pub(crate) mod policy;
 mod set;
 
 pub(crate) use add::add_attribute;

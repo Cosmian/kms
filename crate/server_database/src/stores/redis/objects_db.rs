@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Mutex,
-};
+use std::collections::{HashMap, HashSet};
 
 use cosmian_kmip::{
     KmipResultHelper,
@@ -11,9 +8,11 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
-    reexport::rand_core::SeedableRng,
+use cosmian_kms_crypto::{
+    crypto::KmsRng,
+    reexport::cosmian_crypto_core::{
+        Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    },
 };
 use cosmian_logger::debug;
 use redis::{AsyncCommands, aio::ConnectionManager, pipe};
@@ -144,7 +143,6 @@ pub(crate) const DB_KEY_LENGTH: usize = 32;
 pub(crate) struct ObjectsDB {
     mgr: ConnectionManager,
     dem: Aes256Gcm,
-    rng: Mutex<CsRng>,
 }
 
 impl ObjectsDB {
@@ -152,7 +150,6 @@ impl ObjectsDB {
         Self {
             mgr,
             dem: Aes256Gcm::new(db_key),
-            rng: Mutex::new(CsRng::from_entropy()),
         }
     }
 
@@ -162,10 +159,11 @@ impl ObjectsDB {
 
     fn encrypt_object(&self, uid: &str, redis_db_object: &RedisDbObject) -> DbResult<Vec<u8>> {
         let nonce = {
-            let mut rng = self.rng.lock().map_err(|e| {
-                DbError::DatabaseError(format!("failed acquiring a lock on the RNG. Error: {e:?}"))
-            })?;
-            Nonce::new(&mut *rng)
+            let mut nonce_bytes = [0_u8; Aes256Gcm::NONCE_LENGTH];
+            KmsRng::new()
+                .fill_bytes(&mut nonce_bytes)
+                .map_err(|e| DbError::CryptographicError(format!("RNG failure: {e}")))?;
+            Nonce::from(nonce_bytes)
         };
         let ct: Vec<u8> = self.dem.encrypt(
             &nonce,
