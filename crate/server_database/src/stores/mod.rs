@@ -37,3 +37,7 @@ pub(crate) static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     #[expect(clippy::expect_used)]
     Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQLite SQL file")
 });
+
+#[cfg(test)]
+#[path = "mod_characterization_tests.rs"]
+mod characterization_tests;
