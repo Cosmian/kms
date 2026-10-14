@@ -463,7 +463,13 @@ jobs:
             else
               reachable=false
             fi
-            echo "peer_in_vnet_subnet=${in_vnet} peer_directly_reachable_on_2224=${reachable}"
+            matches_known_candidate=false
+            for candidate in 134.149.185.28 20.207.224.74 40.13.96.130; do
+              if [ "$ip" = "$candidate" ]; then
+                matches_known_candidate=true
+              fi
+            done
+            echo "peer_in_vnet_subnet=${in_vnet} peer_directly_reachable_on_2224=${reachable} matches_known_old_public_ip=${matches_known_candidate}"
           done
 
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
