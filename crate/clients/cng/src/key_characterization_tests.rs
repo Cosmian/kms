@@ -199,14 +199,16 @@ fn characterization_ctx_persisted_accessors() {
     let ctx = CngKeyCtx::new_persisted(
         offline_client(),
         VENDOR.to_owned(),
-        "priv-uid".to_owned(),
-        Some("pub-uid".to_owned()),
-        KeyAlgorithm::Rsa { bits: 3072 },
-        "my-key".to_owned(),
-        KeyUsage::SIGN,
-        ExportPolicy {
-            allow_export: false,
-            allow_plaintext_export: true,
+        PersistedKeyParams {
+            priv_uid: "priv-uid".to_owned(),
+            pub_uid: Some("pub-uid".to_owned()),
+            algorithm: KeyAlgorithm::Rsa { bits: 3072 },
+            key_name: "my-key".to_owned(),
+            usage: KeyUsage::SIGN,
+            export_policy: ExportPolicy {
+                allow_export: false,
+                allow_plaintext_export: true,
+            },
         },
     );
     assert_eq!(ctx.magic, KEY_CTX_MAGIC);
@@ -225,14 +227,16 @@ fn characterization_ctx_persisted_without_pub_uid_falls_back() {
     let ctx = CngKeyCtx::new_persisted(
         offline_client(),
         VENDOR.to_owned(),
-        "priv-only".to_owned(),
-        None,
-        KeyAlgorithm::Ec {
-            curve: EcCurve::P384,
+        PersistedKeyParams {
+            priv_uid: "priv-only".to_owned(),
+            pub_uid: None,
+            algorithm: KeyAlgorithm::Ec {
+                curve: EcCurve::P384,
+            },
+            key_name: "ec-key".to_owned(),
+            usage: KeyUsage::KEY_AGREEMENT,
+            export_policy: ExportPolicy::default(),
         },
-        "ec-key".to_owned(),
-        KeyUsage::KEY_AGREEMENT,
-        ExportPolicy::default(),
     );
     assert_eq!(ctx.pub_uid().unwrap(), "priv-only");
     assert_eq!(ctx.priv_uid().unwrap(), "priv-only");
@@ -275,6 +279,7 @@ fn characterization_ctx_pending_accessors_and_errors() {
 }
 
 #[test]
+#[expect(unsafe_code, reason = "the production API takes raw handles")]
 fn characterization_ctx_handle_roundtrip() {
     // SAFETY-relevant: the production API takes raw handles, so `unsafe` is forced here.
     assert!(matches!(
@@ -406,12 +411,14 @@ fn characterization_export_persisted_reaches_backend() {
             let ctx = CngKeyCtx::new_persisted(
                 offline_client(),
                 VENDOR.to_owned(),
-                "priv".to_owned(),
-                pub_uid,
-                algorithm.clone(),
-                "k".to_owned(),
-                KeyUsage::SIGN,
-                ExportPolicy::default(),
+                PersistedKeyParams {
+                    priv_uid: "priv".to_owned(),
+                    pub_uid,
+                    algorithm: algorithm.clone(),
+                    key_name: "k".to_owned(),
+                    usage: KeyUsage::SIGN,
+                    export_policy: ExportPolicy::default(),
+                },
             );
             assert_eq!(
                 ctx.export_public_blob().unwrap_err().to_string(),
