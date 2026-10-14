@@ -344,3 +344,7 @@ mod tests {
         assert_eq!(canonical_bytes(&event), expected);
     }
 }
+
+#[cfg(test)]
+#[path = "hash_characterization_tests.rs"]
+mod characterization_tests;
