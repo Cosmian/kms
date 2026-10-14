@@ -599,3 +599,6 @@ impl NumeralString for FlexibleNumeralString {
         Self(res)
     }
 }
+#[cfg(test)]
+#[path = "ff1_characterization_tests.rs"]
+mod ff1_characterization_tests;

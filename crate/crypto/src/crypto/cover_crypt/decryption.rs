@@ -193,3 +193,6 @@ fn aead_decrypt(
         .map(Zeroizing::new)
         .map_err(CryptoError::from)
 }
+#[cfg(test)]
+#[path = "decryption_characterization_tests.rs"]
+mod characterization_tests;

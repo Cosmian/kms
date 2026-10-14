@@ -205,3 +205,5 @@ mod tests {
         ::openssl::init();
     }
 }
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;
