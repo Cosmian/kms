@@ -155,7 +155,6 @@ Crate path: `crate/server`
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `decrypt request: {:?}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
 | `debug` | `decrypt_bulk: ==> decrypted {} plaintexts` | `src/core/operations/decrypt.rs` | - | - |
 | `debug` | `decrypt_bulk: ==> decrypting {} ciphertexts` | `src/core/operations/decrypt.rs` | - | - |
 | `debug` | `Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long` | `src/core/operations/decrypt.rs` | `prefix`: decryption oracle prefix bytes | - |
@@ -166,7 +165,6 @@ Crate path: `crate/server`
 | `debug` | `EKM Error: {:?}` | `src/routes/azure_ekm/error.rs` | - | - |
 | `debug` | `Enable Google CSE JWT Authorization: {enable_google_cse_authentication}` | `src/start_kms_server.rs` | `enable_google_cse_authentication`: whether Google CSE JWT auth is on | - |
 | `debug` | `encode base64 wrapped_dek` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `encrypt request: {:?}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
 | `debug` | `encrypting with RSA {algorithm:?} {padding:?} hashing_fn:{hashing_fn:?} mgf1:{mgf1_hash_fn:?} label_len:{}` | `src/core/operations/encrypt.rs` | `algorithm`: cryptographic algorithm<br>`padding`: asymmetric padding scheme<br>`hashing_fn`: hash function<br>`mgf1_hash_fn`: MGF1 hash function | - |
 | `debug` | `entering` | `src/routes/google_cse/jwt.rs` | - | - |
 | `debug` | `entering` | `src/routes/google_cse/operations.rs` | - | ×9 in this file |
@@ -183,7 +181,6 @@ Crate path: `crate/server`
 | `debug` | `Get Attributes: requested vendor attribute not found {}:{}` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: returning vendor attribute match {}:{}` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get input certificates as bytes` | `src/core/operations/validate.rs` | - | - |
-| `debug` | `get metadata request: {:?}` | `src/routes/aws_xks/key_metadata.rs` | - | - |
 | `debug` | `get rsa public key on {current_kacls_url}` | `src/routes/google_cse/operations.rs` | `current_kacls_url`: current KACLS server URL | - |
 | `debug` | `get_crl_bytes: exiting in success with {} CRLs` | `src/core/operations/validate.rs` | - | - |
 | `debug` | `get_status` | `src/routes/google_cse/operations.rs` | - | - |
@@ -425,7 +422,6 @@ Crate path: `crate/server`
 | `trace` | `User {user} does not have permission for operation {operation_type:?} on object {}` | `src/core/retrieve_object_utils.rs` | `user` — …<br>`operation_type` — … | — |
 | `trace` | `User {user} has permission for operation {operation_type:?} on object {}` | `src/core/retrieve_object_utils.rs` | `user` — …<br>`operation_type` — … | — |
 | `trace` | `Using Client Certificate Authentication with OpenSSL` | `src/start_kms_server.rs` | — | — |
-| `trace` | `valid_jwt headers: {:?}` | `src/routes/google_cse/jwt.rs` | — | — |
 | `trace` | `valid_jwt user claims: {:?}` | `src/routes/google_cse/jwt.rs` | — | — |
 | `trace` | `validate token: KACLS URL {google_cse_kacls_url}` | `src/routes/google_cse/jwt.rs` | `google_cse_kacls_url` — … | — |
 | `trace` | `Validate: {}` | `src/core/operations/validate.rs` | — | — |
@@ -646,7 +642,6 @@ Crate path: `crate/server`
 | `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/spire/transit.rs` | `name`, `bits` | - |
 | `debug` | `vault transit: deleted key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
 | `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
-| `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | - |
 | `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
@@ -764,6 +759,13 @@ Crate path: `crate/server`
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
+| `debug` | `decrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
+| `debug` | `encrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
+| `debug` | `get metadata request: {}` | `src/routes/aws_xks/key_metadata.rs` | - | - |
+| `debug` | `vault transit: 'exportable: true' requested for key '{name}' is ignored, transit keys are always created non-exportable` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `{log_prefix}: validated entity={} policies={:?}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), x5t: {:?}); the key is taken from the configured JWKS` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `trace` | `valid_jwt headers: typ={:?} alg={:?} kid={:?}` | `src/middlewares/jwt/jwt_config.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1089,6 +1091,8 @@ Crate path: `crate/hsm/base_hsm`
 | `trace` | `Doing round with {round_length} bytes. {processed_length} of {total_length} done` | `src/session/session_impl.rs` | `round_length` — …<br>`processed_length` — …<br>`total_length` — … | ×2 in this file |
 | `trace` | `Found {object_count} objects` | `src/session/session_impl.rs` | `object_count` — … | — |
 | `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
+| `debug` | `Could not terminate the decryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
+| `debug` | `Could not terminate the encryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
 
 ---
 
