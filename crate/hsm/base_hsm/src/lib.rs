@@ -281,3 +281,6 @@ macro_rules! hsm_call {
         }
     };
 }
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;
