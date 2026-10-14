@@ -314,7 +314,6 @@ async fn generate_self_signed_tls() -> Result<RustlsConfig, OperatorError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use serde_json::{Value, json};
 

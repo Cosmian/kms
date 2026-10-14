@@ -13,7 +13,8 @@ pub mod service;
     clippy::as_conversions,
     clippy::use_self,
     clippy::doc_markdown,
-    clippy::result_large_err
+    clippy::result_large_err,
+    reason = "prost/tonic-generated code (src/*.proto)"
 )]
 pub mod v1alpha1 {
     include!("provider.rs");
