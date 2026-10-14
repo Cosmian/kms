@@ -1971,11 +1971,6 @@ async fn execute_steps(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use super::*;
 
@@ -2101,7 +2096,7 @@ mod tests {
                 ]
             }]
         });
-        assert!(assert_success(&response, "test_op").is_ok());
+        assert_success(&response, "test_op").unwrap();
     }
 
     #[test]

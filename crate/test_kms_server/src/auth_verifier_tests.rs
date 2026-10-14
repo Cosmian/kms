@@ -22,8 +22,6 @@
 //!   cargo test -p test_kms_server -- --ignored test_webui_login_via_auth_verifier
 //! ```
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
-
 /// `WebUI` login flow via the Auth Verifier.
 ///
 /// Verifies the full BFF flow end-to-end against an already-running KMS that
