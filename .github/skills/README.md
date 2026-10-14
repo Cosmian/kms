@@ -20,7 +20,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, branch, implement, run `AGENTS.md` §5, open the PR. |
+| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, plan, branch/stack, test-first implement, test, document, run `AGENTS.md` §5, commit, open the PR, fix CI, handle review feedback (never merges). |
 
 ### Security
 

@@ -421,7 +421,7 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 
 | Invoke | When |
 |--------|------|
-| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure |
+| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure through green CI and review feedback (never merges) |
 | `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
 | `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; suggest once for large features, skip for trivial fixes |
 | `/pre-release` | **Before every release** — orchestrates all AI audits, produces go/no-go report |
