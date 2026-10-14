@@ -1228,7 +1228,7 @@ mod covercrypt_revoke {
         let skipped = fx.usks.first().unwrap().clone();
         revoke_user_decryption_keys(
             &fx.msk,
-            reason(RevocationReasonCode::KeyCompromise, Some("skip")),
+            &reason(RevocationReasonCode::KeyCompromise, Some("skip")),
             Some(compromise_date()),
             &kms,
             &user,
@@ -1269,7 +1269,7 @@ mod covercrypt_revoke {
         .unwrap();
         revoke_user_decryption_keys(
             &fx.msk,
-            reason(RevocationReasonCode::KeyCompromise, Some("later")),
+            &reason(RevocationReasonCode::KeyCompromise, Some("later")),
             None,
             &kms,
             &user,

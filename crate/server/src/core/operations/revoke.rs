@@ -59,13 +59,15 @@ pub(crate) async fn revoke_operation(
     }
 
     recursively_revoke_key(
-        unique_identifier,
-        revocation_reason,
-        compromise_occurrence_date,
-        request.cascade,
+        RevokeKeyParams {
+            unique_identifier,
+            revocation_reason: &revocation_reason,
+            compromise_occurrence_date,
+            cascade: request.cascade,
+            ids_to_skip: HashSet::new(),
+        },
         kms,
         user,
-        HashSet::new(),
     )
     .await?;
 
@@ -74,19 +76,33 @@ pub(crate) async fn revoke_operation(
     })
 }
 
+/// Parameters of [`recursively_revoke_key`]
+pub(crate) struct RevokeKeyParams<'a> {
+    pub(crate) unique_identifier: &'a UniqueIdentifier,
+    pub(crate) revocation_reason: &'a RevocationReason,
+    pub(crate) compromise_occurrence_date: Option<OffsetDateTime>,
+    pub(crate) cascade: bool,
+    /// keys that should be skipped
+    pub(crate) ids_to_skip: HashSet<String>,
+}
+
 /// Recursively revoke keys
-#[allow(clippy::too_many_arguments)]
 #[async_recursion(?Send)]
-pub(crate) async fn recursively_revoke_key(
-    unique_identifier: &UniqueIdentifier,
-    revocation_reason: RevocationReason,
-    compromise_occurrence_date: Option<OffsetDateTime>,
-    cascade: bool,
+pub(crate) async fn recursively_revoke_key<'a>(
+    params: RevokeKeyParams<'a>,
     kms: &KMS,
     user: &UserId,
-    // keys that should be skipped
-    mut ids_to_skip: HashSet<String>,
-) -> KResult<()> {
+) -> KResult<()>
+where
+    'a: 'async_recursion,
+{
+    let RevokeKeyParams {
+        unique_identifier,
+        revocation_reason,
+        compromise_occurrence_date,
+        cascade,
+        mut ids_to_skip,
+    } = params;
     let uids = resolve_uids(ObjectHandle::try_from(unique_identifier)?, kms)
         .await
         .context("Revoke")?;
@@ -108,7 +124,7 @@ pub(crate) async fn recursively_revoke_key(
                 }
             }
             // KMIP 2.1 §6.1.44: KeyCompromise/CACompromise → Compromised; all others → Deactivated
-            let revoked_state = revocation_target_state(&revocation_reason);
+            let revoked_state = revocation_target_state(revocation_reason);
             if kms.database.update_state(&uid, revoked_state).await.is_ok() {
                 count += 1;
                 debug!(
@@ -255,7 +271,7 @@ pub(crate) async fn recursively_revoke_key(
                 {
                     revoke_user_decryption_keys(
                         &uid,
-                        revocation_reason.clone(),
+                        revocation_reason,
                         compromise_occurrence_date,
                         kms,
                         user,
@@ -280,13 +296,15 @@ pub(crate) async fn recursively_revoke_key(
                     {
                         if !ids_to_skip.contains(&linked_id) {
                             recursively_revoke_key(
-                                &UniqueIdentifier::TextString(linked_id),
-                                revocation_reason.clone(),
-                                compromise_occurrence_date,
-                                cascade,
+                                RevokeKeyParams {
+                                    unique_identifier: &UniqueIdentifier::TextString(linked_id),
+                                    revocation_reason,
+                                    compromise_occurrence_date,
+                                    cascade,
+                                    ids_to_skip: ids_to_skip.clone(),
+                                },
                                 kms,
                                 user,
-                                ids_to_skip.clone(),
                             )
                             .await?;
                             kms.record_cascading_metrics("Revoke", op_start, user);

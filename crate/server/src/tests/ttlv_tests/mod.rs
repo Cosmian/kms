@@ -162,6 +162,7 @@ fn start_test_server() -> &'static TestServerCtx {
 /// port. It is never exercised by the default test run, so the fixed port
 /// does not create the cross-process contention that [`start_test_server`]
 /// used to have.
+#[cfg(not(target_os = "windows"))] // only used by the `pykmip` test module, not built on Windows
 fn start_test_server_with_fixed_port(socket_port: u16) -> &'static TestServerCtx {
     static SERVER_HANDLES: OnceLock<TestServerCtx> = OnceLock::new();
     let mut https_config = https_clap_config();

@@ -101,7 +101,10 @@ pub(crate) fn build_and_sign_certificate(
     apply_pqc_key_usage(&mut x509_builder, subject, &attributes, vendor_id)?;
 
     // RFC 5280 §4.2: user-supplied extensions from vendor attribute CNF
-    #[allow(unused_variables)]
+    #[cfg_attr(
+        not(feature = "non-fips"),
+        expect(unused_variables, reason = "only read by the non-fips PQC keyUsage warning")
+    )]
     let (has_cdp, has_user_key_usage) =
         apply_user_extensions(&mut x509_builder, &mut attributes, vendor_id, issuer)?;
     // Combine: CDP is present if it came from the subject (CSR/existing cert) OR user vendor attrs.
@@ -392,21 +395,17 @@ fn inject_server_crl_dp(
 ///
 /// Supports lengths up to 65 535 (two-byte long form). Lengths above this
 /// limit are rejected with an error to prevent silent DER truncation.
-// SAFETY: all `as u8` casts below are guarded by explicit range checks immediately above them.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
 fn encode_der_length(buf: &mut Vec<u8>, len: usize) -> KResult<()> {
-    if len < 0x80 {
-        // len fits in 7 bits — short form; cast safe: len < 128
-        buf.push(len as u8);
-    } else if len <= 0xFF {
-        // one-byte long form; cast safe: len <= 255
-        buf.push(0x81_u8);
-        buf.push(len as u8);
-    } else if len <= 0xFFFF {
-        // two-byte long form; casts safe: len <= 65535
+    if let Ok(len_u8) = u8::try_from(len) {
+        if len_u8 >= 0x80 {
+            // one-byte long form (short form: len fits in 7 bits)
+            buf.push(0x81_u8);
+        }
+        buf.push(len_u8);
+    } else if let Ok(len_u16) = u16::try_from(len) {
+        // two-byte long form
         buf.push(0x82_u8);
-        buf.push((len >> 8) as u8);
-        buf.push((len & 0xFF) as u8);
+        buf.extend_from_slice(&len_u16.to_be_bytes());
     } else {
         return Err(KmsError::InvalidRequest(format!(
             "CRL Distribution Point URI produces a DER length of {len} bytes, \

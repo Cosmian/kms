@@ -426,7 +426,6 @@ fn handle_streaming_verification(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use hex::FromHex;
     use openssl::{hash::MessageDigest, rsa::Padding, sign::Verifier};

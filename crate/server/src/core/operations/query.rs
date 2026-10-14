@@ -139,7 +139,6 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::{DRBGAlgorithm, RNGAlgorithm},

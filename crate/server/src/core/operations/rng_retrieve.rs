@@ -42,7 +42,6 @@ pub(crate) async fn rng_retrieve(
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
 mod tests {
     use std::sync::Arc;
 

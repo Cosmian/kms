@@ -524,7 +524,10 @@ fn decrement_usage_limits_in_attributes(attributes: &mut Attributes, data_len: u
 }
 
 #[cfg(not(feature = "non-fips"))]
-#[allow(clippy::unused_async)] // signature must match the non-fips async variant awaited by derive_key
+#[expect(
+    clippy::unused_async,
+    reason = "signature must match the non-fips async variant of this function"
+)]
 async fn derive_key_asymmetric(
     _kms: &KMS,
     _request: DeriveKey,

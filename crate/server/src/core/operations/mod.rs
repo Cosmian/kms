@@ -72,7 +72,7 @@ pub(crate) use key_ops::{CryptoOpSpec, KeysetMode};
 pub(crate) use recertify::recertify;
 pub(crate) use rekey::{rekey, rekey_keypair};
 #[cfg(feature = "non-fips")]
-pub(crate) use revoke::recursively_revoke_key;
+pub(crate) use revoke::{RevokeKeyParams, recursively_revoke_key};
 pub(crate) use revoke::revoke_operation;
 pub(crate) use rng_retrieve::rng_retrieve;
 pub(crate) use rng_seed::rng_seed;
