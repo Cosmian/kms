@@ -40,7 +40,7 @@ impl PKeyGuard {
 }
 
 impl Drop for PKeyGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: `self.0` is a valid EVP_PKEY exclusively owned by this guard.
         unsafe {
@@ -55,7 +55,7 @@ impl Drop for PKeyGuard {
 struct PKeyCtxGuard(*mut openssl_sys::EVP_PKEY_CTX);
 
 impl Drop for PKeyCtxGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: `self.0` is a valid EVP_PKEY_CTX exclusively owned by this guard.
         unsafe {
@@ -93,7 +93,7 @@ pub fn generate_pqc_seed(rng: &KmsRng, seed_len: usize) -> Result<Zeroizing<Vec<
 /// Upstream tracking: `rust-openssl` lacks safe bindings for `EVP_PKEY_CTX_new_from_name`,
 /// `EVP_PKEY_keygen_init`, `EVP_PKEY_CTX_set_params`, and `EVP_PKEY_generate` (Issue #1251,
 /// upstream PRs #2649, #2646, #2636, #2611).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn pqc_keygen_seeded(
     name: &CString,
     seed: &[u8],
@@ -232,7 +232,7 @@ fn parse_propquery(propquery: Option<&str>) -> Result<Option<CString>, CryptoErr
 ///
 /// Upstream tracking: `EVP_PKEY_Q_keygen` is used until safe bindings land in `rust-openssl`
 /// (Issue #1251, upstream PRs #2649, #2646, #2636, #2611).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn pqc_keygen(
     algorithm_name: &str,
     rng: Option<&KmsRng>,
@@ -298,7 +298,7 @@ fn pqc_keygen(
 ///
 /// Upstream tracking: `EVP_PKEY_Q_keygen` is used until safe bindings land in `rust-openssl`
 /// (Issue #1251, upstream PRs #2649, #2646, #2636, #2611).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn pqc_keygen_raw(
     algorithm_name: &str,
     rng: Option<&KmsRng>,
@@ -336,7 +336,7 @@ fn pqc_keygen_raw(
 
 // FFI declarations for OpenSSL 3.x keygen and raw key functions
 // (not available in openssl-sys crate, tracking Issue #1251)
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe extern "C" {
     fn EVP_PKEY_CTX_new_from_name(
         libctx: *mut openssl_sys::OSSL_LIB_CTX,
@@ -382,7 +382,7 @@ unsafe extern "C" {
 ///
 /// Upstream tracking: `openssl::pkey::PKey::public_key_from_raw_bytes_ex` requires a `KeyType`
 /// enum which does not support hybrid KEMs (Issue #1251).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub(crate) fn load_raw_public_key(
     algorithm_name: &str,
     raw_bytes: &[u8],
@@ -420,7 +420,7 @@ pub(crate) fn load_raw_public_key(
 ///
 /// Upstream tracking: `openssl::pkey::PKey::private_key_from_raw_bytes_ex` requires a `KeyType`
 /// enum which does not support hybrid KEMs (Issue #1251).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub(crate) fn load_raw_private_key(
     algorithm_name: &str,
     raw_bytes: &[u8],
@@ -662,7 +662,6 @@ fn create_pqc_key_pair(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
 

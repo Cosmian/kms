@@ -53,7 +53,6 @@ fn recommended_curve_to_pre_quantum_kem_tag(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn kem_keygen(
     vendor_id: &str,
     dk_uid: String,
@@ -108,11 +107,13 @@ pub fn kem_keygen(
     ))
 }
 
-#[allow(clippy::type_complexity)]
+/// Shared secret and its encapsulation, as returned by [`kem_encaps`].
+pub type KemEncapsulation = (Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>);
+
 pub fn kem_encaps(
     ek: &[u8],
     _data: Option<&Zeroizing<Vec<u8>>>,
-) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+) -> Result<KemEncapsulation, CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
             "failed deserializing the configurable-KEM encapsulation: {e}"

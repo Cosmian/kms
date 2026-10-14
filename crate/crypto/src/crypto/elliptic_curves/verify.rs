@@ -160,7 +160,6 @@ pub fn ed_verify(
 
 #[cfg(test)]
 mod test {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     #[cfg(feature = "non-fips")]
     use {
         super::*, crate::crypto::elliptic_curves::operation::ecdsa_sign,

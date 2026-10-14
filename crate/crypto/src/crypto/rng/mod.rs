@@ -18,7 +18,7 @@ use crate::error::CryptoError;
 /// passes a strength of 0) would.
 const REQUIRED_STRENGTH_BITS: c_uint = 256;
 
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe extern "C" {
     /// `RAND_priv_bytes_ex(3)`: generate from the *private* DRBG of the default library context.
     fn RAND_priv_bytes_ex(ctx: *mut c_void, buf: *mut u8, num: usize, strength: c_uint) -> c_int;
@@ -111,7 +111,7 @@ impl KmsRng {
     /// Returns `CryptoError` if OpenSSL cannot generate the bytes at the requested strength
     /// (DRBG not instantiated, entropy source failure, or DRBG strength below 256 bits).
     /// The buffer content is unspecified on error and MUST NOT be used.
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     pub fn fill_bytes(&self, dest: &mut [u8]) -> Result<(), CryptoError> {
         // SAFETY: `dest` is a valid, exclusively borrowed slice, so `dest.as_mut_ptr()` is valid
         // for writes of `dest.len()` bytes (a dangling non-null pointer with length 0 is allowed
@@ -136,7 +136,7 @@ impl KmsRng {
     /// # Errors
     ///
     /// Same as [`fill_bytes`](Self::fill_bytes).
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     pub fn fill_public_bytes(&self, dest: &mut [u8]) -> Result<(), CryptoError> {
         // SAFETY: see `fill_bytes`.
         let ret = unsafe {
@@ -181,7 +181,7 @@ impl KmsRng {
     /// # Errors
     ///
     /// Returns `CryptoError` if the seed length exceeds `i32::MAX`.
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     pub fn reseed(&self, seed: &[u8]) -> Result<(), CryptoError> {
         if seed.is_empty() {
             return Ok(());
@@ -215,8 +215,11 @@ fn check_rand_result(ret: c_int) -> Result<(), CryptoError> {
     }
 }
 
-#[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use std::{collections::HashSet, sync::Arc};
 
@@ -239,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn requested_strength_above_the_drbg_strength_fails_closed() -> Result<(), CryptoError> {
         // AES-256 CTR-DRBG supports at most 256 bits; a 512-bit request must be refused rather
         // than served at a lower strength (SP 800-90A r1 §9.3.1).

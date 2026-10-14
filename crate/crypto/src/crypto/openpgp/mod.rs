@@ -96,7 +96,7 @@ fn normalize_rsa_secret_params(
 
 // The PGP crate requires an infallible rand 0.8 `CryptoRng` and offers no direct-seed entry point,
 // so its RNG stream is a ChaCha12 `StdRng` seeded with 256 bits taken from `KmsRng`.
-#[allow(
+#[expect(
     clippy::disallowed_types,
     reason = "StdRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
 )]
@@ -462,7 +462,6 @@ pub fn openpgp_verify_detached(
     Ok(false)
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

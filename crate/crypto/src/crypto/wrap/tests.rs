@@ -1,6 +1,10 @@
-#![allow(
+#![expect(
     clippy::disallowed_methods,
     reason = "test fixtures: key material under test is generated locally"
+)]
+#![expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;

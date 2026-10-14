@@ -9,21 +9,17 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 ///
 /// This secret is stored on the heap and is guaranteed to be zeroized on drop.
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct Secret<const LENGTH: usize>(Pin<Box<[u8; LENGTH]>>);
+pub struct Secret<const LENGTH: usize>(Pin<Box<[u8]>>);
 
 impl<const LENGTH: usize> Secret<LENGTH> {
     /// Creates a new secret and returns it.
     ///
     /// All bytes are initially set to 0.
     #[must_use]
-    #[expect(unsafe_code)]
     pub fn new() -> Self {
-        // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
-        let data = vec![0_u8; LENGTH].into_boxed_slice();
-        // cast the raw pointer back to our fixed-length type
-        // it is considered safe because `data` is initialized in the previous line
-        let data = unsafe { Box::from_raw(Box::into_raw(data).cast::<[u8; LENGTH]>()) };
-        Self(Pin::new(data))
+        // `vec!` allocates the zeroed buffer directly on the heap; `[0; LENGTH]` would be built on
+        // the stack first and overflow it for large `LENGTH`.
+        Self(Pin::new(vec![0_u8; LENGTH].into_boxed_slice()))
     }
 
     /// Returns the bytes of the secret.
@@ -58,13 +54,13 @@ impl<const LENGTH: usize> Deref for Secret<LENGTH> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
 impl<const LENGTH: usize> DerefMut for Secret<LENGTH> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.0
+        &mut self.0
     }
 }
 
