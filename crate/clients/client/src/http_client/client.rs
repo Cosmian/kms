@@ -122,8 +122,14 @@ impl Default for HttpClientConfig {
     }
 }
 
+/// The original request and its boxed copy kept for a potential retry.
+type RetryRequests = (http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>);
+
 /// used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde `skip_serializing_if` passes a reference"
+)]
 const fn not(b: &bool) -> bool {
     !*b
 }
@@ -629,13 +635,9 @@ impl HttpClient {
     /// individually.  The copy is `Box`ed so the async state machine in
     /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
     /// `.await`, avoiding `clippy::large_futures` in callers.
-    #[expect(
-        clippy::type_complexity,
-        reason = "Box is load-bearing for state machine compactness; a type alias would obscure this"
-    )]
     fn split_for_retry(
         request: http::Request<Full<Bytes>>,
-    ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
+    ) -> HttpClientResult<RetryRequests> {
         let mut builder = http::Request::builder()
             .method(request.method().clone())
             .uri(request.uri().clone())
@@ -671,7 +673,6 @@ impl HttpClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod default_header_tests {
     use super::{HttpClient, HttpClientConfig};
 
