@@ -1,11 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::uninlined_format_args,
-    let_underscore_drop
-)]
-
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -28,7 +20,7 @@ const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.
 const OPENSSL_FIPS_SHA256: &str =
     "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NON_FIPS");
@@ -39,13 +31,13 @@ fn main() {
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if os == "windows" {
         println!("cargo:warning=Skipping OpenSSL build on Windows");
-        return;
+        return Ok(());
     }
 
     let fips_mode = env::var("CARGO_FEATURE_NON_FIPS").is_err();
 
     // Resolve workspace root: crate/crypto -> crate -> repo root
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let workspace_root = manifest_dir
         .parent()
         .and_then(|p| p.parent())
@@ -67,7 +59,7 @@ fn main() {
             // Do not emit OPENSSL_CONF here to avoid overriding wrapper config.
             // OPENSSL_MODULES is also provided by the shell, so no need to emit.
             println!("cargo:warning=Detected Nix environment; skipping local OpenSSL build");
-            return;
+            return Ok(());
         }
     }
 
@@ -76,35 +68,32 @@ fn main() {
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_else(|_| "unknown-os".into());
 
     let main_prefix = if fips_mode {
-        target_dir.join(format!("openssl-{}-{os}-{arch}", OPENSSL_MAIN_VERSION))
+        target_dir.join(format!("openssl-{OPENSSL_MAIN_VERSION}-{os}-{arch}"))
     } else {
         target_dir.join(format!(
-            "openssl-non-fips-{}-{os}-{arch}",
-            OPENSSL_MAIN_VERSION
+            "openssl-non-fips-{OPENSSL_MAIN_VERSION}-{os}-{arch}"
         ))
     };
-    let out_dir_os = env::var_os("OUT_DIR").unwrap();
+    let out_dir_os = env::var_os("OUT_DIR").ok_or("OUT_DIR is not set")?;
     let out_dir = Path::new(&out_dir_os);
     let build_root = out_dir.join("openssl_build_crypto");
-    let _ = fs::create_dir_all(&build_root);
-    let _ = fs::create_dir_all(&main_prefix);
+    drop(fs::create_dir_all(&build_root));
+    drop(fs::create_dir_all(&main_prefix));
 
     // Build main OpenSSL (3.6.2) if not present. It never contains a FIPS provider built from
     // the 3.6.2 sources: that provider is not CMVP-validated.
     if !main_prefix.join("lib/libcrypto.a").exists() {
-        let _ = build_and_install_openssl(
-            &workspace_root,
-            &build_root,
-            OPENSSL_MAIN_VERSION,
-            OPENSSL_MAIN_TARBALL,
-            OPENSSL_MAIN_URL,
-            OPENSSL_MAIN_SHA256,
-            &main_prefix,
-            // enable_fips=
-            false,
-            // enable_legacy=
-            !fips_mode,
-        );
+        drop(build_and_install_openssl(&OpensslBuildParams {
+            workspace_root: &workspace_root,
+            build_root: &build_root,
+            version: OPENSSL_MAIN_VERSION,
+            tarball: OPENSSL_MAIN_TARBALL,
+            url: OPENSSL_MAIN_URL,
+            sha256: OPENSSL_MAIN_SHA256,
+            install_prefix: &main_prefix,
+            enable_fips: false,
+            enable_legacy: !fips_mode,
+        }));
     }
 
     // Normalize provider layout
@@ -113,10 +102,9 @@ fn main() {
         // Build the CMVP-validated FIPS provider (3.1.2) in its own prefix, then copy
         // `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` into the main prefix.
         let fips_prefix = target_dir.join(format!(
-            "openssl-fips-provider-{}-{os}-{arch}",
-            OPENSSL_FIPS_VERSION
+            "openssl-fips-provider-{OPENSSL_FIPS_VERSION}-{os}-{arch}"
         ));
-        let _ = fs::create_dir_all(&fips_prefix);
+        drop(fs::create_dir_all(&fips_prefix));
         let mod_ext = if cfg!(target_os = "macos") {
             "dylib"
         } else {
@@ -129,19 +117,17 @@ fn main() {
                 .join(format!("lib64/ossl-modules/fips.{mod_ext}"))
                 .exists()
         {
-            let _ = build_and_install_openssl(
-                &workspace_root,
-                &build_root,
-                OPENSSL_FIPS_VERSION,
-                OPENSSL_FIPS_TARBALL,
-                OPENSSL_FIPS_URL,
-                OPENSSL_FIPS_SHA256,
-                &fips_prefix,
-                // enable_fips=
-                true,
-                // enable_legacy=
-                false,
-            );
+            drop(build_and_install_openssl(&OpensslBuildParams {
+                workspace_root: &workspace_root,
+                build_root: &build_root,
+                version: OPENSSL_FIPS_VERSION,
+                tarball: OPENSSL_FIPS_TARBALL,
+                url: OPENSSL_FIPS_URL,
+                sha256: OPENSSL_FIPS_SHA256,
+                install_prefix: &fips_prefix,
+                enable_fips: true,
+                enable_legacy: false,
+            }));
         }
         normalize_provider_layout(&fips_prefix);
         integrate_assets_into_main(&main_prefix, Some(&fips_prefix));
@@ -182,6 +168,7 @@ fn main() {
         "cargo:rustc-env=OPENSSL_MODULES={}/lib/ossl-modules",
         main_prefix.display()
     );
+    Ok(())
 }
 
 /// Patch `openssl.cnf` so the `.include` directive for `fipsmodule.cnf` points to the
@@ -224,7 +211,7 @@ fn patch_fipsmodule_include(install_prefix: &Path) {
     };
 
     if new_cnf != cnf {
-        let _ = fs::write(&openssl_cnf, new_cnf);
+        drop(fs::write(&openssl_cnf, new_cnf));
         println!(
             "cargo:warning=Patched {} to use local fipsmodule.cnf",
             openssl_cnf.display()
@@ -232,8 +219,13 @@ fn patch_fipsmodule_include(install_prefix: &Path) {
     }
 }
 
+fn path_str(path: &Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| format!("non-UTF-8 path: {}", path.display()))
+}
+
 fn run_cmd(cmd: &mut Command, context: &str) -> Result<(), String> {
-    println!("cargo:warning=Running {context} -> {:?}", cmd);
+    println!("cargo:warning=Running {context} -> {cmd:?}");
     match cmd.status() {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(format!("{context} failed with status {status}")),
@@ -287,18 +279,31 @@ fn verify_hash(path: &Path, expected: &str) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_and_install_openssl(
-    workspace_root: &Path,
-    build_root: &Path,
-    version: &str,
-    tarball: &str,
-    url: &str,
-    sha256: &str,
-    install_prefix: &Path,
+/// Inputs of [`build_and_install_openssl`].
+struct OpensslBuildParams<'a> {
+    workspace_root: &'a Path,
+    build_root: &'a Path,
+    version: &'a str,
+    tarball: &'a str,
+    url: &'a str,
+    sha256: &'a str,
+    install_prefix: &'a Path,
     enable_fips: bool,
     enable_legacy: bool,
-) -> Result<(), String> {
+}
+
+fn build_and_install_openssl(params: &OpensslBuildParams) -> Result<(), String> {
+    let OpensslBuildParams {
+        workspace_root,
+        build_root,
+        version,
+        tarball,
+        url,
+        sha256,
+        install_prefix,
+        enable_fips,
+        enable_legacy,
+    } = *params;
     let local_tarball = workspace_root.join("resources/tarballs").join(tarball);
     let tarball_path = if local_tarball.exists() {
         println!(
@@ -311,7 +316,7 @@ fn build_and_install_openssl(
         if !dl_path.exists() {
             println!("cargo:warning=Downloading {url}");
             run_cmd(
-                Command::new("curl").args(["-fsSL", url, "-o", dl_path.to_str().unwrap()]),
+                Command::new("curl").args(["-fsSL", url, "-o", path_str(&dl_path)?]),
                 "curl",
             )?;
         }
@@ -327,7 +332,7 @@ fn build_and_install_openssl(
         run_cmd(
             Command::new("tar")
                 .current_dir(&extract_dir)
-                .args(["-xf", tarball_path.to_str().unwrap()]),
+                .args(["-xf", path_str(&tarball_path)?]),
             "tar -xf",
         )?;
     }
@@ -396,17 +401,17 @@ fn build_and_install_openssl(
             if cnf.contains("# .include fipsmodule.cnf") {
                 cnf = cnf.replace(
                     "# .include fipsmodule.cnf",
-                    &format!(".include {}", fipsmodule_path),
+                    &format!(".include {fipsmodule_path}"),
                 );
             } else if cnf.contains(".include ./fipsmodule.cnf") {
                 cnf = cnf.replace(
                     ".include ./fipsmodule.cnf",
-                    &format!(".include {}", fipsmodule_path),
+                    &format!(".include {fipsmodule_path}"),
                 );
             } else if cnf.contains(".include fipsmodule.cnf") {
                 cnf = cnf.replace(
                     ".include fipsmodule.cnf",
-                    &format!(".include {}", fipsmodule_path),
+                    &format!(".include {fipsmodule_path}"),
                 );
             }
             // Do NOT uncomment `# activate = 1` globally: the stock openssl.cnf has one in
@@ -432,7 +437,7 @@ fn build_and_install_openssl(
                 }
             }
         }
-        let _ = fs::write(&openssl_cnf, cnf);
+        drop(fs::write(&openssl_cnf, cnf));
     }
 
     Ok(())
@@ -443,41 +448,41 @@ fn normalize_provider_layout(install_prefix: &Path) {
     let lib = install_prefix.join("lib/ossl-modules");
     if lib64.exists() && !lib.exists() {
         if let Some(parent) = lib.parent() {
-            let _ = fs::create_dir_all(parent);
+            drop(fs::create_dir_all(parent));
         }
         if let Ok(entries) = fs::read_dir(&lib64) {
             for entry in entries.flatten() {
                 let dest = lib.join(entry.file_name());
-                let _ = fs::rename(entry.path(), dest);
+                drop(fs::rename(entry.path(), dest));
             }
         }
         if let Some(parent64) = lib64.parent() {
-            let _ = fs::remove_dir_all(parent64.join("ossl-modules"));
-            let _ = fs::create_dir_all(parent64);
+            drop(fs::remove_dir_all(parent64.join("ossl-modules")));
+            drop(fs::create_dir_all(parent64));
         }
     }
 }
 
 fn integrate_assets_into_main(main_prefix: &Path, fipsprov_prefix: Option<&Path>) {
-    let _ = fs::create_dir_all(main_prefix.join("lib/ossl-modules"));
-    let _ = fs::create_dir_all(main_prefix.join("ssl"));
+    drop(fs::create_dir_all(main_prefix.join("lib/ossl-modules")));
+    drop(fs::create_dir_all(main_prefix.join("ssl")));
     let mod_ext = if cfg!(target_os = "macos") {
         "dylib"
     } else {
         "so"
     };
     if let Some(fips_prefix) = fipsprov_prefix {
-        let _ = fs::copy(
+        drop(fs::copy(
             fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),
             main_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),
-        );
-        let _ = fs::copy(
+        ));
+        drop(fs::copy(
             fips_prefix.join("ssl/openssl.cnf"),
             main_prefix.join("ssl/openssl.cnf"),
-        );
-        let _ = fs::copy(
+        ));
+        drop(fs::copy(
             fips_prefix.join("ssl/fipsmodule.cnf"),
             main_prefix.join("ssl/fipsmodule.cnf"),
-        );
+        ));
     }
 }

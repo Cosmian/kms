@@ -183,13 +183,12 @@ fn aead_decrypt(
     ctx: &[u8],
     ad: Option<&[u8]>,
 ) -> CryptoResult<Zeroizing<Vec<u8>>> {
-    #![allow(clippy::indexing_slicing)]
-    if ctx.len() < Aes256Gcm::NONCE_LENGTH {
-        return Err(CryptoError::Default("encrypted block too short".to_owned()));
-    }
-    let nonce = Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?;
+    let (nonce, ciphertext) = ctx
+        .split_at_checked(Aes256Gcm::NONCE_LENGTH)
+        .ok_or_else(|| CryptoError::Default("encrypted block too short".to_owned()))?;
+    let nonce = Nonce::try_from_slice(nonce)?;
     Aes256Gcm::new(key)
-        .decrypt(&nonce, &ctx[Aes256Gcm::NONCE_LENGTH..], ad)
+        .decrypt(&nonce, ciphertext, ad)
         .map(Zeroizing::new)
         .map_err(CryptoError::from)
 }

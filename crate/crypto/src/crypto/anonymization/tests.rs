@@ -1,7 +1,6 @@
-#![allow(
-    clippy::assertions_on_result_states,
+#![expect(
     clippy::panic_in_result_fn,
-    clippy::unnecessary_wraps
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 
 use std::collections::HashSet;
@@ -156,7 +155,7 @@ fn test_noise_gaussian_date() -> Result<(), AnoError> {
     );
 
     let res = gaussian_noise_generator.apply_on_date("AAAA");
-    assert!(res.is_err());
+    drop(res.unwrap_err());
     Ok(())
 }
 
@@ -200,7 +199,7 @@ fn test_noise_uniform_date() -> Result<(), AnoError> {
 }
 
 #[test]
-fn test_mask_word() -> Result<(), AnoError> {
+fn test_mask_word() {
     let input_str = String::from("Confidential: contains -secret- documents");
     let block_words = vec!["confidential", "SECRET"];
     let word_masker = WordMasker::new(&block_words);
@@ -208,7 +207,6 @@ fn test_mask_word() -> Result<(), AnoError> {
     let safe_str = word_masker.apply(&input_str);
 
     assert_eq!(safe_str, "XXXX: contains -XXXX- documents");
-    Ok(())
 }
 
 #[test]
@@ -304,7 +302,7 @@ fn test_time_aggregation() -> Result<(), AnoError> {
     );
 
     let res = time_aggregator.apply_on_date("AAAA");
-    assert!(res.is_err());
+    drop(res.unwrap_err());
 
     Ok(())
 }

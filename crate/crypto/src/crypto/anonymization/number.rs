@@ -76,10 +76,14 @@ impl NumberAggregator {
     ///
     /// A string representation of the rounded number.
     #[must_use]
+    // The integer is rounded to a power of ten via f64 arithmetic.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        reason = "float arithmetic on bounded values; no lossless std conversion"
+    )]
     pub fn apply_on_int(&self, data: i64) -> String {
         let r = 10_f64.pow(self.power_of_ten_exponent);
-        // Precision loss is intentional: integer is rounded to a power of ten via f64 arithmetic.
-        #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
         let as_float = data as f64;
         format!("{:.0}", (as_float / r).round() * r)
     }
@@ -220,15 +224,14 @@ impl NumberScaler {
     ///
     /// The scaled value as an integer.
     #[must_use]
+    // z-score scaling operates in f64; the integer result is the rounded scaled value.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::as_conversions,
+        reason = "float arithmetic on bounded values; no lossless std conversion"
+    )]
     pub fn apply_on_int(&self, data: i64) -> i64 {
-        // Precision loss and rounding truncation are intentional: z-score scaling
-        // operates in f64, and the integer result is the rounded scaled value.
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_possible_truncation,
-            clippy::as_conversions
-        )]
-        let result = self.apply_on_float(data as f64).round() as i64;
-        result
+        self.apply_on_float(data as f64).round() as i64
     }
 }

@@ -137,7 +137,10 @@ pub fn parse_v3_ca(
                 extensions.push(san.build(x509_context)?);
             }
             "privateKeyUsagePeriod" => {
-                #[expect(deprecated)]
+                #[expect(
+                    deprecated,
+                    reason = "X509Extension::new_nid parses the textual config value; the replacement `x509::extension` types / new_from_der need hand-built DER"
+                )]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -146,7 +149,10 @@ pub fn parse_v3_ca(
                 )?);
             }
             "issuerAltName" => {
-                #[expect(deprecated)]
+                #[expect(
+                    deprecated,
+                    reason = "X509Extension::new_nid parses the textual config value; the replacement `x509::extension` types / new_from_der need hand-built DER"
+                )]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -180,7 +186,10 @@ pub fn parse_v3_ca(
                 extensions.push(bc.build()?);
             }
             "nameConstraints" => {
-                #[expect(deprecated)]
+                #[expect(
+                    deprecated,
+                    reason = "X509Extension::new_nid parses the textual config value; the replacement `x509::extension` types / new_from_der need hand-built DER"
+                )]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -189,7 +198,10 @@ pub fn parse_v3_ca(
                 )?);
             }
             "crlDistributionPoints" => {
-                #[expect(deprecated)]
+                #[expect(
+                    deprecated,
+                    reason = "X509Extension::new_nid parses the textual config value; the replacement `x509::extension` types / new_from_der need hand-built DER"
+                )]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -252,7 +264,10 @@ pub fn parse_v3_ca(
             "authorityInfoAccess" => {
                 // OID 1.3.6.1.5.5.7.1.1 — Authority Information Access
                 // Value format: "OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt"
-                #[expect(deprecated)]
+                #[expect(
+                    deprecated,
+                    reason = "X509Extension::new_nid parses the textual config value; the replacement `x509::extension` types / new_from_der need hand-built DER"
+                )]
                 extensions.push(X509Extension::new_nid(
                     None,
                     Some(x509_context),
@@ -406,17 +421,15 @@ fn strip_cps_qualifier(token: &str) -> Option<&str> {
 
 /// Encode a DER length field (short-form or two-octet long-form).
 ///
-/// Certificate-extension values are always < 64 KiB. The `if` branches
-/// guarantee the casts are always in range; the allows suppress the
-/// false-positive truncation and silent-conversion lints.
-#[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+/// Certificate-extension values are always < 64 KiB, so the two low bytes of `len` suffice.
 fn der_encode_length(len: usize) -> Vec<u8> {
+    let [.., hi, lo] = len.to_be_bytes();
     if len < 128 {
-        vec![len as u8]
+        vec![lo]
     } else if len < 256 {
-        vec![0x81, len as u8]
+        vec![0x81, lo]
     } else {
-        vec![0x82, (len >> 8) as u8, (len & 0xFF) as u8]
+        vec![0x82, hi, lo]
     }
 }
 
@@ -458,16 +471,14 @@ fn der_encode_oid(oid_str: &str) -> Result<Vec<u8>, CryptoError> {
 }
 
 /// Encode `n` in base-128 big-endian (DER OID arc encoding).
-/// `n & 0x7F` is always ≤ 127 and fits in `u8`; the allow suppresses the
-/// false-positive silent-conversion lint.
-#[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
 fn der_encode_base128(mut n: u64) -> Vec<u8> {
     if n == 0 {
         return vec![0x00];
     }
     let mut bytes = Vec::new();
     while n > 0 {
-        bytes.push((n & 0x7F) as u8);
+        let [.., low] = n.to_be_bytes();
+        bytes.push(low & 0x7F);
         n >>= 7;
     }
     bytes.reverse();
@@ -502,7 +513,6 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, Crypt
     Ok(val)
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use cosmian_logger::{info, log_init};
@@ -874,11 +884,6 @@ certificatePolicies=2.5.29.32
     /// `certificatePolicies=1.3.6.1.4.1.16376.9.1.1.1.0,CPS.1:http://...` triggered
     /// `error:11000088:X509 V3 routines:do_ext_nconf:no config database`.
     #[test]
-    #[allow(
-        clippy::items_after_statements,
-        clippy::panic,
-        clippy::indexing_slicing
-    )]
     fn test_certificate_policies_with_cps_qualifier() {
         const CPS_URL: &str = "http://pkipubpc.cnp.recouv/pc_acoss_reseau_des_urssaf_v4.pdf";
         const POLICY_OID: &str = "1.3.6.1.4.1.16376.9.1.1.1.0";
@@ -993,7 +998,6 @@ certificatePolicies=2.5.29.32
     /// The new implementation (`build_certificate_policies_extension`) replaces this
     /// error-prone call with a hand-crafted DER encoder that requires no OpenSSL config.
     #[test]
-    #[allow(deprecated, clippy::expect_used)]
     fn test_old_new_nid_fails_for_cps_syntax() {
         use openssl::{nid::Nid, x509::X509Extension as OpenSslX509Extension};
 
@@ -1015,6 +1019,10 @@ certificatePolicies=2.5.29.32
         let ctx = builder.x509v3_context(None, None);
 
         // The old API cannot resolve CPS.1:url without a config database; it must return an error.
+        #[expect(
+            deprecated,
+            reason = "X509Extension::new_nid parses the textual config value; the replacement `x509::extension` types / new_from_der need hand-built DER"
+        )]
         let result =
             OpenSslX509Extension::new_nid(None, Some(&ctx), Nid::CERTIFICATE_POLICIES, cps_value);
         assert!(

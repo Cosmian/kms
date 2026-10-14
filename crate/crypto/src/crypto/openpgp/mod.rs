@@ -874,7 +874,6 @@ pub fn openpgp_verify_detached(
         .any(|(subkey, flags)| flags.sign() && sig.verify(&subkey.key, data).is_ok()))
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
