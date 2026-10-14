@@ -209,7 +209,7 @@ pub(crate) async fn set_attribute(
         }
         custom {
             Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
-                // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
+                // Defensive: already refused by `check_read_only`.
                 return Err(read_only_error(KmipOperation::SetAttribute));
             }
             Attribute::Sensitive(sensitive) => {

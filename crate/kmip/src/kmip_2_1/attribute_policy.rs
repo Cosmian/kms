@@ -14,6 +14,9 @@ pub enum AttributeEditPolicy {
 impl Tag {
     /// Edit restrictions for the four attribute-edit operations. Unlisted tags default
     /// to `Allowed`; new attributes still require policy review and object authorization.
+    ///
+    /// `AddAttribute` keeps its legacy rules: `State` stays `Allowed` here and the Add
+    /// handler rejects it later with an `InvalidRequest` error, not `Attribute_Read_Only`.
     #[must_use]
     pub const fn edit_policy(self, operation: KmipOperation) -> AttributeEditPolicy {
         use AttributeEditPolicy::{Allowed, RequiresGrant, ServerManaged};
@@ -66,6 +69,52 @@ mod tests {
             serde_json::from_str::<Tag>("\"AttributeIndex\""),
             Err(error) if error.is_data()
         ));
+    }
+
+    /// A wrong `Attribute::tag` arm would silently apply another tag's policy.
+    #[test]
+    fn attribute_tag_matches_policy_tags() {
+        use time::OffsetDateTime;
+
+        use crate::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{kmip_objects::ObjectType, kmip_types::UniqueIdentifier},
+        };
+
+        let now = OffsetDateTime::UNIX_EPOCH;
+        for (attribute, tag) in [
+            (Attribute::AlwaysSensitive(true), Tag::AlwaysSensitive),
+            (Attribute::NeverExtractable(true), Tag::NeverExtractable),
+            (Attribute::RotateGeneration(1), Tag::RotateGeneration),
+            (Attribute::RotateDate(now), Tag::RotateDate),
+            (Attribute::RotateLatest(true), Tag::RotateLatest),
+            (Attribute::RotateAutomatic(true), Tag::RotateAutomatic),
+            (
+                Attribute::UniqueIdentifier(UniqueIdentifier::TextString("uid".to_owned())),
+                Tag::UniqueIdentifier,
+            ),
+            (
+                Attribute::ObjectType(ObjectType::SymmetricKey),
+                Tag::ObjectType,
+            ),
+            (
+                Attribute::CryptographicLength(256),
+                Tag::CryptographicLength,
+            ),
+            (Attribute::CertificateLength(2048), Tag::CertificateLength),
+            (Attribute::InitialDate(now), Tag::InitialDate),
+            (Attribute::Fresh(true), Tag::Fresh),
+            (Attribute::LastChangeDate(now), Tag::LastChangeDate),
+            (
+                Attribute::OriginalCreationDate(now),
+                Tag::OriginalCreationDate,
+            ),
+            (Attribute::State(State::Active), Tag::State),
+            (Attribute::Sensitive(true), Tag::Sensitive),
+            (Attribute::Extractable(true), Tag::Extractable),
+        ] {
+            assert_eq!(attribute.tag(), Some(tag), "{attribute}");
+        }
     }
 
     /// Expected policy per (tags, [Add, Set, Modify, Delete]).

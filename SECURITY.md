@@ -5,7 +5,7 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
-      - [COSMIAN-2026-030: SetAttribute permits changes to read-only metadata](#cosmian-2026-030-setattribute-permits-changes-to-read-only-metadata)
+      - [COSMIAN-2026-030 — SetAttribute permits changes to read-only metadata](#cosmian-2026-030--setattribute-permits-changes-to-read-only-metadata)
       - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
       - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
       - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
@@ -90,7 +90,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ### 2026
 
-#### COSMIAN-2026-030: SetAttribute permits changes to read-only metadata
+#### COSMIAN-2026-030 — SetAttribute permits changes to read-only metadata
 
 | Field | Value |
 | --- | --- |

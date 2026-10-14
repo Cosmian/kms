@@ -196,7 +196,7 @@ pub(crate) async fn add_attribute(
                 attributes.description = Some(description);
             }
             Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) => {
-                // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
+                // Defensive: already refused by `check_read_only`.
                 return Err(read_only_error(KmipOperation::AddAttribute));
             }
             Attribute::Sensitive(sensitive) => {
