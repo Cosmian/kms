@@ -33,6 +33,19 @@ pub use crate::core::{
 use crate::stores::RedisWithFindex;
 use crate::stores::{MySqlPool, PgPool, SqlitePool};
 
+/// Sizing and expiry settings shared by the unwrapped-key and object caches.
+#[derive(Clone, Copy, Debug)]
+pub struct CacheParams {
+    /// Time-to-idle of cache entries.
+    pub max_age: Duration,
+    /// Maximum number of entries before LRU eviction.
+    pub max_size: NonZeroUsize,
+    /// Optional absolute time-to-live of entries.
+    pub max_ttl: Option<Duration>,
+    /// Disable the unwrapped-key cache.
+    pub disabled: bool,
+}
+
 /// The `Database` struct represents the core database functionalities, including object management,
 /// permission checks, and caching mechanisms for unwrapped keys.
 pub struct Database {
@@ -113,17 +126,12 @@ impl Database {
     /// - `main_db_params` is the parameters for the main database.
     /// - `clear_db_on_start` indicates whether to clear the database on startup.
     /// - `object_stores` is a map of object stores with their prefixes.
-    /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
-    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
-    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
+    /// - `cache` configures the unwrapped-objects and object caches.
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
-        cache_max_age: Duration,
-        cache_max_size: NonZeroUsize,
-        cache_max_ttl: Option<Duration>,
-        disable_unwrapped_cache: bool,
+        cache: CacheParams,
         recorder: Option<Arc<dyn DbMetricsRecorder>>,
         ceremony_keys: Option<Arc<CeremonyKeys>>,
     ) -> DbResult<Self> {
@@ -131,11 +139,8 @@ impl Database {
         let mut db = Self::instantiate_main_database(
             main_db_params,
             clear_db_on_start,
-            cache_max_age,
+            cache,
             ceremony_keys,
-            cache_max_size,
-            cache_max_ttl,
-            disable_unwrapped_cache,
         )
         .await?;
         db.recorder = recorder;
@@ -148,11 +153,8 @@ impl Database {
     async fn instantiate_main_database(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
-        cache_max_age: Duration,
+        cache: CacheParams,
         ceremony_keys: Option<Arc<CeremonyKeys>>,
-        cache_max_size: NonZeroUsize,
-        cache_max_ttl: Option<Duration>,
-        disable_unwrapped_cache: bool,
     ) -> DbResult<Self> {
         // Permissions are stored in the same backend as objects for the main database.
         // The `SqlitePool`/`PgPool`/`MySqlPool` types implement both `ObjectsStore` and
@@ -167,10 +169,7 @@ impl Database {
                 Ok(Self::new(
                     db.clone(),
                     db,
-                    cache_max_age,
-                    cache_max_size,
-                    cache_max_ttl,
-                    disable_unwrapped_cache,
+                    cache,
                     MainDbKind::Sqlite,
                     health,
                     ceremony_keys,
@@ -182,10 +181,7 @@ impl Database {
                 Ok(Self::new(
                     db.clone(),
                     db,
-                    cache_max_age,
-                    cache_max_size,
-                    cache_max_ttl,
-                    disable_unwrapped_cache,
+                    cache,
                     MainDbKind::Postgres,
                     health,
                     ceremony_keys,
@@ -199,10 +195,7 @@ impl Database {
                 Ok(Self::new(
                     db.clone(),
                     db,
-                    cache_max_age,
-                    cache_max_size,
-                    cache_max_ttl,
-                    disable_unwrapped_cache,
+                    cache,
                     MainDbKind::Mysql,
                     health,
                     ceremony_keys,
@@ -231,10 +224,7 @@ impl Database {
                 Ok(Self::new(
                     db.clone(),
                     db,
-                    cache_max_age,
-                    cache_max_size,
-                    cache_max_ttl,
-                    disable_unwrapped_cache,
+                    cache,
                     MainDbKind::RedisFindex,
                     health,
                     ceremony_keys,
@@ -265,16 +255,11 @@ impl Database {
     /// # Arguments
     /// - `default_database` is the default database for objects without a prefix
     /// - `permissions_database` is the database for permissions
-    /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
-    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
-    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
+    /// - `cache` configures the unwrapped-objects and object caches.
     fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
-        cache_max_age: Duration,
-        cache_max_size: NonZeroUsize,
-        cache_max_ttl: Option<Duration>,
-        disable_unwrapped_cache: bool,
+        cache: CacheParams,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
         ceremony_keys: Option<Arc<CeremonyKeys>>,
@@ -283,12 +268,12 @@ impl Database {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
             unwrapped_cache: UnwrappedCache::new(
-                cache_max_age,
-                cache_max_size,
-                cache_max_ttl,
-                disable_unwrapped_cache,
+                cache.max_age,
+                cache.max_size,
+                cache.max_ttl,
+                cache.disabled,
             ),
-            object_cache: ObjectCache::new(cache_max_age, cache_max_size, cache_max_ttl),
+            object_cache: ObjectCache::new(cache.max_age, cache.max_size, cache.max_ttl),
             rotate_name_cache: RotateNameCache::new(),
             kind,
             health,
@@ -358,8 +343,7 @@ struct SqliteHealthProbe {
 }
 
 impl SqliteHealthProbe {
-    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
-    fn new(store: Arc<SqlitePool>) -> Self {
+    const fn new(store: Arc<SqlitePool>) -> Self {
         Self { store }
     }
 }
@@ -376,8 +360,7 @@ struct PgHealthProbe {
 }
 
 impl PgHealthProbe {
-    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
-    fn new(store: Arc<PgPool>) -> Self {
+    const fn new(store: Arc<PgPool>) -> Self {
         Self { store }
     }
 }
@@ -394,8 +377,7 @@ struct MySqlHealthProbe {
 }
 
 impl MySqlHealthProbe {
-    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
-    fn new(store: Arc<MySqlPool>) -> Self {
+    const fn new(store: Arc<MySqlPool>) -> Self {
         Self { store }
     }
 }
@@ -414,8 +396,7 @@ struct RedisFindexHealthProbe {
 
 #[cfg(feature = "non-fips")]
 impl RedisFindexHealthProbe {
-    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
-    fn new(store: Arc<RedisWithFindex>) -> Self {
+    const fn new(store: Arc<RedisWithFindex>) -> Self {
         Self { store }
     }
 }
@@ -426,7 +407,6 @@ impl DatabaseHealth for RedisFindexHealthProbe {
     async fn check(&self) -> Result<(), String> {
         let mut mgr = self.store.mgr.clone();
         let pong: String = mgr.ping().await.map_err(|e| e.to_string())?;
-        #[allow(clippy::manual_ignore_case_cmp)]
         // `eq_ignore_ascii_case` is clearer here than a case-insensitive match
         if pong.eq_ignore_ascii_case("PONG") {
             Ok(())

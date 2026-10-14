@@ -18,6 +18,10 @@ use rawsql::Loader;
 
 const AUDIT_FILE_QUERIES: &str = include_str!("audit.sql");
 
+#[expect(
+    clippy::expect_used,
+    reason = "audit SQL is embedded at compile time; every query is exercised by tests"
+)]
 static AUDIT_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     // PANIC: unreachable by construction — the SQL file is embedded at compile time and its
     // parsing is covered by the tests below.
@@ -26,7 +30,6 @@ static AUDIT_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
 });
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::AUDIT_QUERIES;
 

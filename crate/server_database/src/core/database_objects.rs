@@ -742,16 +742,14 @@ impl Database {
         user: &UserId,
         operations: &[AtomicOperation],
     ) -> DbResult<Vec<String>> {
-        if operations.is_empty() {
-            return Ok(vec![]);
-        }
         for op in operations {
             if let AtomicOperation::Create((uid, ..)) | AtomicOperation::Upsert((uid, ..)) = op {
                 reject_reserved_uid(uid)?;
             }
         }
-        #[expect(clippy::indexing_slicing)]
-        let first_op = &operations[0];
+        let Some(first_op) = operations.first() else {
+            return Ok(vec![]);
+        };
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
         let ids = self
@@ -837,8 +835,8 @@ pub(crate) fn extract_serial_hex_from_object(object: &Object) -> Option<String> 
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, clippy::panic)]
 mod tests {
+    use crate::CacheParams;
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroUsize,
@@ -867,10 +865,12 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -979,12 +979,14 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(), // no HSM stores registered
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,  // cache_max_ttl
-            false, // disable_unwrapped_cache
-            None,  // recorder
-            None,  // ceremony_keys
+            CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
+            None, // recorder
+            None, // ceremony_keys
         )
         .await
         .expect("Failed to instantiate in-memory database");
@@ -1085,10 +1087,12 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             Some(recorder_arc),
             None,
         )
@@ -1315,10 +1319,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_secs(900), // 15 min TTL
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(900),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1330,10 +1336,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_secs(900), // 15 min TTL
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(900),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1399,10 +1407,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_secs(900),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(900),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1413,10 +1423,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_secs(900),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(900),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )

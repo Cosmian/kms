@@ -63,10 +63,9 @@ impl ObjectCache {
     /// * `max_ttl` — optional absolute time-to-live; when set, an entry expires
     ///   at `min(last_access + max_age, insert_time + max_ttl)`.
     #[must_use]
-    #[allow(clippy::as_conversions)]
     pub fn new(max_age: Duration, max_size: NonZeroUsize, max_ttl: Option<Duration>) -> Self {
         let mut builder = Cache::builder()
-            .max_capacity(max_size.get() as u64)
+            .max_capacity(u64::try_from(max_size.get()).unwrap_or(u64::MAX))
             .time_to_idle(max_age);
         if let Some(ttl) = max_ttl {
             builder = builder.time_to_live(ttl);
@@ -175,12 +174,6 @@ impl ObjectCache {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::panic,
-        // Test helper uses NonZeroUsize::new(1000).expect() with a literal non-zero constant.
-        clippy::expect_used
-    )]
     use std::{num::NonZeroUsize, time::Duration};
 
     use cosmian_kmip::{
