@@ -22,7 +22,10 @@ use crate::{
 
 /// Start a `KmsPluginService` gRPC server on a temp Unix socket and return
 /// a connected `KeyManagementServiceClient`.
-#[expect(clippy::expect_used, reason = "test helper; module is cfg(all(test, unix)), outside clippy test exemption")]
+#[expect(
+    clippy::expect_used,
+    reason = "test helper; module is cfg(all(test, unix)), outside clippy test exemption"
+)]
 async fn start_plugin_on_tmp_socket(
     kms_url: &str,
     wrapping_key_uid: String,

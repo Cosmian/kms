@@ -1012,7 +1012,8 @@ impl Session {
                 }
                 // A Pre-Active object cannot be revoked but can be destroyed directly
                 // (KMIP 2.1 §4.57): a failed Revoke is left for Destroy to report.
-                if let Err(e) = backend()?.revoke_object(&object.remote_id()) {
+                let revoked = backend()?.revoke_object(&object.remote_id());
+                if let Err(e) = revoked {
                     debug!("destroy_object: revoke skipped: {e}");
                 }
                 backend()?.destroy_object(&object.remote_id())?;

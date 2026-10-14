@@ -1,12 +1,3 @@
-#![allow(
-    unsafe_code,
-    clippy::module_name_repetitions,
-    clippy::similar_names,
-    clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions,
-    clippy::redundant_pub_crate
-)]
-
 use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr, sync::Once};
 
 use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient;
@@ -63,6 +54,7 @@ fn ensure_func_list_3_0_registered() {
         // SAFETY: guarded by `Once::call_once`, so this write can only ever execute on a single
         // thread, exactly once, eliminating the data race that would otherwise exist between
         // concurrent calls to `C_GetInterfaceList`/`C_GetInterface`.
+        #[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
         unsafe {
             FUNC_LIST_3_0.C_GetFunctionList = Some(C_GetFunctionList);
             FUNC_LIST_3_0.C_GetInterfaceList = Some(C_GetInterfaceList);
@@ -90,6 +82,7 @@ mod pkcs11_symmetric_key;
 /// DLL's image) plus a hard-coded fallback to the well-known install location.
 /// Returns `None` only if every approach fails.
 #[cfg(windows)]
+#[expect(unsafe_code, reason = "Win32 module-handle FFI")]
 fn dll_directory() -> Option<PathBuf> {
     use std::{ffi::OsString, os::windows::ffi::OsStringExt};
 
@@ -244,7 +237,7 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
 /// panic across an `extern "C"` boundary is UB and crashes the host process
 /// (ORA-07445 on Oracle).
 #[unsafe(no_mangle)]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
     if pp_function_list.is_null() {
         return CKR_ARGUMENTS_BAD;
@@ -274,7 +267,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
 /// `pulCount` must be non-null. If non-null, `pInterfacesList` must point to an array of at
 /// least `*pulCount` valid, writable `CK_INTERFACE` slots.
 #[unsafe(no_mangle)]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 pub unsafe extern "C" fn C_GetInterfaceList(
     p_interfaces_list: CK_INTERFACE_PTR,
     pul_count: CK_ULONG_PTR,
@@ -329,7 +322,7 @@ pub unsafe extern "C" fn C_GetInterfaceList(
 /// behavior, it is simply rejected with `CKR_ARGUMENTS_BAD`. If non-null, `pVersion` must point
 /// to a valid `CK_VERSION`.
 #[unsafe(no_mangle)]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 pub unsafe extern "C" fn C_GetInterface(
     p_interface_name: CK_UTF8CHAR_PTR,
     p_version: CK_VERSION_PTR,
@@ -387,9 +380,15 @@ pub unsafe extern "C" fn C_GetInterface(
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests;
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[expect(clippy::expect_used, clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests_v3;
