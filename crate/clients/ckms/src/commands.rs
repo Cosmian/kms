@@ -14,7 +14,7 @@ use dialoguer::{Confirm, Input, Password, Select};
 use url::Url;
 
 use crate::{
-    actions::markdown::MarkdownAction, cli_error, config::ClientConfig,
+    actions::markdown::MarkdownAction, cli_bail, cli_error, config::ClientConfig,
     error::result::CosmianResult, headers_config::HeadersConfig, proxy_config::ProxyConfig,
 };
 
@@ -136,11 +136,10 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
-#[allow(clippy::large_enum_variant)]
 pub enum CliCommands {
     /// Handle KMS actions
     #[clap(flatten)]
-    Kms(KmsActions),
+    Kms(Box<KmsActions>),
     /// Regenerate the CLI documentation in Markdown format.
     ///
     /// Writes a Markdown file documenting all subcommands and their options.
@@ -171,7 +170,9 @@ pub async fn ckms_main() -> CosmianResult<()> {
 
     // Short-circuit: audit commands read the file directly — no server connection
     // or ckms.toml needed.
-    if let CliCommands::Kms(KmsActions::Audit(audit_action)) = &cli.command {
+    if let CliCommands::Kms(kms_actions) = &cli.command
+        && let KmsActions::Audit(audit_action) = &**kms_actions
+    {
         return audit_action.process().map_err(Into::into);
     }
 
@@ -204,7 +205,7 @@ pub async fn ckms_main() -> CosmianResult<()> {
             return Ok(());
         }
         CliCommands::Kms(kms_actions) => {
-            let new_kms_config = Box::pin(kms_actions.process(kms_rest_client)).await?;
+            let new_kms_config = Box::pin((*kms_actions).process(kms_rest_client)).await?;
             if config.kms_config != new_kms_config {
                 config.kms_config = new_kms_config;
                 config.save(cli.conf_path.clone())?;
@@ -215,7 +216,35 @@ pub async fn ckms_main() -> CosmianResult<()> {
     Ok(())
 }
 
-#[allow(clippy::print_stdout)]
+/// Authentication method offered by the configure wizard (order matches the prompt items).
+#[derive(Clone, Copy)]
+enum AuthChoice {
+    None,
+    Bearer,
+    PemCert,
+    Pkcs12,
+    PemCertAndToken,
+    Pkcs12AndToken,
+}
+
+impl AuthChoice {
+    const fn from_index(index: usize) -> Option<Self> {
+        Some(match index {
+            0 => Self::None,
+            1 => Self::Bearer,
+            2 => Self::PemCert,
+            3 => Self::Pkcs12,
+            4 => Self::PemCertAndToken,
+            5 => Self::Pkcs12AndToken,
+            _ => return None,
+        })
+    }
+}
+
+#[expect(
+    clippy::print_stdout,
+    reason = "configure wizard writes its prompts to stdout"
+)]
 fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()> {
     println!("-- {label} HTTP settings --");
 
@@ -269,12 +298,13 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
     http.tls_client_pem_cert_path = None;
     http.tls_client_pem_key_path = None;
 
-    match choice {
-        0 => {}
-        1 => {
+    match AuthChoice::from_index(choice) {
+        None => cli_bail!("Unknown authentication method selected"),
+        Some(AuthChoice::None) => {}
+        Some(AuthChoice::Bearer) => {
             http.access_token = prompt_optional_text("Bearer token (leave empty to skip)", "")?;
         }
-        2 => {
+        Some(AuthChoice::PemCert) => {
             if let Some(cert) =
                 prompt_optional_text("Client PEM certificate path (.crt / .pem)", "")?
             {
@@ -285,14 +315,14 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
                 http.tls_client_pem_cert_path = Some(cert);
             }
         }
-        3 => {
+        Some(AuthChoice::Pkcs12) => {
             if let Some(path) = prompt_optional_text("Client PKCS#12 path (.p12)", "")? {
                 http.tls_client_pkcs12_password =
                     prompt_optional_password("Client PKCS#12 password (leave empty if none)")?;
                 http.tls_client_pkcs12_path = Some(path);
             }
         }
-        4 => {
+        Some(AuthChoice::PemCertAndToken) => {
             http.access_token = Some(prompt_required_text("Bearer token", "")?);
             http.tls_client_pem_cert_path = Some(prompt_required_text(
                 "Client PEM certificate path (.crt / .pem)",
@@ -303,15 +333,13 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
                 "",
             )?);
         }
-        5 => {
+        Some(AuthChoice::Pkcs12AndToken) => {
             http.access_token = Some(prompt_required_text("Bearer token", "")?);
             http.tls_client_pkcs12_path =
                 Some(prompt_required_text("Client PKCS#12 path (.p12)", "")?);
             http.tls_client_pkcs12_password =
                 prompt_optional_password("Client PKCS#12 password (leave empty if none)")?;
         }
-        #[allow(clippy::unreachable)]
-        _ => unreachable!(),
     }
 
     configure_proxy(http)?;
@@ -450,7 +478,10 @@ fn prompt_optional_password(prompt: &str) -> CosmianResult<Option<String>> {
     Ok(if pw.is_empty() { None } else { Some(pw) })
 }
 
-#[allow(clippy::print_stdout)]
+#[expect(
+    clippy::print_stdout,
+    reason = "configure wizard writes its result to stdout"
+)]
 fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
     use cosmian_config_utils::get_default_conf_path;
 

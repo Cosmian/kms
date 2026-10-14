@@ -67,8 +67,8 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
     trace!("importing wrapping key");
     let wrap_key_uid = import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "sym".to_string(),
-        key_file: wrap_key_path.to_str().unwrap().to_string(),
+        sub_command: "sym".to_owned(),
+        key_file: wrap_key_path.to_str().unwrap().to_owned(),
         ..Default::default()
     })?;
 
@@ -159,9 +159,9 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
     import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "ec".to_string(),
-        key_file: wrap_private_key_path.to_str().unwrap().to_string(),
-        key_id: Some(wrap_private_key_uid.to_string()),
+        sub_command: "ec".to_owned(),
+        key_file: wrap_private_key_path.to_str().unwrap().to_owned(),
+        key_id: Some(wrap_private_key_uid.to_owned()),
         replace_existing: true,
         ..Default::default()
     })?;
@@ -170,9 +170,9 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
     import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "ec".to_string(),
-        key_file: wrap_public_key_path.to_str().unwrap().to_string(),
-        key_id: Some(wrap_public_key_uid.to_string()),
+        sub_command: "ec".to_owned(),
+        key_file: wrap_public_key_path.to_str().unwrap().to_owned(),
+        key_id: Some(wrap_public_key_uid.to_owned()),
         replace_existing: true,
         ..Default::default()
     })?;
@@ -234,10 +234,10 @@ fn test_import_export_wrap_private_key(
     // Export the private key without wrapping
     let private_key_file = tmp_path.join("master_private.key");
     let export_params = ExportKeyParams {
-        cli_conf_path: cli_conf_path.to_string(),
-        sub_command: sub_command.to_string(),
-        key_id: private_key_id.to_string(),
-        key_file: private_key_file.to_str().unwrap().to_string(),
+        cli_conf_path: cli_conf_path.to_owned(),
+        sub_command: sub_command.to_owned(),
+        key_id: private_key_id.to_owned(),
+        key_file: private_key_file.to_str().unwrap().to_owned(),
         ..Default::default()
     };
     export_key(export_params)?;
@@ -246,11 +246,11 @@ fn test_import_export_wrap_private_key(
     // Export the private key with wrapping
     let wrapped_private_key_file = tmp_path.join("wrapped_master_private.key");
     export_key(ExportKeyParams {
-        cli_conf_path: cli_conf_path.to_string(),
-        sub_command: sub_command.to_string(),
-        key_id: private_key_id.to_string(),
-        key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
-        wrap_key_id: Some(wrapping_key_uid.to_string()),
+        cli_conf_path: cli_conf_path.to_owned(),
+        sub_command: sub_command.to_owned(),
+        key_id: private_key_id.to_owned(),
+        key_file: wrapped_private_key_file.to_str().unwrap().to_owned(),
+        wrap_key_id: Some(wrapping_key_uid.to_owned()),
         ..Default::default()
     })?;
 
@@ -301,9 +301,9 @@ fn test_import_export_wrap_private_key(
     {
         // import the wrapped key, unwrapping it on import
         let unwrapped_key_id = import_key(ImportKeyParams {
-            cli_conf_path: cli_conf_path.to_string(),
-            sub_command: sub_command.to_string(),
-            key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
+            cli_conf_path: cli_conf_path.to_owned(),
+            sub_command: sub_command.to_owned(),
+            key_file: wrapped_private_key_file.to_str().unwrap().to_owned(),
             unwrap: true,
             replace_existing: true,
             ..Default::default()
@@ -311,10 +311,10 @@ fn test_import_export_wrap_private_key(
         // re-export it as registered and check it was correctly unwrapped
         let re_exported_key_file = tmp_path.join("re_exported_master_private.key");
         export_key(ExportKeyParams {
-            cli_conf_path: cli_conf_path.to_string(),
-            sub_command: sub_command.to_string(),
+            cli_conf_path: cli_conf_path.to_owned(),
+            sub_command: sub_command.to_owned(),
             key_id: unwrapped_key_id,
-            key_file: re_exported_key_file.to_str().unwrap().to_string(),
+            key_file: re_exported_key_file.to_str().unwrap().to_owned(),
             ..Default::default()
         })?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
@@ -352,9 +352,9 @@ fn test_import_export_wrap_private_key(
     {
         // import the wrapped key, un wrapping it on import
         let wrapped_key_id = import_key(ImportKeyParams {
-            cli_conf_path: cli_conf_path.to_string(),
-            sub_command: sub_command.to_string(),
-            key_file: wrapped_private_key_file.to_str().unwrap().to_string(),
+            cli_conf_path: cli_conf_path.to_owned(),
+            sub_command: sub_command.to_owned(),
+            key_file: wrapped_private_key_file.to_str().unwrap().to_owned(),
             key_usage_vec: Some(vec![KeyUsage::Unrestricted]),
             replace_existing: true,
             ..Default::default()
@@ -362,10 +362,10 @@ fn test_import_export_wrap_private_key(
         // re-export it as registered and check it was correctly unwrapped
         let exported_unwrapped_key_file = tmp_path.join("exported_unwrapped_master_private.key");
         export_key(ExportKeyParams {
-            cli_conf_path: cli_conf_path.to_string(),
-            sub_command: sub_command.to_string(),
+            cli_conf_path: cli_conf_path.to_owned(),
+            sub_command: sub_command.to_owned(),
             key_id: wrapped_key_id,
-            key_file: exported_unwrapped_key_file.to_str().unwrap().to_string(),
+            key_file: exported_unwrapped_key_file.to_str().unwrap().to_owned(),
             unwrap: true,
             ..Default::default()
         })?;

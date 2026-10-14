@@ -103,7 +103,7 @@ pub(crate) fn export_key(params: ExportKeyParams) -> CosmianResult<()> {
             .to_possible_value()
             .expect("valid wrapping algorithm")
             .get_name()
-            .to_string();
+            .to_owned();
         args.push(name);
     }
 
@@ -353,7 +353,7 @@ pub(crate) async fn test_export_covercrypt() -> CosmianResult<()> {
     ) -> CosmianResult<()> {
         // Export the key
         export_key(ExportKeyParams {
-            cli_conf_path: owner_client_conf_path.to_string(),
+            cli_conf_path: owner_client_conf_path.to_owned(),
             sub_command: "cc".to_owned(),
             key_id: key_id.to_owned(),
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
@@ -368,7 +368,7 @@ pub(crate) async fn test_export_covercrypt() -> CosmianResult<()> {
 
         // Export the key bytes only
         export_key(ExportKeyParams {
-            cli_conf_path: owner_client_conf_path.to_string(),
+            cli_conf_path: owner_client_conf_path.to_owned(),
             sub_command: "cc".to_owned(),
             key_id: key_id.to_owned(),
             key_file: tmp_path
@@ -662,16 +662,14 @@ pub(crate) async fn test_sensitive_ec_key() -> CosmianResult<()> {
     );
 
     // the public key should be exportable
-    assert!(
-        export_key(ExportKeyParams {
-            cli_conf_path: owner_client_conf_path,
-            sub_command: "ec".to_owned(),
-            key_id: public_key_id,
-            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-            ..Default::default()
-        })
-        .is_ok()
-    );
+    export_key(ExportKeyParams {
+        cli_conf_path: owner_client_conf_path,
+        sub_command: "ec".to_owned(),
+        key_id: public_key_id,
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })
+    .unwrap();
 
     Ok(())
 }
@@ -708,16 +706,14 @@ pub(crate) async fn test_sensitive_rsa_key() -> CosmianResult<()> {
     );
 
     // the public key should be exportable
-    assert!(
-        export_key(ExportKeyParams {
-            cli_conf_path: owner_client_conf_path,
-            sub_command: "rsa".to_owned(),
-            key_id: public_key_id,
-            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-            ..Default::default()
-        })
-        .is_ok()
-    );
+    export_key(ExportKeyParams {
+        cli_conf_path: owner_client_conf_path,
+        sub_command: "rsa".to_owned(),
+        key_id: public_key_id,
+        key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+        ..Default::default()
+    })
+    .unwrap();
 
     Ok(())
 }
@@ -758,20 +754,18 @@ pub(crate) async fn test_sensitive_covercrypt_key() -> CosmianResult<()> {
     );
 
     // Master public key should be exportable
-    assert!(
-        export_key(ExportKeyParams {
-            cli_conf_path: owner_client_conf_path.clone(),
-            sub_command: "cc".to_owned(),
-            key_id: master_public_key_id,
-            key_file: tmp_path
-                .join("output.sk.export")
-                .to_str()
-                .unwrap()
-                .to_owned(),
-            ..Default::default()
-        })
-        .is_ok()
-    );
+    export_key(ExportKeyParams {
+        cli_conf_path: owner_client_conf_path.clone(),
+        sub_command: "cc".to_owned(),
+        key_id: master_public_key_id,
+        key_file: tmp_path
+            .join("output.sk.export")
+            .to_str()
+            .unwrap()
+            .to_owned(),
+        ..Default::default()
+    })
+    .unwrap();
 
     let user_key_id = create_user_decryption_key(
         &owner_client_conf_path,
