@@ -10,7 +10,6 @@ static INIT: Once = Once::new();
 
 /// Ensures the ckms binary is built before any test runs
 /// Call this function at the start of every test that needs the ckms binary
-#[allow(clippy::print_stdout)]
 pub(crate) fn ensure_ckms_binary() {
     INIT.call_once(|| {
         build_ckms_binary();
@@ -160,8 +159,6 @@ fn build_ckms_binary() {
         }
     }
 }
-
-#[allow(clippy::print_stdout)]
 fn run_cargo_build(workspace_root: &Path, binary_path: &Path) {
     use std::process::Command;
 

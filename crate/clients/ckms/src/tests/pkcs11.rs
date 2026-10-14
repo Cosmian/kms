@@ -24,14 +24,11 @@ static BUILD_PKCS11: Once = Once::new();
 
 /// Ensures the `libcosmian_pkcs11` shared library (cdylib) is built.
 /// Mirrors the pattern from `ensure_binary.rs`.
-#[allow(clippy::print_stdout)]
 fn ensure_pkcs11_lib() {
     BUILD_PKCS11.call_once(|| {
         build_pkcs11_lib();
     });
 }
-
-#[allow(clippy::print_stdout)]
 fn build_pkcs11_lib() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let workspace_root = Path::new(manifest_dir)

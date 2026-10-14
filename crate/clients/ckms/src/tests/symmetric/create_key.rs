@@ -23,7 +23,7 @@ pub(crate) fn create_symmetric_key(
     let uid = extract_uid(&stdout, "Unique identifier").ok_or_else(|| {
         crate::error::CosmianError::Default("failed extracting the unique identifier".to_owned())
     })?;
-    Ok(uid.to_string())
+    Ok(uid.to_owned())
 }
 
 #[tokio::test]

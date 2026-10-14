@@ -1,8 +1,3 @@
-#![allow(clippy::needless_borrows_for_generic_args)]
-#![allow(clippy::doc_markdown)]
-#![allow(clippy::indexing_slicing)]
-#![allow(clippy::redundant_closure_for_method_calls)]
-
 use clap::ValueEnum;
 use cosmian_kms_cli_actions::{
     actions::secret_data::create_secret::CreateSecretDataAction,
@@ -103,7 +98,7 @@ fn build_set_args(
     args
 }
 
-/// Use `set_attribute` from test_modify_attribute (reuse existing helper).
+/// Use `set_attribute` from `test_modify_attribute` (reuse existing helper).
 fn set_attribute(cli_conf_path: &str, key_id: &str, extra_args: &[&str]) -> CosmianResult<()> {
     let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
@@ -132,7 +127,7 @@ fn verify_attributes_present(
     }
     if !key_usage.is_empty() {
         assert!(
-            json.get(&Tag::CryptographicUsageMask.to_string()).is_some(),
+            json.get(Tag::CryptographicUsageMask.to_string()).is_some(),
             "CryptographicUsageMask should be present"
         );
     }
@@ -158,19 +153,19 @@ fn verify_attributes_absent(
 ) {
     if activation_date.is_some() {
         assert!(
-            json.get(&Tag::ActivationDate.to_string()).is_none(),
+            json.get(Tag::ActivationDate.to_string()).is_none(),
             "ActivationDate should be absent after deletion"
         );
     }
     if !key_usage.is_empty() {
         assert!(
-            json.get(&Tag::CryptographicUsageMask.to_string()).is_none(),
+            json.get(Tag::CryptographicUsageMask.to_string()).is_none(),
             "CryptographicUsageMask should be absent after deletion"
         );
     }
     if name.is_some() {
         assert!(
-            json.get(&Tag::Name.to_string()).is_none(),
+            json.get(Tag::Name.to_string()).is_none(),
             "Name should be absent after deletion"
         );
     }
@@ -234,12 +229,12 @@ fn check_set_delete_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResu
             .to_possible_value()
             .expect("valid value")
             .get_name()
-            .to_string();
+            .to_owned();
         set_attribute(cli_conf_path, key_id, &["--key-usage", &usage_str])?;
 
         let json = get_attributes(cli_conf_path, key_id)?;
         assert!(
-            json.get(&Tag::CryptographicUsageMask.to_string()).is_some(),
+            json.get(Tag::CryptographicUsageMask.to_string()).is_some(),
             "CryptographicUsageMask should be present after setting {usage_str}"
         );
 
@@ -247,7 +242,7 @@ fn check_set_delete_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResu
 
         let json = get_attributes(cli_conf_path, key_id)?;
         assert!(
-            json.get(&Tag::CryptographicUsageMask.to_string()).is_none(),
+            json.get(Tag::CryptographicUsageMask.to_string()).is_none(),
             "CryptographicUsageMask should be absent after deleting {usage_str}"
         );
     }

@@ -19,7 +19,7 @@ pub(crate) fn create_mac(cli_conf_path: &str, extra_args: &[&str]) -> CosmianRes
     let uid = extract_uid(&stdout, "Mac output").ok_or_else(|| {
         crate::error::CosmianError::Default("failed extracting the unique identifier".to_owned())
     })?;
-    Ok(uid.to_string())
+    Ok(uid.to_owned())
 }
 
 #[tokio::test]

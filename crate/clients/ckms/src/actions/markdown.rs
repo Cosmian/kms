@@ -19,7 +19,10 @@ impl MarkdownAction {
     ///
     /// Returns an error if there is an issue creating or writing to the
     /// markdown file.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "markdown command writes its result to stdout"
+    )]
     pub fn process(&self, cmd: &Command) -> CosmianResult<()> {
         let mut output = String::new();
         writeln!(output)?;

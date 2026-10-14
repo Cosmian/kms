@@ -46,7 +46,7 @@ pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> Cosmia
             .to_possible_value()
             .expect("possible value")
             .get_name()
-            .to_string(),
+            .to_owned(),
         "--length".to_owned(),
         action.cryptographic_length.to_string(),
         "--derivation-method".to_owned(),
@@ -96,7 +96,7 @@ pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> Cosmia
         if let Some(pos) = stdout.find("Derived key ID:") {
             let sliced = &stdout[pos..];
             if let Some(uid) = extract_uid(sliced, "Derived key ID") {
-                return Ok(uid.to_string());
+                return Ok(uid.to_owned());
             }
         }
         return Err(CosmianError::Default(

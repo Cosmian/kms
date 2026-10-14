@@ -394,7 +394,7 @@ fn assert_certify_format_unsupported(
         .to_possible_value()
         .expect("valid Algorithm")
         .get_name()
-        .to_string();
+        .to_owned();
 
     let err = run_ckms_expect_error(
         cli_conf_path,

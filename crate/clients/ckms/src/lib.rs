@@ -11,5 +11,6 @@ pub mod reexport {
     pub use cosmian_kms_cli_actions;
 }
 
-#[cfg(all(test, feature = "non-fips"))]
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
 mod tests;

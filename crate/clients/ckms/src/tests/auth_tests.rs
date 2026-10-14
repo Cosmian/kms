@@ -92,7 +92,7 @@ fn create_api_token(owner_client_conf_path: &str) -> CosmianResult<(String, Stri
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     export_key(ExportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
         sub_command: "sym".to_owned(),
         key_id: api_token_id.clone(),
         key_file: tmp_path.join("api_token").to_str().unwrap().to_owned(),
@@ -107,8 +107,6 @@ fn create_api_token(owner_client_conf_path: &str) -> CosmianResult<(String, Stri
     trace!("API token created: {api_token}");
     Ok((api_token_id, api_token))
 }
-
-#[allow(clippy::large_stack_frames)]
 #[tokio::test]
 pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     log_init(None);
@@ -390,7 +388,6 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
 /// tokens carrying an `aud` claim were rejected with `InvalidAudience` when the
 /// server had no expected audience configured (`validate_aud` defaulted to `true`
 /// but the expected audience set was empty).
-#[allow(clippy::large_stack_frames)]
 #[tokio::test]
 pub(crate) async fn test_jwt_authentication_no_panic() -> CosmianResult<()> {
     log_init(None);
