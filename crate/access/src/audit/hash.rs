@@ -123,7 +123,6 @@ pub fn verify_chain_link(current: &AuditEvent, prev: Option<&AuditEvent>) -> boo
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::unseparated_literal_suffix, clippy::panic)]
 mod tests {
     use time::OffsetDateTime;
 
@@ -146,7 +145,7 @@ mod tests {
             request_id: None,
             details: None,
             prev_hash,
-            row_hash: [0u8; 32],
+            row_hash: [0_u8; 32],
         };
         ev.row_hash = compute_row_hash(&ev);
         ev
@@ -154,7 +153,7 @@ mod tests {
 
     #[test]
     fn canonical_bytes_deterministic() {
-        let ev = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev = make_event(0, [0_u8; 32], AuditResult::Success);
         let b1 = canonical_bytes(&ev);
         let b2 = canonical_bytes(&ev);
         assert_eq!(b1, b2);
@@ -162,7 +161,7 @@ mod tests {
 
     #[test]
     fn canonical_bytes_differ_on_operation() {
-        let ev1 = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev1 = make_event(0, [0_u8; 32], AuditResult::Success);
         let mut ev2 = ev1.clone();
         ev2.operation = "Decrypt".to_owned();
         assert_ne!(canonical_bytes(&ev1), canonical_bytes(&ev2));
@@ -170,48 +169,48 @@ mod tests {
 
     #[test]
     fn verify_event_ok() {
-        let ev = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev = make_event(0, [0_u8; 32], AuditResult::Success);
         assert!(verify_event(&ev));
     }
 
     #[test]
     fn verify_event_detects_tampering() {
-        let mut ev = make_event(0, [0u8; 32], AuditResult::Success);
+        let mut ev = make_event(0, [0_u8; 32], AuditResult::Success);
         ev.operation = "Destroy".to_owned(); // tamper after hash was set
         assert!(!verify_event(&ev));
     }
 
     #[test]
     fn chain_first_row() {
-        let ev = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev = make_event(0, [0_u8; 32], AuditResult::Success);
         assert!(verify_chain_link(&ev, None));
     }
 
     #[test]
     fn chain_first_row_wrong_id() {
-        let ev = make_event(1, [0u8; 32], AuditResult::Success);
+        let ev = make_event(1, [0_u8; 32], AuditResult::Success);
         assert!(!verify_chain_link(&ev, None));
     }
 
     #[test]
     fn chain_link_valid() {
-        let row0 = make_event(0, [0u8; 32], AuditResult::Success);
+        let row0 = make_event(0, [0_u8; 32], AuditResult::Success);
         let row1 = make_event(1, row0.row_hash, AuditResult::Failure("403".to_owned()));
         assert!(verify_chain_link(&row1, Some(&row0)));
     }
 
     #[test]
     fn chain_link_broken() {
-        let row0 = make_event(0, [0u8; 32], AuditResult::Success);
+        let row0 = make_event(0, [0_u8; 32], AuditResult::Success);
         let mut row1 = make_event(1, row0.row_hash, AuditResult::Success);
-        row1.prev_hash = [0u8; 32]; // break the link
+        row1.prev_hash = [0_u8; 32]; // break the link
         assert!(!verify_chain_link(&row1, Some(&row0)));
     }
 
     #[test]
     fn canonical_bytes_includes_request_id() {
         use uuid::Uuid;
-        let ev1 = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev1 = make_event(0, [0_u8; 32], AuditResult::Success);
         let mut ev2 = ev1.clone();
         ev2.request_id = Some(Uuid::new_v4());
         assert_ne!(canonical_bytes(&ev1), canonical_bytes(&ev2));
@@ -220,14 +219,14 @@ mod tests {
     #[test]
     fn existing_event_without_request_id_still_verifies() {
         // An event with request_id = None must verify — backward compatibility guarantee.
-        let ev = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev = make_event(0, [0_u8; 32], AuditResult::Success);
         assert!(ev.request_id.is_none());
         assert!(verify_event(&ev));
     }
 
     #[test]
     fn canonical_bytes_includes_details() {
-        let ev1 = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev1 = make_event(0, [0_u8; 32], AuditResult::Success);
         let mut ev2 = ev1.clone();
         ev2.details = Some("{\"reason\":\"hash_mismatch\"}".to_owned());
         assert_ne!(canonical_bytes(&ev1), canonical_bytes(&ev2));
@@ -236,7 +235,7 @@ mod tests {
     #[test]
     fn existing_event_without_details_still_verifies() {
         // An event with details = None must verify — backward compatibility guarantee.
-        let ev = make_event(0, [0u8; 32], AuditResult::Success);
+        let ev = make_event(0, [0_u8; 32], AuditResult::Success);
         assert!(ev.details.is_none());
         assert!(verify_event(&ev));
     }
