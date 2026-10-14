@@ -647,3 +647,7 @@ mod tests {
         assert_eq!(&blob[40..72], y.as_slice());
     }
 }
+
+#[cfg(test)]
+#[path = "blob_characterization_tests.rs"]
+mod characterization_tests;

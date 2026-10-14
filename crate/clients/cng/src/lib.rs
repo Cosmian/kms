@@ -224,3 +224,6 @@ pub unsafe extern "C" fn GetKeyStorageInterface() -> i32 {
 
 #[cfg(all(test, feature = "non-fips"))]
 mod tests;
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;
