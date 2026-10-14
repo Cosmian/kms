@@ -7,12 +7,6 @@
 //! - any `SigV4`-authenticated caller ARN can use a key (the #1093 regression);
 //! - the XKS endpoints cannot reach arbitrary non-XKS keys owned by `default_username`;
 //! - already-shipped keys are migrated so the reserved identity can operate them.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::panic_in_result_fn
-)]
 
 use std::{collections::HashSet, sync::Arc};
 

@@ -699,8 +699,6 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
-#[expect(clippy::unwrap_used)]
 mod tests {
     use cosmian_kms_client_utils::reexport::cosmian_kmip;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::{
@@ -838,7 +836,6 @@ mod tests {
         );
         assert_eq!(response.response_header.batch_count, 1);
         assert_eq!(response.batch_item.len(), 1);
-        #[expect(clippy::panic)]
         let ResponseMessageBatchItemVersioned::V14(batch_item) = &response
             .batch_item
             .first()
@@ -927,7 +924,6 @@ mod tests {
     }
 }
 
-#[expect(clippy::expect_used)]
 #[cfg(test)]
 mod local_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{

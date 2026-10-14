@@ -13,6 +13,10 @@ pub(crate) use key_metadata::get_key_metadata;
 pub use sigv4_middleware::Sigv4MWare;
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests;
 
 use crate::{error::KmsError, result::KResultHelper};

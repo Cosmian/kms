@@ -1,13 +1,11 @@
 //! Proxy configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub)]
-
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use super::PromptResultExt;
 use crate::{config::ProxyConfig, result::KResult};
 
-pub fn configure_proxy() -> KResult<ProxyConfig> {
+pub(crate) fn configure_proxy() -> KResult<ProxyConfig> {
     let theme = ColorfulTheme::default();
 
     let enable: bool = Confirm::with_theme(&theme)

@@ -68,3 +68,11 @@ disallowed-types = [
     { path = "rand::rngs::Xoshiro128PlusPlus", reason = "not a CSPRNG", allow-invalid = true },
     { path = "rand::rngs::Xoshiro256PlusPlus", reason = "not a CSPRNG", allow-invalid = true },
 ]
+
+# Test code (#[test] fns and #[cfg(test)] modules) may unwrap/expect/panic/print/index.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true
