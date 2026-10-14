@@ -80,12 +80,12 @@ Follow `AGENTS.md` §6.
 
 ## 8. Execution workflow and targeted reviews
 
-Nothing is committed or pushed until every item below is done. A skill counts as run only when you read its `skill://<name>` file and executed it; a reasoned-through substitute does not count. Keep a checklist in the session with one line per item: command or skill invoked, result.
+Nothing is committed or pushed until every item below is done. A skill counts as run only when you read its `.github/skills/<name>/SKILL.md` and executed it; a reasoned-through substitute does not count. Keep a checklist in the session with one line per item: command or skill invoked, result.
 
-1. `AGENTS.md` §5 step 1 (tests), step 2 (`/kms-test-vector`, unless the change is pure refactoring), and step 3 (`cargo clippy-all`, `cargo fmt --all`).
+1. `AGENTS.md` §5 step 1 (tests), step 2 (`/kms-test-vector`, unless the change is pure refactoring; when it is not applicable, for example a TLS-layer change with no KMIP behavior, record the reason in the PR body), and step 3 (`cargo clippy-all`, `cargo fmt --all`).
 2. `AGENTS.md` §5 step 4: run `/kms-sync-rules` and apply the rows it emits.
 3. `AGENTS.md` §5 step 5: decide whether SECURITY.md needs an entry (only when a vulnerability shipped in a tagged release) and record the decision.
-4. Targeted reviews, when the step 3 security impact is yes, each once and scoped to the changed paths: `/security-review` for auth, access control, TLS, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run item 1.
+4. Targeted reviews, when the step 3 security impact is yes, each once and scoped to the changed paths: `/security-review` for auth, access control, TLS, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run item 1. Out-of-scope exploitable findings go to the maintainers through a private GitHub security advisory or directly, never a public issue or the PR body; the PR body may only say that out-of-scope findings were reported.
 5. `AGENTS.md` §5 step 6: `/kms-pr-review` in self-review mode (auto-fixes, at most 2 cycles). It must leave `review/final.md` with a GO verdict.
 6. `AGENTS.md` §5 step 7: write `CHANGELOG/<branch with / replaced by _>.md` (`/kms-changelog`).
 
