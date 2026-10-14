@@ -1,6 +1,6 @@
 ---
 name: issue-workflow
-description: 'Deterministic end-to-end procedure for resolving a GitHub issue: scope, reproduce (bugs), plan, branch (stacked when required), test-first implementation, variant/backend/UI testing, documentation, the mandatory AGENTS.md §5 execution workflow (including auto-fixing /kms-pr-review), Conventional Commits, PR creation, CI repair via /ci-fix, and review-feedback handling until CI is green. Never merges. Use whenever given a GitHub issue number or URL to resolve.'
+description: 'Deterministic end-to-end procedure for resolving a GitHub issue: scope, reproduce (bugs), plan, branch (stacked when required), test-first implementation, variant/backend/UI testing, documentation, the mandatory AGENTS.md §5 execution workflow (including auto-fixing /kms-pr-review), Conventional Commits, PR creation, a one-shot CI status report, and review-feedback handling. Never waits for CI to finish and never merges. Use whenever given a GitHub issue number or URL to resolve.'
 ---
 
 # Issue → PR workflow
@@ -104,10 +104,11 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 - The body (`CONTRIBUTING.md` "Pull Requests") contains: `Fixes #<N>` (on the last PR of a stack; earlier PRs use `Part of #<N>`); **What / How / Why**; **Tests**, listing the step 6 commands and smoke output; **Docs**, listing the pages changed; the `/kms-pr-review` verdict from `review/final.md` (the file is gitignored, so do not commit it); and for stacked PRs, `Depends on #<upstream PR>`.
 - External contributors: sign the CLA when the CLA Assistant bot asks.
 
-## 11. CI
+## 11. CI status
 
-- Run `/ci-fix` on the PR head commit. Repeat after every push until all required checks are green.
-- If `/ci-fix` stops after its repeated-failure limit, stop (step 13).
+- Run `GH_PAGER=cat gh pr checks <PR> --repo Cosmian/kms` once, right after the push. Do not wait for pending checks and do not poll.
+- If a check has already failed, run `/ci-fix` on the PR head commit once. If `/ci-fix` stops after its repeated-failure limit, stop (step 13).
+- Report the counts (pass, fail, pending) in the final message.
 
 ## 12. Review feedback
 
@@ -115,7 +116,7 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 - For each unresolved comment: apply the change, or reply with the reason it was not applied. Comments that raise security concerns trigger the step 8 targeted review for the affected path.
 - After changes: re-run `AGENTS.md` §5 steps 1, 3, and 4, plus step 6 if the new diff exceeds 200 lines. Commit per step 9, push per step 10 (no force), and reply on each thread with the commit SHA. Do not resolve threads on the reviewer's behalf.
 - Stacked PRs: when an upstream PR gains commits or merges, run `git switch <downstream> && git merge origin/<upstream>` and push normally. Never rebase.
-- Return to step 11. The workflow ends when CI is green and every comment has a change or a reply. Never merge the PR and never close the issue. Report the PR URL(s), CI state, and any open threads.
+- The workflow ends once every comment has a change or a reply. CI is reported at step 11, never awaited. Never merge the PR and never close the issue. Report the PR URL(s), the CI counts, and any open threads.
 
 ## 13. Stop conditions
 
