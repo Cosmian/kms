@@ -314,3 +314,7 @@ impl<'de> SeqAccess<'de> for OffsetDateTimeDeserializer {
         res
     }
 }
+
+#[cfg(test)]
+#[path = "offset_date_time_deserializer_characterization_tests.rs"]
+mod characterization_tests;
