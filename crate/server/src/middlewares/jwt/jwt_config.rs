@@ -362,7 +362,6 @@ impl JwtConfig {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod jwt_headers_tests {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
@@ -450,11 +449,6 @@ mod jwt_headers_tests {
 
 #[cfg(test)]
 #[cfg(not(feature = "insecure"))]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use jsonwebtoken::Algorithm;
 
@@ -500,19 +494,19 @@ mod tests {
             ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::RS256),
             "RS256 must be in the allowlist"
         );
-        assert!(check_alg(Algorithm::RS256).is_ok());
+        check_alg(Algorithm::RS256).unwrap();
     }
 
     #[test]
     fn a05_es256_is_accepted() {
         assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::ES256));
-        assert!(check_alg(Algorithm::ES256).is_ok());
+        check_alg(Algorithm::ES256).unwrap();
     }
 
     #[test]
     fn a06_ps256_is_accepted() {
         assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::PS256));
-        assert!(check_alg(Algorithm::PS256).is_ok());
+        check_alg(Algorithm::PS256).unwrap();
     }
 
     /// Full coverage: every algorithm in the allowlist must be accepted.
@@ -528,7 +522,6 @@ mod tests {
 
     /// Error message quality: rejection must mention "not permitted".
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn rejection_error_message_quality() {
         let result = check_alg(Algorithm::HS256);
         assert!(result.is_err());

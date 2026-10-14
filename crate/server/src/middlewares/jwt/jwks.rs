@@ -343,7 +343,6 @@ async fn parse_jwks(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use std::sync::atomic::{AtomicBool, Ordering};
 

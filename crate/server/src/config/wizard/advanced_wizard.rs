@@ -361,6 +361,10 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
 /// EST / SCEP device enrollment. The CA must already exist in the KMS (create it with
 /// `ckms certificates certify`, then delegate it to `[enrollment-service]`, see the PKI
 /// enrollment guide); the server re-validates every value at startup.
+#[expect(
+    clippy::print_stdout,
+    reason = "the configuration wizard prompts the user on stdout"
+)]
 fn configure_enrollment(
     theme: &ColorfulTheme,
     tls: &TlsConfig,
