@@ -474,7 +474,7 @@ impl ObjectsStore for HsmStore {
         for slot_id in slot_ids {
             let found = self
                 .hsm
-                .find(slot_id, object_filter.clone())
+                .find(slot_id, object_filter)
                 .await
                 .unwrap_or(vec![]);
             for object_id in found {
@@ -517,7 +517,7 @@ impl ObjectsStore for HsmStore {
                 // Populate basic attributes from HSM metadata so callers
                 // (Locate, /access/owned) can display key info without a
                 // separate GetAttributes round-trip.
-                let attrs = build_find_attributes(&object_meta, &object_filter);
+                let attrs = build_find_attributes(&object_meta, object_filter);
                 uids.push((uid, State::Active, attrs));
             }
         }
@@ -1222,13 +1222,13 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
 /// Build an `Attributes` struct populated with keyset metadata from `KeyMetadata`.
 /// Used by `find_by_rotate_name` to return `rotate_name`/`generation`/`latest` to callers.
 fn build_keyset_attributes(meta: &KeyMetadata) -> Attributes {
-    let mut attrs = build_find_attributes(&Some(meta.clone()), &HsmObjectFilter::Any);
+    let mut attrs = build_find_attributes(&Some(meta.clone()), HsmObjectFilter::Any);
     attrs.rotate_name.clone_from(&meta.rotate_name);
     attrs.rotate_generation = meta.rotate_generation;
     attrs
 }
 
-fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
+fn build_find_attributes(meta: &Option<KeyMetadata>, filter: HsmObjectFilter) -> Attributes {
     let mut attrs = Attributes::default();
     if let Some(m) = meta {
         attrs.cryptographic_length = Some(i32::try_from(m.key_length_in_bits).unwrap_or_default());
