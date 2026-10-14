@@ -691,3 +691,6 @@ impl Backend for CliBackend {
         .map_err(Into::into)
     }
 }
+#[cfg(test)]
+#[path = "backend_characterization_tests.rs"]
+mod characterization_tests;
