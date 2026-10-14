@@ -14,7 +14,7 @@ use cosmian_kms_interfaces::{AtomicOperation, UserId};
 use tempfile::TempDir;
 
 use super::Database;
-use crate::core::MainDbParams;
+use crate::core::{CacheParams, MainDbParams};
 
 /// The ONLY place that calls `Database::instantiate` (its signature changes upstream).
 async fn instantiate_db(
@@ -28,10 +28,12 @@ async fn instantiate_db(
         &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
         false,
         HashMap::new(),
-        max_age,
-        NonZeroUsize::new(max_size).unwrap(),
-        max_ttl,
-        disabled,
+        CacheParams {
+            max_age,
+            max_size: NonZeroUsize::new(max_size).unwrap(),
+            max_ttl,
+            disabled,
+        },
         None,
         None,
     )
