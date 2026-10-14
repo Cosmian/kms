@@ -67,3 +67,7 @@ impl TryFrom<AwsXksConfig> for AwsXksParams {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "aws_xks_characterization_tests.rs"]
+mod characterization_tests;

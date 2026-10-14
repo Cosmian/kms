@@ -480,3 +480,7 @@ pub(crate) fn generate_serial_number(rng: &KmsRng) -> KResult<Asn1Integer> {
     )?;
     Ok(serial_number)
 }
+
+#[cfg(test)]
+#[path = "build_certificate_characterization_tests.rs"]
+mod characterization_tests;

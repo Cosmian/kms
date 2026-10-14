@@ -2349,3 +2349,7 @@ mod tests {
             .expect("AWS XKS migration must not panic or fail for empty default_username");
     }
 }
+
+#[cfg(test)]
+#[path = "start_kms_server_characterization_tests.rs"]
+mod characterization_tests;
