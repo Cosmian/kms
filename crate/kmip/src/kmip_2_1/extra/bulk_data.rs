@@ -122,3 +122,7 @@ mod tests {
         assert_eq!(data, deserialized.0);
     }
 }
+
+#[cfg(test)]
+#[path = "bulk_data_characterization_tests.rs"]
+mod characterization_tests;
