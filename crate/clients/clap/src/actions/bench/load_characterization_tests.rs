@@ -1,4 +1,9 @@
-use std::fs;
+use std::{
+    env,
+    ffi::OsString,
+    fs,
+    sync::{Mutex, MutexGuard, PoisonError},
+};
 
 use serial_test::serial;
 
@@ -6,6 +11,64 @@ use super::{
     LoadResult, criterion_home, generate_html_output, generate_load_json_output,
     generate_markdown_load_output_combined, load_percentile, parse_concurrency_levels,
 };
+
+/// Serializes every test that mutates `PATH`.
+static PATH_LOCK: Mutex<()> = Mutex::new(());
+
+/// Replaces `PATH` for its lifetime and restores the previous value on drop
+/// (also when the test panics).
+struct PathGuard {
+    previous: Option<OsString>,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl PathGuard {
+    /// `unsafe` is forced by `env::set_var` (edition 2024); `Command::new("gnuplot")`
+    /// can only be steered through the process-wide `PATH`.
+    #[expect(unsafe_code, reason = "env::set_var is unsafe in edition 2024")]
+    fn set(value: &OsString) -> Self {
+        let lock = PATH_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = env::var_os("PATH");
+        // SAFETY: the mutation is serialized by `PATH_LOCK` and `#[serial(bench_files)]`.
+        unsafe { env::set_var("PATH", value) };
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for PathGuard {
+    #[expect(
+        unsafe_code,
+        reason = "env::set_var/remove_var are unsafe in edition 2024"
+    )]
+    fn drop(&mut self) {
+        // SAFETY: still protected by `_lock`, which is released after this body.
+        unsafe {
+            match &self.previous {
+                Some(value) => env::set_var("PATH", value),
+                None => env::remove_var("PATH"),
+            }
+        }
+    }
+}
+
+/// Writes an executable `gnuplot` stub (`exit 0`) into `dir`.
+#[cfg(unix)]
+fn write_gnuplot_stub(dir: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let path = dir.join("gnuplot");
+    fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn html_results() -> Vec<LoadResult> {
+    vec![
+        result("characterization/html op", 1, 1.0),
+        result("characterization/html op", 8, 2.0),
+    ]
+}
 
 fn result(operation: &str, concurrency: usize, scale: f64) -> LoadResult {
     LoadResult {
@@ -123,11 +186,9 @@ fn characterization_generate_markdown_load_output_combined_empty() {
 #[test]
 #[serial(bench_files)]
 fn characterization_generate_html_output_dat_and_sections() {
-    let results = vec![
-        result("characterization/html op", 1, 1.0),
-        result("characterization/html op", 8, 2.0),
-    ];
-    generate_html_output(&results).unwrap();
+    let empty = tempfile::tempdir().unwrap();
+    let _path = PathGuard::set(&empty.path().as_os_str().to_owned());
+    generate_html_output(&html_results()).unwrap();
     let dir = criterion_home().join("load-report");
     let dat = fs::read_to_string(dir.join("characterization_html-op.dat")).unwrap();
     let html = fs::read_to_string(dir.join("index.html")).unwrap();
@@ -136,6 +197,8 @@ fn characterization_generate_html_output_dat_and_sections() {
         dat,
         "# concurrency  throughput_rps  p50_ms  p95_ms  p99_ms  samples\n1              1234.57         1.23     4.57     9.88     100\n8              2469.14         2.47     9.14     19.75    800\n"
     );
+    assert!(!html.contains("<div class=\"charts\">"));
+    assert!(html.contains("<p class=\"warn\">"));
     let start = html.find("<section>").unwrap();
     let end = html.find("</section>").unwrap();
     let section = html.get(start..end).unwrap();
@@ -147,5 +210,39 @@ fn characterization_generate_html_output_dat_and_sections() {
     assert_eq!(
         table,
         "<table>\n<tr><th>Concurrency</th><th>Throughput (req/s)</th><th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>Samples</th></tr>\n<tr><td>1</td><td>1234.6</td><td>1.2</td><td>4.6</td><td>9.9</td><td>100</td></tr>\n<tr><td>8</td><td>2469.1</td><td>2.5</td><td>9.1</td><td>19.8</td><td>800</td></tr>\n</table>\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+#[serial(bench_files)]
+fn characterization_generate_html_output_with_gnuplot_charts() {
+    let stub = tempfile::tempdir().unwrap();
+    write_gnuplot_stub(stub.path());
+    let mut path = stub.path().as_os_str().to_owned();
+    path.push(":");
+    path.push(env::var_os("PATH").unwrap_or_default());
+    let _path = PathGuard::set(&path);
+    generate_html_output(&html_results()).unwrap();
+    let dir = criterion_home().join("load-report");
+    let html = fs::read_to_string(dir.join("index.html")).unwrap();
+    let throughput_script =
+        fs::read_to_string(dir.join("characterization_html-op-throughput.gnuplot")).unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    assert!(!html.contains("<p class=\"warn\">"));
+    let start = html.find("<section>").unwrap();
+    let end = html.find("</section>").unwrap();
+    let section = html.get(start..end).unwrap();
+    assert_eq!(
+        section.lines().take(3).collect::<Vec<_>>(),
+        vec![
+            "<section>",
+            "<h2>characterization/html op</h2>",
+            "<div class=\"charts\"><img src=\"characterization_html-op-throughput.svg\" alt=\"Throughput\"><img src=\"characterization_html-op-latency.svg\" alt=\"Latency\"></div>",
+        ]
+    );
+    assert_eq!(
+        throughput_script,
+        "set terminal svg size 800,400 enhanced font 'Helvetica,12'\nset output 'characterization_html-op-throughput.svg'\nset title 'Throughput — characterization/html op'\nset xlabel 'Concurrency'\nset ylabel 'req/s'\nset grid\nset key top left\nplot 'characterization_html-op.dat' using 1:2 with linespoints lw 2 pt 7 title 'throughput'\n"
     );
 }

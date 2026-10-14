@@ -1289,3 +1289,52 @@ mod covercrypt_revoke {
         }
     }
 }
+
+// ── algorithm policy: unchecked operations under a restrictive allow-list ────
+
+#[test]
+fn characterization_enforce_algorithm_policy_restrictive_allowlist_unchecked_operations() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+
+    let mut conf = ClapConfig::default();
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
+    conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
+    let params = ServerParams::try_from(conf).unwrap();
+
+    // An AES Create request that the restrictive allow-list denies...
+    let create_aes = to_ttlv(&Operation::Create(
+        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Create {
+            object_type: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
+            attributes: Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(256),
+                ..Default::default()
+            },
+            protection_storage_masks: None,
+        },
+    ))
+    .unwrap();
+    let denied =
+        enforce_kmip_algorithm_policy_for_operation(&params, "Create", &create_aes).unwrap_err();
+    assert!(
+        matches!(
+            denied,
+            KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _)
+        ),
+        "{denied:?}"
+    );
+
+    // ...is never inspected when carried by operations that have no algorithm check.
+    for tag in [
+        "ReKey",
+        "ReKeyKeyPair",
+        "SetAttribute",
+        "ModifyAttribute",
+        "AddAttribute",
+        "DeleteAttribute",
+        "Revoke",
+        "Locate",
+    ] {
+        enforce_kmip_algorithm_policy_for_operation(&params, tag, &create_aes).unwrap();
+    }
+}

@@ -1,6 +1,10 @@
 //! Characterization tests for `cosmian_pkcs11` backend serial number formatting
 //! and provider helper behavior.
 
+use cosmian_pkcs11_module::traits::Backend;
+
+use super::CliBackend;
+
 fn format_token_serial_number(version_bytes: &[u8]) -> [u8; 16] {
     let len = version_bytes.len().min(16);
     let mut sn = [0x20; 16];
@@ -45,4 +49,33 @@ fn characterization_token_serial_number_len_20() {
         0x66,
     ];
     assert_eq!(sn, EXPECTED);
+}
+
+#[test]
+fn characterization_token_serial_number_backend_direct_call() {
+    // Construct dummy client without network calls to instantiate CliBackend
+    let kms_rest_client =
+        ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient::new()
+            .unwrap();
+    let backend = CliBackend {
+        kms_rest_client,
+        vendor_id: "cosmian".to_owned(),
+    };
+    let sn = backend.token_serial_number();
+
+    // 1. Derived from env!("CARGO_PKG_VERSION")
+    let version_bytes = env!("CARGO_PKG_VERSION").as_bytes();
+    let len = version_bytes.len().min(16);
+    let mut expected_derived = [0x20; 16];
+    let dst = expected_derived.get_mut(..len).unwrap();
+    let src = version_bytes.get(..len).unwrap();
+    dst.copy_from_slice(src);
+    assert_eq!(sn, expected_derived);
+
+    // 2. Literal pinned expectation for package version "5.28.0" (ASCII bytes + space padding to 16 bytes)
+    const EXPECTED_LITERAL_5_28_0: [u8; 16] = [
+        0x35, 0x2e, 0x32, 0x38, 0x2e, 0x30, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+        0x20,
+    ];
+    assert_eq!(sn, EXPECTED_LITERAL_5_28_0);
 }

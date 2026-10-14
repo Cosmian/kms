@@ -308,6 +308,29 @@ fn characterization_sessions_cko_data_find_refresh_loop() {
     let ctx_len = session.find_objects_ctx.len();
     assert_eq!(ctx_len, 2);
 }
+#[test]
+#[serial]
+fn characterization_sessions_search_all_cko_certificate_ensure_x509() {
+    init_char_test_backend();
+    let mut session = Session::default();
+    // 1. Valid X509 certificate type passes ensure_X509_or_none
+    let valid_attrs = Attributes::from(vec![
+        Attribute::Class(pkcs11_sys::CKO_CERTIFICATE),
+        Attribute::CertificateType(pkcs11_sys::CKC_X_509),
+    ]);
+    session.load_find_context(&valid_attrs).unwrap();
+
+    // 2. Unsupported certificate type returns error from ensure_X509_or_none
+    let invalid_attrs = Attributes::from(vec![
+        Attribute::Class(pkcs11_sys::CKO_CERTIFICATE),
+        Attribute::CertificateType(999),
+    ]);
+    let err = session.load_find_context(&invalid_attrs).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "ensure_X509_or_none: support for certificate type: 999 is not implemented".to_owned()
+    );
+}
 
 #[test]
 #[serial]
