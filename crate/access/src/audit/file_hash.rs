@@ -99,3 +99,7 @@ mod tests {
         assert!(sha256_file(&path).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "file_hash_characterization_tests.rs"]
+mod characterization_tests;

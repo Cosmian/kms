@@ -600,3 +600,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "cef_characterization_tests.rs"]
+mod characterization_tests;
