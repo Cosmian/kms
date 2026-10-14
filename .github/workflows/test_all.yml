@@ -469,7 +469,15 @@ jobs:
                 matches_known_candidate=true
               fi
             done
-            echo "peer_in_vnet_subnet=${in_vnet} peer_directly_reachable_on_2224=${reachable} matches_known_old_public_ip=${matches_known_candidate}"
+            # Only the first two octets are ever printed for a non-VNet peer:
+            # on their own they cannot match any registered secret value, yet
+            # they are enough to identify which address space Azure Cloud
+            # HSM's cluster-info protocol is actually using.
+            first_two_octets="(vnet, not printed)"
+            if [ "$in_vnet" = "false" ]; then
+              first_two_octets=$(echo "$ip" | cut -d. -f1-2)
+            fi
+            echo "peer_in_vnet_subnet=${in_vnet} peer_directly_reachable_on_2224=${reachable} matches_known_old_public_ip=${matches_known_candidate} first_two_octets=${first_two_octets}"
           done
 
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
