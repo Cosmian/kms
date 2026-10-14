@@ -352,3 +352,7 @@ fn run_hsm_kmip_benches(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "clap_characterization_tests.rs"]
+mod characterization_tests;

@@ -1321,3 +1321,7 @@ mod tests {
         assert!(modes.contains(&ConcreteMode::VerifyEcdsaP384));
     }
 }
+
+#[cfg(test)]
+#[path = "load_characterization_tests.rs"]
+mod characterization_tests;

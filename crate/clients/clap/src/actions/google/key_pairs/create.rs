@@ -454,3 +454,7 @@ impl CreateKeyPairsAction {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "create_characterization_tests.rs"]
+mod characterization_tests;

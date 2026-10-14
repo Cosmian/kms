@@ -45,3 +45,7 @@ impl InsertIdentitiesAction {
         GmailClient::handle_response(response).await
     }
 }
+
+#[cfg(test)]
+#[path = "insert_identities_characterization_tests.rs"]
+mod characterization_tests;
