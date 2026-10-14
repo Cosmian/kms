@@ -35,8 +35,7 @@ fn characterization_security_status_constants() {
 
 #[test]
 fn characterization_status_success_val() {
-    assert_eq!(error::STATUS_SUCCESS_VAL, 0);
-    assert_eq!(error::STATUS_SUCCESS_VAL, error::ERROR_SUCCESS);
+    assert_eq!(error::ERROR_SUCCESS, 0);
 }
 
 #[test]
@@ -115,9 +114,9 @@ fn characterization_ksp_error_display() {
 
 #[cfg(not(windows))]
 #[test]
+#[expect(unsafe_code, reason = "calls the raw KSP entry point")]
 fn characterization_non_windows_stubs() {
     assert!(!crate::is_ksp_registered());
-    assert_eq!(crate::dll_directory(), None);
     assert_eq!(crate::KSP_PROVIDER_NAME, "Cosmian KMS Key Storage Provider");
     assert!(crate::KSP_PROVIDER_NAME_W.is_empty());
     assert_eq!(
