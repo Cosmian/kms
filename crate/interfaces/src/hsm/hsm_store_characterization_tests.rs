@@ -30,7 +30,7 @@ fn metadata(key_type: KeyType, bits: usize, curve: Option<EcCurve>) -> KeyMetada
 /// Single call site of `build_find_attributes` (its filter parameter shape is the only thing a
 /// refactor may change).
 fn find_attrs(meta: &Option<KeyMetadata>, filter: HsmObjectFilter) -> Attributes {
-    build_find_attributes(meta, &filter)
+    build_find_attributes(meta, filter)
 }
 
 fn recommended_curve(attrs: &Attributes) -> Option<RecommendedCurve> {

@@ -198,7 +198,6 @@ impl HsmUidParts {
 
 #[cfg(test)]
 // Test-only: `expect()` and `assert!` on result states are idiomatic in unit tests.
-#[allow(clippy::expect_used, clippy::assertions_on_result_states)]
 mod handle_tests {
     use super::*;
 
@@ -289,6 +288,6 @@ mod handle_tests {
 
     #[test]
     fn test_hsm_parts_rejects_non_hsm() {
-        assert!(ObjectHandle::from("my-production-key").hsm_parts().is_err());
+        ObjectHandle::from("my-production-key").hsm_parts().unwrap_err();
     }
 }

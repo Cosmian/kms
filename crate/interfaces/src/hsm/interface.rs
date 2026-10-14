@@ -99,7 +99,7 @@ impl EcCurve {
 }
 
 /// Supported object filters on find
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum HsmObjectFilter {
     Any,
     AesKey,

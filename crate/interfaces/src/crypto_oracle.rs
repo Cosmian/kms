@@ -538,7 +538,7 @@ impl SigningAlgorithm {
     #[cfg(feature = "non-fips")]
     #[expect(
         clippy::unnecessary_wraps,
-        reason = "signature must match the FIPS variant of this function"
+        reason = "signature must match the FIPS variant, which can fail"
     )]
     const fn check_rsa_signature_hash_allowed(
         _hashing_algorithm: HashingAlgorithm,
@@ -818,7 +818,6 @@ pub trait CryptoOracle: Send + Sync {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
 
     use super::*;
