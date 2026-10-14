@@ -2930,3 +2930,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "hsm_store_characterization_tests.rs"]
+mod characterization_tests;
