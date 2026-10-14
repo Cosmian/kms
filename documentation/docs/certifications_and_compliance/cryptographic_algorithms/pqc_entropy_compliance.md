@@ -11,7 +11,7 @@
 
 | Question | Answer |
 |----------|--------|
-| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (non-secret anonymization values, OpenSSL-internal keygen, Covercrypt, HSM-session nonces) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans the other generators |
+| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (non-secret anonymization values, OpenSSL-internal keygen, Covercrypt) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans the other generators |
 | What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (keys, seeds) and `RAND_bytes_ex` (`RNGRetrieve` output), each requesting 256-bit security strength; no lock, no state of its own |
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
@@ -113,9 +113,6 @@ Documented exceptions where no `KmsRng` injection point exists:
 - **Covercrypt**: `Covercrypt::setup()` in `cosmian_cover_crypt` 16.0.0 locks an internal `rng` field and has no
   constructor parameter or setter that accepts an external RNG (verified in the vendored source,
   `src/abe/api.rs`). It is the same category as hybrid-KEM composite keygen.
-- **Hardware security modules**: the nonces/IVs for AES-GCM/AES-CBC encryption performed through the PKCS#11
-  HSM session (`crate/hsm/base_hsm`) come from the operating system RNG (`rand::rngs::SysRng`), not `KmsRng`;
-  that crate deliberately does not depend on OpenSSL in production code.
 - **PKCS#11 `C_GenerateRandom` on the server** (KMIP `PKCS11` operation passthrough) is not implemented and
   returns `CKR_FUNCTION_NOT_SUPPORTED`: it fails closed.
 
@@ -136,6 +133,7 @@ Documented exceptions where no `KmsRng` injection point exists:
 | PKCS#11 `C_GenerateRandom`, provider-generated symmetric key bytes | `clients/pkcs11/module` (`Backend::generate_random`), `clients/pkcs11/provider` |
 | KMIP `RNGRetrieve` | `core/operations/rng_retrieve.rs` |
 | KMIP `RNGSeed` | `core/operations/rng_seed.rs` (calls `reseed`) |
+| HSM-session AES-GCM nonces and AES-CBC IVs | `hsm/base_hsm/src/session/session_impl.rs` |
 
 ## How PQC key generation uses `KmsRng`
 

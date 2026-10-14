@@ -10,6 +10,7 @@
 ## Breaking Changes
 
 ### Crypto
+- HSM-session AES-GCM nonces and AES-CBC IVs now come from `KmsRng` instead of the OS RNG.
 - `random_nonce`, `random_key`, `ckm_rsa_aes_key_wrap`, `wrap_object_with_key`, `xor_split`, `ecies_encrypt`, `generate_openpgp_secret_key`, `openpgp_encrypt` and `openpgp_sign_detached` now take a `&KmsRng`; `Secret::new_random` is removed.
 
 ## Features
@@ -20,4 +21,4 @@
 ## Documentation
 
 ### Compliance
-- Document the remaining randomness exceptions (non-secret anonymization values, OpenSSL-internal key generation, Covercrypt, HSM-session nonces) and add ADR 2026-10-10.
+- Document the remaining randomness exceptions (non-secret anonymization values, OpenSSL-internal key generation, Covercrypt) and add ADR 2026-10-10.

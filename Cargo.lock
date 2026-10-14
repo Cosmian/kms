@@ -1537,6 +1537,7 @@ dependencies = [
  "async-trait",
  "cc",
  "cosmian_crypto_core",
+ "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "libloading",
