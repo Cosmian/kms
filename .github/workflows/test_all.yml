@@ -367,7 +367,15 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          - azure-cloud-hsm
+          # azure-cloud-hsm disabled: the cluster's own cluster-info protocol reports
+          # 2 of 3 member nodes with non-VNet addresses unreachable from any client
+          # (confirmed unreachable even from an Azure VM in the same VNet), causing a
+          # deterministic (non-transient) 3-node quorum failure on every key generation
+          # from outside Azure's own HSM backend network. This is an Azure Cloud HSM
+          # partition/provisioning issue, not something fixable from this CI script —
+          # see crate/hsm/azure_cloud_hsm/README.md. Re-enable once Azure support
+          # confirms the partition's cluster membership table is corrected.
+          # - azure-cloud-hsm
           # aws-cloudhsm and gcp-cloud-hsm clusters are torn down after validation to
           # limit cloud costs; re-enable once a cluster is provisioned again.
           # - aws-cloudhsm
