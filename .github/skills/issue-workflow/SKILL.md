@@ -80,8 +80,14 @@ Follow `AGENTS.md` §6.
 
 ## 8. Execution workflow and targeted reviews
 
-- Run `AGENTS.md` §5 steps 1–7 exactly as written there. Step 6 is the auto-fixing `/kms-pr-review`. Step 7 writes `CHANGELOG/<branch with / replaced by _>.md`.
-- When the step 3 security impact is yes, also run (each once, scoped to the changed paths): `/security-review` for auth, access control, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run §5 steps 1 and 3.
+Nothing is committed or pushed until every item below is done. A skill counts as run only when you read its `skill://<name>` file and executed it; a reasoned-through substitute does not count. Keep a checklist in the session with one line per item: command or skill invoked, result.
+
+1. `AGENTS.md` §5 step 1 (tests), step 2 (`/kms-test-vector`, unless the change is pure refactoring), and step 3 (`cargo clippy-all`, `cargo fmt --all`).
+2. `AGENTS.md` §5 step 4: run `/kms-sync-rules` and apply the rows it emits.
+3. `AGENTS.md` §5 step 5: decide whether SECURITY.md needs an entry (only when a vulnerability shipped in a tagged release) and record the decision.
+4. Targeted reviews, when the step 3 security impact is yes, each once and scoped to the changed paths: `/security-review` for auth, access control, TLS, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run item 1.
+5. `AGENTS.md` §5 step 6: `/kms-pr-review` in self-review mode (auto-fixes, at most 2 cycles). It must leave `review/final.md` with a GO verdict.
+6. `AGENTS.md` §5 step 7: write `CHANGELOG/<branch with / replaced by _>.md` (`/kms-changelog`).
 
 ## 9. Commit
 
@@ -91,6 +97,7 @@ Follow `AGENTS.md` §6.
 
 ## 10. Push and open the PR
 
+- Pre-push gate: the step 8 checklist is complete, `review/final.md` exists with a GO verdict, and the PR body lists each review that ran. If any item is missing, run it now; never push first and review afterwards.
 - `git push -u origin <branch>`. Never force-push (`AGENTS.md` "Force-push prohibition").
 - Confirm that `CHANGELOG/<branch with / replaced by _>.md` exists and is committed.
 - `gh pr create --repo Cosmian/kms --base <base> --head <branch> --title "<conventional subject>" --body-file <file>`. `<base>` is `develop`, or the upstream branch for a stacked CLI or UI PR. The title uses the step 9 Conventional Commits format.
