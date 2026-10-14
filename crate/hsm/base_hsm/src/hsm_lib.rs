@@ -99,7 +99,10 @@ const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 /// Operations return `PResult<T>`, which is a custom result type for handling
 /// HSM-specific errors. Failed operations typically return `PError` variants
 /// with descriptive error messages.
-#[expect(non_snake_case)]
+#[expect(
+    non_snake_case,
+    reason = "fields mirror the PKCS#11 C_* function names"
+)]
 pub struct HsmLib {
     library: Option<Library>,
     skip_finalize_on_drop: bool,
@@ -409,7 +412,10 @@ impl HsmLib {
             flags: CKF_OS_LOCKING_OK,
             pReserved: ptr::null_mut(),
         };
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         let rv = match hsm_lib.C_Initialize {
             Some(func) => unsafe {
                 func(
@@ -464,7 +470,10 @@ impl HsmLib {
 
         // Serialize CK_INFO struct to bytes
         // SAFETY: CK_INFO is a repr(C) struct with fixed layout
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         unsafe {
             let bytes = std::slice::from_raw_parts(
                 (&raw const info).cast::<u8>(),
@@ -515,7 +524,10 @@ impl HsmLib {
         // existing two-call convention already used for `C_GetMechanismList` elsewhere
         // in this crate.
         let mut count: pkcs11_sys::CK_ULONG = 0;
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `get_interface_list` was resolved from the loaded library and matches
         // the documented `C_GetInterfaceList` signature. Passing a null buffer pointer
         // with a valid `&mut count` out-parameter is the standard PKCS#11 two-call
@@ -547,7 +559,10 @@ impl HsmLib {
         })?;
 
         let mut buffer = vec![CkInterface::default(); count_usize];
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `buffer` was allocated using the exact count returned by the first
         // call, as required by the PKCS#11 v3.0 specification for `C_GetInterfaceList`.
         let rv = unsafe { get_interface_list(buffer.as_mut_ptr(), &raw mut count) };

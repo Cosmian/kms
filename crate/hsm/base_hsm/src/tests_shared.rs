@@ -1,7 +1,13 @@
 //! Shared HSM test suite used by vendor crates to avoid duplication.
 //! Each vendor crate provides a small config and delegates to these helpers.
-#![allow(clippy::panic_in_result_fn)]
-#![allow(clippy::missing_panics_doc)]
+#![expect(
+    clippy::panic_in_result_fn,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::missing_panics_doc,
+    reason = "test harness reused by other crates' tests; compiled outside cfg(test)"
+)]
 
 use std::{
     collections::{HashMap, HashSet},
@@ -83,7 +89,7 @@ fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     Ok(bytes)
 }
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "loads the HSM shared library")]
 pub fn low_level_init_test(cfg: &HsmTestConfig) -> HResult<()> {
     let path = &cfg.lib_path;
     let library = unsafe { Library::new(path) }?;
@@ -262,7 +268,6 @@ pub fn destroy_created_since<S: std::hash::BuildHasher>(
     Ok(())
 }
 
-#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     let supports_exportable_keys = slot.capabilities().aes.supports_sensitive_attribute;
     log_init(None);
@@ -448,7 +453,6 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
@@ -1196,7 +1200,6 @@ pub fn rsa_pss_sign_all_algorithms(slot: &Arc<SlotManager>) -> HResult<()> {
 /// (`Session::ecdsa_raw_to_der`) is correct and interoperable with standard ECDSA
 /// verification. Also confirms ECDSA signing is randomized (two signatures over the
 /// same data must differ) and that tampering with the signed data is detected.
-#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let supported_mechanisms = slot.get_supported_mechanisms()?;
@@ -1352,7 +1355,6 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
 /// mechanisms (verified against `SoftHSM2` 2.6.1 and the Utimaco `CryptoServer` simulator; not
 /// supported by all vendors/firmware versions, hence the mechanism-support skip below).
 #[cfg(feature = "non-fips")]
-#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let supported_mechanisms = slot.get_supported_mechanisms()?;
@@ -1857,7 +1859,6 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn search_incompatible_key<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<()>
 where
     P: crate::hsm_capabilities::HsmProvider,
@@ -1920,7 +1921,6 @@ where
 ///
 /// Unlike [`get_supported_algorithms`], this asserts that the library *does* report v3
 /// interfaces: only call this for libraries known to implement PKCS#11 v3.0 discovery.
-#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn check_pkcs11_v3_interface_list_is_populated<P>(hsm: &BaseHsm<P>) -> HResult<()>
 where
     P: crate::hsm_capabilities::HsmProvider,
@@ -1942,7 +1942,6 @@ where
 
 /// Generates an Ed25519 (`EdDSA`) key pair (`CKM_EC_EDWARDS_KEY_PAIR_GEN`, OASIS Cryptoki
 /// v3.0 §2.3.9) and checks that a `CKM_EDDSA` signature round-trips through `sign`/`verify`.
-#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn check_eddsa_sign_and_verify_round_trip<P>(
     hsm: &BaseHsm<P>,
     cfg: &HsmTestConfig,
@@ -1964,7 +1963,6 @@ where
 
 /// Generates a `CKK_GENERIC_SECRET` base key and derives a key from it via `CKM_HKDF_DERIVE`
 /// (OASIS Cryptoki v3.0 §2.5).
-#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn check_hkdf_derive<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<()>
 where
     P: crate::hsm_capabilities::HsmProvider,
@@ -1998,7 +1996,6 @@ where
 ///
 /// Only call this for libraries reporting `HsmLib::supports_message_encrypt`/
 /// `supports_message_decrypt`.
-#[allow(clippy::panic, clippy::unwrap_used)]
 pub fn check_message_based_aes_gcm_round_trip<P>(
     hsm: &BaseHsm<P>,
     cfg: &HsmTestConfig,
