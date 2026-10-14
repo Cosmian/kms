@@ -73,6 +73,12 @@ Cloud HSM Client SDK, writes `PO.crt` and `azcloudhsm_resource.cfg`, opens a VPN
 partition if it is not directly reachable, and starts the `azcloudhsm_client` daemon before
 running the `azure_cloud_hsm_pkcs11_loader` test suite.
 
+The task retries the live test (`AZURE_CLOUD_HSM_TEST_ATTEMPTS`, default 3) with a fresh
+`azcloudhsm_client` restart between attempts: the cluster's own cluster-info broadcast
+occasionally advertises stale, non-VNet member addresses that the client cannot reach, which
+makes the 3-node quorum check for key generation fail transiently (`CKR_FUNCTION_FAILED`)
+even though all current nodes are healthy. A fresh daemon reliably clears that stale view.
+
 ## Manual validation (without CI partition access)
 
 If you already have a configured Azure Cloud HSM client (see Configuration above), bypass the
