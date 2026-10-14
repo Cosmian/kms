@@ -377,7 +377,7 @@ fn test_ed25519_key_discovery() -> Pkcs11Result<()> {
 /// implemented in `kms_object::kms_encrypt_async`/`kms_decrypt_async`.
 #[test]
 #[serial]
-#[expect(unsafe_code, clippy::indexing_slicing)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -408,7 +408,6 @@ fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
     // Locate the pre-imported "vol1" AES key, exactly like `test_generate_key_encrypt_decrypt`.
     let mut label_bytes = b"vol1".to_vec();
     let label_len: CK_ULONG = label_bytes.len().try_into()?;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_LABEL,
         pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
@@ -506,7 +505,7 @@ fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
 /// silently corrupting adjacent heap memory instead of returning `CKR_BUFFER_TOO_SMALL`.
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_aes_gcm_encrypt_rejects_undersized_output_buffer() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -536,7 +535,6 @@ fn test_aes_gcm_encrypt_rejects_undersized_output_buffer() -> Pkcs11Result<()> {
 
     let mut label_bytes = b"vol1".to_vec();
     let label_len: CK_ULONG = label_bytes.len().try_into()?;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_LABEL,
         pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
@@ -626,7 +624,7 @@ fn test_aes_gcm_encrypt_rejects_undersized_output_buffer() -> Pkcs11Result<()> {
 /// mechanism capability flags before use to incorrectly reject AES-GCM encryption/decryption.
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_get_mechanism_info_aes_gcm_reports_encrypt_decrypt() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -664,7 +662,7 @@ fn test_get_mechanism_info_aes_gcm_reports_encrypt_decrypt() -> Pkcs11Result<()>
 /// (any interface/version accepted) and when they exactly match.
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -769,7 +767,7 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
 /// non-zero `flags` request (this module's sole interface makes no special guarantees).
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -871,7 +869,7 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
 /// (`CKA_PRIVATE` must be `CK_FALSE`).
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -900,7 +898,6 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
 
     // Search for CKO_PROFILE objects (no login performed on this session).
     let mut class: CK_OBJECT_CLASS = CKO_PROFILE;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_CLASS,
         pValue: (&raw mut class).cast::<std::ffi::c_void>(),
@@ -969,7 +966,6 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
         let mut private_value: pkcs11_sys::CK_BBOOL = 0;
         let mut profile_id_value: CK_PROFILE_ID = 0;
         let mut unique_id_value = [0_u8; 64];
-        #[allow(clippy::cast_ptr_alignment)]
         let mut attr_template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
@@ -1049,7 +1045,7 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
     Ok(())
 }
 
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn find_profile_count(
     session: pkcs11_sys::CK_SESSION_HANDLE,
     requested_profile: CK_PROFILE_ID,

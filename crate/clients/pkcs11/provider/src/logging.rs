@@ -33,7 +33,6 @@ fn init(
 }
 
 #[cfg(target_os = "linux")]
-#[allow(clippy::print_stdout)]
 /// For Linux, log to `$COSMIAN_PKCS11_LOGGING_FOLDER` if set,
 /// otherwise fall back to `~/.cosmian/` (user-writable, no root required).
 fn init(

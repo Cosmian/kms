@@ -1,5 +1,8 @@
 // Embeds a Windows VERSIONINFO resource in cosmian_pkcs11.dll (Explorer Properties > Details tab).
-#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps))]
+#[cfg_attr(
+    not(windows),
+    allow(clippy::unnecessary_wraps, reason = "build.rs main returns Result for the windows-only branch")
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     {
