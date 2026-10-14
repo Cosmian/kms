@@ -1,13 +1,13 @@
 //! Tests that cryptographic operations respect KMIP 2.1 §3.31 state rules:
 //!
 //! - **Protection operations** (Encrypt, Sign, MAC) require `Active` state.
-//! - **Processing operations** (Decrypt, Verify, MACVerify) accept
+//! - **Processing operations** (Decrypt, Verify, `MACVerify`) accept
 //!   `Active`, `Deactivated`, and `Compromised` states.
 //!
 //! Also tests KMIP §4.57 auto-deactivation (transition 6):
 //!
 //! - An Active key whose `DeactivationDate` has passed is automatically
-//!   transitioned to Deactivated on retrieval, mirroring the PreActive → Active
+//!   transitioned to Deactivated on retrieval, mirroring the `PreActive` → Active
 //!   auto-activation mechanism.
 
 use actix_web::{http::StatusCode, test};
@@ -93,7 +93,7 @@ where
 {
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":  enc_resp["protected"],
             "iv":         enc_resp["iv"],
             "ciphertext": enc_resp["ciphertext"],
@@ -126,7 +126,7 @@ where
     let data_b64 = URL_SAFE_NO_PAD.encode(plaintext);
     let req = test::TestRequest::post()
         .uri("/v1/crypto/encrypt")
-        .set_json(&json!({"kid": kid, "alg": "dir", "enc": "A256GCM", "data": data_b64}))
+        .set_json(json!({"kid": kid, "alg": "dir", "enc": "A256GCM", "data": data_b64}))
         .to_request();
     let resp = test::call_service(app, req).await;
     if resp.status() == StatusCode::OK {
@@ -384,7 +384,7 @@ async fn test_mac_compromised_key_rejected() -> KResult<()> {
     Ok(())
 }
 
-/// KMIP 2.1 §3.31: MACVerify (processing op) MUST work on a Deactivated key.
+/// KMIP 2.1 §3.31: `MACVerify` (processing op) MUST work on a Deactivated key.
 #[tokio::test]
 async fn test_mac_verify_deactivated_key_succeeds() -> KResult<()> {
     log_init(None);
@@ -425,7 +425,7 @@ async fn test_mac_verify_deactivated_key_succeeds() -> KResult<()> {
     Ok(())
 }
 
-/// KMIP 2.1 §3.31: MACVerify (processing op) MUST work on a Compromised key.
+/// KMIP 2.1 §3.31: `MACVerify` (processing op) MUST work on a Compromised key.
 #[tokio::test]
 async fn test_mac_verify_compromised_key_succeeds() -> KResult<()> {
     log_init(None);
@@ -582,7 +582,7 @@ async fn test_sign_compromised_key_rejected() -> KResult<()> {
     Ok(())
 }
 
-/// KMIP 2.1 §3.31: SignatureVerify (processing op) MUST work on a Deactivated key.
+/// KMIP 2.1 §3.31: `SignatureVerify` (processing op) MUST work on a Deactivated key.
 #[tokio::test]
 async fn test_signature_verify_deactivated_key_succeeds() -> KResult<()> {
     log_init(None);
@@ -622,7 +622,7 @@ async fn test_signature_verify_deactivated_key_succeeds() -> KResult<()> {
     Ok(())
 }
 
-/// KMIP 2.1 §3.31: SignatureVerify (processing op) MUST work on a Compromised key.
+/// KMIP 2.1 §3.31: `SignatureVerify` (processing op) MUST work on a Compromised key.
 #[tokio::test]
 async fn test_signature_verify_compromised_key_succeeds() -> KResult<()> {
     log_init(None);
@@ -835,8 +835,8 @@ async fn test_auto_deactivation_persists_across_retrievals() -> KResult<()> {
     Ok(())
 }
 
-/// KMIP §4.57 combined transitions: a PreActive key with past `ActivationDate`
-/// AND past `DeactivationDate` transitions through PreActive → Active →
+/// KMIP §4.57 combined transitions: a `PreActive` key with past `ActivationDate`
+/// AND past `DeactivationDate` transitions through `PreActive` → Active →
 /// Deactivated in a single retrieval.
 #[tokio::test]
 async fn test_preactive_to_deactivated_combined_transition() -> KResult<()> {

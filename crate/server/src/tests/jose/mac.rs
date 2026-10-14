@@ -56,10 +56,10 @@ async fn test_hs256_compute_verify() -> KResult<()> {
     );
 
     // Wrong MAC → non-200 or valid=false
-    let wrong_mac_b64 = URL_SAFE_NO_PAD.encode(&[0_u8; 32]);
+    let wrong_mac_b64 = URL_SAFE_NO_PAD.encode([0_u8; 32]);
     let req = test::TestRequest::post()
         .uri("/v1/crypto/mac")
-        .set_json(&json!({"kid": kid, "alg": "HS256", "data": data_b64, "mac": wrong_mac_b64}))
+        .set_json(json!({"kid": kid, "alg": "HS256", "data": data_b64, "mac": wrong_mac_b64}))
         .to_request();
     let resp = test::call_service(&app, req).await;
     if resp.status() == actix_web::http::StatusCode::OK {

@@ -221,6 +221,10 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
 // - destroy mt_should_not_exist, **tick Remove completely from database**
 // The redis database is now ready, dump it using the utility function `dump_all`
 #[allow(deprecated)]
+#[expect(
+    dead_code,
+    reason = "reproduces the 5.1.0 dump; disabled in findex_redis_migration_tests"
+)]
 async fn from_5_1_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
     let dump_file = open_file(TEST_DATA_PATH, "redis_dump_v5_1_0.bin");

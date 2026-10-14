@@ -17,14 +17,8 @@ pub mod tls_config;
 pub mod windows_service;
 
 #[expect(
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::panic_in_result_fn,
-    clippy::cognitive_complexity,
-    unsafe_code,
-    clippy::indexing_slicing,
-    dead_code
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 #[cfg(test)]
 pub mod tests;

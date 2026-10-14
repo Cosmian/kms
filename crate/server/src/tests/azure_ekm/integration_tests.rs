@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::as_conversions)]
 use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -286,7 +285,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 
         // aes256_kwp can handle any plaintext size (unlike KW which requires multiples of 8 bytes)
         // we'll re-run multiple times to make sure sizes are handled correctly
-        let plaintext_len = 8 + (rng.next_u32() as usize % 256);
+        let plaintext_len = 8 + (usize::try_from(rng.next_u32() % 256).expect("fits usize"));
         let mut rfc_plaintext_unwrapped_input = vec![0_u8; plaintext_len];
         rng.fill_bytes(&mut rfc_plaintext_unwrapped_input);
 
