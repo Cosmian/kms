@@ -1458,3 +1458,6 @@ mod tests {
         Session::map_oracle_tde_security_to_mk(input).unwrap_err();
     }
 }
+#[cfg(test)]
+#[path = "sessions_characterization_tests.rs"]
+mod characterization_tests;

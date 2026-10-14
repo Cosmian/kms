@@ -488,3 +488,6 @@ impl From<Vec<Attribute>> for Attributes {
         Self(value)
     }
 }
+#[cfg(test)]
+#[path = "attribute_characterization_tests.rs"]
+mod characterization_tests;
