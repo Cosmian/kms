@@ -79,7 +79,10 @@ impl WrapSecretDataOrKeyAction {
     /// - The key block cannot be wrapped with the wrapping key.
     /// - The wrapped key object cannot be written to the output file.
     /// - The console output cannot be written.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<String> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;

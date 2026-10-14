@@ -232,7 +232,6 @@ impl DecryptAction {
         decrypt_response.data.context("the plain text is empty")
     }
 
-    #[expect(clippy::indexing_slicing)]
     async fn client_side_decrypt_with_file(
         &self,
         kms_rest_client: KmsClient,
@@ -292,10 +291,11 @@ impl DecryptAction {
             if available_bytes.len() > tag_size {
                 // process all bytes except the tag length last bytes
                 let num_bytes_to_process = available_bytes.len() - tag_size;
-                let output = stream_cipher.update(&available_bytes[..num_bytes_to_process])?;
+                let (to_process, rest) = available_bytes.split_at(num_bytes_to_process);
+                let output = stream_cipher.update(to_process)?;
                 output_file.write_all(&output)?;
                 // keep the remaining bytes in the read buffer
-                read_buffer = available_bytes[num_bytes_to_process..].to_vec();
+                read_buffer = rest.to_vec();
             } else {
                 // put everything in the read buffer
                 read_buffer = available_bytes;
@@ -306,12 +306,11 @@ impl DecryptAction {
             cli_bail!("The tag is missing from the encrypted file")
         }
         // write the remaining bytes before the tag
-        let remaining = &read_buffer[..read_buffer.len() - cipher.tag_size()];
+        let (remaining, tag) = read_buffer.split_at(read_buffer.len() - cipher.tag_size());
         if !remaining.is_empty() {
             let output = stream_cipher.update(remaining)?;
             output_file.write_all(&output)?;
         }
-        let tag = &read_buffer[read_buffer.len() - cipher.tag_size()..];
         output_file.write_all(&stream_cipher.finalize_decryption(tag)?)?;
         Ok(())
     }

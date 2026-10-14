@@ -1,4 +1,10 @@
+#![expect(
+    clippy::expect_used,
+    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
+)]
+
 use std::{
+    fmt::Write as _,
     fs,
     time::{Duration, Instant},
 };
@@ -235,9 +241,17 @@ fn load_percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
-    #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
-    let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
-    sorted[idx.min(sorted.len() - 1)]
+    let last = sorted.len() - 1;
+    // `p` is in [0, 1]: the rounded rank is a non-negative index below `len`.
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "float arithmetic on bounded values; no lossless std conversion"
+    )]
+    let idx = (last as f64 * p).round() as usize;
+    sorted.get(idx.min(last)).copied().unwrap_or(0.0)
 }
 
 pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
@@ -1002,7 +1016,11 @@ fn run_load_level(
 
     let samples = all_timings.len();
     let throughput_rps = if duration.as_secs_f64() > 0.0 {
-        #[allow(clippy::cast_precision_loss)]
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            reason = "float arithmetic on bounded values; no lossless std conversion"
+        )]
         let s = samples as f64;
         s / duration.as_secs_f64()
     } else {
@@ -1022,21 +1040,36 @@ fn run_load_level(
     }
 }
 
+/// Parameters of a load-benchmark sweep.
+pub(super) struct LoadBenchParams<'a> {
+    pub mode: BenchMode,
+    pub protocol: &'a BenchProtocol,
+    pub concurrency_levels: &'a [usize],
+    pub warmup: Duration,
+    pub duration: Duration,
+    pub cooldown: Duration,
+    pub plaintext_size: usize,
+    pub hsm_prefix: Option<&'a str>,
+    pub filter: Option<&'a super::types::BenchFilter>,
+}
+
 /// Run each prepared operation across all concurrency levels sequentially.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn bench_load(
     rt: &Runtime,
     client: &KmsClient,
-    mode: BenchMode,
-    protocol: &BenchProtocol,
-    concurrency_levels: &[usize],
-    warmup: Duration,
-    duration: Duration,
-    cooldown: Duration,
-    plaintext_size: usize,
-    hsm_prefix: Option<&str>,
-    filter: Option<&super::types::BenchFilter>,
+    params: &LoadBenchParams<'_>,
 ) -> Vec<LoadResult> {
+    let LoadBenchParams {
+        mode,
+        protocol,
+        concurrency_levels,
+        warmup,
+        duration,
+        cooldown,
+        plaintext_size,
+        hsm_prefix,
+        filter,
+    } = *params;
     let ledger = HsmKeyLedger::new();
     let ops = prepare_load_ops(
         rt,
@@ -1109,7 +1142,10 @@ pub(super) fn bench_load(
     results
 }
 
-#[allow(clippy::print_stdout)]
+#[expect(
+    clippy::print_stdout,
+    reason = "this command writes its result to stdout"
+)]
 pub(super) fn print_load_results(results: &[LoadResult]) {
     if results.is_empty() {
         return;
@@ -1163,12 +1199,13 @@ pub(crate) fn generate_load_json_output(
             .strip_prefix(&prefix)
             .unwrap_or(&r.operation)
             .to_owned();
-        lines.push_str(&format!(
+        let _ = writeln!(
+            lines,
             "{{\"protocol\":\"{protocol_slug}\",\"operation\":\"{operation}\",\
              \"concurrency\":{},\"throughput_rps\":{:.2},\
-             \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3}}}\n",
+             \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3}}}",
             r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms,
-        ));
+        );
     }
 
     let json_path = home.join(format!("load_{protocol_slug}.json"));
@@ -1230,10 +1267,10 @@ pub(super) fn generate_markdown_load_output_combined(
 
     let mut md = String::new();
     for op in &ops {
-        md.push_str(&format!("### {op}\n\n"));
+        let _ = write!(md, "### {op}\n\n");
         let mut header = "| Concurrency |".to_owned();
         for slug in &slugs {
-            header.push_str(&format!(" {slug} (req/s) |"));
+            let _ = write!(header, " {slug} (req/s) |");
         }
         md.push_str(&header);
         md.push('\n');
@@ -1251,7 +1288,7 @@ pub(super) fn generate_markdown_load_output_combined(
                             && r.operation.strip_prefix(&prefix).unwrap_or(&r.operation) == op
                     })
                     .map_or_else(|| "-".to_owned(), |r| format!("{:.1}", r.throughput_rps));
-                row.push_str(&format!(" {rps:<15} |"));
+                let _ = write!(row, " {rps:<15} |");
             }
             md.push_str(&row);
             md.push('\n');
@@ -1301,10 +1338,11 @@ pub(super) fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
         let mut dat =
             String::from("# concurrency  throughput_rps  p50_ms  p95_ms  p99_ms  samples\n");
         for r in &op_rows {
-            dat.push_str(&format!(
-                "{:<14} {:<15.2} {:<8.2} {:<8.2} {:<8.2} {}\n",
+            let _ = writeln!(
+                dat,
+                "{:<14} {:<15.2} {:<8.2} {:<8.2} {:<8.2} {}",
                 r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-            ));
+            );
         }
         fs::write(&dat_path, &dat)
             .map_err(|e| KmsCliError::Default(format!("Write {}: {e}", dat_path.display())))?;
@@ -1357,25 +1395,27 @@ pub(super) fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
         }
 
         // ── HTML section ──────────────────────────────────────────────────
-        sections.push_str(&format!("<section>\n<h2>{op}</h2>\n"));
+        let _ = write!(sections, "<section>\n<h2>{op}</h2>\n");
         if gnuplot_ok {
-            sections.push_str(&format!(
+            let _ = writeln!(
+                sections,
                 "<div class=\"charts\">\
                  <img src=\"{tp_svg}\" alt=\"Throughput\">\
                  <img src=\"{lat_svg}\" alt=\"Latency\">\
-                 </div>\n"
-            ));
+                 </div>"
+            );
         }
         sections.push_str(
             "<table>\n<tr><th>Concurrency</th><th>Throughput (req/s)</th>\
              <th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>Samples</th></tr>\n",
         );
         for r in &op_rows {
-            sections.push_str(&format!(
+            let _ = writeln!(
+                sections,
                 "<tr><td>{}</td><td>{:.1}</td><td>{:.1}</td>\
-                 <td>{:.1}</td><td>{:.1}</td><td>{}</td></tr>\n",
+                 <td>{:.1}</td><td>{:.1}</td><td>{}</td></tr>",
                 r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-            ));
+            );
         }
         sections.push_str("</table>\n</section>\n");
     }

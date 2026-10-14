@@ -262,13 +262,17 @@ fn run_for(
         // before the `.join()` pass below, otherwise threads would be spawned and
         // joined one at a time — serializing the very concurrency this benchmark
         // measures.
-        #[allow(clippy::needless_collect)]
-        let handles: Vec<_> = (0..concurrency.max(1))
-            .map(|i| {
-                // `pool.len()` may be smaller than `concurrency` (e.g. a
-                // single-session `pool` under `--shared-session`), hence the modulo
-                // instead of a direct index.
-                let session = &pool[i % pool.len()];
+        #[expect(
+            clippy::needless_collect,
+            reason = "all threads must spawn before any join"
+        )]
+        // `pool.len()` may be smaller than `concurrency` (e.g. a single-session
+        // `pool` under `--shared-session`), hence `cycle()` over the sessions.
+        let handles: Vec<_> = pool
+            .iter()
+            .cycle()
+            .take(concurrency.max(1))
+            .map(|session| {
                 scope.spawn(move || {
                     let mut latencies = Vec::new();
                     while Instant::now() < stop_after {
@@ -316,14 +320,30 @@ fn summarize(
         if samples == 0 {
             return 0.0;
         }
-        let idx = ((samples - 1) as f64 * p).round() as usize;
-        sorted[idx.min(samples - 1)].as_secs_f64() * 1000.0
+        let last = samples - 1;
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "float arithmetic on bounded values; no lossless std conversion"
+        )]
+        let idx = (last as f64 * p).round() as usize;
+        sorted
+            .get(idx.min(last))
+            .map_or(0.0, |d| d.as_secs_f64() * 1000.0)
     };
 
     let throughput_ops = if elapsed.is_zero() {
         0.0
     } else {
-        samples as f64 / elapsed.as_secs_f64()
+        #[expect(
+            clippy::as_conversions,
+            clippy::cast_precision_loss,
+            reason = "float arithmetic on bounded values; no lossless std conversion"
+        )]
+        let n = samples as f64;
+        n / elapsed.as_secs_f64()
     };
 
     LoadResult {

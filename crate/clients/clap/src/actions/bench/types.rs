@@ -1,5 +1,3 @@
-#![allow(clippy::format_push_string)]
-
 use std::cell::RefCell;
 
 use clap::{Parser, ValueEnum};
