@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::AlternativeName;
 #[cfg(feature = "non-fips")]

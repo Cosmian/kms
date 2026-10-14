@@ -306,7 +306,7 @@ where
     // Verify with key B → must fail
     let req = actix_test::TestRequest::post()
         .uri("/v1/crypto/mac")
-        .set_json(&json!({"kid": kid_b, "alg": alg, "data": data_b64, "mac": mac_b64}))
+        .set_json(json!({"kid": kid_b, "alg": alg, "data": data_b64, "mac": mac_b64}))
         .to_request();
     let resp = actix_test::call_service(app, req).await;
     if resp.status() == StatusCode::OK {
@@ -554,7 +554,7 @@ where
 /// Run an unwrap-key round-trip vector:
 /// 1. Provision an RSA key pair
 /// 2. Encrypt with RSA-OAEP (wraps a fresh CEK with the public key)
-/// 3. Call `POST /v1/crypto/keys/unwrap` with the protected header + encrypted_key
+/// 3. Call `POST /v1/crypto/keys/unwrap` with the protected header + `encrypted_key`
 /// 4. Use the unwrapped symmetric key to encrypt/decrypt a payload
 async fn run_unwrap_key_round_trip<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
 where
@@ -771,17 +771,17 @@ where
     let post_delete_req = match operation {
         "mac" => actix_test::TestRequest::post()
             .uri("/v1/crypto/mac")
-            .set_json(&json!({"kid": kid, "alg": alg, "data": data_b64}))
+            .set_json(json!({"kid": kid, "alg": alg, "data": data_b64}))
             .to_request(),
         "sign" => actix_test::TestRequest::post()
             .uri("/v1/crypto/sign")
-            .set_json(&json!({"kid": kid, "alg": alg, "data": data_b64}))
+            .set_json(json!({"kid": kid, "alg": alg, "data": data_b64}))
             .to_request(),
         "encrypt" => {
             let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
             actix_test::TestRequest::post()
                 .uri("/v1/crypto/encrypt")
-                .set_json(&json!({"kid": kid, "alg": alg, "enc": enc_alg, "data": data_b64}))
+                .set_json(json!({"kid": kid, "alg": alg, "enc": enc_alg, "data": data_b64}))
                 .to_request()
         }
         op => panic!("Vector {filename}: unsupported post-delete check for '{op}'"),
@@ -982,8 +982,10 @@ async fn test_jose_vectors() -> KResult<()> {
     );
 
     let mut passed = 0;
-    #[allow(unused_mut)]
+    #[cfg(not(feature = "non-fips"))]
     let mut skipped: usize = 0;
+    #[cfg(feature = "non-fips")]
+    let skipped: usize = 0;
     let mut errors: Vec<String> = Vec::new();
 
     for path in &vectors {

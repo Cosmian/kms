@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
-
 // ── PQC X.509 Certificate Chain Validation Tests (RFC 9881 / RFC 9935) ────────────
 //
 // These tests validate PQC certificate chains using the KMIP Validate operation.
@@ -1247,7 +1245,6 @@ authorityKeyIdentifier=keyid:always,issuer
 ///   `Deactivated` ancestor (which that permission gate explicitly allows through)
 ///   and chains supplied as raw bytes (which never go through that gate at all).
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod internal_state_and_crl_cascade_tests {
     use std::sync::Arc;
 

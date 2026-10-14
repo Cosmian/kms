@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use base64::{Engine, engine::general_purpose};
+use cosmian_kms_client_utils::import_utils::build_private_key_from_der_bytes;
 use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -30,8 +31,8 @@ use openssl::rsa::Rsa;
 use zeroize::Zeroizing;
 
 use super::{
-    build_private_key_from_der_bytes, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    rsa_encrypt, test_cse_private_key_decrypt,
+    read_bytes_from_file, read_object_from_json_ttlv_bytes, rsa_encrypt,
+    test_cse_private_key_decrypt,
 };
 use crate::{
     middlewares::UserId, result::KResult, routes::google_cse::operations::GOOGLE_CSE_ID,
