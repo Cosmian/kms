@@ -27,7 +27,7 @@ fn characterization_cng_unregister_not_windows() {
 #[cfg(not(windows))]
 #[test]
 fn characterization_cng_status_not_windows() {
-    status().unwrap();
+    status();
 }
 
 #[cfg(not(windows))]

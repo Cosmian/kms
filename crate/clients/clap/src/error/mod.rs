@@ -153,7 +153,6 @@ macro_rules! cli_bail {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
 mod tests {
 
     use crate::error::result::KmsCliResult;

@@ -2,8 +2,8 @@ use super::IdentityInfo;
 
 fn build_identity_info() -> IdentityInfo {
     IdentityInfo {
-        primaryKeyPairId: "kp-1".to_owned(),
-        emailAddress: "alice@example.com".to_owned(),
+        primary_key_pair_id: "kp-1".to_owned(),
+        email_address: "alice@example.com".to_owned(),
     }
 }
 

@@ -1211,7 +1211,7 @@ fn store_next_uid_text(uid_map: &mut HashMap<usize, String>, uid: &str) -> Optio
         return None;
     }
     let idx = uid_map.len();
-    uid_map.insert(idx, uid.to_string());
+    uid_map.insert(idx, uid.to_owned());
     Some(idx)
 }
 

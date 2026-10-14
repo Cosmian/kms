@@ -498,11 +498,11 @@ fn compare_payload_v21(ctx: &Ctx, expected: &Op21, actual: &Op21) -> KmsCliResul
                 let eu = exp
                     .unique_identifier
                     .as_ref()
-                    .map_or_else(|| "None".to_string(), std::string::ToString::to_string);
+                    .map_or_else(|| "None".to_owned(), std::string::ToString::to_string);
                 let au = act
                     .unique_identifier
                     .as_ref()
-                    .map_or_else(|| "None".to_string(), std::string::ToString::to_string);
+                    .map_or_else(|| "None".to_owned(), std::string::ToString::to_string);
                 return Err(KmsCliError::Default(format!(
                     "unique_identifier expected={eu} actual={au}"
                 )));
@@ -583,14 +583,14 @@ fn compare_uid_list_v21(
                 )));
             }
             Err(KmsCliError::Default(
-                "unique_identifier lists differ".to_string(),
+                "unique_identifier lists differ".to_owned(),
             ))
         }
         (None, Some(_)) => Err(KmsCliError::Default(
-            "unique_identifier expected=None actual=Some".to_string(),
+            "unique_identifier expected=None actual=Some".to_owned(),
         )),
         (Some(_), None) => Err(KmsCliError::Default(
-            "unique_identifier expected=Some actual=None".to_string(),
+            "unique_identifier expected=Some actual=None".to_owned(),
         )),
         (None, None) => Ok(()),
     }
@@ -795,14 +795,14 @@ fn compare_uid_list_v14(exp: Option<&Vec<String>>, act: Option<&Vec<String>>) ->
                 )));
             }
             Err(KmsCliError::Default(
-                "unique_identifier lists differ".to_string(),
+                "unique_identifier lists differ".to_owned(),
             ))
         }
         (None, Some(_)) => Err(KmsCliError::Default(
-            "unique_identifier expected=None actual=Some".to_string(),
+            "unique_identifier expected=None actual=Some".to_owned(),
         )),
         (Some(_), None) => Err(KmsCliError::Default(
-            "unique_identifier expected=Some actual=None".to_string(),
+            "unique_identifier expected=Some actual=None".to_owned(),
         )),
         (None, None) => Ok(()),
     }

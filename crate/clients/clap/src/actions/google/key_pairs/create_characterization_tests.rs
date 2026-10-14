@@ -3,10 +3,10 @@ use super::{KaclsKeyMetadata, KeyPairInfo, PrivateKeyMetadata};
 fn build_key_pair_info() -> KeyPairInfo {
     KeyPairInfo {
         pkcs7: "PKCS7DATA".to_owned(),
-        privateKeyMetadata: vec![PrivateKeyMetadata {
-            kaclsKeyMetadata: KaclsKeyMetadata {
-                kaclsUri: "https://kacls.example.com/v1".to_owned(),
-                kaclsData: "wrapped-data".to_owned(),
+        private_key_metadata: vec![PrivateKeyMetadata {
+            kacls_key_metadata: KaclsKeyMetadata {
+                kacls_uri: "https://kacls.example.com/v1".to_owned(),
+                kacls_data: "wrapped-data".to_owned(),
             },
         }],
     }

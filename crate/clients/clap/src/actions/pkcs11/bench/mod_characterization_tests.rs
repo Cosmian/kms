@@ -48,7 +48,7 @@ fn characterization_pkcs11_bench_action_defaults() {
             a.cooldown,
             a.sanity,
             a.shared_session,
-            a.speed
+            a.criterion.speed
         ),
         "\"/x/lib.so\" None None All BenchFilter { algorithms: [], key_sizes: [] } false 0 1,2,4,8,16 20 5 2 false false Quick"
     );

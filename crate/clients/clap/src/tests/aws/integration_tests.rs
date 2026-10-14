@@ -99,7 +99,7 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
 
     // Step 2: export the wrapped key
     let export_action = ExportByokAction {
-        key_id: cosmian_key_id.to_string(),
+        key_id: cosmian_key_id.to_owned(),
         kek_id: kek_id.to_string(),
         token_file_path: None,
         output_file_path: None,
