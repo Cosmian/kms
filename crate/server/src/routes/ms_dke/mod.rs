@@ -269,3 +269,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "ms_dke_characterization_tests.rs"]
+mod characterization_tests;

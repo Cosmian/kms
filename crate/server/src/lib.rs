@@ -28,3 +28,8 @@ pub mod windows_service;
 )]
 #[cfg(test)]
 pub mod tests;
+
+#[cfg(test)]
+mod lint_cleanup_core_characterization_tests;
+#[cfg(test)]
+mod lint_cleanup_routes_characterization_tests;

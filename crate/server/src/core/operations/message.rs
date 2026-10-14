@@ -1915,3 +1915,7 @@ mod batch_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "message_characterization_tests.rs"]
+mod characterization_tests;
