@@ -39,8 +39,7 @@
 // the `clippy.toml` bans (see ADR 2026-10-10).
 #![cfg_attr(
     test,
-    allow(
-        clippy::disallowed_methods,
+    expect(
         clippy::disallowed_types,
         reason = "test fixtures only; production code must use KmsRng"
     )
@@ -48,8 +47,9 @@
 
 mod core;
 pub use core::{
-    AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,
-    MainDbParams, ObjectCache, RotateNameCache, UnwrappedCache, redact_connection_string,
+    AdditionalObjectStoresParams, CacheParams, CachedObject, Database, DbMetricsRecorder,
+    MainDbKind, MainDbParams, ObjectCache, RotateNameCache, UnwrappedCache,
+    redact_connection_string,
 };
 pub mod ceremony_keys;
 pub use ceremony_keys::{CEREMONY_SECRET_LENGTH, CeremonyKeys, CeremonyPayload};

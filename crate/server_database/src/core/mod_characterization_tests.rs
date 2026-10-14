@@ -5,7 +5,7 @@ use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use url::Url;
 
-use super::{Database, MainDbParams};
+use super::{CacheParams, Database, MainDbParams};
 
 /// The ONLY place that calls `Database::instantiate` (its signature changes upstream).
 async fn instantiate_err(params: MainDbParams) -> String {
@@ -13,10 +13,12 @@ async fn instantiate_err(params: MainDbParams) -> String {
         &params,
         false,
         HashMap::new(),
-        Duration::from_secs(1),
-        NonZeroUsize::new(100).unwrap(),
-        None,
-        false,
+        CacheParams {
+            max_age: Duration::from_secs(1),
+            max_size: NonZeroUsize::new(100).unwrap(),
+            max_ttl: None,
+            disabled: false,
+        },
         None,
         None,
     )

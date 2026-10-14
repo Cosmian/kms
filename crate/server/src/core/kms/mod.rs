@@ -14,7 +14,7 @@ use std::{
 #[cfg(target_os = "linux")]
 use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
 use cosmian_kms_server_database::{
-    CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
+    CEREMONY_SECRET_LENGTH, CacheParams, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
         cosmian_kmip::kmip_2_1::kmip_objects::Object,
         cosmian_kms_crypto::crypto::KmsRng,
@@ -68,7 +68,6 @@ use crate::{
 /// Macro to instantiate an HSM with support for environment variable override.
 /// Returns an `Arc<dyn HSM + Send + Sync>` without touching any global state.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-#[allow(unused_macros)] // only expanded on linux/macos targets that instantiate an HSM
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
         let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());
@@ -187,10 +186,12 @@ impl KMS {
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
-            server_params.unwrapped_cache_max_age,
-            cache_max_size,
-            server_params.unwrapped_cache_max_ttl,
-            server_params.disable_unwrapped_cache,
+            CacheParams {
+                max_age: server_params.unwrapped_cache_max_age,
+                max_size: cache_max_size,
+                max_ttl: server_params.unwrapped_cache_max_ttl,
+                disabled: server_params.disable_unwrapped_cache,
+            },
             db_otel_recorder,
             server_params.ceremony_keys.clone(),
         )
@@ -578,12 +579,9 @@ impl KMS {
 
 #[cfg(test)]
 #[expect(
-    clippy::unwrap_used,
     clippy::panic_in_result_fn,
-    clippy::unnecessary_wraps,
-    clippy::panic
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
-#[allow(clippy::doc_markdown)]
 mod tests {
     use super::*;
     use crate::{config::OpenTelemetryConfig, error::KmsError, result::KResult};
@@ -591,7 +589,7 @@ mod tests {
     /// Regression test for COSMIAN-2026-004: OTLP plaintext HTTP must be rejected
     /// unless explicitly allowed via `otlp_allow_insecure`.
     #[test]
-    fn test_otlp_plaintext_http_rejected() -> KResult<()> {
+    fn test_otlp_plaintext_http_rejected() {
         let otel_params = Some(OpenTelemetryConfig {
             otlp_url: Some("http://attacker.example.com:4317".to_owned()),
             otlp_allow_insecure: false,
@@ -615,12 +613,11 @@ mod tests {
             }
             _ => panic!("Expected InvalidRequest error, got: {err:?}"),
         }
-        Ok(())
     }
 
     /// Regression test: OTLP with https:// should not be rejected.
     #[test]
-    fn test_otlp_https_accepted() -> KResult<()> {
+    fn test_otlp_https_accepted() {
         let otel_params = Some(OpenTelemetryConfig {
             otlp_url: Some("https://collector.example.com:4317".to_owned()),
             otlp_allow_insecure: false,
@@ -630,12 +627,11 @@ mod tests {
 
         let result = KMS::validate_otlp_url("https://collector.example.com:4317", &otel_params);
         assert!(result.is_ok(), "https OTLP should be accepted");
-        Ok(())
     }
 
-    /// Regression test: OTLP plaintext HTTP is accepted when allow_insecure is true.
+    /// Regression test: OTLP plaintext HTTP is accepted when `allow_insecure` is true.
     #[test]
-    fn test_otlp_plaintext_http_accepted_when_allowed() -> KResult<()> {
+    fn test_otlp_plaintext_http_accepted_when_allowed() {
         let otel_params = Some(OpenTelemetryConfig {
             otlp_url: Some("http://localhost:4317".to_owned()),
             otlp_allow_insecure: true,
@@ -648,27 +644,25 @@ mod tests {
             result.is_ok(),
             "http OTLP with allow_insecure=true should be accepted"
         );
-        Ok(())
     }
 
-    /// Regression test: no OTLP params means allow_insecure defaults to false,
+    /// Regression test: no OTLP params means `allow_insecure` defaults to false,
     /// so plaintext HTTP is rejected.
     #[test]
-    fn test_otlp_no_params_rejects_plaintext_http() -> KResult<()> {
+    fn test_otlp_no_params_rejects_plaintext_http() {
         // With None otel_params, allow_insecure defaults to false
         let result = KMS::validate_otlp_url("http://localhost:4317", &None);
         assert!(
             result.is_err(),
             "http without otel_params should be rejected"
         );
-        Ok(())
     }
 
     /// The `PostgreSQL` audit backend has no runtime fallback to the file backend: a
     /// connection failure at startup must abort `KMS::instantiate`, even when
     /// `--audit-file-path` is also set. Uses a connection-refused address (no live
     /// database needed) so this test runs everywhere, unlike the `#[ignore]`-gated live
-    /// PostgreSQL tests.
+    /// `PostgreSQL` tests.
     #[tokio::test]
     async fn postgres_audit_connection_failure_aborts_startup_without_file_fallback() -> KResult<()>
     {
