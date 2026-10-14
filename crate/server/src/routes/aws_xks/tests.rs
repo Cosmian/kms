@@ -254,6 +254,29 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
 }
 
 #[tokio::test]
+async fn encrypt_uses_a_fresh_random_iv_per_call() -> KResult<()> {
+    let kms = test_kms().await?;
+    let key_id = "xks-key-fresh-iv";
+    provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
+
+    let mut ivs = HashSet::new();
+    for _ in 0..8 {
+        let enc = encrypt_inner(
+            http_req(),
+            encrypt_request("arn:aws:iam::1:role/Alice", b"same plaintext"),
+            key_id.to_owned(),
+            &kms,
+        )
+        .await?;
+        assert!(
+            ivs.insert(enc.initializationVector),
+            "two encryptions with the same key reused an IV"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn create_key_is_idempotent_and_repairs_missing_grant() -> KResult<()> {
     let kms = test_kms().await?;
     let key_id = "xks-key-idempotent";

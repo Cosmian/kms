@@ -28,6 +28,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::{
         crypto::{
+            KmsRng,
             rsa::{
                 ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
                 ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
@@ -119,8 +120,8 @@ impl CryptoOpSpec for EncryptOp {
             KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
         })?;
         BulkData::deserialize(data).map_or_else(
-            |_| encrypt_single(owm, &kms.params, request),
-            |bulk_data| encrypt_bulk(owm, &kms.params, request.clone(), bulk_data),
+            |_| encrypt_single(owm, &kms.params, request, &kms.rng),
+            |bulk_data| encrypt_bulk(owm, &kms.params, request.clone(), bulk_data, &kms.rng),
         )
     }
 
@@ -190,14 +191,15 @@ fn encrypt_single(
     owm: &ObjectWithMetadata,
     server_params: &ServerParams,
     request: &Encrypt,
+    rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
     match owm.object() {
-        Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm),
-        Object::PublicKey { .. } => encrypt_with_public_key(request, server_params, owm),
-        Object::PGPKey { .. } => pgp_ops::pgp_encrypt(owm, request),
+        Object::SymmetricKey { .. } => encrypt_with_symmetric_key(request, owm, rng),
+        Object::PublicKey { .. } => encrypt_with_public_key(request, server_params, owm, rng),
+        Object::PGPKey { .. } => pgp_ops::pgp_encrypt(owm, request, rng),
         Object::Certificate(Certificate {
             certificate_value, ..
-        }) => encrypt_with_certificate(request, server_params, owm.id(), certificate_value),
+        }) => encrypt_with_certificate(request, server_params, owm.id(), certificate_value, rng),
         other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
@@ -223,6 +225,7 @@ pub(super) fn encrypt_bulk(
     server_params: &ServerParams,
     mut request: Encrypt,
     bulk_data: BulkData,
+    rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
     debug!("==> encrypting {} clear texts", bulk_data.len());
     let mut ciphertexts = Vec::with_capacity(bulk_data.len());
@@ -239,7 +242,7 @@ pub(super) fn encrypt_bulk(
                 let nonce = request
                     .i_v_counter_nonce
                     .clone()
-                    .unwrap_or(random_nonce(cipher)?);
+                    .unwrap_or(random_nonce(rng, cipher)?);
                 if cipher.nonce_size() > 0
                     && nonce.len() != cipher.nonce_size()
                     && !cipher.allows_variable_nonce()
@@ -272,7 +275,7 @@ pub(super) fn encrypt_bulk(
         Object::PublicKey { .. } => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response = encrypt_with_public_key(&request, server_params, owm)?;
+                let response = encrypt_with_public_key(&request, server_params, owm, rng)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -281,8 +284,13 @@ pub(super) fn encrypt_bulk(
         }) => {
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(plaintext.clone());
-                let response =
-                    encrypt_with_certificate(&request, server_params, owm.id(), certificate_value)?;
+                let response = encrypt_with_certificate(
+                    &request,
+                    server_params,
+                    owm.id(),
+                    certificate_value,
+                    rng,
+                )?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
@@ -305,6 +313,7 @@ pub(super) fn encrypt_bulk(
 fn encrypt_with_symmetric_key(
     request: &Encrypt,
     owm: &ObjectWithMetadata,
+    rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
     trace!("entering. owm: {}", owm.attributes());
 
@@ -355,7 +364,7 @@ fn encrypt_with_symmetric_key(
         let n = request
             .i_v_counter_nonce
             .clone()
-            .unwrap_or(random_nonce(aead)?);
+            .unwrap_or(random_nonce(rng, aead)?);
         let expected = aead.nonce_size();
         if n.len() != expected && !aead.allows_variable_nonce() {
             return Err(KmsError::InvalidRequest(format!(
@@ -552,6 +561,7 @@ fn encrypt_with_public_key(
     request: &Encrypt,
     server_params: &ServerParams,
     owm: &ObjectWithMetadata,
+    rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
@@ -667,6 +677,7 @@ fn encrypt_with_public_key(
                 owm.attributes(),
                 plaintext,
                 &public_key,
+                rng,
             )
         }
         other => Err(KmsError::NotSupported(format!(
@@ -684,6 +695,7 @@ fn encrypt_with_pkey(
     #[cfg(not(feature = "non-fips"))] _key_attributes: &Attributes,
     plaintext: &[u8],
     public_key: &PKey<Public>,
+    rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
     let ciphertext = match public_key.id() {
         Id::RSA => {
@@ -695,6 +707,7 @@ fn encrypt_with_pkey(
                 public_key,
                 request.cryptographic_parameters.as_ref(),
                 plaintext,
+                rng,
             )?
         }
         #[cfg(feature = "non-fips")]
@@ -705,7 +718,7 @@ fn encrypt_with_pkey(
                 key_id,
                 key_attributes,
             )?;
-            ecies_encrypt(public_key, plaintext)?
+            ecies_encrypt(rng, public_key, plaintext)?
         }
         other => {
             kms_bail!("Encrypt: public key type not supported: {other:?}")
@@ -724,6 +737,7 @@ fn encrypt_with_rsa(
     public_key: &PKey<Public>,
     cryptographic_parameters: Option<&CryptographicParameters>,
     plaintext: &[u8],
+    rng: &KmsRng,
 ) -> KResult<Vec<u8>> {
     let (algorithm, padding, hashing_fn, _) =
         default_cryptographic_parameters(cryptographic_parameters);
@@ -740,7 +754,7 @@ fn encrypt_with_rsa(
 
     let ciphertext = match algorithm {
         CryptographicAlgorithm::RSA => match padding {
-            PaddingMethod::None => ckm_rsa_aes_key_wrap(public_key, hashing_fn, plaintext)?,
+            PaddingMethod::None => ckm_rsa_aes_key_wrap(rng, public_key, hashing_fn, plaintext)?,
             PaddingMethod::OAEP => {
                 ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, mgf1_hash_fn, label, plaintext)?
             }
@@ -760,6 +774,7 @@ fn encrypt_with_certificate(
     server_params: &ServerParams,
     key_id: &str,
     certificate_value: &[u8],
+    rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
     let plaintext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
@@ -792,5 +807,6 @@ fn encrypt_with_certificate(
         &Attributes::default(),
         plaintext,
         &public_key,
+        rng,
     )
 }

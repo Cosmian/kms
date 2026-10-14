@@ -247,6 +247,16 @@ pub trait Backend: Send + Sync {
         label: Option<&str>,
     ) -> ModuleResult<Arc<dyn SymmetricKey>>;
 
+    /// Fill `buf` with random bytes for `C_GenerateRandom`.
+    ///
+    /// The default implementation draws from `KmsRng` (OpenSSL AES-256 CTR-DRBG, fail-closed).
+    /// Backends attached to a KMS SHOULD override it to source the bytes from the server.
+    fn generate_random(&self, buf: &mut [u8]) -> ModuleResult<()> {
+        cosmian_kms_crypto::crypto::KmsRng::new()
+            .fill_bytes(buf)
+            .map_err(|e| ModuleError::Cryptography(format!("RNG failure: {e}")))
+    }
+
     fn create_object(&self, label: &str, data: &[u8]) -> ModuleResult<Arc<dyn DataObject>>;
     fn revoke_object(&self, remote_id: &str) -> ModuleResult<()>;
     fn destroy_object(&self, remote_id: &str) -> ModuleResult<()>;

@@ -235,7 +235,7 @@ async fn encrypt_rsa_oaep(
     let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
 
     // Step 1: Generate random CEK
-    let cek = generate_cek(enc)?;
+    let cek = generate_cek(enc, &kms.rng)?;
 
     // Step 2: Wrap CEK with RSA-OAEP
     let wrapped_cek = ckm_rsa_pkcs_oaep_key_wrap(&public_key, oaep_hash, mgf1_hash, None, &cek)
@@ -262,7 +262,7 @@ async fn encrypt_rsa_oaep(
     let aad_bytes = build_jwe_aad(&protected_b64, aad.as_deref())?;
 
     // Step 3: AES-GCM encrypt plaintext with the ephemeral CEK
-    let output = aes_gcm_encrypt(&cek, enc, plaintext, &aad_bytes)?;
+    let output = aes_gcm_encrypt(&cek, enc, plaintext, &aad_bytes, &kms.rng)?;
 
     // CEK is Zeroizing — dropped automatically here
 

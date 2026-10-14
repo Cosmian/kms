@@ -14,7 +14,7 @@ use pgp::{
 use rand_08::SeedableRng;
 use zeroize::Zeroizing;
 
-use crate::{crypto_bail, crypto_error, error::CryptoError};
+use crate::{crypto::KmsRng, crypto_bail, crypto_error, error::CryptoError};
 
 /// `OpenPGP` key profile to generate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,17 +94,23 @@ fn normalize_rsa_secret_params(
     Ok(Some(normalized))
 }
 
-// The PGP crate uses rand 0.8 traits; seed its RNG stream from OpenSSL's CSPRNG.
-fn openssl_seeded_rng() -> Result<rand_08::rngs::StdRng, CryptoError> {
+// The PGP crate requires an infallible rand 0.8 `CryptoRng` and offers no direct-seed entry point,
+// so its RNG stream is a ChaCha12 `StdRng` seeded with 256 bits taken from `KmsRng`.
+#[allow(
+    clippy::disallowed_types,
+    reason = "StdRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
+)]
+fn openssl_seeded_rng(rng: &KmsRng) -> Result<rand_08::rngs::StdRng, CryptoError> {
     let mut seed = Zeroizing::new([0_u8; 32]);
-    openssl::rand::rand_bytes(&mut seed[..])
-        .map_err(|e| crypto_error!("failed to seed OpenPGP RNG with OpenSSL: {e}"))?;
+    rng.fill_bytes(&mut seed[..])
+        .map_err(|e| crypto_error!("failed to seed OpenPGP RNG with KmsRng: {e}"))?;
 
     Ok(rand_08::rngs::StdRng::from_seed(std::mem::take(&mut *seed)))
 }
 
 /// Armored Transferable Secret Key, RFC 9580 v4.
 pub fn generate_openpgp_secret_key(
+    rng: &KmsRng,
     profile: PgpKeyProfile,
     user_id: &str,
 ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
@@ -150,7 +156,7 @@ pub fn generate_openpgp_secret_key(
         .map_err(|e| crypto_error!("failed to build secret key params: {e}"))?;
 
     let mut signed_secret = params
-        .generate(openssl_seeded_rng()?)
+        .generate(openssl_seeded_rng(rng)?)
         .map_err(|e| crypto_error!("failed to generate OpenPGP key: {e}"))?;
 
     // Rebuilding private packets leaves the public key components and signatures unchanged.
@@ -278,7 +284,11 @@ pub fn openpgp_key_metadata(
 
 /// Binary `OpenPGP` message (PKESK + SEIPD) encrypted to the key's encryption-capable subkey.
 /// Accepts a secret or public armored certificate.
-pub fn openpgp_encrypt(armored_cert: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn openpgp_encrypt(
+    rng: &KmsRng,
+    armored_cert: &[u8],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, CryptoError> {
     let (secret_opt, public_opt) = parse_secret_or_public(armored_cert)?;
     let public = match (secret_opt, public_opt) {
         (Some(sec), _) => sec.to_public_key(),
@@ -296,7 +306,7 @@ pub fn openpgp_encrypt(armored_cert: &[u8], plaintext: &[u8]) -> Result<Vec<u8>,
         })
     });
 
-    let mut rng = openssl_seeded_rng()?;
+    let mut rng = openssl_seeded_rng(rng)?;
     let mut msg_builder = MessageBuilder::from_bytes("", plaintext.to_vec())
         .seipd_v1(&mut rng, SymmetricKeyAlgorithm::AES256);
 
@@ -386,14 +396,18 @@ pub fn openpgp_decrypt(
 }
 
 /// Binary detached signature over `data`, made with the primary key.
-pub fn openpgp_sign_detached(armored_secret: &[u8], data: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn openpgp_sign_detached(
+    rng: &KmsRng,
+    armored_secret: &[u8],
+    data: &[u8],
+) -> Result<Vec<u8>, CryptoError> {
     let secret = parse_secret_key(armored_secret)?;
     if secret.primary_key.secret_params().is_encrypted() {
         crypto_bail!("OpenPGP secret key is passphrase-protected; Decrypt/Sign are not supported");
     }
 
     let sig = DetachedSignature::sign_binary_data(
-        openssl_seeded_rng()?,
+        openssl_seeded_rng(rng)?,
         &secret.primary_key,
         &Password::empty(),
         HashAlgorithm::Sha256,
@@ -468,7 +482,8 @@ mod tests {
     #[test]
     fn test_rsa_prime_order_check_rejects_non_rsa_secret_params() {
         let user_id = "Alice <alice@example.com>";
-        let secret_armored = generate_openpgp_secret_key(PgpKeyProfile::Ed25519, user_id).unwrap();
+        let secret_armored =
+            generate_openpgp_secret_key(&KmsRng::new(), PgpKeyProfile::Ed25519, user_id).unwrap();
         let parsed_secret = pgp::composed::SignedSecretKey::from_armor_single(
             std::io::Cursor::new(secret_armored.as_slice()),
         )
@@ -482,7 +497,8 @@ mod tests {
     fn test_openpgp_rsa_keygen_roundtrip() {
         let user_id = "Alice <alice@example.com>";
         let secret_armored =
-            generate_openpgp_secret_key(PgpKeyProfile::Rsa { bits: 2048 }, user_id).unwrap();
+            generate_openpgp_secret_key(&KmsRng::new(), PgpKeyProfile::Rsa { bits: 2048 }, user_id)
+                .unwrap();
 
         let parsed_secret = pgp::composed::SignedSecretKey::from_armor_single(
             std::io::Cursor::new(secret_armored.as_slice()),
@@ -511,13 +527,13 @@ mod tests {
         assert_eq!(meta_ver, 4);
 
         let plaintext = b"Hello OpenPGP RSA encryption test!";
-        let ciphertext = openpgp_encrypt(&public_armored, plaintext).unwrap();
+        let ciphertext = openpgp_encrypt(&KmsRng::new(), &public_armored, plaintext).unwrap();
         assert_ne!(&ciphertext[..], plaintext);
 
         let decrypted = openpgp_decrypt(&secret_armored, &ciphertext).unwrap();
         assert_eq!(&decrypted[..], plaintext);
 
-        let signature = openpgp_sign_detached(&secret_armored, plaintext).unwrap();
+        let signature = openpgp_sign_detached(&KmsRng::new(), &secret_armored, plaintext).unwrap();
         let valid = openpgp_verify_detached(&public_armored, plaintext, &signature).unwrap();
         assert!(valid);
 
@@ -532,7 +548,8 @@ mod tests {
     #[test]
     fn test_openpgp_ed25519_keygen_roundtrip() {
         let user_id = "Bob <bob@example.com>";
-        let secret_armored = generate_openpgp_secret_key(PgpKeyProfile::Ed25519, user_id).unwrap();
+        let secret_armored =
+            generate_openpgp_secret_key(&KmsRng::new(), PgpKeyProfile::Ed25519, user_id).unwrap();
 
         assert!(secret_armored.starts_with(b"-----BEGIN PGP PRIVATE KEY BLOCK-----"));
 
@@ -549,13 +566,13 @@ mod tests {
         assert_eq!(meta_ver, 4);
 
         let plaintext = b"Hello OpenPGP Ed25519/Curve25519 encryption test!";
-        let ciphertext = openpgp_encrypt(&public_armored, plaintext).unwrap();
+        let ciphertext = openpgp_encrypt(&KmsRng::new(), &public_armored, plaintext).unwrap();
         assert_ne!(&ciphertext[..], plaintext);
 
         let decrypted = openpgp_decrypt(&secret_armored, &ciphertext).unwrap();
         assert_eq!(&decrypted[..], plaintext);
 
-        let signature = openpgp_sign_detached(&secret_armored, plaintext).unwrap();
+        let signature = openpgp_sign_detached(&KmsRng::new(), &secret_armored, plaintext).unwrap();
         let valid = openpgp_verify_detached(&public_armored, plaintext, &signature).unwrap();
         assert!(valid);
         let mut tampered = plaintext.to_vec();
@@ -569,6 +586,7 @@ mod tests {
     #[test]
     fn test_openpgp_binary_key_encoding() {
         let secret_armored = generate_openpgp_secret_key(
+            &KmsRng::new(),
             PgpKeyProfile::Ed25519,
             "Binary Format Test <binary@example.com>",
         )
@@ -610,7 +628,9 @@ mod tests {
                     .unwrap(),
             ]);
         let params = key_params.build().unwrap();
-        let secret = params.generate(openssl_seeded_rng().unwrap()).unwrap();
+        let secret = params
+            .generate(openssl_seeded_rng(&KmsRng::new()).unwrap())
+            .unwrap();
         let secret_armored = secret.to_armored_bytes(ArmorOptions::default()).unwrap();
         let public_armored = secret
             .to_public_key()
@@ -622,7 +642,7 @@ mod tests {
         assert_eq!(version, 6);
 
         let plaintext = b"Hello OpenPGP v6 encryption test!";
-        let ciphertext = openpgp_encrypt(&public_armored, plaintext).unwrap();
+        let ciphertext = openpgp_encrypt(&KmsRng::new(), &public_armored, plaintext).unwrap();
         let decrypted = openpgp_decrypt(&secret_armored, &ciphertext).unwrap();
         assert_eq!(&decrypted[..], plaintext);
     }

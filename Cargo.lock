@@ -1560,6 +1560,7 @@ dependencies = [
  "async-trait",
  "cc",
  "cosmian_crypto_core",
+ "cosmian_kms_crypto",
  "cosmian_kms_interfaces",
  "cosmian_logger",
  "libloading",
@@ -1719,7 +1720,6 @@ dependencies = [
  "rand 0.10.2",
  "rand 0.8.7",
  "rand_chacha 0.10.0",
- "rand_core 0.10.1",
  "rand_distr",
  "regex",
  "rust-ini",
@@ -1874,7 +1874,6 @@ dependencies = [
  "pem",
  "proteccio_pkcs11_loader",
  "rand 0.10.2",
- "rand_chacha 0.10.0",
  "reqwest 0.12.28",
  "scratchstack-aws-signature",
  "serde",
@@ -2001,6 +2000,7 @@ name = "cosmian_pkcs11_module"
 version = "5.28.0"
 dependencies = [
  "const-oid 0.9.6",
+ "cosmian_kms_crypto",
  "cosmian_logger",
  "hex",
  "log",
