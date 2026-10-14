@@ -150,3 +150,7 @@ pub(crate) fn crypto_json_error_handler(
 ) -> actix_web::Error {
     CryptoApiError::BadRequest(format!("Invalid request body: {err}")).into()
 }
+
+#[cfg(test)]
+#[path = "error_characterization_tests.rs"]
+mod characterization_tests;

@@ -574,3 +574,7 @@ mod tests {
         assert_eq!(h.values.len(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "pki_characterization_tests.rs"]
+mod characterization_tests;

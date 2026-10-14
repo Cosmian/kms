@@ -1289,3 +1289,7 @@ pub fn compute_resource_key_hash(
     // Encode the result as a base64 string
     Ok(general_purpose::STANDARD.encode(hmac_result))
 }
+
+#[cfg(test)]
+#[path = "operations_characterization_tests.rs"]
+mod characterization_tests;
