@@ -359,3 +359,7 @@ mod tests {
         assert_ne!(v1, v3);
     }
 }
+
+#[cfg(test)]
+#[path = "service_characterization_tests.rs"]
+mod characterization_tests;
