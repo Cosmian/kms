@@ -277,3 +277,7 @@ mod tests {
         assert!(n > 0, "fixture must contain at least one event");
     }
 }
+
+#[cfg(test)]
+#[path = "hash_characterization_tests.rs"]
+mod characterization_tests;
