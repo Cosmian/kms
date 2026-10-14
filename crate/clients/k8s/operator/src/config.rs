@@ -169,3 +169,7 @@ impl OperatorConfig {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "config_characterization_tests.rs"]
+mod characterization_tests;
