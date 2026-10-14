@@ -389,10 +389,8 @@ fn handle_client(
 
 /// Extract the common name from the client certificate which is used as the username
 fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> Result<String, KmsError> {
-    // The call to peer_certificate() must be made AFTER the first few bytes are read
     let client_certificate = tls_stream.ssl().peer_certificate().ok_or_else(|| {
-        // note: this should never happen since the certificate verifier of the config
-        // should have already verified the client certificate
+        // unreachable: the acceptor sets FAIL_IF_NO_PEER_CERT (see `create_openssl_acceptor`)
         KmsError::Certificate(
             "socket server: the client did not provide a peer certificate".to_owned(),
         )
@@ -455,31 +453,32 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)] // test code
 mod tests {
-    use std::{fs, net::TcpListener, thread};
+    use std::{error::Error, fs, io, net::TcpListener, thread};
 
     use openssl::{
         pkey::PKey,
-        ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode},
+        ssl::{SslConnector, SslConnectorBuilder, SslFiletype, SslMethod, SslVerifyMode},
         x509::X509,
     };
 
     use super::{SocketServerParams, create_openssl_acceptor};
 
+    type TestResult<T = ()> = Result<T, Box<dyn Error>>;
+
     const CERTS: &str = "../../test_data/certificates/client_server";
 
     /// Run one server-side TLS handshake against a client built by `client_setup`
     /// and return whether the *server* accepted the handshake.
-    fn server_accepts(client_setup: impl FnOnce(&mut openssl::ssl::SslConnectorBuilder)) -> bool {
-        let cert = fs::read(format!("{CERTS}/server/kmserver.acme.com.crt")).unwrap();
-        let key = PKey::private_key_from_pem(
-            &fs::read(format!("{CERTS}/server/kmserver.acme.com.key")).unwrap(),
-        )
-        .unwrap()
-        .private_key_to_pem_pkcs8()
-        .unwrap();
-        let ca = fs::read(format!("{CERTS}/ca/ca.crt")).unwrap();
+    fn server_accepts(
+        client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
+    ) -> TestResult<bool> {
+        let cert = fs::read(format!("{CERTS}/server/kmserver.acme.com.crt"))?;
+        let key = PKey::private_key_from_pem(&fs::read(format!(
+            "{CERTS}/server/kmserver.acme.com.key"
+        ))?)?
+        .private_key_to_pem_pkcs8()?;
+        let ca = fs::read(format!("{CERTS}/ca/ca.crt"))?;
         let params = SocketServerParams {
             host: "127.0.0.1".to_owned(),
             port: 0,
@@ -491,41 +490,47 @@ mod tests {
             client_ca_cert_pem: &ca,
             cipher_suites: None,
         };
-        let acceptor = create_openssl_acceptor(&params).unwrap();
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            acceptor.accept(stream).is_ok()
+        let acceptor = create_openssl_acceptor(&params)?;
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let addr = listener.local_addr()?;
+        let server = thread::spawn(move || -> io::Result<bool> {
+            let (stream, _) = listener.accept()?;
+            Ok(acceptor.accept(stream).is_ok())
         });
 
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        let mut builder = SslConnector::builder(SslMethod::tls())?;
         builder.set_verify(SslVerifyMode::NONE);
-        client_setup(&mut builder);
-        let stream = std::net::TcpStream::connect(addr).unwrap();
-        // The client may succeed or fail; only the server verdict matters.
+        client_setup(&mut builder)?;
+        let stream = std::net::TcpStream::connect(addr)?;
+        // The client may succeed or fail (TLS 1.3 client finishes before the server
+        // alert arrives); only the server verdict matters.
         let _client = builder.build().connect("kmserver.acme.com", stream);
-        server.join().unwrap()
+        Ok(server.join().map_err(|_e| "server thread panicked")??)
     }
 
     #[test]
-    fn handshake_fails_without_client_certificate() {
-        assert!(!server_accepts(|_| {}));
+    fn handshake_fails_without_client_certificate() -> TestResult {
+        if server_accepts(|_| Ok(()))? {
+            return Err("server accepted a handshake without a client certificate".into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn handshake_succeeds_with_valid_client_certificate() {
-        assert!(server_accepts(|b| {
-            let cert = X509::from_pem(
-                &fs::read(format!("{CERTS}/user/user.client.acme.com.crt")).unwrap(),
-            )
-            .unwrap();
-            b.set_certificate(&cert).unwrap();
+    fn handshake_succeeds_with_valid_client_certificate() -> TestResult {
+        let accepted = server_accepts(|b| {
+            let cert =
+                X509::from_pem(&fs::read(format!("{CERTS}/user/user.client.acme.com.crt"))?)?;
+            b.set_certificate(&cert)?;
             b.set_private_key_file(
                 format!("{CERTS}/user/user.client.acme.com.key"),
                 SslFiletype::PEM,
-            )
-            .unwrap();
-        }));
+            )?;
+            Ok(())
+        })?;
+        if !accepted {
+            return Err("server rejected a valid client certificate".into());
+        }
+        Ok(())
     }
 }
