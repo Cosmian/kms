@@ -274,7 +274,10 @@ impl Display for ObjectWithMetadata {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use cosmian_kmip::{
         kmip_0::kmip_types::State,
