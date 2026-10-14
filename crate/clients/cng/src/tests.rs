@@ -1,4 +1,3 @@
-#![allow(clippy::expect_used, clippy::unwrap_used)]
 /// Integration tests for the CNG KSP.
 ///
 /// These tests start an in-process KMS server and exercise the KSP through
