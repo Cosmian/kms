@@ -18,7 +18,6 @@
 //! - reconstructed key object intact after peer revocation.
 //! - Operator (non-candidate) cannot peer-revoke a CO.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::Arc;
 

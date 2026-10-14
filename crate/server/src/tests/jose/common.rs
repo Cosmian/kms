@@ -123,7 +123,7 @@ where
     let tampered_b64 = URL_SAFE_NO_PAD.encode(b"tampered data");
     let req = test::TestRequest::post()
         .uri("/v1/crypto/verify")
-        .set_json(&json!({"protected": protected, "data": tampered_b64, "signature": signature}))
+        .set_json(json!({"protected": protected, "data": tampered_b64, "signature": signature}))
         .to_request();
     let resp = test::call_service(app, req).await;
     if resp.status() == StatusCode::OK {

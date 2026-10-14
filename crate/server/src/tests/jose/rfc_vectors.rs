@@ -19,7 +19,7 @@
 //! | RFC 7516 §A.2 — RSAES-PKCS1-v1_5 + A128CBC-HS256 | RSA-PKCS1v1.5 + AES-CBC not implemented |
 //! | RFC 7516 §A.3 — AES Key Wrap + A128CBC-HS256 | AES key-wrap + AES-CBC not implemented |
 //! | RFC 7516 §A.5 — dir + A128CBC-HS256 | AES-CBC not implemented; no normative GCM vector |
-//! | RFC 7518 §B — AES_CBC_HMAC_SHA2 KAT | AES-CBC not implemented |
+//! | RFC 7518 §B — `AES_CBC_HMAC_SHA2` KAT | AES-CBC not implemented |
 //!
 //! ECDH-ES / ECDH-ES+A128KW / ECDH-ES+A256KW (RFC 7518 §4.6) **are** implemented —
 //! see `crate::tests::jose::ecdh` for `/v1/crypto/decrypt` round-trip coverage
@@ -214,7 +214,6 @@ async fn test_rfc7515_a4_es512_known_key_round_trip() -> KResult<()> {
 /// Note: RSA-OAEP is non-deterministic, so `encrypted_key` cannot be reproduced;
 /// AES-GCM is deterministic — the RFC plaintext is the fixed assertion.
 #[tokio::test]
-#[allow(clippy::many_single_char_names)]
 async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None).await;
@@ -223,7 +222,7 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     // Source: https://www.rfc-editor.org/rfc/rfc7516#appendix-A.1
     let decode_b64 = |s: &str| URL_SAFE_NO_PAD.decode(s).expect("RFC base64url is valid");
 
-    let n = BigNum::from_slice(&decode_b64(
+    let modulus = BigNum::from_slice(&decode_b64(
         "oahUIoWw0K0usKNuOR6H4wkf4oBUXHTxRvgb48E-BVvxkeDNjbC4he8rUWcJoZmds2h7M70imEVh\
          RU5djINXtqllXI4DFqcI1DgjT9LewND8MW2Krf3Spsk_ZkoFnilakGygTwpZ3uesH-PFABNIUYpO\
          iN15dsQRkgr0vEhxN92i2asbOenSZeyaxziK72UwxrrKoExv6kc5twXTq4h-QChLOln0_mtUZwfs\
@@ -231,8 +230,8 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
          JW_TqOQtwHYbxevoJArm-L5StowjzGy-_bq6Gw",
     ))
     .expect("RFC n is valid BigNum");
-    let e = BigNum::from_slice(&decode_b64("AQAB")).expect("RFC e is valid BigNum");
-    let d = BigNum::from_slice(&decode_b64(
+    let public_exponent = BigNum::from_slice(&decode_b64("AQAB")).expect("RFC e is valid BigNum");
+    let private_exponent = BigNum::from_slice(&decode_b64(
         "kLdtIj6GbDks_ApCSTYQtelcNttlKiOyPzMrXHeI-yk1F7-kpDxY4-WY5NWV5KntaEeXS1j82E3\
          75xxhWMHXyvjYecPT9fpwR_M9gV8n9Hrh2anTpTD93Dt62ypW3yDsJzBnTnrYu1iwWRgBKrEYY4\
          6qAZIrA2xAwnm2X7uGR1hghkqDp0Vqj3kbSCz1XyfCs6_LehBwtxHIyh8Ripy40p24moOAbgxV\
@@ -240,13 +239,13 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
          yrj8ILL6MG_Uv8YAu7VILSB3lOW085-4qE3DzgrTjgyQ",
     ))
     .expect("RFC d is valid BigNum");
-    let p = BigNum::from_slice(&decode_b64(
+    let prime1 = BigNum::from_slice(&decode_b64(
         "1r52Xk46c-LsfB5P442p7atdPUrxQSy4mti_tZI3Mgf2EuFVbUoDBvaRQ-SWxkbkmoEzL7JXroSB\
          jSrK3YIQgYdMgyAEPTPjXv_hI2_1eTSPVZfzL0lffNn03IXqWF5MDFuoUYE0hzb2vhrlN_rKrbf\
          DIwUbTrjjgieRbwC6Cl0",
     ))
     .expect("RFC p is valid BigNum");
-    let q = BigNum::from_slice(&decode_b64(
+    let prime2 = BigNum::from_slice(&decode_b64(
         "wLb35x7hmQWZsWJmB_vle87ihgZ19S8lBEROLIsZG4ayZVe9Hi9gDVCOBmUDdaDYVTSNx_8Fyw1Y\
          Ya9XGrGnDew00J28cRUoeBB_jKI1oma0Orv1T9aXIWxKwd4gvxFImOWr3QRL9KEBRzk2RatUBnm\
          DZJTIAfwTs0g68UZHvtc",
@@ -271,7 +270,7 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     ))
     .expect("RFC qi is valid BigNum");
 
-    let rsa = Rsa::from_private_components(n, e, d, p, q, dp, dq, qi)
+    let rsa = Rsa::from_private_components(modulus, public_exponent, private_exponent, prime1, prime2, dp, dq, qi)
         .expect("RFC RSA key components are valid");
     let pkey = PKey::from_rsa(rsa).expect("PKey::from_rsa should not fail");
     // private_key_to_der() on PKey<Private> produces PKCS#8 DER

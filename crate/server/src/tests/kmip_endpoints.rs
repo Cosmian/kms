@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{

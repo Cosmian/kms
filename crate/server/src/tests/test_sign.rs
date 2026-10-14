@@ -1,11 +1,8 @@
-#![allow(clippy::unwrap_in_result)]
-
 use std::sync::Arc;
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
     RecommendedCurve, UniqueIdentifier,
 };
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
@@ -167,7 +164,6 @@ async fn test_streaming_signature_verification(
     Ok(())
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_rsa() -> KResult<()> {
     log_init(None);
@@ -244,31 +240,26 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
     .await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_p256() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P256, "p256_rfc6979").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_p384() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P384, "p384").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_eddsa() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::CURVEED25519, "eddsa").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_k256() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::SECP256K1, "k256_rfc6979").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_p521() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P521, "p521").await

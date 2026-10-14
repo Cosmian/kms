@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{

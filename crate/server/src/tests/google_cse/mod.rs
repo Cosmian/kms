@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::print_stdout,
-    clippy::panic_in_result_fn,
-    clippy::unwrap_in_result
-)]
-
 // Base imports used by all tests
 // Imports for Google CSE tests
 use std::{
@@ -263,7 +256,9 @@ async fn test_google_cse_status() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_private_key_sign() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -557,10 +552,12 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
     Ok(())
 }
 
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_cse_private_key_decrypt(
     encrypted_data_encryption_key: &str,
     wrapped_private_key: &str,
 ) -> KResult<String> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -594,8 +591,10 @@ async fn test_cse_private_key_decrypt(
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_encrypt_and_private_key_decrypt() -> KResult<()> {
     log_init(None);
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -626,7 +625,9 @@ async fn test_google_cse_encrypt_and_private_key_decrypt() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
@@ -678,7 +679,9 @@ async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -731,7 +734,9 @@ async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
@@ -812,7 +817,9 @@ async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_custom_jwt() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
@@ -909,7 +916,9 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
@@ -1000,7 +1009,9 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
 
 #[tokio::test]
 #[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
 async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
+    // SAFETY: test-only env setup; each test uses distinct variable values before the app starts.
     unsafe {
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
         std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
