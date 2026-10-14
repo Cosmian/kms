@@ -257,8 +257,11 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
-    #[allow(clippy::unused_async)] // signature must match the non-fips async variant of this function
     #[cfg(not(feature = "non-fips"))]
+    #[expect(
+        clippy::unused_async,
+        reason = "signature must match the non-fips async variant of this function"
+    )]
     pub(crate) async fn create_private_key_and_tags(
         &self,
         create_request: &Create,

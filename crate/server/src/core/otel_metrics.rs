@@ -166,7 +166,6 @@ impl OtelMetrics {
     /// # Panics
     ///
     /// May panic if system time is before `UNIX_EPOCH`
-    #[allow(clippy::cast_precision_loss, clippy::as_conversions)] // metric values are counters/durations well within f64 precision range
     pub fn new(meter_provider: SdkMeterProvider) -> KResult<Self> {
         let meter = MeterProvider::meter(&meter_provider, "cosmian_kms");
 
@@ -432,18 +431,11 @@ impl OtelMetrics {
     /// Cleanup of stale users (inactive > 1 hour) is performed inline but only
     /// touches the shard containing each stale key, so concurrent operations on
     /// other shards proceed unblocked.
-    ///
-    /// # Panics
-    ///
-    /// Panics if system time is before `UNIX_EPOCH` (only possible on systems
-    /// with a misconfigured clock; safe to treat as unrecoverable).
-    #[allow(clippy::expect_used)] // documented panic: only fails on a misconfigured system clock before UNIX_EPOCH
     pub fn update_active_user(&self, user: &str) {
         let now = i64::try_from(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .expect("System time before UNIX_EPOCH")
-                .as_secs(),
+                .map_or(0, |elapsed| elapsed.as_secs()),
         )
         .unwrap_or(i64::MAX);
 
@@ -647,12 +639,6 @@ impl DbMetricsRecorder for OtelMetrics {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::as_conversions,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
-)]
 mod tests {
     use opentelemetry_sdk::metrics::{
         InMemoryMetricExporter, PeriodicReader,

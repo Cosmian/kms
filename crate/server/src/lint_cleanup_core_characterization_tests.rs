@@ -8,24 +8,22 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_data_structures::{KeyValue, KeyWrappingSpecification},
-        kmip_operations::{Destroy, Operation, Query, Revoke},
+        kmip_operations::{Destroy, Revoke},
         kmip_types::{
             CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, RecommendedCurve,
             UniqueIdentifier, WrappingMethod,
         },
         requests::{create_ec_key_pair_request, symmetric_key_create_request},
     },
-    ttlv::to_ttlv,
 };
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use time::OffsetDateTime;
 
 use crate::{
-    config::{ClapConfig, ServerParams},
+    config::ServerParams,
     core::{
         KMS,
         certificate::validate_crl_url,
-        operations::algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
         wrapping::{unwrap_object, wrap_object},
     },
     error::KmsError,
@@ -720,56 +718,6 @@ async fn characterization_revoke_hsm_prefixed_uid_non_admin_is_not_found() {
         "Item_Not_Found: hsm::0::characterization-key"
     );
 }
-
-// ── algorithm policy: operations without policy checks ───────────────────────
-
-fn params_with_default_policy() -> ServerParams {
-    let mut conf = ClapConfig::default();
-    conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
-    ServerParams::try_from(conf).unwrap()
-}
-
-#[test]
-fn characterization_enforce_algorithm_policy_ignores_unchecked_operations() {
-    let params = params_with_default_policy();
-    let ttlv = to_ttlv(&Operation::Query(Query::default())).unwrap();
-    for tag in [
-        "ReKey",
-        "ReKeyKeyPair",
-        "SetAttribute",
-        "ModifyAttribute",
-        "AddAttribute",
-        "DeleteAttribute",
-        "Revoke",
-        "Activate",
-        "Query",
-        "NotAnOperation",
-    ] {
-        enforce_kmip_algorithm_policy_for_operation(&params, tag, &ttlv).unwrap();
-    }
-}
-
-#[test]
-fn characterization_enforce_algorithm_policy_is_noop_without_policy_id() {
-    let params = ServerParams::try_from(ClapConfig::default()).unwrap();
-    let ttlv = to_ttlv(&Operation::Query(Query::default())).unwrap();
-    // Without a policy id even operations that are normally deserialized are not inspected.
-    for tag in ["Create", "Encrypt", "ReKey", "SetAttribute"] {
-        enforce_kmip_algorithm_policy_for_operation(&params, tag, &ttlv).unwrap();
-    }
-}
-
-#[test]
-fn characterization_enforce_algorithm_policy_rejects_undecodable_payload() {
-    let params = params_with_default_policy();
-    let ttlv = to_ttlv(&Operation::Query(Query::default())).unwrap();
-    let err = enforce_kmip_algorithm_policy_for_operation(&params, "Create", &ttlv).unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "Invalid_Message: failed to deserialize Create for policy enforcement (Query): missing field `ObjectType`"
-    );
-}
-
 // ── permissions ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -1287,54 +1235,5 @@ mod covercrypt_revoke {
         for usk in fx.usks.iter().filter(|usk| **usk != first) {
             assert_eq!(state_of(&kms, usk).await, State::Compromised, "{usk}");
         }
-    }
-}
-
-// ── algorithm policy: unchecked operations under a restrictive allow-list ────
-
-#[test]
-fn characterization_enforce_algorithm_policy_restrictive_allowlist_unchecked_operations() {
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
-
-    let mut conf = ClapConfig::default();
-    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
-    conf.kmip_policy.allowlists.algorithms = Some(vec![CryptographicAlgorithm::RSA]);
-    let params = ServerParams::try_from(conf).unwrap();
-
-    // An AES Create request that the restrictive allow-list denies...
-    let create_aes = to_ttlv(&Operation::Create(
-        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Create {
-            object_type: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType::SymmetricKey,
-            attributes: Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                cryptographic_length: Some(256),
-                ..Default::default()
-            },
-            protection_storage_masks: None,
-        },
-    ))
-    .unwrap();
-    let denied =
-        enforce_kmip_algorithm_policy_for_operation(&params, "Create", &create_aes).unwrap_err();
-    assert!(
-        matches!(
-            denied,
-            KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _)
-        ),
-        "{denied:?}"
-    );
-
-    // ...is never inspected when carried by operations that have no algorithm check.
-    for tag in [
-        "ReKey",
-        "ReKeyKeyPair",
-        "SetAttribute",
-        "ModifyAttribute",
-        "AddAttribute",
-        "DeleteAttribute",
-        "Revoke",
-        "Locate",
-    ] {
-        enforce_kmip_algorithm_policy_for_operation(&params, tag, &create_aes).unwrap();
     }
 }

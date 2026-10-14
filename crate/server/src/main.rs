@@ -59,7 +59,10 @@ fn main() {
         // runtime's worker pool, built below, and later the actix-server threads) exists,
         // so nothing can read or write the environment concurrently. Rust's std reads
         // `RUST_MIN_STACK` once, on the first-ever thread spawn, so it must be set here.
-        #[allow(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "std::env::set_var is unsafe in edition 2024; see SAFETY above"
+        )]
         unsafe {
             std::env::set_var("RUST_MIN_STACK", (16 * 1024 * 1024).to_string());
         }
@@ -116,7 +119,10 @@ async fn run() -> KResult<()> {
 
     if clap_config.print_default_config {
         let commented = ClapConfig::default_config_with_comments()?;
-        #[allow(clippy::print_stdout)]
+        #[expect(
+            clippy::print_stdout,
+            reason = "--print-default-config writes the default configuration to stdout"
+        )]
         {
             println!("{commented}");
         }
@@ -255,7 +261,6 @@ async fn run() -> KResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 mod tests {
     use std::path::PathBuf;
 

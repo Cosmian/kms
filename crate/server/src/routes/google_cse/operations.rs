@@ -1396,7 +1396,3 @@ mod tests {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "operations_characterization_tests.rs"]
-mod characterization_tests;

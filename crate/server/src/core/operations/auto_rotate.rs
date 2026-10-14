@@ -337,7 +337,10 @@ fn days_until_next_rotation(
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use std::collections::HashSet;
 
