@@ -1484,3 +1484,7 @@ pub(super) fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
 }
 
 // =============================================================================
+
+#[cfg(test)]
+#[path = "load_characterization_tests.rs"]
+mod characterization_tests;

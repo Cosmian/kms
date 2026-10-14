@@ -405,3 +405,7 @@ impl DecryptAction {
         Ok(cleartext.to_vec())
     }
 }
+
+#[cfg(test)]
+#[path = "decrypt_characterization_tests.rs"]
+mod characterization_tests;

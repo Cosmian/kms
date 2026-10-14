@@ -500,3 +500,7 @@ fn schedule_delete_on_reboot_cng(path: &std::path::Path) {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "cng_characterization_tests.rs"]
+mod characterization_tests;
