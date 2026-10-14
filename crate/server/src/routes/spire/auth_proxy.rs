@@ -154,7 +154,6 @@ fn path_has_dot_segment(path: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::{path_has_dot_segment, reqwest_method};
 

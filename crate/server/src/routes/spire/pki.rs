@@ -135,23 +135,17 @@ pub(crate) struct SignIntermediateResponse {
 /// - `"3600"` — bare number treated as seconds
 ///
 /// Returns `None` when the input is empty or unparsable.
-// option_if_let_else: multi-arm if-let chain covers 3 suffix variants; the
-// suggested map_or form would be less readable here.
-#[allow(clippy::option_if_let_else)]
 fn parse_ttl_days(ttl: &str) -> Option<i32> {
     let ttl = ttl.trim();
     if ttl.is_empty() {
         return None;
     }
-    let (n_str, unit) = if let Some(rest) = ttl.strip_suffix('h') {
-        (rest, 'h')
-    } else if let Some(rest) = ttl.strip_suffix('s') {
-        (rest, 's')
-    } else if let Some(rest) = ttl.strip_suffix('d') {
-        (rest, 'd')
-    } else {
-        (ttl, 's') // bare integer → treat as seconds
-    };
+    let suffix = ttl
+        .chars()
+        .next_back()
+        .filter(|c| matches!(c, 'h' | 's' | 'd'));
+    let n_str = suffix.and_then(|c| ttl.strip_suffix(c)).unwrap_or(ttl);
+    let unit = suffix.unwrap_or('s'); // bare integer → treat as seconds
     let n: u64 = n_str.trim().parse().ok()?;
     let days: u64 = match unit {
         'h' => n.div_ceil(24),
@@ -223,7 +217,6 @@ async fn find_ca_private_key_uid(
 /// Rejects requests with an empty `uri_sans` list (SPIFFE ID is required).
 // large_futures: chains ~5 sequential DB/KMS awaits on an infrequent CA-signing
 // path; boxing would add per-request allocation overhead for negligible benefit.
-#[allow(clippy::large_futures)]
 #[route("/root/sign-intermediate", method = "POST", method = "PUT")]
 pub(crate) async fn sign_intermediate(
     req: HttpRequest,
@@ -332,7 +325,7 @@ pub(crate) async fn sign_intermediate(
     let certificate_pem = cert_to_pem(&signed_cert_x509)?;
 
     // Retrieve the issuing CA certificate (linked to the CA private key's public key)
-    let issuing_ca_pem = get_issuing_ca_pem(&kms, &ca_private_key_uid).await?;
+    let issuing_ca_pem = Box::pin(get_issuing_ca_pem(&kms, &ca_private_key_uid)).await?;
 
     // Detect multi-tier CA: if the issuing CA cert is not self-signed, it chains up
     // to a higher root. The beta only supports single-tier CAs; returning a truncated
@@ -466,7 +459,6 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use serde::Deserialize;
 

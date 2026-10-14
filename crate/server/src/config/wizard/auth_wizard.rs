@@ -3,8 +3,6 @@
 //! Covers: API key, JWT / OIDC, client certificate (mTLS), default username and
 //! UI OIDC settings.
 
-#![allow(unreachable_pub, clippy::print_stdout)]
-
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
 use crate::{
@@ -29,15 +27,22 @@ fn with_audience(provider: &str, audience: &str) -> String {
     format!("{issuer},{jwks_uri},{audience}")
 }
 
-pub struct AuthWizardResult {
-    pub idp_auth: IdpAuthConfig,
+pub(crate) struct AuthWizardResult {
+    pub(crate) idp_auth: IdpAuthConfig,
     /// Auth Verifier server configuration to wire into `ClapConfig.auth_verifier`.
-    pub auth_verifier: AuthVerifierConfig,
-    pub default_username: String,
-    pub force_default_username: bool,
+    pub(crate) auth_verifier: AuthVerifierConfig,
+    pub(crate) default_username: String,
+    pub(crate) force_default_username: bool,
 }
 
-pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthWizardResult> {
+#[expect(
+    clippy::print_stdout,
+    reason = "the configuration wizard prompts the user on stdout"
+)]
+pub(crate) fn configure_auth(
+    http: &mut HttpConfig,
+    ui: &mut UiConfig,
+) -> KResult<AuthWizardResult> {
     let theme = ColorfulTheme::default();
 
     let auth_choices = &[

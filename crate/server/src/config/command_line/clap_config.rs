@@ -111,7 +111,6 @@ impl Default for ClapConfig {
 #[derive(Parser, Serialize, Deserialize)]
 #[clap(version, about, long_about = None)]
 #[serde(default)]
-#[allow(clippy::struct_excessive_bools)] // CLI config structs legitimately have many boolean flags
 pub struct ClapConfig {
     /// Explicit configuration file path provided via -c / --config.
     /// When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable
@@ -496,7 +495,10 @@ impl ClapConfig {
     }
 
     /// Load configuration using a custom iterator of arguments (testable entry point).
-    #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
+    #[expect(
+        clippy::print_stdout,
+        reason = "logging is not initialised yet; configuration output goes to stdout"
+    )]
     pub fn load_from_args<I, T>(args: I) -> KResult<Self>
     where
         I: IntoIterator<Item = T>,
@@ -662,7 +664,10 @@ impl ClapConfig {
 }
 
 // `secret_backends` is intentionally excluded to avoid leaking credentials in logs.
-#[allow(clippy::missing_fields_in_debug)]
+#[expect(
+    clippy::missing_fields_in_debug,
+    reason = "`secret_backends` is intentionally excluded to avoid leaking credentials in logs"
+)]
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
@@ -818,7 +823,6 @@ impl fmt::Debug for ClapConfig {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     //! Configuration precedence tests
     //!
@@ -884,6 +888,10 @@ mod tests {
         p
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe in edition 2024; callers serialise on ENV_MUTEX"
+    )]
     fn with_clean_env<F, R>(f: F) -> R
     where
         F: FnOnce() -> R,
@@ -901,6 +909,7 @@ mod tests {
         let original_default_override = std::env::var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR).ok();
 
         // Clear env
+        // SAFETY: `ENV_MUTEX` is held, so no other test thread reads or writes the environment.
         unsafe {
             std::env::remove_var("COSMIAN_KMS_CONF");
         }
@@ -912,6 +921,7 @@ mod tests {
         // so there is no shared file for concurrent test processes to race
         // on, and no dependency on write access to the real system path.
         let default_override_path = write_temp_path_only();
+        // SAFETY: `ENV_MUTEX` is still held, see above.
         unsafe {
             std::env::set_var(
                 super::TEST_DEFAULT_CONF_PATH_ENV_VAR,
@@ -923,10 +933,12 @@ mod tests {
         let result = f();
 
         // Restore original env state
+        // SAFETY: `ENV_MUTEX` is still held, see above.
         match original_env {
             Some(val) => unsafe { std::env::set_var("COSMIAN_KMS_CONF", val) },
             None => unsafe { std::env::remove_var("COSMIAN_KMS_CONF") },
         }
+        // SAFETY: `ENV_MUTEX` is still held, see above.
         match original_default_override {
             Some(val) => unsafe {
                 std::env::set_var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR, val);
@@ -939,7 +951,12 @@ mod tests {
         // Mutex is automatically released when _guard goes out of scope
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe in edition 2024; callers serialise on ENV_MUTEX"
+    )]
     fn set_var(key: &str, value: &Path) {
+        // SAFETY: callers hold `ENV_MUTEX`, so no other thread reads or writes the environment.
         unsafe {
             std::env::set_var(key, value.display().to_string());
         }
@@ -1126,6 +1143,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe in edition 2024; callers serialise on ENV_MUTEX"
+    )]
     fn complete_precedence_chain() {
         with_clean_env(|| {
             // Test the complete precedence: -c > COSMIAN_KMS_CONF > default > args
@@ -1151,6 +1172,7 @@ mod tests {
             cleanup_temp(&env_file);
 
             // 3. Clear env var and test args win when no config files
+            // SAFETY: called inside `with_clean_env`, which holds `ENV_MUTEX`; no other test thread touches the environment.
             unsafe {
                 std::env::remove_var("COSMIAN_KMS_CONF");
             }
@@ -1163,7 +1185,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();
@@ -1171,7 +1192,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn test_server_idp() {
         let mut conf = ClapConfig::default();
         conf.idp_auth.jwt_auth_provider = Some(vec![

@@ -228,19 +228,19 @@ async fn internal_decrypt(
     })
 }
 
-#[expect(clippy::indexing_slicing)]
 fn big_int_to_u32(bu: &BigInt) -> u32 {
     let (_, bytes) = bu.to_bytes_be();
-    let len = bytes.len();
-    let min = std::cmp::min(4, len);
-    let mut padded = [0_u8; 4];
-    padded[4 - min..].copy_from_slice(&bytes[len - min..]);
-    u32::from_be_bytes(padded)
+    // keep the 4 least significant bytes, big-endian
+    bytes
+        .iter()
+        .rev()
+        .take(4)
+        .rev()
+        .fold(0_u32, |acc, byte| (acc << 8) | u32::from(*byte))
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
     use chrono::{DateTime, Utc};
     use num_bigint_dig::BigInt;
 

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct RequestMetadata {
     /// This is the ARN of the principal that invoked KMS Decrypt (see aws:PrincipalArn).
     /// When the caller is another AWS service, this field will contain either
@@ -73,14 +73,14 @@ impl fmt::Display for RequestMetadata {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[allow(non_camel_case_types)]
+#[expect(non_camel_case_types, reason = "AWS XKS proxy API enum value names")]
 pub(crate) enum EncryptionAlgorithm {
     AES_GCM,
 }
 
 /// Ciphertext Data Integrity Value Algorithm
 #[derive(Debug, Serialize, Deserialize)]
-#[allow(non_camel_case_types)]
+#[expect(non_camel_case_types, reason = "AWS XKS proxy API enum value names")]
 pub(crate) enum CdivAlgorithm {
     SHA_256,
 }

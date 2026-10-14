@@ -1,7 +1,5 @@
 //! HSM configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub)]
-
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 
 use crate::{
@@ -10,7 +8,7 @@ use crate::{
     result::KResult,
 };
 
-pub fn configure_hsm() -> KResult<HsmConfig> {
+pub(crate) fn configure_hsm() -> KResult<HsmConfig> {
     let theme = ColorfulTheme::default();
 
     let enable: bool = Confirm::with_theme(&theme)

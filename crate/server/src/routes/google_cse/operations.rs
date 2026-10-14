@@ -60,7 +60,6 @@ pub(crate) const GOOGLE_CSE_ID: &str = "google_cse";
 
 /// Validates that a KACLS URL is safe to call: must use HTTPS and must not
 /// target private/loopback IP ranges (SSRF mitigation).
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn validate_kacls_url(url_str: &str) -> KResult<()> {
     let parsed = Url::parse(url_str)
         .map_err(|e| KmsError::InvalidRequest(format!("Invalid original_kacls_url: {e}")))?;
@@ -90,8 +89,9 @@ fn validate_kacls_url(url_str: &str) -> KResult<()> {
     // Reject well-known internal hostnames
     let lower = host.to_lowercase();
     if lower == "localhost"
-        || lower.ends_with(".local")
-        || lower.ends_with(".internal")
+        || lower
+            .rsplit_once('.')
+            .is_some_and(|(_, tld)| tld == "local" || tld == "internal")
         || lower == "metadata.google.internal"
     {
         return Err(KmsError::InvalidRequest(

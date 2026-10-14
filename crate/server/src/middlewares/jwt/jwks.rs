@@ -277,7 +277,6 @@ async fn parse_jwks(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},

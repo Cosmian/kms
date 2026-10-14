@@ -6,8 +6,6 @@
 //!
 //! Key sizes: RSA-4096 for the CA, RSA-4096 for leaf certificates (FIPS-safe).
 
-#![allow(unreachable_pub, clippy::print_stdout)]
-
 use std::path::{Path, PathBuf};
 
 use openssl::{
@@ -25,30 +23,30 @@ use openssl::{
 use crate::{error::KmsError, result::KResult};
 
 /// Paths to all generated certificate/key PEM files.
-pub struct CertPaths {
-    pub ca_cert: PathBuf,
-    pub server_cert: PathBuf,
-    pub server_key: PathBuf,
-    pub client_cert: PathBuf,
-    pub client_key: PathBuf,
+pub(crate) struct CertPaths {
+    pub(crate) ca_cert: PathBuf,
+    pub(crate) server_cert: PathBuf,
+    pub(crate) server_key: PathBuf,
+    pub(crate) client_cert: PathBuf,
+    pub(crate) client_key: PathBuf,
 }
 
 /// Options for the self-signed PKI generator.
-pub struct CertGenOptions {
+pub(crate) struct CertGenOptions {
     /// Directory where PEM files will be written.
-    pub output_dir: PathBuf,
+    pub(crate) output_dir: PathBuf,
     /// Common Name for the CA certificate.
-    pub ca_cn: String,
+    pub(crate) ca_cn: String,
     /// Common Name for the server leaf certificate.
-    pub server_cn: String,
+    pub(crate) server_cn: String,
     /// Common Name for the client leaf certificate.
-    pub client_cn: String,
+    pub(crate) client_cn: String,
     /// Validity (days) for the CA certificate.
-    pub ca_validity_days: u32,
+    pub(crate) ca_validity_days: u32,
     /// Validity (days) for the server leaf certificate.
-    pub server_validity_days: u32,
+    pub(crate) server_validity_days: u32,
     /// Validity (days) for the client leaf certificate.
-    pub client_validity_days: u32,
+    pub(crate) client_validity_days: u32,
 }
 
 impl Default for CertGenOptions {
@@ -245,7 +243,11 @@ fn issue_leaf_cert(
 /// Generate a complete self-signed PKI (CA + server cert + client cert) and write PEM files.
 ///
 /// Returns [`CertPaths`] with the paths of the generated files.
-pub fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
+#[expect(
+    clippy::print_stdout,
+    reason = "the configuration wizard prompts the user on stdout"
+)]
+pub(crate) fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
     println!("  Generating CA key (RSA-4096)…");
     let ca_key = gen_rsa_key(4096)?;
     let ca_cert = build_ca_cert(&ca_key, opts)?;
