@@ -1000,3 +1000,6 @@ certificatePolicies=2.5.29.32
         );
     }
 }
+#[cfg(test)]
+#[path = "x509_extensions_characterization_tests.rs"]
+mod characterization_tests;
