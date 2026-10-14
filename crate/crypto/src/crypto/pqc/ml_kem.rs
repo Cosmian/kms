@@ -389,3 +389,6 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+#[path = "ml_kem_characterization_tests.rs"]
+mod characterization_tests;

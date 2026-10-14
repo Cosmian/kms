@@ -789,3 +789,6 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+#[path = "crl_characterization_tests.rs"]
+mod characterization_tests;
