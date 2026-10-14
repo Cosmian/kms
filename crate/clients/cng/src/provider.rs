@@ -1179,7 +1179,10 @@ unsafe extern "system" fn enum_algorithms(
     let count = filtered.len();
     let layout = std::alloc::Layout::array::<NCryptAlgorithmName>(count)
         .unwrap_or(std::alloc::Layout::new::<NCryptAlgorithmName>());
-    #[allow(clippy::cast_ptr_alignment)]
+    #[allow(
+        clippy::cast_ptr_alignment,
+        reason = "allocated with the Layout of NCryptAlgorithmName, so the cast is aligned"
+    )]
     let ptr = unsafe { std::alloc::alloc_zeroed(layout).cast::<NCryptAlgorithmName>() };
     if ptr.is_null() {
         return NTE_FAIL;
