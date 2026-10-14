@@ -13,5 +13,6 @@
 - Findex keywords are written only after the object write is confirmed, and `Upsert`
   now removes stale keywords, so a removed tag no longer selects the object.
 - `Delete` inside a batch is now guarded by the same compare-and-swap as other writes.
+- After a keyword removal the Findex entries are re-inserted from the freshly read object, so interleaved post-commit index updates cannot leave an object unfindable.
 - `find` / `list_uids_for_tags` discard stale Findex hits whose stored tags no longer match.
-- The #940 repro tests are `#[ignore]`d like the other Redis tests (run with `--ignored`).
+- The #940 repro tests run from `test_db_redis_with_findex` (`mise run test:db:redis`, `--ignored`); they use the standard Redis URL (`REDIS_HOST`), databases 1–5.

@@ -39,15 +39,14 @@ use crate::{
 // they must keep panicking on failure, and the module precedes later test helpers.
 #[allow(clippy::panic_in_result_fn, clippy::items_after_test_module)]
 #[cfg(test)]
-mod issue_940_repro {
+pub(crate) mod issue_940_repro {
     use cosmian_kms_interfaces::AtomicOperation;
     use uuid::Uuid;
 
     use super::*;
 
     async fn clients(database: u8) -> DbResult<(RedisWithFindex, RedisWithFindex)> {
-        let port = std::env::var("KMS_REDIS_REPRO_PORT").unwrap_or_else(|_| "16394".to_owned());
-        let url = format!("redis://127.0.0.1:{port}/{database}");
+        let url = format!("{}/{database}", get_redis_url());
         let mut rng = CsRng::from_entropy();
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let first = RedisWithFindex::instantiate(&url, master_key.clone(), false).await?;
@@ -138,9 +137,7 @@ mod issue_940_repro {
         Ok(())
     }
 
-    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
-    #[tokio::test]
-    async fn t1_removed_tag_must_not_select_existing_object() -> DbResult<()> {
+    pub(crate) async fn t1_removed_tag_must_not_select_existing_object() -> DbResult<()> {
         let (writer, reader) = clients(1).await?;
         let uid = Uuid::new_v4().to_string();
         let owner = UserId::from(format!("owner-{uid}"));
@@ -190,9 +187,7 @@ mod issue_940_repro {
         Ok(())
     }
 
-    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
-    #[tokio::test]
-    async fn t2_concurrent_upserts_must_preserve_tags() -> DbResult<()> {
+    pub(crate) async fn t2_concurrent_upserts_must_preserve_tags() -> DbResult<()> {
         let (first, second) = clients(2).await?;
         sequential_controls(&first, &second).await?;
         let started = std::time::Instant::now();
@@ -239,9 +234,7 @@ mod issue_940_repro {
         Ok(())
     }
 
-    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
-    #[tokio::test]
-    async fn t3_failed_competing_batch_must_rollback_upsert() -> DbResult<()> {
+    pub(crate) async fn t3_failed_competing_batch_must_rollback_upsert() -> DbResult<()> {
         let (first, second) = clients(3).await?;
         let shared = Uuid::new_v4().to_string();
         let owner = UserId::from(format!("owner-{shared}"));
@@ -311,9 +304,7 @@ mod issue_940_repro {
 
     /// A batch may delete a uid and re-create it; a Create after a live
     /// operation on the same uid in one batch must still fail atomically.
-    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
-    #[tokio::test]
-    async fn t4_same_uid_delete_then_create_and_create_after_upsert() -> DbResult<()> {
+    pub(crate) async fn t4_same_uid_delete_then_create_and_create_after_upsert() -> DbResult<()> {
         let (store, _) = clients(4).await?;
         let uid = Uuid::new_v4().to_string();
         let owner = UserId::from(format!("owner-{uid}"));
@@ -363,9 +354,7 @@ mod issue_940_repro {
     }
 
     /// A delete based on a stale baseline must not erase a concurrent write.
-    #[ignore = "Requires a running Redis instance (KMS_REDIS_REPRO_PORT, default 16394)"]
-    #[tokio::test]
-    async fn t5_delete_is_guarded_by_baseline() -> DbResult<()> {
+    pub(crate) async fn t5_delete_is_guarded_by_baseline() -> DbResult<()> {
         use crate::stores::redis::objects_db::{AtomicScriptOutcome, ScriptOp};
 
         let (store, _) = clients(5).await?;
@@ -407,6 +396,17 @@ mod issue_940_repro {
         assert!(matches!(outcome, AtomicScriptOutcome::Committed));
         assert!(store.retrieve(&uid).await?.is_none());
         Ok(())
+    }
+
+    /// Run every #940 contract test; called from `test_db_redis_with_findex`.
+    pub(crate) async fn test_issue_940() -> DbResult<()> {
+        t1_removed_tag_must_not_select_existing_object().await?;
+        Box::pin(t2_concurrent_upserts_must_preserve_tags()).await?;
+        Box::pin(t3_failed_competing_batch_must_rollback_upsert()).await?;
+        Box::pin(t4_same_uid_delete_then_create_and_create_after_upsert()).await?;
+        t5_delete_is_guarded_by_baseline().await?;
+        crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_findex_hit_is_filtered_out().await?;
+        crate::stores::redis::redis_with_findex::tests::test_db_redis_interleaved_index_updates_keep_object_findable().await
     }
 }
 

@@ -511,12 +511,20 @@ impl RedisWithFindex {
                 // the Findex index and/or counters behind, so say which uids.
                 let post_commit = async {
                     for (uid, old_keywords, new_keywords) in index_diffs {
-                        match new_keywords {
-                            Some(new_keywords) => {
-                                self.update_findex_keywords(uid, &old_keywords, &new_keywords)
-                                    .await?;
-                            }
-                            None => self.delete_findex_keywords(uid, &old_keywords).await?,
+                        let removes_keywords = if let Some(new_keywords) = new_keywords {
+                            self.update_findex_keywords(uid, &old_keywords, &new_keywords)
+                                .await?;
+                            !old_keywords.is_subset(&new_keywords)
+                        } else {
+                            self.delete_findex_keywords(uid, &old_keywords).await?;
+                            !old_keywords.is_empty()
+                        };
+                        // Post-commit index writers can interleave: a concurrent writer's
+                        // late removal may delete a keyword the final object still has.
+                        // Re-insert from fresh state so every removal is followed by a
+                        // re-insert (extra keywords are filtered on read).
+                        if removes_keywords {
+                            self.reconcile_findex_keywords(uid).await?;
                         }
                     }
                     self.objects_db.adjust_live_count(live_delta).await?;
@@ -595,6 +603,19 @@ impl RedisWithFindex {
             self.findex
                 .delete(keyword.clone(), [indexed_uid.clone()])
                 .await?;
+        }
+        Ok(())
+    }
+
+    /// Re-insert the Findex keywords of the object currently stored under `uid`
+    /// (no-op if it is absent). Repairs keywords wrongly removed by a racing writer.
+    async fn reconcile_findex_keywords(&self, uid: &str) -> DbResult<()> {
+        let Some(current) = self.objects_db.object_get(uid).await? else {
+            return Ok(());
+        };
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
+        for keyword in current.keywords() {
+            self.findex.insert(keyword, [indexed_uid.clone()]).await?;
         }
         Ok(())
     }
@@ -1621,7 +1642,7 @@ impl PermissionsStore for RedisWithFindex {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::collections::HashSet;
 
     use cosmian_findex::IndexADT as _;
@@ -1649,9 +1670,8 @@ mod tests {
     /// A Findex hit whose tag the stored object does not carry (stale index entry,
     /// e.g. from out-of-order post-commit index updates) must not be returned.
     #[allow(clippy::panic_in_result_fn)] // test assertions must panic; `?` keeps setup errors readable
-    #[ignore = "Requires a running Redis instance"]
-    #[tokio::test]
-    async fn stale_findex_hit_is_filtered_out() -> crate::error::DbResult<()> {
+    pub(crate) async fn test_db_redis_stale_findex_hit_is_filtered_out()
+    -> crate::error::DbResult<()> {
         let mut rng = CsRng::from_entropy();
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
@@ -1699,6 +1719,69 @@ mod tests {
             .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
             .await?;
         assert!(found.is_empty(), "find returned stale hit: {found:?}");
+        Ok(())
+    }
+
+    /// Writer B (u -> old) finishes its index update before the slower writer A
+    /// (old -> u): A's late removal of `old` must not leave the final object
+    /// (tagged `old`) unfindable.
+    #[allow(clippy::panic_in_result_fn)] // test assertions must panic; `?` keeps setup errors readable
+    pub(crate) async fn test_db_redis_interleaved_index_updates_keep_object_findable()
+    -> crate::error::DbResult<()> {
+        let mut rng = CsRng::from_entropy();
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let old_tag = format!("old-{uid}");
+        let other_tag = format!("other-{uid}");
+        let object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[9_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
+        // Final committed state: tagged `old` (B's commit); B's index update is done.
+        store
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &HashSet::from([old_tag.clone()]),
+            )
+            .await?;
+        // A's late post-commit step: index diff old -> other, then reconcile.
+        let old_kw = HashSet::from([Keyword::from(old_tag.as_bytes())]);
+        let other_kw = HashSet::from([Keyword::from(other_tag.as_bytes())]);
+        store
+            .update_findex_keywords(&uid, &old_kw, &other_kw)
+            .await?;
+        let before = store
+            .list_uids_for_tags(&HashSet::from([old_tag.clone()]))
+            .await?;
+        assert!(before.is_empty(), "precondition: index must be damaged");
+        store.reconcile_findex_keywords(&uid).await?;
+
+        let by_old = store
+            .list_uids_for_tags(&HashSet::from([old_tag.clone()]))
+            .await?;
+        assert!(by_old.contains(&uid), "object unfindable by its tag");
+        let mut attributes = Attributes::default();
+        attributes.set_tags(VENDOR_ID_COSMIAN, HashSet::from([old_tag]))?;
+        let found = store
+            .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?;
+        assert!(
+            found.iter().any(|(u, ..)| *u == uid),
+            "find lost the object"
+        );
+        let by_other = store
+            .list_uids_for_tags(&HashSet::from([other_tag]))
+            .await?;
+        assert!(by_other.is_empty(), "stale extra hit returned");
         Ok(())
     }
 

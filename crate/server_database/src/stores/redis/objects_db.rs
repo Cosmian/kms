@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{LazyLock, Mutex},
+    sync::LazyLock,
 };
 
 use cosmian_kmip::{
