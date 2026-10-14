@@ -432,54 +432,6 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
-      # TODO: debug — remove before shipping. GH Actions masks any literal
-      # occurrence of a registered secret value anywhere in log output,
-      # including coincidental substring matches inside base64/hex — a short
-      # secret (e.g. a one-digit slot id) corrupts arbitrary unrelated text.
-      # Never print the raw peer IP: only report a yes/no verdict on whether
-      # it falls inside the known VNet subnet (10.42.x.x), which cannot itself
-      # match a secret value.
-      - name: Debug azure-cloud-hsm peer address classification (always)
-        if: always() && matrix.hsm-type == 'azure-cloud-hsm'
-        run: |
-          LOG=/tmp/azcloudhsm_client.log
-          if [ ! -s "$LOG" ]; then
-            echo "(no daemon log found at $LOG)"
-            exit 0
-          fi
-          peers=$(sudo grep -oE 'Cluster Info: server\[[0-9.]+\]' "$LOG" | grep -oE '[0-9.]+' | sort -u)
-          if [ -z "$peers" ]; then
-            echo "no peer addresses found in Cluster Info lines"
-            exit 0
-          fi
-          echo "$peers" | while IFS= read -r ip; do
-            if [[ "$ip" == 10.42.* ]]; then
-              in_vnet=true
-            else
-              in_vnet=false
-            fi
-            if timeout 3 bash -c "echo >/dev/tcp/${ip}/2224" 2>/dev/null; then
-              reachable=true
-            else
-              reachable=false
-            fi
-            matches_known_candidate=false
-            for candidate in 134.149.185.28 20.207.224.74 40.13.96.130; do
-              if [ "$ip" = "$candidate" ]; then
-                matches_known_candidate=true
-              fi
-            done
-            # Only the first two octets are ever printed for a non-VNet peer:
-            # on their own they cannot match any registered secret value, yet
-            # they are enough to identify which address space Azure Cloud
-            # HSM's cluster-info protocol is actually using.
-            first_two_octets="(vnet, not printed)"
-            if [ "$in_vnet" = "false" ]; then
-              first_two_octets=$(echo "$ip" | cut -d. -f1-2)
-            fi
-            echo "peer_in_vnet_subnet=${in_vnet} peer_directly_reachable_on_2224=${reachable} matches_known_old_public_ip=${matches_known_candidate} first_two_octets=${first_two_octets}"
-          done
-
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
       # independently-implemented external PKCS#11 v3 client), not just our own
       # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
