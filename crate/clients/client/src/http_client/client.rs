@@ -790,3 +790,6 @@ mod error_chain_tests {
         assert_eq!(error_chain(&top), "client error: connect: tls failure");
     }
 }
+
+#[path = "client_characterization_tests.rs"]
+mod characterization_tests;
