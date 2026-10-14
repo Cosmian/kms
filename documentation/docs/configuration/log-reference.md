@@ -808,10 +808,11 @@ Crate path: `crate/server_database`
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
 | `trace` | `find: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `trace` | `find_all: {:?}` | `src/stores/sql/mysql.rs` | - | - |
-| `error` | `audit: dedicated advisory-lock session ended unexpectedly: {e}` | `src/stores/audit/pgsql.rs` | `e` | ×2 in this file |
+| `error` | `audit: dedicated advisory-lock session ended unexpectedly: {e}` | `src/stores/audit/pgsql.rs` | `e` | - |
 | `error` | `audit: instance_id={} sealed generation {sealed_generation} (reason={}, first_failure_id={}, evidence={evidence}) — starting generation {new_generation}` | `src/stores/audit/pgsql.rs` | `sealed_generation`, `evidence`, `new_generation` | - |
 | `error` | `audit: advisory lock for instance_id={instance_id} held by another writer — waiting up to {timeout:?} (e.g. a rolling update's outgoing instance)` | `src/stores/audit/pgsql.rs` | `instance_id`, `timeout` | - |
 | `warn` | `RotateNameCache: predicate invalidation failed ({e}); clearing cache` | `src/core/rotate_name_cache.rs` | `e` | - |
+| `warn` | `audit: PostgreSQL server certificate is not verified; use sslmode=verify-full&sslrootcert=<ca.pem> in --audit-postgres-url` | `src/stores/audit/pgsql.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 
