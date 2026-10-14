@@ -740,16 +740,14 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
         .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
 
     // Extract first FIPS_MIN_SALT_SIZE bytes as salt
-    // SHA-256 produces 32 bytes and FIPS_MIN_SALT_SIZE is 16, so this is always safe
-    let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
-    // This indexing is safe because SHA-256 always produces 32 bytes >= FIPS_MIN_SALT_SIZE (16)
-    #[allow(clippy::indexing_slicing)]
-    {
-        salt.copy_from_slice(&hash[..FIPS_MIN_SALT_SIZE]);
-    }
+    let (salt, _) = hash
+        .split_first_chunk::<FIPS_MIN_SALT_SIZE>()
+        .ok_or_else(|| {
+            KmsError::ServerError("SHA-256 digest is shorter than the FIPS salt size".to_owned())
+        })?;
 
     // Derive a 64-byte key from the public URL
-    let derived_key = derive_key_from_password::<64>(&salt, public_url.as_bytes())
+    let derived_key = derive_key_from_password::<64>(salt, public_url.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
 
     // Convert the derived key to an actix-web Key
@@ -1339,17 +1337,12 @@ pub async fn prepare_kms_server(
     let use_vault_token_auth =
         kms_server.params.vault_api_enabled && kms_server.params.vault_auth_verifier_url.is_some();
     let spire_cache = SpireTokenCache::new(kms_server.params.vault_token_cache_ttl_secs);
-    // When vault_api_enabled = false, this URL is never used; the literal is always valid.
-    let spire_auth_verifier_url: Url = kms_server
-        .params
-        .vault_auth_verifier_url
-        .clone()
-        .unwrap_or_else(|| {
-            // SAFETY: this fallback URL is only constructed when use_vault_token_auth = false,
-            // where Condition::new(false, …) never invokes the middleware.
-            #[allow(clippy::unwrap_used)]
-            Url::parse("http://localhost").unwrap()
-        });
+    let spire_auth_verifier_url: Url = match &kms_server.params.vault_auth_verifier_url {
+        Some(url) => url.clone(),
+        // Only constructed when use_vault_token_auth = false, where Condition::new(false, …)
+        // never invokes the middleware.
+        None => Url::parse("http://localhost")?,
+    };
     let spire_default_username: Arc<str> = kms_server.params.default_username.as_str().into();
 
     // Extract http_workers before the closure moves kms_server
@@ -2132,8 +2125,6 @@ where
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
-#[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
     use crate::tests::test_utils::https_clap_config;
@@ -2323,7 +2314,7 @@ mod tests {
             .users
             .push(AWS_XKS_SERVICE_USER.to_owned());
 
-        assert!(validate_aws_xks_reserved_identity_config(&params).is_ok());
+        validate_aws_xks_reserved_identity_config(&params).unwrap();
     }
 
     #[tokio::test]

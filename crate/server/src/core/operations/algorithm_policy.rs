@@ -132,14 +132,9 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_request(
         Operation::Export(req) => validate_export(req, &wl),
 
         // Rekey operations operate on existing objects; enforcement is done on retrieved keys and
-        // on the Create/Import paths they invoke.
-        Operation::ReKey(_) | Operation::ReKeyKeyPair(_) => Ok(()),
-        // These operations do not carry enough standardized algorithm choice material for this
-        // policy layer (they operate on an `Attribute`, not a full `Attributes` bag).
-        Operation::SetAttribute(_)
-        | Operation::ModifyAttribute(_)
-        | Operation::AddAttribute(_)
-        | Operation::DeleteAttribute(_) => Ok(()),
+        // on the Create/Import paths they invoke. Set/Modify/Add/DeleteAttribute do not carry
+        // enough standardized algorithm choice material for this policy layer (they operate on an
+        // `Attribute`, not a full `Attributes` bag).
         _ => Ok(()),
     }
     .map_err(|e| {
@@ -1239,7 +1234,6 @@ fn validate_key_size_bits(
             format!("CryptographicLength must be a non-negative integer: {e}"),
         )
     })?;
-    #[allow(clippy::collapsible_if)]
     if alg == CryptographicAlgorithm::AES {
         if let Some(allowed) = wl.aes_key_sizes.as_ref() {
             if !allowed.contains(&bits_u32) {
