@@ -121,6 +121,8 @@ pub struct KMS {
     /// two CRLs are generated within the same second.
     pub(crate) crl_counter: Arc<AtomicU64>,
 
+    /// Optional OPA client for RBAC evaluation (Phases 7-8).
+    pub(crate) opa_client: Option<Arc<super::opa::OpaClient>>,
     /// Unified cryptographic RNG for all KMS operations.
     pub(crate) rng: Arc<KmsRng>,
 }
@@ -307,6 +309,13 @@ impl KMS {
             Arc::new(AtomicU64::new(ts_seed.max(db_max + 1)))
         };
 
+        // Instantiate OPA client if configured
+        let opa_client = server_params
+            .opa_params
+            .as_ref()
+            .map(|opa| super::opa::OpaClient::new(&opa.url))
+            .transpose()?
+            .map(Arc::new);
         // Instantiate the unified KMS RNG.
         let rng = Arc::new(KmsRng::new());
 
@@ -318,6 +327,7 @@ impl KMS {
             hsm: hsm_instances.into_iter().next(),
             metrics,
             crl_counter,
+            opa_client,
             audit_store: Self::create_audit_store(&server_params).await?,
             rng,
         })

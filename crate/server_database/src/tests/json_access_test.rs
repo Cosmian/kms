@@ -47,6 +47,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await
     .context("create")?;

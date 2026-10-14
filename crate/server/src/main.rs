@@ -263,8 +263,8 @@ mod tests {
         config::{
             AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig,
             IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
-            OidcConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig, UiConfig,
-            WorkspaceConfig,
+            OidcConfig, OpaConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig,
+            UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -402,6 +402,7 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             roles: RolesConfig::default(),
+            opa: OpaConfig::default(),
             print_default_config: false,
             ..ClapConfig::default()
         };
@@ -505,6 +506,9 @@ aws_xks_region = "us-east-1"
 aws_xks_service = "kms-xks-proxy"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+[opa]
+opa_mode = "disabled"
 
 [kmip.allowlists]
 

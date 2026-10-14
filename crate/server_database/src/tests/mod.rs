@@ -11,6 +11,9 @@ use tempfile::TempDir;
 
 use self::{
     database_tests::{crud, tx_and_list, upsert},
+    domain_migration_test::{
+        mysql_domain_column_upgrade, pgsql_domain_column_upgrade, sqlite_domain_column_upgrade,
+    },
     find_attributes_test::find_attributes,
     json_access_test::json_access,
     owner_test::owner,
@@ -38,6 +41,7 @@ use crate::{
 };
 
 mod database_tests;
+mod domain_migration_test;
 mod find_attributes_test;
 mod json_access_test;
 mod list_uids_for_tags_test;
@@ -59,19 +63,24 @@ async fn get_sqlite(db_file: &Path) -> DbResult<SqlitePool> {
 
 // To run local tests with a Postgres in Docker, run
 // docker run --name postgres -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432  -d postgres
+fn pgsql_url() -> &'static str {
+    option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
+}
+
 async fn get_pgsql() -> DbResult<PgPool> {
-    let postgres_url =
-        option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
-    let pg = PgPool::instantiate(postgres_url, true, None).await?;
+    let pg = PgPool::instantiate(pgsql_url(), true, None).await?;
     Ok(pg)
 }
 
 // To run local tests with a MariaDB in Docker, run
 // docker run --name mariadb --env MARIADB_DATABASE=kms  --env MARIADB_USER=kms --env MARIADB_PASSWORD=kms --env MARIADB_ROOT_PASSWORD=cosmian -p 3306:3306 -d mariadb
 // docker run --name mysql --env MYSQL_DATABASE=kms  --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
+fn mysql_url() -> &'static str {
+    option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms")
+}
+
 async fn get_mysql() -> DbResult<MySqlPool> {
-    let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
-    let my_sql = MySqlPool::instantiate(mysql_url, true, None).await?;
+    let my_sql = MySqlPool::instantiate(mysql_url(), true, None).await?;
     Ok(my_sql)
 }
 
@@ -154,6 +163,15 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     find_with_options_test(&get_sqlite(&db_file).await?).await?;
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
     Ok(())
+}
+
+/// A `SQLite` database created before the RBAC `domain` attribute has no
+/// `objects.domain` column: opening it must add the column and keep the data.
+#[tokio::test]
+async fn test_sqlite_domain_column_migration() -> DbResult<()> {
+    log_init(Some("info"));
+    let dir = TempDir::new()?;
+    sqlite_domain_column_upgrade(&dir.path().join("test_domain_migration.db")).await
 }
 
 /// Faithful migration test: build a **legacy** `SQLite` database whose `objects`
@@ -263,6 +281,9 @@ async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
 pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("trace"));
+    // Run first and inside this test: it drops a column of the shared `objects` table,
+    // so it must not run concurrently with the other tests using the same database.
+    pgsql_domain_column_upgrade(pgsql_url()).await?;
     Box::pin(json_access(&get_pgsql().await?)).await?;
     find_attributes(&get_pgsql().await?).await?;
     owner(&get_pgsql().await?).await?;
@@ -434,6 +455,9 @@ pub(crate) async fn test_db_postgresql_failover() -> DbResult<()> {
 #[tokio::test]
 pub(crate) async fn test_db_mysql() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
+    // Run first and inside this test: it drops a column of the shared `objects` table,
+    // so it must not run concurrently with the other tests using the same database.
+    mysql_domain_column_upgrade(mysql_url()).await?;
     Box::pin(json_access(&get_mysql().await?)).await?;
     find_attributes(&get_mysql().await?).await?;
     owner(&get_mysql().await?).await?;

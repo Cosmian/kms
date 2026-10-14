@@ -89,9 +89,17 @@ where
                 match reject_reserved_aws_xks_identity(&username) {
                     Ok(()) => {
                         debug!("Session: authenticated user '{user_id}'");
+                        let roles = session
+                            .get::<Vec<String>>("roles")
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        let domain = session.get::<String>("domain").ok().flatten();
                         req.extensions_mut().insert(AuthenticatedUser {
                             username,
                             auth_method: AuthMethod::Session,
+                            domain,
+                            roles,
                         });
                     }
                     Err(error) => {

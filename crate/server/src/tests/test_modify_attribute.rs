@@ -66,6 +66,7 @@ async fn create_key_with_state(kms: &Arc<KMS>, state: State) -> KResult<String> 
             &object,
             object.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     // Also persist the requested state in the dedicated state column.

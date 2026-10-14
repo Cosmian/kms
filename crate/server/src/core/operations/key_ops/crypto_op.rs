@@ -983,6 +983,7 @@ mod tests {
             "owner".to_owned(),
             State::PreActive,
             attrs,
+            String::new(),
         );
 
         assert_eq!(owm.effective_state(), State::Active);
@@ -1003,6 +1004,7 @@ mod tests {
             "owner".to_owned(),
             State::PreActive,
             attrs,
+            String::new(),
         );
 
         assert_eq!(owm.effective_state(), State::PreActive);
@@ -1022,6 +1024,7 @@ mod tests {
             "owner".to_owned(),
             State::PreActive,
             attrs,
+            String::new(),
         );
 
         assert_eq!(owm.effective_state(), State::PreActive);
@@ -1067,6 +1070,7 @@ mod tests {
             "owner".to_owned(),
             State::Active,
             attrs,
+            String::new(),
         );
 
         assert_eq!(owm.effective_state(), State::Active);
@@ -1086,6 +1090,7 @@ mod tests {
             "owner".to_owned(),
             State::Active,
             attrs,
+            String::new(),
         );
 
         assert_eq!(owm.effective_state(), State::Deactivated);
@@ -1106,6 +1111,7 @@ mod tests {
             "owner".to_owned(),
             State::Active,
             attrs,
+            String::new(),
         );
 
         assert_eq!(owm.effective_state(), State::Active);

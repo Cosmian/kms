@@ -45,6 +45,7 @@ jobs:
           - secret_cosmian_kms
           - spire
           - kmip-go
+          - opa_rbac
           - cef
           - monitoring
           - ocsp
@@ -94,6 +95,8 @@ jobs:
           # they run in the `test-nix-upstream` job, which is skipped on forks.
           # spire relies on the Vault API which is non-fips only
           - type: spire
+            features: fips
+          - type: opa_rbac
             features: fips
           - type: cef
             features: fips

@@ -30,10 +30,10 @@ bypass, no Auditor or Administrator role of any kind.
 Three problems drove this decision:
 
 1. **Standards compliance gap.** ISO/IEC 19790:2012 §7.4 (incorporated verbatim by
-   FIPS 140-3) mandates a Crypto Officer role in a cryptographic module; a User role
-   (here called Operator) is optional but recommended to separate key-management from
-   key-use. The `privileged_users` list is an un-named capability bundle with no
-   normative basis in the FIPS module boundary, creating ambiguity in compliance audits.
+   FIPS 140-3) mandates exactly two roles in a cryptographic module: **Crypto Officer**
+   and **User** (here called Operator). The `privileged_users` list is an un-named
+   capability bundle with no normative basis in the FIPS module boundary, creating
+   ambiguity in compliance audits.
 
 2. **Permission granularity.** `privileged_users` conflated two distinct concerns in a
    single undifferentiated list: key-lifecycle capability (Create, Import) and
@@ -42,10 +42,9 @@ Three problems drove this decision:
    operations, and conferred no ownership-bypass for cross-object administration.
 
 3. **No split-key ceremony path.** There was no mechanism to enforce dual control /
-   split knowledge for key-lifecycle operations — a practice NIST SP 800-57 Part 2
-   Rev 1 §3.2.2.7 recommends documenting for organizations that require multi-party
-   control. Any user listed in `privileged_users` gained full capability immediately,
-   with no option for a m-of-n quorum activation ceremony at the module boundary.
+   split knowledge (NIST SP 800-57 Part 2 Rev 1 §4.6) for key-lifecycle operations.
+   Any user listed in `privileged_users` gained full capability immediately, with no
+   option for a m-of-n quorum activation ceremony at the module boundary.
 
 ## Decision
 
@@ -55,10 +54,10 @@ in any role default to `Operator` (fail-secure per NIST SP 800-57 Part 2 Rev 1 �
 
 ### Role matrix
 
-| Role            | Allowed operations                                                                                                                                                                       | Ownership bypass | Key material access |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------- |
-| `Operator`      | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, Locate, GetAttributes, Query                                                                                                         | ✗                | ✗                   |
-| `CryptoOfficer` | Create, CreateKeyPair, Import, Certify, Rekey, RekeyKeyPair, Activate, Revoke, Destroy, Get, Export, SetAttribute, ModifyAttribute, AddAttribute, DeleteAttribute, Locate, GetAttributes | ✓                | ✓                   |
+| Role | Allowed operations | Ownership bypass | Key material access |
+|---|---|---|---|
+| `Operator` | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, Locate, GetAttributes, Query | ✗ | ✗ |
+| `CryptoOfficer` | Create, CreateKeyPair, Import, Certify, Rekey, RekeyKeyPair, Activate, Revoke, Destroy, Get, Export, SetAttribute, ModifyAttribute, AddAttribute, DeleteAttribute, Locate, GetAttributes | ✓ | ✓ |
 
 > **Note — ACL management (`GrantAccess`/`RevokeAccess`/`ListAccesses`)**: these are
 > custom server routes, not KMIP operations, and are **owner-scoped**. A CO may
@@ -70,10 +69,8 @@ in any role default to `Operator` (fail-secure per NIST SP 800-57 Part 2 Rev 1 �
 
 `CryptoOfficerConfig.require_ceremony = true` defers activation of the ownership bypass
 until a KMIP `JoinSplitKey` operation completes with all n shares tagged
-`x-cosmian-crypto-officer-ceremony`. This enforces dual control / split knowledge at
-the module boundary — a Cosmian-designed mechanism, not a NIST-mandated protocol
-(SP 800-57 Part 2 Rev 1 documents split knowledge as an organizational practice to
-record, not an implementation to prescribe).
+`x-cosmian-crypto-officer-ceremony`. This implements NIST SP 800-57 Part 2
+Rev 1 §4.6 (dual control / split knowledge) at the module boundary.
 
 **`JoinSplitKey` IS the activation**: when all shares carry
 `x-cosmian-crypto-officer-ceremony`, the server writes the `crypto_officer_activations`
@@ -112,9 +109,8 @@ reference policy fully implements those roles with documented normative referenc
 
 ### Positive
 
-- **POS-001**: Alignment with the ISO/IEC 19790:2012 §7.4 / FIPS 140-3 role model —
-  the mandatory Crypto Officer role plus the optional User role (implemented as
-  Operator) — simplifies compliance audit evidence.
+- **POS-001**: Exact alignment with ISO/IEC 19790:2012 §7.4 / FIPS 140-3 two-role
+  module model — simplifies compliance audit evidence.
 - **POS-002**: Configuration is normatively grounded: the new `[roles]` section maps
   directly to the two FIPS module roles. The former `privileged_users` flat list is
   replaced by `crypto_officer_users` with explicit, documented permission semantics.
@@ -155,9 +151,8 @@ reference policy fully implements those roles with documented normative referenc
   ceremony mechanism.
 - **ALT-004 Rejection Reason**: Loses the explicit operation-level separation between
   key-management (CryptoOfficer) and key-use (Operator), and loses the split-knowledge
-  activation path for environments that require dual control on key lifecycle
-  operations (cf. NIST SP 800-57 Part 2 Rev 1 §3.2.2.7 split-knowledge documentation
-  guidance).
+  activation path required by NIST SP 800-57 Part 2 Rev 1 §4.6 for environments that
+  mandate dual control on key lifecycle operations.
 
 ### Delegate all role management to OPA
 
@@ -216,13 +211,13 @@ A second ADR (`documentation/docs/adr/2026-07-24-multi-domain-split-key-ceremony
 in review as of 2026-07-24) extends this decision into a full multi-domain
 architecture. Key changes that directly affect the artefacts introduced here:
 
-| ADP          | Status          | Impact on this ADR                                                                                                                                                                                                                                                    |
-| ------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ADP-16**   | Planned         | `[roles]` TOML section removed; CO candidates assigned per-domain in a DB table. Only `KMS_CEREMONY_SECRET` env var survives. IMP-003/IMP-004 migration instructions become a transitional step only.                                                                 |
-| **ADP-20**   | **Implemented** | Reconstructed ceremony secret XOR-joined in RAM; reconstructed key stored as KMS object. Secret never stored in cleartext.                                                                                                                                            |
-| **ADP-25**   | Planned         | Server generates the 256-bit ceremony secret internally (random); the operator-supplied `ceremony_secret` TOML field is removed.                                                                                                                                      |
-| **ADP-26**   | **Scaffolded**  | `ceremony_key_id` config field: references a KMS symmetric key as the ceremony sealing key instead of a static hex secret. Enables key rotation and HSM backing. Accepted by the config parser but not yet functional; `ceremony_secret` is required in the meantime. |
-| **ADP-3/15** | Planned         | CO candidates assigned per-domain; ceremony activates all CO candidates for that domain simultaneously (vs current per-user activation).                                                                                                                              |
+| ADP | Status | Impact on this ADR |
+|-----|--------|-------------------|
+| **ADP-16** | Planned | `[roles]` TOML section removed; CO candidates assigned per-domain in a DB table. Only `KMS_CEREMONY_SECRET` env var survives. IMP-003/IMP-004 migration instructions become a transitional step only. |
+| **ADP-20** | **Implemented** | Reconstructed ceremony secret XOR-joined in RAM; reconstructed key stored as KMS object. Secret never stored in cleartext. |
+| **ADP-25** | Planned | Server generates the 256-bit ceremony secret internally (random); the operator-supplied `ceremony_secret` TOML field is removed. |
+| **ADP-26** | **Scaffolded** | `ceremony_key_id` config field: references a KMS symmetric key as the ceremony sealing key instead of a static hex secret. Enables key rotation and HSM backing. Accepted by the config parser but not yet functional; `ceremony_secret` is required in the meantime. |
+| **ADP-3/15** | Planned | CO candidates assigned per-domain; ceremony activates all CO candidates for that domain simultaneously (vs current per-user activation). |
 
 Until that ADR is merged, the `[roles]` TOML section and the `--crypto-officer-users`
 CLI flag described in IMP-002/IMP-003 remain the authoritative configuration surface.
@@ -231,13 +226,12 @@ CLI flag described in IMP-002/IMP-003 remain the authoritative configuration sur
 
 - **REF-001**: ISO/IEC 19790:2012 §7.4 — Crypto module role definitions (incorporated
   by FIPS 140-3)
-- **REF-002**: NIST SP 800-57 Part 2 Rev 1 §3.2.2.7 — Split knowledge / dual control
-  documentation guidance (voluntary for non-federal organizations); §4.8 — Access
-  control and need-to-know
+- **REF-002**: NIST SP 800-57 Part 2 Rev 1 §4.6 — Dual control / split knowledge;
+  §4.8 — Access control and need-to-know
 - **REF-003**: PKCS#11 v3.0 — `CKU_SO` (Security Officer) and `CKU_USER`
 - **REF-004**: ANSI/INCITS 359-2004 §4.2 — Hierarchical and Constrained RBAC models
 - **REF-005**: `crate/access/src/access.rs` — `Role` enum and `RoleConfig` struct
 - **REF-006**: `crate/server/src/config/command_line/roles_config.rs` — CLI flags
 - **REF-007**: `test_data/opa/kms.rego` — Reference OPA policy with full 5-role model
   (`SuperAdmin`, `DomainAdmin`, `CryptoOfficer`, `Auditor`, `User`) for advanced deployments
-- **REF-008**: `documentation/docs/configuration/authorization/key_ceremony.md` — ceremony walkthrough
+- **REF-008**: `documentation/docs/configuration/key_ceremony.md` — ceremony walkthrough

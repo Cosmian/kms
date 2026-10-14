@@ -305,6 +305,8 @@ where
             req.extensions_mut().insert(AuthenticatedUser {
                 username,
                 auth_method: AuthMethod::SpireToken,
+                domain: None,
+                roles: vec![],
             });
             req.extensions_mut().insert(user);
             next.call(req)

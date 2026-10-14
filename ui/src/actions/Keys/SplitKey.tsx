@@ -56,7 +56,7 @@ const SplitKeyForm: React.FC = () => {
             } catch (splitErr) {
                 // Compensating delete: destroy the orphaned AES key before re-throwing
                 try {
-                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, true);
+                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, false);
                     await sendKmipRequest(destroyReq, serverUrl);
                 } catch {
                     /* best-effort; ignore cleanup errors */

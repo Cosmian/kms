@@ -51,6 +51,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
+            "",
         )
         .await?;
     assert_eq!(&uid, &uid_);

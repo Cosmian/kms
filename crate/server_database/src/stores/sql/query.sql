@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS objects (
         attributes jsonb NOT NULL,
         state VARCHAR(32),
         owner VARCHAR(255),
-        wrapping_key_id VARCHAR(128)
+        wrapping_key_id VARCHAR(128),
+        domain VARCHAR(255) NOT NULL DEFAULT ''
 );
 -- name: add-column-attributes
 ALTER TABLE objects ADD COLUMN attributes json;
@@ -34,6 +35,10 @@ SELECT attributes from objects;
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);
+-- name: add-column-domain
+ALTER TABLE objects ADD COLUMN domain VARCHAR(255) NOT NULL DEFAULT '';
+-- name: has-column-domain
+SELECT domain from objects;
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (
@@ -60,10 +65,10 @@ DELETE FROM read_access;
 DELETE FROM tags;
 
 -- name: insert-objects
-INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id, domain) VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.domain
         FROM objects
         WHERE objects.id=$1;
 

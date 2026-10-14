@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Run OPA RBAC end-to-end tests (requires Docker for OPA)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+print_header "Running OPA RBAC end-to-end tests (${VARIANT_NAME})"
+
+REPO_ROOT="$(get_repo_root)"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_opa_rbac.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "OPA RBAC tests completed"

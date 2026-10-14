@@ -53,7 +53,7 @@ Options:
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, kryoptic, other]
+          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, kryoptic, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
@@ -561,10 +561,10 @@ Options:
           [env: KMS_ANSI_COLORS=]
 
       --crypto-officer-users <CRYPTO_OFFICER_USERS>
-          Users with the Crypto Officer role.
+          Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
 
           May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-          and access raw key material.
+          and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
           When active, gains ownership bypass on all Managed Objects.
           When set, only listed users (plus those explicitly granted the `Create` right) can
           create and import objects.
@@ -574,7 +574,8 @@ Options:
 
           When `true`, users listed in `crypto_officer_users` are candidates only —
           the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-          `x-cosmian-crypto-officer-ceremony` completes.
+          `x-cosmian-crypto-officer-ceremony` completes
+          (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
 
       --ceremony-secret <CEREMONY_SECRET>
           Hex-encoded 32-byte secret for ceremony record encryption.
@@ -589,15 +590,13 @@ Options:
           [env: KMS_CEREMONY_SECRET=]
 
       --ceremony-key-id <CEREMONY_KEY_ID>
-          UID of a KMS symmetric key to use as the ceremony record sealing key.
+          UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
 
-          When set, key material is fetched from the KMS object store after database
-          initialization and used in place of `ceremony_secret`. This enables:
+          When set, key material is fetched from the KMS object store via a direct DB read
+          (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
             - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
             - HSM-backed sealing when the referenced key is HSM-resident.
-            - Audit trail: each retrieval of the ceremony key is logged.
-
-          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+            - Audit trail: each `Get` of the ceremony key is logged.
 
           **Bootstrap constraint**: the ceremony sealing key must be created before
           enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -610,6 +609,11 @@ Options:
           # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
           # 4. Enable require_ceremony = true and restart
           ```
+
+          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+
+          **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
+          functional. Set `ceremony_secret` in the meantime.
 
           [env: KMS_CEREMONY_KEY_ID=]
 
@@ -657,6 +661,17 @@ Options:
 
       --aws-xks-sigv4-secret-access-key <AWS_XKS_SIGV4_SECRET_ACCESS_KEY>
           [env: KMS_AWS_XKS_SIGV4_SECRET_ACCESS_KEY=]
+
+      --opa-url <OPA_URL>
+          OPA sidecar base URL. Setting this enables OPA authorization. Example: `http://localhost:8181`
+
+          [env: KMS_OPA_URL=]
+
+      --opa-mode <OPA_MODE>
+          OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial, error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it after OPA allows. Ignored when `--opa-url` is not set
+
+          [env: KMS_OPA_MODE=]
+          [default: disabled]
 
       --kmip-policy-id <POLICY_ID>
           KMIP algorithm policy selector.
@@ -855,13 +870,41 @@ Options:
       --audit-file-max-size-bytes <AUDIT_FILE_MAX_SIZE_BYTES>
           Stops all further writes once the audit file reaches this many bytes.
 
-          The event that pushes the file to or past this size is still persisted; every event
-          after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
-          and the KMS is restarted.
+          The event that would reach this size is replaced by a final
+          `audit:size-cap-reached` event. Later events are dropped according to
+          `--audit-failure-mode` until the log is remediated and the KMS is restarted.
 
           Omitted (the default) means unlimited. Must be > 0 when set.
 
           [env: KMS_AUDIT_FILE_MAX_SIZE_BYTES=]
+
+      --audit-postgres-url <AUDIT_POSTGRES_URL>
+          `PostgreSQL` connection URL for the audit database.
+
+          When set, audit events are written to this `PostgreSQL` database instead of the
+          JSONL file — backend selection is config-time only, based solely on whether this
+          is set; there is no runtime fallback between the two: a connectivity failure at
+          startup still aborts the server. If `--audit-file-path` is also set, it is only
+          used to log a warning that it's ignored (or, on connection failure, that it is
+          NOT used as a fallback). This database MUST be a different database than the
+          main object-storage database (`--database-url`) when that database is also
+          `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+          would let the KMS's own object-store role bypass the audit database's
+          append-only grants.
+
+          [env: KMS_AUDIT_POSTGRES_URL=]
+
+      --audit-instance-id <AUDIT_INSTANCE_ID>
+          Identifies this KMS instance's audit hash chain when using the `PostgreSQL`
+          backend.
+
+          Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
+          database — a second instance reusing an `instance_id` is rejected at startup by an
+          advisory-lock check, before any event is written. Required (no default) when
+          `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+          `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
+
+          [env: KMS_AUDIT_INSTANCE_ID=]
 
       --audit-channel-capacity <AUDIT_CHANNEL_CAPACITY>
           Capacity of the bounded in-memory channel between request threads and the

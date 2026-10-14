@@ -25,7 +25,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_private_key_to_openssl,
     },
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, error, trace, warn};
 use openssl::x509::{X509, X509Crl};
 use time::OffsetDateTime;
 
@@ -129,6 +129,11 @@ pub(crate) async fn get_cached_crl(
 /// went stale or expired. The CA owner is the principal that can sign it; CRL
 /// content is fully determined by server state, so no caller-controlled input is
 /// signed.
+///
+/// This deliberately bypasses the Crypto Officer gate of [`generate_crl`]: it is a
+/// server-initiated refresh, not a caller-driven request, and requiring the CA owner to
+/// be an active Crypto Officer would silently stop CRL refresh whenever CO users are
+/// configured.
 pub(crate) async fn regenerate_crl_as_issuer_owner(
     kms: &KMS,
     issuer_certificate_id: &str,
@@ -143,13 +148,7 @@ pub(crate) async fn regenerate_crl_as_issuer_owner(
                 "CRL regeneration: issuer certificate '{issuer_certificate_id}' not found"
             ))
         })?;
-    Box::pin(generate_crl(
-        kms,
-        issuer_certificate_id,
-        None,
-        &issuer_owner,
-    ))
-    .await
+    Box::pin(sign_crl(kms, issuer_certificate_id, None, &issuer_owner)).await
 }
 
 /// Generate a CRL for the given issuer certificate.
@@ -167,14 +166,48 @@ pub(crate) async fn regenerate_crl_as_issuer_owner(
 ///
 /// CRL content is **public information** by definition (RFC 5280 §3): any relying
 /// party must be able to verify whether a certificate has been revoked.  There is no
-/// private data in a CRL.  Accordingly, no special role (Crypto Officer or otherwise)
-/// is required to generate one — any authenticated user who can read the CA
-/// certificate may request its CRL.
+/// private data in a CRL.  Accordingly, when no Crypto Officer is configured any
+/// authenticated user who can read the CA certificate may request its CRL. When
+/// `crypto_officer.users` is non-empty the caller must additionally be an active Crypto
+/// Officer: that role is the documented gate for the `find_all` bypass described below.
 ///
 /// `find_all` is used internally to collect revoked certificates across all owners.
 /// This is correct and intentional: a CA's CRL must list *every* revoked certificate
 /// it issued, regardless of who owns the DB record.
 pub(crate) async fn generate_crl(
+    kms: &KMS,
+    issuer_certificate_id: &str,
+    validity_days: Option<u32>,
+    user: &UserId,
+) -> KResult<X509Crl> {
+    // Guard: when CO users are configured, only an active CO may call this.
+    // CRL generation uses find_all (no user filter) — the CO role is the
+    // documented gating condition for that bypass (same as Locate with CO).
+    if !kms.params.crypto_officer.users.is_empty() && !kms.is_crypto_officer(user).await? {
+        return Err(KmsError::Unauthorized(format!(
+            "Generating a CRL requires the Crypto Officer role. \
+             User '{user}' is not an active Crypto Officer."
+        )));
+    }
+    if !kms.params.crypto_officer.users.is_empty() {
+        // Audit log — CO bypass is a high-value security event.
+        error!(
+            target: "audit",
+            user = %user,
+            issuer_id = issuer_certificate_id,
+            "CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)",
+        );
+    }
+
+    Box::pin(sign_crl(kms, issuer_certificate_id, validity_days, user)).await
+}
+
+/// Build and sign the CRL of `issuer_certificate_id`, without any Crypto Officer check.
+///
+/// Shared by the caller-facing [`generate_crl`], which enforces the CO guard first, and
+/// by [`regenerate_crl_as_issuer_owner`] (post-Revoke and the refresh cron). Access to
+/// the issuer certificate and key is still checked as `user`.
+async fn sign_crl(
     kms: &KMS,
     issuer_certificate_id: &str,
     validity_days: Option<u32>,

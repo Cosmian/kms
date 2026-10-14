@@ -134,6 +134,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [authMethod, setAuthMethod] = useState<AuthMethod>(undefined);
     const [configuredMethods, setConfiguredMethods] = useState<AuthMethod[]>([]);
+    const [authVerifierRealms, setAuthVerifierRealms] = useState<string[]>([]);
     const [loginError, setLoginError] = useState<string | undefined>(undefined);
 
     useEffect(() => {
@@ -175,15 +176,17 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
             // Form requests must use the server's vendor ID, not the WASM default.
             // Keep the app in its initial loading state until both bootstrap queries settle.
             const vendorIdSync = syncVendorId();
-            const methods = await fetchAuthMethods(location);
+            const authConfig = await fetchAuthMethods(location);
             await vendorIdSync;
             // `undefined` means the server was unreachable or the response could not
             // be parsed: leave `authMethod` undefined so the error UI is shown.
-            if (methods === undefined) {
+            if (authConfig === undefined) {
                 setIsAuthLoading(false);
                 return;
             }
+            const { methods, authVerifierRealms: realms } = authConfig;
             setConfiguredMethods(methods);
+            setAuthVerifierRealms(realms);
 
             // No authentication configured: render the app directly (MainLayout shows
             // the "authentication disabled" banner).
@@ -294,6 +297,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <LoginPage
                                 auth={configuredMethods[0] === "JWT"}
                                 authMethods={configuredMethods}
+                                authVerifierRealms={authVerifierRealms}
                                 error={loginError}
                                 onCertAuthenticated={() => {
                                     setAuthMethod("CERT");
@@ -539,8 +543,8 @@ function App() {
             Layout: {
                 headerBg: "#ffffff",
                 footerPadding: "5px 50px",
-                /* Sider collapse trigger: transparent (matches sidebar bg) + accessible dark icon (≥4.5:1) */
-                triggerBg: "#fafafa",
+                /* Sider collapse trigger: light gray bg + accessible dark icon (≥4.5:1) */
+                triggerBg: "#e8eaed",
                 triggerColor: "#595959",
             },
             Card: {

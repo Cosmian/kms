@@ -29,6 +29,7 @@ use super::audit::{inject_audit_request, inject_response_uid};
 use crate::{
     core::{
         KMS,
+        opa::OPA_USER_CONTEXT,
         operations::{dispatch, message},
     },
     error::KmsError,
@@ -158,12 +159,15 @@ pub(crate) async fn kmip_2_1_json(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
+    let opa_ctx = kms.extract_opa_context(&req_http);
     let auth_method = kms.get_auth_method(&req_http);
     debug!(target: "kmip", user = user.as_str(), ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
+    let ttlv = OPA_USER_CONTEXT
+        .scope(opa_ctx, Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)))
+        .await?;
 
     inject_response_uid(&req_http, &ttlv, &op_name);
 
@@ -265,7 +269,9 @@ pub(crate) async fn kmip_json(
 
 /// Handle KMIP requests with JSON content type
 async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>) -> KResult<TTLV> {
+    // Recover the user and OPA context from the request
     let user = kms.get_user(&req_http);
+    let opa_ctx = kms.extract_opa_context(&req_http);
 
     // Deserialize the body directly to TTLV (avoiding intermediate Vec + Value allocations)
     let body_str =
@@ -285,8 +291,11 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
-        let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
-            .instrument(span)
+        let response_ttlv = OPA_USER_CONTEXT
+            .scope(
+                opa_ctx,
+                Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor)).instrument(span),
+            )
             .await?;
 
         inject_response_uid(&req_http, &response_ttlv, &op_name);
@@ -305,7 +314,9 @@ pub(crate) async fn kmip_binary(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
+    // Recover the user and OPA context from the request
     let user = kms.get_user(&req_http);
+    let opa_ctx = kms.extract_opa_context(&req_http);
 
     // Best-effort: peek at the request TTLV to record the operation name, and
     // remember the flavor so the response can be re-parsed for `inject_response_uid`
@@ -323,7 +334,10 @@ pub(crate) async fn kmip_binary(
         }
     }
 
-    let response_bytes = handle_ttlv_bytes(&user, body.as_ref(), &kms).await;
+    // Handle the TTLV bytes request, scoped to the per-request OPA context
+    let response_bytes = OPA_USER_CONTEXT
+        .scope(opa_ctx, handle_ttlv_bytes(&user, body.as_ref(), &kms))
+        .await;
 
     if let Some(op_name) = op_name {
         if let Ok(response_ttlv) = TTLV::from_bytes(&response_bytes, flavor) {

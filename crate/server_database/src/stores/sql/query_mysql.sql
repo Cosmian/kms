@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS objects
     attributes      json NOT NULL,
     state           VARCHAR(32),
     owner           VARCHAR(255),
-    wrapping_key_id VARCHAR(128)
+    wrapping_key_id VARCHAR(128),
+    domain     VARCHAR(255) NOT NULL DEFAULT ''
 );
 
 -- name: add-column-attributes
@@ -50,6 +51,13 @@ SHOW COLUMNS FROM crypto_officer_activations LIKE 'activated_by';
 
 -- name: add-column-co-activated-by
 ALTER TABLE crypto_officer_activations ADD COLUMN activated_by VARCHAR(255);
+
+-- name: add-column-domain
+ALTER TABLE objects
+    ADD COLUMN domain VARCHAR(255) NOT NULL DEFAULT '';
+
+-- name: has-column-domain
+SHOW COLUMNS FROM objects LIKE 'domain';
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
@@ -82,11 +90,11 @@ FROM tags;
 
 
 -- name: insert-objects
-INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id, domain)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.domain
 FROM objects
 WHERE objects.id = ?;
 

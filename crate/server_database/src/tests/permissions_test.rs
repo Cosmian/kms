@@ -255,6 +255,7 @@ async fn permissions_granted_includes_wildcard<DB: ObjectsStore + PermissionsSto
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -317,6 +318,7 @@ async fn permissions_find_includes_wildcard<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag.clone()]),
+        "",
     )
     .await?;
 

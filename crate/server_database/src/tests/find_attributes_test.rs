@@ -61,6 +61,7 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     assert_eq!(&uid, &uid_);

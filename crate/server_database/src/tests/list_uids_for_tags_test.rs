@@ -44,6 +44,7 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone()]),
+        "",
     )
     .await?;
 
@@ -67,6 +68,7 @@ pub(super) async fn list_uids_for_tags_test<DB: ObjectsStore + PermissionsStore>
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::from([tag1.clone(), tag2.clone()]),
+        "",
     )
     .await?;
 

@@ -308,8 +308,6 @@ pub(crate) async fn create_split_key(
 
         // Build attributes for the share object — include crypto metadata so
         // GetAttributes and the WebUI Locate table can display algorithm / length / format.
-        // `sensitive = true` ensures Get/Export of a share require explicit key-wrapping
-        // (same protection as any other raw key material — CWE-312).
         let share_attrs = Attributes {
             state: Some(State::Active),
             object_type: Some(ObjectType::SplitKey),
@@ -328,7 +326,6 @@ pub(crate) async fn create_split_key(
                 .ok()
                 .and_then(|kb| kb.cryptographic_length),
             key_format_type: Some(KeyFormatType::Opaque),
-            sensitive: Some(true),
             ..Attributes::default()
         };
         let mut share_attrs = share_attrs;
@@ -380,6 +377,7 @@ pub(crate) async fn create_split_key(
                 &split_key_obj,
                 &share_attrs,
                 &tags,
+                "",
             )
             .await
         {

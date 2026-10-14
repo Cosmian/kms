@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AuditConfig, AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig,
-    IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig,
-    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, OpaConfig,
+    RolesConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
     ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
@@ -93,6 +93,7 @@ impl Default for ClapConfig {
             roles: RolesConfig::default(),
             privileged_users: None,
             aws_xks_config: AwsXksConfig::default(),
+            opa: OpaConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
@@ -256,6 +257,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub aws_xks_config: AwsXksConfig,
+
+    #[clap(flatten)]
+    pub opa: OpaConfig,
 
     /// KMIP algorithm policy.
     ///
@@ -806,6 +810,7 @@ impl fmt::Debug for ClapConfig {
             &self.metrics_count_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = x.field("opa", &self.opa);
         let x = if self.auth_verifier.is_enabled() {
             x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
         } else {

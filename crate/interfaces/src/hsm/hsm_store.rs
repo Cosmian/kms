@@ -161,6 +161,7 @@ impl ObjectsStore for HsmStore {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        _domain: &str,
     ) -> InterfaceResult<String> {
         if !self.is_admin(owner) {
             return Err(InterfaceError::Unauthorized(
@@ -266,6 +267,7 @@ impl ObjectsStore for HsmStore {
                         self.owner_name().to_owned(),
                         State::Active,
                         attrs,
+                        String::new(),
                     )))
                 } else {
                     Err(e)
@@ -1598,6 +1600,7 @@ fn to_object_with_metadata(
                 user.to_owned(),
                 State::Active,
                 attributes,
+                String::new(),
             ))
         }
         KeyMaterial::RsaPrivateKey(km) => {
@@ -1666,6 +1669,7 @@ fn to_object_with_metadata(
                 user.to_owned(),
                 State::Active,
                 attributes,
+                String::new(),
             ))
         }
         KeyMaterial::RsaPublicKey(km) => {
@@ -1720,6 +1724,7 @@ fn to_object_with_metadata(
                 user.to_owned(),
                 State::Active,
                 attributes,
+                String::new(),
             ))
         }
         KeyMaterial::EcPrivateKey(km) => {
@@ -1771,6 +1776,7 @@ fn to_object_with_metadata(
                 user.to_owned(),
                 State::Active,
                 attributes,
+                String::new(),
             ))
         }
         KeyMaterial::EcPublicKey(km) => {
@@ -1822,6 +1828,7 @@ fn to_object_with_metadata(
                 user.to_owned(),
                 State::Active,
                 attributes,
+                String::new(),
             ))
         }
     }

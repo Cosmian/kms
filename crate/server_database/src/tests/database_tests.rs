@@ -248,6 +248,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         &symmetric_key_3,
         symmetric_key_3.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -312,6 +313,7 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -388,6 +390,7 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     assert_eq!(&uid, &uid_);
@@ -481,6 +484,7 @@ pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: O
         &object,
         &attributes,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -564,6 +568,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         &make_key(&mut rng)?,
         &attrs_due,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -583,6 +588,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         &make_key(&mut rng)?,
         &attrs_not_due,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -601,6 +607,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         &make_key(&mut rng)?,
         &attrs_no_auto,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -682,6 +689,7 @@ pub(super) async fn count_non_destroyed_keys_test<DB: ObjectsStore>(db: &DB) -> 
             &key,
             &key_attributes,
             &HashSet::new(),
+            "",
         )
         .await?;
         if final_state != State::Active {
@@ -705,6 +713,7 @@ pub(super) async fn count_non_destroyed_keys_test<DB: ObjectsStore>(db: &DB) -> 
             ..Default::default()
         },
         &HashSet::new(),
+        "",
     )
     .await?;
     uids.push(uid_opaque);
@@ -785,8 +794,15 @@ pub(super) async fn find_with_options_test<DB: ObjectsStore + PermissionsStore>(
         .map_err(|e| DbError::ServerError(e.to_string()))?;
         let uid = Uuid::new_v4().to_string();
         let tags: HashSet<String> = tags.into_iter().cloned().collect();
-        db.create(Some(uid.clone()), &owner, &key, key.attributes()?, &tags)
-            .await?;
+        db.create(
+            Some(uid.clone()),
+            &owner,
+            &key,
+            key.attributes()?,
+            &tags,
+            "",
+        )
+        .await?;
         if destroyed {
             db.update_state(&uid, State::Destroyed).await?;
         }
@@ -912,6 +928,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
         &wrapped_obj,
         &attributes,
         &HashSet::new(),
+        "",
     )
     .await?;
 
@@ -935,6 +952,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
         &plain_obj,
         &attributes,
         &HashSet::new(),
+        "",
     )
     .await?;
 

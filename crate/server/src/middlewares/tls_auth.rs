@@ -110,6 +110,8 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                 Ok(AuthenticatedUser {
                     username,
                     auth_method: AuthMethod::Mtls,
+                    roles: Vec::new(),
+                    domain: None,
                 })
             }
             Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
