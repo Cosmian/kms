@@ -363,7 +363,6 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use cosmian_kms_interfaces::EcCurve;
     use pkcs11_sys::{CKK_EC, CKM_EC_KEY_PAIR_GEN};
 
@@ -401,7 +400,6 @@ mod tests {
 /// PKCS#11 parameter-encoding logic (`CKA_EC_PARAMS`, `CKA_KEY_TYPE`, mechanism selection).
 #[cfg(all(test, feature = "non-fips"))]
 mod non_fips_tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use cosmian_kms_interfaces::EcCurve;
     use pkcs11_sys::{
         CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN,

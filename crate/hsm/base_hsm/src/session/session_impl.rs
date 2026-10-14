@@ -639,7 +639,6 @@ impl Session {
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
-    #[allow(clippy::needless_pass_by_value)]
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
@@ -2047,7 +2046,10 @@ impl Session {
         data: &[u8],
     ) -> HResult<Vec<u8>> {
         let mut data = data.to_vec();
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `mechanism` is a valid, live `&mut CK_MECHANISM` for the duration
         // of this call; `self.handle` and `key_handle` are opaque PKCS#11 handles
         // passed through unchanged.
@@ -2363,7 +2365,10 @@ impl Session {
         let mut data = data.to_vec();
         let mut signature = signature.to_vec();
 
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `mechanism` is a valid, live `&mut CK_MECHANISM` for the duration
         // of this call; `self.handle` and `key_handle` are opaque PKCS#11 handles
         // passed through unchanged.
@@ -2391,7 +2396,10 @@ impl Session {
             };
         }
 
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `data` and `signature` are live owned buffers whose lengths are passed
         // alongside their pointers; `self.handle` is an opaque PKCS#11 handle passed
         // through unchanged.
@@ -2554,7 +2562,10 @@ impl Session {
         ];
 
         let mut derived_key_handle = CK_OBJECT_HANDLE::default();
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `mechanism` (and the `hkdf_params`, `salt_bytes`, `info_bytes` it points
         // to) and `template` (and the values it points to) outlive this call;
         // `derived_key_handle` is a valid out-pointer; `self.handle` and `base_key_handle`
@@ -3203,7 +3214,10 @@ impl Session {
         template: &mut [CK_ATTRIBUTE],
     ) -> HResult<pkcs11_sys::CK_RV> {
         debug!("Retrieving HSM key attributes for key handle: {key_handle}");
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `template` points to caller-owned `CK_ATTRIBUTE`s whose `pValue` buffers
         // match their `ulValueLen` (or are null for length queries) and outlive this call;
         // `self.handle` and `key_handle` are opaque PKCS#11 handles passed through unchanged.
@@ -3388,7 +3402,10 @@ impl Session {
             },
         ];
 
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `template` points to two live `CK_ATTRIBUTE`s whose `pValue` buffers
         // (`start_ck`/`end_ck`) live on this stack frame until the call returns;
         // `self.handle` and `key_handle` are opaque PKCS#11 handles passed through unchanged.
@@ -3470,7 +3487,10 @@ impl Session {
             pValue: label_bytes.as_ptr().cast_mut().cast(),
             ulValueLen: CK_ULONG::try_from(label_bytes.len())?,
         }];
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: `template` points to one live `CK_ATTRIBUTE` whose `pValue` buffer
         // (`label_bytes`) lives until the call returns; `self.handle` and `key_handle` are
         // opaque PKCS#11 handles passed through unchanged.
