@@ -25,7 +25,6 @@ const AUDIT_FILE_QUERIES: &str = include_str!("audit.sql");
 static AUDIT_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     // PANIC: unreachable by construction — the SQL file is embedded at compile time and its
     // parsing is covered by the tests below.
-    #[expect(clippy::expect_used)]
     Loader::get_queries_from(AUDIT_FILE_QUERIES).expect("Can't parse the audit SQL file")
 });
 

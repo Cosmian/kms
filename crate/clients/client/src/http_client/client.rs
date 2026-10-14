@@ -767,5 +767,6 @@ mod error_chain_tests {
     }
 }
 
+#[cfg(test)]
 #[path = "client_characterization_tests.rs"]
 mod characterization_tests;

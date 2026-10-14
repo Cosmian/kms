@@ -28,8 +28,6 @@
 //! # Redis-findex (non-FIPS only)
 //! docker compose up -d redis && mise run test:db:redis --variant non-fips
 //! ```
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use cosmian_kms_client::{
     KmsClientError,
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode, State},
