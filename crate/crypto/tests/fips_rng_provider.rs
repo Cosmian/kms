@@ -3,13 +3,9 @@
 //! produce key material). This is a regression test for an `openssl.cnf` that also activated the
 //! default provider, which silently moved `RAND_bytes` out of the FIPS module.
 #![cfg(not(feature = "non-fips"))]
-#![allow(
+#![expect(
     unsafe_code,
-    missing_docs,
-    clippy::expect_used,
-    clippy::as_conversions,
-    clippy::as_underscore,
-    clippy::fn_to_numeric_cast_any
+    reason = "FFI introspection of OpenSSL's DRBG hierarchy; env::set_var is unsafe in edition 2024"
 )]
 
 use std::ffi::{CStr, c_char, c_uint, c_void};
@@ -18,6 +14,7 @@ use cosmian_kms_crypto::crypto::KmsRng;
 use foreign_types::ForeignTypeRef;
 use openssl::{
     ec::{EcGroup, EcKey},
+    error::ErrorStack,
     nid::Nid,
     pkey::{PKey, PKeyRef, Private},
     rsa::Rsa,
@@ -36,14 +33,12 @@ unsafe extern "C" {
 
 /// Assert the primary, public and private DRBGs are served by the FIPS provider at >= 256 bits.
 fn assert_drbgs_are_fips(when: &str) {
-    for (name, get) in [
-        (
-            "primary",
-            RAND_get0_primary as unsafe extern "C" fn(*mut c_void) -> *mut c_void,
-        ),
+    let getters: [(&str, unsafe extern "C" fn(*mut c_void) -> *mut c_void); 3] = [
+        ("primary", RAND_get0_primary),
         ("public", RAND_get0_public),
         ("private", RAND_get0_private),
-    ] {
+    ];
+    for (name, get) in getters {
         // SAFETY: the DRBG contexts are owned by OpenSSL and outlive this test; every pointer is
         // NULL-checked before use, and provider names are NUL-terminated static strings.
         let (provider, strength) = unsafe {
@@ -87,38 +82,22 @@ fn keygen_provider(pkey: &PKeyRef<Private>) -> Option<String> {
 /// its own default DRBG. Generate one key of each family and check that doing so neither fails nor
 /// moves the hierarchy out of the FIPS provider; provider-backed keys must also come from the FIPS
 /// provider's key management.
-fn generate_implicit_openssl_keys() {
+fn generate_implicit_openssl_keys() -> Result<Vec<(&'static str, PKey<Private>)>, ErrorStack> {
     let mut keys: Vec<(&str, PKey<Private>)> = vec![
-        (
-            "RSA-2048",
-            PKey::from_rsa(Rsa::generate(2048).expect("RSA keygen")).expect("RSA pkey"),
-        ),
-        (
-            "RSA-3072",
-            PKey::from_rsa(Rsa::generate(3072).expect("RSA keygen")).expect("RSA pkey"),
-        ),
-        ("X25519", PKey::generate_x25519().expect("X25519 keygen")),
-        ("Ed25519", PKey::generate_ed25519().expect("Ed25519 keygen")),
+        ("RSA-2048", PKey::from_rsa(Rsa::generate(2048)?)?),
+        ("RSA-3072", PKey::from_rsa(Rsa::generate(3072)?)?),
+        ("X25519", PKey::generate_x25519()?),
+        ("Ed25519", PKey::generate_ed25519()?),
     ];
     for (name, nid) in [
         ("P-256", Nid::X9_62_PRIME256V1),
         ("P-384", Nid::SECP384R1),
         ("P-521", Nid::SECP521R1),
     ] {
-        let group = EcGroup::from_curve_name(nid).expect("EC group");
-        keys.push((
-            name,
-            PKey::from_ec_key(EcKey::generate(&group).expect("EC keygen")).expect("EC pkey"),
-        ));
+        let group = EcGroup::from_curve_name(nid)?;
+        keys.push((name, PKey::from_ec_key(EcKey::generate(&group)?)?));
     }
-    for (name, pkey) in &keys {
-        if let Some(provider) = keygen_provider(pkey) {
-            assert_eq!(
-                provider, "fips",
-                "{name} key generation is not served by the FIPS provider"
-            );
-        }
-    }
+    Ok(keys)
 }
 
 #[test]
@@ -140,6 +119,14 @@ fn kms_rng_is_served_by_the_fips_provider_drbg() {
     rng.fill_public_bytes(&mut [0_u8; 32]).expect("public DRBG");
 
     assert_drbgs_are_fips("after KmsRng use");
-    generate_implicit_openssl_keys();
+    let keys = generate_implicit_openssl_keys().expect("implicit OpenSSL key generation");
+    for (name, pkey) in &keys {
+        if let Some(provider) = keygen_provider(pkey) {
+            assert_eq!(
+                provider, "fips",
+                "{name} key generation is not served by the FIPS provider"
+            );
+        }
+    }
     assert_drbgs_are_fips("after RSA/EC/Curve25519 key generation");
 }

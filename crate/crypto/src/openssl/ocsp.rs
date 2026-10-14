@@ -165,7 +165,7 @@ pub struct ParsedOcspQuery {
 
 struct BasicRespGuard(*mut openssl_sys::OCSP_BASICRESP);
 impl Drop for BasicRespGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { openssl_sys::OCSP_BASICRESP_free(self.0) }
@@ -174,7 +174,7 @@ impl Drop for BasicRespGuard {
 
 struct OcspResponseGuard(*mut openssl_sys::OCSP_RESPONSE);
 impl Drop for OcspResponseGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { openssl_sys::OCSP_RESPONSE_free(self.0) }
@@ -183,7 +183,7 @@ impl Drop for OcspResponseGuard {
 
 struct OcspRequestGuard(*mut openssl_sys::OCSP_REQUEST);
 impl Drop for OcspRequestGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { openssl_sys::OCSP_REQUEST_free(self.0) }
@@ -192,7 +192,7 @@ impl Drop for OcspRequestGuard {
 
 struct GeneralizedTimeGuard(*mut openssl_sys::ASN1_GENERALIZEDTIME);
 impl Drop for GeneralizedTimeGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { ASN1_GENERALIZEDTIME_free(self.0) }
@@ -201,7 +201,7 @@ impl Drop for GeneralizedTimeGuard {
 
 struct CidGuard(*mut openssl_sys::OCSP_CERTID);
 impl Drop for CidGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { openssl_sys::OCSP_CERTID_free(self.0) }
@@ -218,7 +218,7 @@ impl Drop for CidGuard {
 ///
 /// # Errors
 /// Returns [`CryptoError`] if the DER is malformed or contains no certificate IDs.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, CryptoError> {
     let req_len = c_long::try_from(request_der.len())
         .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
@@ -292,7 +292,7 @@ pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, Cr
 /// build does not support) yields `false`: otherwise one matching `CertId` would let
 /// the responder sign statuses for other issuers' `CertId`s, looked up by serial
 /// under this CA. Returns `false` for an empty query list.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn verify_issuer_hashes_match_ca(
     queries: &[ParsedOcspQuery],
     ca_cert: &X509Ref,
@@ -419,7 +419,7 @@ pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Resul
 /// - RFC 6960 §4.4.1 + RFC 9654 §2.1 — Nonce extension
 /// - RFC 6960 §4.4.4 — Archive-cutoff extension
 /// - RFC 6960 §4.2.2.2 — Authorized responder
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn build_ocsp_response(
     request_der: &[u8],
     _issuer_cert: &X509Ref,
@@ -625,7 +625,7 @@ pub fn build_ocsp_response(
 // ──────────────────────────────────────────────────────────────
 
 /// Add a single certificate status to `brsp`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn add_single_response(
     brsp: *mut openssl_sys::OCSP_BASICRESP,
     cid: *mut openssl_sys::OCSP_CERTID,
@@ -690,7 +690,7 @@ fn add_single_response(
 /// Extract the nonce extension's raw octets from a parsed `OCSP_REQUEST`, if present
 /// and within the RFC 9654 §2.1 16–128 octet length bound (shorter nonces are treated
 /// as absent per §3's "SHOULD be silently ignored").
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>> {
     let nonce_nid = Nid::ID_PKIX_OCSP_NONCE.as_raw();
 
@@ -754,7 +754,7 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
 ///
 /// # Errors
 /// Returns [`CryptoError`] if `request_der` is not a well-formed OCSP request.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn request_has_nonce(request_der: &[u8]) -> Result<bool, CryptoError> {
     let req_len = c_long::try_from(request_der.len())
         .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
@@ -778,7 +778,7 @@ pub fn request_has_nonce(request_der: &[u8]) -> Result<bool, CryptoError> {
 /// - Responders MUST accept nonces of length 16–128 octets.
 /// - Nonces shorter than 16 octets SHOULD be silently ignored (not rejected).
 /// - Responders MUST echo the nonce verbatim when present and valid.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn handle_nonce(
     req: *mut openssl_sys::OCSP_REQUEST,
     brsp: *mut openssl_sys::OCSP_BASICRESP,
@@ -817,7 +817,7 @@ fn handle_nonce(
 /// Add the `id-pkix-ocsp-archive-cutoff` extension to the `BasicResponse` (RFC 6960 §4.4.4).
 ///
 /// The extension value is a `GeneralizedTime` equal to `now - archive_cutoff_secs`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn add_archive_cutoff(
     brsp: *mut openssl_sys::OCSP_BASICRESP,
     now_epoch: c_long,
@@ -855,7 +855,7 @@ fn add_archive_cutoff(
 }
 
 /// Extract a [`ParsedOcspQuery`] from an `OCSP_CERTID*`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn extract_query_from_cert_id(
     cid: *mut openssl_sys::OCSP_CERTID,
 ) -> Result<ParsedOcspQuery, CryptoError> {
@@ -908,7 +908,7 @@ fn extract_query_from_cert_id(
 }
 
 /// Extract the serial number from an `OCSP_CERTID` as an uppercase hex string.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn extract_serial_hex(cid: *mut openssl_sys::OCSP_CERTID) -> Result<String, CryptoError> {
     let mut serial_ptr: *mut openssl_sys::ASN1_INTEGER = ptr::null_mut();
 
@@ -959,7 +959,7 @@ fn extract_serial_hex(cid: *mut openssl_sys::OCSP_CERTID) -> Result<String, Cryp
 /// Copy bytes from an `ASN1_STRING*` into a `Vec<u8>`.
 ///
 /// Returns an empty vec if the pointer is null.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn asn1_string_bytes(s: *const openssl_sys::ASN1_STRING) -> Vec<u8> {
     if s.is_null() {
         return Vec::new();
@@ -1031,7 +1031,6 @@ const fn reason_to_crl_code(reason: Option<CrlReasonCode>) -> std::ffi::c_int {
 // ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, unsafe_code)]
 mod tests {
     use openssl::{
         asn1::Asn1Integer,
@@ -1088,6 +1087,7 @@ mod tests {
     }
 
     /// Build a minimal OCSP request for a given serial number using the openssl crate's high-level API.
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn build_test_request(ca_cert: &X509, _serial_hex: &str, with_nonce: bool) -> Vec<u8> {
         let md = MessageDigest::sha256();
         // Build a dummy subject cert with the target serial so we can use OcspCertId::from_cert.
@@ -1222,6 +1222,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn test_nonce_echoed() {
         let (ca, ca_key) = create_test_ca();
         let req_der = build_test_request(&ca, "01", true);

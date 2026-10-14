@@ -66,7 +66,6 @@ pub fn ml_dsa_verify(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 

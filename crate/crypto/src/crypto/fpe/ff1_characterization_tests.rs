@@ -10,11 +10,11 @@ fn hex_to_key(hex_str: &str) -> [u8; KEY_LEN] {
 }
 
 fn call_aes256_ecb_block(key: &[u8; KEY_LEN], block: &[u8; BLOCK_LEN]) -> [u8; BLOCK_LEN] {
-    aes256_ecb_block(key, block)
+    aes256_ecb_block(key, block).unwrap()
 }
 
 fn call_generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
-    generate_s(key, r, d)
+    generate_s(key, r, d).unwrap()
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn characterization_prf_update_chunk_splits() {
     let full_data = vec![0x42_u8; 80];
 
     let mut prf_full = Prf::new(&key);
-    prf_full.update(&full_data);
+    prf_full.update(&full_data).unwrap();
     let out_full = *prf_full.output();
 
     let mut prf_chunks = Prf::new(&key);
@@ -124,7 +124,7 @@ fn characterization_prf_update_chunk_splits() {
     let mut offset = 0;
     for &size in &chunk_sizes {
         let chunk = full_data.get(offset..offset + size).unwrap();
-        prf_chunks.update(chunk);
+        prf_chunks.update(chunk).unwrap();
         offset += size;
     }
     let out_chunks = *prf_chunks.output();
