@@ -8,6 +8,10 @@ applyTo: 'Cargo.lock, ui/pnpm-lock.yaml'
 
 When a lock file changes, the Nix vendor hashes must be updated to match.
 
+For a lockfile-only change, verify the corresponding Nix hashes and avoid unrelated Rust source-audit skills.
+This does not replace a requested dependency or supply-chain security review. If manifests or cryptographic behavior also changed,
+apply their normal review gates.
+
 ## Checklist
 
 - [ ] Update `nix/expected-hashes/` files with the correct `sha256-...` hash from CI output

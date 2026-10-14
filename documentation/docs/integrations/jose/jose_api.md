@@ -665,6 +665,9 @@ enable key discovery (for example the JWKS endpoint returns only keys tagged
 
 Add one or more user tags to a key.  Existing tags are preserved.
 
+Requires the `add_attribute` access right on the key (or ownership / `get`), the
+same as the KMIP `AddAttribute` operation.
+
 #### Request body
 
 ```json
@@ -708,6 +711,9 @@ curl -s -X POST "https://kms.example.com/v1/crypto/keys/${KID}/tags" \
 
 Remove one or more user tags from a key.  Tags not present on the key are
 silently ignored.
+
+Requires the `delete_attribute` access right on the key (or ownership / `get`), the
+same as the KMIP `DeleteAttribute` operation.
 
 #### Request body
 

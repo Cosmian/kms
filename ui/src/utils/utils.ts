@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | undefined;
+export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | "SPIFFE" | undefined;
 
 /** Root of the Cosmian docs site (not the KMS-specific book — see `docsUrl`). */
 export const DOCS_BASE_URL = "https://docs.cosmian.com";
@@ -7,8 +7,7 @@ export const DOCS_BASE_URL = "https://docs.cosmian.com";
  * Build a link into the KMS mdBook docs site from a `documentation/docs/` file path
  * (no `.md`, no leading/trailing slash — e.g. `configuration/authorization/key_ceremony`).
  */
-export const docsUrl = (path: string, hash?: string): string =>
-    `${DOCS_BASE_URL}/key_management_system/${path}/${hash ? `#${hash}` : ""}`;
+export const docsUrl = (path: string, hash?: string): string => `${DOCS_BASE_URL}/key_management_system/${path}/${hash ? `#${hash}` : ""}`;
 
 /** Strip HTML tags from error responses (server may return HTML error pages). */
 const stripHtml = (text: string): string =>
@@ -328,7 +327,17 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType =
+    | "rsa"
+    | "ec"
+    | "symmetric"
+    | "fpe"
+    | "covercrypt"
+    | "pqc"
+    | "pgp"
+    | "certificate"
+    | "secret-data"
+    | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
@@ -338,6 +347,7 @@ export const getObjectLabel = (type: ObjectType): string => {
         case "fpe":
         case "covercrypt":
         case "pqc":
+        case "pgp":
             return "key";
         case "certificate":
             return "certificate";

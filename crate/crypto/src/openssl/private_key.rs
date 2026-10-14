@@ -237,6 +237,8 @@ fn ec_private_key_from_scalar(
         RecommendedCurve::SECP256K1 => (Nid::SECP256K1, 32),
         #[cfg(feature = "non-fips")]
         RecommendedCurve::SECP224K1 => (Nid::SECP224K1, 28),
+        #[cfg(feature = "non-fips")]
+        RecommendedCurve::SECP192K1 => (Nid::SECP192K1, 24),
         x => crypto_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let mut big_num_context = BigNumContext::new()?;
@@ -360,6 +362,7 @@ pub fn openssl_private_key_to_kmip(
                             Nid::SECP384R1 => RecommendedCurve::P384,
                             Nid::SECP521R1 => RecommendedCurve::P521,
                             Nid::SECP256K1 => RecommendedCurve::SECP256K1,
+                            Nid::SECP192K1 => RecommendedCurve::SECP192K1,
                             _ => {
                                 crypto_bail!(
                                     "Unsupported openssl curve: {:?} in this KMIP implementation",

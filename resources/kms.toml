@@ -23,7 +23,7 @@ default_username = "admin"
 #   Configure with [[hsm_instances]] sections (one per device):
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
@@ -50,6 +50,11 @@ default_username = "admin"
 # Default: 5.
 # keyset_warn_depth = 5
 
+# Interval (seconds) between refreshes of the kms.objects.total and
+# kms.keys.active.count metrics; each refresh runs a full COUNT on the objects table.
+# Set to 0 to disable these counts on very large databases. Default: 30.
+# metrics_count_interval_secs = 30
+
 [http]
 port = 9998
 hostname = "0.0.0.0"
@@ -60,15 +65,43 @@ hostname = "0.0.0.0"
 # WARNING: this endpoint is intentionally unauthenticated — any client can read
 # the listed public keys.  Enable only when you want third parties to verify
 # JWT signatures or discover your public keys.
-[jwks_endpoint]
-# Enable the /.well-known/jwks.json endpoint (default: false).
+
+#[jwks_endpoint]
 # jwks_endpoint_enabled = false
-# Maximum number of public keys returned per response (default: 50).
+
 # Responses exceeding this limit include X-JWKS-Truncated: true.
 # jwks_endpoint_max_keys = 50
+
 # Automatically tag key pairs created via POST /v1/crypto/keys with "jwks"
-# so they appear in the endpoint immediately (default: true).
 # jwks_endpoint_auto_tag = true
+
+# ── Audit logging ────────────────────────────────────────────────────────────
+# [audit]
+# enabled = true
+#
+# [audit.file]
+# path = "/var/lib/cosmian/kms/audit.jsonl"
+# channel_capacity = 4096
+#
+# Stops all further writes once the file reaches this many bytes. Omitted means
+# unlimited. Write-stop cap only — never rotates or deletes the file.
+# max_size_bytes = 1073741824
+#
+# Only uncomment trusted_proxy_cidrs if the KMS sits behind a reverse proxy or
+# load balancer. Leave it unset otherwise (client_ip then always reflects the
+# real TCP peer address).
+# trusted_proxy_cidrs = ["10.0.0.0/8"]
+#
+# Alternative to [audit.file]: a PostgreSQL-backed audit trail. Mutually
+# exclusive at runtime with the file backend — setting url here selects
+# PostgreSQL instead. Must be a different database than [db] database_url.
+# [audit.postgres]
+# url = "postgresql://kms_audit:password@localhost:5432/kms_audit"
+#
+# Stable across restarts, unique per KMS instance sharing the audit database —
+# no hostname-based default; an incorrect guess risks two instances silently
+# sharing a chain.
+# instance_id = "kms-primary"
 
 [db]
 database_type = "redis-findex"

@@ -18,3 +18,4 @@ A new HTTP endpoint is registered in four places. All must stay consistent.
 - [ ] Run `crate/test_kms_server/src/openapi_validation.rs` tests to validate
 
 > Rule 4.2 of `/kms-sync-rules`. Run `/openapi-endpoint` for the guided end-to-end flow.
+> Run `/threat-model` when route changes alter trust boundaries or security-relevant data flows; skip only in a confirmed incremental review when they do not.

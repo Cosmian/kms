@@ -772,6 +772,97 @@ fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: &T) -> Result<
     Ok(t)
 }
 
+#[test]
+fn test_derive_key_single_identifier_round_trip() {
+    use crate::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::DerivationParameters,
+            kmip_objects::ObjectType,
+            kmip_operations::DeriveKey,
+            kmip_types::{CryptographicParameters, DerivationMethod, UniqueIdentifier},
+        },
+    };
+
+    let request = DeriveKey::new_single_base(
+        ObjectType::SecretData,
+        UniqueIdentifier::TextString("base-key".to_owned()),
+        DerivationMethod::HKDF,
+        DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            derivation_data: Some(Zeroizing::new(b"context".to_vec())),
+            salt: Some(b"salt".to_vec()),
+            ..DerivationParameters::default()
+        },
+        Attributes {
+            cryptographic_length: Some(256),
+            object_type: Some(ObjectType::SecretData),
+            ..Attributes::default()
+        },
+    );
+
+    let ttlv_roundtrip: DeriveKey = match serialize_deserialize(&request) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("TTLV round-trip failed: {error}"),
+    };
+    assert_eq!(ttlv_roundtrip.object_unique_identifier.len(), 1);
+    assert_eq!(ttlv_roundtrip, request);
+
+    let json = match serde_json::to_string_pretty(&request) {
+        Ok(json) => json,
+        Err(error) => panic!("JSON serialization failed: {error}"),
+    };
+    let json_roundtrip: DeriveKey = match serde_json::from_str(&json) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("JSON round-trip failed: {error}"),
+    };
+    assert_eq!(json_roundtrip, request);
+}
+
+#[test]
+fn test_derive_key_repeated_identifiers_round_trip() {
+    use crate::kmip_2_1::{
+        kmip_attributes::Attributes, kmip_data_structures::DerivationParameters,
+        kmip_operations::DeriveKey, kmip_types::UniqueIdentifier,
+    };
+
+    let request = DeriveKey::new_asymmetric(
+        UniqueIdentifier::TextString("private-key".to_owned()),
+        UniqueIdentifier::TextString("peer-public-key".to_owned()),
+        DerivationParameters::default(),
+        Attributes {
+            cryptographic_length: Some(256),
+            ..Attributes::default()
+        },
+    );
+
+    let ttlv_roundtrip: DeriveKey = match serialize_deserialize(&request) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("TTLV round-trip failed: {error}"),
+    };
+    assert_eq!(
+        ttlv_roundtrip.object_unique_identifier,
+        request.object_unique_identifier
+    );
+
+    let json = match serde_json::to_string_pretty(&request) {
+        Ok(json) => json,
+        Err(error) => panic!("JSON serialization failed: {error}"),
+    };
+    let json_roundtrip: DeriveKey = match serde_json::from_str(&json) {
+        Ok(roundtrip) => roundtrip,
+        Err(error) => panic!("JSON round-trip failed: {error}"),
+    };
+    assert_eq!(
+        json_roundtrip.object_unique_identifier,
+        request.object_unique_identifier
+    );
+}
+
 fn get_key_block() -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,

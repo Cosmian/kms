@@ -16,12 +16,16 @@ Usage:
   python scripts/update_readme_kmip.py
 
 Requirements:
-  pip install beautifulsoup4 lxml
+  pip install -r .mise/scripts/docs/requirements.txt
+  (beautifulsoup4 — REQUIRED, not optional: without it, this script silently
+  falls back to a hardcoded, less accurate dataset, producing flaky/inconsistent
+  KMIP support tables depending on the running environment)
 """
 from __future__ import annotations
 
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -325,6 +329,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
         return get_fallback_version_data(version)
 
 
+@lru_cache(maxsize=None)
 def parse_kmip_spec(version: str) -> Dict[str, Set[str]]:
     """Parse KMIP specification HTML file for a specific version."""
     return parse_kmip_spec_with_bs4(version)
@@ -1337,11 +1342,11 @@ The following table shows managed object support across all KMIP versions.
         'Symmetric Key': True,
         'Public Key': True,
         'Private Key': True,
-        'Split Key': False,
+        'Split Key': True,
         'Template': False,  # Deprecated
         'Secret Data': True,
         'Opaque Data': True,
-        'PGP Key': False,
+        'PGP Key': True,
     }
 
     # Build version support matrix for managed objects
@@ -1388,7 +1393,7 @@ The following table shows managed object support across all KMIP versions.
         md += row + '\n'
 
     md += """\nNotes:\n\n- Opaque Object import support is present (see `import.rs`).
-- PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
+- PGP Key objects are supported (Create, Import, Export, Encrypt, Decrypt, Sign, SignatureVerify) in non-FIPS mode.
 - Template objects are deprecated in newer KMIP versions.
 
 ### Base Objects
@@ -1669,19 +1674,23 @@ The following table shows transparent key structure support across all KMIP vers
     implemented_structures = {
         name: (name in transp_in_code) for name in key_structures_list
     }
-    # Mirror EC implementation for ECDSA variants; leave ECDH/ECMQV as unimplemented unless tokens are present (they won't be)
+    # Mirror EC implementation for ECDSA and ECDH variants; leave ECMQV as unimplemented unless tokens are present (they won't be)
     if 'EC Private Key' in implemented_structures:
         implemented_structures['ECDSA Private Key'] = implemented_structures[
+            'EC Private Key'
+        ]
+        implemented_structures['ECDH Private Key'] = implemented_structures[
             'EC Private Key'
         ]
     if 'EC Public Key' in implemented_structures:
         implemented_structures['ECDSA Public Key'] = implemented_structures[
             'EC Public Key'
         ]
-    # Ensure defaults for ECDH/ECMQV are False if not explicitly detected
+        implemented_structures['ECDH Public Key'] = implemented_structures[
+            'EC Public Key'
+        ]
+    # Ensure defaults for ECMQV are False if not explicitly detected
     for alias_name in [
-        'ECDH Private Key',
-        'ECDH Public Key',
         'ECMQV Private Key',
         'ECMQV Public Key',
     ]:
@@ -1719,7 +1728,7 @@ The following table shows transparent key structure support across all KMIP vers
             row += f' {status:^7} |'
         md += row + '\n'
 
-    md += """\nNote: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
+    md += """\nNote: EC/ECDSA/ECDH support is present; DH/DSA/ECMQV are not implemented.
 
 ### Attributes
 

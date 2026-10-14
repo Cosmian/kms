@@ -23,6 +23,10 @@ jobs:
     with:
       toolchain: 1.97.0
       archive-name: windows
+    secrets:
+      AZURE_TENANT_ID_POC: ${{ secrets.AZURE_TENANT_ID_POC }}
+      AZURE_CLIENT_ID_POC: ${{ secrets.AZURE_CLIENT_ID_POC }}
+      AZURE_CLIENT_SECRET_POC: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
 
   docker:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
@@ -109,6 +113,15 @@ jobs:
   kubernetes:
     uses: ./.github/workflows/packaging-kubernetes.yml
     secrets: inherit
+
+  # Alpine apk pipeline. No `needs:`: it runs in parallel with the glibc
+  # packages (musl vendor hashes are independent of nix-update-hashes.yml).
+  # Called here so that every packaging.yml run also runs packaging-apk.yml.
+  apk:
+    uses: ./.github/workflows/packaging-apk.yml
+    secrets: inherit
+    with:
+      toolchain: 1.97.0
 
   publish-release:
     if: |
@@ -309,7 +322,7 @@ jobs:
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
       || startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -370,5 +383,6 @@ jobs:
   tests:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
+    secrets: inherit
     with:
       toolchain: 1.97.0

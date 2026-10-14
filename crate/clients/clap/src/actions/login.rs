@@ -59,6 +59,13 @@ pub enum LoginCredential {
 /// Vault-compatible token at `POST {server_url}/v1/auth/approle/login`, which
 /// the KMS proxies to the auth-verifier. The token is stored and sent as an
 /// `X-Vault-Token` header on subsequent requests.
+///
+/// **spire** — Fetch a SPIFFE JWT-SVID directly from the local SPIRE Agent's Workload
+/// API (via a Unix domain socket, using the standard `SPIFFE_ENDPOINT_SOCKET`
+/// environment variable unless `--socket-path` is given) and store it as the KMS
+/// access token. Requires `--audience`, which must match a `--jwt-auth-provider`
+/// audience configured on the KMS server (which must also be started with
+/// `--jwt-svid-auth`).
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct LoginAction {
@@ -102,6 +109,24 @@ pub enum LoginSubcommand {
         /// it interactively without echoing it to the terminal.
         #[clap(long)]
         secret_id: Option<String>,
+    },
+    /// Fetch a SPIFFE JWT-SVID from the local SPIRE Agent's Workload API and use it as
+    /// the KMS access token.
+    Spire {
+        /// The JWT audience value, forwarded to the Workload API's JWT-SVID fetch call.
+        /// Must match a `--jwt-auth-provider` audience configured on the KMS server.
+        #[clap(long)]
+        audience: String,
+        /// The SPIFFE ID of the JWT-SVID to request, when the local agent serves more
+        /// than one identity to this workload (optional — omit to accept whichever
+        /// identity the agent returns).
+        #[clap(long)]
+        spiffe_id: Option<String>,
+        /// Local SPIRE Agent Workload API endpoint: an absolute socket path (e.g.
+        /// `/tmp/spire-agent/public/api.sock`) or a `unix:///path` / `tcp://host:port`
+        /// URI. When omitted, the `SPIFFE_ENDPOINT_SOCKET` environment variable is used.
+        #[clap(long)]
+        socket_path: Option<String>,
     },
 }
 
@@ -222,6 +247,85 @@ impl LoginAction {
 
                 Ok(LoginCredential::VaultToken(vault_token))
             }
+            LoginSubcommand::Spire {
+                audience,
+                spiffe_id,
+                socket_path,
+            } => {
+                let client = if let Some(path) = socket_path {
+                    spiffe::WorkloadApiClient::connect_to(workload_api_endpoint(path)?).await
+                } else {
+                    spiffe::WorkloadApiClient::connect_env().await
+                }
+                .map_err(|e| {
+                    KmsCliError::Default(format!(
+                        "failed to connect to the local SPIRE Agent Workload API: {e}"
+                    ))
+                })?;
+
+                let spiffe_id = spiffe_id
+                    .as_deref()
+                    .map(str::parse::<spiffe::SpiffeId>)
+                    .transpose()
+                    .map_err(|e| KmsCliError::Default(format!("invalid --spiffe-id: {e}")))?;
+
+                let jwt = client
+                    .fetch_jwt_token([audience.as_str()], spiffe_id.as_ref())
+                    .await
+                    .map_err(|e| {
+                        KmsCliError::Default(format!(
+                            "failed to fetch a JWT-SVID from the local SPIRE Agent: {e}"
+                        ))
+                    })?;
+
+                println!("\nSuccess! The JWT-SVID was saved to the KMS client configuration.");
+
+                Ok(LoginCredential::AccessToken(jwt))
+            }
+        }
+    }
+}
+
+/// Turn the `--socket-path` value into an endpoint URI understood by the SPIFFE Workload
+/// API client, which only accepts `unix:` / `tcp:` URIs: a `unix:` / `tcp:` URI is passed
+/// through unchanged and an absolute filesystem path gets the `unix://` scheme prepended.
+/// Relative paths are rejected: `unix://./api.sock` would parse `.` as the host.
+fn workload_api_endpoint(socket_path: &str) -> KmsCliResult<String> {
+    if socket_path.starts_with("unix:") || socket_path.starts_with("tcp:") {
+        Ok(socket_path.to_owned())
+    } else if socket_path.starts_with('/') {
+        Ok(format!("unix://{socket_path}"))
+    } else {
+        Err(KmsCliError::Default(format!(
+            "invalid --socket-path `{socket_path}`: expected an absolute path or a unix:/tcp: URI"
+        )))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // test assertions on known-good inputs
+mod tests {
+    use super::workload_api_endpoint;
+
+    #[test]
+    fn bare_socket_path_becomes_unix_uri() {
+        assert_eq!(
+            workload_api_endpoint("/tmp/spire-agent/public/api.sock").unwrap(),
+            "unix:///tmp/spire-agent/public/api.sock"
+        );
+    }
+
+    #[test]
+    fn uris_are_passed_through() {
+        for uri in ["unix:///run/spire/api.sock", "tcp://127.0.0.1:8081"] {
+            assert_eq!(workload_api_endpoint(uri).unwrap(), uri);
+        }
+    }
+
+    #[test]
+    fn relative_paths_are_rejected() {
+        for path in ["./api.sock", "api.sock", ""] {
+            assert!(workload_api_endpoint(path).is_err(), "{path}");
         }
     }
 }

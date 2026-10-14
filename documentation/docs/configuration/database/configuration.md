@@ -18,6 +18,36 @@ Redis-with-Findex provides application-level encryption over Redis, combining AE
 encrypted Findex indexes. See the dedicated [Redis with Findex](./redis.md) page for a full description,
 encryption details, and configuration reference.
 
+## Connection Workflow
+
+The following sequence diagram illustrates how the Eviden KMS connects to its backing database backend, initializes pools and schema verification, and processes client requests end-to-end:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as KMS Client (CLI / REST / KMIP)
+    participant KMS as Eviden KMS Server
+    participant Pool as Connection Pool (deadpool-postgres / mysql_async / SQLite)
+    participant DB as SQL Database (PostgreSQL / MySQL / SQLite)
+
+    Note over KMS,DB: Server Startup & Pool Initialization
+    KMS->>Pool: Initialize pool with credentials & TLS options
+    Pool->>DB: Open initial connection(s)
+    DB-->>Pool: Connection established
+    KMS->>DB: Verify schema & migration markers (parameters table)
+    DB-->>KMS: Migration state OK (ready)
+    Note over KMS: KMS is operational and ready to serve requests
+
+    Note over Client,DB: End-to-End Operation (e.g. Create / Locate / Rekey)
+    Client->>KMS: Request operation (e.g., Create AES key via REST/KMIP)
+    KMS->>KMS: Authenticate client & authorize operation
+    KMS->>Pool: Acquire pooled connection
+    Pool->>DB: Execute parameterized SQL query (INSERT/SELECT)
+    DB-->>Pool: Query result / rows affected
+    Pool-->>KMS: Return result & release connection to pool
+    KMS-->>Client: Return KMIP / REST response
+```
+
 ## Configuring the database
 
 The database parameters may be configured either:

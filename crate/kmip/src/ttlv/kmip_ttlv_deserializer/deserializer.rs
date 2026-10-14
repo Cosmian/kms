@@ -125,6 +125,15 @@ impl TtlvDeserializer {
 impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
     type Error = TtlvError;
 
+    // TTLV is a binary, non-human-readable format.
+    // Returning false ensures that types like `time::OffsetDateTime` use their
+    // binary serde path (`deserialize_tuple`) rather than the human-readable
+    // path (`deserialize_any` → `visit_i64`), regardless of which `time`
+    // features are enabled workspace-wide.
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
     // Look at the input data to decide what Serde data model type to
     // deserialize as. Not all data formats are able to support this operation.
     // Formats that support `deserialize_any` are known as self-describing.
@@ -789,22 +798,17 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_tuple: child index: {}, current :  {:?}",
             self.child_index, self.current
         );
-        // The only reason this is called is to deserialize BigInt
         match &self.fetch_element()?.value {
-            // if the TTLV value is a BigInt, the deserializer is attempting to deserialize the value
-            // by converting the BigInt to u32
+            // BigInt: represent as a sequence of (sign, magnitude) u32 chunks
             TTLValue::BigInteger(bi) => {
                 let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
                 visitor.visit_seq(seq_access)
             }
+            // DateTime: `OffsetDateTime::deserialize` calls `deserialize_tuple(9, …)`
+            // because `is_human_readable()` returns `false` on this deserializer.
+            // The visitor expects `visit_seq` with the 9 components in order:
+            // (year, ordinal, hour, minute, second, nanosecond, offset_h, offset_m, offset_s).
             TTLValue::DateTime(dt) => {
-                // if human_readable is not on the deserializer and the `time` crate (feature serde-human-readable),
-                // `deserialize_tuple` will be called on the deserializer
-                // see <https://github.com/time-rs/time/blob/main/time/src/serde/mod.rs#L320>
-                // The `OffsetDateTime` visitor expects calls to `visit_seq` passing all the elements
-                // og the tuple in order (year, day of year, hour, etc..)
-                // see <https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80>
-
                 let seq_access = OffsetDateTimeDeserializer::new(&self.current.tag, *dt);
                 visitor.visit_seq(seq_access)
             }

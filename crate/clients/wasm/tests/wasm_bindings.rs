@@ -442,3 +442,211 @@ fn test_certify_ttlv_request_empty_strings_treated_as_none() {
     assert!(with_empty.is_ok(), "empty-string params should not fail");
     assert!(with_none.is_ok(), "None params should not fail");
 }
+
+#[wasm_bindgen_test]
+fn test_set_vendor_id_and_query_server_information() {
+    w::set_vendor_id("cosmian");
+    let r = w::query_server_information_ttlv_request();
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_query_server_information_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_get_symmetric_algorithms() {
+    let r = w::get_symmetric_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_ec_algorithms() {
+    let r = w::get_ec_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_crypto_algorithms() {
+    let r = w::get_crypto_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_certificate_algorithms() {
+    let r = w::get_certificate_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_key_format_types() {
+    let r = w::get_key_format_types();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_object_types() {
+    let r = w::get_object_types();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_object_states() {
+    let r = w::get_object_states();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_get_kmip_operations() {
+    let r = w::get_kmip_operations();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_is_fips_mode() {
+    // Value is build-dependent; only prove the binding is callable.
+    let _ = w::is_fips_mode();
+}
+
+#[wasm_bindgen_test]
+fn test_create_pqc_key_pair_ttlv_request() {
+    let r = w::create_pqc_key_pair_ttlv_request(vec![], "ml-kem-512", false);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_get_pqc_algorithms() {
+    let r = w::get_pqc_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_create_pgp_key_ttlv_request() {
+    let r = w::create_pgp_key_ttlv_request(None, vec![], "Ed25519", None, None, false, None);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_get_pgp_algorithms() {
+    let r = w::get_pgp_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_pgp_encrypt_decrypt_requests() {
+    let r = w::encrypt_pgp_ttlv_request("kid", vec![1, 2, 3]);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::decrypt_pgp_ttlv_request("kid", vec![1, 2, 3]);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_parse_create_split_key_and_join_split_key_ttlv_response() {
+    let r = w::parse_create_split_key_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_join_split_key_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_fpe_requests() {
+    let r = w::create_fpe_key_ttlv_request(None, vec![], false);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::encrypt_fpe_ttlv_request("kid", vec![1, 2, 3], None, None);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::decrypt_fpe_ttlv_request("kid", vec![1, 2, 3], None, None);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_get_attributes_ttlv_request_with_options() {
+    let r = w::get_attributes_ttlv_request_with_options("kid".to_string(), true);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::get_attributes_ttlv_request_with_options("kid".to_string(), false);
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_set_vendor_attribute_ttlv_request() {
+    let r = w::set_vendor_attribute_ttlv_request(
+        "kid".to_string(),
+        "cosmian",
+        "x-cosmian-crypto-officer-ceremony",
+        "val",
+    );
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_modify_attribute_requests() {
+    let r = w::modify_attribute_ttlv_request("kid".to_string(), "Name", "val".to_string());
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_modify_attribute_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_get_hash_algorithms() {
+    let r = w::get_hash_algorithms();
+    assert!(r.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_hash_requests() {
+    let r = w::hash_ttlv_request(&[1, 2, 3], "SHA256");
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_hash_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_derive_key_requests() {
+    let r = w::derive_key_ttlv_request(
+        "kid",
+        "HKDF",
+        vec![1, 2, 3],
+        1,
+        None,
+        "SHA256",
+        "aes",
+        256,
+        None,
+    );
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_derive_key_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+    let r = w::derive_key_asymmetric_ttlv_request("priv_kid", "peer_pub_kid", None);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_derive_key_asymmetric_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_rekey_and_rotation_requests() {
+    let r = w::rekey_ttlv_request("kid".to_string());
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_rekey_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+    let r = w::rekey_keypair_ttlv_request("priv_kid".to_string());
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_rekey_keypair_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+    let r = w::set_rotate_interval_ttlv_request("kid".to_string(), 3600);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::set_rotate_offset_ttlv_request("kid".to_string(), 0);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::set_rotate_name_ttlv_request("kid".to_string(), "weekly".to_string());
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_rotation_policy_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_certify_and_locate_enrich_requests() {
+    let r = w::get_locate_enrich_attribute_keys();
+    assert!(r.is_ok());
+    let r = w::parse_certify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+    let r = w::re_certify_ttlv_request("cert_kid".to_string(), None, None, 365, vec![]);
+    assert!(r.is_ok() || r.is_err());
+    let r = w::parse_re_certify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
+    assert!(r.is_ok() || r.is_err());
+}

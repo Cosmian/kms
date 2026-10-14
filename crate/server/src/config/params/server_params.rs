@@ -5,12 +5,13 @@ use cosmian_kms_server_database::{
     CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
+use ipnet::IpNet;
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
-        JwksEndpointConfig, OidcConfig,
+        AuditConfig, AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig,
+        GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig, WorkspaceConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -44,6 +45,11 @@ pub struct HsmInstanceParams {
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
+
+    /// When `true`, JWTs from `identity_provider_configurations` issuers that have no
+    /// `email` claim are authenticated using their `sub` claim, provided it starts with
+    /// `spiffe://` (SPIFFE JWT-SVID support). See `IdpAuthConfig::jwt_svid_auth`.
+    pub jwt_svid_auth_enabled: bool,
 
     /// The UI distribution folder
     pub ui_index_html_folder: PathBuf,
@@ -199,6 +205,9 @@ pub struct ServerParams {
     /// 0 means disabled.
     pub auto_rotation_check_interval_secs: u64,
 
+    /// Interval in seconds between metrics COUNT refreshes; 0 disables them.
+    pub metrics_count_interval_secs: u64,
+
     /// Depth at which a successful keyset chain decryption triggers a warning.
     /// Keyset chain traversal is unbounded (stopped only by cycle detection); this
     /// threshold lets operators know when a ciphertext required walking many
@@ -253,6 +262,22 @@ pub struct ServerParams {
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
 
+    /// Resolved audit storage backend selection. `None` means audit logging is disabled
+    /// (the default, `--audit-enable=false`).
+    pub audit_backend: Option<AuditBackendParams>,
+
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
+
+    /// What to do when an audit event cannot be queued.
+    pub audit_failure_mode: AuditFailureMode,
+
     // ── CRL lifecycle ─────────────────────────────────────────────────────────
     /// Default CRL validity period in days.
     ///
@@ -298,8 +323,161 @@ pub struct ServerParams {
     pub ocsp_archive_cutoff_secs: u64,
 }
 
+/// Resolved audit storage backend — one variant per backend, all values already
+/// validated by [`ServerParams::try_from`], so nothing downstream re-checks the config.
+#[derive(Clone)]
+pub enum AuditBackendParams {
+    File {
+        path: PathBuf,
+        /// `None` (the default) is unlimited. Always `> 0` when `Some` — validated at
+        /// resolution time regardless of whether audit logging ends up enabled.
+        max_size_bytes: Option<u64>,
+    },
+    Postgres {
+        url: String,
+        instance_id: String,
+        /// `Some(path)` when `--audit-file-path` was also explicitly set — purely so
+        /// `create_audit_store` can warn that it's unused (`PostgreSQL` takes precedence;
+        /// it is NOT a runtime fallback — a connectivity failure still aborts startup).
+        ignored_file_path: Option<PathBuf>,
+    },
+}
+
+impl fmt::Debug for AuditBackendParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File {
+                path,
+                max_size_bytes,
+            } => write!(
+                f,
+                "file: {}, max_size_bytes: {max_size_bytes:?}",
+                path.display()
+            ),
+            Self::Postgres {
+                url, instance_id, ..
+            } => write!(
+                f,
+                "postgres: {}, instance_id: {instance_id}",
+                cosmian_kms_server_database::redact_connection_string(url)
+            ),
+        }
+    }
+}
+
+/// Extracts `host:port,.../dbname` (ignoring credentials and query params) so two
+/// `PostgreSQL` URLs pointing at the same database can be compared even when one carries
+/// different credentials or extra `?sslmode=...` parameters.
+///
+/// This is a best-effort operator-mistake guard, not a security boundary: it does not
+/// resolve DNS, normalize case, or default an omitted port — an operator who genuinely
+/// wants to point both databases at the same server, using different-looking but
+/// equivalent connection strings, can still do so.
+fn normalized_pg_authority(url: &str) -> String {
+    let without_scheme = url.split("://").nth(1).unwrap_or(url);
+    let without_query = without_scheme.split('?').next().unwrap_or(without_scheme);
+    without_query
+        .rsplit_once('@')
+        .map_or(without_query, |(_, rest)| rest)
+        .to_owned()
+}
+
 /// Represents the server parameters.
 impl ServerParams {
+    /// Resolves the audit backend selection from the raw config.
+    ///
+    /// Backend selection is config-time only: `--audit-postgres-url` set → `PostgreSQL`;
+    /// otherwise → the JSONL file (path defaulting to `<root-data-path>/audit.jsonl`).
+    /// There is no runtime fallback between the two: a `PostgreSQL` connectivity failure
+    /// still aborts startup (see `AuditStore::start_postgres`). If `--audit-file-path` is
+    /// also set, `create_audit_store` only uses it to log a warning that it's ignored —
+    /// see `AuditBackendParams::Postgres::ignored_file_path`.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - `audit_file_max_size_bytes` is `Some(0)` — validated even when audit logging is
+    ///   disabled, so a nonsensical value fails config validation immediately rather than
+    ///   silently doing nothing until the operator later sets `--audit-enable`.
+    /// - `--audit-postgres-url` is set but does not start with `postgresql://` or
+    ///   `postgres://`.
+    /// - the resolved audit `PostgreSQL` URL targets the same host/port/database as the
+    ///   main object-storage database, when that database is also `PostgreSQL`.
+    /// - `--audit-postgres-url` is set without `--audit-instance-id`: unlike the file
+    ///   backend, the `PostgreSQL` backend has no safe default here — a wrong guess (e.g.
+    ///   from an ephemeral container hostname) risks two instances silently sharing a
+    ///   chain, so it must be set explicitly.
+    /// - the resolved `--audit-instance-id` is empty or exceeds 255 characters.
+    fn resolve_audit_backend(
+        audit: &AuditConfig,
+        workspace: &WorkspaceConfig,
+        main_db_params: Option<&MainDbParams>,
+    ) -> KResult<Option<AuditBackendParams>> {
+        if audit.file.audit_file_max_size_bytes == Some(0) {
+            return Err(KmsError::NotSupported(
+                "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
+            ));
+        }
+
+        if !audit.audit_enable {
+            return Ok(None);
+        }
+
+        let file_path = audit
+            .file
+            .audit_file_path
+            .clone()
+            .unwrap_or_else(|| workspace.root_data_path.join("audit.jsonl"));
+
+        if let Some(url) = audit.postgres.audit_postgres_url.as_deref() {
+            if !url.starts_with("postgresql://") && !url.starts_with("postgres://") {
+                return Err(KmsError::InvalidRequest(
+                    "--audit-postgres-url must be a URI-style DSN starting with \
+                     'postgresql://' or 'postgres://'; keyword/value DSN syntax \
+                     (e.g. 'host=... user=...') is not supported here."
+                        .to_owned(),
+                ));
+            }
+            if let Some(MainDbParams::Postgres(main_url, _)) = main_db_params {
+                if normalized_pg_authority(url) == normalized_pg_authority(main_url) {
+                    return Err(KmsError::InvalidRequest(
+                        "The audit database (--audit-postgres-url) must be a different \
+                         database than the main object-storage database (--database-url)."
+                            .to_owned(),
+                    ));
+                }
+            }
+
+            let instance_id = audit.postgres.audit_instance_id.clone().ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "--audit-instance-id is required when using the PostgreSQL audit \
+                     backend (--audit-postgres-url) — it must be stable across restarts \
+                     and unique per KMS instance sharing the audit database. There is no \
+                     hostname-based default: an incorrect guess here risks two instances \
+                     silently sharing a chain."
+                        .to_owned(),
+                )
+            })?;
+            if instance_id.is_empty() || instance_id.chars().count() > 255 {
+                return Err(KmsError::InvalidRequest(format!(
+                    "--audit-instance-id must be non-empty and at most 255 characters, \
+                     got {} characters",
+                    instance_id.chars().count()
+                )));
+            }
+
+            Ok(Some(AuditBackendParams::Postgres {
+                url: url.to_owned(),
+                instance_id,
+                ignored_file_path: audit.file.audit_file_path.clone(),
+            }))
+        } else {
+            Ok(Some(AuditBackendParams::File {
+                path: file_path,
+                max_size_bytes: audit.file.audit_file_max_size_bytes,
+            }))
+        }
+    }
+
     /// Tries to create a `ServerParams` instance from `ClapConfig`.
     ///
     /// # Arguments
@@ -374,6 +552,19 @@ impl ServerParams {
         // include it in the CORS allow-list when cors_allowed_origins is not configured.
         let public_url_for_cors = conf.kms_public_url.clone();
 
+        // Capture before `conf.idp_auth` is consumed by `extract_idp_configs` below.
+        let jwt_svid_auth_enabled = conf.idp_auth.jwt_svid_auth;
+
+        // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
+        let identity_provider_configurations = conf
+            .idp_auth
+            .extract_idp_configs()
+            .context("failed initializing IdPs from idp_auth")?;
+
+        if jwt_svid_auth_enabled {
+            ensure_svid_providers_have_audience(identity_provider_configurations.as_deref())?;
+        }
+
         // Determine whether CO users will come from the deprecated `privileged_users` path.
         // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
         // `force_default_username = true` AND `privileged_users = [...]` (nonsensical but
@@ -381,21 +572,23 @@ impl ServerParams {
         let co_from_deprecated_path =
             conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
+        // Hoisted so `resolve_audit_backend`'s "must differ from the main DB" guard can
+        // read it by reference before it moves into the struct literal below.
+        let main_db_params = Some(
+            conf.db
+                .init(&conf.workspace.init().context("failed to init workspace")?)
+                .context("failed to init DB")?,
+        );
+        let audit_backend =
+            Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
+
         let res = Self {
-            identity_provider_configurations: {
-                // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
-                conf.idp_auth
-                    .extract_idp_configs()
-                    .context("failed initializing IdPs from idp_auth")?
-            },
+            identity_provider_configurations,
+            jwt_svid_auth_enabled,
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
-            main_db_params: Some(
-                conf.db
-                    .init(&conf.workspace.init().context("failed to init workspace")?)
-                    .context("failed to init DB")?,
-            ),
+            main_db_params,
             clear_db_on_start: conf.db.clear_database,
             unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
                 return Err(KmsError::NotSupported(
@@ -613,6 +806,7 @@ impl ServerParams {
                 v
             },
             keyset_warn_depth: conf.keyset_warn_depth,
+            metrics_count_interval_secs: conf.metrics_count_interval_secs,
             jwks_endpoint: conf.jwks_endpoint,
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
@@ -637,6 +831,10 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            audit_backend,
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
+            audit_failure_mode: conf.audit.audit_failure_mode,
             crl_default_validity_days: conf.crl.crl_default_validity_days,
             crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
             crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
@@ -789,6 +987,27 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
         .transpose()
 }
 
+/// `--jwt-svid-auth` is global: it makes EVERY `--jwt-auth-provider` issuer accept SPIFFE
+/// subjects. A JWT-SVID is minted for a specific audience and workloads hold SVIDs for many
+/// services, so without an expected audience any SVID issued for another service could be
+/// replayed against the KMS. Refuse to start rather than silently accept them.
+fn ensure_svid_providers_have_audience(providers: Option<&[IdpConfig]>) -> KResult<()> {
+    let Some(providers) = providers else {
+        return Err(KmsError::ServerError(
+            "`jwt_svid_auth` is enabled but no `jwt_auth_provider` is configured".to_owned(),
+        ));
+    };
+    if let Some(provider) = providers.iter().find(|idp| idp.jwt_audience.is_none()) {
+        return Err(KmsError::ServerError(format!(
+            "`jwt_svid_auth` requires an audience on every `jwt_auth_provider`, but the \
+             provider for issuer `{}` has none. Append the expected audience \
+             (`issuer,jwks_uri,audience`) so SVIDs minted for other services are rejected.",
+            provider.jwt_issuer_uri
+        )));
+    }
+    Ok(())
+}
+
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("ServerParams");
@@ -797,6 +1016,7 @@ impl fmt::Debug for ServerParams {
         if let Some(ref idp_configs) = self.identity_provider_configurations {
             debug_struct.field("identity_provider_configurations", idp_configs);
         }
+        debug_struct.field("jwt_svid_auth_enabled", &self.jwt_svid_auth_enabled);
 
         // Always show these non-optional fields
         debug_struct
@@ -1013,6 +1233,10 @@ impl fmt::Debug for ServerParams {
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
         );
+        debug_struct.field(
+            "metrics_count_interval_secs",
+            &self.metrics_count_interval_secs,
+        );
         debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
         if self.jwks_endpoint.jwks_endpoint_enabled {
             debug_struct
@@ -1034,6 +1258,10 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
+        debug_struct.field("audit_backend", &self.audit_backend);
+        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
+        debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
@@ -1088,11 +1316,44 @@ impl fmt::Debug for ServerParams {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use tempfile::TempDir;
 
-    use crate::config::{ClapConfig, HttpConfig, command_line::MainDBConfig};
+    use super::{
+        AuditBackendParams, ServerParams, ensure_svid_providers_have_audience,
+        normalized_pg_authority,
+    };
+    use crate::{
+        config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
+        tests::test_utils::https_clap_config,
+    };
+
+    fn provider(issuer: &str, audience: Option<&str>) -> IdpConfig {
+        IdpConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks_uri: None,
+            jwt_audience: audience.map(|a| vec![a.to_owned()]),
+        }
+    }
+
+    /// `--jwt-svid-auth` is global, so a single provider without an audience would let
+    /// SVIDs minted for other services through: startup must be refused and name the issuer.
+    #[test]
+    fn jwt_svid_auth_requires_audience_on_every_provider() {
+        let providers = [
+            provider("https://with-aud.example.org", Some("cosmian-kms")),
+            provider("https://no-aud.example.org", None),
+        ];
+        let error = ensure_svid_providers_have_audience(Some(&providers))
+            .expect_err("provider without audience must be refused");
+        assert!(error.to_string().contains("https://no-aud.example.org"));
+
+        ensure_svid_providers_have_audience(Some(&providers[..1]))
+            .expect("all providers have an audience");
+        ensure_svid_providers_have_audience(None)
+            .expect_err("jwt_svid_auth without any provider must be refused");
+    }
 
     /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
     fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {
@@ -1188,6 +1449,131 @@ mod tests {
             count, 1,
             "kms_public_url must appear exactly once; got: {:?}",
             params.cors_allowed_origins
+        );
+    }
+
+    /// `max_size_bytes = 0` is a configuration mistake (it would mean either
+    /// "unlimited" or "block everything", ambiguously), so it must be rejected
+    /// at config/parameter construction time rather than silently accepted —
+    /// even when audit logging itself is disabled.
+    #[test]
+    fn audit_file_max_size_bytes_zero_is_rejected() {
+        let mut conf = https_clap_config();
+        conf.audit.file.audit_file_max_size_bytes = Some(0);
+
+        let err = ServerParams::try_from(conf).expect_err("max_size_bytes = 0 must be rejected");
+        assert!(
+            err.to_string()
+                .contains("audit_file_max_size_bytes must be greater than 0"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// `None` (unset) and any positive value must both build successfully and resolve to
+    /// the file backend when audit logging is enabled with no `--audit-postgres-url`.
+    #[test]
+    fn audit_file_max_size_bytes_none_or_positive_is_accepted() {
+        let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
+        conf.audit.file.audit_file_max_size_bytes = None;
+        let params = ServerParams::try_from(conf).expect("None must be accepted");
+        assert!(matches!(
+            params.audit_backend,
+            Some(AuditBackendParams::File {
+                max_size_bytes: None,
+                ..
+            })
+        ));
+
+        let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
+        conf.audit.file.audit_file_max_size_bytes = Some(1_073_741_824);
+        let params = ServerParams::try_from(conf).expect("a positive value must be accepted");
+        assert!(matches!(
+            params.audit_backend,
+            Some(AuditBackendParams::File {
+                max_size_bytes: Some(1_073_741_824),
+                ..
+            })
+        ));
+    }
+
+    /// `--audit-postgres-url` selects the `PostgreSQL` backend and requires an explicit
+    /// `--audit-instance-id` — there is no hostname-based default.
+    #[test]
+    fn audit_postgres_requires_instance_id() {
+        let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://user:pass@localhost/audit_db".to_owned());
+
+        let err = ServerParams::try_from(conf).expect_err("missing instance_id must be rejected");
+        assert!(
+            err.to_string().contains("--audit-instance-id is required"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// A valid `--audit-postgres-url` + `--audit-instance-id` resolves to the `PostgreSQL`
+    /// backend, distinct from the main `SQLite` test database (no collision guard fires).
+    #[test]
+    fn audit_postgres_resolves_with_instance_id() {
+        let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://user:pass@localhost/audit_db".to_owned());
+        conf.audit.postgres.audit_instance_id = Some("kms-test-1".to_owned());
+
+        let params = ServerParams::try_from(conf).expect("must resolve successfully");
+        assert!(matches!(
+            params.audit_backend,
+            Some(AuditBackendParams::Postgres { instance_id, .. }) if instance_id == "kms-test-1"
+        ));
+    }
+
+    /// The audit `PostgreSQL` URL must not target the same database as the main
+    /// object-storage database — sharing one would let the KMS's own object-store role
+    /// bypass the audit database's append-only grants.
+    #[test]
+    fn audit_postgres_rejects_same_database_as_main_db() {
+        let mut conf = https_clap_config();
+        conf.db.database_type = Some("postgresql".to_owned());
+        conf.db.database_url = Some("postgresql://user:pass@localhost:5432/main_db".to_owned());
+        conf.audit.audit_enable = true;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://other:creds@localhost:5432/main_db?sslmode=require".to_owned());
+        conf.audit.postgres.audit_instance_id = Some("kms-test-1".to_owned());
+
+        let err =
+            ServerParams::try_from(conf).expect_err("same-database audit URL must be rejected");
+        assert!(
+            err.to_string()
+                .contains("must be a different database than the main object-storage database"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn normalized_authority_ignores_credentials() {
+        assert_eq!(
+            normalized_pg_authority("postgresql://u:p@host:5432/db"),
+            normalized_pg_authority("postgresql://other:pw@host:5432/db")
+        );
+    }
+
+    #[test]
+    fn normalized_authority_ignores_query_params() {
+        assert_eq!(
+            normalized_pg_authority("postgresql://u:p@host:5432/db?sslmode=require"),
+            normalized_pg_authority("postgresql://u:p@host:5432/db")
+        );
+    }
+
+    #[test]
+    fn normalized_authority_differs_on_database_name() {
+        assert_ne!(
+            normalized_pg_authority("postgresql://u:p@host:5432/db_audit"),
+            normalized_pg_authority("postgresql://u:p@host:5432/db_objects")
         );
     }
 }

@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
+use super::pgp_ops;
 use crate::{
     core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
@@ -54,6 +55,9 @@ impl CryptoOpSpec for SignOp {
         if let Object::PrivateKey { .. } = owm.object() {
             return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
         }
+        if let Object::PGPKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
+        }
         false
     }
 
@@ -65,6 +69,7 @@ impl CryptoOpSpec for SignOp {
     ) -> KResult<Self::Response> {
         match owm.object() {
             Object::PrivateKey { .. } => sign_with_private_key(request, owm),
+            Object::PGPKey { .. } => pgp_ops::pgp_sign(owm, request),
             other => Err(KmsError::NotSupported(format!(
                 "signing with keys of type: {} is not supported",
                 other.object_type()
@@ -82,18 +87,28 @@ impl CryptoOpSpec for SignOp {
         let crypto_oracle = lock.get(prefix).ok_or_else(|| {
             KmsError::InvalidRequest(format!("Sign: unknown crypto oracle prefix: {prefix}"))
         })?;
-        let data: &[u8] = request
-            .data
-            .as_ref()
-            .map(|d| d.as_slice())
-            .or(request.digested_data.as_deref())
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
+        let (data, input_is_digest): (&[u8], bool) = match (&request.data, &request.digested_data) {
+            (Some(data), None) => (data.as_slice(), false),
+            (None, Some(digested_data)) => (digested_data.as_slice(), true),
+            (Some(_), Some(_)) => {
+                return Err(KmsError::InvalidRequest(
+                    "Sign request must not set both 'data' and 'digested_data' simultaneously"
+                        .to_owned(),
+                ));
+            }
+            (None, None) => {
+                return Err(KmsError::InvalidRequest(
                     "Sign: no data or digested data provided for oracle signing".to_owned(),
-                )
-            })?;
+                ));
+            }
+        };
         let signature = crypto_oracle
-            .sign(uid, data, request.cryptographic_parameters.as_ref())
+            .sign(
+                uid,
+                data,
+                request.cryptographic_parameters.as_ref(),
+                input_is_digest,
+            )
             .await
             .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
         debug!("user signed data via crypto oracle using: {uid}");

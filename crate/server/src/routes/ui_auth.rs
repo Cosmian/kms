@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use actix_session::Session;
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig};
+use crate::{
+    config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
+    middlewares::{JwtConfig, UserId, reject_reserved_aws_xks_identity, validate_jwt_svid},
+};
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
@@ -275,6 +278,7 @@ pub(crate) async fn callback(
     };
 
     let mut validation = Validation::new(header.alg);
+    validation.algorithms = vec![header.alg];
     validation.set_audience(&[&client_id]);
 
     #[cfg(all(not(test), not(feature = "insecure")))]
@@ -314,6 +318,14 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
     };
+    let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "Empty email claim in id_token" }));
+    };
+    if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
+    }
 
     if session.insert("user_id", &user_id).is_err() {
         return HttpResponse::InternalServerError()
@@ -341,6 +353,12 @@ pub(crate) struct AuthVerifierLoginRequest {
     /// when omitted the first configured realm is used.
     #[serde(default)]
     realm: Option<String>,
+}
+
+/// Request body for `POST /ui/login_svid`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct JwtSvidLoginRequest {
+    jwt_svid: String,
 }
 
 /// Mirrors the Auth Verifier server's `AuthenticationResult` shape
@@ -524,9 +542,20 @@ pub(crate) async fn login_as(
                     }
                 };
 
+            let Ok(user_id) = UserId::try_new(claims.sub.as_str()) else {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": "Empty subject claim in Auth Verifier token" }),
+                );
+            };
+            if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": format!("Forbidden user identity: {error}") }),
+                );
+            }
+
             // Store username, roles, and domain in the server-side session so that
             // subsequent browser requests (via SessionAuth) carry the full OPA context.
-            if session.insert("user_id", &claims.sub).is_err()
+            if session.insert("user_id", &user_id).is_err()
                 || session.insert("roles", &claims.roles).is_err()
             {
                 return HttpResponse::InternalServerError()
@@ -545,6 +574,59 @@ pub(crate) async fn login_as(
             })
         }
     }
+}
+
+/// SPIFFE JWT-SVID session login, meant for a gateway / BFF in front of the Web UI.
+///
+/// The caller posts `{ "jwt_svid": "<token>" }` with a JWT-SVID minted by SPIRE (Workload
+/// API or `spire-server jwt mint`). The token is validated against the SPIFFE-enabled JWT
+/// issuers configured via `--jwt-auth-provider` + `--jwt-svid-auth` — the same
+/// configuration used for bearer-token API/KMIP authentication — and its `sub` MUST be a
+/// `spiffe://` ID (a token that only carries an `email` claim is rejected). On success the
+/// `sub` claim (`spiffe://<trust-domain>/<path>`) becomes the session's `user_id`, exactly
+/// like the OIDC `callback` and Auth Verifier `login_as` flows above.
+#[post("/login_svid")]
+pub(crate) async fn login_svid(
+    session: Session,
+    body: web::Json<JwtSvidLoginRequest>,
+    jwt_configurations: web::Data<Arc<Vec<JwtConfig>>>,
+) -> HttpResponse {
+    if !jwt_configurations.iter().any(|c| c.accept_spiffe_subject) {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "SPIFFE JWT-SVID login is not enabled on this server" }),
+        );
+    }
+
+    let authenticated = match validate_jwt_svid(&jwt_configurations, body.jwt_svid.trim()).await {
+        Ok(user) => user,
+        Err(e) => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "error": format!("{e}") }));
+        }
+    };
+
+    // Issue a fresh session ID on login so a session ID planted before authentication
+    // (session fixation) never becomes an authenticated session.
+    session.renew();
+    if session.insert("user_id", &authenticated.username).is_err() {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
+    }
+
+    // Keep the SVID's `roles`/`domain` claims in the session so that `SessionAuth`
+    // rebuilds the same OPA context as bearer-token authentication would.
+    if session.insert("roles", &authenticated.roles).is_err() {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Failed to store roles in session" }));
+    }
+    if let Some(ref domain) = authenticated.domain {
+        if session.insert("domain", domain).is_err() {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": "Failed to store domain in session" }));
+        }
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({ "next_step": "Authenticated" }))
 }
 
 #[get("/whoami")]
@@ -631,6 +713,7 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(login)
         .service(callback)
         .service(login_as)
+        .service(login_svid)
         .service(whoami)
         .service(logout)
         .service(get_auth_method);

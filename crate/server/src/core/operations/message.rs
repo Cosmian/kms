@@ -19,7 +19,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     time_normalize,
     ttlv::KmipFlavor,
 };
-use cosmian_logger::{info, trace};
+use cosmian_logger::{error, info, trace};
 use strum::IntoEnumIterator;
 
 use super::modify_attribute;
@@ -111,9 +111,9 @@ pub(crate) async fn message(
         let forced_size_error =
             enforce_max_response_size_for_query(&response_operation, remaining_max_response_size)?;
 
-        match response_operation {
-            Ok(ref op) => trace!("Operation processed successfully: {op}"),
-            Err(ref e) => trace!("Operation processing failed: {e}"),
+        match &response_operation {
+            Ok(op) => trace!("Operation processed successfully: {op}"),
+            Err(e) => error!(target: "kmip", "Operation processing failed: {e}"),
         }
 
         let (result_status, result_reason, result_message, response_payload) =

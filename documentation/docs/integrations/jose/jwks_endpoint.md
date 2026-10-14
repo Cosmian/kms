@@ -14,6 +14,11 @@ needed for the common case.
 To exclude a specific public key from the JWKS remove its `jwks` tag via the tag management
 endpoint.
 
+Only keys **owned** by the server's `default_username` are published. A `jwks`-tagged key
+owned by another user is never advertised, even if it is shared with `default_username`
+or with everyone (`*`): otherwise any user could place a key they control in the
+server's trusted key set.
+
 ## How it works
 
 ```mermaid

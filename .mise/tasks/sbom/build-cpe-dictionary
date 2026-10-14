@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Build a local SQLite index of the NVD CPE dictionary for SBOM vendor verification"
+#USAGE arg "<source_dir>" help="Directory of downloaded nvdcpe-2.0-chunk-*.json files (NVD CPE API 2.0 dump)"
+#USAGE flag "-o --output <output>" help="Output SQLite path" default="{{config_root}}/.cache/sbom/cpe-dictionary.sqlite"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# shellcheck disable=SC2154
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/sbom/build_cpe_dictionary.py" \
+  --source-dir "${usage_source_dir}" \
+  --output "${usage_output}"
+print_success "CPE dictionary index built at ${usage_output:-}"

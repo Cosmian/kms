@@ -23,7 +23,7 @@
 #   KMS_SLOT_DATA_DIR             — "/tmp/kms-slot-<N>"
 #
 #   Database host ports:
-#     KMS_SLOT_POSTGRES_PORT, KMS_SLOT_POSTGRES_MTLS_PORT
+#     KMS_SLOT_POSTGRES_PORT, KMS_SLOT_POSTGRES_MTLS_PORT, KMS_SLOT_AUDIT_POSTGRES_PORT
 #     KMS_SLOT_MYSQL_PORT, KMS_SLOT_PERCONA_PORT, KMS_SLOT_MARIADB_PORT
 #     KMS_SLOT_MYSQL_MTLS_PORT, KMS_SLOT_REDIS_PORT
 #
@@ -41,10 +41,13 @@
 #   Third-party host ports:
 #     KMS_SLOT_ORACLE_PORT, KMS_SLOT_EDB_PORT
 #     KMS_SLOT_IRIS_WEB_PORT, KMS_SLOT_IRIS_SUPER_PORT
+#     KMS_SLOT_VICTORIA_PORT, KMS_SLOT_GRAFANA_PORT
+#     KMS_SLOT_ES_PORT
+#     KMS_SLOT_RSYSLOG_TCP_PORT
 #
 #   Computed database URLs:
 #     KMS_POSTGRES_URL, KMS_MYSQL_URL, KMS_MARIADB_URL
-#     KMS_PERCONA_URL, KMS_REDIS_URL
+#     KMS_PERCONA_URL, KMS_REDIS_URL, KMS_AUDIT_POSTGRES_URL
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
 [ -n "${_MISE_TEST_SLOTS_SH_LOADED:-}" ] && return 0
@@ -62,6 +65,7 @@ readonly _SLOT_STRIDE=1000
 # Database services (host-side ports; container-internal ports stay fixed)
 readonly _BASE_POSTGRES_PORT=5432
 readonly _BASE_POSTGRES_MTLS_PORT=5433
+readonly _BASE_AUDIT_POSTGRES_PORT=5436
 readonly _BASE_MYSQL_PORT=3306
 readonly _BASE_PERCONA_PORT=3307
 readonly _BASE_MARIADB_PORT=3308
@@ -101,6 +105,11 @@ readonly _BASE_ORACLE_PORT=1521
 readonly _BASE_EDB_PORT=5444
 readonly _BASE_IRIS_WEB_PORT=52773
 readonly _BASE_IRIS_SUPER_PORT=1972
+readonly _BASE_VICTORIA_PORT=8428
+readonly _BASE_GRAFANA_PORT=3000
+readonly _BASE_ES_PORT=9200
+readonly _BASE_RSYSLOG_TCP_PORT=51514
+readonly _BASE_DB2_PORT=50000
 
 # ── slot_init ─────────────────────────────────────────────────────────────────
 # Compute and export all slot-aware variables.
@@ -126,6 +135,7 @@ slot_init() {
   # ── Database host ports ───────────────────────────────────────────────────
   export KMS_SLOT_POSTGRES_PORT=$((_BASE_POSTGRES_PORT + offset))
   export KMS_SLOT_POSTGRES_MTLS_PORT=$((_BASE_POSTGRES_MTLS_PORT + offset))
+  export KMS_SLOT_AUDIT_POSTGRES_PORT=$((_BASE_AUDIT_POSTGRES_PORT + offset))
   export KMS_SLOT_MYSQL_PORT=$((_BASE_MYSQL_PORT + offset))
   export KMS_SLOT_PERCONA_PORT=$((_BASE_PERCONA_PORT + offset))
   export KMS_SLOT_MARIADB_PORT=$((_BASE_MARIADB_PORT + offset))
@@ -157,6 +167,11 @@ slot_init() {
   export KMS_SLOT_EDB_PORT=$((_BASE_EDB_PORT + offset))
   export KMS_SLOT_IRIS_WEB_PORT=$((_BASE_IRIS_WEB_PORT + offset))
   export KMS_SLOT_IRIS_SUPER_PORT=$((_BASE_IRIS_SUPER_PORT + offset))
+  export KMS_SLOT_VICTORIA_PORT=$((_BASE_VICTORIA_PORT + offset))
+  export KMS_SLOT_GRAFANA_PORT=$((_BASE_GRAFANA_PORT + offset))
+  export KMS_SLOT_ES_PORT=$((_BASE_ES_PORT + offset))
+  export KMS_SLOT_RSYSLOG_TCP_PORT=$((_BASE_RSYSLOG_TCP_PORT + offset))
+  export KMS_SLOT_DB2_PORT=$((_BASE_DB2_PORT + offset))
 
   # ── Computed database URLs (consumed by Rust tests and MISE tasks) ────────
   export KMS_POSTGRES_URL="postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT}/kms"
@@ -164,6 +179,7 @@ slot_init() {
   export KMS_MARIADB_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MARIADB_PORT}/kms"
   export KMS_PERCONA_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT}/kms"
   export KMS_REDIS_URL="redis://127.0.0.1:${KMS_SLOT_REDIS_PORT}"
+  export KMS_AUDIT_POSTGRES_URL="postgresql://kms_audit:kms_audit@127.0.0.1:${KMS_SLOT_AUDIT_POSTGRES_PORT}/kms_audit?sslmode=disable"
 
   # ── Validate port range ───────────────────────────────────────────────────
   # The highest base port is IRIS_WEB (52773).  Check it won't exceed 65535.
@@ -225,6 +241,7 @@ KMS Test Slot: ${KMS_TEST_SLOT}
   Database ports:
     PostgreSQL:     ${KMS_SLOT_POSTGRES_PORT}
     PostgreSQL TLS: ${KMS_SLOT_POSTGRES_MTLS_PORT}
+    Audit Postgres: ${KMS_SLOT_AUDIT_POSTGRES_PORT}
     MySQL:          ${KMS_SLOT_MYSQL_PORT}
     Percona:        ${KMS_SLOT_PERCONA_PORT}
     MariaDB:        ${KMS_SLOT_MARIADB_PORT}

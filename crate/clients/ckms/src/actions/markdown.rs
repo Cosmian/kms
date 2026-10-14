@@ -155,9 +155,12 @@ fn write_subcommands<'a>(
             .replace(' ', "-")
             .replace('.', "");
         write!(write, "**`{}`**", sub_command.get_name())?;
-        write!(write, " [[{index}]](#{sub_command_anchor}) ")?;
+        write!(write, " [[{index}]](#{sub_command_anchor})")?;
         if let Some(about) = sub_command.get_about() {
-            write!(write, " ")?;
+            // Two spaces keep the historical layout for subcommands that have a
+            // description; skipping the space entirely avoids trailing whitespace
+            // for subcommands without one (e.g. `fpe keys create`).
+            write!(write, "  ")?;
             to_md(write, about)?;
         }
         writeln!(write)?;

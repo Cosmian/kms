@@ -59,8 +59,10 @@
 
 ## Bug Fixes
 
+- Automatic CRL regeneration (after `Revoke` and the refresh cron) signs as the issuer certificate's owner and bypasses the Crypto Officer gate of `GenerateCRL`, so published CRLs keep refreshing when `crypto_officer.users` is configured; the caller-driven `GenerateCRL` keeps the gate
+- Web UI SPIFFE JWT-SVID session login (`POST /ui/login_svid`) now keeps the SVID's `roles` and `domain` claims in the session, like the Auth Verifier login, so OPA evaluates the same context as for bearer tokens
 - `UserClaim` JWT deserialization: add `#[serde(default)]` to `aud` field so JWTs without an `aud` claim (e.g. from Cosmian auth server) are accepted instead of failing with "missing field `aud`"
-- JWT middleware: fall back to `sub` claim when `email` is absent, enabling compatibility with Cosmian auth server JWTs that use `sub` for the username
+- JWT middleware: fall back to `sub` claim when `email` is absent, enabling compatibility with Cosmian auth server JWTs that use `sub` for the username; the fallback is reserved to issuers that did not opt into SPIFFE (`--jwt-svid-auth`), and a `spiffe://` `sub` is rejected unless the issuer opted in
 - JWT middleware (`handle_jwt`): remove panicking `actix_identity::Identity::extract` call; the JWT bearer-token middleware reads directly from the `Authorization: Bearer` header — session cookie auth is handled by the dedicated `SessionAuth` middleware and must not be mixed into the OIDC JWT path
 - OPA denied test servers: merge `exclusive_denied` and `enforcing_denied` into a single shared `ONCE_VECTOR_OPA_DENIED` singleton to avoid concurrent macOS Keychain PKCS#12 loading failures (`OSStatus -26276`) when both servers start in parallel
 - OPA denied test servers: set opa-mode-specific `sqlite_path`, `root_data_path`, and `socket_server_start = false` to prevent port/file conflicts between concurrent cert-auth test servers

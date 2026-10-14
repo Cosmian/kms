@@ -10,10 +10,14 @@ use std::{
     sync::{Arc, atomic::AtomicU64},
 };
 
+// AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
+#[cfg(target_os = "linux")]
+use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
         cosmian_kmip::kmip_2_1::kmip_objects::Object,
+        cosmian_kms_crypto::crypto::KmsRng,
         cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
     },
 };
@@ -21,9 +25,13 @@ use cosmian_logger::trace;
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
+#[cfg(target_os = "linux")]
+use gcp_cloud_hsm_pkcs11_loader::{GCP_CLOUD_HSM_PKCS11_LIB, GcpCloudHsm};
+// SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use kryoptic_pkcs11_loader::{KRYOPTIC_PKCS11_LIB, Kryoptic};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
-// SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -48,8 +56,8 @@ const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
 use crate::{
-    config::{OpenTelemetryConfig, ServerParams},
-    core::OtelMetrics,
+    config::{AuditBackendParams, OpenTelemetryConfig, ServerParams},
+    core::{OtelMetrics, audit::AuditStore},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -98,6 +106,9 @@ pub struct KMS {
     /// OTLP metrics collector (if enabled)
     pub(crate) metrics: Option<Arc<OtelMetrics>>,
 
+    /// Audit file store (if audit logging is enabled)
+    pub(crate) audit_store: Option<AuditStore>,
+
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
@@ -112,6 +123,8 @@ pub struct KMS {
 
     /// Optional OPA client for RBAC evaluation (Phases 7-8).
     pub(crate) opa_client: Option<Arc<super::opa::OpaClient>>,
+    /// Unified cryptographic RNG for all KMS operations.
+    pub(crate) rng: Arc<KmsRng>,
 }
 
 impl KMS {
@@ -241,15 +254,20 @@ impl KMS {
         //
         // This ensures the metric starts at the correct absolute value rather
         // than 0.  Without this seed, the gauge would only reach the right count
-        // after the first periodic cron sync (up to 30 s later), giving a
-        // misleading reading immediately after server restart.
-        if let Some(ref m) = metrics {
+        // after the first periodic cron sync (within one `metrics_count_interval_secs`
+        // period), giving a misleading reading immediately after server restart.
+        // Skipped when `metrics_count_interval_secs == 0` (COUNT queries disabled).
+        if let Some(m) = metrics
+            .as_ref()
+            .filter(|_| server_params.metrics_count_interval_secs > 0)
+        {
             match database.count_all_non_destroyed_objects().await {
                 Ok(count) => {
                     m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period.
                     cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
@@ -259,8 +277,11 @@ impl KMS {
                     m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
-                    // Non-fatal: the cron will correct the value within 30 s.
-                    cosmian_logger::debug!("[kms-init] Failed to seed kms.keys.active.count: {e}");
+                    // Non-fatal: the cron will correct the value within one
+                    // `metrics_count_interval_secs` period, but a
+                    // persistently failing query (e.g. a backend-specific SQL bug)
+                    // should be visible without enabling debug logging.
+                    cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
                 }
             }
         }
@@ -295,6 +316,8 @@ impl KMS {
             .map(|opa| super::opa::OpaClient::new(&opa.url))
             .transpose()?
             .map(Arc::new);
+        // Instantiate the unified KMS RNG.
+        let rng = Arc::new(KmsRng::new());
 
         Ok(Self {
             params: server_params.clone(),
@@ -305,6 +328,8 @@ impl KMS {
             metrics,
             crl_counter,
             opa_client,
+            audit_store: Self::create_audit_store(&server_params).await?,
+            rng,
         })
     }
 
@@ -387,6 +412,56 @@ impl KMS {
         }
     }
 
+    /// Starts the audit store for the configured backend, if audit logging is enabled.
+    ///
+    /// For the `PostgreSQL` backend, a connection failure at startup still aborts the
+    /// server — it is not a runtime fallback to the file backend, even if
+    /// `--audit-file-path` is also set (see `AuditBackendParams::Postgres`).
+    async fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditStore>> {
+        match server_params.audit_backend.as_ref() {
+            Some(AuditBackendParams::File {
+                path,
+                max_size_bytes,
+            }) => {
+                let store = AuditStore::start_with_max_size(
+                    path,
+                    server_params.audit_channel_capacity,
+                    *max_size_bytes,
+                )?;
+                Ok(Some(store))
+            }
+            Some(AuditBackendParams::Postgres {
+                url,
+                instance_id,
+                ignored_file_path,
+            }) => {
+                let result = AuditStore::start_postgres(
+                    url,
+                    instance_id,
+                    server_params.audit_channel_capacity,
+                )
+                .await;
+                if let Some(path) = ignored_file_path {
+                    match &result {
+                        Ok(_) => tracing::warn!(
+                            "Connected to the PostgreSQL audit backend; ignoring \
+                             --audit-file-path ({}) since both were set",
+                            path.display()
+                        ),
+                        Err(e) => tracing::warn!(
+                            "PostgreSQL audit backend unavailable ({e}); \
+                             --audit-file-path ({}) is set but is NOT used as a runtime \
+                             fallback — startup aborts",
+                            path.display()
+                        ),
+                    }
+                }
+                Ok(Some(result?))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Instantiate all configured HSM instances and return them in order.
     /// On platforms without HSM support, returns an empty Vec (or an error if HSMs were configured).
     fn instantiate_hsms(
@@ -405,7 +480,6 @@ impl KMS {
             if let Some(existing) = GLOBAL_HSMS.get() {
                 return Ok(existing.clone());
             }
-
             let mut hsm_arcs: Vec<Arc<dyn HSM + Send + Sync>> = Vec::new();
             for inst in &server_params.hsm_instances {
                 let hsm = Self::instantiate_one_hsm(&inst.model, inst.slot_passwords.clone())?;
@@ -455,11 +529,34 @@ impl KMS {
                 "Softhsm2",
                 slot_passwords
             )),
+            "kryoptic" => Ok(instantiate_hsm_with_env!(
+                Kryoptic,
+                "KRYOPTIC_PKCS11_LIB",
+                KRYOPTIC_PKCS11_LIB,
+                "Kryoptic",
+                slot_passwords
+            )),
             "smartcardhsm" => Ok(instantiate_hsm_with_env!(
                 Smartcardhsm,
                 "SMARTCARDHSM_PKCS11_LIB",
                 SMARTCARDHSM_PKCS11_LIB,
                 "Smartcardhsm",
+                slot_passwords
+            )),
+            #[cfg(target_os = "linux")]
+            "aws_cloudhsm" => Ok(instantiate_hsm_with_env!(
+                AwsCloudhsm,
+                "AWS_CLOUDHSM_PKCS11_LIB",
+                AWS_CLOUDHSM_PKCS11_LIB,
+                "AwsCloudhsm",
+                slot_passwords
+            )),
+            #[cfg(target_os = "linux")]
+            "gcp_cloud_hsm" => Ok(instantiate_hsm_with_env!(
+                GcpCloudHsm,
+                "GCP_CLOUD_HSM_PKCS11_LIB",
+                GCP_CLOUD_HSM_PKCS11_LIB,
+                "GCP Cloud HSM",
                 slot_passwords
             )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -472,7 +569,8 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, softhsm2, utimaco, other"
+                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
+                 softhsm2, utimaco, kryoptic, other"
             ),
         }
     }
@@ -562,6 +660,46 @@ mod tests {
         assert!(
             result.is_err(),
             "http without otel_params should be rejected"
+        );
+        Ok(())
+    }
+
+    /// The `PostgreSQL` audit backend has no runtime fallback to the file backend: a
+    /// connection failure at startup must abort `KMS::instantiate`, even when
+    /// `--audit-file-path` is also set. Uses a connection-refused address (no live
+    /// database needed) so this test runs everywhere, unlike the `#[ignore]`-gated live
+    /// PostgreSQL tests.
+    #[tokio::test]
+    async fn postgres_audit_connection_failure_aborts_startup_without_file_fallback() -> KResult<()>
+    {
+        let mut conf = crate::tests::test_utils::https_clap_config();
+        conf.audit.audit_enable = true;
+        // `https_clap_config()` builds via `Default`, which does not apply clap's
+        // `default_value_t` — must set explicitly or `AuditStore::start_postgres`
+        // rejects it before ever attempting the connection.
+        conf.audit.audit_channel_capacity = 1;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://kms:kms@127.0.0.1:1/audit?sslmode=disable".to_owned());
+        conf.audit.postgres.audit_instance_id = Some("startup-abort-test".to_owned());
+
+        let file_path = std::env::temp_dir().join(format!(
+            "kms-audit-fallback-probe-{}.jsonl",
+            uuid::Uuid::new_v4()
+        ));
+        conf.audit.file.audit_file_path = Some(file_path.clone());
+
+        let server_params = ServerParams::try_from(conf)?;
+        let result = KMS::instantiate(Arc::new(server_params)).await;
+        let Err(err) = result else {
+            panic!("a PostgreSQL connection failure at startup must abort instantiate()");
+        };
+        assert!(
+            err.to_string().contains("PostgreSQL"),
+            "error should name the PostgreSQL audit backend: {err}"
+        );
+        assert!(
+            !file_path.exists(),
+            "the file backend must never be used as a fallback"
         );
         Ok(())
     }

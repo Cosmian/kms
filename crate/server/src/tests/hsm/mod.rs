@@ -46,6 +46,8 @@ use crate::{
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
+#[cfg(feature = "non-fips")]
+mod eddsa_sign;
 mod issues;
 mod multi_hsm;
 mod permissions;
@@ -79,6 +81,8 @@ async fn test_hsm_all() {
     {
         info!("HSM: wrapped_ec_dek");
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
+        info!("HSM: eddsa_sign");
+        Box::pin(eddsa_sign::test_hsm_eddsa_sign()).await.unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
@@ -131,6 +135,10 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "proteccio".to_owned();
         } else if unwrapped_model == "crypt2pay" {
             clap_config.hsm.hsm_model = "crypt2pay".to_owned();
+        } else if unwrapped_model == "kryoptic" {
+            clap_config.hsm.hsm_model = "kryoptic".to_owned();
+        } else if unwrapped_model == "aws_cloudhsm" {
+            clap_config.hsm.hsm_model = "aws_cloudhsm".to_owned();
         } else if unwrapped_model == "other" {
             clap_config.hsm.hsm_model = "other".to_owned();
         } else {

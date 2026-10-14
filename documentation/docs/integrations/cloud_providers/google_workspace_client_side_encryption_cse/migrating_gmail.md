@@ -67,12 +67,12 @@ that their messages can be encrypted in preparation for migration:
 For Windows:
 
 > gmail-cse-migrate.exe -input user1.pst -input user2.pst -api-credential
-> c:\my_svc_acct.json -dryrun -logfile log.txt
+> c:\\my_svc_acct.json -dryrun -logfile log.txt
 
 If it looks good, then run the command again in migration mode:
 
 > gmail-cse-migrate.exe -input user1.pst -input user2.pst -api-credential
-> c:\my_svc_acct.json -logfile log.txt
+> c:\\my_svc_acct.json -logfile log.txt
 
 For macOS:
 

@@ -35,6 +35,7 @@ require_cmd cargo
 HSM_USER_PASSWORD="12345678" cargo test \
   -p utimaco_pkcs11_loader \
   --features utimaco \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_utimaco_all --ignored --exact
 
 print_success "Utimaco HSM tests completed"

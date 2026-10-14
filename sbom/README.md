@@ -51,17 +51,25 @@ cpe:2.3:<part>:<vendor>:<product>:<version>:*:*:*:*:*:*:*
 | `product` | component base name | Lower-cased, dashes → underscores |
 | `version` | exact semver | No `v` prefix |
 
+SBOM files declare **CycloneDX `specVersion: "1.6"`**.
+
 **CPE dictionary reference:** <https://nvd.nist.gov/feeds/json/cpe/2.0/nvdcpe-2.0.zip>
 
 ### Coverage in this SBOM
 
-All **988 components** in `bom.cdx.json` carry a CPE 2.3 identifier after generation:
+All **998 components** in `server/**/bom.cdx.json` carry a CPE 2.3 identifier:
 
 | Layer | Count | CPE source |
 |-------|-------|-----------|
 | System / Nix libs | ~4 | Hand-crafted (glibc, openssl, libidn2, libunistring) |
-| Rust crates | ~670 | Auto-derived via `enrich_cpe.py` |
-| npm/pnpm packages | ~310 | Auto-derived via `enrich_cpe.py` |
+| Rust crates | ~680 | Enriched via `enrich_cpe.py` |
+| npm/pnpm packages | ~314 | Enriched via `enrich_cpe.py` |
+
+In `server/fips/static/bom.cdx.json` (998 components total):
+
+- **123 components** are verified against real NVD CPE dictionary entries (34 `verified-exact`, 89 `verified-vendor-product`).
+- **860 components** have `no-nvd-entry`: NVD has never catalogued the product under any vendor — this is an inherent NVD coverage gap for long-tail Rust crates and npm packages.
+- **15 components** are `ambiguous`: multiple vendors in NVD share the product name without disambiguating metadata (candidates for `cpe_overrides.json`).
 
 ### Vendor derivation rules
 
@@ -83,6 +91,38 @@ All **988 components** in `bom.cdx.json` carry a CPE 2.3 identifier after genera
 
 4. **Fallback**: the component name itself, lower-cased with dashes replaced by
    underscores (NVD convention for personal/small crates).
+
+### Verifying against the full NVD CPE dictionary
+
+To verify and correct vendor guesses against ground truth, `enrich_cpe.py` can consult a
+local SQLite index of the NVD CPE dictionary (1.8M+ entries).
+
+1. **Download NVD CPE chunks** from the NVD CPE API 2.0 or feeds:
+   <https://nvd.nist.gov/feeds/json/cpe/2.0/nvdcpe-2.0.zip>
+2. **Build the SQLite index** via the MISE task:
+
+   ```bash
+   mise run sbom:build-cpe-dictionary /path/to/nvdcpe-2.0-chunks
+   ```
+
+   This creates `.cache/sbom/cpe-dictionary.sqlite` (machine-local, git-ignored).
+3. **Run enrichment**:
+
+   ```bash
+   python3 .mise/scripts/sbom/enrich_cpe.py \
+       --sbom-dir sbom/server/fips/static \
+       --cpe-dict-db .cache/sbom/cpe-dictionary.sqlite \
+       --in-place
+   ```
+
+Each component receives a `cosmian:sbom:cpe_match` diagnostic property indicating confidence:
+
+- `verified-exact`: vendor, product, and version match an entry in the NVD CPE dictionary.
+- `verified-vendor-product`: vendor and product match an NVD CPE entry, but the version differs.
+- `no-nvd-entry`: product has never been catalogued in the NVD CPE dictionary (inherent NVD gap).
+- `ambiguous`: multiple unrelated vendors exist in NVD for this product name.
+- `override`: matched via `cpe_overrides.json`.
+- `guessed`: dictionary was unavailable; vendor resolved via heuristics.
 
 ### Rust tooling evaluated
 

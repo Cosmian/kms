@@ -20,7 +20,7 @@ that can be used alone or together.
 
 The OPA modes require the **Eviden Authentication Server** (JWT issuer) and an
 **OPA sidecar** running the reference Rego policy. See the
-[RBAC, OPA, JWT and IdP setup guide](rbac-opa-jwt-setup.md) for a step-by-step
+[OPA + Authentication Verifier setup guide](opa-authverifier-setup.md) for a step-by-step
 walkthrough.
 
 ---
@@ -163,7 +163,7 @@ opa_url  = "http://localhost:8181"
 opa_mode = "enforcing"
 ```
 
-See the [setup guide](rbac-opa-jwt-setup.md) for Authentication Server and OPA
+See the [setup guide](opa-authverifier-setup.md) for Authentication Server and OPA
 sidecar configuration.
 
 ---

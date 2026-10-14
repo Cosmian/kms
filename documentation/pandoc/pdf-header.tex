@@ -1,0 +1,31 @@
+% Header preamble for the KMS documentation PDF build.
+% Included via pandoc --include-in-header (after the Eisvogel preamble).
+
+% Coloured admonition boxes (see pandoc/pdf.lua)
+\usepackage{tcolorbox}
+\tcbuselibrary{breakable, skins}
+
+\definecolor{admon-note-frame}{HTML}{3A7CA5}
+\definecolor{admon-note-back}{HTML}{F3F7FA}
+\definecolor{admon-warning-frame}{HTML}{D9822B}
+\definecolor{admon-warning-back}{HTML}{FDF6EC}
+\definecolor{admon-important-frame}{HTML}{C0392B}
+\definecolor{admon-important-back}{HTML}{FDEDEC}
+\definecolor{admon-info-frame}{HTML}{1E7F8C}
+\definecolor{admon-info-back}{HTML}{ECF7F8}
+\definecolor{admon-tip-frame}{HTML}{2E7D32}
+\definecolor{admon-tip-back}{HTML}{EDF7EE}
+
+% Pandoc emits \def\LTcaptype{none} for captionless longtables; the caption
+% package then needs the 'none' counter to exist.
+\newcounter{none}
+
+% <username> placeholders in Windows paths are emitted as \textless/\textgreater,
+% which textcomp defines but the XeLaTeX/unicode-math path does not load.
+\providecommand{\textless}{<}
+\providecommand{\textgreater}{>}
+
+% Compact code blocks in a 160-page reference document. `breakanywhere` is
+% required to wrap the long base64/blob lines in the KMIP JSON TTLV examples
+% (they contain no spaces, so plain `breaklines` leaves giant overfull lines).
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,fontsize=\footnotesize,commandchars=\\\{\}}

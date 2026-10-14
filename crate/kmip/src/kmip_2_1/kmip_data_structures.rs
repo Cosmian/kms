@@ -1199,7 +1199,9 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::ConfigurableKEMSecretKey
                 | KeyFormatType::ConfigurableKEMPublicKey
                 | KeyFormatType::CoverCryptSecretKey
-                | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
+                | KeyFormatType::CoverCryptPublicKey
+                | KeyFormatType::OpenPgpSecretKey
+                | KeyFormatType::OpenPgpPublicKey => serializer.serialize_bytes(bytes),
                 #[cfg(feature = "non-fips")]
                 KeyFormatType::Pkcs12Legacy => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
@@ -1386,7 +1388,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::ConfigurableKEMSecretKey
                     | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
-                    | KeyFormatType::CoverCryptSecretKey => {
+                    | KeyFormatType::CoverCryptSecretKey
+                    | KeyFormatType::OpenPgpSecretKey
+                    | KeyFormatType::OpenPgpPublicKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
                     #[cfg(feature = "non-fips")]
@@ -1653,7 +1657,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             | KeyFormatType::PKCS8
             | KeyFormatType::X509
             | KeyFormatType::CoverCryptPublicKey
-            | KeyFormatType::CoverCryptSecretKey => {
+            | KeyFormatType::CoverCryptSecretKey
+            | KeyFormatType::OpenPgpSecretKey
+            | KeyFormatType::OpenPgpPublicKey => {
                 trace!(
                     "===> KeyMaterial: Deserializing Bytes String for key format type: {:?} ",
                     self.key_format_type

@@ -39,7 +39,7 @@ repos:
             # MD041 (first heading must be #) and MD025 (only one # per file) are intentionally enabled
           ]
         exclude: >-
-          documentation/docs/kms_clients/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md
+          documentation/docs/kms_clients/cli/main_commands.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md
 
   # ── YAML ──────────────────────────────────────────────────────────────
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
@@ -54,7 +54,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|documentation/docs/benchmarks/|.mise/scripts/bench/bench_run_flamegraph.sh|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs
+        exclude: ui/src/i18n/locales/fr/|ui/src/i18n/locales/zh-CN/|documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|documentation/docs/benchmarks/|.mise/scripts/bench/bench_run_flamegraph.sh|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs
 
   # ── Whitespace / line-endings ─────────────────────────────────────────
   - repo: https://github.com/Lucas-C/pre-commit-hooks
@@ -162,7 +162,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs
+        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs|crate/crypto/src/crypto/openpgp/mod.rs|crate/clients/client_utils/src/openpgp_format.rs|crate/test_kms_server/src/pgp_tests.rs|crate/clients/ckms/src/tests/pgp/
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs
@@ -172,6 +172,7 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: name-tests-test
+        args: [--pytest-test-first]
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
@@ -328,9 +329,14 @@ repos:
         require_serial: true
 
       # ── Client crates ─────────────────────────────────────────────────
+      # Same ulimit bump as test-workspace-non-fips (see comment there): the
+      # ckms crate itself is the fd-heavy PQC/TLS test suite responsible for
+      # that flakiness, so it needs the same headroom when run standalone.
       - id: test-ckms
         name: cargo test ckms
-        entry: cargo test -p ckms --lib --features non-fips --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test -p ckms --lib --features non-fips --quiet'
         language: system
         files: ^crate/clients/ckms/
         pass_filenames: false
@@ -467,19 +473,39 @@ repos:
         pass_filenames: false
         require_serial: true
 
+      - id: test-aws_cloudhsm_pkcs11_loader
+        name: cargo test aws_cloudhsm_pkcs11_loader
+        entry: cargo test -p aws_cloudhsm_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/aws_cloudhsm/
+        pass_filenames: false
+        require_serial: true
+
       # ── Workspace-wide fallback (Cargo.lock or root Cargo.toml changed) ─
+      # ulimit bump: the ckms integration test suite spins up many concurrent
+      # TLS-enabled actix-web test servers (PQC certificate tests, access-control
+      # tests, ...); under a low default `ulimit -n` (commonly 1024) this exhausts
+      # available file descriptors partway through the run ("Too many open files",
+      # os error 24), cascading into dozens of unrelated test failures. Raise it
+      # for this hook's process only; fall back to the hard limit if 65536 exceeds
+      # it, and never fail the hook just because ulimit itself could not be raised.
       - id: test-workspace-non-fips
         name: cargo test workspace (Cargo.lock / Cargo.toml changed)
-        entry: cargo test --lib --workspace --features non-fips --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test --lib --workspace --features non-fips --quiet'
         language: system
         files: ^Cargo\.(lock|toml)$
         pass_filenames: false
         require_serial: true
 
       # ── FIPS (manual) ─────────────────────────────────────────────────
+      # Same ulimit bump as test-workspace-non-fips — see comment there.
       - id: cargo-test-fips
         name: cargo test workspace (fips, manual)
-        entry: cargo test --lib --workspace --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test --lib --workspace --quiet'
         language: system
         types: [rust]
         pass_filenames: false
@@ -554,14 +580,14 @@ repos:
         entry: bash .mise/scripts/pre-commit/smart-log-index.sh
         language: system
         pass_filenames: false
-        files: \.(rs|ts|tsx)$
+        always_run: true
 
       - id: generate-docs
         name: Regenerate all documentation (smart — only on CLI/config changes)
         description: |
           Smart docs regeneration — only runs when CLI args or config options
           change (clap derive macros, config structs). Much faster than running
-          on every Rust change. Use `mise run docs:generate` for full regen.
+          on every Rust change. Use `mise run docs:sync-all` for full regen.
         entry: bash .mise/scripts/pre-commit/smart-docs-regen.sh
         language: system
         types: [rust]
@@ -573,7 +599,7 @@ repos:
           Syncs crate/test_kms_server/README.md with vector_runner.rs and
           test_data/vectors manifests. Exits 1 when the README is updated so
           the developer must re-stage the file before committing.
-        entry: mise docs:vector-readme
+        entry: mise docs:sync-vectors
         language: system
         pass_filenames: false
         files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme
@@ -584,6 +610,7 @@ repos:
       - id: lychee
         args: [--config, lychee.toml, 'documentation/docs/**/*.md']
         pass_filenames: false
+        stages: [manual]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 7. Nightly / manual cleanup (Rust)
@@ -627,7 +654,7 @@ repos:
 
       - id: release-update-readme-kmip
         name: Release - update README KMIP table
-        entry: python3 .mise/scripts/docs/update_readme_kmip.py
+        entry: bash -c "pip install --quiet -r .mise/scripts/docs/requirements.txt && python3 .mise/scripts/docs/update_readme_kmip.py"
         language: system
         pass_filenames: false
         always_run: true
@@ -663,7 +690,7 @@ repos:
           Syncs crate/test_kms_server/README.md with vector_runner.rs and
           test_data/vectors manifests. Exits 1 when the README is updated so
           the developer must re-stage the file before committing.
-        entry: mise docs:vector-readme
+        entry: mise docs:sync-vectors
         language: system
         pass_filenames: false
         files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme

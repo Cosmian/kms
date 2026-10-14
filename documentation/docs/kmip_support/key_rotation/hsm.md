@@ -11,9 +11,33 @@ attributes rather than the KMS database.
 | ------------------------------ | :-------: | ---------------------------------------------------------------- |
 | Manual `Re-Key` via KMIP       | ✅        | Calls `C_GenerateKey` on the same HSM slot.                      |
 | Keyset membership (`x-rotate-name`) | ✅   | Stored in `CKA_LABEL`; keyset name **must be the full base UID** (`hsm::model::slot::key_id`). Supports `@latest`, `@first`, `@N` generation addressing. |
-| `x-rotate-interval` attribute  | ✅        | Writes `CKA_START_DATE` / `CKA_END_DATE` for validity tracking.  |
+| `x-rotate-interval` attribute  | ✅        | Writes `CKA_START_DATE` / `CKA_END_DATE` for validity tracking. Rejected with an error on HSMs that cannot store these dates on keys (SoftHSM2, Crypt2pay, AWS CloudHSM). |
 | Auto-rotation scheduler        | ❌        | `find_due_for_rotation` never returns HSM UIDs; scheduler skips them. |
 | `x-rotate-offset`              | ❌        | Not applicable to PKCS#11 scheduling; rejected with `NotSupported`. |
+
+---
+
+## Why label HSM keys?
+
+A PKCS#11 object exposes only a small, fixed set of attributes
+(`CKA_CLASS`, `CKA_KEY_TYPE`, `CKA_ID`, `CKA_LABEL`, `CKA_START_DATE`,
+`CKA_END_DATE`, …). None of them can hold free-form metadata, so an HSM key
+cannot store KMIP concepts such as *"which keyset do I belong to"* or *"which
+generation am I"* in a dedicated field.
+
+`CKA_LABEL` is the only freely-writable text attribute, subject to a
+token-specific maximum length (e.g. 128 bytes on Proteccio). The KMS therefore
+encodes everything it needs to know about an HSM key into that single field:
+
+- **tags**, so clients can discover keys with `Locate` — see
+  [HSM key labeling & tagging](../../hsm_support/tagging.md);
+- **keyset membership and generation**, so a bare key can be rotated and its
+  generations ordered — the subject of this page.
+
+Without a label an HSM key is an opaque blob: the KMS cannot tell its logical
+name, which keyset (if any) it belongs to, or which generation is current.
+Encoding that metadata in `CKA_LABEL` keeps it self-contained on the token,
+with no SQL shadow rows and no external registry.
 
 ---
 

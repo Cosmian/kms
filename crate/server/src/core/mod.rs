@@ -1,3 +1,4 @@
+pub(crate) mod audit;
 pub(crate) mod certificate;
 #[cfg(feature = "non-fips")]
 pub(crate) mod cover_crypt;
@@ -6,7 +7,6 @@ pub(crate) mod opa;
 pub(crate) mod operations;
 pub(crate) mod otel_metrics;
 pub(crate) mod retrieve_object_utils;
-pub(crate) mod rng;
 mod uid_utils;
 pub(crate) use uid_utils::ObjectHandle;
 pub(crate) mod wrapping;

@@ -35,7 +35,8 @@ HOST_SOCKET_TLS13_PORT="${KMS_SLOT_KMIP_TLS13_PORT}"
 CA_CERT="test_data/certificates/client_server/ca/ca.crt"
 CLIENT_CERT="test_data/certificates/client_server/owner/owner.client.acme.com.crt"
 CLIENT_KEY="test_data/certificates/client_server/owner/owner.client.acme.com.key"
-CLIENT_PKCS12_PATH="test_data/certificates/client_server/owner/owner.client.acme.com.p12"
+# PEM (not PKCS#12) for the CLI client identity: the host `ckms` runs under the
+# FIPS provider, which has no PKCS12KDF, so any .p12 MAC verification fails.
 
 KMS_URL_HTTP="http://127.0.0.1:${HOST_HTTP_PORT}"
 KMS_URL_HTTPS="https://127.0.0.1:${HOST_TLS_PORT}"
@@ -58,8 +59,8 @@ print_json = false
 [http_config]
 server_url = "'$KMS_URL_HTTPS'"
 accept_invalid_certs = true
-tls_client_pkcs12_path = "'$CLIENT_PKCS12_PATH'"
-tls_client_pkcs12_password = "password"
+tls_client_pem_cert_path = "'$CLIENT_CERT'"
+tls_client_pem_key_path = "'$CLIENT_KEY'"
 ' | tee "$TLS_CONFIG"
 
 # Use cargo run to execute ckms from the workspace instead of installing

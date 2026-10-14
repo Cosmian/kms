@@ -6,9 +6,9 @@ use std::{
 
 use cosmian_kms_interfaces::CryptoAlgorithm;
 use cosmian_logger::debug;
-use pkcs11_sys::{
-    CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256,
-};
+#[cfg(feature = "non-fips")]
+use pkcs11_sys::CKM_SHA_1;
+use pkcs11_sys::{CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA256};
 
 use crate::{
     HError, HResult, SlotManager,
@@ -22,6 +22,51 @@ impl HsmProvider for DefaultCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
         HsmCapabilities::default()
     }
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn add_supported_oaep_algorithms(
+    supported_hashes: &[pkcs11_sys::CK_MECHANISM_TYPE],
+    algorithms: &mut Vec<CryptoAlgorithm>,
+) {
+    if supported_hashes.contains(&CKM_SHA256) {
+        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
+    }
+}
+
+#[cfg(feature = "non-fips")]
+fn add_supported_oaep_algorithms(
+    supported_hashes: &[pkcs11_sys::CK_MECHANISM_TYPE],
+    algorithms: &mut Vec<CryptoAlgorithm>,
+) {
+    if supported_hashes.contains(&CKM_SHA_1) {
+        algorithms.push(CryptoAlgorithm::RsaOaepSha1);
+    }
+    if supported_hashes.contains(&CKM_SHA256) {
+        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
+    }
+}
+
+/// Query a slot's supported cryptographic algorithms using one opened session.
+pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgorithm>> {
+    let mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let supported_hashes = session.get_supported_oaep_hash()?;
+    let mut algorithms = Vec::new();
+
+    for &mechanism in &mechanisms {
+        match mechanism {
+            CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
+            CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
+            CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
+            CKM_RSA_PKCS_OAEP => {
+                add_supported_oaep_algorithms(&supported_hashes, &mut algorithms);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(algorithms)
 }
 
 struct SlotState {
@@ -72,13 +117,11 @@ impl<P: HsmProvider> BaseHsm<P> {
             .slots
             .lock()
             .context("Failed to acquire lock on slots")?;
-        // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
-            if let Some(s) = &slot_state.slot {
+            if let Some(slot) = &slot_state.slot {
                 debug!("Reusing slot {slot_id}");
-                Ok(s.clone())
+                Ok(slot.clone())
             } else {
-                // instantiate a new slot
                 let manager = Arc::new(SlotManager::instantiate(
                     self.hsm_lib.clone(),
                     slot_id,
@@ -156,28 +199,6 @@ impl<P: HsmProvider> BaseHsm<P> {
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
     pub fn get_algorithms(&self, slot_id: usize) -> HResult<Vec<CryptoAlgorithm>> {
         let slot = self.get_slot(slot_id)?;
-        let mechanisms = slot.get_supported_mechanisms()?;
-        let session = slot.open_session(true)?;
-        let supported_hashes = session.get_supported_oaep_hash()?;
-        let mut algorithms = Vec::new();
-
-        for &mechanism in &mechanisms {
-            match mechanism {
-                CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
-                CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
-                CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
-                CKM_RSA_PKCS_OAEP => {
-                    if supported_hashes.contains(&CKM_SHA_1) {
-                        algorithms.push(CryptoAlgorithm::RsaOaepSha1);
-                    }
-                    if supported_hashes.contains(&CKM_SHA256) {
-                        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        Ok(algorithms)
+        algorithms_for_slot(&slot)
     }
 }

@@ -13,6 +13,7 @@
 //!   rfc_vectors     — RFC 7515 known-answer and known-key tests
 
 mod common;
+mod ecdh;
 mod encrypt_decrypt;
 mod error_cases;
 mod jose_vectors;

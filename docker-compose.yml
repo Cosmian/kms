@@ -4,7 +4,7 @@
 # Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     ports:
       - ${KMS_SLOT_POSTGRES_PORT:-5432}:5432
     environment:
@@ -13,13 +13,29 @@ services:
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
 
+  # ── PostgreSQL audit backend ────────────────────────────────────────────────
+  # Dedicated instance for the PostgreSQL audit backend's #[ignore]-gated live
+  # tests (crate/server_database's stores::audit::pgsql::live_tests and
+  # crate/clients/clap's actions::audit::tests). Kept separate from the main
+  # `postgres` service on purpose: the audit backend refuses to start if its
+  # database is the same as the main object-storage database.
+  postgres-audit:
+    image: postgres:18
+    ports:
+      - ${KMS_SLOT_AUDIT_POSTGRES_PORT:-5436}:5432
+    environment:
+      - POSTGRES_USER=kms_audit
+      - POSTGRES_DB=kms_audit
+      - POSTGRES_PASSWORD=kms_audit
+      - PGDATA=/tmp/postgres-audit
+
   # ── PostgreSQL failover-retry test nodes ────────────────────────────────────
   # Two independent PostgreSQL instances used by test_db_postgresql_failover.
   # Start with: docker compose --profile pg-failover up -d
   # The container names (pg1, pg2) are referenced by docker stop/start inside
   # the test to simulate a primary failure and recovery.
   pg-failover-1:
-    image: postgres:16
+    image: postgres:18
     container_name: pg1
     profiles: [pg-failover]
     ports:
@@ -31,7 +47,7 @@ services:
       - PGDATA=/tmp/postgres-fo1
 
   pg-failover-2:
-    image: postgres:16
+    image: postgres:18
     container_name: pg2
     profiles: [pg-failover]
     ports:
@@ -71,7 +87,7 @@ services:
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
   postgres-mtls:
-    image: postgres:16
+    image: postgres:18
     ports:
       - ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433}:5432
     environment:
@@ -217,6 +233,44 @@ services:
       - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
       - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
 
+  # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
+  #
+  # Used by: mise run test:siem-cef-tcp-syslog, mise run test:siem
+  # No special startup needed — the test script manages the container lifecycle
+  # with the .mise/scripts/test/rsyslog.conf config.
+  #
+  # Start manually for debugging:
+  #   docker run --rm --name kms-rsyslog -p 51514:514 \
+  #     -v ./.mise/scripts/test/rsyslog.conf:/etc/rsyslog.conf:ro \
+  #     -v /tmp/rsyslog:/var/log:rw \
+  #     rsyslog/syslog_appliance_alpine:latest
+
+  # ── Elasticsearch 8.x (SIEM integration tests) ───────────────────────────
+  #
+  # WARNING: FOR LOCAL TEST AND CI AUTOMATION ONLY. DO NOT USE IN PRODUCTION.
+  # Authentication and TLS are disabled (xpack.security.enabled=false) to simplify ephemeral test runs.
+  #
+  # Used by: mise run test:siem-filebeat, mise run test:siem
+  # Start with: docker compose up -d elasticsearch
+  #
+  elasticsearch:
+    profiles: [test, siem]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - ${KMS_SLOT_ES_PORT:-9200}:9200
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:9200/_cluster/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
   #
   # Requires:
@@ -275,6 +329,32 @@ services:
       # on macOS/Windows Docker Desktop; on Linux Docker the special value
       # "host-gateway" maps to the host IP).
       - host.docker.internal:host-gateway
+
+  # IBM Db2 LUW — KMIP TDE integration test
+  # Started on demand with: docker compose up -d db2-tde
+  # Requires Docker privileged mode. Startup takes up to 5 minutes.
+  # LICENSE=accept is required to run the Community Edition image.
+  db2-tde:
+    image: ${DB2_DOCKER_IMAGE:-icr.io/db2_community/db2}
+    container_name: ${DB2_CONTAINER_NAME:-db2-kmip-test}
+    privileged: true
+    profiles:
+      - db2
+    ports:
+      - ${KMS_SLOT_DB2_PORT:-50000}:50000
+    environment:
+      - LICENSE=accept
+      - DB2INST1_PASSWORD=${DB2_INSTANCE_PWD:-Db2KmipTest1}
+      - DBNAME=${DB2_DBNAME:-KMIPDB}
+      - ARCHIVE_LOGS=false
+      - AUTOCONFIG=false
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/db2-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/db2-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/db2-kmip-certs/client.key:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway
 
   # InterSystems IRIS — mTLS integration test
   # Started on demand with: docker compose up -d iris

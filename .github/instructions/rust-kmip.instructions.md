@@ -38,3 +38,4 @@ cargo test -p cosmian_kmip --features non-fips
 ```
 
 > For compliance verification of KMIP operations, run `/kmip-compliance`.
+> Run `/kmip-compliance` when an operation or protocol behavior changes; schema-only changes unrelated to operation semantics may use a confirmed scoped skip.

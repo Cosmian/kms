@@ -5,16 +5,22 @@ mod object_handle;
 mod stores;
 mod user_id;
 
+pub use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 pub use crypto_oracle::{
-    CryptoAlgorithm, CryptoOracle, EncryptedContent, KeyMetadata, SigningAlgorithm,
+    CryptoAlgorithm, CryptoOracle, EncryptedContent, EncryptionKeyMetadata, KeyMetadata,
+    MacAlgorithm, MacKeyMetadata, SigningAlgorithm, SigningKeyMetadata,
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial,
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
+    HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial, RsaPrivateKeyMaterial,
+    RsaPublicKeyMaterial,
 };
 pub use object_handle::{HsmUidParts, ObjectHandle};
-pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
+pub use stores::{
+    AtomicOperation, AuditSink, ChainHead, FindOptions, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore, SealReason, WriteOutcome,
+};
 pub use user_id::UserId;
 
 /// Number of seconds in one day — the finest granularity PKCS#11 `CK_DATE` can represent.
@@ -27,6 +33,8 @@ pub enum KeyType {
     AesKey,
     RsaPrivateKey,
     RsaPublicKey,
+    EcPrivateKey,
+    EcPublicKey,
 }
 
 #[macro_export]

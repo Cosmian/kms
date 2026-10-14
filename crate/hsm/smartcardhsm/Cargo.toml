@@ -17,7 +17,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.26.0" }
+cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.28.0" }
 
 [dev-dependencies]
 libloading = { workspace = true }
@@ -26,3 +26,5 @@ pkcs11-sys = { workspace = true }
 [features]
 # Enable this feature to run smartcardhsm tests (they require a Smart card HSM)
 smartcardhsm = []
+# Enable HSM-delegated EdDSA/X25519 support (see cosmian_kms_base_hsm's `non-fips` feature).
+non-fips = ["cosmian_kms_base_hsm/non-fips"]

@@ -60,7 +60,7 @@ impl PluginConfig {
     pub fn from_file(path: &str) -> Result<Self, crate::error::PluginError> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| crate::error::PluginError::Config(format!("cannot read {path}: {e}")))?;
-        serde_yaml::from_str(&content)
+        serde_saphyr::from_str(&content)
             .map_err(|e| crate::error::PluginError::Config(format!("invalid YAML in {path}: {e}")))
     }
 }
@@ -82,7 +82,7 @@ cosmian_kms:
   wrapping_key_uid: 550e8400-e29b-41d4-a716-446655440000
   socket_path: /var/run/kubernetes-kms-plugin.sock
 ";
-        let cfg: PluginConfig = serde_yaml::from_str(yaml).expect("should parse");
+        let cfg: PluginConfig = serde_saphyr::from_str(yaml).expect("should parse");
         assert_eq!(cfg.cosmian_kms.server_url, "https://kms.example.com:9998");
         assert_eq!(cfg.cosmian_kms.api_key.as_deref(), Some("secret"));
         assert_eq!(
@@ -103,7 +103,7 @@ cosmian_kms:
   wrapping_key_uid: my-key
   socket_path: /tmp/kms.sock
 ";
-        let cfg: PluginConfig = serde_yaml::from_str(yaml).expect("should parse minimal config");
+        let cfg: PluginConfig = serde_saphyr::from_str(yaml).expect("should parse minimal config");
         assert!(cfg.cosmian_kms.api_key.is_none());
         assert!(cfg.cosmian_kms.tls_cert.is_none());
         assert!(cfg.cosmian_kms.ca_cert.is_none());

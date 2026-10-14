@@ -1,6 +1,6 @@
 ---
 name: rust-panic-audit
-description: 'Scan Rust code for every form of panic or brutal process exit: panic!, todo!, unimplemented!, unreachable!, .unwrap(), .expect() in production, process::exit/abort, integer overflow, and out-of-bounds indexing. Produces a ranked report with patches. Use when reviewing Rust code quality, before any PR, or when adding new Rust code.'
+description: 'Standalone Rust audit for panic and brutal-exit hazards, including panic macros, production `.unwrap()` / `.expect()`, process exits, overflow, and indexing. Use for a dedicated panic check; `/rust-review-all` uses KMS Caveman and does not invoke this skill again.'
 ---
 
 # Rust Panic & Brutal-Exit Audit
@@ -95,6 +95,18 @@ rg -n '\[\s*[a-z_][a-zA-Z0-9_]*\s*\]' --type rust ${SCOPE} \
   | grep -v 'cfg\|macro\|derive\|//\|test'
 ```
 
+### Optional: shrink wide-scope hit lists
+
+When `omp-jev-tools` is installed (OMP only — not available in VS Code
+Copilot Chat, Copilot CLI, or Copilot Cloud Agent) and Pass C, G, or H
+returns more hits than fit a manual pass, rerank each hit with `jev_rerank`:
+`query` is the pass's own heading text (e.g. "Direct slice indexing on
+non-literal indices"), one candidate per hit (`id` = `path:line`, `text` =
+the matched line plus two lines of context), keep only the top half by
+relevance before Step 3. Never apply this to Pass A, B, D, E, or F — every
+hit from those passes must still reach Step 3. Without the tool, review
+every hit from every pass.
+
 ---
 
 ## Step 3 — Classify findings
@@ -103,10 +115,9 @@ For each finding, assign a severity:
 
 | Severity | Criteria |
 |----------|----------|
-| **CRITICAL** | `panic!`, `process::exit`, `process::abort`, `todo!`, `unimplemented!` in hot paths |
-| **HIGH** | `.unwrap()` or `.expect()` on `Result`/`Option` in request handler, DB, or crypto code |
+| **CRITICAL** | `panic!`, `todo!`, `unimplemented!`, `process::exit`, or `process::abort` in production code outside the documented `fn main()` exception |
+| **HIGH** | Any `.unwrap()` or `.expect()` confirmed in production code; this repository forbids both |
 | **MEDIUM** | `unreachable!` outside debug guards, unchecked slice indexing on untrusted input |
-| **LOW** | `.unwrap()` in one-time initialisation (`OnceLock`, `lazy_static`, known-safe) |
 | **INFO** | `.expect()` in test code (allowed but must have a meaningful message) |
 
 ---
@@ -116,7 +127,6 @@ For each finding, assign a severity:
 The following are **allowed** and should be marked `[OK]`:
 
 - Any line inside a `#[cfg(test)]` module.
-- `OnceLock::set(...).expect("OnceLock already set")` — deterministic.
 - `unreachable!()` inside a `#[cfg(debug_assertions)]` block with a `// PANIC:` comment.
 - `process::exit(0)` inside `fn main()` only, with a `// PANIC:` comment.
 

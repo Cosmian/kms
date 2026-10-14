@@ -16,7 +16,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, GetAttributes},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+        kmip_types::{
+            AttributeReference, CryptographicAlgorithm, KeyFormatType, Tag, UniqueIdentifier,
+        },
     },
 };
 use cosmian_logger::warn;
@@ -27,7 +29,10 @@ use tracing::{debug, info};
 use crate::{
     core::KMS,
     middlewares::UserId,
-    routes::aws_xks::error::{XksErrorName, XksErrorReply},
+    routes::aws_xks::{
+        AWS_XKS_SERVICE_USER,
+        error::{XksErrorName, XksErrorReply},
+    },
 };
 
 /// Returns the current UTC time with milliseconds set to zero.
@@ -135,7 +140,7 @@ pub(crate) enum KeyUsage {
 ///     "keyStatus": "ENABLED"
 /// }
 /// ```
-#[derive(Serialize, Default, Deserialize)]
+#[derive(Debug, Serialize, Default, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct GetKeyMetadataResponse {
     /// Specifies the type of external key.
@@ -190,13 +195,17 @@ pub(crate) async fn get_key_metadata(
     }
 }
 
-async fn get_key_metadata_inner(
+pub(crate) async fn get_key_metadata_inner(
     _req_http: HttpRequest,
-    request: GetKeyMetadataRequest,
+    _request: GetKeyMetadataRequest,
     key_id: String,
     kms: &Arc<KMS>,
 ) -> Result<GetKeyMetadataResponse, XksErrorReply> {
-    let user = request.requestMetadata.awsPrincipalArn;
+    // Run the lookup as the reserved `AWS_XKS_SERVICE_USER`, which holds a `GetAttributes`
+    // grant on every XKS key, so any SigV4-authenticated caller can read the metadata. The
+    // caller ARN (`request.requestMetadata.awsPrincipalArn`) is audit-only and logged by the
+    // handler.
+    let user = UserId::from(AWS_XKS_SERVICE_USER);
 
     let response = kms
         .get_attributes(
@@ -204,7 +213,7 @@ async fn get_key_metadata_inner(
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
                 attribute_reference: None,
             },
-            &UserId::from(user.as_str()),
+            &user,
         )
         .await
         .map_err(|e| XksErrorReply {
@@ -271,13 +280,18 @@ async fn get_key_metadata_inner(
     })
 }
 
-async fn create_key(
+pub(crate) async fn create_key(
     _req_http: HttpRequest,
-    request: GetKeyMetadataRequest,
+    _request: GetKeyMetadataRequest,
     key_id: String,
     kms: &Arc<KMS>,
 ) -> Result<GetKeyMetadataResponse, XksErrorReply> {
-    let aws_user = request.requestMetadata.awsPrincipalArn;
+    // The key is owned by `default_username`, exactly as before, so that operators keep full
+    // administrative control over XKS keys (list, revoke, destroy, export) and so that
+    // creation passes the `privileged_users` check. Usage is then delegated to the reserved
+    // `AWS_XKS_SERVICE_USER` identity via an explicit, least-privilege grant below — never to
+    // the transient caller ARN. The caller ARN is audit-only and logged by the handler.
+    let owner = UserId::from(kms.params.default_username.clone());
     let uid = UniqueIdentifier::TextString(key_id);
     // Set the activation date  in the past to have the key immediately active
     let activation_date = time_normalize().map_err(|e| XksErrorReply {
@@ -312,54 +326,71 @@ async fn create_key(
         protection_storage_masks: None,
     };
 
-    if let Err(e) = kms
-        .create(create, &UserId::from(kms.params.default_username.as_str()))
-        .await
-    {
+    if let Err(e) = kms.create(create, &owner).await {
         // If the key already exists, ignore the creation error (idempotent CreateKey).
         let get_att_response = kms
             .get_attributes(
                 GetAttributes {
                     unique_identifier: Some(uid.clone()),
-                    attribute_reference: None,
+                    attribute_reference: Some(vec![
+                        AttributeReference::Standard(Tag::ObjectType),
+                        AttributeReference::Standard(Tag::Tag),
+                    ]),
                 },
-                &UserId::from(kms.params.default_username.as_str()),
+                &owner,
             )
             .await
             .map_err(|e| XksErrorReply {
                 errorName: XksErrorName::InternalException,
                 errorMessage: Some(format!("Failed to check prior existence of key {uid}: {e}")),
             })?;
-        if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) {
+        let is_xks_key = get_att_response
+            .attributes
+            .get_tags(&kms.params.vendor_identification)
+            .contains("aws-xks");
+        if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) && is_xks_key {
             warn!("AWS XKS create: key {uid} already exists (ignoring creation).");
+        } else if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) {
+            return Err(XksErrorReply {
+                errorName: XksErrorName::InternalException,
+                errorMessage: Some(format!(
+                    "Key {uid} already exists and is not an AWS XKS key; refusing to grant XKS access"
+                )),
+            });
         } else {
             return Err(XksErrorReply {
                 errorName: XksErrorName::InternalException,
                 errorMessage: Some(format!("Failed to create XKS key {uid}: {e}")),
             });
         }
-    } else {
-        // Grant Encrypt and Decrypt usage for the created key to the AWS user
-        kms.grant_access(
-            &Access {
-                unique_identifier: Some(uid.clone()),
-                user_id: aws_user.clone(),
-                operation_types: vec![
-                    KmipOperation::Encrypt,
-                    KmipOperation::Decrypt,
-                    KmipOperation::GetAttributes,
-                ],
-            },
-            &UserId::from(kms.params.default_username.as_str()),
-        )
-        .await
-        .map_err(|e| XksErrorReply {
-            errorName: XksErrorName::InternalException,
-            errorMessage: Some(format!(
-                "Failed to grant access to key {uid}, to user {aws_user}: {e}"
-            )),
-        })?;
     }
+
+    // Delegate usage to the reserved XKS service identity. Granting exactly these three
+    // operations keeps the XKS endpoints least-privileged: they can never revoke, destroy,
+    // or export the key, and they can only reach keys that carry this grant.
+    //
+    // This runs unconditionally — including on the "key already exists" path — because
+    // `grant_operations` is additive and idempotent. It therefore also repairs keys created
+    // by an earlier version (or by an interrupted CreateKey) that lack the grant.
+    kms.grant_access(
+        &Access {
+            unique_identifier: Some(uid.clone()),
+            user_id: AWS_XKS_SERVICE_USER.to_owned(),
+            operation_types: vec![
+                KmipOperation::Encrypt,
+                KmipOperation::Decrypt,
+                KmipOperation::GetAttributes,
+            ],
+        },
+        &owner,
+    )
+    .await
+    .map_err(|e| XksErrorReply {
+        errorName: XksErrorName::InternalException,
+        errorMessage: Some(format!(
+            "Failed to grant XKS usage on key {uid} to `{AWS_XKS_SERVICE_USER}`: {e}"
+        )),
+    })?;
 
     // Return the key metadata
     let key_spec = "AES_256".to_owned();

@@ -125,6 +125,7 @@ impl SocketServer {
             &handler,
             command_receiver,
             None,
+            None,
         )?;
         Ok(())
     }
@@ -140,6 +141,10 @@ impl SocketServer {
     /// * `request_handler`: A function that handles incoming requests.
     /// * It takes the username and request bytes as input and returns the response bytes.
     /// * The function must be `Send`, `Sync`, and `'static` to be used in a thread.
+    /// * `pre_bound_listener`: An optional pre-bound `TcpListener` for the socket server's
+    ///   `host:port`. When provided, it is used directly instead of re-binding by address,
+    ///   eliminating the TOCTOU race that a probe-then-release port allocation would have
+    ///   under highly parallel test execution.
     ///
     /// # Errors
     /// - If the server fails to bind to the specified host and port
@@ -149,6 +154,7 @@ impl SocketServer {
         kms_server: Arc<KMS>,
         request_handler: F,
         command_receiver: mpsc::Receiver<KResult<()>>,
+        pre_bound_listener: Option<TcpListener>,
     ) -> KResult<JoinHandle<()>>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
@@ -167,6 +173,7 @@ impl SocketServer {
                 &handler,
                 command_receiver,
                 Some(tx),
+                pre_bound_listener,
             );
         });
         trace!("Waiting for test socket server to start...");
@@ -185,11 +192,15 @@ impl SocketServer {
         handler: &Arc<F>,
         command_receiver: mpsc::Receiver<KResult<()>>,
         start_notifier: Option<mpsc::Sender<KResult<()>>>,
+        pre_bound_listener: Option<TcpListener>,
     ) -> Result<(), KmsError>
     where
         F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
-        let listener = match TcpListener::bind(addr).context(&format!("Failed to bind to {addr}")) {
+        // Use the pre-bound listener when given (eliminates the TOCTOU race between
+        // probing a free port and re-binding it later); otherwise bind fresh by address.
+        let bind_result = pre_bound_listener.map_or_else(|| TcpListener::bind(addr), Ok);
+        let listener = match bind_result.context(&format!("Failed to bind to {addr}")) {
             Ok(listener) => {
                 info!("Socket server listening on {}", addr);
                 if let Some(notifier) = start_notifier {

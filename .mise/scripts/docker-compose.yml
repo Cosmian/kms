@@ -14,8 +14,11 @@ services:
         published: ${KMS_SLOT_HTTP_PORT:-9998}
         protocol: tcp
     healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
-            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      test: [
+          CMD-SHELL,
+          "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+          \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -75,8 +78,11 @@ services:
         published: ${KMS_SLOT_KMS_CONF_PORT:-11098}
         protocol: tcp
     healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
-            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      test: [
+          CMD-SHELL,
+          "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+          \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -95,8 +101,11 @@ services:
         protocol: tcp
     restart: no
     healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
-            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      test: [
+          CMD-SHELL,
+          "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+          \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -174,13 +183,13 @@ services:
 
   # === Load balancer stack ===
   postgres:
-    image: postgres:16
+    image: postgres:18
     environment:
       POSTGRES_USER: kms
       POSTGRES_PASSWORD: kms
       POSTGRES_DB: kms
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: [CMD-SHELL, pg_isready -U kms -d kms]
       interval: 5s
@@ -197,10 +206,13 @@ services:
     volumes:
       - ../../test_data/configs/server/db/postgres_lb_primary.toml:/etc/cosmian/kms.toml:ro
     expose:
-      - '9998'
+      - "9998"
     healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
-            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      test: [
+          CMD-SHELL,
+          "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+          \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -215,10 +227,13 @@ services:
     volumes:
       - ../../test_data/configs/server/db/postgres_lb_secondary.toml:/etc/cosmian/kms.toml:ro
     expose:
-      - '9998'
+      - "9998"
     healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
-            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      test: [
+          CMD-SHELL,
+          "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+          \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -233,10 +248,13 @@ services:
     volumes:
       - ../../test_data/configs/server/db/postgres_lb_secondary.toml:/etc/cosmian/kms.toml:ro
     expose:
-      - '9998'
+      - "9998"
     healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
-            \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1"]
+      test: [
+          CMD-SHELL,
+          "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
+          \ http://localhost:9998/kmip/2_1 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 60

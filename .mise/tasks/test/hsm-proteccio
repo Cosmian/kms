@@ -32,6 +32,7 @@ PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
   cargo test \
   -p proteccio_pkcs11_loader \
   --features proteccio \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_proteccio_all --ignored --exact
 
 print_success "Proteccio HSM tests completed"

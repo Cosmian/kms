@@ -24,6 +24,7 @@ pub(crate) mod key_ops;
 mod locate;
 mod mac;
 mod message;
+pub(crate) mod pgp_ops;
 mod pkcs11;
 mod query;
 mod recertify;

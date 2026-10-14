@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Run GCP Cloud HSM PKCS#11 tests"
+set -euo pipefail
+exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/hsm-gcp-cloud-hsm" "$@"

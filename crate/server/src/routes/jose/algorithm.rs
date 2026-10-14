@@ -28,6 +28,21 @@ pub(crate) enum JoseAlgorithm {
     /// RSAES-OAEP using SHA-256 and MGF1 with SHA-256
     #[serde(rename = "RSA-OAEP-256")]
     RsaOaep256,
+    // ── ECDH-ES key management (RFC 7518 §4.6) ──
+    //
+    // FIPS-available for NIST curves (P-256/P-384/P-521, SP 800-56Ar3 approved).
+    // X25519 (OKP) support is layered on top at the decrypt/keys/JWKS call sites,
+    // gated `#[cfg(feature = "non-fips")]` there — the enum variant itself is
+    // curve-agnostic since the JOSE `alg` string is shared between EC and OKP keys.
+    /// ECDH-ES Direct Key Agreement — the derived key is the CEK directly
+    #[serde(rename = "ECDH-ES")]
+    EcdhEs,
+    /// ECDH-ES with AES-128 Key Wrap of a random CEK
+    #[serde(rename = "ECDH-ES+A128KW")]
+    EcdhEsA128KW,
+    /// ECDH-ES with AES-256 Key Wrap of a random CEK
+    #[serde(rename = "ECDH-ES+A256KW")]
+    EcdhEsA256KW,
     // ── RSA PKCS#1 v1.5 signatures (RFC 7518 §3.3) ──
     RS256,
     RS384,
@@ -57,6 +72,9 @@ impl fmt::Display for JoseAlgorithm {
             Self::Dir => "dir",
             Self::RsaOaep => "RSA-OAEP",
             Self::RsaOaep256 => "RSA-OAEP-256",
+            Self::EcdhEs => "ECDH-ES",
+            Self::EcdhEsA128KW => "ECDH-ES+A128KW",
+            Self::EcdhEsA256KW => "ECDH-ES+A256KW",
             Self::RS256 => "RS256",
             Self::RS384 => "RS384",
             Self::RS512 => "RS512",
@@ -86,6 +104,9 @@ impl FromStr for JoseAlgorithm {
             "dir" => Ok(Self::Dir),
             "RSA-OAEP" => Ok(Self::RsaOaep),
             "RSA-OAEP-256" => Ok(Self::RsaOaep256),
+            "ECDH-ES" => Ok(Self::EcdhEs),
+            "ECDH-ES+A128KW" => Ok(Self::EcdhEsA128KW),
+            "ECDH-ES+A256KW" => Ok(Self::EcdhEsA256KW),
             "RS256" => Ok(Self::RS256),
             "RS384" => Ok(Self::RS384),
             "RS512" => Ok(Self::RS512),
@@ -104,8 +125,9 @@ impl FromStr for JoseAlgorithm {
             "MLDSA44" => Ok(Self::MLDSA44),
             other => Err(format!(
                 "Unknown JOSE alg identifier '{other}'. Supported: dir, RSA-OAEP, RSA-OAEP-256, \
-                 RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384, ES512, HS256, HS384, \
-                 HS512, EdDSA (non-FIPS), MLDSA44 (non-FIPS)."
+                 ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW, RS256, RS384, RS512, PS256, PS384, \
+                 PS512, ES256, ES384, ES512, HS256, HS384, HS512, EdDSA (non-FIPS), MLDSA44 \
+                 (non-FIPS)."
             )),
         }
     }
@@ -171,11 +193,16 @@ fn build_enc_params(
     enc: JoseEncAlgorithm,
 ) -> Result<CryptographicParameters, CryptoApiError> {
     match alg {
-        JoseAlgorithm::Dir | JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {}
+        JoseAlgorithm::Dir
+        | JoseAlgorithm::RsaOaep
+        | JoseAlgorithm::RsaOaep256
+        | JoseAlgorithm::EcdhEs
+        | JoseAlgorithm::EcdhEsA128KW
+        | JoseAlgorithm::EcdhEsA256KW => {}
         _ => {
             return Err(CryptoApiError::UnsupportedAlgorithm(format!(
                 "Unsupported key management algorithm '{alg}'. Supported: dir, RSA-OAEP, \
-                 RSA-OAEP-256."
+                 RSA-OAEP-256, ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW."
             )));
         }
     }
@@ -321,6 +348,9 @@ pub(crate) fn usage_mask_from_alg(alg: &str) -> CryptographicUsageMask {
         "HS256" | "HS384" | "HS512" => {
             CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify
         }
+        // ECDH-ES key-agreement algorithms — the static EC/OKP key is used purely for
+        // key agreement, never for encrypt/decrypt of arbitrary data.
+        "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW" => CryptographicUsageMask::KeyAgreement,
         // Encryption algorithms (including "dir" which uses AES-GCM)
         _ => CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
     }
@@ -334,8 +364,11 @@ pub(crate) fn curve_from_crv(crv: &str) -> Result<RecommendedCurve, CryptoApiErr
         "P-521" => Ok(RecommendedCurve::P521),
         #[cfg(feature = "non-fips")]
         "Ed25519" => Ok(RecommendedCurve::CURVEED25519),
+        #[cfg(feature = "non-fips")]
+        "X25519" => Ok(RecommendedCurve::CURVE25519),
         other => Err(CryptoApiError::BadRequest(format!(
-            "Unsupported curve '{other}'. Supported: P-256, P-384, P-521, Ed25519 (non-FIPS)."
+            "Unsupported curve '{other}'. Supported: P-256, P-384, P-521, Ed25519 (non-FIPS), \
+             X25519 (non-FIPS)."
         ))),
     }
 }

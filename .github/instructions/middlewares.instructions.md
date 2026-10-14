@@ -18,3 +18,4 @@ scope wiring.
 - [ ] `EnsureAuth::new` boolean: `use_jwt_auth || use_cert_auth || use_api_token_auth` (every scope except mTLS-only)
 
 > Rule 4.9 of `/kms-sync-rules`.
+> Authentication or trust-boundary changes require `/security-review` and `/threat-model`; mechanical scans do not replace either review.

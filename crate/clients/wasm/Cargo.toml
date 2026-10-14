@@ -20,13 +20,13 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [features]
-non-fips = ["cosmian_kms_client_utils/non-fips"]
+non-fips = ["cosmian_kms_client_utils/non-fips", "cosmian_kms_client_utils/openpgp-export"]
 default = ["getrandom/js"]
 
 [dependencies]
 base64 = { workspace = true }
 console_error_panic_hook = "0.1"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.26.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.28.0" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = "0.3.77"
 pem = { workspace = true }

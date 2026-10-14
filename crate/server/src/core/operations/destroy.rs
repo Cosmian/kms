@@ -158,6 +158,7 @@ pub(crate) async fn recursively_destroy_object(
             || effective_state == State::Destroyed_Compromised
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
+                && object_type != ObjectType::PGPKey
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey
@@ -224,6 +225,7 @@ pub(crate) async fn recursively_destroy_object(
 
         match object_type {
             ObjectType::SymmetricKey
+            | ObjectType::PGPKey
             | ObjectType::Certificate
             | ObjectType::SecretData
             | ObjectType::OpaqueObject
@@ -360,7 +362,7 @@ pub(crate) async fn recursively_destroy_object(
                 )
                 .await?;
             }
-            x => kms_bail!(KmsError::NotSupported(format!(
+            x @ ObjectType::CertificateRequest => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
             ))),
         }
@@ -439,7 +441,15 @@ async fn update_as_destroyed(
     let attributes = match object {
         Object::Certificate { .. } => {
             trace!("[destroy-core] certificate zeroization uid={handle}");
-            Attributes::default()
+            // Keep only what revocation checking needs: RFC 5280 §3.3 requires a revoked
+            // certificate to stay on its issuer's CRL until it expires, and CRL/OCSP find
+            // it through the issuer `CertificateLink` and read the revocation details.
+            // Wiping these made a revoked-then-destroyed certificate vanish from the CRL
+            // and OCSP report it `unknown`.
+            let previous = kms.database.retrieve_object(handle.as_str()).await?;
+            previous.map_or_else(Attributes::default, |owm| {
+                retained_certificate_attributes(owm.attributes())
+            })
         }
         Object::OpaqueObject(_) => {
             if let Object::OpaqueObject(inner) = object {
@@ -478,6 +488,23 @@ async fn update_as_destroyed(
     Ok(())
 }
 
+/// The subset of a certificate's attributes kept after Destroy: the issuer link
+/// and the revocation details used by CRL generation and the OCSP responder.
+fn retained_certificate_attributes(previous: &Attributes) -> Attributes {
+    let mut retained = Attributes {
+        object_type: Some(ObjectType::Certificate),
+        revocation_reason: previous.revocation_reason.clone(),
+        deactivation_date: previous.deactivation_date,
+        compromise_date: previous.compromise_date,
+        compromise_occurrence_date: previous.compromise_occurrence_date,
+        ..Attributes::default()
+    };
+    if let Some(issuer) = previous.get_link(LinkType::CertificateLink) {
+        retained.set_link(LinkType::CertificateLink, issuer);
+    }
+    retained
+}
+
 /// Issue #763 — Guard an HSM destroy against a key-type mismatch.
 ///
 /// Performs a single PKCS#11 `get_key_type` call on the HSM oracle and checks
@@ -497,8 +524,8 @@ async fn guard_hsm_key_type(
         Ok(Some(actual_key_type)) => {
             let actual_object_type = match actual_key_type {
                 KeyType::AesKey => ObjectType::SymmetricKey,
-                KeyType::RsaPrivateKey => ObjectType::PrivateKey,
-                KeyType::RsaPublicKey => ObjectType::PublicKey,
+                KeyType::RsaPrivateKey | KeyType::EcPrivateKey => ObjectType::PrivateKey,
+                KeyType::RsaPublicKey | KeyType::EcPublicKey => ObjectType::PublicKey,
             };
             if actual_object_type != *expected_type {
                 return Err(KmsError::Kmip21Error(

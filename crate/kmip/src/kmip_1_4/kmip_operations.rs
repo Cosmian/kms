@@ -387,8 +387,9 @@ impl TryFrom<kmip_2_1::kmip_operations::ReKeyKeyPairResponse> for ReKeyKeyPairRe
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
-    /// Unique identifier of the object to derive from
-    pub unique_identifier: String,
+    /// Unique identifiers of the object or objects to derive from.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unique_identifier: Vec<String>,
     /// Information for the derivation process
     pub derivation_method: DerivationMethod,
     /// Parameters for derivation
@@ -397,6 +398,43 @@ pub struct DeriveKey {
     /// Template attributes for the new key/secret
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl DeriveKey {
+    /// Build a KMIP 1.4 `DeriveKey` request from a single base object identifier.
+    #[must_use]
+    pub fn new_single_base(
+        unique_identifier: impl Into<String>,
+        derivation_method: DerivationMethod,
+        derivation_parameters: Option<DerivationParameters>,
+        template_attribute: Option<TemplateAttribute>,
+    ) -> Self {
+        Self {
+            unique_identifier: vec![unique_identifier.into()],
+            derivation_method,
+            derivation_parameters,
+            template_attribute,
+        }
+    }
+
+    /// Build a KMIP 1.4 asymmetric `DeriveKey` request using two identifiers.
+    #[must_use]
+    pub fn new_asymmetric(
+        private_key_identifier: impl Into<String>,
+        peer_public_key_identifier: impl Into<String>,
+        derivation_parameters: Option<DerivationParameters>,
+        template_attribute: Option<TemplateAttribute>,
+    ) -> Self {
+        Self {
+            unique_identifier: vec![
+                private_key_identifier.into(),
+                peer_public_key_identifier.into(),
+            ],
+            derivation_method: DerivationMethod::ASYMMETRIC_KEY,
+            derivation_parameters,
+            template_attribute,
+        }
+    }
 }
 
 impl From<DeriveKey> for kmip_2_1::kmip_operations::DeriveKey {
@@ -417,20 +455,22 @@ impl From<DeriveKey> for kmip_2_1::kmip_operations::DeriveKey {
                 })
             })
             .unwrap_or(kmip_2_1::kmip_objects::ObjectType::SymmetricKey);
+        let DeriveKey {
+            unique_identifier,
+            derivation_method,
+            derivation_parameters,
+            template_attribute,
+        } = derive;
+
         Self {
             object_type,
-            object_unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                derive.unique_identifier,
-            ),
-            derivation_method: derive.derivation_method.into(),
-            derivation_parameters: derive
-                .derivation_parameters
-                .map(Into::into)
-                .unwrap_or_default(),
-            attributes: derive
-                .template_attribute
-                .map(Into::into)
-                .unwrap_or_default(),
+            object_unique_identifier: unique_identifier
+                .into_iter()
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString)
+                .collect(),
+            derivation_method: derivation_method.into(),
+            derivation_parameters: derivation_parameters.map(Into::into).unwrap_or_default(),
+            attributes: template_attribute.map(Into::into).unwrap_or_default(),
         }
     }
 }
@@ -1110,7 +1150,7 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
 
         let name = v.attribute_name.trim();
         let cleaned = name.replace(' ', "");
-        let aref = Tag::from_str(&cleaned).map_or_else(
+        let a_ref = Tag::from_str(&cleaned).map_or_else(
             |_| {
                 // Custom attributes must be referenced exactly as `Attribute::CustomAttribute`
                 // stores them (see the `CustomAttribute` -> `VendorAttribute` conversion in
@@ -1139,7 +1179,7 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
         Self {
             unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
             current_attribute: None,
-            attribute_references: Some(vec![aref]),
+            attribute_references: Some(vec![a_ref]),
         }
     }
 }

@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**649 vectors** across 16 categories (including KAT):
+**653 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -281,9 +281,10 @@ replays the steps sequentially.
 | HSM / Resident Encrypt | `hsm/resident_aes256_create_encrypt` | Creates an AES-256 key directly on the HSM (key material lives in the HSM token). | 5 |
 | HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Creates an AES-256 key on the HSM, then encrypts and decrypts with AES-CBC mode. | 5 |
 | HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Creates an AES-256 key on the HSM, then attempts to encrypt with ECB mode. | 4 |
-| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | Attempts to create an EC P-256 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | Attempts to create an EC P-384 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Create | `hsm/resident_ec_p256_created` | Creates an EC P-256 keypair with an HSM-resident UID. | 5 |
+| HSM / Resident Create | `hsm/resident_ec_p384_created` | Creates an EC P-384 keypair with an HSM-resident UID. | 5 |
+| HSM / Resident Create | `hsm/resident_ed25519_created` | Creates an Ed25519 keypair with an HSM-resident UID. | 5 |
+| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID in a FIPS | 1 |
 | HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Tests HSM keyset traversal across a 3-generation chain: | 12 |
 | HSM / Resident Keyset | `hsm/resident_keyset_full_lifecycle` | Full HSM keyset lifecycle test covering all three decrypt-addressing variants: | 12 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_addressing` | Creates an HSM-resident key, assigns a keyset name (rotate_name = "ks-addr"), | 15 |
@@ -302,7 +303,7 @@ replays the steps sequentially.
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
 | HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | Attempts to create an RSA-1024 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-OAEP-SHA1 | 7 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA1. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA256. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-PKCS#1v1.5 | 7 |
 | HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | Creates an RSA-2048 keypair on the HSM then attempts to sign using DSAWithSHA256. | 6 |
@@ -315,6 +316,7 @@ replays the steps sequentially.
 | HSM / Resident Sign | `hsm/resident_rsa4096_create_sign` | Creates an RSA-4096 keypair directly on the HSM via CreateKeyPair. | 6 |
 | HSM / Negative | `hsm/wrong_prefix` | Attempts to encrypt using a key ID with an invalid HSM slot prefix (hsm::99::nonexistent). | 1 |
 | **Integrations** | | | |
+| Integrations | `fips/integrations/db2_luw` | Simulates IBM Db2 LUW 11.1+ native encryption KMIP 1.1 protocol: Create named AES-256 Database Encryption Master Key (DEMK) → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/fortigate` | Simulates FortiOS KMIP 1.0 batched key lookup: Register named AES-128 and HMAC-SHA1 keys → Activate → Batched Locate×4 with UsernamePassword Authentication → Revoke → Destroy. Matches real FortiOS TRACES_40F_1.txt traces (BatchCount=4, BatchOrderOption=true, MaximumItems=1 per Locate, KMIP 1.0 TemplateAttribute). | 17 |
 | Integrations | `fips/integrations/fortigate_credential_type` | Non-regression for GitHub issue #824 (FortiOS 7.6.0 / FortiGate 40F support). FortiGate sends CredentialType as a raw numeric enumeration (0x00000001) rather than the symbolic name "UsernameAndPassword". The server previously failed with "missing field `CredentialType`" because the Authentication/Credential structure was not being deserialized correctly. This test sends a KMIP 1.0 Locate request with Authentication containing the numeric CredentialType value and verifies the server processes it successfully. | 5 |
 | Integrations | `fips/integrations/fortigate_locate_filter` | Non-regression for GitHub issue #824 comment (FortiOS 7.6 / FortiGate 40F). FortiGate sends KMIP 1.0 Locate requests filtered on the Name attribute to resolve IPsec keys (ENC and AUTH, both directions). The bug caused the server to return the same UniqueIdentifier for all Locate requests regardless of the requested NameValue. This test creates two keys with different names matching the FortiGate naming pattern, locates each by name using KMIP 1.0 TemplateAttribute, and verifies each Locate returns the correct (distinct) key. | 10 |
@@ -333,6 +335,7 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/kmip_3_0_symmetric` | Creates AES-256 key, encrypts, decrypts, and destroys using KMIP 3.0 binary wire format | 6 |
 | Integrations | `fips/integrations/mysql` | Simulates MySQL Enterprise Transparent Data Encryption (TDE) KMIP 1.1 protocol: Create AES-256 key → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/percona` | Simulates the Percona PostgreSQL TDE KMIP 1.4 protocol: Register (AES-128 symmetric key) → Locate (by ObjectType + Name) → Get. Mirrors crate/server/src/tests/ttlv_tests/integrations/postgres.rs exactly. | 5 |
+| Integrations | `fips/integrations/sybase_ase` | Simulates SAP Sybase ASE 16.x Transparent Data Encryption (TDE) KMIP 1.1 protocol: Create named AES-256 master key → Activate → Get → Revoke → Destroy. | 5 |
 | Integrations | `fips/integrations/synology_dsm` | Replays the exact KMIP 1.2 operation sequence observed from Synology DSM 7.x during encrypted volume creation: Query ×4 → Locate (empty) → Register (SecretData/Password with OperationPolicyName) → ModifyAttribute (rename to volume UUID) → Locate (find) → Activate → GetAttributeList → GetAttributes → Get → Revoke → Destroy. Mirrors crate/server/src/tests/ttlv_tests/integrations/synology_dsm.rs exactly. | 14 |
 | Integrations | `fips/integrations/vast_data` | Replays the exact KMIP 1.4 operation sequence observed in VAST Data production logs (June 2026): DiscoverVersions → Create AES-256 (with OperationPolicyName) → AddAttribute (Name) → AddAttribute (ObjectGroup) → AddAttribute (OperationPolicyName) → Activate → Locate by name → Get (plaintext) → GetAttributes (State + ActivationDate) → ReKey → Locate (find rotated key) → Get (new key material) → GetAttributes (verify Active + OperationPolicyName preserved after rotation) → Revoke old → Destroy old → Revoke new → Destroy new. VAST uses HTTP POST to /kmip with KMIP 1.4 binary TTLV and mTLS authentication. Covers the ReKey bug fix (issue #845): VAST sends ReKey and expects a new UUID returned. Covers the OperationPolicyName persistence fix: OPN must survive AddAttribute and ReKey. | 17 |
 | Integrations | `fips/integrations/veeam` | Replays the KMIP 1.4 operation sequence from Veeam Backup & Replication: CreateKeyPair (RSA-2048, Sign/Verify) → Get (public key) → Get (private key) → Destroy private → Destroy public. Mirrors crate/server/src/tests/ttlv_tests/integrations/veeam.rs exactly. | 5 |
@@ -490,6 +493,7 @@ replays the steps sequentially.
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Creates a ChaCha20-Poly1305 key, encrypts with a client-provided 12-byte nonce using AEAD mode, then decrypts and verifies the plaintext | 3 |
 | non-FIPS / ChaCha20 | `non-fips/chacha20_server_generated_nonce` | Creates a ChaCha20 key, encrypts without specifying a nonce (server generates an 8-byte nonce), captures the nonce from the response, then decrypts and verifies the plaintext | 3 |
 | non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Creates a ChaCha20 key, encrypts with an explicit CryptographicParameters block specifying the ChaCha20 algorithm and a client-provided 8-byte nonce, then decrypts and verifies the plaintext | 3 |
+| non-FIPS | `non-fips/derive_key_x25519` | Creates two X25519 key pairs, derives a non-exportable shared secret with DeriveKey, and verifies the stored SecretData attributes | 14 |
 | **Keyset Resolution** | | | |
 | Keyset | `keyset_chain_skips_expired_window` | Creates a symmetric key (gen-0), sets a rotate_name, encrypts with the gen-0 UID, then performs a ReKey to create gen-1.  Sets ProtectStopDate in the past on gen-1 (the newest key in the chain).  Decrypts with the bare keyset name. | 9 |
 | Keyset / Decrypt | `keyset_decrypt_at_first` | Creates a symmetric key, assigns a rotate_name, encrypts with the original key UID, performs a ReKey, then decrypts using name@first. Verifies that @first resolves to gen-0 for decryption. | 8 |

@@ -97,7 +97,12 @@ impl KMS {
             return Ok(true);
         };
         let current_gen = attrs.rotate_generation.unwrap_or(0);
-        let all = self.database.find_by_rotate_name(name, None, user).await?;
+        // Uncached: re-key eligibility must reflect the current keyset state, including
+        // rotations performed by other KMS nodes sharing this database.
+        let all = self
+            .database
+            .find_by_rotate_name_uncached(name, None, user)
+            .await?;
         Ok(!all.iter().any(|(other_uid, other_attrs)| {
             other_uid != uid && other_attrs.rotate_generation.unwrap_or(0) > current_gen
         }))
@@ -522,6 +527,8 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
             ))
         })
         .collect();
+    // `Database::atomic` invalidates the keyset-resolution cache for every created
+    // member's `rotate_name`, so the new generation is visible immediately.
     kms.database.atomic(user, &persist_ops).await?;
     op.finalize_dependants(kms, user, &candidates, &replacements)
         .await?;
@@ -544,6 +551,8 @@ pub(crate) fn setup_new_key(
 ) -> KResult<()> {
     if let Ok(key_attrs) = key_object.attributes_mut() {
         key_attrs.name.clone_from(&replacement_attrs.name);
+        key_attrs.extractable = replacement_attrs.extractable;
+        key_attrs.sensitive = replacement_attrs.sensitive;
         key_attrs.set_link(
             LinkType::ReplacedObjectLink,
             LinkedObjectIdentifier::TextString(old_uid.to_owned()),
@@ -557,6 +566,18 @@ pub(crate) fn setup_new_key(
     }
 
     key_object.setup_with_lifecycle(object_type, replacement_attrs.activation_date)?;
+
+    // For SymmetricKey, PrivateKey, and SecretData, re-initialize NeverExtractable
+    // for the fresh key object based on its new Extractable setting (KMIP 2.1 §4.33).
+    if matches!(
+        object_type,
+        ObjectType::SymmetricKey | ObjectType::PrivateKey | ObjectType::SecretData
+    ) {
+        if let Ok(key_attrs) = key_object.attributes_mut() {
+            key_attrs.initialize_never_extractable();
+        }
+    }
+
     Ok(())
 }
 

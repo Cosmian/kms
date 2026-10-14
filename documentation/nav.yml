@@ -13,11 +13,15 @@ nav:
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
+      - HSM key labeling & tagging: hsm_support/tagging.md
       - Multi-HSM support: hsm_support/multi_hsm.md
+      - Algorithm support by model: hsm_support/algorithm_support.md
       - Trustway Crypt2pay: hsm_support/crypt2pay.md
       - Trustway Proteccio: hsm_support/proteccio.md
       - Utimaco General Purpose: hsm_support/utimaco.md
       - Smart card HSM / Nitrokey HSM 2: hsm_support/sc_hsm.md
+      - AWS CloudHSM: hsm_support/aws_cloudhsm.md
+      - GCP Cloud HSM: hsm_support/gcp_cloud_hsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
       - Other HSMs: hsm_support/other_hsms.md
   - KMIP Support:
@@ -58,9 +62,10 @@ nav:
           - Revoke: kmip_support/_revoke.md
           - Sign: kmip_support/_signature.md
   - Integrations:
-      - API overview:
+      - API Overview & Security:
           - API Endpoints: integrations/api.md
           - OpenAPI Specification and Swagger UI: integrations/openapi.md
+      - PKCS#11 provider module: integrations/pkcs11_provider.md
       - JOSE (JWS, JWE, JWKS):
           - JOSE API: integrations/jose/jose_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
@@ -93,6 +98,8 @@ nav:
           - Microsoft SQL Server External (EKM): integrations/databases/ms_sql_server.md
           - Oracle Database TDE: integrations/databases/oracle_tde.md
           - EDB Postgres Advanced Server TDE: integrations/databases/edb_postgres_tde.md
+          - SAP ASE TDE: integrations/databases/sap_ase_tde.md
+          - IBM Db2 LUW TDE: integrations/databases/ibm_db2_luw_tde.md
           - InterSystems IRIS: integrations/databases/intersystems_iris.md
       - Disk encryption:
           - Veracrypt: integrations/disk_encryption/veracrypt.md
@@ -113,15 +120,21 @@ nav:
           - Secrets Store CSI Driver: integrations/kubernetes/csi-provider.md
           - Kubernetes Operator: integrations/kubernetes/operator.md
       - Other:
+          - PKCS#11 provider module: integrations/pkcs11_provider.md
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
+          - GnuPG:
+              - OpenPGP keys: integrations/gnupg/openpgp.md
+              - Smartcard (gnupg-pkcs11-scd): integrations/gnupg/smartcard.md
           - PyKMIP: integrations/pykmip.md
           - KMIP compliance tests (ovh/kmip-go): integrations/kmip_go.md
           - S/MIME Email encryption: integrations/smime.md
           - Terraform / OpenTofu Provider: integrations/terraform.md
-      - SPIRE / SPIFFE:
+      - Zero Trust M2M (SPIRE / SPIFFE):
           - Vault-compatible integration: integrations/spire_spiffe.md
           - Native KMIP 2.1 plugins: integrations/spire_spiffe_kmip_plugin.md
+          - Web UI gateway SPIFFE authentication: integrations/spire_webui.md
+          - CLI (ckms) SPIFFE authentication: integrations/spire_ckms.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
@@ -140,11 +153,7 @@ nav:
           - Configuration: configuration/database/configuration.md
           - Tables: configuration/database/tables.md
           - Redis with Findex: configuration/database/redis.md
-      - Databases:
-          - Configuration: configuration/database/configuration.md
-          - Tables: configuration/database/tables.md
-          - Redis with Findex: configuration/database/redis.md
-      - Object & Unwrapped Caches: configuration/object-cache.md
+      - Cache mechanisms: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorization:
@@ -158,12 +167,18 @@ nav:
               - OPA + Authentication Verifier setup: configuration/authorization/opa-authverifier-setup.md
       - Enabling TLS: configuration/tls.md
       - Obtaining TLS Certificates: configuration/certificates.md
-      - Logging and telemetry:
-          - Logging: configuration/logging.md
-          - Log reference: configuration/log-reference.md
-      - Monitoring:
-          - Setup: configuration/monitoring-setup.md
-          - Metrics reference: configuration/otlp-metrics.md
+      - Observability:
+          - Log output: configuration/logging.md
+          - Log call-site reference: configuration/log-reference.md
+          - Metrics & traces (OTLP): configuration/otlp-telemetry.md
+          - Monitoring stack (Grafana): configuration/monitoring-setup.md
+      - Audit & SIEM:
+          - Audit logs: configuration/audit-logs.md
+          - File backend: configuration/audit-file-backend.md
+          - PostgreSQL backend: configuration/audit-postgresql-backend.md
+          - Audit events reference: configuration/audit-events.md
+          - CEF export format: configuration/cef-export.md
+          - SIEM integration: configuration/siems.md
       - User interface: configuration/ui.md
       - UI branding: configuration/ui_branding.md
       - Custom OpenSSL build: configuration/openssl_override.md
@@ -172,6 +187,7 @@ nav:
       - FIPS 140-3: certifications_and_compliance/fips.md
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
+          - PQC Entropy Source Validation (ESV) Compliance: certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:
@@ -180,8 +196,13 @@ nav:
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
-      - Reports: benchmarks/ckms_bench/report.md
+      - Software Baseline: benchmarks/ckms_bench/report.md
+      - HSM-Backed KEK: benchmarks/ckms_bench_hsm_kek_softhsm2/report.md
+      - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md
+      - PKCS#11 (Software Crypto): benchmarks/ckms_bench_pkcs11/report.md
+      - PKCS#11 with HSM-Delegated Crypto: benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
+      - p11perftest Commands: benchmarks/p11perftest.md
   - KMS Clients:
       - Getting started: kms_clients/index.md
       - Installation: kms_clients/installation.md
@@ -190,5 +211,6 @@ nav:
           - Examples: kms_clients/configuration.md
       - Usage:
           - Command Line Interface: kms_clients/usage.md
+          - Audit log management: kms_clients/audit.md
       - Access Rights: kms_clients/authorization.md
       - S/MIME Gmail: kms_clients/smime_gmail.md

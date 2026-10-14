@@ -10,6 +10,8 @@ use super::cover_crypt::CovercryptCommands;
 #[cfg(feature = "non-fips")]
 use super::fpe::FpeCommands;
 #[cfg(feature = "non-fips")]
+use super::pgp::PgpCommands;
+#[cfg(feature = "non-fips")]
 use super::pqc::PqcCommands;
 #[cfg(feature = "non-fips")]
 use super::tokenize::TokenizeCommands;
@@ -17,6 +19,7 @@ use crate::{
     actions::{
         access::AccessAction,
         attributes::AttributesCommands,
+        audit::AuditCommands,
         aws::AwsCommands,
         azure::AzureCommands,
         bench::BenchAction,
@@ -89,6 +92,9 @@ pub enum ServerCommands {
 #[derive(Subcommand)]
 pub enum KmsActions {
     #[command(subcommand)]
+    /// Inspect and verify the tamper-evident KMS audit log.
+    Audit(AuditCommands),
+    #[command(subcommand)]
     AccessRights(AccessAction),
     #[command(subcommand)]
     Attributes(AttributesCommands),
@@ -106,6 +112,9 @@ pub enum KmsActions {
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
     Pqc(PqcCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
+    Pgp(PgpCommands),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
     Tokenize(TokenizeCommands),
@@ -161,6 +170,9 @@ impl KmsActions {
         let mut new_config = kms_rest_client.config.clone();
 
         match self {
+            Self::Audit(action) => {
+                action.process()?;
+            }
             Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Aws(action) => Box::pin(action.process(kms_rest_client)).await?,
@@ -173,12 +185,14 @@ impl KmsActions {
             #[cfg(feature = "non-fips")]
             Self::Pqc(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
+            Self::Pgp(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
             Self::Tokenize(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
             Self::Cng(action) => Box::pin(action.process(kms_rest_client)).await?,
-            Self::Pkcs11(action) => action.process()?,
+            Self::Pkcs11(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::DeriveKey(action) => {
                 Box::pin(action.run(&kms_rest_client)).await?;
             }

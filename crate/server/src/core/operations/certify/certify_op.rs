@@ -45,7 +45,7 @@ pub(crate) async fn certify(
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(
-        kms.vendor_id(),
+        kms,
         &issuer,
         &subject,
         request,
@@ -125,6 +125,10 @@ pub(crate) async fn certify(
             keypair_data
                 .private_key_object
                 .setup_with_lifecycle(ObjectType::PrivateKey, Some(now))?;
+            keypair_data
+                .private_key_object
+                .attributes_mut()?
+                .initialize_never_extractable();
             keypair_data
                 .public_key_object
                 .setup_with_lifecycle(ObjectType::PublicKey, Some(now))?;

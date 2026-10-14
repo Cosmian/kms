@@ -99,12 +99,23 @@ sequenceDiagram
 
 ## Status mapping
 
-| KMS certificate state | OCSP status | `CRLReason` |
-| --- | --- | --- |
-| `Active` / `PreActive` | `good` | — |
-| `Compromised` / `Destroyed_Compromised` | `revoked` | `keyCompromise` |
-| `Deactivated` / `Destroyed` | `revoked` | `cessationOfOperation` |
-| Not found under this CA | `unknown` | — |
+| KMS certificate state | OCSP status |
+| --- | --- |
+| `Active` / `PreActive` | `good` |
+| `Compromised` / `Destroyed_Compromised` / `Deactivated` | `revoked` |
+| `Destroyed` after a `Revoke` | `revoked` |
+| `Destroyed` without a prior `Revoke`, or not found under this CA | `unknown` |
+
+For `revoked` certificates, `revocationTime` and the `CRLReason` are the ones recorded
+by the `Revoke` operation (the same values the CRL lists), so OCSP and CRL always
+agree. Destroying a revoked certificate keeps it `revoked`: its issuer link and
+revocation details survive `Destroy`.
+
+Every `CertID` in a request must name the configured CA; a request that mixes in
+another issuer is answered `unauthorized`. The in-memory response cache is used only
+for single-`CertID` requests without a nonce, is keyed by the full `CertID` (hash
+algorithm, issuer hashes and serial), never serves a response past its `nextUpdate`,
+and does not store `unknown` responses.
 
 If the **CA itself** is revoked with a compromise reason, every certificate it issued
 is reported `revoked` with reason `cACompromise`, regardless of the leaf certificate's

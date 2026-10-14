@@ -26,11 +26,25 @@ use cosmian_kms_client_utils::reexport::{
 use cosmian_logger::{info, trace};
 use serde::Serialize;
 
+#[cfg(feature = "non-fips")]
+use crate::cosmian_kmip::kmip_2_1::{
+    kmip_data_structures::DerivationParameters, kmip_types::UniqueIdentifier,
+};
 use crate::{
     KmsClientConfig,
     cosmian_kmip::{
-        kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
-        ttlv::{TTLV, from_ttlv, to_ttlv},
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+                ResponseMessage, ResponseMessageBatchItemVersioned,
+            },
+            kmip_types::{ProtocolVersion, ResultStatusEnumeration},
+        },
+        kmip_2_1::{
+            kmip_messages::RequestMessageBatchItem, kmip_operations::Operation,
+            kmip_types::OperationEnumeration,
+        },
+        ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
     },
     error::{KmsClientError, result::KmsClientResultHelper},
     http_client::HttpClient,
@@ -225,6 +239,28 @@ impl KmsClient {
     ) -> Result<DeriveKeyResponse, KmsClientError> {
         self.post_ttlv_2_1::<DeriveKey, DeriveKeyResponse>(&request)
             .await
+    }
+
+    /// Derive a non-exportable X25519 shared secret from a private key and a peer public key.
+    #[cfg(feature = "non-fips")]
+    pub async fn derive_x25519_secret(
+        &self,
+        private_key_uid: impl Into<String>,
+        peer_public_key_uid: impl Into<String>,
+        cryptographic_length: i32,
+    ) -> Result<String, KmsClientError> {
+        let request = DeriveKey::new_asymmetric(
+            UniqueIdentifier::TextString(private_key_uid.into()),
+            UniqueIdentifier::TextString(peer_public_key_uid.into()),
+            DerivationParameters::default(),
+            crate::kmip_2_1::kmip_attributes::Attributes {
+                object_type: Some(crate::kmip_2_1::kmip_objects::ObjectType::SecretData),
+                cryptographic_length: Some(cryptographic_length),
+                ..Default::default()
+            },
+        );
+        let response = self.derive_key(request).await?;
+        Ok(response.unique_identifier.to_string())
     }
 
     /// This operation is used to indicate to the server that the key material
@@ -584,6 +620,61 @@ impl KmsClient {
         self.post_ttlv_2_1::<Sign, SignResponse>(&request).await
     }
 
+    /// Signs through the KMIP 2.1 binary-TTLV message endpoint.
+    pub async fn sign_bytes(&self, request: Sign) -> Result<SignResponse, KmsClientError> {
+        let request = RequestMessage {
+            request_header: RequestMessageHeader {
+                protocol_version: ProtocolVersion {
+                    protocol_version_major: 2,
+                    protocol_version_minor: 1,
+                },
+                batch_count: 1,
+                ..Default::default()
+            },
+            batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                RequestMessageBatchItem::new(Operation::Sign(request)),
+            )],
+        };
+        let response = self.post_message_bytes(&request).await?;
+        if response.batch_item.len() != 1 {
+            return Err(KmsClientError::ResponseFailed(format!(
+                "Sign response contains {} batch items, expected exactly one",
+                response.batch_item.len()
+            )));
+        }
+        let item = response.batch_item.into_iter().next().ok_or_else(|| {
+            KmsClientError::ResponseFailed("Sign response has no batch item".to_owned())
+        })?;
+        let ResponseMessageBatchItemVersioned::V21(item) = item else {
+            return Err(KmsClientError::ResponseFailed(
+                "Sign response is not KMIP 2.1".to_owned(),
+            ));
+        };
+        if item.result_status != ResultStatusEnumeration::Success {
+            return Err(KmsClientError::ResponseFailed(format!(
+                "Sign failed with status {}: {} {}",
+                item.result_status,
+                item.result_reason.unwrap_or_default(),
+                item.result_message.unwrap_or_default()
+            )));
+        }
+        if item.operation != Some(OperationEnumeration::Sign) {
+            return Err(KmsClientError::ResponseFailed(format!(
+                "Sign response contains unexpected operation {:?}",
+                item.operation
+            )));
+        }
+        match item.response_payload {
+            Some(Operation::SignResponse(response)) => Ok(response),
+            Some(_) => Err(KmsClientError::ResponseFailed(
+                "Sign response contains an unexpected operation payload".to_owned(),
+            )),
+            None => Err(KmsClientError::ResponseFailed(
+                "Sign response has no payload".to_owned(),
+            )),
+        }
+    }
+
     /// This operation requests the server to perform a signature verify operation on the provided data using a Managed Cryptographic Object as the key for the signature verification operation.
     ///
     /// The request contains information about the cryptographic parameters (digital signature algorithm or cryptographic algorithm and hash algorithm) and the signature to be verified and MAY contain the data that was passed to the signing operation (for those algorithms which need the original data to verify a signature).
@@ -922,6 +1013,26 @@ impl KmsClient {
         request_message: &RequestMessage,
     ) -> Result<ResponseMessage, KmsClientError> {
         self.send_ttlv_request("/kmip", request_message).await
+    }
+
+    /// Sends a KMIP 2.x [`RequestMessage`] as binary TTLV to the `/kmip`
+    /// octet-stream endpoint and fully deserializes the response message.
+    pub async fn post_message_bytes(
+        &self,
+        request_message: &RequestMessage,
+    ) -> Result<ResponseMessage, KmsClientError> {
+        let server_url = format!("{}/kmip", self.client.server_url);
+        let request_ttlv = to_ttlv(request_message)?;
+        let request_bytes = request_ttlv.to_bytes(KmipFlavor::Kmip2)?;
+        let response = self
+            .client
+            .post_bytes(&server_url, request_bytes, "application/octet-stream")
+            .await?;
+        if !response.status.is_success() {
+            return Err(process_error_response("/kmip", response.status, &response));
+        }
+        let response_ttlv = TTLV::from_bytes(response.bytes(), KmipFlavor::Kmip2)?;
+        from_ttlv(response_ttlv).map_err(|error| KmsClientError::ResponseFailed(error.to_string()))
     }
 }
 

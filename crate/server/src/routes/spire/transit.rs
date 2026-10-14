@@ -336,6 +336,31 @@ fn transit_key_filter(kms: &KMS, name: &str) -> KResult<Attributes> {
     Ok(filter)
 }
 
+/// Find the transit key named `name` **owned by** `user`.
+///
+/// Ownership is required (`user_must_be_owner = true`): a key another user tagged
+/// `vault_transit:<name>` and shared with `*` (or with this identity) must never
+/// be selected, otherwise that user could make this tenant sign with a key they
+/// control. If legacy duplicates exist, the lowest UID is chosen so that `sign`
+/// and `GET /keys/{name}` always resolve to the same key.
+async fn find_owned_transit_key(
+    kms: &KMS,
+    user: &UserId,
+    name: &str,
+) -> SpireResult<Option<(String, Attributes)>> {
+    let filter = transit_key_filter(kms, name).map_err(SpireApiError::from)?;
+    let mut results = kms
+        .database
+        .find(Some(&filter), None, user, true, kms.vendor_id())
+        .await
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+    results.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(results
+        .into_iter()
+        .next()
+        .map(|(uid, _state, attrs)| (uid, attrs)))
+}
+
 /// Return `true` when a Vault `auto_rotate_period` value disables rotation.
 ///
 /// Vault accepts the interval as either an integer number of seconds or a
@@ -476,6 +501,16 @@ async fn create_transit_key_impl(
         ));
     }
 
+    // Vault semantics: creating an existing key is a no-op. Never create a second
+    // key under the same name — lookups would then pick one arbitrarily.
+    if let Some((_uid, attrs)) = find_owned_transit_key(&kms, &user, &name).await? {
+        debug!("vault transit: key '{name}' already exists, not re-creating");
+        return Ok(key_created_response(
+            name,
+            transit_key_type_from_attrs(&attrs).to_owned(),
+        ));
+    }
+
     let tag = transit_tag_name(&name);
     let tags = [tag.as_str()];
 
@@ -546,17 +581,8 @@ pub(crate) async fn get_transit_key(
     let user = kms.get_user(&req);
     let name = name.into_inner();
 
-    let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
-
-    let results = kms
-        .database
-        .find(Some(&filter), None, &user, false, kms.vendor_id())
-        .await
-        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
-
-    let (_priv_uid, _state, attrs) = results
-        .into_iter()
-        .next()
+    let (_priv_uid, attrs) = find_owned_transit_key(&kms, &user, &name)
+        .await?
         .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
 
     // Creation timestamp (RFC3339) for the key version map
@@ -663,9 +689,10 @@ pub(crate) async fn list_transit_keys(
         ..Default::default()
     };
 
+    // Owned keys only, consistent with get/sign/delete.
     let results = kms
         .database
-        .find(Some(&filter), None, &user, false, kms.vendor_id())
+        .find(Some(&filter), None, &user, true, kms.vendor_id())
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
@@ -698,9 +725,11 @@ pub(crate) async fn delete_transit_key(
 
     let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
 
+    // Owned keys only: never revoke/destroy another user's key that merely shares
+    // the tag. All owned duplicates are removed.
     let results = kms
         .database
-        .find(Some(&filter), None, &user, false, kms.vendor_id())
+        .find(Some(&filter), None, &user, true, kms.vendor_id())
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
@@ -785,17 +814,8 @@ async fn sign_with_transit_key_impl(
         .decode(&body.input)
         .map_err(|_e| SpireApiError::BadRequest("invalid base64 in 'input' field".to_owned()))?;
 
-    let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
-
-    let results = kms
-        .database
-        .find(Some(&filter), None, &user, false, kms.vendor_id())
-        .await
-        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
-
-    let (private_key_uid, _state, attrs) = results
-        .into_iter()
-        .next()
+    let (private_key_uid, attrs) = find_owned_transit_key(&kms, &user, &name)
+        .await?
         .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
 
     let hash_alg = transit_hash_alg_to_kmip(&hash_alg_path);
@@ -1182,6 +1202,54 @@ mod tests {
         assert_eq!(
             b_count, 1,
             "tenant-b should locate exactly 1 private key, got {b_count}"
+        );
+        Ok(())
+    }
+
+    /// A key another user tagged with the same transit name and shared with `*`
+    /// must never be resolved by name for this tenant (key-substitution guard).
+    #[tokio::test]
+    async fn test_transit_name_lookup_ignores_wildcard_shared_keys() -> KResult<()> {
+        use cosmian_kms_access::access::Access;
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            KmipOperation, kmip_types::UniqueIdentifier,
+        };
+
+        let kms = isolation_test_kms().await?;
+        let attacker = UserId::from("attacker");
+        let tenant = UserId::from("tenant-a");
+
+        let attacker_key = kms
+            .create_key_pair(transit_create_req_for("x509-CA-A")?, &attacker)
+            .await?;
+        kms.grant_access(
+            &Access {
+                unique_identifier: Some(attacker_key.private_key_unique_identifier.clone()),
+                user_id: "*".to_owned(),
+                operation_types: vec![KmipOperation::Sign, KmipOperation::GetAttributes],
+            },
+            &attacker,
+        )
+        .await?;
+
+        assert!(
+            super::find_owned_transit_key(&kms, &tenant, "x509-CA-A")
+                .await
+                .map_err(|e| crate::error::KmsError::ServerError(format!("{e:?}")))?
+                .is_none(),
+            "a key owned by another user must not resolve by name"
+        );
+
+        let own_key = kms
+            .create_key_pair(transit_create_req_for("x509-CA-A")?, &tenant)
+            .await?;
+        let (resolved, _) = super::find_owned_transit_key(&kms, &tenant, "x509-CA-A")
+            .await
+            .map_err(|e| crate::error::KmsError::ServerError(format!("{e:?}")))?
+            .expect("tenant's own key");
+        assert_eq!(
+            UniqueIdentifier::TextString(resolved),
+            own_key.private_key_unique_identifier
         );
         Ok(())
     }

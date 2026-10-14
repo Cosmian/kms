@@ -83,7 +83,7 @@ export COSMIAN_KMS_CONF=./test_data/configs/server/auth/jwt.toml
 
 The file should be a TOML file with the following structure:
 
-````toml
+```toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
@@ -110,9 +110,9 @@ info = false
 
 # The HSM model.
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-# `Smartcard HSM`, and `SoftHSM2` are natively supported.
+# `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
-# hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+# hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | kryoptic | other
 # List of KMS usernames that are granted HSM admin privileges.
 # HSM admins can create, destroy, and potentially export objects on the HSM.
 # Use `"*"` as the only entry to grant all authenticated users admin access.
@@ -139,14 +139,14 @@ info = false
 # Uses the new UID convention: hsm::<model>::<slot_id>::<key_id>
 # To connect HSMs, declare one [[hsm_instances]] section per device.
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-# `Smartcard HSM`, and `SoftHSM2` are natively supported.
+# `Smartcard HSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation.
 #
 # The first entry gets the routing prefix "hsm::<model>", the second
 # "hsm::<model>_1", etc. Object UIDs take the form "<prefix>::<slot>::<key-id>".
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | kryoptic | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices (use softhsm2-util --show-slots to list them)
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
@@ -178,6 +178,13 @@ info = false
 # if set and `[roles] crypto_officer_users` is not configured, these users
 # are promoted to the `CryptoOfficer` role automatically on startup.
 # privileged_users = ["<user_id_1>", "<user_id_2>"]
+
+# Interval in seconds between background refreshes of the `kms.objects.total`
+# and `kms.keys.active.count` metrics. Each refresh runs a full COUNT over the
+# objects table, which is expensive on very large databases.
+# Set to 0 to disable both the startup seed and the periodic refresh.
+# Default: 30.
+# metrics_count_interval_secs = 30
 
 # Check the database configuration documentation pages for more information
 [db]
@@ -330,6 +337,15 @@ hostname = "0.0.0.0"
 #   "https://auth0.example.com,,my-app",
 #   "https://keycloak.example.com/auth/realms/myrealm,,"
 # ]
+
+# Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+#
+# A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that validates successfully (signature, issuer, audience, expiry) against a configured issuer but has no `email` claim is authenticated using its `sub` claim **only if** `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+#
+# The flag is global: it applies to every `--jwt-auth-provider`. Every provider MUST specify an audience (`issuer,jwks_uri,audience`), and the SVID MUST carry a matching `aud` claim; otherwise the server refuses to start, since an SVID minted for another service could be replayed against the KMS.
+#
+# Disabled by default: enabling it only makes sense when the configured issuer(s) are a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+# jwt_svid_auth = false
 
 [workspace]
 # The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -500,6 +516,179 @@ vault_token_cache_ttl_secs = 0
 # `x-cosmian-crypto-officer-ceremony` completes
 # (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
 crypto_officer_require_ceremony = false
+
+# Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
+#
+# May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
+# and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
+# When active, gains ownership bypass on all Managed Objects.
+# When set, only listed users (plus those explicitly granted the `Create` right) can
+# create and import objects.
+# crypto_officer_users = ["alice@example.com", "bob@example.com"]
+
+# Hex-encoded 32-byte secret for ceremony record encryption.
+#
+# Required when any role has `require_ceremony = true`.
+# All ceremony activation records are AES-256-GCM encrypted with keys
+# derived from this secret, preventing forgery via direct database writes
+# and protecting participant identities at rest.
+#
+# Generate with: `openssl rand -hex 32`
+# ceremony_secret = ""
+
+# UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
+#
+# When set, key material is fetched from the KMS object store via a direct DB read
+# (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
+#   - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
+#   - HSM-backed sealing when the referenced key is HSM-resident.
+#   - Audit trail: each `Get` of the ceremony key is logged.
+#
+# **Bootstrap constraint**: the ceremony sealing key must be created before
+# enabling `crypto_officer_require_ceremony = true`. Create it while the server
+# is in config-only CO mode (no ceremony required), then enable ceremony mode:
+#
+# ```bash
+# # 1. Start server with require_ceremony = false
+# # 2. Create the sealing key:
+# ckms sym keys create --id ceremony-seal-2026 --number-of-bits 256
+# # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
+# # 4. Enable require_ceremony = true and restart
+# ```
+#
+# If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+#
+# **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
+# functional. Set `ceremony_secret` in the meantime.
+# ceremony_key_id = ""
+
+# UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
+#
+# When set, `CreateSplitKey` encrypts each share's raw bytes with this key (AES-128/192/256-KWP)
+# before storing in the database.  `JoinSplitKey` automatically detects the
+# `x-cosmian-share-wrapping-key` vendor attribute on each share and unwraps the bytes before
+# XOR reconstruction.
+#
+# The wrapping key must already exist in the KMS object store and must be an AES symmetric key.
+# When the KMS is HSM-backed, this key can be HSM-resident, providing hardware boundary
+# protection equivalent to purpose-built HSM split-key solutions.
+#
+# Generate a suitable key before enabling ceremony mode:
+# ```bash
+# ckms sym keys create --id ceremony-wrap-2026 --number-of-bits 256
+# ```
+#
+# Rotate by creating a new key, updating this value, and re-running the ceremony
+# (existing wrapped shares require the original key; re-ceremony is mandatory on rotation).
+# ceremony_wrapping_key_id = "ceremony-wrap-key"
+
+[crl]
+# Default CRL validity period in days for CA certificates managed by this server.
+#
+# When a CRL is generated without an explicit validity override (e.g., via
+# `GET /certificates/{id}/crl?validity_days=N`), this value is used.
+#
+# This value is in whole days (minimum 1 day / 24 h); enterprise PKIs commonly
+# use 7–28 days. Avoid the practical minimum of 1 day unless
+# `crl_refresh_overlap_hours` is also lowered below 24: a 1-day CRL satisfies
+# the default 24-hour refresh-overlap condition immediately after creation,
+# causing the hourly scheduler to continuously re-sign it.
+#
+# Valid range: 1–365 when set via the CLI flag.
+# Default: 7.
+#
+# This range is enforced by clap's argument parser only; it is not
+# currently re-validated when the value comes from a TOML config file, so
+# a value outside 1–365 in `kms.toml` is silently accepted.
+crl_default_validity_days = 7
+# How often (in hours) the background CRL refresh scheduler wakes up to
+# check whether any stored CRL needs to be regenerated.
+#
+# Set to 0 to disable the background scheduler entirely.
+# When disabled, CRLs are only refreshed on certificate revocation events.
+#
+# The scheduler is only spawned when `kms_public_url` is ALSO configured
+# (the CDP endpoint must be active); with `kms_public_url` unset, this
+# setting has no effect and CRLs are only refreshed on revocation events,
+# which can allow an expired CRL to be served in the meantime.
+#
+# Default: 1 (wake up hourly).
+crl_refresh_check_hours = 1
+# CRL overlap window in hours.
+#
+# The background scheduler regenerates a CRL when its `nextUpdate` timestamp
+# is within this many hours of the current time.  This prevents relying parties
+# from seeing an expired CRL during the window between expiry and the next
+# revocation-triggered regeneration.
+#
+# Analogy: EJBCA "CRL Overlap Time" (default 10 % of validity); AWS PCA uses
+# a 1-day overlap by default.
+#
+# Default: 24 (regenerate 24 hours before expiry).
+crl_refresh_overlap_hours = 24
+
+
+[ocsp]
+# Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
+#
+# When `false` (default) all `/ocsp/` routes return 404.
+ocsp_enabled = false
+# OCSP response validity period in seconds (`thisUpdate` → `nextUpdate`).
+#
+# Determines how long a signed response may be cached by relying parties and
+# CDN/proxy intermediaries per RFC 5019 §5.  Shorter values increase freshness;
+# longer values reduce load on the KMS (and HSM) signing key.
+#
+# Default: 86400 (24 hours).
+ocsp_cache_ttl_secs = 86400
+# Nonce handling policy for OCSP responses (RFC 9654 §2.1).
+#
+# - `optional` (default): echo the nonce if present, proceed without one if absent.
+# - `required`: reject requests that carry no nonce (returns `malformedRequest`).
+# - `ignore`: never include a nonce in responses (suitable for pre-produced/cached responses).
+#
+# Per RFC 9654 §2.1, the responder MUST accept nonces of 16–128 octets and echo
+# them verbatim.  Nonces shorter than 16 octets are silently ignored.
+ocsp_nonce_policy = "optional"
+# Include the signing certificate in OCSP `BasicResponse`s.
+#
+# Only the signer certificate itself is embedded — not its issuing chain.
+# Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
+# clients can verify the delegated responder's own certificate without an
+# additional fetch; delegated responders whose signer chain includes
+# intermediates the client does not already trust must distribute those
+# intermediates out of band. Safe to set `false` when the CA signs responses
+# directly.
+#
+# This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+# sets it to `true` (already the default). To set it to `false`, use the
+# `ocsp_include_cert_chain = false` key in the TOML config file instead.
+ocsp_include_cert_chain = true
+# Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
+#
+# When non-zero, the `id-pkix-ocsp-archive-cutoff` extension is added to each
+# `BasicResponse` with value = now − `ocsp_archive_cutoff_secs`. This tells clients
+# how far back the responder maintains revocation records.
+#
+# Set to 0 (default) to disable the extension.
+# Typical values: 365 days = 31536000.
+ocsp_archive_cutoff_secs = 0
+
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+failure_mode = "continue"
+
+
+[audit.file]
+
+[opa]
+# OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA gates access; for operations on existing objects, a legacy DB grant is also required). For object-creation operations (`Create`, `CreateKeyPair`, `Import`, `Register`) in `"enforcing"` mode, OPA's allow decision is sufficient — no DB grant exists yet. Ignored when `--opa-url` is not set
+opa_mode = "disabled"
+
+
+[audit.postgres]
 ```
 
 ---

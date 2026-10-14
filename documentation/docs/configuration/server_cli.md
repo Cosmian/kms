@@ -49,11 +49,11 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, and `SoftHSM2` are natively supported.
+          `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
+          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, kryoptic, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
@@ -372,6 +372,17 @@ Options:
 
           [env: KMS_JWT_AUTH_PROVIDER=]
 
+      --jwt-svid-auth
+          Accept SPIFFE JWT-SVIDs from the configured `--jwt-auth-provider` issuers.
+
+          A SPIFFE JWT-SVID carries no `email` claim, only a `sub` claim shaped as `spiffe://<trust-domain>/<workload-path>`. When this flag is enabled, a JWT that validates successfully (signature, issuer, audience, expiry) against a configured issuer but has no `email` claim is authenticated using its `sub` claim **only if** `sub` starts with `spiffe://`; every other JWT still requires `email` as before.
+
+          The flag is global: it applies to every `--jwt-auth-provider`. Every provider MUST specify an audience (`issuer,jwks_uri,audience`), and the SVID MUST carry a matching `aud` claim; otherwise the server refuses to start, since an SVID minted for another service could be replayed against the KMS.
+
+          Disabled by default: enabling it only makes sense when the configured issuer(s) are a SPIFFE-aware JWKS source (e.g. a SPIRE OIDC Discovery Provider).
+
+          [env: KMS_JWT_SVID_AUTH=]
+
       --enable
           Disable the embedded web UI. When set to false, the UI HTML assets are not served and all `/ui/` routes return 404
 
@@ -469,7 +480,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.26.0"]
+          [default: "Cosmian KMS v5.28.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -606,6 +617,28 @@ Options:
 
           [env: KMS_CEREMONY_KEY_ID=]
 
+      --ceremony-wrapping-key-id <CEREMONY_WRAPPING_KEY_ID>
+          UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
+
+          When set, `CreateSplitKey` encrypts each share's raw bytes with this key (AES-128/192/256-KWP)
+          before storing in the database.  `JoinSplitKey` automatically detects the
+          `x-cosmian-share-wrapping-key` vendor attribute on each share and unwraps the bytes before
+          XOR reconstruction.
+
+          The wrapping key must already exist in the KMS object store and must be an AES symmetric key.
+          When the KMS is HSM-backed, this key can be HSM-resident, providing hardware boundary
+          protection equivalent to purpose-built HSM split-key solutions.
+
+          Generate a suitable key before enabling ceremony mode:
+          ```bash
+          ckms sym keys create --id ceremony-wrap-2026 --number-of-bits 256
+          ```
+
+          Rotate by creating a new key, updating this value, and re-running the ceremony
+          (existing wrapped shares require the original key; re-ceremony is mandatory on rotation).
+
+          [env: KMS_CEREMONY_WRAP_KEY_ID=]
+
       --aws-xks-enable
           This setting turns on endpoints handling the AWS XKS feature
 
@@ -629,6 +662,17 @@ Options:
       --aws-xks-sigv4-secret-access-key <AWS_XKS_SIGV4_SECRET_ACCESS_KEY>
           [env: KMS_AWS_XKS_SIGV4_SECRET_ACCESS_KEY=]
 
+      --opa-url <OPA_URL>
+          OPA sidecar base URL. Setting this enables OPA authorization. Example: `http://localhost:8181`
+
+          [env: KMS_OPA_URL=]
+
+      --opa-mode <OPA_MODE>
+          OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA gates access; for operations on existing objects, a legacy DB grant is also required). For object-creation operations (`Create`, `CreateKeyPair`, `Import`, `Register`) in `"enforcing"` mode, OPA's allow decision is sufficient — no DB grant exists yet. Ignored when `--opa-url` is not set
+
+          [env: KMS_OPA_MODE=]
+          [default: disabled]
+
       --kmip-policy-id <POLICY_ID>
           KMIP algorithm policy selector.
 
@@ -644,6 +688,15 @@ Options:
           When enabled, must be at least 60 seconds to avoid excessive database churn.
 
           [default: 0]
+
+      --metrics-count-interval-secs <METRICS_COUNT_INTERVAL_SECS>
+          Interval in seconds between background refreshes of the `kms.objects.total`
+          and `kms.keys.active.count` metrics. Each refresh runs a full COUNT over the
+          objects table, which is expensive on very large databases.
+          Set to 0 to disable both the startup seed and the periodic refresh.
+          Default: 30.
+
+          [default: 30]
 
       --keyset-warn-depth <KEYSET_WARN_DEPTH>
           Depth at which a successful keyset chain decryption triggers a server-side warning.
@@ -798,6 +851,244 @@ Options:
 
           [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
           [default: 30]
+
+      --audit-enable
+          Enable the structured audit event pipeline.
+
+          When disabled (the default) no audit file is created and no background writer task is spawned.  The value can also be toggled at config-file level (`[audit] enable = true`).
+
+          [env: KMS_AUDIT_ENABLE=]
+
+      --audit-file-path <AUDIT_FILE_PATH>
+          Path to the JSONL audit log file.
+
+          When `--audit-enable` is set and this option is omitted, the file
+          defaults to `<root-data-path>/audit.jsonl`.
+
+          [env: KMS_AUDIT_FILE_PATH=]
+
+      --audit-file-max-size-bytes <AUDIT_FILE_MAX_SIZE_BYTES>
+          Stops all further writes once the audit file reaches this many bytes.
+
+          The event that would reach this size is replaced by a final
+          `audit:size-cap-reached` event. Later events are dropped according to
+          `--audit-failure-mode` until the log is remediated and the KMS is restarted.
+
+          Omitted (the default) means unlimited. Must be > 0 when set.
+
+          [env: KMS_AUDIT_FILE_MAX_SIZE_BYTES=]
+
+      --audit-postgres-url <AUDIT_POSTGRES_URL>
+          `PostgreSQL` connection URL for the audit database.
+
+          When set, audit events are written to this `PostgreSQL` database instead of the
+          JSONL file — backend selection is config-time only, based solely on whether this
+          is set; there is no runtime fallback between the two: a connectivity failure at
+          startup still aborts the server. If `--audit-file-path` is also set, it is only
+          used to log a warning that it's ignored (or, on connection failure, that it is
+          NOT used as a fallback). This database MUST be a different database than the
+          main object-storage database (`--database-url`) when that database is also
+          `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+          would let the KMS's own object-store role bypass the audit database's
+          append-only grants.
+
+          [env: KMS_AUDIT_POSTGRES_URL=]
+
+      --audit-instance-id <AUDIT_INSTANCE_ID>
+          Identifies this KMS instance's audit hash chain when using the `PostgreSQL`
+          backend.
+
+          Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
+          database — a second instance reusing an `instance_id` is rejected at startup by an
+          advisory-lock check, before any event is written. Required (no default) when
+          `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+          `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
+
+          [env: KMS_AUDIT_INSTANCE_ID=]
+
+      --audit-channel-capacity <AUDIT_CHANNEL_CAPACITY>
+          Capacity of the bounded in-memory channel between request threads and the
+          audit writer task.
+
+          When the channel is full, incoming events are dropped (non-blocking) and
+          an `error!` is logged.  Each event is ≈500 B, so the default (4 096 × 500 B
+          ≈ 2 MiB) absorbs short bursts without blocking request threads.
+
+          Must be ≥ 1.  Raise this value if you see `"AuditFileStore: channel full"`
+          in the server log under sustained high load.
+
+          [env: KMS_AUDIT_CHANNEL_CAPACITY=]
+          [default: 4096]
+
+      --audit-trusted-proxy-cidrs <AUDIT_TRUSTED_PROXY_CIDRS>
+          Only set this if the KMS sits behind a reverse proxy or load balancer.
+
+          When set, the audit middleware trusts the `X-Forwarded-For` header only if
+          the direct TCP peer is one of the proxy addresses listed here, and records
+          the header's value as `client_ip` instead. This must be scoped to your
+          proxy's own address(es) — trusting it from any peer lets a remote attacker
+          forge `client_ip` in the audit trail.
+
+          Format: comma-separated IP addresses or CIDR blocks, e.g.
+          `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)
+          or `/128` (IPv6).
+
+          [env: KMS_AUDIT_TRUSTED_PROXY_CIDRS=]
+
+      --audit-failure-mode <AUDIT_FAILURE_MODE>
+          What to do when an audit event cannot be queued (channel full or writer dead).
+
+          `continue` (default): log the error, keep serving normally.
+          `reject`: return HTTP 503 to the client. The KMIP operation has already
+          executed at this point — this signals that its outcome was not recorded,
+          it does not prevent the operation from completing.
+
+          Possible values:
+          - continue: Log the error and keep serving — no service disruption (default)
+          - reject:   Return 503 to the client when the event could not be queued
+
+          [env: KMS_AUDIT_FAILURE_MODE=]
+          [default: continue]
+
+      --crl-default-validity-days <CRL_DEFAULT_VALIDITY_DAYS>
+          Default CRL validity period in days for CA certificates managed by this server.
+
+          When a CRL is generated without an explicit validity override (e.g., via
+          `GET /certificates/{id}/crl?validity_days=N`), this value is used.
+
+          This value is in whole days (minimum 1 day / 24 h); enterprise PKIs commonly
+          use 7–28 days. Avoid the practical minimum of 1 day unless
+          `crl_refresh_overlap_hours` is also lowered below 24: a 1-day CRL satisfies
+          the default 24-hour refresh-overlap condition immediately after creation,
+          causing the hourly scheduler to continuously re-sign it.
+
+          Valid range: 1–365 when set via the CLI flag.
+          Default: 7.
+
+          This range is enforced by clap's argument parser only; it is not
+          currently re-validated when the value comes from a TOML config file, so
+          a value outside 1–365 in `kms.toml` is silently accepted.
+
+          [default: 7]
+
+      --crl-refresh-check-hours <CRL_REFRESH_CHECK_HOURS>
+          How often (in hours) the background CRL refresh scheduler wakes up to
+          check whether any stored CRL needs to be regenerated.
+
+          Set to 0 to disable the background scheduler entirely.
+          When disabled, CRLs are only refreshed on certificate revocation events.
+
+          The scheduler is only spawned when `kms_public_url` is ALSO configured
+          (the CDP endpoint must be active); with `kms_public_url` unset, this
+          setting has no effect and CRLs are only refreshed on revocation events,
+          which can allow an expired CRL to be served in the meantime.
+
+          Default: 1 (wake up hourly).
+
+          [default: 1]
+
+      --crl-refresh-overlap-hours <CRL_REFRESH_OVERLAP_HOURS>
+          CRL overlap window in hours.
+
+          The background scheduler regenerates a CRL when its `nextUpdate` timestamp
+          is within this many hours of the current time.  This prevents relying parties
+          from seeing an expired CRL during the window between expiry and the next
+          revocation-triggered regeneration.
+
+          Analogy: EJBCA "CRL Overlap Time" (default 10 % of validity); AWS PCA uses
+          a 1-day overlap by default.
+
+          Default: 24 (regenerate 24 hours before expiry).
+
+          [default: 24]
+
+      --ocsp-enabled
+          Enable the OCSP responder endpoint at `GET /ocsp/{encoded_request}` and `POST /ocsp/`.
+
+          When `false` (default) all `/ocsp/` routes return 404.
+
+      --ocsp-ca-uid <OCSP_CA_UID>
+          UID of the CA certificate object in the KMS.
+
+          Used to verify that incoming OCSP requests are for certificates issued by
+          this CA (by comparing issuer name hash and key hash), and to retrieve
+          certificate states for revocation lookup.
+
+          Must be set when `ocsp_enabled = true`.
+
+      --ocsp-responder-cert-uid <OCSP_RESPONDER_CERT_UID>
+          UID of the dedicated OCSP signing certificate (RFC 6960 §4.2.2.2 authorized responder).
+
+          When set, OCSP responses are signed by this delegated key+certificate rather
+          than the CA's own private key.  The referenced certificate MUST have:
+          - `extKeyUsage: OCSPSigning` (OID 1.3.6.1.5.5.7.3.9)
+
+          It SHOULD also have the `id-pkix-ocsp-nocheck` extension (OID
+          1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1) — this is only one of three
+          RFC-sanctioned ways to let relying parties check the responder certificate's
+          own revocation status (the others being a CDP/AIA pointer, or local policy), so
+          its absence is not required, only logged as a warning.
+
+          The `OCSPSigning` requirement is enforced at request time: the server rejects
+          the delegated certificate (and refuses to sign) if it is missing.
+
+          The referenced key is loaded into an in-process OpenSSL key for signing;
+          this path does not currently dispatch to `kms.crypto_oracles`, so a
+          non-extractable HSM-resident key will fail here while an extractable key
+          is exported from the HSM to sign.
+
+          When unset, the CA's own private key is used (acceptable for small deployments;
+          not recommended for production CAs where the signing key must stay offline).
+
+      --ocsp-cache-ttl-secs <OCSP_CACHE_TTL_SECS>
+          OCSP response validity period in seconds (`thisUpdate` → `nextUpdate`).
+
+          Determines how long a signed response may be cached by relying parties and
+          CDN/proxy intermediaries per RFC 5019 §5.  Shorter values increase freshness;
+          longer values reduce load on the KMS (and HSM) signing key.
+
+          Default: 86400 (24 hours).
+
+          [default: 86400]
+
+      --ocsp-nonce-policy <OCSP_NONCE_POLICY>
+          Nonce handling policy for OCSP responses (RFC 9654 §2.1).
+
+          - `optional` (default): echo the nonce if present, proceed without one if absent.
+          - `required`: reject requests that carry no nonce (returns `malformedRequest`).
+          - `ignore`: never include a nonce in responses (suitable for pre-produced/cached responses).
+
+          Per RFC 9654 §2.1, the responder MUST accept nonces of 16–128 octets and echo
+          them verbatim.  Nonces shorter than 16 octets are silently ignored.
+
+          [default: optional]
+
+      --ocsp-include-cert-chain
+          Include the signing certificate in OCSP `BasicResponse`s.
+
+          Only the signer certificate itself is embedded — not its issuing chain.
+          Set to `true` (default) when `ocsp_responder_cert_uid` is configured so that
+          clients can verify the delegated responder's own certificate without an
+          additional fetch; delegated responders whose signer chain includes
+          intermediates the client does not already trust must distribute those
+          intermediates out of band. Safe to set `false` when the CA signs responses
+          directly.
+
+          This is a bare CLI switch: passing `--ocsp-include-cert-chain` only ever
+          sets it to `true` (already the default). To set it to `false`, use the
+          `ocsp_include_cert_chain = false` key in the TOML config file instead.
+
+      --ocsp-archive-cutoff-secs <OCSP_ARCHIVE_CUTOFF_SECS>
+          Archive-cutoff extension value in seconds (RFC 6960 §4.4.4).
+
+          When non-zero, the `id-pkix-ocsp-archive-cutoff` extension is added to each
+          `BasicResponse` with value = now − `ocsp_archive_cutoff_secs`. This tells clients
+          how far back the responder maintains revocation records.
+
+          Set to 0 (default) to disable the extension.
+          Typical values: 365 days = 31536000.
+
+          [default: 0]
 
   -h, --help
           Print help (see a summary with '-h')

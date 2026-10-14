@@ -28,7 +28,10 @@ use serde::Deserialize;
 
 use crate::{
     error::KmsError,
-    middlewares::{AuthMethod, AuthenticatedUser, JwksManager, extract_bearer_token},
+    middlewares::{
+        AuthMethod, AuthenticatedUser, JwksManager, UserId, extract_bearer_token,
+        reject_reserved_aws_xks_identity,
+    },
     result::KResult,
 };
 
@@ -84,8 +87,10 @@ pub(super) async fn handle_auth_verifier(
         .map_err(|e| KmsError::Unauthorized(format!("Auth Verifier: {e}")))?;
 
     let claims = verify_auth_verifier_jwt(jwks_manager, token).await?;
+    let username = UserId::from(claims.sub);
+    reject_reserved_aws_xks_identity(&username)?;
     Ok(AuthenticatedUser {
-        username: claims.sub.into(),
+        username,
         auth_method: AuthMethod::AuthVerifierJwt,
         domain: claims.domain,
         roles: claims.roles,

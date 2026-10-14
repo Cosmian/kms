@@ -44,6 +44,7 @@ Look for:
 - Over-broad triggers (full matrix on every push to any branch)
 - Duplicate workflow coverage (same job in both `pr.yml` and `main.yml`)
 - Expensive jobs running regardless of what changed (e.g. UI E2E triggered by Rust-only changes)
+- Jobs that are unused and matrix entries that duplicate existing coverage
 
 ## Step 2 — Apply Guardrails
 
@@ -62,10 +63,10 @@ From these candidates, keep only those supported by audit evidence AND passing a
 1. **Dependency caching** — Cache the Nix store, Rust `~/.cargo/registry`, and pnpm store with lockfile-based keys
 2. **Concurrency cancellation** — Add `concurrency: { group: "${{ github.ref }}", cancel-in-progress: true }` to PR workflows
 3. **Path-based triggers** — Use `paths:` filters so Rust-only changes don't trigger the full UI E2E suite and vice versa
-4. **Matrix reduction** — Run expensive test variants (hsm, cloud providers) only on push to `develop`/`main`, not on every PR
-5. **Job parallelism** — Identify jobs currently running sequentially that could run in parallel
+4. **Matrix reduction** — Recommend only when a matrix leg is proven redundant and all required coverage remains
+5. **Job parallelism or splitting** — Use observed durations to identify safe parallel work or split slow jobs; preserve every required check
 6. **Duplicate workflow removal** — Merge overlapping jobs between `pr.yml` and `main.yml`
-7. **Redundant test detection** — Identify tests that exercise the same or near-identical code paths under different names (e.g. two test-vector tests that execute similar flows). Redundancy is not limited to textual repetition — look for semantic overlap in test logic
+7. **Redundant test detection** — Identify semantic overlap in test logic, not only textual repetition
 
 ## Step 4 — Verify
 
@@ -77,6 +78,8 @@ If live validation is not possible, state that explicitly.
 1. **Waste sources** — top cost/latency drivers found in step 1
 2. **Proposed fixes** — top 3 (or all remaining) with supporting audit evidence
 3. **Validation** — what was proven live vs. checked statically, and any remaining risk
-4. **Impact** — expected savings (separate PR wall-clock time from total runner time)
+4. **Impact** — observed runner time separately from clearly labeled estimates
+
+Do not conflate CI minutes with AI credits. Report token savings only when provider usage data was actually measured.
 
 **If shell or `gh` CLI access is unavailable:** request the user paste `.github/workflows/` contents and `gh run list --limit 10` output. Begin static-only responses with: "**Static-only analysis** (not confirmed with live runs)."

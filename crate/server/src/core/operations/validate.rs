@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::LazyLock,
+    time::Instant,
 };
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -36,8 +37,49 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-static CRL_CACHE_MAP: LazyLock<tokio::sync::RwLock<HashMap<String, Vec<u8>>>> =
+/// Fetched CRLs: `uri` → `(bytes, fetched_at)`.
+///
+/// An entry is reused only while it is younger than [`CRL_CACHE_MAX_AGE`] and the
+/// CRL itself has not passed its nextUpdate; otherwise it is fetched again, so new
+/// revocations are picked up and an expired copy never causes permanent failures.
+type CrlFetchCache = tokio::sync::RwLock<HashMap<String, (Vec<u8>, Instant)>>;
+static CRL_CACHE_MAP: LazyLock<CrlFetchCache> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
+
+/// Maximum age of a cached CRL before it is fetched again.
+const CRL_CACHE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Return `true` if `uri` points at this server's own public URL.
+///
+/// Compares parsed URL components (scheme, host, port, path prefix) rather than a
+/// raw string prefix: with `kms_public_url = http://kms.corp`, the strings
+/// `http://kms.corp@169.254.169.254/` (userinfo) and `http://kms.corp.evil.tld/`
+/// both start with the base but target other hosts, and must not bypass the SSRF
+/// check. URLs carrying credentials are never considered the server's own.
+fn is_own_public_url(uri: &str, kms_public_url: &str) -> bool {
+    let (Ok(target), Ok(base)) = (url::Url::parse(uri), url::Url::parse(kms_public_url)) else {
+        return false;
+    };
+    if !target.username().is_empty() || target.password().is_some() {
+        return false;
+    }
+    let base_path = base.path().trim_end_matches('/');
+    target.scheme() == base.scheme()
+        && target.host_str().is_some()
+        && target.host_str() == base.host_str()
+        && target.port_or_known_default() == base.port_or_known_default()
+        && (target.path() == base_path || target.path().starts_with(&format!("{base_path}/")))
+}
+
+/// Return `true` if cached CRL bytes may still be used.
+fn cached_crl_is_usable(crl_bytes: &[u8], fetched_at: Instant, uri: &str) -> bool {
+    if fetched_at.elapsed() >= CRL_CACHE_MAX_AGE {
+        return false;
+    }
+    X509Crl::from_pem(crl_bytes)
+        .or_else(|_| X509Crl::from_der(crl_bytes))
+        .is_ok_and(|crl| check_crl_freshness(&crl, uri).is_ok())
+}
 
 /// A certificate's DER bytes paired with its internal KMS lifecycle state, when
 /// known (see [`tag_raw_certificates_with_state`] and [`certificates_by_uid`]).
@@ -612,16 +654,21 @@ async fn get_crl_bytes(
         // the KMS may legitimately fetch its own auto-generated CRL endpoint
         // (`/public/certificates/{id}/crl`), which may resolve to localhost in
         // development and test environments.
-        let is_own_url = kms_public_url.is_some_and(|base| uri.starts_with(base));
+        let is_own_url = kms_public_url.is_some_and(|base| is_own_public_url(&uri, base));
         if !is_own_url {
             validate_crl_url(&uri)?;
         }
 
-        let mut crls = CRL_CACHE_MAP.write().await;
-        if crls.contains_key(&uri) {
-            debug!("CRL cache hit: {uri}");
-            crls.get(&uri).and_then(|v| result.insert(uri, v.clone()));
-            continue;
+        // Do not hold the cache lock across the network fetch below: a slow or
+        // tarpitting distribution point would otherwise block every CRL check.
+        let cached = CRL_CACHE_MAP.read().await.get(&uri).cloned();
+        if let Some((crl_bytes, fetched_at)) = cached {
+            if cached_crl_is_usable(&crl_bytes, fetched_at, &uri) {
+                debug!("CRL cache hit: {uri}");
+                result.insert(uri, crl_bytes);
+                continue;
+            }
+            debug!("CRL cache entry stale, refetching: {uri}");
         }
 
         let mut client_builder = reqwest::Client::builder()
@@ -714,7 +761,11 @@ async fn get_crl_bytes(
 
         let crl_bytes = crl_bytes.to_vec();
         debug!("CRL fetched: uri={uri} size={}", crl_bytes.len());
-        crls.insert(uri.clone(), crl_bytes.clone());
+        {
+            let mut crls = CRL_CACHE_MAP.write().await;
+            crls.retain(|_, (_, fetched_at)| fetched_at.elapsed() < CRL_CACHE_MAX_AGE);
+            crls.insert(uri.clone(), (crl_bytes.clone(), Instant::now()));
+        }
         result.insert(uri, crl_bytes);
     }
 
@@ -1431,5 +1482,46 @@ mod tests {
             result[&uri], sentinel,
             "Returned bytes must match the sentinel written to the temp file"
         );
+    }
+}
+
+#[cfg(test)]
+mod own_public_url_tests {
+    use super::is_own_public_url;
+
+    #[test]
+    fn own_public_url_matches_only_same_origin() {
+        let base = "http://kms.corp";
+        assert!(is_own_public_url(
+            "http://kms.corp/public/certificates/ca/crl",
+            base
+        ));
+        assert!(is_own_public_url(
+            "http://kms.corp:80/public/certificates/ca/crl",
+            base
+        ));
+        // Userinfo, look-alike hosts, other schemes/ports must not bypass the SSRF check.
+        assert!(!is_own_public_url(
+            "http://kms.corp@169.254.169.254/latest/meta-data/",
+            base
+        ));
+        assert!(!is_own_public_url("http://kms.corp.attacker.tld/crl", base));
+        assert!(!is_own_public_url(
+            "https://kms.corp/public/certificates/ca/crl",
+            base
+        ));
+        assert!(!is_own_public_url("http://kms.corp:8080/crl", base));
+        assert!(!is_own_public_url("http://user:pw@kms.corp/crl", base));
+    }
+
+    #[test]
+    fn own_public_url_respects_base_path() {
+        let base = "https://gw.corp/kms/";
+        assert!(is_own_public_url(
+            "https://gw.corp/kms/public/certificates/ca/crl",
+            base
+        ));
+        assert!(!is_own_public_url("https://gw.corp/kmsother/crl", base));
+        assert!(!is_own_public_url("https://gw.corp/admin", base));
     }
 }

@@ -39,6 +39,32 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 ///
 /// The tokio runtime is sized to the available parallelism reported by the OS.
 fn main() {
+    // Raise the default stack size of every std-spawned thread. actix-server (pinned at
+    // 2.6.0) spawns its acceptor and worker OS threads via a bare
+    // `std::thread::Builder::spawn` with no `.stack_size()` override and exposes no API
+    // to configure one, so `RUST_MIN_STACK` is the only lever; deep KMIP/TTLV + middleware
+    // call chains under concurrent load otherwise overflow the small platform default
+    // stack (observed: "actix-server worker N ... stack overflow" under >16 concurrent
+    // clients).
+    //
+    // This minimum applies to *every* std-spawned thread without an explicit stack size,
+    // including each actix worker's Tokio blocking pool (where HSM PKCS#11 calls run via
+    // `spawn_blocking`; ~512 threads in total by default). Stacks are reserved as virtual
+    // memory and only committed on use, so the resident cost is unchanged, but hosts that
+    // cap address space (`ulimit -v`, `RLIMIT_AS`) must budget for it. The variable is
+    // also inherited by every child process this server spawns. Operators can set
+    // `RUST_MIN_STACK` explicitly to override this default.
+    if std::env::var_os("RUST_MIN_STACK").is_none() {
+        // SAFETY: this runs before any other thread (including the Tokio multi-thread
+        // runtime's worker pool, built below, and later the actix-server threads) exists,
+        // so nothing can read or write the environment concurrently. Rust's std reads
+        // `RUST_MIN_STACK` once, on the first-ever thread spawn, so it must be set here.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("RUST_MIN_STACK", (16 * 1024 * 1024).to_string());
+        }
+    }
+
     // On Windows, attempt to register with the SCM.  If the process was launched
     // by the SCM, `try_run_as_service()` blocks until the service stops and then
     // returns Ok(()).  If launched from a console, it returns Err (not an SCM
@@ -220,6 +246,7 @@ async fn run() -> KResult<()> {
         server_params,
         None,
         None,
+        None,
     ))
     .await?;
 
@@ -234,7 +261,7 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AuthVerifierConfig, AzureEkmConfig, ClapConfig, CrlConfig, GoogleCseConfig, HttpConfig,
+            AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig,
             IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
             OidcConfig, OpaConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig,
             UiConfig, WorkspaceConfig,
@@ -295,6 +322,9 @@ mod tests {
                     "jwt issuer uri 1,jwks uri 1,jwt audience 1".to_owned(),
                     "jwt issuer uri 2,jwks uri 2,jwt audience 2".to_owned(),
                 ]),
+                // Set to true only when the provider(s) above are SPIFFE-aware (e.g. a
+                // SPIRE OIDC Discovery Provider) issuing JWT-SVIDs with no `email` claim.
+                jwt_svid_auth: false,
             },
             auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig {
@@ -372,14 +402,9 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             roles: RolesConfig::default(),
-            print_default_config: false,
-            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             opa: OpaConfig::default(),
-            auto_rotation_check_interval_secs: 0,
-            keyset_warn_depth: 5,
-            vault: cosmian_kms_server::config::VaultConfig::default(),
-            crl: CrlConfig::default(),
-            ocsp: cosmian_kms_server::config::OcspConfig::default(),
+            print_default_config: false,
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"
@@ -396,6 +421,7 @@ hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 auto_rotation_check_interval_secs = 0
+metrics_count_interval_secs = 30
 keyset_warn_depth = 5
 
 [db]
@@ -432,6 +458,7 @@ proxy_exclusion_list = ["domain1", "domain2"]
 
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
+jwt_svid_auth = false
 
 [auth_verifier]
 auth_verifier_accept_invalid_certs = false
@@ -497,6 +524,16 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+failure_mode = "continue"
+
+[audit.file]
+
+[audit.postgres]
 
 [crl]
 crl_default_validity_days = 7

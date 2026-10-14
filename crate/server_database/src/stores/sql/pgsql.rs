@@ -6,8 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, UserId,
+    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -28,15 +28,21 @@ use crate::{
     stores::{
         PGSQL_QUERIES,
         migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
-        sql::database::SqlDatabase,
+        sql::{
+            database::SqlDatabase,
+            locate_query::{
+                LocateParam, LocateQuery, PgSqlPlaceholder, query_all_from_attributes,
+                query_from_attributes,
+            },
+        },
     },
 };
 
 // Retry parameters for transient PostgreSQL errors (deadlocks, serialization,
 // and connection failures during failover).
-const PG_MAX_RETRIES: u32 = 6;
+pub(crate) const PG_MAX_RETRIES: u32 = 6;
 
-fn is_pg_retryable_error(msg: &str) -> bool {
+pub(crate) fn is_pg_retryable_error(msg: &str) -> bool {
     let lower = msg.to_ascii_lowercase();
     // Deadlock / serialization (SQLSTATE 40P01, 40001)
     lower.contains("deadlock detected")
@@ -60,7 +66,7 @@ fn is_pg_retryable_error(msg: &str) -> bool {
         || lower.contains("57p03") // SQLSTATE cannot_connect_now
 }
 
-fn pg_retry_backoff_ms(attempt: u32) -> u64 {
+pub(crate) fn pg_retry_backoff_ms(attempt: u32) -> u64 {
     let cap = attempt.min(PG_MAX_RETRIES);
     50_u64 * (1_u64 << cap)
 }
@@ -78,6 +84,49 @@ fn decode_pg_ssl_file_query_value(value: &str) -> String {
     url::form_urlencoded::parse(encoded.as_bytes())
         .find_map(|(k, v)| (k == "v").then(|| v.into_owned()))
         .unwrap_or_else(|| value.to_owned())
+}
+
+// TODO(fix/pgsql_ssl_issues): sslmode is stripped from the URL before parsing, so
+// tokio-postgres/deadpool never enforce it — connections silently downgrade to Prefer.
+/// Builds an OpenSSL-backed TLS connector for any non-`disable` `sslmode`: `verify-full`
+/// and `verify-ca` verify the server certificate (`verify-ca` does not additionally
+/// disable hostname checking — `postgres_openssl` verifies it regardless), anything else
+/// connects with TLS but does not verify. Also loads `sslrootcert`/`sslcert`/`sslkey` if
+/// present. Shared by the object-store and audit `PostgreSQL` connections.
+pub(crate) fn build_pg_tls_connector(
+    query_params: &HashMap<String, String>,
+) -> DbResult<MakeTlsConnector> {
+    let sslmode = query_params.get("sslmode").map_or("prefer", String::as_str);
+
+    let mut builder = SslConnector::builder(SslMethod::tls())
+        .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
+
+    match sslmode {
+        "verify-full" | "verify-ca" => builder.set_verify(SslVerifyMode::PEER),
+        _ => builder.set_verify(SslVerifyMode::NONE),
+    }
+
+    if let Some(ca_file) = query_params.get("sslrootcert") {
+        let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
+        builder
+            .set_ca_file(ca_file.as_str())
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
+    }
+
+    if let Some(cert_file) = query_params.get("sslcert") {
+        let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
+        builder
+            .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client cert: {e}")))?;
+    }
+    if let Some(key_file) = query_params.get("sslkey") {
+        let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
+        builder
+            .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
+            .map_err(|e| DbError::DatabaseError(format!("Failed to load client key: {e}")))?;
+    }
+
+    Ok(MakeTlsConnector::new(builder.build()))
 }
 
 /// Get a client from the pool, retrying on transient connection errors.
@@ -138,6 +187,8 @@ macro_rules! pg_retry {
                                     error = %e,
                                     "PostgreSQL retryable error — retrying"
                                 );
+                                // Release the connection before sleeping through the back-off.
+                                drop($client);
                                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
                                     .await;
                                 last_err = Some(e);
@@ -178,67 +229,70 @@ macro_rules! pg_retry {
 /// `pool.get()` time, guaranteeing a live connection for every retry.
 macro_rules! pg_retry_tx {
     ($pool:expr, | $tx:ident | $body:expr) => {{
-        for attempt in 0..PG_MAX_RETRIES {
-            let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
-                Ok(c) => c,
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        continue;
-                    }
-                    return Err(InterfaceError::from(e));
-                }
-            };
-            let $tx = match client.transaction().await {
-                Ok(tx) => tx,
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        let delay_ms = pg_retry_backoff_ms(attempt);
-                        tracing::warn!(
-                            attempt,
-                            delay_ms,
-                            error = %e,
-                            "PostgreSQL BEGIN failed — retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
-                    }
-                    return Err(InterfaceError::from(DbError::from(e)));
-                }
-            };
-            match (async { $body }).await {
-                Ok(v) => match $tx.commit().await {
-                    Ok(()) => return Ok(v),
+        'retry: for attempt in 0..PG_MAX_RETRIES {
+            // `client` (and `$tx`, when bound) live only inside this block, so both
+            // are dropped — and the connection returned to the pool — before the
+            // `sleep` below runs, instead of being held across the back-off.
+            let delay_ms: u64 = 'release_connection: {
+                let mut client = match pg_get_client_for_tx(&$pool, attempt).await {
+                    Ok(c) => c,
                     Err(e) => {
-                        let msg = e.to_string();
-                        if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            continue 'retry; // pg_get_client_for_tx already slept; no client to release
+                        }
+                        return Err(InterfaceError::from(e)); // bail out of the whole function
+                    }
+                };
+                let $tx = match client.transaction().await {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
                             let delay_ms = pg_retry_backoff_ms(attempt);
                             tracing::warn!(
                                 attempt,
                                 delay_ms,
-                                error = %msg,
-                                "PostgreSQL COMMIT failed — retrying"
+                                error = %e,
+                                "PostgreSQL BEGIN failed — retrying"
                             );
-                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                            continue;
+                            break 'release_connection delay_ms; // <-- here
                         }
                         return Err(InterfaceError::from(DbError::from(e)));
                     }
-                },
-                Err(e) => {
-                    if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        let delay_ms = pg_retry_backoff_ms(attempt);
-                        tracing::warn!(
-                            attempt,
-                            delay_ms,
-                            error = %e,
-                            "PostgreSQL transaction body failed — retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        continue;
+                };
+                match (async { $body }).await {
+                    Ok(v) => match $tx.commit().await {
+                        Ok(()) => return Ok(v), // success: return straight out
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
+                                let delay_ms = pg_retry_backoff_ms(attempt);
+                                tracing::warn!(
+                                    attempt,
+                                    delay_ms,
+                                    error = %msg,
+                                    "PostgreSQL COMMIT failed — retrying"
+                                );
+                                break 'release_connection delay_ms; // <-- here too
+                            }
+                            return Err(InterfaceError::from(DbError::from(e)));
+                        }
+                    },
+                    Err(e) => {
+                        if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
+                            let delay_ms = pg_retry_backoff_ms(attempt);
+                            tracing::warn!(
+                                attempt,
+                                delay_ms,
+                                error = %e,
+                                "PostgreSQL transaction body failed — retrying"
+                            );
+                            break 'release_connection delay_ms; // <-- and here
+                        }
+                        return Err(InterfaceError::from(e));
                     }
-                    return Err(InterfaceError::from(e));
                 }
-            }
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         }
         Err(InterfaceError::from(DbError::DatabaseError(
             "too much contention: too many attempts".to_owned(),
@@ -310,55 +364,7 @@ impl PgPool {
             cfg.create_pool(None, NoTls)
                 .map_err(|e| DbError::DatabaseError(e.to_string()))?
         } else {
-            // Build TLS connector for require, verify-ca, verify-full, prefer, allow
-            let mut builder = SslConnector::builder(SslMethod::tls())
-                .map_err(|e| DbError::DatabaseError(format!("TLS setup failed: {e}")))?;
-
-            // Set verification mode based on sslmode
-            match sslmode {
-                "verify-full" => {
-                    // verify-full: verify certificate AND hostname
-                    builder.set_verify(SslVerifyMode::PEER);
-                }
-                "verify-ca" => {
-                    // verify-ca: verify certificate but NOT hostname
-                    builder.set_verify(SslVerifyMode::PEER);
-                    // For verify-ca, we don't want hostname verification
-                    // This is handled by not setting any hostname verification parameters
-                }
-                _ => {
-                    // require, prefer, allow: connect with TLS but don't verify cert
-                    builder.set_verify(SslVerifyMode::NONE);
-                }
-            }
-
-            // Load CA cert if provided (sslrootcert)
-            if let Some(ca_file) = query_params.get("sslrootcert") {
-                let ca_file = decode_pg_ssl_file_query_value(ca_file.as_ref());
-                builder
-                    .set_ca_file(ca_file.as_str())
-                    .map_err(|e| DbError::DatabaseError(format!("Failed to load CA: {e}")))?;
-            }
-
-            // Load client cert/key for mutual TLS (sslcert, sslkey)
-            if let Some(cert_file) = query_params.get("sslcert") {
-                let cert_file = decode_pg_ssl_file_query_value(cert_file.as_ref());
-                builder
-                    .set_certificate_file(cert_file.as_str(), SslFiletype::PEM)
-                    .map_err(|e| {
-                        DbError::DatabaseError(format!("Failed to load client cert: {e}"))
-                    })?;
-            }
-            if let Some(key_file) = query_params.get("sslkey") {
-                let key_file = decode_pg_ssl_file_query_value(key_file.as_ref());
-                builder
-                    .set_private_key_file(key_file.as_str(), SslFiletype::PEM)
-                    .map_err(|e| {
-                        DbError::DatabaseError(format!("Failed to load client key: {e}"))
-                    })?;
-            }
-
-            let connector = MakeTlsConnector::new(builder.build());
+            let connector = build_pg_tls_connector(&query_params)?;
             cfg.create_pool(None, connector)
                 .map_err(|e| DbError::DatabaseError(e.to_string()))?
         };
@@ -412,11 +418,17 @@ impl PgPool {
             .map_err(DbError::from)?;
         // Create the read-path indexes (idempotent). PostgreSQL supports
         // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        // They are built synchronously: on a large existing table, the first start
+        // after an upgrade blocks writes to `objects` while each new index builds.
         for name in [
             "create-index-objects-owner",
             "create-index-objects-state",
             "create-index-read_access-userid",
             "create-index-objects-wrapping-key-id",
+            "create-index-tags-tag-id",
+            "create-index-objects-rotate-lookup",
+            "create-index-objects-rotate-auto",
+            "create-index-objects-type-state",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -482,6 +494,10 @@ impl PgPool {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
             }
+            // Release the connection before requesting another one below — with a
+            // pool sized to a single connection, holding `client` here would
+            // self-deadlock the following `pg_get_client` calls.
+            drop(client);
             let tmp = Self { pool: pool.clone() };
             tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
@@ -501,6 +517,46 @@ impl PgPool {
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
+    }
+
+    /// Run a query built by the locate query builders and decode its
+    /// `(id, state, attributes)` rows.
+    async fn run_locate_query(
+        &self,
+        locate: &LocateQuery,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let params: Vec<&(dyn ToSql + Sync)> = locate
+                .params
+                .iter()
+                .map(|p| -> &(dyn ToSql + Sync) {
+                    match p {
+                        LocateParam::Text(s) => s,
+                        LocateParam::I64(i) => i,
+                    }
+                })
+                .collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
     }
 }
 
@@ -600,6 +656,30 @@ impl ObjectsStore for PgPool {
                 Ok(Some(ObjectWithMetadata::new(
                     id, object, owner, state, attributes, domain,
                 )))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    async fn retrieve_state(&self, uid: &str) -> InterfaceResult<Option<(State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare_cached(get_pgsql_query!("select-object-state"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            if let Some(row) = rows.first() {
+                let state_str: String = row.get(0);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                Ok(Some((state, attrs)))
             } else {
                 Ok(None)
             }
@@ -817,19 +897,25 @@ impl ObjectsStore for PgPool {
                             .map_err(DbError::from)?;
                         let st = state.to_string();
                         let attrs_param = Json(&attributes_json);
-                        tx.execute(
-                            &stmt,
-                            &[
-                                &uid,
-                                &object_json,
-                                &attrs_param,
-                                &st,
-                                &user,
-                                &wrapping_key_id,
-                            ],
-                        )
-                        .await
-                        .map_err(DbError::from)?;
+                        let rows_affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &uid,
+                                    &object_json,
+                                    &attrs_param,
+                                    &st,
+                                    &user,
+                                    &wrapping_key_id,
+                                ],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        if rows_affected == 0 {
+                            return Err(DbError::Unauthorized(format!(
+                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                            )));
+                        }
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))
@@ -922,51 +1008,36 @@ impl ObjectsStore for PgPool {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        pg_retry!(self.pool, |client| {
-            let locate = crate::stores::sql::locate_query::query_from_attributes::<
-                crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(
-                researched_attributes,
-                state,
-                user,
-                user_must_be_owner,
-                vendor_id,
-            );
-            cosmian_logger::debug!("PG find query: {}", locate.sql);
-            let stmt = client
-                .prepare(&locate.sql)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
-            for p in locate.params {
-                match p {
-                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                        owned.push(Box::new(s));
-                    }
-                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                        owned.push(Box::new(i));
-                    }
-                }
-            }
-            let params: Vec<&(dyn ToSql + Sync)> =
-                owned.iter().map(std::convert::AsRef::as_ref).collect();
-            let rows = client
-                .query(&stmt, &params)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
-            for row in rows {
-                let uid: String = row.get(0);
-                let state_str: String = row.get(1);
-                let state = State::try_from(state_str.as_str())
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                out.push((uid, state, attrs));
-            }
-            Ok(out)
-        })
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_from_attributes::<PgSqlPlaceholder>(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            options,
+        );
+        cosmian_logger::debug!("PG find query: {}", locate.sql);
+        self.run_locate_query(&locate).await
     }
 
     async fn find_wrapped_by(
@@ -1072,45 +1143,30 @@ impl ObjectsStore for PgPool {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        pg_retry!(self.pool, |client| {
-            let locate = crate::stores::sql::locate_query::query_all_from_attributes::<
-                crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(researched_attributes, state, vendor_id);
-            cosmian_logger::debug!("PG find_all query: {}", locate.sql);
-            let stmt = client
-                .prepare(&locate.sql)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
-            for p in locate.params {
-                match p {
-                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                        owned.push(Box::new(s));
-                    }
-                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
-                        owned.push(Box::new(i));
-                    }
-                }
-            }
-            let params: Vec<&(dyn ToSql + Sync)> =
-                owned.iter().map(std::convert::AsRef::as_ref).collect();
-            let rows = client
-                .query(&stmt, &params)
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
-            for row in rows {
-                let uid: String = row.get(0);
-                let state_str: String = row.get(1);
-                let state = State::try_from(state_str.as_str())
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
-                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                out.push((uid, state, attrs));
-            }
-            Ok(out)
-        })
+        self.find_all_with_options(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let locate = query_all_from_attributes::<PgSqlPlaceholder>(
+            researched_attributes,
+            state,
+            vendor_id,
+            options,
+        );
+        cosmian_logger::debug!("PG find_all query: {}", locate.sql);
+        self.run_locate_query(&locate).await
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
@@ -1126,8 +1182,7 @@ impl ObjectsStore for PgPool {
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         pg_retry!(self.pool, |client| {
-            // Object JSON is stored as {"SymmetricKey": {...}} — use the JSONB ?
-            // operator to check for key presence.
+            // Filters on the ObjectType attribute; avoids parsing the object JSON.
             let row = client
                 .query_one(get_pgsql_query!("count-non-destroyed-keys"), &[])
                 .await
@@ -1213,7 +1268,16 @@ impl PermissionsStore for PgPool {
                 let perms_val: Value = row.get(3);
                 let perms: HashSet<KmipOperation> = serde_json::from_value(perms_val)
                     .map_err(|e| InterfaceError::Db(e.to_string()))?;
-                map.insert(id, (owner, state, perms));
+                // The same object may be returned twice: once for the direct
+                // grant and once for the wildcard `*` grant. Union the
+                // permission sets instead of overwriting the entry.
+                map.entry(id)
+                    .and_modify(
+                        |(_, _, existing_perms): &mut (String, State, HashSet<KmipOperation>)| {
+                            existing_perms.extend(perms.iter().copied());
+                        },
+                    )
+                    .or_insert((owner, state, perms));
             }
             Ok(map)
         })
@@ -1523,7 +1587,7 @@ const SSL_PARAMS: &[&str] = &["sslmode", "sslrootcert", "sslcert", "sslkey"];
 
 /// Extract query parameters from a `PostgreSQL` connection URL by splitting on `?`/`&`.
 /// This avoids `Url::parse()` which cannot handle multi-host connection strings.
-fn extract_query_params(url: &str) -> HashMap<String, String> {
+pub(crate) fn extract_query_params(url: &str) -> HashMap<String, String> {
     let mut params = HashMap::new();
     if let Some(query_start) = url.find('?') {
         let query = &url[query_start + 1..];
@@ -1538,7 +1602,10 @@ fn extract_query_params(url: &str) -> HashMap<String, String> {
 
 /// Rebuild the connection URL, removing only SSL-related query parameters.
 /// Other parameters like `target_session_attrs` are preserved for `tokio-postgres`.
-fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -> String {
+pub(crate) fn rebuild_url_without_ssl_params(
+    url: &str,
+    params: &HashMap<String, String>,
+) -> String {
     let base = url.split('?').next().unwrap_or(url);
     let non_ssl_params: Vec<String> = params
         .iter()
@@ -1623,6 +1690,24 @@ mod tests {
     }
 
     #[test]
+    // Result assertions read clearer than matches!()/is_ok() here; test-only.
+    #[allow(clippy::unwrap_used)]
+    fn test_build_pg_tls_connector_verify_full_default_ca() {
+        let mut params = HashMap::new();
+        params.insert("sslmode".to_owned(), "verify-full".to_owned());
+        build_pg_tls_connector(&params).unwrap();
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_build_pg_tls_connector_bad_ca_file_errors() {
+        let mut params = HashMap::new();
+        params.insert("sslmode".to_owned(), "verify-ca".to_owned());
+        params.insert("sslrootcert".to_owned(), "/nonexistent/ca.pem".to_owned());
+        build_pg_tls_connector(&params).err().unwrap();
+    }
+
+    #[test]
     fn test_multi_host_url_preserved_in_rebuild() {
         let url = "host1:5432,host2:5433,host3:5434/kms?target_session_attrs=read-write";
         let params = extract_query_params(url);
@@ -1699,12 +1784,8 @@ mod tests {
 
     // Regression test for issue #1027: the pooled connection must be released
     // before sleeping through the retry back-off, not held across it.
-    //
-    // A size-1 pool is pinned to a single connection. One task keeps failing
-    // a retryable transaction (a forced "deadlock detected" error) for all
-    // `PG_MAX_RETRIES` attempts, which spends ~3.15s sleeping across back-offs.
-    // Meanwhile we sample `pool.status().available`: if the connection is
-    // held during the sleeps, the pool never reports itself idle.
+    // A size-1 pool pins to one connection, so if `pool.status().available`
+    // never reports idle while a retryable transaction backs off, it's held.
     #[ignore = "Requires a running PostgreSQL instance"]
     #[tokio::test]
     async fn pg_connection_released_during_backoff() -> DbResult<()> {
@@ -1737,7 +1818,7 @@ mod tests {
         // connection-holding behavior along the way is under test here.
         drop(handle.await);
 
-        if idle_samples <= total_samples / 2 {
+        if idle_samples * 2 <= total_samples.max(1) {
             return Err(DbError::DatabaseError(format!(
                 "pool reported idle in only {idle_samples}/{total_samples} samples — \
                  connection appears held during back-off sleep"

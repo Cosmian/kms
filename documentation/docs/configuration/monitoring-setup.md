@@ -1,7 +1,7 @@
 # Monitoring Stack — Setup Guide
 
 > This guide walks you through deploying the KMS observability stack step by step.
-> For a full reference of OTLP options and pipeline internals, see → [KMS Telemetry](./logging.md)
+> For a full reference of OTLP options and metrics, see → [Metrics & Traces (OTLP)](./otlp-telemetry.md)
 
 ---
 
@@ -12,7 +12,30 @@
 3. [Local mode — KMS included](#local-mode--kms-included)
 4. [External mode — existing KMS](#external-mode--existing-kms)
 5. [Explore Grafana](#explore-grafana)
-6. [Troubleshooting](#troubleshooting)
+6. [Proven integrations](#proven-integrations)
+7. [Troubleshooting](#troubleshooting)
+
+---
+
+## Architecture overview
+
+```mermaid
+sequenceDiagram
+    participant KMS as KMS Server
+    participant OTel as OTel Collector
+    participant VM as VictoriaMetrics
+    participant Grafana as Grafana
+
+    KMS->>OTel: gRPC OTLP metrics (port 4317)
+    Note over KMS,OTel: kms_* metric families pushed continuously
+    OTel->>VM: remote_write (Prometheus protocol, every 10s)
+    Grafana->>VM: PromQL queries (port 8428)
+    VM-->>Grafana: metric series
+    Note over KMS,OTel: KMS also exposes a Prometheus /metrics endpoint
+```
+
+The collector bridges KMS OTLP push to VictoriaMetrics remote-write. Grafana
+queries VictoriaMetrics directly — it never contacts the KMS server.
 
 ---
 
@@ -30,7 +53,7 @@ unzip cosmian-kms-monitoring.zip
 cd monitoring/
 ```
 
-Replace `<version>` with the KMS version you are deploying (e.g. `5.26.0`).
+Replace `<version>` with the KMS version you are deploying (e.g. `5.28.0`).
 The list of available versions is at <https://package.cosmian.com/kms/>.
 
 Alternatively, clone the [KMS repository](https://github.com/Cosmian/kms) and navigate to the
@@ -78,7 +101,7 @@ Before getting started, make sure the following tools are installed on your mach
   KMS_OTLP_URL=http://<collector-host>:4318
   ```
 
-  See → [KMS Telemetry — OTLP configuration](./logging.md#otlp-telemetry)
+  See → [Metrics & Traces (OTLP) — configuration](./otlp-telemetry.md)
 
 ### Ports availability
 
@@ -318,6 +341,20 @@ After few seconds metrics will be available
 
 ---
 
+## Proven integrations
+
+All tests use the product's official Docker image and fail if no evidence is found. These
+products consume KMS metrics, not audit events; see [SIEM integration](./siems.md) for audit
+event integrations.
+
+| Product | Role | What is proven |
+|---|---|---|
+| **OpenTelemetry Collector** | Metrics pipeline | KMS gRPC OTLP push received; KMS metric lines confirmed on Prometheus endpoint (count varies by version) |
+| **VictoriaMetrics** | Metrics backend | Receives KMS metrics from OTel Collector via remote_write |
+| **Grafana** | Dashboarding | Full monitoring stack operational; `/api/health` returns `database=ok` |
+
+---
+
 ## Troubleshooting
 
 ### Containers not starting
@@ -378,4 +415,4 @@ Then either stop the conflicting process or edit the port mapping in `docker-com
 ---
 
 > For a complete reference of all OTLP options, log levels, and pipeline internals,
-> see → [KMS Telemetry](./logging.md)
+> see → [Metrics & Traces (OTLP)](./otlp-telemetry.md)

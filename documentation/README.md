@@ -14,10 +14,10 @@ cargo install mdbook-admonish --version 1.20.0
 cargo install mdbook-mermaid --version 0.16.0
 ```
 
-The mdBook `src/` is generated from `docs/` by the converter in the
-`public_documentation` repository. To render this module standalone:
+The mdBook `src/` for the combined, production site is assembled from every product's `docs/`
+by `public_documentation`. To render this module standalone:
 
 ```sh
-python3 <public_documentation>/migration/build_standalone.py .
+python3 <public_documentation>/theme/scripts/generate-summary.py .
 mdbook serve     # live preview; static output is written to book/
 ```

@@ -132,7 +132,9 @@ class DocEntry:
 
 def _normalize_msg(msg: str) -> str:
     """Normalise for comparison: {e:?} → {e}, ${uid} → {uid}."""
-    s = re.sub(r'\{(\w+):[^}]*\}', r'{\1}', msg.strip())  # Rust format spec
+    # Collapse newlines/excess whitespace from multi-line string literals first
+    s = ' '.join(msg.split())
+    s = re.sub(r'\{(\w+):[^}]*\}', r'{\1}', s)  # Rust format spec
     s = re.sub(r'\$\{([^}]+)\}', r'{\1}', s)  # JS template literal
     return s
 
@@ -763,6 +765,8 @@ def _fmt_row(level: str, msg: str, file_rel: str, variables: str, notes: str) ->
 def _build_new_row(
     crate_path: str, file_rel: str, level: str, msg: str, mult: int
 ) -> str:
+    # Collapse newlines from multi-line log macros so table cells stay on one line
+    msg = ' '.join(msg.split())
     variables = _extract_var_names(msg)
     notes = f"×{mult} in this file" if mult > 1 else '-'
     return _fmt_row(level, msg, file_rel, variables, notes)
@@ -1060,12 +1064,23 @@ def _parse_args() -> argparse.Namespace:
             'Implies --non-interactive.'
         ),
     )
+    p.add_argument(
+        '--repo-root',
+        type=Path,
+        help='Repository root to scan and update instead of the script parent repository.',
+    )
     return p.parse_args()
 
 
 def main() -> None:
-    global _USE_COLOR
+    global _USE_COLOR, REPO_ROOT, CARGO_TOML, DOC_FILE
     args = _parse_args()
+    if args.repo_root is not None:
+        REPO_ROOT = args.repo_root.resolve()
+        CARGO_TOML = REPO_ROOT / 'Cargo.toml'
+        DOC_FILE = (
+            REPO_ROOT / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
+        )
     if args.no_color:
         _USE_COLOR = False
     check_only = args.check

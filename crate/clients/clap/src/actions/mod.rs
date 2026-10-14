@@ -1,5 +1,6 @@
 pub mod access;
 pub mod attributes;
+pub mod audit;
 pub mod aws;
 pub mod azure;
 pub mod bench;
@@ -19,7 +20,6 @@ pub mod login;
 pub mod mac;
 pub mod opaque_object;
 pub mod pkcs11;
-pub(crate) mod pkcs11_verify;
 pub mod rng;
 pub mod rsa;
 pub mod secret_data;
@@ -30,6 +30,8 @@ pub mod version;
 
 #[cfg(feature = "non-fips")]
 pub mod cover_crypt;
+#[cfg(feature = "non-fips")]
+pub mod pgp;
 #[cfg(feature = "non-fips")]
 pub mod pqc;
 #[cfg(feature = "non-fips")]

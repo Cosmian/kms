@@ -232,6 +232,15 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethods, authVerifie
                         <Button type="primary" block onClick={handleAccessKms} loading={isLoading} data-testid="cert-login-btn">
                             {t("login.certificate")}
                         </Button>
+                    ) : authMethods?.includes("SPIFFE") ? (
+                        <Alert
+                            type="info"
+                            showIcon
+                            message={t("login.spiffe")}
+                            description={t("login.spiffeGatewayNotice")}
+                            className="text-left"
+                            data-testid="spiffe-gateway-notice"
+                        />
                     ) : null}
 
                     {/* Secondary action(s): nothing for a single method, a button for

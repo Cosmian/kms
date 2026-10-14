@@ -21,7 +21,8 @@ unset RUSTFLAGS LDFLAGS
 
 wasm-pack build --target web "$WASM_CRATE" ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
 
-# Copy output to UI source
+# Copy output to UI source (ui/src/wasm/ is gitignored, may not exist on a fresh clone)
+mkdir -p "${REPO_ROOT}/ui/src/wasm"
 cp -r "${WASM_CRATE}/pkg/" "${REPO_ROOT}/ui/src/wasm/pkg/"
 
 print_success "WASM package built and copied to ui/src/wasm/pkg/"

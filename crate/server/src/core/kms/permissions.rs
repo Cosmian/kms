@@ -223,6 +223,10 @@ impl KMS {
     }
 
     /// Get all the access rights granted to a given user
+    ///
+    /// Excludes objects owned by `user`: the owner already has full,
+    /// implicit access to their own objects, so a wildcard `*` grant must
+    /// not cause an owned object to be listed as "obtained" via a grant.
     pub(crate) async fn list_access_rights_obtained(
         &self,
         user: &UserId,
@@ -230,6 +234,7 @@ impl KMS {
         let list = self.database.list_user_operations_granted(user).await?;
         let ids: Vec<AccessRightsObtainedResponse> = list
             .into_iter()
+            .filter(|(_, (owner, _, _))| owner.as_str() != user.as_str())
             .map(|entry| {
                 let mut resp = AccessRightsObtainedResponse::from(entry);
                 // For HSM keys (not in the objects table), use the HSM
@@ -527,28 +532,5 @@ impl KMS {
                 roles: au.roles.clone(),
                 domain: au.domain.clone(),
             })
-    }
-
-    /// Return the `UserId` of the first active Crypto Officer, or `None`.
-    ///
-    /// Iterates `crypto_officer.users` in declaration order and returns the first
-    /// candidate for which [`KMS::is_crypto_officer`] returns `true`.
-    ///
-    /// Falls back to `None` when:
-    /// - `crypto_officer.users` is empty (no CO is configured), **or**
-    /// - CO users are configured but none has completed the required ceremony.
-    ///
-    /// Callers that need to operate on behalf of a CO (e.g. fire-and-forget CRL
-    /// regeneration after a `Revoke`) should use this helper to obtain an identity
-    /// that is guaranteed to pass the `is_crypto_officer` check inside
-    /// `generate_crl`.
-    pub(crate) async fn find_active_co(&self) -> KResult<Option<UserId>> {
-        for candidate in &self.params.crypto_officer.users {
-            let uid = UserId::from(candidate.as_str());
-            if self.is_crypto_officer(&uid).await? {
-                return Ok(Some(uid));
-            }
-        }
-        Ok(None)
     }
 }

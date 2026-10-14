@@ -20,7 +20,12 @@
 //! | RFC 7516 §A.3 — AES Key Wrap + A128CBC-HS256 | AES key-wrap + AES-CBC not implemented |
 //! | RFC 7516 §A.5 — dir + A128CBC-HS256 | AES-CBC not implemented; no normative GCM vector |
 //! | RFC 7518 §B — AES_CBC_HMAC_SHA2 KAT | AES-CBC not implemented |
-//! | RFC 7518 §C — ECDH-ES key agreement | ECDH-ES not implemented |
+//!
+//! ECDH-ES / ECDH-ES+A128KW / ECDH-ES+A256KW (RFC 7518 §4.6) **are** implemented —
+//! see `crate::tests::jose::ecdh` for `/v1/crypto/decrypt` round-trip coverage
+//! (P-256/P-384/P-521, and X25519 in non-FIPS builds), and
+//! `cosmian_kms_crypto::crypto::kdf::concat_kdf` for a Concat KDF known-answer test
+//! verified against the actual RFC 7518 Appendix C text.
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{

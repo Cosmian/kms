@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 #MISE description="Run IRIS mTLS integration tests"
-#MISE depends=["build:kms"]
+# NOTE: no "depends=[\"build:kms\"]" here — build:kms always builds with ITS OWN
+# default variant (fips) regardless of the variant this task was invoked with,
+# which previously caused a wasted redundant FIPS build every time "test:iris"
+# ran with its own (non-fips) default. test_iris.sh already builds the KMS
+# server itself with the correct variant/features below.
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }

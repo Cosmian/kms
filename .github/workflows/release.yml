@@ -9,7 +9,7 @@ name: Release
 #   3. Runs the version-bump script (.mise/scripts/release/release.sh).
 #   4. Commits the bumped versions on the release branch and pushes it.
 #   5. Regenerates all documentation via generate_docs.sh (server CLI, ckms docs,
-#      KMIP tables, crypto inventory, and CBOM).
+#      KMIP tables and CBOM).
 #   6. Runs `nix_build_update_hash.sh` on BOTH Linux and macOS runners in
 #      parallel to recompute all Nix vendor hashes (Linux writes server +
 #      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
@@ -72,7 +72,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   prepare:
     name: Prepare release branch & bump versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_branch: ${{ steps.vars.outputs.release_branch }}
 
@@ -184,10 +184,9 @@ jobs:
           #   1. server_cli.md + server_configuration_file.md (--help / --print-default-config)
           #   2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (ckms markdown)
           #   3. KMIP support tables (README.md + kmip_support/support.md)
-          #   4. crypto_inventory.md (cryptographic asset sensor, no network)
-          #   5. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
+          #   4. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
           pip install cyclonedx-bom --quiet
-          mise run docs:generate
+          mise run docs:sync-all
 
       - name: Install cargo-deny
         run: cargo install --version 0.19.0 cargo-deny --locked
@@ -238,6 +237,23 @@ jobs:
       PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2b — Sync log-reference.md with source call-sites.
+  #
+  # Delegated to the local reusable workflow update-log-index.yml. Sequenced
+  # after update-nix-hashes so the two do not push to the release branch
+  # concurrently (both still rebase before pushing, but this avoids the race
+  # in the common case).
+  # ─────────────────────────────────────────────────────────────────────────────
+  update-log-index:
+    name: Update log index
+    needs: [prepare, update-nix-hashes]
+    uses: ./.github/workflows/update-log-index.yml
+    with:
+      ref: ${{ needs.prepare.outputs.release_branch }}
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Job 3 — Trigger packaging CI on the release branch and wait for completion
   #
   # packaging.yml supports `workflow_dispatch` which allows us to trigger it on
@@ -249,10 +265,10 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   trigger-packaging:
     name: Trigger & await packaging CI
-    needs: [prepare, update-nix-hashes]
+    needs: [prepare, update-nix-hashes, update-log-index]
     # nix-update-hashes.yml runs a Linux+macOS matrix internally; GitHub waits
     # for all instances before starting trigger-packaging.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
 
@@ -348,7 +364,7 @@ jobs:
   commit-sbom:
     name: Retrieve & commit SBOM
     needs: [prepare, trigger-packaging]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -397,7 +413,7 @@ jobs:
   sync-branches:
     name: git-flow release finish ${{ inputs.new_version }}
     needs: [prepare, trigger-packaging, commit-sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.
