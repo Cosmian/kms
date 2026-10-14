@@ -284,7 +284,6 @@ pub fn openpgp_key_to_binary(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, OpenPgp
 #[cfg(test)]
 // `.expect("reason")` in test assertions is the sanctioned exception to the workspace-wide
 // `clippy::expect_used` deny.
-#[expect(clippy::expect_used)]
 mod tests {
     use super::{
         normalize_gnupg_eddsa_secret_mpi, openpgp_key_to_binary, packet_header,
