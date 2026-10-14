@@ -1,3 +1,17 @@
 # `tonic::Status` (the error type of every generated gRPC method in `src/provider.rs`)
 # is 176 bytes, above clippy's default `large-error-threshold` of 128.
 large-error-threshold = 192
+
+# Nearest-`clippy.toml` wins and parents are not merged: repeat the workspace KmsRng policy from
+# the root `clippy.toml` (ADR documentation/adr/2026-10-10-keep-kmsrng-openssl-backed-over-csrng.md).
+disallowed-methods = [
+    { path = "openssl::rand::rand_bytes", reason = "requests strength 0 and never fails closed; use KmsRng::fill_bytes/random_vec" },
+    { path = "openssl::rand::rand_priv_bytes", reason = "requests strength 0 and never fails closed; use KmsRng::fill_bytes/random_vec" },
+]
+
+disallowed-types = [
+    { path = "cosmian_crypto_core::CsRng", reason = "ChaCha12 via getrandom, not an SP 800-90A DRBG; use KmsRng" },
+    { path = "rand::rngs::StdRng", reason = "not OpenSSL-backed; use KmsRng" },
+    { path = "rand_08::rngs::StdRng", reason = "not OpenSSL-backed (rand 0.8 alias); use KmsRng" },
+    { path = "rand::rngs::ThreadRng", reason = "not OpenSSL-backed; use KmsRng" },
+]

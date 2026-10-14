@@ -1982,6 +1982,14 @@ EOF
 
 echo "All test vectors generated, merging into ${VECTORS_DIR}..."
 
+# Command substitution (not `< <(find …)`) so a failing `find` aborts under `set -e`.
+# `-exec dirname` instead of GNU-only `-printf '%h\n'` keeps this working with BSD/macOS find.
+generated_dirs="$(find "${BASE}" -name manifest.toml -exec dirname {} \; | sort)"
+if [ -z "${generated_dirs}" ]; then
+  echo "ERROR: no vector was generated under ${BASE}" >&2
+  exit 1
+fi
+
 added=0
 kept=0
 while IFS= read -r generated_dir; do
@@ -1995,6 +2003,6 @@ while IFS= read -r generated_dir; do
     added=$((added + 1))
     echo "  added new vector: ${relative}"
   fi
-done < <(find "${BASE}" -name manifest.toml -printf '%h\n' | sort)
+done <<<"${generated_dirs}"
 
 echo "Test vectors merged: ${added} added, ${kept} existing left untouched."
