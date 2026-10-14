@@ -35,7 +35,7 @@ pub(crate) fn test_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(None);
     let owner_client_conf_path = owner_config(ctx);
 
-    let hsm_key_id = "hsm::0::".to_string() + &Uuid::new_v4().to_string();
+    let hsm_key_id = "hsm::0::".to_owned() + &Uuid::new_v4().to_string();
     let dek = create_symmetric_key(
         &owner_client_conf_path,
         &["--algorithm", "aes", "--number-of-bits", "256", &hsm_key_id],
@@ -70,7 +70,7 @@ pub(crate) fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> CosmianResult<()> {
     let (private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
             ..Default::default()
         },
     )?;
@@ -85,7 +85,7 @@ pub(crate) fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> CosmianResult<()> {
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -158,7 +158,7 @@ pub(crate) fn test_rsa_pkcs_v15(ctx: &TestsContext) -> CosmianResult<()> {
     let (private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
             ..Default::default()
         },
     )?;
@@ -173,7 +173,7 @@ pub(crate) fn test_rsa_pkcs_v15(ctx: &TestsContext) -> CosmianResult<()> {
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(

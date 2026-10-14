@@ -31,38 +31,38 @@ fn create_keypairs(
     .collect();
 
     if let Some(issuer_private_key_id) = action.issuer_private_key_id {
-        args.push("--issuer-private-key-id".to_string());
+        args.push("--issuer-private-key-id".to_owned());
         args.push(issuer_private_key_id);
     }
     if let Some(rsa_private_key_id) = action.rsa_private_key_id {
-        args.push("--rsa-private-key-id".to_string());
+        args.push("--rsa-private-key-id".to_owned());
         args.push(rsa_private_key_id);
     }
     if let Some(wrapping_key_id) = action.wrapping_key_id {
-        args.push("--wrapping-key-id".to_string());
+        args.push("--wrapping-key-id".to_owned());
         args.push(wrapping_key_id);
     }
     if let Some(leaf_certificate_extensions) = action.leaf_certificate_extensions {
-        args.push("--leaf-certificate-extensions".to_string());
-        args.push(leaf_certificate_extensions.to_str().unwrap().to_string());
+        args.push("--leaf-certificate-extensions".to_owned());
+        args.push(leaf_certificate_extensions.to_str().unwrap().to_owned());
     }
     if let Some(leaf_certificate_id) = action.leaf_certificate_id {
-        args.push("--leaf-certificate-id".to_string());
+        args.push("--leaf-certificate-id".to_owned());
         args.push(leaf_certificate_id);
     }
     if let Some(leaf_certificate_pkcs12_file) = action.leaf_certificate_pkcs12_file {
-        args.push("--leaf-certificate-pkcs12-file".to_string());
-        args.push(leaf_certificate_pkcs12_file.to_str().unwrap().to_string());
+        args.push("--leaf-certificate-pkcs12-file".to_owned());
+        args.push(leaf_certificate_pkcs12_file.to_str().unwrap().to_owned());
     }
     if let Some(leaf_certificate_pkcs12_password) = action.leaf_certificate_pkcs12_password {
-        args.push("--leaf-certificate-pkcs12-password".to_string());
+        args.push("--leaf-certificate-pkcs12-password".to_owned());
         args.push(leaf_certificate_pkcs12_password);
     }
     if action.dry_run {
-        args.push("--dry-run".to_string());
+        args.push("--dry-run".to_owned());
     }
     if action.sensitive {
-        args.push("--sensitive".to_string());
+        args.push("--sensitive".to_owned());
     }
 
     // Finish with user id
@@ -104,10 +104,10 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
 
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
-        user_id: "john.doe@acme.com".to_string(),
+        user_id: "john.doe@acme.com".to_owned(),
         cse_key_id,
         issuer_private_key_id: None,
-        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_string(),
+        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
         rsa_private_key_id: None,
         sensitive: false,
         wrapping_key_id: None,
@@ -118,7 +118,7 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
         number_of_days: 20,
         dry_run: true,
     };
-    assert!(create_keypairs(&owner_client_conf_path, action.clone()).is_err());
+    create_keypairs(&owner_client_conf_path, action.clone()).unwrap_err();
 
     // Create key pair with certificate extensions (must succeed)
     let action = CreateKeyPairsAction {
@@ -133,7 +133,7 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
 
     // Create key pair with certificate id (must succeed)
     let action = CreateKeyPairsAction {
-        user_id: "john.williams@acme.com".to_string(),
+        user_id: "john.williams@acme.com".to_owned(),
         issuer_private_key_id: None,
         leaf_certificate_extensions: None,
         leaf_certificate_id: Some(certificate_1),
@@ -143,7 +143,7 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
 
     // Create key pair using a certificate file (must succeed)
     let action = CreateKeyPairsAction {
-        user_id: "john.barry@acme.com".to_string(),
+        user_id: "john.barry@acme.com".to_owned(),
         leaf_certificate_id: None,
         issuer_private_key_id: None,
         leaf_certificate_extensions: None,

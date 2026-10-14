@@ -6,6 +6,5 @@ pub(crate) use run::{ckms_bin, run_ckms, run_ckms_expect_error};
 
 mod cmd_logs;
 mod config;
-#[expect(dead_code)]
 pub(crate) mod extract_uids;
 mod run;

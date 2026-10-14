@@ -15,14 +15,11 @@ use crate::{
 };
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
-#[allow(dead_code)]
 struct Identity {
     emailAddress: String,
     primaryKeyPairId: String,
 }
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
 struct ListIdentitiesResponse {
     cseIdentities: Vec<Identity>,
 }
