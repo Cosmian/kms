@@ -1313,7 +1313,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `trace` | `C_GetSessionInfo: session: {:?}, slot: {:?}, state: {:?}, flags: {:?}` | `src/pkcs11.rs` | — | — |
 | `trace` | `create_object: class: {class:?}` | `src/sessions.rs` | `class` — … | — |
 | `trace` | `create_object: Object not supported: {o}` | `src/sessions.rs` | `o` — … | — |
-| `trace` | `Generated random: {}` | `src/pkcs11.rs` | — | — |
 | `trace` | `load_find_context succeeded` | `src/sessions.rs` | — | — |
 | `info` | `C_FindObjectsInit: session: {hSession:?}, load Objects Store context for                  attributes: {attributes:?}` | `src/pkcs11.rs` | `hSession`, `attributes` | — |
 | `debug` | `C_CreateObject: session: {hSession:?}, pTemplate: {pTemplate:?}, ulCount:              {ulCount:?}, phObject: {phObject:?}` | `src/pkcs11.rs` | `hSession`, `pTemplate`, `ulCount`, `phObject` | — |
@@ -1341,6 +1340,7 @@ Crate path: `crate/clients/pkcs11/module`
 | `warn` | `load_find_context: id {label_or_id} not found in store` | `src/sessions.rs` | `label_or_id` | - |
 | `debug` | `load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label_or_id`, `attributes` | - |
 | `debug` | `load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label_or_id` | - |
+| `trace` | `Generated {len} random bytes` | `src/pkcs11.rs` | `len` | - |
 
 ---
 
