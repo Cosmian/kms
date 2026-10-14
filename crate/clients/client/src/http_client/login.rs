@@ -281,19 +281,9 @@ impl LoginState {
 }
 
 #[derive(Deserialize, Debug)]
-#[allow(dead_code)]
 pub(crate) struct OAuthResponse {
     pub access_token: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id_token: Option<String>,
-    #[serde(skip)]
-    pub expires_in: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token_type: Option<String>,
 }
 
 /// This function requests the access token from the Identity Provider.
@@ -634,4 +624,50 @@ pub async fn approle_login(
     }
 
     Ok(parsed.auth.client_token)
+}
+
+#[cfg(test)]
+mod oauth_response_tests {
+    use super::OAuthResponse;
+
+    /// A standard RFC 6749 token response carries more members than the client reads
+    /// (`expires_in`, `refresh_token`, `scope`, `token_type`); they must be accepted and ignored.
+    #[test]
+    fn full_rfc6749_token_response_is_accepted() {
+        let response = serde_json::from_str::<OAuthResponse>(
+            r#"{
+                "access_token": "at",
+                "id_token": "it",
+                "expires_in": 3600,
+                "refresh_token": "rt",
+                "scope": "openid email",
+                "token_type": "Bearer"
+            }"#,
+        )
+        .ok();
+        assert_eq!(
+            response.as_ref().map(|r| r.access_token.as_str()),
+            Some("at")
+        );
+        assert_eq!(response.and_then(|r| r.id_token).as_deref(), Some("it"));
+    }
+
+    #[test]
+    fn id_token_is_optional() {
+        let response = serde_json::from_str::<OAuthResponse>(
+            r#"{"access_token": "at", "token_type": "Bearer"}"#,
+        )
+        .ok();
+        assert_eq!(
+            response.as_ref().map(|r| r.access_token.as_str()),
+            Some("at")
+        );
+        assert_eq!(response.map(|r| r.id_token), Some(None));
+    }
+
+    #[test]
+    fn access_token_is_required() {
+        let response = serde_json::from_str::<OAuthResponse>(r#"{"id_token": "it"}"#).ok();
+        assert!(response.is_none());
+    }
 }

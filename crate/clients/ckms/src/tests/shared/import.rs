@@ -71,7 +71,7 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CosmianResult<String> {
     }
     for tag in params.tags {
         args.push("--tag".to_owned());
-        args.push(tag.clone());
+        args.push(tag);
     }
     if let Some(key_format) = params.key_format {
         args.push("--key-format".to_owned());

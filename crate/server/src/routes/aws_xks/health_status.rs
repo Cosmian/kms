@@ -51,7 +51,6 @@ pub(crate) struct GetHealthStatusRequest {
 /// Request Payload Parameters: The HTTP body of the request only contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
-#[allow(dead_code)]
 pub(crate) struct RequestMetadata {
     /// This is the requestId of the call made by AWS KMS as part of
     /// a periodic health check which is visible in AWS `CloudTrail`.

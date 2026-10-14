@@ -176,7 +176,6 @@ pub(crate) async fn check_role_permission(
             {
                 return kms.enforce_create_permission(&UserId::from(user)).await;
             }
-            Ok(())
         }
         Role::Operator => {
             // Enforce allowed_operations() for Operator at dispatch.
@@ -201,9 +200,9 @@ pub(crate) async fn check_role_permission(
             if KmipOperation::is_restricted_lifecycle_tag(operation_tag) {
                 return kms.enforce_create_permission(&UserId::from(user)).await;
             }
-            Ok(())
         }
     }
+    Ok(())
 }
 
 /// Dispatch operation depending on the TTLV tag

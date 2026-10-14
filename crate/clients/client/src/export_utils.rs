@@ -82,7 +82,7 @@ pub async fn export_object(
                 params.authenticated_encryption_additional_data,
             ))
             .await
-            .with_context(|| "Export")?;
+            .context("Export")?;
         (
             export_response.unique_identifier,
             export_response.object,
@@ -102,7 +102,7 @@ pub async fn export_object(
                 params.authenticated_encryption_additional_data,
             ))
             .await
-            .with_context(|| "Get")?;
+            .context("Get")?;
         (
             get_response.unique_identifier,
             get_response.object,

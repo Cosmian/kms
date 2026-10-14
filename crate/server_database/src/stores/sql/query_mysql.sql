@@ -80,6 +80,10 @@ FROM read_access;
 DELETE
 FROM tags;
 
+-- name: clean-table-crls
+DELETE
+FROM crls;
+
 
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)

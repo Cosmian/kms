@@ -259,6 +259,7 @@ impl MySqlPool {
                 "clean-table-objects",
                 "clean-table-read_access",
                 "clean-table-tags",
+                "clean-table-crls",
             ] {
                 if let Some(sql) = MYSQL_QUERIES.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
@@ -429,10 +430,6 @@ impl MySqlPool {
 impl SqlDatabase for MySqlPool {
     fn get_loader(&self) -> &Loader {
         &MYSQL_QUERIES
-    }
-
-    fn binder(&self, _param_number: usize) -> String {
-        "?".to_owned()
     }
 }
 
@@ -931,19 +928,6 @@ impl ObjectsStore for MySqlPool {
 
 #[async_trait(?Send)]
 impl Migrate for MySqlPool {
-    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
-        let mut conn = self.get_configured_conn().await?;
-        let sql = get_mysql_query!("select-parameter");
-        let res: Option<String> = conn
-            .exec_first(sql, ("db_state",))
-            .await
-            .map_err(DbError::from)?;
-        match res {
-            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
-            None => Ok(None),
-        }
-    }
-
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
         let mut conn = self.get_configured_conn().await?;
         let sql = get_mysql_query!("upsert-parameter");
@@ -952,16 +936,6 @@ impl Migrate for MySqlPool {
             .await
             .map_err(DbError::from)?;
         Ok(())
-    }
-
-    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let mut conn = self.get_configured_conn().await?;
-        let sql = get_mysql_query!("select-parameter");
-        let res: Option<String> = conn
-            .exec_first(sql, ("db_version",))
-            .await
-            .map_err(DbError::from)?;
-        Ok(res)
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {

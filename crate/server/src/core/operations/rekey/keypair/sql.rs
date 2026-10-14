@@ -135,8 +135,85 @@ impl RekeyOperation for SqlKeypairRekeyer {
         ])
     }
 
-    async fn generate_replacement(
+    fn generate_replacement(
         &self,
+        kms: &KMS,
+        candidates: &[RotationCandidate; 2],
+    ) -> impl Future<Output = KResult<[ReplacementObject; 2]>> {
+        // Key-pair generation is synchronous CPU work: no suspension point is needed.
+        std::future::ready(Self::build_replacement(kms, candidates))
+    }
+
+    fn prepare_attributes(
+        &self,
+        kms: &KMS,
+        candidates: &[RotationCandidate; 2],
+        replacements: &mut [ReplacementObject; 2],
+    ) -> KResult<()> {
+        let [sk_candidate, pk_candidate] = candidates;
+
+        let new_sk_attributes = sk_candidate
+            .owm
+            .attributes()
+            .for_replacement(&sk_candidate.uid, self.offset)?;
+        let new_pk_attributes = pk_candidate
+            .owm
+            .attributes()
+            .for_replacement(&pk_candidate.uid, self.offset)?;
+
+        let pk_new_uid = replacements[1].new_uid.clone();
+        let sk_new_uid = replacements[0].new_uid.clone();
+
+        let [sk_rep, pk_rep] = replacements;
+
+        // Private key slot
+        sk_rep.finalize(
+            &new_sk_attributes,
+            ObjectType::PrivateKey,
+            &sk_candidate.uid,
+            Some((&pk_new_uid, LinkType::PublicKeyLink)),
+            kms.vendor_id(),
+        )?;
+        sk_candidate
+            .owm
+            .object()
+            .copy_wrapping_key_link_to(&mut sk_rep.attributes);
+        sk_rep
+            .attributes
+            .set_rotation_metadata_from(sk_candidate.owm.attributes())?;
+
+        // Public key slot — rewrap target: dependants wrapped by old PK get re-wrapped to new PK
+        pk_rep.finalize(
+            &new_pk_attributes,
+            ObjectType::PublicKey,
+            &pk_candidate.uid,
+            Some((&sk_new_uid, LinkType::PrivateKeyLink)),
+            kms.vendor_id(),
+        )?;
+        pk_candidate
+            .owm
+            .object()
+            .copy_wrapping_key_link_to(&mut pk_rep.attributes);
+        pk_rep
+            .attributes
+            .set_rotation_metadata_from(pk_candidate.owm.attributes())?;
+        pk_rep.rewrap_to = Some(pk_rep.new_uid.clone());
+
+        Ok(())
+    }
+
+    fn build_response(&self, replacements: &[ReplacementObject; 2]) -> ReKeyKeyPairResponse {
+        let [sk_rep, pk_rep] = replacements;
+        ReKeyKeyPairResponse {
+            private_key_unique_identifier: UniqueIdentifier::TextString(sk_rep.new_uid.clone()),
+            public_key_unique_identifier: UniqueIdentifier::TextString(pk_rep.new_uid.clone()),
+        }
+    }
+}
+
+impl SqlKeypairRekeyer {
+    /// Generates the replacement key pair (synchronous CPU work).
+    fn build_replacement(
         kms: &KMS,
         candidates: &[RotationCandidate; 2],
     ) -> KResult<[ReplacementObject; 2]> {
@@ -209,71 +286,5 @@ impl RekeyOperation for SqlKeypairRekeyer {
                 rewrap_to: None,                   // set in prepare_attributes
             },
         ])
-    }
-
-    fn prepare_attributes(
-        &self,
-        kms: &KMS,
-        candidates: &[RotationCandidate; 2],
-        replacements: &mut [ReplacementObject; 2],
-    ) -> KResult<()> {
-        let [sk_candidate, pk_candidate] = candidates;
-
-        let new_sk_attributes = sk_candidate
-            .owm
-            .attributes()
-            .for_replacement(&sk_candidate.uid, self.offset)?;
-        let new_pk_attributes = pk_candidate
-            .owm
-            .attributes()
-            .for_replacement(&pk_candidate.uid, self.offset)?;
-
-        let pk_new_uid = replacements[1].new_uid.clone();
-        let sk_new_uid = replacements[0].new_uid.clone();
-
-        let [sk_rep, pk_rep] = replacements;
-
-        // Private key slot
-        sk_rep.finalize(
-            &new_sk_attributes,
-            ObjectType::PrivateKey,
-            &sk_candidate.uid,
-            Some((&pk_new_uid, LinkType::PublicKeyLink)),
-            kms.vendor_id(),
-        )?;
-        sk_candidate
-            .owm
-            .object()
-            .copy_wrapping_key_link_to(&mut sk_rep.attributes);
-        sk_rep
-            .attributes
-            .set_rotation_metadata_from(sk_candidate.owm.attributes())?;
-
-        // Public key slot — rewrap target: dependants wrapped by old PK get re-wrapped to new PK
-        pk_rep.finalize(
-            &new_pk_attributes,
-            ObjectType::PublicKey,
-            &pk_candidate.uid,
-            Some((&sk_new_uid, LinkType::PrivateKeyLink)),
-            kms.vendor_id(),
-        )?;
-        pk_candidate
-            .owm
-            .object()
-            .copy_wrapping_key_link_to(&mut pk_rep.attributes);
-        pk_rep
-            .attributes
-            .set_rotation_metadata_from(pk_candidate.owm.attributes())?;
-        pk_rep.rewrap_to = Some(pk_rep.new_uid.clone());
-
-        Ok(())
-    }
-
-    fn build_response(&self, replacements: &[ReplacementObject; 2]) -> ReKeyKeyPairResponse {
-        let [sk_rep, pk_rep] = replacements;
-        ReKeyKeyPairResponse {
-            private_key_unique_identifier: UniqueIdentifier::TextString(sk_rep.new_uid.clone()),
-            public_key_unique_identifier: UniqueIdentifier::TextString(pk_rep.new_uid.clone()),
-        }
     }
 }

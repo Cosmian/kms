@@ -278,7 +278,7 @@ mod tests {
             };
             let req = Sign {
                 data: Some(b"supported curves signing".to_vec().into()),
-                cryptographic_parameters: Some(cp.clone()),
+                cryptographic_parameters: Some(cp),
                 ..Default::default()
             };
 

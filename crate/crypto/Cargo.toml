@@ -46,19 +46,19 @@ non-fips = [
 ]
 
 [dependencies]
-aes-gcm-siv = { version = "0.11.1", optional = true }
-argon2 = { version = "0.5", optional = true }
-chrono = { workspace = true, optional = true }
+aes-gcm-siv = { workspace = true, optional = true }
+argon2 = { workspace = true, optional = true }
 base64 = { workspace = true }
-cosmian_cover_crypt = { version = "16.0.0", optional = true }
+chrono = { workspace = true, optional = true }
+cosmian_cover_crypt = { workspace = true, optional = true }
 cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }
-cosmian_kmip = { path = "../kmip", version = "5.28.0" }
-cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.28.0", optional = true }
+cosmian_kmip = { workspace = true }
+cosmian_kms_client_utils = { workspace = true, optional = true }
 cosmian_logger = { workspace = true }
-foreign-types = "0.3"
+foreign-types = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true, optional = true }
-k256 = { version = "0.13", features = ["ecdsa"], optional = true }
+k256 = { workspace = true, features = ["ecdsa"], optional = true }
 num-bigint = { workspace = true, optional = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
@@ -66,17 +66,17 @@ num-bigint-dig = { workspace = true, features = [
   "serde",
   "zeroize",
 ] }
-openssl = { workspace = true }
-openssl-sys = "0.9"
-p256 = { version = "0.13", features = ["ecdsa"], optional = true }
 num-traits = { workspace = true, optional = true }
+openssl = { workspace = true }
+openssl-sys = { workspace = true }
+p256 = { workspace = true, features = ["arithmetic", "ecdsa", "pem", "std"], optional = true }
 pgp = { workspace = true, optional = true }
-rand_08 = { package = "rand", version = "0.8.6", optional = true }
-rand_distr = { version = "0.6", optional = true }
 rand = { workspace = true, optional = true }
-rand_chacha = { version = "0.10", optional = true }
+rand_08 = { workspace = true, optional = true }
+rand_chacha = { workspace = true, optional = true }
+rand_distr = { workspace = true, optional = true }
 regex = { workspace = true, optional = true, features = ["unicode-perl"] }
-rust-ini = "0.21"
+rust-ini = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true, optional = true }
@@ -87,11 +87,11 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [dev-dependencies]
-aes-kw = "0.3.1"
+aes-kw = { workspace = true }
 cosmian_logger = { workspace = true }
-ctor = "0.2"
+ctor = { workspace = true }
 rand = { workspace = true }
-rand_chacha = "0.10"
+rand_chacha = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 

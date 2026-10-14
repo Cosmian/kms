@@ -1308,7 +1308,6 @@ impl Session {
                 key_handle,
                 &mut mechanism,
                 padded_plaintext
-                    .as_slice()
                     .get(processed_length..processed_length + round_length)
                     .ok_or_else(|| HError::Default("Failed to round data".to_owned()))?,
             )?;
@@ -1421,6 +1420,215 @@ impl Session {
             }
         }
         Self::pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
+    }
+
+    /// Encrypt data with AES-CBC using a single PKCS#11 multi-part operation:
+    /// one `C_EncryptInit`, one `C_EncryptUpdate` per part of at most `max_part_length`
+    /// bytes, then `C_EncryptFinal`.
+    ///
+    /// Unlike [`Session::encrypt_aes_cbc_multi_round`], which re-initializes the
+    /// operation for every round and chains the IV by hand, the HSM keeps the CBC
+    /// chaining state across the parts. This avoids one `C_EncryptInit` per round on
+    /// very large inputs, and yields exactly the ciphertext of a single-shot
+    /// [`Session::encrypt`] using the same IV (PKCS#7 padding is applied here).
+    ///
+    /// # Errors
+    /// * Returns an error if `max_part_length` is zero.
+    /// * Returns an error if any of the HSM calls fails; the operation is then
+    ///   terminated so that the session can be reused.
+    pub fn encrypt_aes_cbc_multi_part(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: [u8; AES_CBC_IV_LENGTH],
+        plaintext: &[u8],
+        max_part_length: usize,
+    ) -> HResult<EncryptedContent> {
+        if max_part_length == 0 {
+            return Err(HError::Default(
+                "Maximum part length must be greater than zero".to_owned(),
+            ));
+        }
+        let mut padded_plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(plaintext.to_vec());
+        Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
+
+        let mut iv_param = iv;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv_param.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(iv.len())?,
+        };
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize encryption",
+            C_EncryptInit,
+            self.handle,
+            &raw mut mechanism,
+            key_handle
+        );
+
+        let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext.len());
+        for part in padded_plaintext.chunks(max_part_length) {
+            if let Err(e) = self.encrypt_update(part, &mut ciphertext) {
+                self.abort_encrypt();
+                return Err(e);
+            }
+        }
+        self.encrypt_final(&mut ciphertext)?;
+        Ok(EncryptedContent {
+            iv: Some(iv.to_vec()),
+            ciphertext, // no separate tag for CBC
+            tag: None,
+        })
+    }
+
+    /// Decrypt data with AES-CBC using a single PKCS#11 multi-part operation
+    /// (`C_DecryptInit`, one `C_DecryptUpdate` per part of at most `max_part_length`
+    /// bytes, `C_DecryptFinal`), then remove the PKCS#7 padding.
+    ///
+    /// See [`Session::encrypt_aes_cbc_multi_part`].
+    ///
+    /// # Errors
+    /// * Returns an error if `max_part_length` is zero.
+    /// * Returns an error if the ciphertext length is not a multiple of 16.
+    /// * Returns an error if the IV length is not exactly 16 bytes.
+    /// * Returns an error if PKCS#7 unpadding fails.
+    /// * Returns an error if any of the HSM calls fails; the operation is then
+    ///   terminated so that the session can be reused.
+    pub fn decrypt_aes_cbc_multi_part(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: &[u8],
+        ciphertext: &[u8],
+        max_part_length: usize,
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        if max_part_length == 0 {
+            return Err(HError::Default(
+                "Maximum part length must be greater than zero".to_owned(),
+            ));
+        }
+        if !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE) {
+            return Err(HError::Default(format!(
+                "AES CBC ciphertext must be multiple of block size ({AES_BLOCK_SIZE})"
+            )));
+        }
+        let mut iv_param: [u8; AES_CBC_IV_LENGTH] = iv.try_into().map_err(|_e| {
+            HError::Default(format!(
+                "Wrong IV length. Must be {AES_CBC_IV_LENGTH} bytes long"
+            ))
+        })?;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv_param.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(iv_param.len())?,
+        };
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize decryption",
+            C_DecryptInit,
+            self.handle,
+            &raw mut mechanism,
+            key_handle
+        );
+
+        let mut plaintext: Zeroizing<Vec<u8>> =
+            Zeroizing::new(Vec::with_capacity(ciphertext.len()));
+        for part in ciphertext.chunks(max_part_length) {
+            if let Err(e) = self.decrypt_update(part, &mut plaintext) {
+                self.abort_decrypt();
+                return Err(e);
+            }
+        }
+        self.decrypt_final(&mut plaintext)?;
+        Self::pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
+    }
+
+    /// Feed one part to the active encryption operation and append the produced bytes.
+    fn encrypt_update(&self, part: &[u8], ciphertext: &mut Vec<u8>) -> HResult<()> {
+        let mut out = vec![0_u8; part.len() + AES_BLOCK_SIZE];
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to encrypt data part",
+            C_EncryptUpdate,
+            self.handle,
+            part.as_ptr().cast_mut(),
+            CK_ULONG::try_from(part.len())?,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        ciphertext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Finish the active encryption operation and append any remaining bytes.
+    fn encrypt_final(&self, ciphertext: &mut Vec<u8>) -> HResult<()> {
+        let mut out = vec![0_u8; AES_BLOCK_SIZE];
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to finalize encryption",
+            C_EncryptFinal,
+            self.handle,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        ciphertext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Terminate the active encryption operation after a failed update, so the
+    /// session does not stay in the "operation active" state.
+    fn abort_encrypt(&self) {
+        let mut discarded = Vec::new();
+        if let Err(e) = self.encrypt_final(&mut discarded) {
+            debug!("Could not terminate the encryption operation after an error: {e}");
+        }
+    }
+
+    /// Feed one part to the active decryption operation and append the produced bytes.
+    fn decrypt_update(&self, part: &[u8], plaintext: &mut Zeroizing<Vec<u8>>) -> HResult<()> {
+        let mut out: Zeroizing<Vec<u8>> = Zeroizing::new(vec![0_u8; part.len() + AES_BLOCK_SIZE]);
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to decrypt data part",
+            C_DecryptUpdate,
+            self.handle,
+            part.as_ptr().cast_mut(),
+            CK_ULONG::try_from(part.len())?,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        plaintext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Finish the active decryption operation and append any remaining bytes.
+    fn decrypt_final(&self, plaintext: &mut Zeroizing<Vec<u8>>) -> HResult<()> {
+        let mut out: Zeroizing<Vec<u8>> = Zeroizing::new(vec![0_u8; AES_BLOCK_SIZE]);
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to finalize decryption",
+            C_DecryptFinal,
+            self.handle,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        plaintext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Terminate the active decryption operation after a failed update.
+    fn abort_decrypt(&self) {
+        let mut discarded: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::new());
+        if let Err(e) = self.decrypt_final(&mut discarded) {
+            debug!("Could not terminate the decryption operation after an error: {e}");
+        }
     }
 
     fn encrypt_with_mechanism(

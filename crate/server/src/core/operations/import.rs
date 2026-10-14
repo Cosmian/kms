@@ -1005,7 +1005,7 @@ async fn process_pkcs12(
             // (according to the KMIP spec, this would be LinkType::CertificateLink)
             chain_attributes.set_link(
                 LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(parent_certificate_id.clone()),
+                LinkedObjectIdentifier::TextString(parent_certificate_id),
             );
         }
         operations.push(single_operation(

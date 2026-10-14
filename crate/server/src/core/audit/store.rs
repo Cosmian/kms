@@ -28,7 +28,7 @@ use std::{
 use cosmian_kms_access::audit::AuditEventDraft;
 use cosmian_kms_interfaces::AuditSink;
 use cosmian_logger::error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 use super::{
     file_sink::{AuditWriteState, FileSink},
@@ -44,10 +44,9 @@ pub(super) enum WriterMsg {
     /// A synchronization barrier: the writer acknowledges once every message
     /// enqueued before this one has been written (and, for `File`, `fsync`'d).
     /// Used by tests to await the writer's progress deterministically instead
-    /// of sleeping. Only the test-only `flush()` constructs it, but the field
-    /// type and writer-loop handler compile unconditionally.
-    #[cfg_attr(not(test), allow(dead_code))]
-    Flush(oneshot::Sender<()>),
+    /// of sleeping.
+    #[cfg(test)]
+    Flush(tokio::sync::oneshot::Sender<()>),
 }
 
 /// Cloneable handle to the file audit writer task.
@@ -222,30 +221,25 @@ impl AuditStore {
         }
         all_queued
     }
+}
 
+/// Test-only constructors and barriers on `AuditStore`.
+#[cfg(test)]
+impl AuditStore {
     /// Awaits until every event enqueued before this call has been written by
     /// the writer task (and, for the real `File` sink, `fsync`'d). Unlike
     /// `enqueue`, this uses a blocking `send` so the barrier itself is never
     /// dropped under channel saturation.
     ///
-    /// Intended for tests and offline tooling that need a deterministic
-    /// drain point instead of a fixed sleep. A no-op if the writer task has
-    /// already stopped.
-    // Only called from test code today; kept as a real (non-cfg-gated) crate API
-    // so `WriterMsg::Flush` stays a normal, always-constructed variant instead of
-    // needing parallel cfg(test)/cfg(not(test)) match arms in the hot writer loop.
-    #[allow(dead_code, reason = "test-only today; a genuine crate API, not dead")]
+    /// Gives tests a deterministic drain point instead of a fixed sleep. A
+    /// no-op if the writer task has already stopped.
     pub(crate) async fn flush(&self) {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = tokio::sync::oneshot::channel();
         if self.sender.send(WriterMsg::Flush(tx)).await.is_ok() {
             let _ = rx.await;
         }
     }
-}
 
-/// Test-only constructors on `AuditStore`.
-#[cfg(test)]
-impl AuditStore {
     /// Same as [`Self::start_with_max_size`] with no file-size cap (unlimited, the
     /// current/default behavior). Only production code goes through
     /// `start_with_max_size` directly (it always has an `Option<u64>` cap to pass,
@@ -389,6 +383,48 @@ mod tests {
         assert_valid_chain(&events);
 
         std::fs::remove_file(&path).ok();
+    }
+
+    /// `flush()` is an ordering barrier: once it returns, every event enqueued before
+    /// it is already durable on disk (no fixed sleep), in enqueue order, with no drops
+    /// and no eviction sentinel while the channel has room.
+    #[tokio::test]
+    async fn flush_waits_for_all_previously_enqueued_events() {
+        let path = temp_path("flush_ordering");
+        std::fs::remove_file(&path).ok();
+
+        let store = AuditStore::start(&path, TEST_CAPACITY).unwrap();
+        let operations = ["Create", "Encrypt", "Decrypt", "Revoke", "Destroy"];
+        for operation in operations {
+            let mut draft = make_draft();
+            operation.clone_into(&mut draft.operation);
+            assert!(store.enqueue(std::iter::once(draft)));
+        }
+        store.flush().await;
+
+        // Read while the store (and its writer task) is still alive: the barrier alone
+        // guarantees visibility.
+        let events = read_events(&path);
+        assert_eq!(
+            events
+                .iter()
+                .map(|e| e.operation.as_str())
+                .collect::<Vec<_>>(),
+            operations
+        );
+        assert_valid_chain(&events);
+        drop(store);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// `flush()` returns immediately instead of hanging when the writer task is gone
+    /// (the channel receiver is closed), and the store keeps rejecting events.
+    #[tokio::test]
+    async fn flush_is_a_noop_when_writer_has_stopped() {
+        let store = AuditStore::new_disconnected();
+        store.flush().await;
+        assert!(!store.enqueue(std::iter::once(make_draft())));
     }
 
     /// When the channel fills and a later event is enqueued, the writer emits a

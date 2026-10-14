@@ -718,3 +718,74 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     db.delete(uid).await?;
     Ok(())
 }
+
+/// Logical Redis database used by [`test_migration_state_markers`], kept apart from the
+/// default database (0) shared by the other Redis tests.
+const ISOLATED_REDIS_DB: u8 = 15;
+
+/// Redis migration-state markers: a freshly initialised database records its version
+/// and a `ready` state; re-opening it is accepted, while a database whose recorded
+/// state is not `ready` (or that has no markers) is refused as legacy.
+pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
+    use crate::stores::migrate::{DbState, Migrate as _};
+
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+    let mut rng = CsRng::from_entropy();
+    // Use a dedicated logical Redis database: this test deliberately leaves the database in
+    // refused (non-ready / legacy) states, which must never leak into the default database
+    // shared with the other Redis tests and with later runs.
+    let redis_url = format!("{}/{ISOLATED_REDIS_DB}", get_redis_url());
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+
+    let db = RedisWithFindex::instantiate(&redis_url, master_key.clone(), true).await?;
+    assert_eq!(
+        db.get_current_db_version().await?.as_deref(),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+    assert_eq!(db.get_db_state().await?, Some(DbState::Ready));
+
+    // Re-opening a ready database must succeed and keep the markers.
+    let reopened = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
+    assert_eq!(reopened.get_db_state().await?, Some(DbState::Ready));
+
+    // A non-ready state makes the next start refuse the database.
+    reopened.set_db_state(DbState::Upgrading).await?;
+    assert_eq!(reopened.get_db_state().await?, Some(DbState::Upgrading));
+    let refused = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await;
+    assert!(
+        matches!(&refused, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy")),
+        "database in 'upgrading' state must be refused, got: {:?}",
+        refused.map(|_| ())
+    );
+
+    // Version marker round-trip.
+    reopened.set_current_db_version("0.0.1-test").await?;
+    assert_eq!(
+        reopened.get_current_db_version().await?.as_deref(),
+        Some("0.0.1-test")
+    );
+
+    // A database without markers (non-empty, no version/state) is legacy and refused.
+    redis::cmd("DEL")
+        .arg("db_version")
+        .arg("db_state")
+        .query_async::<()>(&mut reopened.mgr.clone())
+        .await?;
+    redis::cmd("SET")
+        .arg("some_legacy_key")
+        .arg("v")
+        .query_async::<()>(&mut reopened.mgr.clone())
+        .await?;
+    let legacy = RedisWithFindex::instantiate(&redis_url, master_key, false).await;
+    assert!(
+        matches!(&legacy, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy")),
+        "marker-less database must be refused, got: {:?}",
+        legacy.map(|_| ())
+    );
+
+    // Leave nothing behind: this test intentionally corrupts the migration markers.
+    redis::cmd("FLUSHDB")
+        .query_async::<()>(&mut reopened.mgr.clone())
+        .await?;
+    Ok(())
+}

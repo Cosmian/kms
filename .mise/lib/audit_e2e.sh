@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # .mise/lib/audit_e2e.sh — Shared helpers for the file and PostgreSQL audit E2E scripts.
+# shellcheck disable=SC2154 # ckms_bin/ckms_conf are set by the sourcing script
 #
 # Source this after `ckms_bin` and `ckms_conf` (see kms_server.sh's
 # kms_write_ckms_conf) are set:

@@ -78,7 +78,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
         }
     }
 
-    async fn execute_local(
+    fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,

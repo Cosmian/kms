@@ -13,7 +13,9 @@ use url::Url;
 use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
-    middlewares::{JwtConfig, UserId, reject_reserved_aws_xks_identity, validate_jwt_svid},
+    middlewares::{
+        JwtConfig, JwtTokenHeaders, UserId, reject_reserved_aws_xks_identity, validate_jwt_svid,
+    },
 };
 
 fn random_b64url(rng: &KmsRng, len_bytes: usize) -> Result<String, ()> {
@@ -239,6 +241,13 @@ pub(crate) async fn callback(
             );
         }
     };
+
+    // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here.
+    if let Err(e) =
+        JwtTokenHeaders::from_token(id_token_str).and_then(|h| h.reject_unsupported_extensions())
+    {
+        return HttpResponse::Unauthorized().json(serde_json::json!({ "error": e.to_string() }));
+    }
 
     let Some(kid) = header.kid else {
         return HttpResponse::Unauthorized()

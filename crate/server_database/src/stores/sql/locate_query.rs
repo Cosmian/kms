@@ -24,8 +24,6 @@ pub(super) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
-    #[allow(dead_code)]
-    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
@@ -112,9 +110,8 @@ pub(super) trait PlaceholderTrait {
     }
 }
 
-pub(super) enum MySqlPlaceholder {}
+pub(super) struct MySqlPlaceholder;
 impl PlaceholderTrait for MySqlPlaceholder {
-    const JSON_ARRAY_LENGTH: &'static str = "JSON_LENGTH";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$[*].LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$[*].LinkType'";
@@ -185,9 +182,8 @@ impl PlaceholderTrait for MySqlPlaceholder {
 /// While JSONB has slightly slower inserts (due to binary conversion), the query
 /// performance improvement is substantial, especially for complex JSON operations
 /// like those used in attribute searches and link/name evaluations.
-pub(super) enum PgSqlPlaceholder {}
+pub(super) struct PgSqlPlaceholder;
 impl PlaceholderTrait for PgSqlPlaceholder {
-    const JSON_ARRAY_LENGTH: &'static str = "jsonb_array_length";
     const JSON_FN_EACH_ELEMENT: &'static str = "jsonb_array_elements";
     const JSON_FN_EXTRACT_PATH: &'static str = "jsonb_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "jsonb_extract_path_text";
@@ -228,7 +224,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     }
 }
 
-pub(super) enum SqlitePlaceholder {}
+pub(super) struct SqlitePlaceholder;
 impl PlaceholderTrait for SqlitePlaceholder {
     /// `SQLite` `json_extract` returns the integer `1` for a JSON `true` value.
     const BOOL_TRUE_LITERAL: &'static str = "1";
