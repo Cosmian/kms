@@ -433,15 +433,38 @@ jobs:
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
       # TODO: debug — remove before shipping. GH Actions masks any literal
-      # occurrence of a registered secret value in logs; base64-encoding the
-      # daemon log sidesteps that so the real (un-masked) peer IPs Azure Cloud
-      # HSM's cluster-info protocol reports can be read back locally.
-      - name: Debug azure-cloud-hsm daemon log (base64, always)
+      # occurrence of a registered secret value anywhere in log output,
+      # including coincidental substring matches inside base64/hex — a short
+      # secret (e.g. a one-digit slot id) corrupts arbitrary unrelated text.
+      # Never print the raw peer IP: only report a yes/no verdict on whether
+      # it falls inside the known VNet subnet (10.42.x.x), which cannot itself
+      # match a secret value.
+      - name: Debug azure-cloud-hsm peer address classification (always)
         if: always() && matrix.hsm-type == 'azure-cloud-hsm'
         run: |
-          echo "--- /tmp/azcloudhsm_client.log (base64) ---"
-          sudo base64 -w0 /tmp/azcloudhsm_client.log 2>/dev/null || echo "(no daemon log found)"
-          echo
+          LOG=/tmp/azcloudhsm_client.log
+          if [ ! -s "$LOG" ]; then
+            echo "(no daemon log found at $LOG)"
+            exit 0
+          fi
+          peers=$(sudo grep -oE 'Cluster Info: server\[[0-9.]+\]' "$LOG" | grep -oE '[0-9.]+' | sort -u)
+          if [ -z "$peers" ]; then
+            echo "no peer addresses found in Cluster Info lines"
+            exit 0
+          fi
+          echo "$peers" | while IFS= read -r ip; do
+            if [[ "$ip" == 10.42.* ]]; then
+              in_vnet=true
+            else
+              in_vnet=false
+            fi
+            if timeout 3 bash -c "echo >/dev/tcp/${ip}/2224" 2>/dev/null; then
+              reachable=true
+            else
+              reachable=false
+            fi
+            echo "peer_in_vnet_subnet=${in_vnet} peer_directly_reachable_on_2224=${reachable}"
+          done
 
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
       # independently-implemented external PKCS#11 v3 client), not just our own
