@@ -227,3 +227,7 @@ mod tests {
         assert_eq!(inner.key_id, uid);
     }
 }
+
+#[cfg(test)]
+#[path = "service_characterization_tests.rs"]
+mod characterization_tests;

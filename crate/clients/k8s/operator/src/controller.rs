@@ -263,3 +263,7 @@ fn refresh_duration(obj: &KMSSecret, default: Duration) -> Duration {
 fn chrono_now() -> String {
     Utc::now().to_rfc3339()
 }
+
+#[cfg(test)]
+#[path = "controller_characterization_tests.rs"]
+mod characterization_tests;
