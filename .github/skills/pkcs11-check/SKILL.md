@@ -1,3 +1,8 @@
+---
+name: pkcs11-check
+description: 'Run the external PKCS#11 battle-test suite (mise run test:pkcs11:tool) and interpret its report. Use when changing crate/clients/pkcs11/ (loader, module, provider), PKCS#11 MISE scripts, or provider configuration.'
+---
+
 PKCS#11 external battle-test workflow and report interpretation.
 
 ## When to use

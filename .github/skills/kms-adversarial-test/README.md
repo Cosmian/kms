@@ -1,4 +1,4 @@
-# cosmian-kms-last-tester-v4
+# kms-adversarial-test
 
 The **Final** quality gate for Eviden KMS pull requests before being merged.
 
@@ -36,7 +36,7 @@ Even such a triavial prompt is proven to work, but the more context the less the
 
 ## Workflow at a glance
 
-![Skill workflow](kms_workflow_blocks_simple.png)
+![Skill workflow](skill_workflow.png)
 
 ## References
 

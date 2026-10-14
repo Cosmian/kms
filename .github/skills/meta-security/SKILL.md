@@ -205,7 +205,7 @@ Determine go/no-go using this order:
 
 ## Step 8 — Output Rules
 
-- **Never** auto-apply fixes — present the unified report for human review
+- **Never** auto-apply fixes within this audit — present the unified report for human review (auto-fixing self-review is `/kms-pr-review`'s job)
 - **Always** attribute each finding to its source phase (per deduplication rules in shared contract Section 3)
 - **Always** deduplicate findings that appear in multiple phases (keep the most detailed version, note the overlap)
 - **Group** blocking findings at the top for immediate visibility

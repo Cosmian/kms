@@ -327,7 +327,7 @@ Invoke `/ci-efficiency`. Check:
 - Missing caches (Nix store, Cargo registry, pnpm store)
 - Over-broad workflow triggers (`on: push` without path filters)
 - No concurrency cancellation on PR workflows
-- Redundant matrix jobs between `pr.yml` and `test_all.yml`
+- Redundant matrix jobs between `main.yml` and `test_all.yml`
 
 **Output**: top 3 efficiency improvements ranked by CI-minutes saved.
 

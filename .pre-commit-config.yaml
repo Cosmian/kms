@@ -571,13 +571,18 @@ repos:
       - id: sync-instructions
         name: Sync instruction files ↔ pre-commit hooks
         description: |
-          Validates that every instruction file's applyTo pattern has a
-          corresponding pre-commit hook, and vice versa. Run with --report
-          to see the full coverage map.
+          Validates that every pre-commit hook gated by files/types maps to an
+          instruction file. Run with --report to see the full coverage map.
         entry: bash .mise/scripts/pre-commit/sync-instructions.sh
         language: system
         pass_filenames: false
         files: ^\.github/instructions/.*\.instructions\.md$
+      - id: check-ai-docs
+        name: Check AI instruction files consistency (auto-fix tables)
+        entry: python3 .mise/scripts/docs/check_ai_docs.py --fix
+        language: system
+        pass_filenames: false
+        files: ^(AGENTS\.md|CONTRIBUTING\.md|\.github/copilot-instructions\.md|\.github/instructions/.*|\.github/skills/.*)$
       - id: update-log-index
         name: Update log call-site index (smart — only on log macro changes)
         description: |

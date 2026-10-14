@@ -21,7 +21,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` | FIPS-approved algorithms, OpenSSL provider |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` | KMIP 2.1 protocol types and serialisation |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
-| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
+| `database-tables.instructions.md` | `**/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
 | `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` | Sync rule 4.1 — server SPA routes ⇔ React Router ⇔ menu items |
 | `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` | Sync rule 4.2 — REST endpoint handlers ⇔ OpenAPI ⇔ route registration |
 | `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` | Sync rule 4.3 — KMIP operation types ⇔ dispatcher ⇔ handler |
@@ -31,7 +31,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` | Sync rule 4.9 — auth config ⇔ wizard ⇔ middleware ⇔ scope wiring |
 | `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` | Sync rule 4.10 — test vector directory ⇔ runner ⇔ README |
 | `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` | Sync rule 4.11 — Nix vendor hashes ⇔ lock files |
-| `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `azure_ekm/**`, `google_cse/**`, `ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
+| `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` | Sync rule 4.13 — PKCS#11 loader ⇔ HSM model enum ⇔ wizard ⇔ test vectors ⇔ CI matrix |
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
@@ -46,7 +46,8 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `markdown.instructions.md` | `**/*.md` | README, CHANGELOG, skill/instruction docs |
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` | mdBook site (Diátaxis framework); sync rule 4.14 — documentation ⇔ mdBook ⇔ README |
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
-| `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
+| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
+| `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset |
 
 Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
@@ -67,7 +68,7 @@ cargo build --features non-fips      # non-FIPS: extra algorithms, PQC, Covercry
 cargo test-fips                      # test --lib --workspace
 cargo test-non-fips                  # test --lib --workspace --features non-fips
 cargo test -p cosmian_kms_server     # single crate
-cargo test -p cosmian_kms_cli
+cargo test -p ckms
 
 # ── Lint ─────────────────────────────────────────────────────────────────
 cargo clippy-all                     # clippy --workspace --all-targets --all-features -- -D warnings
@@ -264,6 +265,7 @@ For FIPS feature-flag gating discipline, multi-standard algorithm compliance, an
 - Select deeper skills from inspected changed code and affected callers. A negative regex result cannot rule out semantic, security, cryptographic, or protocol risk.
 - Keep full, release, and pre-release gates complete; use skips only for confirmed inapplicable scope and record the reason.
 - Do not claim model selection, latency targets, percentages, or token savings unless the platform supports the measurement and actual usage data was observed.
+- `/kms-pr-review` Phase 1 overlaps `/kms-caveman`; if `/kms-caveman` already ran this session, feed its findings into `/kms-pr-review` instead of re-scanning.
 
 ### Feature rollout order & PR cascade
 
@@ -282,7 +284,7 @@ CLI/UI changes for the same feature into one commit or one PR:
    though `cli-ui-sync.instructions.md` requires them to stay functionally in sync.
 4. **Cascade/stack the PRs.** When server, CLI, and UI branches must exist before the
    server PR merges, stack them: each subsequent branch is based on the previous one's
-   branch (not `main`), so the PRs form a dependency chain. Use `gh stack view` /
+   branch (not `develop`), so the PRs form a dependency chain. Use `gh stack view` /
    `gh stack submit` to inspect and open the chain. **Do not use `gh stack sync`** (or any
    equivalent rebase-then-force-push tool) to update already-pushed downstream branches —
    it rewrites history and force-pushes with `--force-with-lease`, which the force-push
@@ -363,7 +365,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | OpenSSL upgrade | 4.17 |
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
 
-> **Full sub-rule checklists** (4.1–4.18) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.18) live in `.github/instructions/*.instructions.md`; only rule 4.8 lives in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
@@ -378,15 +380,13 @@ shipped in a tagged KMS release (vX.Y.Z)**. The key question is: _were real user
   in code that has never appeared in a tagged release, no users are exposed and no entry
   should be added.
 
-### 6. Post-task self-review
+### 6. Post-task self-review (automated)
 
-Run after each task, when diff >200 lines, or before marking the last todo "completed."
+Run after each task, when diff > 200 lines, or before marking the last todo "completed". Skip only for trivial fixes and one-liners.
 
-1. **Scope audit** — Did I change any file not required by the task?
-2. **Security-posture delta** — Did any change widen the attack surface or introduce a vulnerability? Run `/security-review` on changed files if uncertain.
-3. **Feature-flag consistency** — Are additions gated behind the same feature flags as surrounding code?
-4. **Diff review** — `git diff --stat && git diff` — every hunk must be explainable by the task.
-5. **PR quality gate** — For significant work (new feature, algorithm, auth change, or diff > 200 lines), suggest running `/kms-last-test-v5` once before the PR is submitted. Skip for trivial fixes and one-liners.
+1. Run **`/kms-pr-review`** (self-review mode, no argument). It reviews the branch diff in two passes, **applies confirmed fixes automatically**, re-tests, and re-reviews — at most 2 fix cycles — then writes `review/final.md`. Scope, security-posture, feature-flag, and diff checks are part of its two passes; do not repeat them by hand.
+2. If `/kms-pr-review` stops with NO-GO or `needs-human` findings after its 2 fix cycles, stop and report those findings to the user; do not keep iterating.
+3. **PR quality gate** — for significant work (new feature, algorithm, auth change, or diff > 200 lines) also run **`/kms-adversarial-test`** once before the PR is submitted. Skip for trivial fixes and one-liners.
 
 ### 7. Updating CHANGELOG.md
 
@@ -417,14 +417,16 @@ Key rules:
 
 ## 7. Copilot Skills
 
-All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` for the full index.
+All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` for the full index.
 
 | Invoke | When |
 |--------|------|
-| `/kms-last-test-v5` | **Before submitting a significant PR** — adversarial quality gate; suggest once for large features, skip for trivial fixes |
+| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure |
+| `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
+| `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; suggest once for large features, skip for trivial fixes |
 | `/pre-release` | **Before every release** — orchestrates all AI audits, produces go/no-go report |
 | `/kms-release-notes <version>` | Aggregate `CHANGELOG/*.md` into a compact release note |
-| `/ci-fix` | Fix all CI failures in a loop until the branch is green |
+| `/ci-fix` | Fix CI failures for a supplied run or HEAD; one batched commit per pass; stops after 3 repeated failures |
 | `/kms-sync-rules` | After every code change — auto-detects changed files and emits the applicable checklist |
 | `/meta-security [path]` | **Comprehensive security audit** — orchestrates all 4 security skills |
 | `/security-review [path]` | Before any PR — OWASP, CWE Top 25, 20 vulnerability families, KMIP auth |
@@ -450,7 +452,6 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 | `/playwright-kms` | For E2E test creation |
 | `/react-ant-patterns` | React 19 + Ant Design 5 + Tailwind 4 patterns |
 | `/ci-efficiency` | GitHub Actions workflow audit |
-| `/conventional-commit` | Generate conventional commit messages |
 
 ---
 
@@ -485,11 +486,11 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 
 #### UI actions structure
 
-`ui/src/actions/` — 14 feature modules mapping to KMIP operation groups:
+`ui/src/actions/` — 16 feature modules mapping to KMIP operation groups:
 
 ```text
-Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/
-Keys/ MAC/ Objects/ PQC/ RSA/ Symmetric/
+Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/ FPE/ Keys/
+MAC/ Objects/ Pgp/ PQC/ RSA/ RotationPolicy/ Symmetric/ Tokenize/
 ```
 
 Update `ui/tests/e2e/README.md` when adding or removing E2E tests.

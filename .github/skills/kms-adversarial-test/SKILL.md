@@ -1,5 +1,5 @@
 ---
-name: cosmian-kms-last-tester-v4
+name: kms-adversarial-test
 description: Acts as the final quality gate for Eviden KMS PRs. Assumes all automated tests pass upstream. Builds an ACC risk map from git diff, runs adversarial tours against a live KMS instance, and produces a finding report. Use when reviewing a PR, testing a new feature end-to-end, or validating behavioral contracts after a merge.
 ---
 
