@@ -91,3 +91,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mod_characterization_tests.rs"]
+mod characterization_tests;

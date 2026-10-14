@@ -293,3 +293,7 @@ mod tests {
         assert!(c.get("uid-v2").await.is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "object_cache_characterization_tests.rs"]
+mod characterization_tests;
