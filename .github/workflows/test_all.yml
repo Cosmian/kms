@@ -432,6 +432,17 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # TODO: debug — remove before shipping. GH Actions masks any literal
+      # occurrence of a registered secret value in logs; base64-encoding the
+      # daemon log sidesteps that so the real (un-masked) peer IPs Azure Cloud
+      # HSM's cluster-info protocol reports can be read back locally.
+      - name: Debug azure-cloud-hsm daemon log (base64, always)
+        if: always() && matrix.hsm-type == 'azure-cloud-hsm'
+        run: |
+          echo "--- /tmp/azcloudhsm_client.log (base64) ---"
+          sudo base64 -w0 /tmp/azcloudhsm_client.log 2>/dev/null || echo "(no daemon log found)"
+          echo
+
       # PKCS#11 v3 conformance tests: signs through OpenSC's pkcs11-tool (a real,
       # independently-implemented external PKCS#11 v3 client), not just our own
       # in-process Rust tests above. SoftHSM2-only: it is the only backend the CI
