@@ -123,7 +123,10 @@ impl Default for HttpClientConfig {
 }
 
 /// used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde `skip_serializing_if` passes a reference"
+)]
 const fn not(b: &bool) -> bool {
     !*b
 }
@@ -645,7 +648,6 @@ impl HttpClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod default_header_tests {
     use super::{HttpClient, HttpClientConfig};
 
