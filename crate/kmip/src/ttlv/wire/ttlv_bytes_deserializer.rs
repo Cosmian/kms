@@ -257,7 +257,6 @@ where
     }
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 
@@ -317,7 +316,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::as_conversions)]
     fn test_enumeration() {
         let variant = KmipEnumerationVariant {
             value: kmip_1_4::kmip_types::CryptographicAlgorithm::AES as u32,

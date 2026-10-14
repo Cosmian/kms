@@ -56,7 +56,6 @@ pub fn creation_time() -> Result<OffsetDateTime, KmipError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

@@ -5,7 +5,6 @@
 //! Public API:
 //! * `TTLVXMLSerializer`, `TTLVXMLDeserializer`
 //! * `KmipXmlDoc` with `new` and `new_with_file`
-#![allow(clippy::box_default)]
 
 mod deserializer;
 mod serializer;
@@ -17,11 +16,5 @@ pub use parser::KmipXmlDoc;
 #[cfg(test)]
 pub(crate) use parser::parse_message_ttlvs;
 
-#[allow(
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;
