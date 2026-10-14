@@ -1355,3 +1355,7 @@ mod tests {
         assert!(empty.p50_ms.abs() < f64::EPSILON && empty.throughput_ops.abs() < f64::EPSILON);
     }
 }
+
+#[cfg(test)]
+#[path = "load_characterization_tests.rs"]
+mod characterization_tests;

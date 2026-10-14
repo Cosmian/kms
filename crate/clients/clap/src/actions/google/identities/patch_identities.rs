@@ -45,3 +45,7 @@ impl PatchIdentitiesAction {
         GmailClient::handle_response(response).await
     }
 }
+
+#[cfg(test)]
+#[path = "patch_identities_characterization_tests.rs"]
+mod characterization_tests;

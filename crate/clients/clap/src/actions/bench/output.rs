@@ -717,3 +717,7 @@ mod tests {
         assert_eq!(point.map(|p| p.time_ns), Some(99.0));
     }
 }
+
+#[cfg(test)]
+#[path = "output_characterization_tests.rs"]
+mod characterization_tests;
