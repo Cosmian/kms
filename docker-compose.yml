@@ -121,6 +121,13 @@ services:
           -c ssl_ca_file=/var/lib/postgresql/ca.crt \
           -c ssl_min_protocol_version=TLSv1.2 \
           -c listen_addresses='*'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -U kms -d kms
+      interval: 2s
+      timeout: 5s
+      retries: 30
   mysql-mtls:
     image: mysql:8.0
     ports:
@@ -165,9 +172,9 @@ services:
       - ENVIRONMENT=test
       - KMS_VERSION=dev
     ports:
-      - ${KMS_SLOT_OTEL_GRPC_PORT:-4317}:4317   # OTLP gRPC receiver (host)
-      - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
-      - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
+      - ${KMS_SLOT_OTEL_GRPC_PORT:-4317}:4317 # OTLP gRPC receiver (host)
+      - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318 # OTLP HTTP receiver (host)
+      - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889 # Prometheus metrics endpoint (host)
 
   # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
   #
@@ -304,8 +311,8 @@ services:
     profiles:
       - iris
     ports:
-      - ${KMS_SLOT_IRIS_WEB_PORT:-52773}:52773     # IRIS Management Portal
-      - ${KMS_SLOT_IRIS_SUPER_PORT:-1972}:1972      # IRIS SuperServer
+      - ${KMS_SLOT_IRIS_WEB_PORT:-52773}:52773 # IRIS Management Portal
+      - ${KMS_SLOT_IRIS_SUPER_PORT:-1972}:1972 # IRIS SuperServer
     volumes:
       - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
       - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro
@@ -574,8 +581,13 @@ services:
     command: [-c, /etc/envoy/envoy.yaml, --log-level, info]
     healthcheck:
       # Use bash /dev/tcp to check the admin /ready endpoint (no wget/curl in image).
-      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9901 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
-            \ <&3 | grep -q ' 200 '"]
+      test: [
+          CMD,
+          bash,
+          -c,
+          "exec 3<>/dev/tcp/127.0.0.1/9901 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
+          \ <&3 | grep -q ' 200 '",
+        ]
       interval: 3s
       timeout: 5s
       retries: 30
@@ -587,7 +599,7 @@ services:
     container_name: envoy-sds-downstream
     depends_on:
       envoy-sds-upstream:
-        condition: service_started  # test_sds.sh waits explicitly via wait_envoy_ready
+        condition: service_started # test_sds.sh waits explicitly via wait_envoy_ready
     volumes:
       - spire-agent-socket-a:/tmp/spire-agent:ro
       - ./test_data/spire/config/envoy-downstream.yaml:/etc/envoy/envoy.yaml:ro
@@ -595,8 +607,13 @@ services:
       - 19902:9902
     command: [-c, /etc/envoy/envoy.yaml, --log-level, info]
     healthcheck:
-      test: [CMD, bash, -c, "exec 3<>/dev/tcp/127.0.0.1/9902 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
-            \ <&3 | grep -q ' 200 '"]
+      test: [
+          CMD,
+          bash,
+          -c,
+          "exec 3<>/dev/tcp/127.0.0.1/9902 2>/dev/null && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1\
+          \ <&3 | grep -q ' 200 '",
+        ]
       interval: 3s
       timeout: 5s
       retries: 30
@@ -608,7 +625,7 @@ services:
     container_name: socat-probe
     depends_on:
       envoy-sds-downstream:
-        condition: service_started  # test_sds.sh waits for Envoy readiness before running the probe
+        condition: service_started # test_sds.sh waits for Envoy readiness before running the probe
     # Send a single probe string through the mTLS proxy and capture the echo.
     # Exit 0 if the response matches, non-zero otherwise.
     entrypoint:

@@ -103,7 +103,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 | Task | Backend | FIPS? | Notes |
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
-| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). |
+| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. |
 | `mysql` | MySQL | yes | Disabled in CI. |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |

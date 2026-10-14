@@ -424,14 +424,25 @@ pub(super) async fn process_public_key(
         attributes.initialize_always_sensitive();
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
-    // import it as a PKCS8
-    // TODO: add Covercrypt keys when support for SPKI is added
+    // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
+    // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
+    // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
+    // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
+    // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
+    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
-            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+            && !matches!(
+                object_key_block.cryptographic_algorithm,
+                Some(
+                    CryptographicAlgorithm::CoverCrypt
+                        | CryptographicAlgorithm::ConfigurableKEM
+                        | CryptographicAlgorithm::X25519MLKEM768
+                        | CryptographicAlgorithm::X448MLKEM1024
+                )
+            )
         {
             object = openssl_public_key_to_kmip(
                 &kmip_public_key_to_openssl(&object)?,
@@ -551,14 +562,25 @@ pub(super) async fn process_private_key(
         attributes.merge(object_attributes, false);
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
-    // import it as a PKCS8
-    // TODO: remove Covercrypt keys from this exception when support for PKCS#8 is added
+    // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
+    // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
+    // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
+    // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
+    // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
+    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
-            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+            && !matches!(
+                object_key_block.cryptographic_algorithm,
+                Some(
+                    CryptographicAlgorithm::CoverCrypt
+                        | CryptographicAlgorithm::ConfigurableKEM
+                        | CryptographicAlgorithm::X25519MLKEM768
+                        | CryptographicAlgorithm::X448MLKEM1024
+                )
+            )
         {
             // Skip OpenSSL re-encoding for Transparent DSA private keys; retain original structure.
             if object_key_block.key_format_type != KeyFormatType::TransparentDSAPrivateKey {

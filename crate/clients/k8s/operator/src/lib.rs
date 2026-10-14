@@ -149,7 +149,7 @@ pub fn print_crd() -> Result<(), OperatorError> {
     use kube::CustomResourceExt;
 
     let crd = crd::KMSSecret::crd();
-    let yaml = serde_yaml::to_string(&crd)
+    let yaml = serde_saphyr::to_string(&crd)
         .map_err(|e| OperatorError::Config(format!("CRD serialization error: {e}")))?;
     std::io::stdout()
         .write_all(yaml.as_bytes())

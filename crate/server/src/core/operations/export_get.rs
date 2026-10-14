@@ -1110,7 +1110,8 @@ async fn process_covercrypt_key(
     Ok(())
 }
 
-/// Returns `true` for PQC algorithm variants (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA).
+/// Returns `true` for algorithms whose keys have no OpenSSL representation and must skip the
+/// OpenSSL round-trip on export: PQC (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA) and `ConfigurableKEM`.
 #[cfg(feature = "non-fips")]
 const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
     matches!(
@@ -1122,6 +1123,7 @@ const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
                 | CryptographicAlgorithm::MLDSA_44
                 | CryptographicAlgorithm::MLDSA_65
                 | CryptographicAlgorithm::MLDSA_87
+                | CryptographicAlgorithm::ConfigurableKEM
                 | CryptographicAlgorithm::X25519MLKEM768
                 | CryptographicAlgorithm::X448MLKEM1024
                 | CryptographicAlgorithm::SLHDSA_SHA2_128s

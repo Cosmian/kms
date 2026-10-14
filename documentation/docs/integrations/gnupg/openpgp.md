@@ -8,40 +8,65 @@ RSA keys as a GnuPG smartcard instead, see [GnuPG smartcard](smartcard.md).
 
 ```mermaid
 flowchart TD
-    subgraph Clients["Clients & Applications"]
-        CLI["ckms pgp (CLI)"]
-        UI["Web UI (/ui/pgp/*)"]
-        GPG["GnuPG (gpg 2.1+)"]
-        EXT["Custom Apps (KMIP 2.1 / REST)"]
+    GPG["GnuPG (gpg)"]
+    CLIENTS["ckms CLI, Web UI,<br/>custom KMIP/REST apps"]
+    subgraph KMS["Eviden KMS server (non-FIPS)"]
+        DISPATCH["KMIP dispatcher"]
+        ENGINE["OpenPGP engine<br/>RFC 4880 / RFC 9580 v4"]
+        DB[("Database")]
     end
 
-    subgraph KMS["Eviden KMS Server (non-FIPS)"]
-        DISPATCH["KMIP Dispatcher & Routing"]
-        subgraph PGP_OPS["OpenPGP Engine (RFC 4880 / RFC 9580)"]
-            CORE["Key Generation & Formatting<br/>Ed25519 / RSA v4 TPK"]
-            CRYPTO["Crypto Operations<br/>Encrypt (v1 SEIPD / AES-256)<br/>Decrypt (Binary / ASCII Armor)<br/>Sign (Detached SHA-256)<br/>SignatureVerify (Primary + Subkeys)"]
-        end
-        DB[("Database Store<br/>PostgreSQL / SQLite")]
-    end
-
-    CLI -->|"HTTP / REST TTLV"| DISPATCH
-    UI -->|"WASM Bridge / TTLV"| DISPATCH
-    EXT -->|"KMIP 2.1 / TTLV"| DISPATCH
-    DISPATCH --> CORE
-    DISPATCH --> CRYPTO
-    CORE <--> DB
-    CRYPTO <--> DB
-
-    GPG -.->|"--import (pub.asc / sec.asc)"| CLI
-    GPG -.->|"--verify (detached sig)"| CLI
-    CLI -.->|"export (pgp-public / pgp-secret)"| GPG
-    GPG -.->|"--decrypt (msg.bin)"| CLI
+    GPG <-.->|"key files, signatures,<br/>messages"| CLIENTS
+    CLIENTS -->|"KMIP 2.1 (TTLV)"| DISPATCH
+    DISPATCH --> ENGINE
+    ENGINE <--> DB
 ```
+
+The OpenPGP engine creates keys and runs `Encrypt` (SEIPD v1, AES-256), `Decrypt` (binary or armor),
+`Sign` (detached, SHA-256) and `SignatureVerify` (primary key and subkeys). GnuPG never talks to the
+server directly: key files, signatures and messages move between `gpg` and the clients.
 
 !!! warning Non-FIPS only
     OpenPGP algorithms (Ed25519, Curve25519, RSA key profiles) are not FIPS 140-3 approved.
     `PGPKey` support is compiled out of FIPS builds; creating or importing an OpenPGP key on a
     FIPS server returns a `NotSupported` error.
+
+## Supported versions and formats
+
+### GnuPG
+
+| Item | Support |
+|------|---------|
+| Interoperability suite | The `pgp_gnupg_tests` suite (24 tests) and `.mise/scripts/test/test_gnupg.sh` run against the `gpg` found in `PATH`. The repository does **not** pin or install a GnuPG version for it. |
+| Last verified version | **GnuPG 2.5.18** (libgcrypt 1.12.1): all 24 tests pass. |
+| Minimum version | Not tested below the version above. Ed25519/Curve25519 keys (`eddsa`/`ecdh cv25519`) and `--pinentry-mode loopback`, which the commands on this page use, are GnuPG 2.1+ features, so older releases cannot follow them. |
+| `gnupg-pkcs11-scd` smartcard | Separate integration, see [GnuPG smartcard](smartcard.md). |
+
+### Standards
+
+| Standard | Role in Eviden KMS |
+|----------|--------------------|
+| [RFC 4880](https://www.rfc-editor.org/rfc/rfc4880) (OpenPGP Message Format) | Packet formats read and written: v4 transferable keys, v3 PKESK, v1 SEIPD. |
+| [RFC 9580](https://www.rfc-editor.org/rfc/rfc9580) (OpenPGP, obsoletes RFC 4880) | Same v4 structures (§10.1, §10.2), ASCII armor (§6), detached signatures. v6 keys and v2 SEIPD (AEAD) are **not** produced or decrypted. |
+| [RFC 3156](https://www.rfc-editor.org/rfc/rfc3156) (PGP/MIME) | Encrypted and signed MIME bodies produced by GnuPG are decrypted/verified by the KMS (covered by the interoperability suite). The KMS does not build MIME messages. |
+| RFC 2440 | Historic, not targeted. |
+
+### Formats and packet versions
+
+| Object | Format | Version | Direction |
+|--------|--------|---------|-----------|
+| Transferable public / secret key | ASCII armor (`-----BEGIN PGP PUBLIC KEY BLOCK-----` / `PRIVATE KEY BLOCK`) | v4 | Import, export (`pgp-public`, `pgp-secret`) |
+| Transferable public / secret key | Binary packets | v4 | Import, export (`pgp-public-binary`, `pgp-secret-binary`) |
+| Encrypted message | Binary: PKESK v3 + SEIPD v1 (AES-256) | RFC 4880 / RFC 9580 §5.13.1 | `Encrypt` output |
+| Encrypted message | Binary or ASCII armor | PKESK + SEIPD v1 (compressed payloads are decompressed) | `Decrypt` input |
+| Detached signature | Binary (SHA-256, made with the primary key) | v4 signature | `Sign` output |
+| Detached signature | Binary or ASCII armor | v4 signature, primary key or any subkey | `SignatureVerify` input |
+| Inline, cleartext signatures | not supported | n/a | rejected |
+| SEIPD v2 / AEAD (packet tag 20), passphrase-protected secret keys | not supported | n/a | rejected |
+
+Imported keys of another packet version are parsed by the underlying
+[`pgp`](https://crates.io/crates/pgp) crate (0.21), which reports the version in the `pgp_key_version`
+attribute; only v4 is generated and exercised by the test suites, so v3, v5 and v6 keys are not supported.
 
 ## Key profiles
 
@@ -96,7 +121,8 @@ Secret-key imports must be unprotected.
 
 ## Interoperability with GnuPG
 
-The KMS interoperates directly with GnuPG (`gpg` v2.1+). The commands below are the exact commands
+The KMS interoperates directly with GnuPG (`gpg`); see [Supported versions](#supported-versions-and-formats) for the
+versions covered. The commands below are the exact commands
 exercised by the `.mise/scripts/test/test_gnupg.sh` end-to-end suite.
 
 ### KMS → GnuPG
@@ -276,3 +302,39 @@ The server pins the following constraints for OpenPGP keys. Each is asserted by 
     OpenPGP keys cannot be wrapped at `Create` time using `wrapping_key_id`: the server's at-rest
     wrap path does not support the `PGPKey` encoding. A wrapped OpenPGP key cannot be unwrapped on
     export either; requesting an explicit `KeyFormatType` on a wrapped key returns an error.
+
+## Glossary
+
+| Term | Definition |
+|------|------------|
+| AEAD | Authenticated Encryption with Associated Data. In OpenPGP, the mode used by SEIPD v2 (packet tag 20), which the KMS rejects. |
+| AES | Advanced Encryption Standard. The KMS encrypts OpenPGP messages with AES-256 (256-bit key). |
+| API | Application Programming Interface. |
+| ASCII armor | Text encoding of binary OpenPGP packets between `-----BEGIN PGP …-----` and `-----END PGP …-----` lines (RFC 9580 §6). |
+| CI | Continuous Integration. |
+| CLI | Command-Line Interface; here the `ckms` tool. |
+| ECDH | Elliptic Curve Diffie-Hellman. Algorithm of the OpenPGP encryption subkey on Curve25519. |
+| Ed25519 | Edwards-curve Digital Signature Algorithm (EdDSA) on Curve25519. Algorithm of the signing primary key in the default profile. |
+| FIPS | Federal Information Processing Standards; here FIPS 140-3, the NIST cryptographic-module standard. |
+| HTTP | Hypertext Transfer Protocol. |
+| IETF | Internet Engineering Task Force, publisher of the RFCs. |
+| KMIP | Key Management Interoperability Protocol (OASIS standard); the KMS speaks KMIP 2.1. |
+| KMS | Key Management System; here Eviden KMS. |
+| MIME | Multipurpose Internet Mail Extensions. |
+| NIST | National Institute of Standards and Technology. |
+| OpenPGP | The IETF standard for encrypting and signing data and for managing keys, defined by RFC 4880 and RFC 9580. GnuPG is an implementation. |
+| PGP | Pretty Good Privacy, the original software from which OpenPGP derives; also the label in armor headers and in `ObjectType::PGPKey`. |
+| PGP/MIME | Encrypted and signed email using MIME, defined by RFC 3156. |
+| PKCS#11 | Public-Key Cryptography Standards #11, the Cryptoki token API used by the GnuPG smartcard integration. |
+| PKESK | Public-Key Encrypted Session Key packet: the message's session key encrypted to a recipient's public key. The KMS emits v3. |
+| REST | Representational State Transfer; the HTTP interface of the KMS. |
+| RFC | Request for Comments, an IETF specification document. |
+| RSA | Rivest-Shamir-Adleman public-key algorithm. Supported sizes: 2048, 3072, 4096 bits. |
+| SEIPD | Symmetrically Encrypted and Integrity Protected Data packet: the encrypted payload of a message. The KMS emits and reads v1 only. |
+| SHA-256 | Secure Hash Algorithm with a 256-bit digest, used for detached signatures. |
+| Subkey | Key bound to a primary key and used for one purpose, for example encryption. |
+| TPK | Transferable Public Key (or Transferable Secret Key): a key with its User ID, subkeys and binding signatures, in the RFC 4880 §11 / RFC 9580 §10 format. |
+| TTLV | Tag-Type-Length-Value, the KMIP binary encoding. |
+| UI | User Interface; here the Web UI of the KMS. |
+| User ID | OpenPGP packet naming the key owner, for example `Alice <alice@example.com>`. |
+| WASM | WebAssembly; the Web UI uses it to build KMIP requests in the browser. |
