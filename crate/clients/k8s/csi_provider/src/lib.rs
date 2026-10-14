@@ -10,7 +10,8 @@ pub mod service;
     clippy::default_trait_access,
     clippy::as_conversions,
     clippy::use_self,
-    clippy::doc_markdown
+    clippy::doc_markdown,
+    reason = "prost/tonic-generated code (src/*.proto)"
 )]
 pub mod v1alpha1 {
     include!("provider.rs");
