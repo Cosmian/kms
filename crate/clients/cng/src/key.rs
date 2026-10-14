@@ -422,3 +422,7 @@ fn decode_pem_to_der(pem_bytes: &[u8]) -> KspResult<Vec<u8>> {
         .decode(b64.as_bytes())
         .map_err(|e| KspError::InvalidParameter(format!("PEM base64 decode failed: {e}")))
 }
+
+#[cfg(test)]
+#[path = "key_characterization_tests.rs"]
+mod characterization_tests;
