@@ -3,7 +3,10 @@ use cosmian_kmip::{
     kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, ValidityIndicator},
 };
 #[cfg(feature = "non-fips")]
-use k256::ecdsa::{Signature as K256Signature, VerifyingKey as K256VerifyingKey};
+use k256::ecdsa::{
+    Signature as K256Signature, VerifyingKey as K256VerifyingKey,
+    signature::hazmat::PrehashVerifier as _,
+};
 #[cfg(feature = "non-fips")]
 use openssl::bn::BigNumContext;
 use openssl::{
