@@ -62,3 +62,26 @@ async fn characterization_receive_authorization_parameters_port_in_use() {
         "{err}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn characterization_callback_after_login_returned_gets_500() {
+    const PORT: u16 = 17_953;
+    let (tx, rx) = mpsc::channel();
+    browser_get(PORT, "/authorization?code=first", tx);
+    // The receiver is dropped when this returns; the server keeps running until `handle` stops it.
+    let (_params, handle) = LoginState::receive_authorization_parameters(PORT).unwrap();
+    rx.recv_timeout(Duration::from_secs(10)).unwrap();
+
+    let (tx, rx) = mpsc::channel();
+    browser_get(PORT, "/authorization?code=second", tx);
+    let response = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 500 Internal Server Error\r\n"),
+        "{response}"
+    );
+    assert!(
+        response.ends_with("OAuth2 login is no longer waiting for the callback."),
+        "{response}"
+    );
+    handle.stop(true).await;
+}
