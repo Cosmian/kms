@@ -219,3 +219,27 @@ fn characterization_write_bulk_decrypted_data_input_without_file_name() {
     );
     assert_eq!(std::fs::read(out_dir.join("a.plain")).unwrap(), b"one");
 }
+
+#[test]
+fn characterization_write_bulk_encrypted_data_fewer_inputs_than_chunks() {
+    let scratch = Scratch::new("enc_few_inputs");
+    let data = bulk(&[b"one", b"two"]);
+    let err = write_bulk_encrypted_data(&data, &[scratch.path("a.txt")], None).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Invalid conversion: missing input file for chunk 1"
+    );
+    assert_eq!(std::fs::read(scratch.path("a.enc")).unwrap(), b"one");
+}
+
+#[test]
+fn characterization_write_bulk_decrypted_data_fewer_inputs_than_chunks() {
+    let scratch = Scratch::new("dec_few_inputs");
+    let data = bulk(&[b"one", b"two"]);
+    let err = write_bulk_decrypted_data(&data, &[scratch.path("a.enc")], None).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Invalid conversion: missing input file for chunk 1"
+    );
+    assert_eq!(std::fs::read(scratch.path("a.plain")).unwrap(), b"one");
+}
