@@ -684,6 +684,10 @@ impl Session {
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "public API: the filter is taken by value"
+    )]
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
