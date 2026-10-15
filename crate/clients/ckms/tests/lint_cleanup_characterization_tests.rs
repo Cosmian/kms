@@ -1,6 +1,7 @@
 //! Characterization tests of the `ckms` binary entry point and command dispatch.
 use std::process::{Command, Output};
 
+#[cfg(test)]
 fn write_conf(dir: &std::path::Path) -> std::path::PathBuf {
     let conf = dir.join("ckms.toml");
     std::fs::write(
@@ -11,6 +12,7 @@ fn write_conf(dir: &std::path::Path) -> std::path::PathBuf {
     conf
 }
 
+#[cfg(test)]
 fn run_ckms(args: &[&str], conf: &std::path::Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ckms"))
         .args(args)
