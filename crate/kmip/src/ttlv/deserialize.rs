@@ -12,6 +12,29 @@ use tracing::instrument;
 use super::{TTLV, kmip_big_int::KmipBigInt};
 use crate::ttlv::{KmipEnumerationVariant, TTLValue};
 
+/// Hex string decoded directly into bytes, without an intermediate `String`.
+struct HexBytes(Vec<u8>);
+
+impl<'de> Deserialize<'de> for HexBytes {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct HexVisitor;
+        impl Visitor<'_> for HexVisitor {
+            type Value = HexBytes;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a hex string")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<HexBytes, E> {
+                hex::decode(v)
+                    .map(HexBytes)
+                    .map_err(|_e| E::custom(format!("Invalid value for a ByteString: {v}")))
+            }
+        }
+        deserializer.deserialize_str(HexVisitor)
+    }
+}
+
 impl<'de> Deserialize<'de> for TTLV {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -82,8 +105,8 @@ impl<'de> Deserialize<'de> for TTLV {
                             if value.is_some() {
                                 return Err(de::Error::duplicate_field("value"));
                             }
-                            let typ = typ.clone().unwrap_or_else(|| "Structure".to_owned());
-                            value = Some(match typ.as_str() {
+                            let typ = typ.as_deref().unwrap_or("Structure");
+                            value = Some(match typ {
                                 "Structure" => TTLValue::Structure(map.next_value()?),
                                 "Integer" => {
                                     let i_64 = deserialize_integer(&map.next_value()?)?;
@@ -138,12 +161,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     TTLValue::TextString(s)
                                 }
                                 "ByteString" => {
-                                    let hex: String = map.next_value()?;
-                                    TTLValue::ByteString(hex::decode(&hex).map_err(|_e| {
-                                        de::Error::custom(format!(
-                                            "Invalid value for a ByteString: {hex}"
-                                        ))
-                                    })?)
+                                    TTLValue::ByteString(map.next_value::<HexBytes>()?.0)
                                 }
                                 "DateTime" => {
                                     let d: String = map.next_value()?;

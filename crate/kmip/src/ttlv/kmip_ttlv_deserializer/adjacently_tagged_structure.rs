@@ -90,9 +90,9 @@ pub(super) struct AdjacentlyTaggedStructure {
 }
 
 impl AdjacentlyTaggedStructure {
-    #[instrument(level = "trace", skip(de))]
-    pub(super) fn new(de: &TtlvDeserializer) -> Self {
-        let (tag, content) = match &de.current.value {
+    #[instrument(level = "trace", skip(current))]
+    pub(super) fn new(current: &TTLV) -> Self {
+        let (tag, content) = match &current.value {
             TTLValue::Structure(ttlvs) => (
                 TTLV {
                     tag: "Structure".to_owned(),
@@ -307,7 +307,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
                 .deserialize(&mut TtlvDeserializer {
                     map_state: MapAccessState::Key,
                     child_index: 0,
-                    current: TTLV {
+                    current: &TTLV {
                         tag: "_t".to_owned(),
                         value: TTLValue::TextString("_t".to_owned()),
                     },
@@ -319,7 +319,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
         seed.deserialize(&mut TtlvDeserializer {
             map_state: MapAccessState::Key,
             child_index: 0,
-            current: TTLV {
+            current: &TTLV {
                 tag: "_c".to_owned(),
                 value: TTLValue::TextString("_c".to_owned()),
             },
@@ -340,7 +340,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
             return seed.deserialize(&mut TtlvDeserializer {
                 map_state: MapAccessState::Value,
                 child_index: 0,
-                current: self.tag.clone(),
+                current: &self.tag,
                 at_root: RwLock::new(true),
             });
         }
@@ -349,7 +349,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
         seed.deserialize(&mut TtlvDeserializer {
             map_state: MapAccessState::Value,
             child_index: 0,
-            current: self.content.clone(),
+            current: &self.content,
             at_root: RwLock::new(true),
         })
     }

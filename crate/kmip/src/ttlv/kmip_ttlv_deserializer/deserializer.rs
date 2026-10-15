@@ -31,12 +31,16 @@ use crate::{
 /// case, the tag is the name of the variant.
 ///
 /// #see `Object::post_fix()`
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "public API taken by value by ~160 call sites; the deserializer borrows it internally"
+)]
 pub fn from_ttlv<'a, T>(s: TTLV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
     trace!("from_ttlv: {s:?}");
-    let mut deserializer = TtlvDeserializer::from_ttlv(s);
+    let mut deserializer = TtlvDeserializer::from_ttlv(&s);
     T::deserialize(&mut deserializer)
 }
 
@@ -51,9 +55,9 @@ pub(super) enum MapAccessState {
 }
 
 #[derive(Debug)]
-pub struct TtlvDeserializer {
+pub struct TtlvDeserializer<'a> {
     /// The current TTLV being deserialized
-    pub(super) current: TTLV,
+    pub(super) current: &'a TTLV,
     /// The current child index in a structure being deserialized.
     /// Arrays in TTLV are represented as structures with children holding the array values
     /// The child index is also used in Enums deserialization to differentiate between the tag and the variant
@@ -71,9 +75,9 @@ pub struct TtlvDeserializer {
     pub(super) at_root: RwLock<bool>,
 }
 
-impl TtlvDeserializer {
+impl<'a> TtlvDeserializer<'a> {
     #[must_use]
-    pub const fn from_ttlv(root: TTLV) -> Self {
+    pub const fn from_ttlv(root: &'a TTLV) -> Self {
         Self {
             current: root,
             child_index: 0,
@@ -83,13 +87,14 @@ impl TtlvDeserializer {
     }
 
     /// Peek the element that will be fetched next
-    pub(super) fn peek_element(&self) -> Result<&TTLV> {
+    pub(super) fn peek_element(&self) -> Result<&'a TTLV> {
+        let current = self.current;
         // if we are at root, we want to look at the current value
         if *self.at_root.read().context("Failed to lock at_root")? {
-            return Ok(&self.current);
+            return Ok(current);
         }
         // unwrap the structure if within a structure and get the child
-        match &self.current.value {
+        match &current.value {
             TTLValue::Structure(children) => {
                 // get the child at the child index
                 let child = children.get(self.child_index).ok_or_else(|| {
@@ -100,13 +105,13 @@ impl TtlvDeserializer {
                 })?;
                 Ok(child)
             }
-            _ => Ok(&self.current),
+            _ => Ok(current),
         }
     }
 
     /// Fetch the element that will be deserialized next
     /// Updates the `at_root` status if the deserializer is at the root
-    fn fetch_element(&self) -> Result<&TTLV> {
+    fn fetch_element(&self) -> Result<&'a TTLV> {
         let element = self.peek_element()?;
         // When we have fetched the value of en element at root,
         // we need to set the at_root status to false
@@ -122,7 +127,7 @@ impl TtlvDeserializer {
     }
 }
 
-impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
+impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
     type Error = TtlvError;
 
     // TTLV is a binary, non-human-readable format.
@@ -149,7 +154,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             "deserialize_any: map access state: {:?}, index: {}, child: {:?}",
             self.map_state,
             self.child_index,
-            peek_structure_child(&self.current, self.child_index)
+            peek_structure_child(self.current, self.child_index)
         );
         // fetch the element
         // If the deserializer is at the root, the current TTLV is the root TTLV
@@ -180,7 +185,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
                 // which will iterate over the children of the structure as it were a map of properties to values
                 visitor.visit_map(StructureWalker::new(&mut TtlvDeserializer {
-                    current: element.clone(),
+                    current: element,
                     child_index: 0,
                     map_state: MapAccessState::None,
                     at_root: RwLock::new(false),
@@ -209,7 +214,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             }
             TTLValue::ByteString(b) => {
                 // if the TTLV value is a ByteString, the deserializer is attempting to deserialize the value
-                visitor.visit_seq(&mut ByteStringDeserializer::new(&self.current.tag, b))
+                visitor.visit_seq(&mut ByteStringDeserializer::new(b))
             }
             TTLValue::DateTime(dt) => {
                 // if the TTLV value is a DateTime, the deserializer is attempting to deserialize the value
@@ -372,7 +377,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!(
             "deserialize_u32: state: {}: {:?}",
             self.child_index,
-            peek_structure_child(&self.current, self.child_index)
+            peek_structure_child(self.current, self.child_index)
         );
         match &self.fetch_element()?.value {
             TTLValue::BigInteger(bi) => {
@@ -456,7 +461,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!(
             "deserialize_u64: state:  {}: {:?}",
             self.child_index,
-            peek_structure_child(&self.current, self.child_index)
+            peek_structure_child(self.current, self.child_index)
         );
         if let TTLValue::LongInteger(i) = &self.fetch_element()?.value {
             if *i < 0 {
@@ -716,9 +721,9 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         trace!(
             "deserialize_seq: child index: {}: {:?}",
             self.child_index,
-            peek_structure_child(&self.current, self.child_index)
+            peek_structure_child(self.current, self.child_index)
         );
-        let element = self.fetch_element()?.clone();
+        let element = self.fetch_element()?;
         if let TTLValue::BigInteger(bi) = &element.value {
             trace!("   ... assuming deserialization of BigInteger: {:?}", bi);
             let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
@@ -726,7 +731,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
         }
         if let TTLValue::ByteString(bs) = &element.value {
             trace!("   ... assuming deserialization of ByteString: {:?}", bs);
-            let deserializer = ByteStringDeserializer::new(&element.tag, bs);
+            let deserializer = ByteStringDeserializer::new(bs);
             return visitor.visit_seq(deserializer);
         }
 
@@ -762,14 +767,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                         buf.len(),
                         element.tag
                     );
-                    let deserializer = ByteStringDeserializer::new(&element.tag, &buf);
+                    let deserializer = ByteStringDeserializer::new(&buf);
                     return visitor.visit_seq(deserializer);
                 }
             }
         }
 
         // Default: array deserialization using the parent structure context
-        match self.current.value.clone() {
+        let current = self.current;
+        match &current.value {
             TTLValue::Structure(children) => {
                 let tag = &children
                     .get(self.child_index)
@@ -781,7 +787,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                     })?
                     .tag;
                 trace!("   ... deserializing transparent seq with tag: {tag}");
-                let seq_access = ArrayDeserializer::new(self, tag, &children);
+                let seq_access = ArrayDeserializer::new(self, tag, children);
                 visitor.visit_seq(seq_access)
             }
             x => Err(TtlvError::from(format!("unexpected {x:?} value in TTLV"))),
@@ -896,7 +902,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             element
         );
         visitor.visit_map(UntaggedEnumWalker::new(&mut TtlvDeserializer {
-            current: element.clone(),
+            current: element,
             child_index: 0,
             map_state: MapAccessState::None,
             at_root: RwLock::new(true),
@@ -937,19 +943,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
             // being deserialized.
             // The deserializer will skip these fields and deserialize the rest of the structure
             trace!("... deserializing an adjacently tagged structure");
-            return visitor.visit_map(AdjacentlyTaggedStructure::new(&TtlvDeserializer {
-                current: element.clone(),
-                child_index: 0,
-                map_state: MapAccessState::None,
-                at_root: RwLock::new(false),
-            }));
+            return visitor.visit_map(AdjacentlyTaggedStructure::new(element));
         }
 
         if let TTLValue::Structure(_) = &element.value {
             // if the TTLV value is a Structure, we will deserialize it using the StructureWalker
             // which will iterate over the children of the structure as it were a map of properties to values
             visitor.visit_map(StructureWalker::new(&mut TtlvDeserializer {
-                current: element.clone(),
+                current: element,
                 child_index: 0,
                 map_state: MapAccessState::None,
                 at_root: RwLock::new(false),
@@ -1010,7 +1011,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                         }),
                     };
                     visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
-                        current: enum_ttlv,
+                        current: &enum_ttlv,
                         child_index: 0,
                         map_state: MapAccessState::None,
                         at_root: RwLock::new(true),
@@ -1041,7 +1042,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                                 "... detected VendorAttribute triple children; deserializing element itself as enum variant"
                             );
                             return visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
-                                current: element.clone(),
+                                current: element,
                                 child_index: 0,
                                 map_state: MapAccessState::None,
                                 at_root: RwLock::new(true),
@@ -1054,11 +1055,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                         // and may include an optional AttributeIndex.
                         // Prefer AttributeValue if present; otherwise fall back to the single
                         // non-AttributeName child.
-                        let mut attribute_value_child: Option<TTLV> = None;
-                        let mut non_name_candidate: Option<TTLV> = None;
+                        let mut attribute_value_child: Option<&TTLV> = None;
+                        let mut non_name_candidate: Option<&TTLV> = None;
                         for c in children {
                             if c.tag == "AttributeValue" {
-                                attribute_value_child = Some(c.clone());
+                                attribute_value_child = Some(c);
                             } else if c.tag != "AttributeName" {
                                 if non_name_candidate.is_some() && attribute_value_child.is_none() {
                                     return Err(TtlvError::from(format!(
@@ -1066,7 +1067,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                                         element.tag
                                     )));
                                 }
-                                non_name_candidate = Some(c.clone());
+                                non_name_candidate = Some(c);
                             }
                         }
                         let selected = attribute_value_child
@@ -1085,15 +1086,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                         }));
                     }
                     visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
-                        current: children
-                            .first()
-                            .ok_or_else(|| {
-                                TtlvError::from(format!(
-                                    "Deserializing an enum of tag: {}: expected a child structure",
-                                    element.tag
-                                ))
-                            })?
-                            .clone(),
+                        current: children.first().ok_or_else(|| {
+                            TtlvError::from(format!(
+                                "Deserializing an enum of tag: {}: expected a child structure",
+                                element.tag
+                            ))
+                        })?,
                         child_index: 0,
                         map_state: MapAccessState::None,
                         at_root: RwLock::new(true),

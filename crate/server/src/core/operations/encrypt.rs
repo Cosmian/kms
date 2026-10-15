@@ -261,7 +261,7 @@ pub(super) fn encrypt_bulk(
                     .unwrap_or(PaddingMethod::PKCS5);
                 let (ciphertext, tag) = sym_encrypt(
                     cipher,
-                    &key_bytes,
+                    key_bytes,
                     &nonce,
                     aad,
                     &plaintext,
@@ -408,7 +408,7 @@ fn encrypt_with_symmetric_key(
     }
     let (ciphertext, tag) = sym_encrypt(
         aead,
-        &key_bytes,
+        key_bytes,
         &nonce,
         aad,
         plaintext,
@@ -500,10 +500,10 @@ fn encrypt_with_symmetric_key(
     })
 }
 
-fn get_key_and_cipher(
+fn get_key_and_cipher<'a>(
     request: &Encrypt,
-    owm: &ObjectWithMetadata,
-) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
+    owm: &'a ObjectWithMetadata,
+) -> KResult<(&'a [u8], SymCipher)> {
     trace!("Entering get_key_and_cipher");
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
@@ -527,7 +527,7 @@ fn get_key_and_cipher(
             "an FPE_FF1 key may only be used for FPE_FF1 encrypt operations".to_owned(),
         ));
     }
-    let key_bytes = key_block.key_bytes()?;
+    let key_bytes = key_block.key_bytes_ref()?;
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES

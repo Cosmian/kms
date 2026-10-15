@@ -13,6 +13,7 @@ use tracing::instrument;
 use super::{collapse_adjacently_tagged_structure, normalize_ttlv};
 use crate::ttlv::{
     TtlvError,
+    date_time::DATETIME_NEWTYPE,
     interval::INTERVAL_NEWTYPE,
     tags::BYTE_LIKE_TAGS,
     ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue},
@@ -379,6 +380,22 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
                 }
             };
             current.value = TTLValue::Interval(seconds);
+            return Ok(());
+        }
+        // Header time stamp: emit the `DateTime` node from the unix timestamp
+        // instead of a 9-integer tuple that `normalize_ttlv` would fold back.
+        if name == DATETIME_NEWTYPE {
+            value.serialize(&mut *self)?;
+            let current = self.current_mut()?;
+            let TTLValue::LongInteger(seconds) = current.value else {
+                return Err(TtlvError::custom(
+                    "DateTime must wrap a unix timestamp".to_owned(),
+                ));
+            };
+            current.value = TTLValue::DateTime(
+                time::OffsetDateTime::from_unix_timestamp(seconds)
+                    .map_err(|e| TtlvError::custom(format!("invalid DateTime: {e}")))?,
+            );
             return Ok(());
         }
         value.serialize(self)

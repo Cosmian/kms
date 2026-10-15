@@ -4,7 +4,7 @@ use time::OffsetDateTime;
 
 use super::{
     TTLVBytesDeserializer, TTLVBytesSerializer, enum_lookup::lookup_enum_code_for_tag,
-    error::TtlvError, kmip_big_int::KmipBigInt,
+    error::TtlvError, kmip_big_int::KmipBigInt, wire::encoded_len,
 };
 use crate::{KmipResultHelper, kmip_1_4, kmip_2_1};
 
@@ -63,13 +63,20 @@ impl TTLV {
     }
 
     pub fn to_bytes(&self, kmip_flavor: KmipFlavor) -> Result<Vec<u8>, TtlvError> {
-        let mut writer = Vec::new();
+        let len = encoded_len(self);
+        let mut writer = Vec::with_capacity(len);
         match kmip_flavor {
             KmipFlavor::Kmip1 => TTLVBytesSerializer::new(&mut writer)
                 .write_ttlv::<kmip_1_4::kmip_types::Tag>(self)?,
             KmipFlavor::Kmip2 => TTLVBytesSerializer::new(&mut writer)
                 .write_ttlv::<kmip_2_1::kmip_types::Tag>(self)?,
         }
+        // Every wire round-trip test exercises this: the Structure length fields rely on it.
+        debug_assert_eq!(
+            writer.len(),
+            len,
+            "encoded_len disagrees with the bytes written"
+        );
         Ok(writer)
     }
 

@@ -152,10 +152,12 @@ fn invalid_response_message(major: i32, minor: i32, error_message: String) -> Re
 #[post("/kmip/2_1")]
 pub(crate) async fn kmip_2_1_json(
     req_http: HttpRequest,
-    body: String,
+    body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> KResult<HttpResponse> {
-    let ttlv = serde_json::from_str::<TTLV>(&body)?;
+    let body_str =
+        std::str::from_utf8(&body).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
+    let ttlv = serde_json::from_str::<TTLV>(body_str)?;
 
     let user = kms.get_user(&req_http);
     let auth_method = kms.get_auth_method(&req_http);
@@ -307,28 +309,27 @@ pub(crate) async fn kmip_binary(
 ) -> HttpResponse {
     let user = kms.get_user(&req_http);
 
-    // Best-effort: peek at the request TTLV to record the operation name, and
-    // remember the flavor so the response can be re-parsed for `inject_response_uid`
-    // below (`handle_ttlv_bytes` only returns bytes, not the response TTLV).
-    let mut flavor = KmipFlavor::Kmip2;
-    let mut op_name = None;
-    if let Ok((major, _minor)) = TTLV::find_version(body.as_ref()) {
-        flavor = if major == 1 {
-            KmipFlavor::Kmip1
-        } else {
-            KmipFlavor::Kmip2
-        };
-        if let Ok(ttlv) = TTLV::from_bytes(body.as_ref(), flavor) {
-            op_name = Some(inject_audit_request(&req_http, &ttlv));
-        }
-    }
+    // Best-effort decode, done once: the request TTLV feeds both the audit hooks
+    // and request processing.
+    let request_ttlv = TTLV::find_version(body.as_ref())
+        .ok()
+        .and_then(|(major, _minor)| {
+            let flavor = if major == 1 {
+                KmipFlavor::Kmip1
+            } else {
+                KmipFlavor::Kmip2
+            };
+            TTLV::from_bytes(body.as_ref(), flavor).ok()
+        });
+    let op_name = request_ttlv
+        .as_ref()
+        .map(|ttlv| inject_audit_request(&req_http, ttlv));
 
-    let response_bytes = handle_ttlv_bytes(&user, body.as_ref(), &kms).await;
+    let (response_bytes, response_ttlv) =
+        handle_ttlv_bytes_parsed(&user, body.as_ref(), request_ttlv, &kms).await;
 
-    if let Some(op_name) = op_name {
-        if let Ok(response_ttlv) = TTLV::from_bytes(&response_bytes, flavor) {
-            inject_response_uid(&req_http, &response_ttlv, &op_name);
-        }
+    if let (Some(op_name), Some(response_ttlv)) = (op_name, response_ttlv) {
+        inject_response_uid(&req_http, &response_ttlv, &op_name);
     }
 
     HttpResponse::Ok()
@@ -338,35 +339,60 @@ pub(crate) async fn kmip_binary(
 
 /// Handle KMIP requests in TTLV binary format
 pub(crate) async fn handle_ttlv_bytes(user: &UserId, ttlv_bytes: &[u8], kms: &Arc<KMS>) -> Vec<u8> {
+    handle_ttlv_bytes_parsed(user, ttlv_bytes, None, kms)
+        .await
+        .0
+}
+
+/// Handle KMIP requests in TTLV binary format.
+///
+/// `request_ttlv` is `ttlv_bytes` already decoded by the caller, if any, so it is not decoded twice.
+/// Returns the response bytes and the response TTLV they encode, when one was built.
+async fn handle_ttlv_bytes_parsed(
+    user: &UserId,
+    ttlv_bytes: &[u8],
+    request_ttlv: Option<TTLV>,
+    kms: &Arc<KMS>,
+) -> (Vec<u8>, Option<TTLV>) {
     let Ok((major, minor)) = TTLV::find_version(ttlv_bytes) else {
         error!(target: "kmip", "Failed to find KMIP version");
-        return vec![];
+        return (vec![], None);
     };
     let span = tracing::info_span!("kmip_binary", user = user.as_str());
-    handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms)
+    match handle_ttlv_bytes_inner(user, ttlv_bytes, request_ttlv, major, minor, kms)
         .instrument(span)
         .await
-        .unwrap_or_else(|e| {
+    {
+        Ok((response_bytes, response_ttlv)) => (response_bytes, Some(response_ttlv)),
+        Err(e) => {
             let response_message = invalid_response_message(major, minor, e.to_string());
             warn!(target: "kmip", "Failed to process request:\n{response_message}");
             let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
                 error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
                 error_response_ttlv(major, minor, e.to_string().as_str())
             });
-            TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2).unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e,response_ttlv);
-                TTLV_ERROR_RESPONSE.to_vec()
-            })
-        })
+            match TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2) {
+                Ok(response_bytes) => (response_bytes, Some(response_ttlv)),
+                Err(e) => {
+                    error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e,response_ttlv);
+                    (
+                        TTLV_ERROR_RESPONSE.to_vec(),
+                        TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1).ok(),
+                    )
+                }
+            }
+        }
+    }
 }
 
 async fn handle_ttlv_bytes_inner(
     user: &UserId,
     ttlv_bytes: &[u8],
+    request_ttlv: Option<TTLV>,
     major: i32,
     minor: i32,
     kms: &Arc<KMS>,
-) -> KResult<Vec<u8>> {
+) -> KResult<(Vec<u8>, TTLV)> {
     let kmip_flavor = if major == 1 {
         KmipFlavor::Kmip1
     } else if major == 2 {
@@ -384,7 +410,10 @@ async fn handle_ttlv_bytes_inner(
         hex::encode(ttlv_bytes)
     );
 
-    let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
+    let ttlv = match request_ttlv {
+        Some(ttlv) => ttlv,
+        None => TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?,
+    };
     let tag = ttlv.tag.clone();
     debug!(
         target: "kmip",
@@ -442,7 +471,7 @@ async fn handle_ttlv_bytes_inner(
         "Response Message Bytes: {}", hex::encode(&response_bytes)
     );
 
-    Ok(response_bytes)
+    Ok((response_bytes, response_ttlv))
 }
 
 fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {

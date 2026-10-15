@@ -51,6 +51,29 @@ fn write_padding<W: Write>(writer: &mut W, content_len: usize) -> Result<(), Ttl
     Ok(())
 }
 
+/// Number of bytes `ttlv` occupies on the wire: 8-byte header plus value and padding.
+pub(crate) fn encoded_len(ttlv: &TTLV) -> usize {
+    8 + encoded_value_len(ttlv)
+}
+
+/// Number of bytes following the header: the Structure length field, or the
+/// value plus its padding for primitives.
+fn encoded_value_len(ttlv: &TTLV) -> usize {
+    match &ttlv.value {
+        TTLValue::Structure(items) => items.iter().map(encoded_len).sum(),
+        TTLValue::Integer(_)
+        | TTLValue::Enumeration(_)
+        | TTLValue::Interval(_)
+        | TTLValue::LongInteger(_)
+        | TTLValue::Boolean(_)
+        | TTLValue::DateTime(_)
+        | TTLValue::DateTimeExtended(_) => 8,
+        TTLValue::BigInteger(value) => value.encoded_len(),
+        TTLValue::TextString(value) => value.len().next_multiple_of(8),
+        TTLValue::ByteString(value) => value.len().next_multiple_of(8),
+    }
+}
+
 pub struct TTLVBytesSerializer<W> {
     writer: W,
 }
@@ -73,16 +96,12 @@ where
             TTLValue::Structure(items) => {
                 // Write Type (1 byte)
                 write_type(&mut self.writer, TtlvType::Structure)?;
-                // Calculate total length of nested items
-                let mut temp_buffer = Vec::new();
-                let mut temp_serializer = TTLVBytesSerializer::new(&mut temp_buffer);
+                // Length is computed up front so children stream straight into
+                // the writer instead of a per-level temporary buffer.
+                write_length(&mut self.writer, encoded_value_len(ttlv))?;
                 for item in items {
-                    temp_serializer.write_ttlv::<TAG>(item)?;
+                    self.write_ttlv::<TAG>(item)?;
                 }
-                // Write Length (4 bytes)
-                write_length(&mut self.writer, temp_buffer.len())?;
-                // Write actual nested items
-                self.writer.write_all(&temp_buffer)?;
             }
             TTLValue::Integer(value) => {
                 write_type(&mut self.writer, TtlvType::Integer)?;
