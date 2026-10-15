@@ -248,7 +248,7 @@ actix-tls = "3.4"
 actix-web = { version = "4.12", default-features = false }
 aes-gcm-siv = "0.11.1"
 aes-kw = "0.3.1"
-argon2 = "0.5"
+argon2 = "0.6"
 assert_cmd = "2.0"
 async-recursion = "1.1"
 async-trait = "0.1"
