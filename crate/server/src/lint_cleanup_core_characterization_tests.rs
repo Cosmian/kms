@@ -999,8 +999,7 @@ async fn unwrapped_cache_holds_wrapped_key(disable_unwrapped_cache: bool) -> boo
         .await
         .unwrap();
     // `get_unwrapped` must succeed whatever the cache configuration is.
-    let unwrapped = kms
-        .get_unwrapped(&wrapped, stored.object(), &user)
+    let unwrapped = Box::pin(kms.get_unwrapped(&wrapped, stored.object(), &user))
         .await
         .unwrap();
     assert!(!unwrapped.is_wrapped());
@@ -1012,12 +1011,12 @@ async fn unwrapped_cache_holds_wrapped_key(disable_unwrapped_cache: bool) -> boo
 
 #[tokio::test]
 async fn characterization_instantiate_unwrapped_cache_enabled_by_default() {
-    assert!(unwrapped_cache_holds_wrapped_key(false).await);
+    assert!(Box::pin(unwrapped_cache_holds_wrapped_key(false)).await);
 }
 
 #[tokio::test]
 async fn characterization_instantiate_unwrapped_cache_can_be_disabled() {
-    assert!(!unwrapped_cache_holds_wrapped_key(true).await);
+    assert!(!Box::pin(unwrapped_cache_holds_wrapped_key(true)).await);
 }
 
 // ── OpenSSL provider diagnostics ─────────────────────────────────────────────
