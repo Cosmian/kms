@@ -1180,6 +1180,7 @@ Crate path: `crate/clients/client`
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
 | `debug` | `Connection error, retrying with backoff (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
+| `warn` | `Failed to load system CA bundle {bundle}: {e}` | `src/http_client/tls.rs` | `bundle`, `e` | - |
 
 ---
 
