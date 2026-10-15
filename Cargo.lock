@@ -1563,7 +1563,7 @@ dependencies = [
  "hex",
  "js-sys",
  "kmip-derive",
- "num-bigint-dig",
+ "num-bigint-dig 0.9.1",
  "num-traits",
  "proptest",
  "quick-xml",
@@ -1750,7 +1750,7 @@ dependencies = [
  "itertools 0.10.5",
  "k256",
  "num-bigint 0.5.1",
- "num-bigint-dig",
+ "num-bigint-dig 0.9.1",
  "num-traits",
  "openssl",
  "openssl-sys",
@@ -1804,7 +1804,7 @@ dependencies = [
  "cosmian_kms_access",
  "cosmian_logger",
  "mockall",
- "num-bigint-dig",
+ "num-bigint-dig 0.9.1",
  "openssl",
  "serde",
  "thiserror 2.0.21",
@@ -1905,7 +1905,7 @@ dependencies = [
  "kryoptic_pkcs11_loader",
  "luna_pkcs11_loader",
  "native-tls",
- "num-bigint-dig",
+ "num-bigint-dig 0.9.1",
  "openssl",
  "openssl-sys",
  "opentelemetry",
@@ -2762,7 +2762,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48bc224a9084ad760195584ce5abb3c2c34a225fa312a128ad245a6b412b7689"
 dependencies = [
  "digest 0.10.7",
- "num-bigint-dig",
+ "num-bigint-dig 0.8.6",
  "num-traits",
  "pkcs8",
  "rfc6979",
@@ -4778,6 +4778,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint-dig"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7f9a86e097b0d187ad0e65667c2f58b9254671e86e7dbb78036b16692eae099"
+dependencies = [
+ "libm",
+ "num-integer",
+ "num-iter",
+ "num-traits",
+ "once_cell",
+ "rand 0.9.5",
+ "serde",
+ "smallvec",
+ "zeroize",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5271,7 +5288,7 @@ dependencies = [
  "md-5 0.10.6",
  "memchr",
  "nom 8.0.0",
- "num-bigint-dig",
+ "num-bigint-dig 0.8.6",
  "num-traits",
  "num_enum",
  "ocb3",
@@ -6115,7 +6132,7 @@ checksum = "b8573f03f5883dcaebdfcf4725caa1ecb9c15b2ef50c43a07b816e06799bb12d"
 dependencies = [
  "const-oid 0.9.6",
  "digest 0.10.7",
- "num-bigint-dig",
+ "num-bigint-dig 0.8.6",
  "num-integer",
  "num-traits",
  "pkcs1",
