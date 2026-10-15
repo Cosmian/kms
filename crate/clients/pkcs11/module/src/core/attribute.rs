@@ -432,7 +432,11 @@ impl Attributes {
     }
 
     /// Ensure that the attributes contain a `CKC_X_509` certificate request or None.
-    pub fn ensure_x509_or_none(&self) -> ModuleResult<()> {
+    #[expect(
+        non_snake_case,
+        reason = "public API of published crate cosmian_pkcs11_module; frozen until next major"
+    )]
+    pub fn ensure_X509_or_none(&self) -> ModuleResult<()> {
         match self.get(AttributeType::CertificateType) {
             Some(Attribute::CertificateType(cert_type)) => match *cert_type {
                 CKC_X_509 => Ok(()),
