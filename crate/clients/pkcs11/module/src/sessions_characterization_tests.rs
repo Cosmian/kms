@@ -466,3 +466,33 @@ fn characterization_utils_helpers_encrypt_decrypt_cycle() {
 
     C_Finalize(ptr::null_mut());
 }
+
+/// Runs only in the child process of
+/// `characterization_sessions_create_with_ignore_sessions_env_reuses_handle_zero`.
+#[test]
+#[ignore = "child of characterization_sessions_create_with_ignore_sessions_env_reuses_handle_zero"]
+fn characterization_sessions_ignore_sessions_child() {
+    assert_eq!(sessions::create(CKF_SERIAL_SESSION).unwrap(), 0);
+    assert_eq!(sessions::create(CKF_SERIAL_SESSION).unwrap(), 0);
+    assert_eq!(super::SESSIONS.read().unwrap().len(), 1);
+}
+
+/// `COSMIAN_PKCS11_IGNORE_SESSIONS=true` makes every `create` return handle 0 over one shared
+/// session. The variable is read at every call and `SESSIONS` is process-global, so it is set in
+/// a child process instead of the shared test binary.
+#[test]
+fn characterization_sessions_create_with_ignore_sessions_env_reuses_handle_zero() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "sessions::characterization_tests::characterization_sessions_ignore_sessions_child",
+            "--exact",
+            "--ignored",
+            "--test-threads=1",
+        ])
+        .env("COSMIAN_PKCS11_IGNORE_SESSIONS", "true")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    assert!(stdout.contains("1 passed"), "{stdout}");
+}
