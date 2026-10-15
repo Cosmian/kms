@@ -28,6 +28,7 @@ use crate::{
     },
     error::KmsError,
     middlewares::UserId,
+    start_kms_server::prepare_kms_server,
     tests::test_utils::{https_clap_config, test_kms},
 };
 
@@ -1235,4 +1236,23 @@ mod covercrypt_revoke {
             assert_eq!(state_of(&kms, usk).await, State::Compromised, "{usk}");
         }
     }
+}
+
+/// `prepare_kms_server` only builds the actix server; the Vault auth verifier is contacted per
+/// request, so an unreachable URL is accepted at startup.
+#[tokio::test]
+async fn characterization_prepare_kms_server_with_vault_auth_verifier_url() {
+    let mut config = https_clap_config();
+    config.vault.vault_api_enabled = true;
+    config.vault.vault_auth_verifier_url = Some("http://127.0.0.1:1".to_owned());
+    let kms = Arc::new(
+        KMS::instantiate(Arc::new(ServerParams::try_from(config).unwrap()))
+            .await
+            .unwrap(),
+    );
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+        .await
+        .unwrap();
+    drop(server);
 }
