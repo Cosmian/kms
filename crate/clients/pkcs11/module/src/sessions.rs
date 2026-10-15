@@ -319,7 +319,7 @@ impl Session {
                 self.clear_find_objects_ctx();
                 let res = match search_class {
                     pkcs11_sys::CKO_CERTIFICATE => {
-                        attributes.ensure_x509_or_none()?;
+                        attributes.ensure_X509_or_none()?;
                         backend()?
                             .find_all_certificates()?
                             .into_iter()

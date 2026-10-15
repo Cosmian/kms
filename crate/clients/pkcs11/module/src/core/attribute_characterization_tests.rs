@@ -6,7 +6,7 @@ use super::{Attribute, Attributes};
 use crate::ModuleError;
 
 fn call_ensure_x509_or_none(attributes: &Attributes) -> Result<(), ModuleError> {
-    attributes.ensure_x509_or_none()
+    attributes.ensure_X509_or_none()
 }
 
 #[test]
