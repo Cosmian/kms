@@ -582,7 +582,8 @@ repos:
         entry: python3 .mise/scripts/docs/check_ai_docs.py --fix
         language: system
         pass_filenames: false
-        files: ^(AGENTS\.md|CONTRIBUTING\.md|\.github/copilot-instructions\.md|\.github/instructions/.*|\.github/skills/.*)$
+        # Deleting a skill must re-check stale references; pre-commit never matches deleted files.
+        always_run: true
       - id: update-log-index
         name: Update log call-site index (smart — only on log macro changes)
         description: |

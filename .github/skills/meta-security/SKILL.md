@@ -1,6 +1,6 @@
 ---
 name: meta-security
-description: 'Full security-audit orchestrator running /security-review, /cryptography-review, /threat-model, and /standards-review in canonical order per .github/skills/shared/orchestrator-contract.md. Each phase is a task sub-agent (routed by Jev delegation when enabled). Use before release or major changes; incremental skips only when explicitly requested for follow-ups.'
+description: 'Full security-audit orchestrator running /security-review, /cryptography-review, /threat-model, and /standards-review in canonical order per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Use before release or major changes; incremental skips only when explicitly requested for follow-ups.'
 ---
 
 # Meta-Security — Comprehensive Security Audit
@@ -19,9 +19,9 @@ single unified go/no-go report. This is the most thorough security review availa
 Read `.github/skills/shared/anti-hallucination.md` **before any analysis**. All rules in
 that file are mandatory for every sub-skill invoked below. Do not proceed until you have read it.
 
-### Jev Delegation Routing
+### Sub-Agent Routing
 
-When phases are task sub-agents (Jev delegation enabled), the orchestrator contract in
+Phases run as sub-agents (contract §6); the orchestrator contract in
 `.github/skills/shared/orchestrator-contract.md` sections 1 and 6 control:
 
 - **Phase ordering** (Section 1: security audit phases 1–4)

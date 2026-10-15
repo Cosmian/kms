@@ -154,14 +154,18 @@ Every orchestrator produces a report with this structure. Orchestrators that per
 
 ---
 
-## 6. Sub-Agent Orchestration via `task` Tool
+## 6. Sub-Agent Orchestration
 
-Orchestrators delegate phases to sub-agents using the OMP `task` tool. Jev's `delegation.enabled: true` automatically routes each task:
+Orchestrators delegate phases to sub-agents with the harness's own sub-agent tool, and run a phase inline when the harness has none. The report schema (§4) and `review/*.md` paths are fixed regardless of harness.
 
-- **Simple/mechanical phases** (caveman, simplify, async, error-prop) → `smol` (cheap, fast model)
-- **Judgment/reasoning phases** (security, crypto, standards, threat-model, refactor) → `slow` (expensive reasoning)
+| Harness | Sub-agent tool | Routing |
+|---|---|---|
+| OMP with Jev (`delegation.enabled: true`) | `task` | automatic `smol` / `slow` |
+| VS Code Copilot Chat | `runSubagent` | session model |
+| Other harnesses | their sub-agent tool, else inline | session model |
 
-This eliminates manual model selection per skill.
+- **Simple/mechanical phases** (caveman, simplify, async, error-prop) → cheap/fast routing (`smol`) where available
+- **Judgment/reasoning phases** (security, crypto, standards, threat-model, refactor) → reasoning routing (`slow`) where available
 
 ---
 
@@ -174,7 +178,7 @@ Example:
 ```yaml
 ---
 name: rust-review-all
-description: 'Hardcore Rust code review gate: runs 10 review phases per .github/skills/shared/orchestrator-contract.md. Each phase is a task sub-agent (routed by Jev delegation). Use before significant Rust PRs.'
+description: 'Hardcore Rust code review gate: runs 10 review phases per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Use before significant Rust PRs.'
 ---
 ```
 
@@ -184,3 +188,4 @@ description: 'Hardcore Rust code review gate: runs 10 review phases per .github/
 
 - **v1.0 (2026-10-07)**: Unified contract for `rust-review-all`, `code-quality`, `meta-security`, `pre-release`.
 - **v1.1 (2026-10-14)**: Added kms-pr-review; aligned Code Quality order with code-quality/SKILL.md; sync rules 4.1–4.18; report-location rule.
+- **v1.2 (2026-10-15)**: §6 harness-neutral sub-agent mapping (OMP `task`, Copilot `runSubagent`, else inline).

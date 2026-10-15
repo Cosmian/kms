@@ -1,11 +1,11 @@
 ---
 name: rust-review-all
-description: 'Hardcore Rust code review gate per .github/skills/shared/orchestrator-contract.md: runs 10 review phases via task sub-agents (automatically routed by Jev delegation policy). Each phase writes to ./review/. Use before significant Rust PRs or large code generation.'
+description: 'Hardcore Rust code review gate per .github/skills/shared/orchestrator-contract.md: runs 10 review phases as sub-agents (contract §6). Each phase writes to ./review/. Use before significant Rust PRs or large code generation.'
 ---
 
 # Rust Review All — Full Rust Quality Gate
 
-Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order via task sub-agents. Jev's `delegation.enabled: true` automatically routes each phase to `smol` (cheap, mechanical) or `slow` (expensive, reasoning) models. Collects all findings into `./review/`. Produces a unified `./review/SUMMARY.md` with a go/no-go verdict.
+Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order as sub-agents (contract §6: cheap routing for mechanical phases, reasoning routing for judgment phases where the harness supports it). Collects all findings into `./review/`. Produces a unified `./review/SUMMARY.md` with a go/no-go verdict.
 
 **Orchestration**: See `.github/skills/shared/orchestrator-contract.md` for canonical phase order, skip gates, overlap deduplication, and report schema.
 
@@ -18,7 +18,7 @@ Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order via task sub-agent
 
 ## Orchestrator Contract Reference
 
-This skill implements the 10-phase **Full Audit Order** defined in `.github/skills/shared/orchestrator-contract.md`. Each phase below is a task sub-agent delegate; Jev routes them automatically.
+This skill implements the 10-phase **Full Audit Order** defined in `.github/skills/shared/orchestrator-contract.md`. Each phase below is a sub-agent delegate (contract §6).
 
 ---
 

@@ -43,8 +43,12 @@ def _find_repo_root() -> Path:
     raise RuntimeError(f"Could not find repo root from {SCRIPT_DIR}")
 
 
-ROW_RE = re.compile(r'^\|\s*`([a-z0-9-]+)\.instructions\.md`\s*\|')
+ROW_RE = re.compile(r'^\|\s*`([a-z0-9_-]+)\.instructions\.md`\s*\|')
 SLASH_RE = re.compile(r'^/([a-z][a-z0-9-]*)(\s.*)?$')
+# A `/name` span is only a skill reference in a command context; elsewhere it may be a path or route (`/etc`, `/version`).
+COMMAND_CONTEXT_RE = re.compile(
+    r'\b(?:run|invoke|invoked)\b|skill|^\s*\|\s*`/', re.IGNORECASE
+)
 GH_PATH_RE = re.compile(r'^\.github/[A-Za-z0-9_./-]+$')
 LINK_RE = re.compile(r'\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 SPAN_RE = re.compile(r'`([^`]+)`')
@@ -57,21 +61,43 @@ SLASH_ALLOWLIST = {'skill-name'}
 
 
 def parse_frontmatter(path: Path) -> dict[str, str]:
-    """Return the `key: value` pairs of a leading `---` frontmatter block."""
+    """Return the `key: value` pairs of a leading `---` frontmatter block.
+
+    Not a YAML parser: block scalars (`>`/`|`) are stored as '' and rejected by C2.
+    """
+    out: dict[str, str] = {}
+    for _, key, value in frontmatter_items(path):
+        if value[:1] in ('>', '|'):
+            value = ''
+        elif len(value) >= 2 and value[0] == value[-1] and value[0] in '\'"':
+            value = value[1:-1]
+        out[key] = value
+    return out
+
+
+def frontmatter_items(path: Path) -> Iterator[tuple[int, str, str]]:
+    """Yield (lineno, key, raw value) of a leading `---` frontmatter block."""
     lines = path.read_text(encoding='utf-8').splitlines()
     if not lines or lines[0].strip() != '---':
-        return {}
-    out: dict[str, str] = {}
-    for line in lines[1:]:
+        return
+    for no, line in enumerate(lines[1:], 2):
         if line.strip() == '---':
-            break
+            return
         key, sep, value = line.partition(':')
-        if not sep:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in '\'"':
-            value = value[1:-1]
-        out[key.strip()] = value
+        if sep and not line[:1].isspace():
+            yield no, key.strip(), value.strip()
+
+
+def frontmatter_yaml_errors(path: Path) -> list[tuple[int, str]]:
+    """Values this line parser would read differently from a real YAML loader."""
+    out: list[tuple[int, str]] = []
+    for no, key, value in frontmatter_items(path):
+        if value[:1] in ('>', '|'):
+            out.append(
+                (no, f'`{key}` uses a block scalar; use a single-line quoted value')
+            )
+        elif value[:1] not in ('\'', '"') and ': ' in value:
+            out.append((no, f'`{key}` has an unquoted `: `; quote the value'))
     return out
 
 
@@ -164,6 +190,7 @@ class Repo:
             root / '.github' / 'copilot-instructions.md',
             root / 'CONTRIBUTING.md',
             self.skills_dir / 'README.md',
+            *sorted(self.instr_dir.glob('*.instructions.md')),
             *sorted(self.skills_dir.glob('*/SKILL.md')),
         ]
         self.link_files = [
@@ -288,6 +315,15 @@ def check_frontmatter(repo: Repo) -> list[str]:
             )
         if not fm.get('description'):
             out.append(f'ERROR {rel}:1: missing frontmatter `description`')
+    for p in [
+        *repo.instructions,
+        *(repo.skills_dir / s / 'SKILL.md' for s in repo.skills),
+    ]:
+        if p.exists():
+            out += [
+                f'ERROR {repo.rel(p)}:{no}: {msg}'
+                for no, msg in frontmatter_yaml_errors(p)
+            ]
     for p in sorted(repo.skills_dir.glob('*.md')):
         if p.name != 'README.md':
             out.append(
@@ -297,13 +333,17 @@ def check_frontmatter(repo: Repo) -> list[str]:
 
 
 def check_skill_index(repo: Repo) -> list[str]:
-    """C3: every skill appears in skills/README.md."""
+    """C3: every skill has a row in skills/README.md whose second cell is its command."""
     readme = repo.skills_dir / 'README.md'
-    text = readme.read_text(encoding='utf-8')
+    cmd_cells = [
+        split_cells(line)[1]
+        for line in readme.read_text(encoding='utf-8').splitlines()
+        if line.lstrip().startswith('|') and len(split_cells(line)) > 1
+    ]
     return [
         f'ERROR {repo.rel(readme)}:1: skill `{s}` is not listed in the index'
         for s in repo.skills
-        if not re.search('`/' + re.escape(s) + r'[` \[]', text)
+        if not any(re.match('`/' + re.escape(s) + r'[` \[]', c) for c in cmd_cells)
     ]
 
 
@@ -313,6 +353,8 @@ def check_slash_refs(repo: Repo) -> list[str]:
     known = set(repo.skills) | SLASH_ALLOWLIST
     for p in repo.slash_files:
         for no, line in iter_lines(p.read_text(encoding='utf-8')):
+            if not COMMAND_CONTEXT_RE.search(line):
+                continue
             for span in SPAN_RE.findall(line):
                 m = SLASH_RE.match(span)
                 if m and m.group(1) not in known:
@@ -363,6 +405,11 @@ def self_test() -> None:
     assert slugify('8.1 UI-specific rules') == '81-ui-specific-rules'
     assert slugify('🚀 Quick start') == '-quick-start'
     assert canonical_cell(['x', 'y']) == '`x`, `y`'
+    assert ROW_RE.match('| `my_rule.instructions.md` | `**/*.rs` |')
+    assert COMMAND_CONTEXT_RE.search('Run `/x`') and COMMAND_CONTEXT_RE.search(
+        '| `/x` | y |'
+    )
+    assert not COMMAND_CONTEXT_RE.search('`/version` works when KMS runs as UID 1000')
     assert strip_inline_code('a `[b](c.md)` d') == 'a  d'
     assert ROW_RE.match('| `rust.instructions.md` | `**/*.rs` | x |')
     assert SLASH_RE.match('/kms-pr-review [PR#]') and not SLASH_RE.match('/tmp/x')

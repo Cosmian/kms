@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/skills/shared/orchestrator-contract.md (KMS Caveman first, then MISE, error-prop, simplify, refactor, patterns, async, Clippy). Each phase is a task sub-agent routed by Jev delegation. One ranked report deduplicating overlapping findings. Use before PRs or when improving code quality.'
+description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/skills/shared/orchestrator-contract.md (KMS Caveman first, then MISE, Clippy, error-prop, refactor + simplify, patterns, async, CI efficiency). Each phase is a sub-agent (contract §6). One ranked report deduplicating overlapping findings. Use before PRs or when improving code quality.'
 ---
 
 # Code Quality Audit
@@ -8,7 +8,7 @@ description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/
 Orchestrates six Rust-focused audit skills, MISE Bash checks, Clippy, and CI efficiency in one ranked report. The read-only KMS Caveman pass runs first; findings from deeper reviews are deduplicated.
 
 **Usage**: `/code-quality` (full workspace) or `/code-quality crate/server/src/`
-> **Canonical Reference**: This orchestrator's phase ordering, skip gates, and deduplication rules follow `.github/skills/shared/orchestrator-contract.md`. Each phase runs as a task sub-agent and is automatically routed by Jev to `smol` (mechanical phases) or `slow` (reasoning phases) based on phase type.
+> **Canonical Reference**: This orchestrator's phase ordering, skip gates, and deduplication rules follow `.github/skills/shared/orchestrator-contract.md`. Each phase runs as a sub-agent per contract §6 (cheap routing for mechanical phases, reasoning routing for judgment phases where the harness supports it).
 
 ## Orchestration rationale
 

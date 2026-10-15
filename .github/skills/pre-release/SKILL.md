@@ -1,17 +1,15 @@
 ---
 name: pre-release
-description: 'Release readiness orchestrator: 9-phase gate per .github/skills/shared/orchestrator-contract.md. Each phase is a task sub-agent (routed by Jev delegation). Runs security, crypto, KMIP, threat-model, sync rules, changelog, release notes audits. Use before triggering release.yml.'
+description: 'Release readiness orchestrator: 9-phase gate per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Runs security, crypto, KMIP, threat-model, sync rules, changelog, release notes audits. Use before triggering release.yml.'
 ---
 
 ## Orchestrator Implementation
 
 This skill implements the **Release Order phase list** defined in [`.github/skills/shared/orchestrator-contract.md`](../shared/orchestrator-contract.md) (phases 1–9).
 
-Each phase below is delegated to a task sub-agent using the OMP `task` tool. Jev's `delegation.enabled: true` automatically routes:
-- **Mechanical phases** (sync rules, deterministic checks) → `smol` (fast, cheap model)
-- **Reasoning phases** (security, crypto, standards, KMIP, threat-model, changelog, release notes) → `slow` (expensive reasoning)
-
-This eliminates manual model selection and ensures consistent orchestration across all audit skills.
+Each phase below is delegated to a sub-agent per contract §6 (harness sub-agent tool, else inline). Where the harness supports routing:
+- **Mechanical phases** (sync rules, deterministic checks) → cheap/fast routing (`smol`)
+- **Reasoning phases** (security, crypto, standards, KMIP, threat-model, changelog, release notes) → reasoning routing (`slow`)
 
 # Pre-Release Readiness Gate
 
