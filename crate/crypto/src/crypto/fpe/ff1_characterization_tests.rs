@@ -123,7 +123,7 @@ fn characterization_prf_update_chunk_splits() {
     let chunk_sizes = [0, 1, 15, 16, 17, 31];
     let mut offset = 0;
     for &size in &chunk_sizes {
-        let chunk = full_data.get(offset..offset + size).unwrap();
+        let chunk = &full_data[offset..offset + size];
         prf_chunks.update(chunk).unwrap();
         offset += size;
     }
