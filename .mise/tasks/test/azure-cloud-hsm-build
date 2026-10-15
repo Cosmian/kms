@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Compile Azure Cloud HSM loader and tests without a live HSM"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+require_cmd cargo
+
+cargo test -p azure_cloud_hsm_pkcs11_loader \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --features azure_cloud_hsm --lib --no-run
+
+print_success "Azure Cloud HSM loader build completed (${VARIANT_NAME})"

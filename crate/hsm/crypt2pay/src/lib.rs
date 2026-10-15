@@ -24,6 +24,7 @@ impl HsmProvider for Crypt2payCapabilityProvider {
             supports_key_dates: false,
             supports_rsa_oaep_key_wrap: true,
             enforces_ecdsa_digest_strength: false,
+            skip_finalize_on_drop: false,
             max_concurrent_sessions: 128,
         }
     }

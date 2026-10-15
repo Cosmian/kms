@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#MISE description="Run Azure Cloud HSM PKCS#11 tests (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+setup_test_logging
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  print_error "Azure Cloud HSM tests require Linux"
+fi
+
+require_cmd cargo
+: "${HSM_USER_PASSWORD:?Set HSM_USER_PASSWORD to the Cloud HSM user:password PIN}"
+
+# Installs the Azure Cloud HSM SDK, writes PO.crt and azcloudhsm_resource.cfg, opens a
+# VPN tunnel to the private endpoint if needed, and starts the azcloudhsm_client daemon.
+# See crate/hsm/azure_cloud_hsm/README.md for the one-time partition/CU provisioning steps.
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_azure_cloudhsm.sh"
+
+print_header "Running Azure Cloud HSM tests (${VARIANT_NAME})"
+
+if command -v dpkg-query >/dev/null 2>&1; then
+  print_status "Azure Cloud HSM SDK: $(dpkg-query -W -f='${Version}' azure-cloud-hsm-client 2>/dev/null || printf 'unknown')"
+fi
+print_status "Azure Cloud HSM daemon: $(pgrep -af azcloudhsm_client | sed 's/[[:space:]]\+/ /g' || printf 'not found')"
+
+# The cluster's own cluster-info broadcast occasionally advertises stale/legacy
+# member addresses outside the VNet (left over from prior node replacements),
+# which the daemon cannot reach and which make the quorum check for key
+# generation fail with CKR_FUNCTION_FAILED even though all 3 current nodes are
+# healthy and reachable. A fresh daemon restart reliably clears this stale
+# membership view (confirmed by repeated manual reproduction), so retry with a
+# clean daemon rather than failing the whole job on a transient cluster state.
+AZURE_CLOUD_HSM_TEST_ATTEMPTS="${AZURE_CLOUD_HSM_TEST_ATTEMPTS:-3}"
+attempt=1
+while true; do
+  if cargo test -p azure_cloud_hsm_pkcs11_loader \
+    --features azure_cloud_hsm \
+    -- --nocapture tests::test_hsm_azure_cloud_hsm_all --ignored --exact; then
+    break
+  fi
+  if [ "$attempt" -ge "$AZURE_CLOUD_HSM_TEST_ATTEMPTS" ]; then
+    print_warning "Azure Cloud HSM daemon log (last 200 lines)"
+    sudo tail -n 200 /tmp/azcloudhsm_client.log 2>/dev/null || print_warning "Daemon log unavailable"
+    exit 1
+  fi
+  print_warning "Attempt ${attempt}/${AZURE_CLOUD_HSM_TEST_ATTEMPTS} failed; restarting the daemon and retrying"
+  sudo pkill -f azcloudhsm_client || true
+  sleep 2
+  sudo rm -f /tmp/azcloudhsm_client.log
+  start_azure_cloud_hsm_client_daemon
+  attempt=$((attempt + 1))
+done
+
+print_success "Azure Cloud HSM tests completed"

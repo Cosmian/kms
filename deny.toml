@@ -75,6 +75,11 @@ ignore = [
   # and there is no actix-http 4.x / actix-web 5.x release yet. No upstream upgrade path exists.
   # Severity: low. Re-evaluate when actix-web 5.x is published.
   { id = "RUSTSEC-2026-0258", reason = "h2 0.3.x unbounded empty DATA frames (low severity): fixed in h2 0.4.16, but actix-http 3.x is hardcoded to h2 ^0.3 even on master; actix-web 5.x not yet released, no upgrade path available" },
+  # unsafe-libyaml is unmaintained (repo archived), pulled transitively via serde_yaml (itself
+  # deprecated) by figment (clap-config-fallback -> cosmian_kms_server) and kube-client
+  # (cosmian_kms_k8s_operator/plugin/csi_provider). No safe upgrade is available per the advisory.
+  # Re-evaluate once figment/kube-client migrate off serde_yaml.
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained; transitive via figment/kube-client's serde_yaml dependency, no safe upgrade available" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use

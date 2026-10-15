@@ -64,6 +64,8 @@ pub struct HsmCapabilities {
     /// The shared test suite reads it to skip those combinations; production calls
     /// surface the HSM's own error.
     pub enforces_ecdsa_digest_strength: bool,
+    /// Whether the provider crashes when the PKCS#11 library is finalized during drop.
+    pub skip_finalize_on_drop: bool,
     /// Maximum number of PKCS#11 sessions this slot may have concurrently checked out
     /// (in-flight async HSM operations). Requests beyond this bound await asynchronously
     /// via a `tokio::sync::Semaphore` instead of opening unbounded additional sessions.
@@ -87,6 +89,7 @@ impl Default for HsmCapabilities {
             supports_key_dates: true,
             supports_rsa_oaep_key_wrap: true,
             enforces_ecdsa_digest_strength: false,
+            skip_finalize_on_drop: false,
             max_concurrent_sessions: 128,
         }
     }

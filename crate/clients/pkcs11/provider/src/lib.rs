@@ -83,6 +83,38 @@ mod pkcs11_data_object;
 mod pkcs11_private_key;
 mod pkcs11_public_key;
 mod pkcs11_symmetric_key;
+/// Clears the benchmark-only in-memory Sign phase counters.
+#[unsafe(no_mangle)]
+pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_reset() {
+    cosmian_pkcs11_module::profiling::reset();
+}
+
+/// Enables or disables benchmark-only Sign phase collection.
+#[unsafe(no_mangle)]
+pub extern "C" fn cosmian_pkcs11_benchmark_sign_profile_set_enabled(enabled: bool) {
+    cosmian_pkcs11_module::profiling::set_enabled(enabled);
+}
+
+/// Copies the benchmark-only Sign phase counters into `snapshot`.
+///
+/// # Safety
+///
+/// `snapshot` must be non-null, correctly aligned, and writable for one
+/// [`cosmian_pkcs11_module::profiling::SignProfileSnapshot`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cosmian_pkcs11_benchmark_sign_profile_snapshot(
+    snapshot: *mut cosmian_pkcs11_module::profiling::SignProfileSnapshot,
+) -> CK_RV {
+    if snapshot.is_null() {
+        return CKR_ARGUMENTS_BAD;
+    }
+    // SAFETY: the caller contract above requires a valid writable pointer, and the
+    // null case was rejected immediately above.
+    unsafe {
+        snapshot.write(cosmian_pkcs11_module::profiling::snapshot());
+    }
+    CKR_OK
+}
 
 /// On Windows, return the directory that contains this DLL.
 /// Uses `GetModuleHandleExW` with a static data anchor (more reliable than a

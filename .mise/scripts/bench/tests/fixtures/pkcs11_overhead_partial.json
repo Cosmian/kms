@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "algorithm": "eddsa-ed25519",
+  "payload_bytes": 256,
+  "tiers": [
+    {
+      "name": "pkcs11-one-call-bracketed",
+      "mean_ns": 180000
+    },
+    {
+      "name": "missing-mean"
+    },
+    {
+      "name": "invalid-mean",
+      "mean_ns": "slow"
+    }
+  ],
+  "phases": [
+    {
+      "name": "session-lock-wait",
+      "count": 10,
+      "mean_ns": 9000
+    },
+    {
+      "name": "invalid-count",
+      "count": "ten",
+      "mean_ns": 100
+    }
+  ]
+}

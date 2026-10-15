@@ -29,6 +29,68 @@ sudo /opt/cloudhsm/bin/configure-pkcs11 add-cluster \
   --hsm-ca-cert customerCA.crt
 ```
 
+## Provision a test cluster
+
+CloudHSM has no local simulator and each active HSM is billed by the hour.
+Use a dedicated VPC, subnet, security group, and cluster for tests.
+
+Create the cluster and its first HSM:
+
+```bash
+export AWS_REGION=<aws-region>
+export AWS_SUBNET_ID=<private-subnet-id>
+export AWS_AVAILABILITY_ZONE=<availability-zone>
+
+aws cloudhsmv2 create-cluster \
+  --region "$AWS_REGION" \
+  --hsm-type hsm2m.medium \
+  --subnet-ids "$AWS_SUBNET_ID" \
+  --tag-list Key=Name,Value=kms-cloudhsm-test
+
+export AWS_CLOUDHSM_CLUSTER_ID=<cluster-id>
+aws cloudhsmv2 create-hsm \
+  --region "$AWS_REGION" \
+  --cluster-id "$AWS_CLOUDHSM_CLUSTER_ID" \
+  --availability-zone "$AWS_AVAILABILITY_ZONE"
+```
+
+Wait for the cluster to reach `UNINITIALIZED`, then initialize and activate it by following
+the [AWS cluster initialization procedure](https://docs.aws.amazon.com/cloudhsm/latest/userguide/initialize-cluster.html).
+Keep the customer CA certificate used during initialization; it is required by
+`configure-pkcs11`.
+
+From a host with the CloudHSM client installed, create a dedicated Crypto User (CU) for the
+test:
+
+```text
+/opt/cloudhsm/bin/cloudhsm-cli interactive
+> cluster user create --username <cu-username> --role crypto-user
+```
+
+Do not reuse the Crypto Officer credentials in KMS or CI.
+
+### Network access from GitHub-hosted runners
+
+CloudHSM exposes private ENI addresses and does not provide a public endpoint.
+For GitHub-hosted runners, provide an AWS Client VPN endpoint with:
+
+1. a non-overlapping client CIDR;
+2. certificate authentication and a valid server certificate;
+3. a target-network association in the CloudHSM subnet or a routed subnet;
+4. an authorization rule for the client CIDR;
+5. a route to the CloudHSM subnet; and
+6. security-group and network ACL rules allowing TCP `2223` from the VPN client range.
+
+The test task expects the VPN profile in `AWS_CLOUDHSM_OVPN_CONF` when the HSM ENI is not
+directly reachable.
+Verify the route from the Linux test host before running PKCS#11 tests:
+
+```bash
+timeout 5 bash -c 'echo >/dev/tcp/<hsm-eni-ip>/2223'
+```
+
+Do not commit the VPN profile, CU password, customer CA, or certificate private keys.
+
 ## Authentication
 
 The PKCS#11 login PIN expected by AWS CloudHSM for a Crypto User (CU) is the string
@@ -80,6 +142,58 @@ slots used by the KMS. These options can be repeated to configure multiple slots
 > ```shell
 > pkcs11-tool --module /opt/cloudhsm/lib/libcloudhsm_pkcs11.so --list-slots
 > ```
+
+## Tear down a test deployment
+
+Create or verify a CloudHSM backup before removing the last HSM:
+
+```bash
+aws cloudhsmv2 create-backup \
+  --region "$AWS_REGION" \
+  --cluster-id "$AWS_CLOUDHSM_CLUSTER_ID"
+
+aws cloudhsmv2 describe-backups \
+  --region "$AWS_REGION" \
+  --filters clusterIds="$AWS_CLOUDHSM_CLUSTER_ID"
+```
+
+After the backup reaches `READY`, remove the HSM. AWS creates a final backup when the last
+HSM is removed; verify that backup and its retention policy before deleting anything else:
+
+```bash
+aws cloudhsmv2 delete-hsm \
+  --region "$AWS_REGION" \
+  --cluster-id "$AWS_CLOUDHSM_CLUSTER_ID" \
+  --hsm-id <hsm-id>
+
+aws cloudhsmv2 describe-clusters --region "$AWS_REGION"
+aws cloudhsmv2 describe-backups \
+  --region "$AWS_REGION" \
+  --filters clusterIds="$AWS_CLOUDHSM_CLUSTER_ID"
+```
+
+Delete Client VPN target-network associations before deleting the endpoint:
+
+```bash
+aws ec2 disassociate-client-vpn-target-network \
+  --client-vpn-endpoint-id <client-vpn-endpoint-id> \
+  --association-id <association-id>
+
+aws ec2 delete-client-vpn-endpoint \
+  --client-vpn-endpoint-id <client-vpn-endpoint-id>
+```
+
+Keep the empty cluster only when restoring from its backup is required.
+Delete it after confirming that required backups are retained elsewhere:
+
+```bash
+aws cloudhsmv2 delete-cluster \
+  --region "$AWS_REGION" \
+  --cluster-id "$AWS_CLOUDHSM_CLUSTER_ID"
+```
+
+CloudHSM backups remain billable storage; apply the retention policy deliberately and delete
+expired backups when they are no longer needed.
 
 ## Development and CI validation
 
