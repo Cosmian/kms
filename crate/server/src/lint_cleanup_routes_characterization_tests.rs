@@ -17,14 +17,19 @@ use crate::{
     tests::test_utils::https_clap_config,
 };
 
+#[cfg(not(windows))]
 const PRINT_DEFAULT: &str = "--print-default-config";
 
+#[cfg(not(windows))]
 fn parse(flags: &[&str]) -> ClapConfig {
     let mut args = vec!["cosmian_kms", PRINT_DEFAULT];
     args.extend_from_slice(flags);
     ClapConfig::load_from_args(args).unwrap()
 }
 
+// The default configuration is platform specific (Windows binds 127.0.0.1, has no syslog option
+// and different default paths): the next items pin the Unix defaults only.
+#[cfg(not(windows))]
 const DEFAULT_TOML: &str = r#"vendor_identification = "cosmian"
 default_username = "admin"
 force_default_username = false
@@ -131,6 +136,7 @@ ocsp_include_cert_chain = true
 ocsp_archive_cutoff_secs = 0
 "#;
 
+#[cfg(not(windows))]
 #[test]
 fn characterization_clap_config_default_toml() {
     let rendered = toml::to_string(&ClapConfig::default()).unwrap();
@@ -139,6 +145,7 @@ fn characterization_clap_config_default_toml() {
     assert_eq!(toml::to_string(&round_trip).unwrap(), DEFAULT_TOML);
 }
 
+#[cfg(not(windows))]
 #[test]
 fn characterization_clap_config_flags_and_redaction() {
     let secret = "s3cr3t-pw";

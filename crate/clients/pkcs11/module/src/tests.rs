@@ -28,7 +28,6 @@ use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::*;
-use crate::utils::{ck_len, ck_ptr};
 use crate::{
     core::{
         mechanism::{AES_IV_SIZE, SUPPORTED_SIGNATURE_MECHANISMS},
@@ -49,6 +48,7 @@ use crate::{
         KeyAlgorithm, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
         SignatureAlgorithm, SymmetricKey, Version, register_backend,
     },
+    utils::{ck_len, ck_ptr},
 };
 
 #[test]
