@@ -5,9 +5,6 @@
 //! provider's backend expects (`crate/kmip/src/kmip_2_1/requests/{create,create_key_pair}.rs`
 //! already insert the system tags the provider's `find_all_*` functions look for).
 
-#[cfg(not(feature = "non-fips"))]
-use std::future::Future;
-
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::extra::VENDOR_ID_COSMIAN,
@@ -20,7 +17,7 @@ use cosmian_kms_client::{
 };
 use uuid::Uuid;
 
-use super::error::BenchResult;
+use super::{error::BenchResult, load::ConcreteMode};
 
 /// Object identifiers provisioned for one benchmark process.
 pub(crate) struct BenchSetup {
@@ -55,90 +52,93 @@ const BENCH_TAG: &str = "pkcs11-bench";
 /// it.
 const DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 
-/// The (private, public) unique identifiers of the optional Ed25519 and
-/// secp256k1 key pairs `provision_optional_keys` may create, each absent when
-/// its corresponding `provision_*` flag is `false` (or always, in FIPS mode).
-type OptionalKeyPairIds = (
-    Option<(UniqueIdentifier, UniqueIdentifier)>,
-    Option<(UniqueIdentifier, UniqueIdentifier)>,
-);
+/// Which of the optional (non-FIPS-only) key pairs a set of benchmark modes needs.
+#[derive(Debug, PartialEq, Eq)]
+struct OptionalKeyNeeds {
+    ed25519: bool,
+    secp256k1: bool,
+}
 
-#[cfg(feature = "non-fips")]
-async fn provision_optional_keys(
+impl OptionalKeyNeeds {
+    fn of(modes: &[ConcreteMode]) -> Self {
+        Self {
+            ed25519: modes
+                .iter()
+                .any(|mode| matches!(mode, ConcreteMode::SignEdDsa | ConcreteMode::VerifyEdDsa)),
+            secp256k1: modes.iter().any(|mode| {
+                matches!(
+                    mode,
+                    ConcreteMode::SignSecp256k1 | ConcreteMode::VerifySecp256k1
+                )
+            }),
+        }
+    }
+}
+
+/// Creates the Ed25519 and/or secp256k1 key pairs required by `modes` (each only
+/// when at least one mode needs it) and records them in `setup`. A key pair whose
+/// creation fails is left absent so the modes that need it are skipped.
+pub(crate) async fn provision_optional_keys(
+    mut setup: BenchSetup,
     client: &KmsClient,
-    provision_ed25519: bool,
-    provision_secp256k1: bool,
+    modes: &[ConcreteMode],
     delegated: bool,
     hsm_slot: usize,
-    disk_encryption_tag: &str,
-) -> BenchResult<OptionalKeyPairIds> {
-    let ed25519_key_pair = if provision_ed25519 {
+) -> BenchResult<BenchSetup> {
+    let disk_encryption_tag = disk_encryption_tag();
+    let OptionalKeyNeeds {
+        ed25519: needs_ed25519,
+        secp256k1: needs_secp256k1,
+    } = OptionalKeyNeeds::of(modes);
+
+    if needs_ed25519 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
             benchmark_key_uid(delegated, hsm_slot, "pkcs11_ed25519"),
-            [BENCH_TAG, disk_encryption_tag],
+            [BENCH_TAG, disk_encryption_tag.as_str()],
             RecommendedCurve::CURVEED25519,
             false,
             None,
         )?;
         match client.create_key_pair(request).await {
-            Ok(response) => Some((
-                response.private_key_unique_identifier,
-                response.public_key_unique_identifier,
-            )),
+            Ok(response) => {
+                setup.ed25519_private = Some(response.private_key_unique_identifier);
+                setup.ed25519_public = Some(response.public_key_unique_identifier);
+            }
             Err(error) => {
                 eprintln!("[bench:pkcs11] Ed25519 key creation failed, skipping: {error}");
-                None
             }
         }
-    } else {
-        None
-    };
+    }
 
-    let secp256k1_key_pair = if provision_secp256k1 {
+    if needs_secp256k1 {
         let request = create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
             benchmark_key_uid(delegated, hsm_slot, "pkcs11_secp256k1"),
-            [BENCH_TAG, disk_encryption_tag],
+            [BENCH_TAG, disk_encryption_tag.as_str()],
             RecommendedCurve::SECP256K1,
             false,
             None,
         )?;
         match client.create_key_pair(request).await {
-            Ok(response) => Some((
-                response.private_key_unique_identifier,
-                response.public_key_unique_identifier,
-            )),
+            Ok(response) => {
+                setup.secp256k1_private = Some(response.private_key_unique_identifier);
+                setup.secp256k1_public = Some(response.public_key_unique_identifier);
+            }
             Err(error) => {
                 eprintln!("[bench:pkcs11] secp256k1 key creation failed, skipping: {error}");
-                None
             }
         }
-    } else {
-        None
-    };
+    }
 
-    Ok((ed25519_key_pair, secp256k1_key_pair))
+    Ok(setup)
 }
 
-#[cfg(not(feature = "non-fips"))]
-fn provision_optional_keys(
-    client: &KmsClient,
-    provision_ed25519: bool,
-    provision_secp256k1: bool,
-    delegated: bool,
-    hsm_slot: usize,
-    disk_encryption_tag: &str,
-) -> impl Future<Output = BenchResult<OptionalKeyPairIds>> {
-    let _ = (
-        client,
-        provision_ed25519,
-        provision_secp256k1,
-        delegated,
-        hsm_slot,
-        disk_encryption_tag,
-    );
-    std::future::ready(Ok((None, None)))
+/// Tag the provider's `find_all_private_keys` filters on, overridable with
+/// `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` exactly like the provider's own default.
+fn disk_encryption_tag() -> String {
+    std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
+        .unwrap_or_else(|_| DISK_ENCRYPTION_TAG.to_owned())
 }
 
 fn benchmark_key_uid(delegated: bool, hsm_slot: usize, name: &str) -> Option<UniqueIdentifier> {
@@ -147,18 +147,16 @@ fn benchmark_key_uid(delegated: bool, hsm_slot: usize, name: &str) -> Option<Uni
     })
 }
 
-/// Creates one AES secret key, one RSA key pair, one EC P-256 key pair, and
-/// (opt-in) one Ed25519 and/or one secp256k1 key pair in the KMS pointed at by
-/// `client`. With `delegated`, all keys are created in `hsm_slot`.
+/// Creates one AES secret key, one RSA key pair, and the EC P-256 and P-384 key
+/// pairs in the KMS pointed at by `client`. With `delegated`, all keys are created
+/// in `hsm_slot`. Non-FIPS builds then add the opt-in Ed25519 / secp256k1 key pairs
+/// with [`provision_optional_keys`].
 pub(crate) async fn provision_bench_keys(
     client: &KmsClient,
-    provision_ed25519: bool,
-    provision_secp256k1: bool,
     delegated: bool,
     hsm_slot: usize,
 ) -> BenchResult<BenchSetup> {
-    let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
-        .unwrap_or_else(|_| DISK_ENCRYPTION_TAG.to_owned());
+    let disk_encryption_tag = disk_encryption_tag();
 
     let create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -181,9 +179,9 @@ pub(crate) async fn provision_bench_keys(
     )?;
     let rsa_key_pair = client.create_key_pair(create_key_pair_request).await?;
 
-    // EC P-256 is FIPS-approved (unlike Ed25519 below), so this key pair is always
-    // provisioned regardless of `provision_ed25519` — `sign-ecdsa`/`verify-ecdsa`
-    // (and the aggregate `sign`/`verify`/`all` modes) must work in every build.
+    // EC P-256 is FIPS-approved (unlike Ed25519), so this key pair is always
+    // provisioned — `sign-ecdsa`/`verify-ecdsa` (and the aggregate
+    // `sign`/`verify`/`all` modes) must work in every build.
     let create_ecdsa_key_pair_request = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
         benchmark_key_uid(delegated, hsm_slot, "pkcs11_ec"),
@@ -210,17 +208,6 @@ pub(crate) async fn provision_bench_keys(
     let ecdsa_p384_key_pair = client
         .create_key_pair(create_ecdsa_p384_key_pair_request)
         .await?;
-    // Non-FIPS-only keys are provisioned by a module-level cfg helper so the
-    // feature boundary does not split the body of this function.
-    let (ed25519_key_pair, secp256k1_key_pair) = provision_optional_keys(
-        client,
-        provision_ed25519,
-        provision_secp256k1,
-        delegated,
-        hsm_slot,
-        &disk_encryption_tag,
-    )
-    .await?;
 
     Ok(BenchSetup {
         symmetric,
@@ -230,20 +217,50 @@ pub(crate) async fn provision_bench_keys(
         ecdsa_public: ecdsa_key_pair.public_key_unique_identifier,
         ecdsa_p384_private: ecdsa_p384_key_pair.private_key_unique_identifier,
         ecdsa_p384_public: ecdsa_p384_key_pair.public_key_unique_identifier,
-        ed25519_private: ed25519_key_pair
-            .as_ref()
-            .map(|(private_key_id, _)| private_key_id.clone()),
-        ed25519_public: ed25519_key_pair.map(|(_, public_key_id)| public_key_id),
-        secp256k1_private: secp256k1_key_pair
-            .as_ref()
-            .map(|(private_key_id, _)| private_key_id.clone()),
-        secp256k1_public: secp256k1_key_pair.map(|(_, public_key_id)| public_key_id),
+        ed25519_private: None,
+        ed25519_public: None,
+        secp256k1_private: None,
+        secp256k1_public: None,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::benchmark_key_uid;
+    use super::{ConcreteMode, OptionalKeyNeeds, benchmark_key_uid};
+
+    #[test]
+    fn optional_keys_are_only_needed_by_their_modes() {
+        let none = OptionalKeyNeeds {
+            ed25519: false,
+            secp256k1: false,
+        };
+        assert_eq!(
+            OptionalKeyNeeds::of(&[ConcreteMode::SignRsaPkcs, ConcreteMode::VerifyEcdsaP384]),
+            none
+        );
+        assert_eq!(OptionalKeyNeeds::of(&[]), none);
+        assert_eq!(
+            OptionalKeyNeeds::of(&[ConcreteMode::VerifyEdDsa]),
+            OptionalKeyNeeds {
+                ed25519: true,
+                secp256k1: false,
+            }
+        );
+        assert_eq!(
+            OptionalKeyNeeds::of(&[ConcreteMode::SignSecp256k1, ConcreteMode::SignRsaPss]),
+            OptionalKeyNeeds {
+                ed25519: false,
+                secp256k1: true,
+            }
+        );
+        assert_eq!(
+            OptionalKeyNeeds::of(&[ConcreteMode::SignEdDsa, ConcreteMode::VerifySecp256k1]),
+            OptionalKeyNeeds {
+                ed25519: true,
+                secp256k1: true,
+            }
+        );
+    }
 
     #[test]
     fn delegated_uid_targets_requested_slot() {

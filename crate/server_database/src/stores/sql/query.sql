@@ -59,6 +59,9 @@ DELETE FROM read_access;
 -- name: clean-table-tags
 DELETE FROM tags;
 
+-- name: clean-table-crls
+DELETE FROM crls;
+
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6);
 

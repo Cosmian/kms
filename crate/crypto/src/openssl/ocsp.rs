@@ -1324,6 +1324,84 @@ mod tests {
         assert!(before <= after, "time must be monotone");
     }
 
+    /// DER content octets of the `id-pkix-ocsp-archive-cutoff` OID (1.3.6.1.5.5.7.48.1.6).
+    const ARCHIVE_CUTOFF_OID_DER: [u8; 9] = [0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x30, 0x01, 0x06];
+
+    /// With `archive_cutoff_secs` set, the response carries the archive-cutoff extension
+    /// (RFC 6960 §4.4.4) whose `GeneralizedTime` value is `now - archive_cutoff_secs`;
+    /// without it, the extension is absent.
+    #[test]
+    fn test_archive_cutoff_extension() {
+        const CUTOFF_SECS: u64 = 86_400;
+        let (ca, ca_key) = create_test_ca();
+        let req_der = build_test_request(&ca, "01", false);
+        let entries = vec![OcspStatusEntry {
+            serial_hex: "01".to_owned(),
+            status: OcspCertStatus::Good,
+        }];
+
+        let without = build_ocsp_response(
+            &req_der,
+            &ca,
+            &ca,
+            &ca_key,
+            &entries,
+            &OcspBuildConfig::default(),
+        )
+        .expect("build without archive cutoff");
+        assert!(
+            !without
+                .windows(ARCHIVE_CUTOFF_OID_DER.len())
+                .any(|w| w == ARCHIVE_CUTOFF_OID_DER),
+            "archive-cutoff extension must be absent by default"
+        );
+
+        let config = OcspBuildConfig {
+            archive_cutoff_secs: Some(CUTOFF_SECS),
+            ..Default::default()
+        };
+        let before = OffsetDateTime::now_utc().unix_timestamp();
+        let with = build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config)
+            .expect("build with archive cutoff");
+        let after = OffsetDateTime::now_utc().unix_timestamp();
+
+        let oid_pos = with
+            .windows(ARCHIVE_CUTOFF_OID_DER.len())
+            .position(|w| w == ARCHIVE_CUTOFF_OID_DER)
+            .expect("archive-cutoff extension must be present");
+        // After the OID: extnValue OCTET STRING (0x04, len) wrapping a GeneralizedTime
+        // (0x18, 0x0F, "YYYYMMDDHHMMSSZ").
+        let value = with
+            .get(
+                oid_pos + ARCHIVE_CUTOFF_OID_DER.len()..oid_pos + ARCHIVE_CUTOFF_OID_DER.len() + 19,
+            )
+            .expect("extension value must follow the OID");
+        assert_eq!(
+            value.get(..4),
+            Some(&[0x04, 0x11, 0x18, 0x0F][..]),
+            "unexpected encoding"
+        );
+        let cutoff_str = std::str::from_utf8(value.get(4..).expect("19 bytes"))
+            .expect("GeneralizedTime is ASCII");
+        let cutoff = openssl::asn1::Asn1Time::from_str(cutoff_str).expect("parse cutoff time");
+
+        // cutoff == now - CUTOFF_SECS for some `now` in [before, after] (second precision).
+        let lower_bound = openssl::asn1::Asn1Time::from_unix(
+            before - i64::try_from(CUTOFF_SECS).expect("fits in i64"),
+        )
+        .expect("lower bound");
+        let diff = lower_bound.diff(&cutoff).expect("diff");
+        let elapsed = i64::from(diff.days) * 86_400 + i64::from(diff.secs);
+        assert!(
+            (0..=after - before).contains(&elapsed),
+            "cutoff must equal now - {CUTOFF_SECS}s, offset from lower bound was {elapsed}s"
+        );
+
+        // The response is still a valid, successful OCSP response.
+        let resp = OcspResponse::from_der(&with).expect("OcspResponse::from_der");
+        assert_eq!(resp.status(), openssl::ocsp::OcspResponseStatus::SUCCESSFUL);
+    }
+
     #[test]
     fn test_parse_ocsp_request() {
         let (ca, _) = create_test_ca();

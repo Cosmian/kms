@@ -21,8 +21,8 @@ use self::{
 use crate::stores::RedisWithFindex;
 #[cfg(feature = "non-fips")]
 use crate::stores::additional_redis_findex_tests::{
-    test_active_key_count_counter, test_corner_case, test_live_count_counter, test_objects_db,
-    test_permissions_db, test_wrapped_by_backfill,
+    test_active_key_count_counter, test_corner_case, test_live_count_counter,
+    test_migration_state_markers, test_objects_db, test_permissions_db, test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
@@ -105,6 +105,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_live_count_counter().await?;
     test_active_key_count_counter().await?;
     test_wrapped_by_backfill().await?;
+    test_migration_state_markers().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
     owner(&get_redis_with_findex().await?).await?;

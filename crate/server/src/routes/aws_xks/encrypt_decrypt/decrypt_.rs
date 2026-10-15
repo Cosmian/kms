@@ -145,7 +145,7 @@ pub(crate) async fn decrypt(
         request.requestMetadata.kmsRequestId,
         request.requestMetadata.awsPrincipalArn
     );
-    debug!("decrypt request: {:?}", request.requestMetadata);
+    debug!("decrypt request: {}", request.requestMetadata);
     let kms = kms.into_inner();
     match decrypt_inner(req_http, request, key_id, &kms)
         .await

@@ -78,7 +78,6 @@ impl Database {
         result
     }
 
-    #[allow(dead_code)]
     /// Register an Objects store for Objects `uid` starting with `<prefix>::`.
     ///
     /// This function registers an `ObjectsStore` for objects whose unique identifiers
@@ -105,7 +104,6 @@ impl Database {
         map.insert(prefix.to_owned(), objects_store);
     }
 
-    #[allow(dead_code)]
     /// Unregister the default objects store or a store for the given prefix
     pub async fn unregister_object_store(&self, prefix: Option<&str>) {
         let mut map = self.objects.write().await;
@@ -1100,6 +1098,52 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `unregister_object_store` must undo `register_objects_store`: UIDs under the
+    /// prefix stop routing to the registered store (here falling back to the
+    /// "no HSM configured" error for `hsm::` prefixes), and unregistering the default
+    /// store (`None`) leaves no store for unprefixed UIDs.
+    #[tokio::test]
+    async fn test_unregister_object_store() {
+        let db = test_db().await;
+        let default_store = db
+            .get_object_store("plain-uid")
+            .await
+            .expect("default store is registered");
+
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let extra: Arc<dyn cosmian_kms_interfaces::ObjectsStore + Sync + Send> = Arc::new(
+            crate::stores::SqlitePool::instantiate(&tmp.path().join("extra.db"), true, None)
+                .await
+                .expect("Failed to instantiate extra store"),
+        );
+        db.register_objects_store("hsm::extra", Arc::clone(&extra))
+            .await;
+
+        let routed = db
+            .get_object_store("hsm::extra::0::key")
+            .await
+            .expect("registered prefix must route to the extra store");
+        assert!(Arc::ptr_eq(&routed, &extra));
+
+        db.unregister_object_store(Some("hsm::extra")).await;
+        match db.get_object_store("hsm::extra::0::key").await {
+            Ok(_) => panic!("unregistered hsm prefix must no longer resolve"),
+            Err(e) => assert!(
+                e.to_string().contains("No HSM is configured"),
+                "unexpected error: {e}"
+            ),
+        }
+        // The default store is untouched by removing a prefixed one.
+        let still_default = db
+            .get_object_store("plain-uid")
+            .await
+            .expect("default store must remain");
+        assert!(Arc::ptr_eq(&still_default, &default_store));
+
+        db.unregister_object_store(None).await;
+        assert!(db.get_object_store("plain-uid").await.is_err());
     }
 
     /// Verify that the `DbMetricsRecorder` injected into `Database` is called when

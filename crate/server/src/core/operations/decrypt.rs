@@ -136,7 +136,7 @@ impl CryptoOpSpec for DecryptOp {
         }
     }
 
-    async fn execute_local(
+    fn execute_local(
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,

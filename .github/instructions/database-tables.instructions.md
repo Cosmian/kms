@@ -68,6 +68,7 @@ and any backend-specific differences (e.g. MySQL AUTO_INCREMENT`id` column).
 - [ ] Is the Mermaid diagram still accurate?
 - [ ] Is the table count in the overview sentence correct?
 - [ ] Is the "Links between tables" section still accurate?
+
 ## `rawsql` loader gotcha
 
 Queries are parsed by the `rawsql` crate: a line is a new query tag only if it starts with

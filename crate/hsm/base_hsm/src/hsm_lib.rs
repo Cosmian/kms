@@ -99,7 +99,6 @@ const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 /// Operations return `PResult<T>`, which is a custom result type for handling
 /// HSM-specific errors. Failed operations typically return `PError` variants
 /// with descriptive error messages.
-#[expect(dead_code)]
 #[expect(non_snake_case)]
 pub struct HsmLib {
     library: Option<Library>,

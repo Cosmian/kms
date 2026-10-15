@@ -3,7 +3,7 @@ use std::sync::Arc;
 use actix_web::{HttpResponse, web::Data};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    kmip_0::kmip_types::{BlockCipherMode, ErrorReason, HashingAlgorithm, PaddingMethod, State},
     kmip_2_1::{
         kmip_data_structures::KeyMaterial,
         kmip_objects::Object,
@@ -14,7 +14,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use zeroize::Zeroizing;
 
 use crate::{
-    core::KMS,
+    core::{
+        KMS,
+        operations::{DecryptOp, EncryptOp, key_ops::CryptoOpSpec},
+    },
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -32,6 +35,23 @@ use crate::{
 };
 
 const AZURE_EKM_REQUIRED_AES_KEY_LENGTH: i32 = 256;
+
+/// Fail with the Azure EKM `KeyDisabled` error when the key is not in a usable state.
+///
+/// `accepted_states` are those of the KMIP operation that performs the wrap (`Encrypt`)
+/// or unwrap (`Decrypt`). `Deactivated` keys never get here: the preceding `Get` refuses
+/// them, which `get_and_validate_kek_algorithm` also reports as `KeyDisabled`.
+fn ensure_key_enabled(
+    key_name: &str,
+    state: State,
+    accepted_states: &[State],
+) -> Result<(), AzureEkmErrorReply> {
+    if accepted_states.contains(&state) {
+        Ok(())
+    } else {
+        Err(AzureEkmErrorReply::key_disabled(key_name))
+    }
+}
 
 pub(crate) async fn get_key_metadata_handler(
     key_name: String,
@@ -141,6 +161,7 @@ async fn get_and_validate_kek_algorithm(
     key_name: &str,
     user: &UserId,
     request_alg: &WrapAlgorithm,
+    accepted_states: &[State],
 ) -> Result<CryptographicAlgorithm, AzureEkmErrorReply> {
     let key_object = kms
         .get(
@@ -153,9 +174,23 @@ async fn get_and_validate_kek_algorithm(
         .await
         .map_err(|e| match e {
             KmsError::ItemNotFound(_) => AzureEkmErrorReply::key_not_found(key_name),
+            KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, _) => {
+                AzureEkmErrorReply::key_disabled(key_name)
+            }
             _ => e.into(),
         })?
         .object;
+
+    // The `Get` above established that the user is allowed to access the key:
+    // now check that the key is in a state where it can be used.
+    let state = kms
+        .database
+        .retrieve_object(key_name)
+        .await
+        .map_err(KmsError::from)?
+        .ok_or_else(|| AzureEkmErrorReply::key_not_found(key_name))?
+        .effective_state();
+    ensure_key_enabled(key_name, state, accepted_states)?;
 
     let kek_algorithm = *key_object
         .key_block()
@@ -239,7 +274,14 @@ pub(crate) async fn wrap_key_handler(
         }
     }
 
-    let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
+    let kek_algorithm = get_and_validate_kek_algorithm(
+        kms,
+        key_name,
+        user,
+        &request.alg,
+        EncryptOp::accepted_states(),
+    )
+    .await?;
 
     // Perform the wrap operation based on key type
     let wrapped_key_bytes = match kek_algorithm {
@@ -389,7 +431,14 @@ pub(crate) async fn unwrap_key_handler(
     }
     // No other length validation here: Invalid lengths produce clean crypto errors.
 
-    let kek_algorithm = get_and_validate_kek_algorithm(kms, key_name, user, &request.alg).await?;
+    let kek_algorithm = get_and_validate_kek_algorithm(
+        kms,
+        key_name,
+        user,
+        &request.alg,
+        DecryptOp::accepted_states(),
+    )
+    .await?;
 
     let unwrapped_dek_bytes = match kek_algorithm {
         CryptographicAlgorithm::AES => {
@@ -511,4 +560,58 @@ async fn unwrap_with_rsa(
         correlation_id,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn disabled(state: State, accepted_states: &[State]) -> Result<(), String> {
+        ensure_key_enabled("k", state, accepted_states).map_err(|e| e.to_string())
+    }
+
+    const KEY_DISABLED: &str = "[KeyDisabled] Key 'k' is disabled";
+
+    #[test]
+    fn wrap_requires_an_active_key() {
+        assert_eq!(
+            disabled(State::Active, EncryptOp::accepted_states()),
+            Ok(())
+        );
+        for state in [
+            State::PreActive,
+            State::Deactivated,
+            State::Compromised,
+            State::Destroyed,
+            State::Destroyed_Compromised,
+        ] {
+            assert_eq!(
+                disabled(state, EncryptOp::accepted_states()),
+                Err(KEY_DISABLED.to_owned()),
+                "state {state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unwrap_still_works_on_compromised_keys() {
+        for state in [State::Active, State::Compromised] {
+            assert_eq!(
+                disabled(state, DecryptOp::accepted_states()),
+                Ok(()),
+                "{state:?}"
+            );
+        }
+        for state in [
+            State::PreActive,
+            State::Destroyed,
+            State::Destroyed_Compromised,
+        ] {
+            assert_eq!(
+                disabled(state, DecryptOp::accepted_states()),
+                Err(KEY_DISABLED.to_owned()),
+                "state {state:?}"
+            );
+        }
+    }
 }

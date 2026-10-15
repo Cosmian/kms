@@ -524,6 +524,7 @@ impl PgPool {
                 "clean-table-read_access",
                 "clean-table-tags",
                 "clean-table-objects",
+                "clean-table-crls",
             ] {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -1223,21 +1224,6 @@ impl ObjectsStore for PgPool {
 
 #[async_trait(?Send)]
 impl Migrate for PgPool {
-    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
-        let client = pg_get_client(&self.pool).await?;
-        let sql = get_pgsql_query!("select-parameter");
-        let row_opt = client
-            .query_opt(sql, &[&"db_state"])
-            .await
-            .map_err(DbError::from)?;
-        if let Some(row) = row_opt {
-            let s: String = row.get(0);
-            Ok(Some(serde_json::from_str(&s)?))
-        } else {
-            Ok(None)
-        }
-    }
-
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
         let client = pg_get_client(&self.pool).await?;
         let sql = get_pgsql_query!("upsert-parameter");
@@ -1247,16 +1233,6 @@ impl Migrate for PgPool {
             .await
             .map_err(DbError::from)?;
         Ok(())
-    }
-
-    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let client = pg_get_client(&self.pool).await?;
-        let sql = get_pgsql_query!("select-parameter");
-        let row_opt = client
-            .query_opt(sql, &[&"db_version"])
-            .await
-            .map_err(DbError::from)?;
-        Ok(row_opt.map(|row| row.get::<usize, String>(0)))
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {

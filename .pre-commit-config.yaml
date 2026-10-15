@@ -130,7 +130,6 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
-      - id: cargo-format
       - id: nightly-cargo-format
 
   # ═══════════════════════════════════════════════════════════════════════
@@ -197,7 +196,7 @@ repos:
       - id: clippy-all-targets
         stages: [manual]
         types: [rust]
-      - id: cargo-format
+      - id: nightly-cargo-format
         name: cargo-format (post-clippy)
         types: [rust]
         stages: [pre-push]

@@ -1,0 +1,3 @@
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":1,"throughput_rps":540.65,"p50_ms":1.808,"p95_ms":2.186,"p99_ms":2.696}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":32,"throughput_rps":1020.85,"p50_ms":31.303,"p95_ms":32.240,"p99_ms":33.003}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":64,"throughput_rps":1027.85,"p50_ms":61.925,"p95_ms":63.613,"p99_ms":64.995}

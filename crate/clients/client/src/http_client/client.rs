@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt::Write, time::Duration};
 
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -269,6 +269,22 @@ impl HttpResponse {
     pub const fn bytes(&self) -> &Bytes {
         &self.body
     }
+}
+
+/// Render an error with its full `source()` chain, e.g. `client error (Connect): tcp connect
+/// error: ...: certificate verify failed`. hyper-util's `Display` alone hides the root cause.
+fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut msg = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        let cause_msg = cause.to_string();
+        // Some wrappers already embed their source's text in their own Display.
+        if !msg.contains(&cause_msg) {
+            let _ = write!(msg, ": {cause_msg}");
+        }
+        source = cause.source();
+    }
+    msg
 }
 
 /// The inner hyper client type used by [`HttpClient`].
@@ -588,12 +604,16 @@ impl HttpClient {
                     }
                 }
                 return Err(HttpClientError::Default(format!(
-                    "HTTP request failed: {last_err}"
+                    "HTTP request to {} failed: {}",
+                    retry_req.uri(),
+                    error_chain(&last_err)
                 )));
             }
             Err(e) => {
                 return Err(HttpClientError::Default(format!(
-                    "HTTP request failed: {e}"
+                    "HTTP request to {} failed: {}",
+                    retry_req.uri(),
+                    error_chain(&e)
                 )));
             }
         };
@@ -702,5 +722,71 @@ mod default_header_tests {
             HttpClient::instantiate(&HttpClientConfig::default()).expect("client instantiates");
         assert!(client.default_headers.get("Authorization").is_none());
         assert!(client.default_headers.get("X-Vault-Token").is_none());
+    }
+}
+
+#[cfg(test)]
+mod response_tests {
+    use super::{Bytes, HeaderMap, HttpResponse};
+
+    fn response(body: &'static [u8]) -> HttpResponse {
+        HttpResponse {
+            status: http::StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: Bytes::from_static(body),
+        }
+    }
+
+    #[test]
+    fn json_failure_reports_deserialization_context() {
+        let res: Result<serde_json::Map<String, serde_json::Value>, _> =
+            response(b"not json").json();
+        let message = res.err().map(|e| e.to_string()).unwrap_or_default();
+        assert!(
+            message.starts_with("Failed to deserialize response body as JSON: "),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn json_success_deserializes_the_body() {
+        let res: Result<serde_json::Value, _> = response(br#"{"a":1}"#).json();
+        assert_eq!(res.ok(), Some(serde_json::json!({"a": 1})));
+    }
+
+    #[test]
+    fn text_failure_reports_utf8_context() {
+        let message = response(&[0xff, 0xfe, 0xfd])
+            .text()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            message.starts_with("Response body is not UTF-8: "),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn text_success_returns_the_body() {
+        assert_eq!(response(b"hello").text().ok().as_deref(), Some("hello"));
+    }
+}
+
+#[cfg(test)]
+mod error_chain_tests {
+    use super::error_chain;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    struct Layer(String, #[source] Option<Box<Self>>);
+
+    #[test]
+    fn joins_causes_and_skips_repeated_text() {
+        let root = Layer("tls failure".to_owned(), None);
+        // Wrapper that already embeds its cause in its own Display.
+        let embedded = Layer("connect: tls failure".to_owned(), Some(Box::new(root)));
+        let top = Layer("client error".to_owned(), Some(Box::new(embedded)));
+        assert_eq!(error_chain(&top), "client error: connect: tls failure");
     }
 }

@@ -97,7 +97,7 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
         };
 
         let enc_req = JoseEncReq {
-            kid: kid.clone(),
+            kid,
             alg: "dir",
             enc,
             data: payload.clone(),
@@ -110,7 +110,7 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
             continue;
         };
 
-        let enc_req_clone = enc_req.clone();
+        let enc_req_clone = enc_req;
         group.bench_function(BenchmarkId::new("encrypt", enc), |b| {
             b.to_async(rt)
                 .iter(|| client.jose_encrypt(enc_req_clone.clone()));
@@ -172,7 +172,7 @@ fn bench_jose_encrypt_rsa_oaep(c: &mut Criterion, client: &KmsClient, rt: &Runti
             continue;
         };
 
-        let enc_req_clone = enc_req.clone();
+        let enc_req_clone = enc_req;
         group.bench_function(BenchmarkId::new("encrypt", bits), |b| {
             b.to_async(rt)
                 .iter(|| client.jose_encrypt(enc_req_clone.clone()));
@@ -320,7 +320,7 @@ pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime
             continue;
         };
 
-        let mac_req_clone = mac_req.clone();
+        let mac_req_clone = mac_req;
         group.bench_function(BenchmarkId::new("compute", alg), |b| {
             b.to_async(rt)
                 .iter(|| client.jose_mac_compute(mac_req_clone.clone()));

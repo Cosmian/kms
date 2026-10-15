@@ -62,6 +62,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
+    shared::aes_cbc_multi_part(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
@@ -202,6 +203,13 @@ fn test_hsm_softhsm2_aes_cbc_encrypt() -> HResult<()> {
 fn test_hsm_softhsm2_aes_cbc_multi_round_encrypt() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::aes_cbc_multi_round(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_aes_cbc_multi_part_encrypt() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::aes_cbc_multi_part(&slot)
 }
 
 #[test]

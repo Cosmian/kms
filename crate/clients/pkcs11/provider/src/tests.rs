@@ -224,6 +224,7 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 #[test]
+#[serial]
 fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
     log_init(None);
 
@@ -278,6 +279,7 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[test]
+#[serial]
 #[expect(unsafe_code)]
 fn test_get_function_list_rejects_null_output() {
     // SAFETY: passing null intentionally verifies the required argument validation.
@@ -287,8 +289,11 @@ fn test_get_function_list_rejects_null_output() {
     );
 }
 
-#[test]
-#[serial]
+/// Registers the PKCS#11 function list (and thereby the process-global backend).
+///
+/// Not a `#[test]`: `C_GetFunctionList` overwrites the global backend, so running it as an
+/// independent parallel test would redirect a concurrently running `#[serial]` test to the
+/// default `CKMS_CONF` server. It is only called from `#[serial]` tests.
 #[expect(unsafe_code)]
 pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"

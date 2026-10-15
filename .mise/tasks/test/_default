@@ -106,15 +106,15 @@ run_step "secret_cosmian_kms" bash "${TASK_DIR}/secret_cosmian_kms" --variant "$
 run_step "gcp-cmek" bash "${TASK_DIR}/gcp-cmek" --variant "${VARIANT}" --link "${LINK}"
 
 # ── Groups requiring a nix-shell (pinned dev shell) ─────────────────────────────
-gate_run "jose" "$(first_reason "$(reason_needs_nix)")" \
+gate_run "jose" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/jose" --variant "${VARIANT}" --link "${LINK}"
 gate_run "kmip-go" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_cmd go)")" \
   bash "${TASK_DIR}/kmip-go" --variant "${VARIANT}" --link "${LINK}"
-gate_run "luks" "$(first_reason "$(reason_needs_nix)")" \
+gate_run "luks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/luks" --variant "${VARIANT}" --link "${LINK}"
 gate_run "veracrypt" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_cmd veracrypt)")" \
   bash "${TASK_DIR}/veracrypt" --variant "${VARIANT}" --link "${LINK}"
-gate_run "load-balancer" "$(first_reason "$(reason_needs_nix)")" \
+gate_run "load-balancer" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_docker)" "$(reason_needs_env DOCKER_IMAGE_NAME)")" \
   bash "${TASK_DIR}/load-balancer" --variant "${VARIANT}" --link "${LINK}"
 
 # ── non-FIPS-only groups ────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ gate_run "otel" "$(first_reason "$(reason_needs_port 127.0.0.1 "${KMS_SLOT_OTEL_
   bash "${TASK_DIR}/otel" --variant "${VARIANT}" --link "${LINK}"
 
 # ── Groups requiring Docker ──────────────────────────────────────────────────────
-gate_run "docker" "$(first_reason "$(reason_needs_docker)")" \
+gate_run "docker" "$(first_reason "$(reason_needs_docker)" "$(reason_needs_env DOCKER_IMAGE_NAME)")" \
   bash "${TASK_DIR}/docker" --variant "${VARIANT}" --link "${LINK}"
 gate_run "iris" "$(first_reason "$(reason_needs_docker)")" \
   bash "${TASK_DIR}/iris" --variant "${VARIANT}" --link "${LINK}"

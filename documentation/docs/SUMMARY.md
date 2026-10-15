@@ -16,6 +16,7 @@
   - [HSM key labeling & tagging](hsm_support/tagging.md)
   - [Multi-HSM support](hsm_support/multi_hsm.md)
   - [Algorithm support by model](hsm_support/algorithm_support.md)
+  - [Thales Luna](hsm_support/luna.md)
   - [Trustway Crypt2pay](hsm_support/crypt2pay.md)
   - [Trustway Proteccio](hsm_support/proteccio.md)
   - [Utimaco General Purpose](hsm_support/utimaco.md)

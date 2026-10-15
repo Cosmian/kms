@@ -191,19 +191,6 @@ impl Pkcs11BenchAction {
             ));
         }
 
-        let provision_ed25519 = modes.iter().any(|mode| {
-            matches!(
-                mode,
-                load::ConcreteMode::SignEdDsa | load::ConcreteMode::VerifyEdDsa
-            )
-        });
-        let provision_secp256k1 = modes.iter().any(|mode| {
-            matches!(
-                mode,
-                load::ConcreteMode::SignSecp256k1 | load::ConcreteMode::VerifySecp256k1
-            )
-        });
-
         let dll = self.dll.clone();
         let conf = self.conf.clone();
         let _token = self.token.clone();
@@ -220,12 +207,13 @@ impl Pkcs11BenchAction {
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 
             let setup = rt
-                .block_on(setup::provision_bench_keys(
-                    &client,
-                    provision_ed25519,
-                    provision_secp256k1,
-                    delegated,
-                    hsm_slot,
+                .block_on(setup::provision_bench_keys(&client, delegated, hsm_slot))
+                .map_err(|e| KmsCliError::Default(e.to_string()))?;
+            // Ed25519 / secp256k1 keys are only provisioned when `modes` (which only
+            // contains them in non-FIPS builds) asks for them.
+            let setup = rt
+                .block_on(setup::provision_optional_keys(
+                    setup, &client, &modes, delegated, hsm_slot,
                 ))
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 

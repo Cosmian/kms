@@ -45,7 +45,10 @@ use cosmian_pkcs11_module::{
 };
 use zeroize::Zeroizing;
 
-use crate::error::{Pkcs11Error, result::Pkcs11Result};
+use crate::error::{
+    Pkcs11Error,
+    result::{Pkcs11Result, Pkcs11ResultHelper},
+};
 
 /// The GCM authentication tag length (in bytes) used by the KMS's AES-GCM backend
 /// (`AES_128_GCM_MAC_LENGTH`/`AES_192_GCM_MAC_LENGTH`/`AES_256_GCM_MAC_LENGTH` in
@@ -143,12 +146,10 @@ impl fmt::Debug for LazyKeyMaterial {
 }
 
 /// A wrapper around a KMS KMIP object.
-#[allow(dead_code)]
 pub(crate) struct KmsObject {
     pub remote_id: String,
     pub object: Object,
     pub attributes: Attributes,
-    pub other_tags: Vec<String>,
 }
 
 /// Load the `KmsClientConfig` from `ckms.toml` without creating a `KmsClient`.
@@ -237,16 +238,10 @@ async fn get_kms_certificate_objects_async(
     );
     let mut results = vec![];
     for (id, object, attributes) in responses {
-        let other_tags = attributes
-            .get_tags(vendor_id)
-            .into_iter()
-            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
-            .collect::<Vec<String>>();
         results.push(KmsObject {
             remote_id: id.to_string(),
             object,
             attributes,
-            other_tags,
         });
     }
     Ok(results)
@@ -283,16 +278,10 @@ async fn get_kms_secret_data_objects_async(
     );
     let mut results = vec![];
     for (id, object, attributes) in responses {
-        let other_tags = attributes
-            .get_tags(vendor_id)
-            .into_iter()
-            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
-            .collect::<Vec<String>>();
         results.push(KmsObject {
             remote_id: id.to_string(),
             object,
             attributes,
-            other_tags,
         });
     }
     Ok(results)
@@ -315,6 +304,22 @@ pub(crate) fn get_kms_disk_encryption_data_objects(
         vendor_id,
         disk_encryption_tag,
     ))
+}
+
+/// The label under which a disk-encryption key is exposed: the first user-visible tag.
+///
+/// System tags (starting with `_`), empty tags and the disk-encryption tag itself are
+/// ignored. Tags are sorted so the choice is deterministic regardless of `HashSet`
+/// iteration order. Falls back to `fallback_id` when no user-visible tag exists.
+fn disk_encryption_label(
+    tags: impl IntoIterator<Item = String>,
+    disk_encryption_tag: &str,
+    fallback_id: &str,
+) -> String {
+    tags.into_iter()
+        .filter(|t| !t.is_empty() && !t.starts_with('_') && t != disk_encryption_tag)
+        .min()
+        .unwrap_or_else(|| fallback_id.to_owned())
 }
 
 async fn get_kms_disk_encryption_data_objects_async(
@@ -352,31 +357,22 @@ async fn get_kms_disk_encryption_data_objects_async(
     );
     let mut results = vec![];
     for (id, object, attributes) in responses {
-        // Extract user-visible tags (exclude system tags and the disk-encryption tag itself).
-        // Sorted so that label selection is deterministic regardless of HashSet iteration order.
-        let mut other_tags: Vec<String> = attributes
-            .get_tags(vendor_id)
-            .into_iter()
-            .filter(|t| !t.is_empty() && !t.starts_with('_') && t != disk_encryption_tag)
-            .collect();
-        other_tags.sort();
-        // Use the first user label (sorted, e.g. "vol1") as remote_id so VeraCrypt displays it
-        let label = other_tags
-            .first()
-            .cloned()
-            .unwrap_or_else(|| id.to_string());
+        // Use the first user label (e.g. "vol1") as remote_id so VeraCrypt displays it
+        let label = disk_encryption_label(
+            attributes.get_tags(vendor_id),
+            disk_encryption_tag,
+            &id.to_string(),
+        );
         results.push(KmsObject {
             remote_id: label,
             object,
             attributes,
-            other_tags,
         });
     }
     Ok(results)
 }
 
-#[cfg(test)]
-#[allow(dead_code)]
+#[cfg(all(test, feature = "non-fips"))]
 pub(crate) async fn get_kms_objects_async(
     kms_rest_client: &KmsClient,
     vendor_id: &str,
@@ -402,16 +398,10 @@ pub(crate) async fn get_kms_objects_async(
 
     let mut results = vec![];
     for (id, object, attributes) in responses {
-        let other_tags = attributes
-            .get_tags(vendor_id)
-            .into_iter()
-            .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
-            .collect::<Vec<String>>();
         results.push(KmsObject {
             remote_id: id.to_string(),
             object,
             attributes,
-            other_tags,
         });
     }
     Ok(results)
@@ -419,13 +409,11 @@ pub(crate) async fn get_kms_objects_async(
 
 pub(crate) fn get_kms_object(
     kms_client: &KmsClient,
-    vendor_id: &str,
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
     RUNTIME.block_on(get_kms_object_async(
         kms_client,
-        vendor_id,
         object_id_or_tags,
         key_format_type,
     ))
@@ -433,7 +421,6 @@ pub(crate) fn get_kms_object(
 
 pub(crate) async fn get_kms_object_async(
     kms_client: &KmsClient,
-    vendor_id: &str,
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
@@ -450,16 +437,10 @@ pub(crate) async fn get_kms_object_async(
 
     // Get request does not return attributes, try to get them form the object
     let attributes = object.attributes().cloned().unwrap_or_default();
-    let other_tags = attributes
-        .get_tags(vendor_id)
-        .into_iter()
-        .filter(|t| !t.is_empty() && !t.starts_with('_'))
-        .collect::<Vec<String>>();
     Ok(KmsObject {
         remote_id: id.to_string(),
         object,
         attributes,
-        other_tags,
     })
 }
 
@@ -652,7 +633,6 @@ pub(crate) async fn kms_import_symmetric_key_async(
         remote_id: remote_id.to_string(),
         object,
         attributes,
-        other_tags: tags,
     };
 
     Ok(res)
@@ -690,7 +670,7 @@ pub(crate) async fn kms_import_object_async(
     let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
 
     let mut attributes = Attributes::default();
-    attributes.set_tags(vendor_id, tags.clone())?;
+    attributes.set_tags(vendor_id, tags)?;
 
     let object = Object::SecretData(SecretData {
         secret_data_type: SecretDataType::Password,
@@ -722,7 +702,6 @@ pub(crate) async fn kms_import_object_async(
         remote_id: response.unique_identifier.to_string(),
         object,
         attributes,
-        other_tags: tags,
     };
 
     Ok(res)
@@ -1169,7 +1148,7 @@ fn signature_algorithm_to_kmip_params(
 fn ecdsa_der_to_raw(der: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
     let (tag, rest) = der
         .split_first()
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: unexpected end of input".to_owned()))?;
+        .context("ECDSA DER: unexpected end of input")?;
     if *tag != 0x30 {
         return Err(Pkcs11Error::Default(format!(
             "ECDSA DER: expected SEQUENCE tag (0x30), found {tag:#04x}"
@@ -1178,7 +1157,7 @@ fn ecdsa_der_to_raw(der: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
     let (seq_len, rest) = der_parse_length(rest)?;
     let content = rest
         .get(..seq_len)
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: truncated SEQUENCE content".to_owned()))?;
+        .context("ECDSA DER: truncated SEQUENCE content")?;
     let (r, content) = der_parse_unsigned_integer(content)?;
     let (s, _) = der_parse_unsigned_integer(content)?;
 
@@ -1191,12 +1170,12 @@ fn ecdsa_der_to_raw(der: &[u8], byte_size: usize) -> Pkcs11Result<Vec<u8>> {
     let mut raw = vec![0_u8; 2 * byte_size];
     let r_start = byte_size.saturating_sub(r.len());
     raw.get_mut(r_start..byte_size)
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: r slice out of bounds".to_owned()))?
+        .context("ECDSA DER: r slice out of bounds")?
         .copy_from_slice(r);
 
     let s_start = (2 * byte_size).saturating_sub(s.len());
     raw.get_mut(s_start..)
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: s slice out of bounds".to_owned()))?
+        .context("ECDSA DER: s slice out of bounds")?
         .copy_from_slice(s);
 
     Ok(raw)
@@ -1215,10 +1194,10 @@ pub(crate) fn ecdsa_raw_to_der(raw: &[u8], byte_size: usize) -> Pkcs11Result<Vec
 
     let r = raw
         .get(0..byte_size)
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA raw: r component out of bounds".to_owned()))?;
+        .context("ECDSA raw: r component out of bounds")?;
     let s = raw
         .get(byte_size..2 * byte_size)
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA raw: s component out of bounds".to_owned()))?;
+        .context("ECDSA raw: s component out of bounds")?;
 
     // Strip leading zeros from r and s
     let r_trimmed = r
@@ -1297,7 +1276,7 @@ fn encode_der_length(der: &mut Vec<u8>, len: usize) {
 fn der_parse_length(input: &[u8]) -> Pkcs11Result<(usize, &[u8])> {
     let (len_byte, rest) = input
         .split_first()
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: unexpected end of input".to_owned()))?;
+        .context("ECDSA DER: unexpected end of input")?;
 
     if len_byte & 0x80 == 0 {
         // Short form
@@ -1322,7 +1301,7 @@ fn der_parse_length(input: &[u8]) -> Pkcs11Result<(usize, &[u8])> {
 fn der_parse_unsigned_integer(input: &[u8]) -> Pkcs11Result<(&[u8], &[u8])> {
     let (tag, rest) = input
         .split_first()
-        .ok_or_else(|| Pkcs11Error::Default("ECDSA DER: unexpected end of input".to_owned()))?;
+        .context("ECDSA DER: unexpected end of input")?;
     if *tag != 0x02 {
         return Err(Pkcs11Error::Default(format!(
             "ECDSA DER: expected INTEGER tag (0x02), found {tag:#04x}"
@@ -1626,5 +1605,39 @@ mod tests {
             return Err("s component (padded) mismatch".into());
         }
         Ok(())
+    }
+
+    fn tags(values: &[&str]) -> Vec<String> {
+        values.iter().map(|t| (*t).to_owned()).collect()
+    }
+
+    #[test]
+    fn disk_encryption_label_is_first_sorted_user_tag() {
+        let label = disk_encryption_label(
+            tags(&["vol2", "disk-encryption", "_sk", "vol1", ""]),
+            "disk-encryption",
+            "uid-1",
+        );
+        assert_eq!(label, "vol1");
+    }
+
+    #[test]
+    fn disk_encryption_label_falls_back_to_the_object_id() {
+        let label = disk_encryption_label(
+            tags(&["disk-encryption", "_sk", ""]),
+            "disk-encryption",
+            "uid-1",
+        );
+        assert_eq!(label, "uid-1");
+        assert_eq!(
+            disk_encryption_label(Vec::new(), "disk-encryption", "uid-2"),
+            "uid-2"
+        );
+    }
+
+    #[test]
+    fn disk_encryption_label_honours_a_custom_disk_tag() {
+        let label = disk_encryption_label(tags(&["custom", "a-user-label"]), "custom", "uid");
+        assert_eq!(label, "a-user-label");
     }
 }
