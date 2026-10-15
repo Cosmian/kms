@@ -823,6 +823,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -834,7 +840,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
 dependencies = [
- "bit-vec",
+ "bit-vec 0.8.0",
 ]
 
 [[package]]
@@ -842,6 +848,15 @@ name = "bit-vec"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
+
+[[package]]
+name = "bit-vec"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bitfields"
@@ -1600,7 +1615,7 @@ dependencies = [
  "libc",
  "libloading",
  "openssl",
- "pem",
+ "pem 3.0.6",
  "pkcs11-sys",
  "reqwest 0.12.28",
  "serde",
@@ -1639,7 +1654,7 @@ dependencies = [
  "hyper-util",
  "oauth2",
  "openssl",
- "pem",
+ "pem 3.0.6",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -1662,7 +1677,7 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_access",
  "cosmian_logger",
- "pem",
+ "pem 3.0.6",
  "pgp",
  "serde",
  "serde_json",
@@ -1681,7 +1696,7 @@ dependencies = [
  "cosmian_kms_client_utils",
  "getrandom 0.2.17",
  "js-sys",
- "pem",
+ "pem 3.0.6",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -1872,7 +1887,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "pem",
+ "pem 3.0.6",
  "proteccio_pkcs11_loader",
  "rand 0.10.2",
  "reqwest 0.12.28",
@@ -4113,7 +4128,7 @@ dependencies = [
  "js-sys",
  "p256",
  "p384",
- "pem",
+ "pem 3.0.6",
  "rand 0.8.7",
  "rsa",
  "serde",
@@ -4229,7 +4244,7 @@ dependencies = [
  "jsonpath-rust",
  "k8s-openapi",
  "kube-core",
- "pem",
+ "pem 3.0.6",
  "rustls",
  "rustls-platform-verifier",
  "secrecy",
@@ -4633,7 +4648,7 @@ dependencies = [
  "lru",
  "mysql_common",
  "native-tls",
- "pem",
+ "pem 3.0.6",
  "percent-encoding",
  "rand 0.10.2",
  "serde",
@@ -5165,6 +5180,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5530,7 +5555,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b45fcc2344c680f5025fe57779faef368840d0bd1f42f216291f0dc4ace4744"
 dependencies = [
  "bit-set",
- "bit-vec",
+ "bit-vec 0.8.0",
  "bitflags 2.13.1",
  "num-traits",
  "rand 0.9.5",
@@ -5876,14 +5901,15 @@ checksum = "f70b36c8415361d34d90adf494f45bc18e568f909b5946d27c79559ddd812fa8"
 
 [[package]]
 name = "rcgen"
-version = "0.13.2"
+version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75e669e5202259b5314d1ea5397316ad400819437857b90861765f24c4cf80a2"
+checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
- "pem",
+ "pem 4.0.0",
  "ring",
  "rustls-pki-types",
  "time",
+ "x509-parser 0.18.1",
  "yasna",
 ]
 
@@ -7069,7 +7095,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -8489,6 +8515,7 @@ dependencies = [
  "lazy_static",
  "nom 7.1.3",
  "oid-registry",
+ "ring",
  "rusticata-macros",
  "thiserror 2.0.19",
  "time",
@@ -8506,10 +8533,11 @@ dependencies = [
 
 [[package]]
 name = "yasna"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+checksum = "b5f6765e852b9b4dc8e2a76843e4d64d1cea8e79bcde0b6901aea8e7c7f08282"
 dependencies = [
+ "bit-vec 0.9.1",
  "time",
 ]
 
