@@ -357,15 +357,23 @@ fn characterization_finalize_rsa3_blob_short_header() {
     );
 }
 
+/// Since `develop` (the HTTP client reports the request URI and the source chain) the offline
+/// client's error reads `HTTP request to <uri> failed: client error (Connect): <os error>`;
+/// the trailing OS error text is platform specific, so only the prefix is pinned.
+const BACKEND_UNREACHABLE: &str =
+    "HTTP Client: HTTP request to http://127.0.0.1:1/kmip/2_1 failed: client error (Connect)";
+
+fn assert_backend_unreachable(err: &str) {
+    let expected = format!("KMS backend error: {BACKEND_UNREACHABLE}");
+    assert!(err.starts_with(&expected), "{err}");
+}
+
 #[test]
 fn characterization_finalize_rsa3_blob_reaches_backend() {
     let mut blob = b"RSA3".to_vec();
     blob.extend_from_slice(&[0_u8; 20]);
     let err = assert_finalize_fails_pending(Some(blob), KeyAlgorithm::Rsa { bits: 2048 });
-    assert_eq!(
-        err,
-        "KMS backend error: HTTP Client: HTTP request failed: client error (Connect)"
-    );
+    assert_backend_unreachable(&err);
 }
 
 #[test]
@@ -373,10 +381,7 @@ fn characterization_finalize_raw_der_and_pem_reach_backend() {
     // exactly 4 bytes starting with "RSA3" is NOT treated as an RSA3 blob (len > 4 needed)
     let err =
         assert_finalize_fails_pending(Some(b"RSA3".to_vec()), KeyAlgorithm::Rsa { bits: 2048 });
-    assert_eq!(
-        err,
-        "KMS backend error: HTTP Client: HTTP request failed: client error (Connect)"
-    );
+    assert_backend_unreachable(&err);
     let mut pem = b"-----BEGIN PRIVATE KEY-----\n".to_vec();
     for line in PEM_LINES.iter().skip(1).take(PEM_LINES.len() - 2) {
         pem.extend_from_slice(line.as_bytes());
@@ -384,25 +389,16 @@ fn characterization_finalize_raw_der_and_pem_reach_backend() {
     }
     pem.extend_from_slice(b"-----END PRIVATE KEY-----\n");
     let err = assert_finalize_fails_pending(Some(pem), KeyAlgorithm::Rsa { bits: 2048 });
-    assert_eq!(
-        err,
-        "KMS backend error: HTTP Client: HTTP request failed: client error (Connect)"
-    );
+    assert_backend_unreachable(&err);
 }
 
 #[test]
 fn characterization_finalize_generate_reaches_backend() {
     let err = assert_finalize_fails_pending(None, KeyAlgorithm::Rsa { bits: 2048 });
-    assert_eq!(
-        err,
-        "KMS backend error: HTTP Client: HTTP request failed: client error (Connect)"
-    );
+    assert_backend_unreachable(&err);
     for curve in [EcCurve::P256, EcCurve::P384, EcCurve::P521] {
         let err = assert_finalize_fails_pending(None, KeyAlgorithm::Ec { curve });
-        assert_eq!(
-            err,
-            "KMS backend error: HTTP Client: HTTP request failed: client error (Connect)"
-        );
+        assert_backend_unreachable(&err);
     }
 }
 
@@ -427,13 +423,15 @@ fn characterization_export_persisted_reaches_backend() {
                     export_policy: ExportPolicy::default(),
                 },
             );
-            assert_eq!(
-                ctx.export_public_blob().unwrap_err().to_string(),
-                "KMS backend error: Get: HTTP Client: HTTP request failed: client error (Connect)"
+            let uri_error = ctx.export_public_blob().unwrap_err().to_string();
+            assert!(
+                uri_error.starts_with(&format!("KMS backend error: Get: {BACKEND_UNREACHABLE}")),
+                "{uri_error}"
             );
-            assert_eq!(
-                ctx.export_private_pkcs8().unwrap_err().to_string(),
-                "KMS backend error: Get: HTTP Client: HTTP request failed: client error (Connect)"
+            let pkcs8_error = ctx.export_private_pkcs8().unwrap_err().to_string();
+            assert!(
+                pkcs8_error.starts_with(&format!("KMS backend error: Get: {BACKEND_UNREACHABLE}")),
+                "{pkcs8_error}"
             );
         }
     }

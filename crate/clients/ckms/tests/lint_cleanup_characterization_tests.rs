@@ -34,10 +34,15 @@ fn characterization_main_unreachable_server_exit_1() {
     );
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
-    assert_eq!(
-        String::from_utf8(out.stderr).unwrap(),
-        "ERROR: failed creating the key: HTTP Client: HTTP request failed: client error (Connect)\n"
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    // `develop` reports the request URI and the source chain; the trailing OS error is platform specific.
+    assert!(
+        stderr.starts_with(
+            "ERROR: failed creating the key: HTTP Client: HTTP request to http://127.0.0.1:1/kmip/2_1 failed: client error (Connect)"
+        ),
+        "{stderr}"
     );
+    assert!(stderr.ends_with('\n'), "{stderr:?}");
 }
 
 #[test]
