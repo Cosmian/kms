@@ -74,14 +74,16 @@ fn run_child(mode: &str, envs: &[(&str, &str)]) -> String {
                 .or_else(|| line.find("ERROR:"))
                 .and_then(|idx| line.get(idx..))
         })
-        .map(str::to_owned)
-        .unwrap_or_else(|| {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            format!(
-                "NO_OUTPUT status={:?} stdout={stdout} stderr={stderr}",
-                output.status
-            )
-        })
+        .map_or_else(
+            || {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                format!(
+                    "NO_OUTPUT status={:?} stdout={stdout} stderr={stderr}",
+                    output.status
+                )
+            },
+            str::to_owned,
+        )
 }
 
 #[test]
