@@ -210,7 +210,7 @@ impl TTLVXMLDeserializer {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => {
-                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                    let mut tag = e.name().as_ref().to_owned();
                     // Preserve original RNGAlgorithm tag spelling (spec uses RNGAlgorithm). Older
                     // logic rewrote to RngAlgorithm which conflicted with explicit serde rename.
                     if tag.starts_with("PKCS_11") {
@@ -223,8 +223,8 @@ impl TTLVXMLDeserializer {
                     }
                     let mut node_type = None;
                     for a in e.attributes().flatten() {
-                        if a.key.as_ref() == b"type" {
-                            node_type = Some(String::from_utf8_lossy(&a.value).into_owned());
+                        if a.key.as_ref() == "type" {
+                            node_type = Some(a.value.into_owned());
                         }
                     }
                     let ttlv = TTLV {
@@ -247,7 +247,7 @@ impl TTLVXMLDeserializer {
                     });
                 }
                 Ok(Event::Empty(e)) => {
-                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                    let mut tag = e.name().as_ref().to_owned();
                     // Keep RNGAlgorithm as-is.
                     if tag.starts_with("PKCS_11") {
                         tag = tag.replace("PKCS_11", "PKCS11");
@@ -257,11 +257,11 @@ impl TTLVXMLDeserializer {
                     let mut name: Option<String> = None;
                     for a in e.attributes().flatten() {
                         let k = a.key.as_ref();
-                        let v = String::from_utf8_lossy(&a.value).into_owned();
+                        let v = a.value.into_owned();
                         match k {
-                            b"type" => ty = Some(v),
-                            b"value" => value = Some(v),
-                            b"name" => name = Some(v),
+                            "type" => ty = Some(v),
+                            "value" => value = Some(v),
+                            "name" => name = Some(v),
                             _ => {}
                         }
                     }
@@ -303,11 +303,11 @@ impl TTLVXMLDeserializer {
                     }
                 }
                 Ok(Event::End(e)) => {
-                    let end_tag_vec = e.name().as_ref().to_vec();
+                    let end_tag = e.name().as_ref().to_owned();
                     let ttlv = stack
                         .pop()
                         .ok_or_else(|| KmipError::Default("unbalanced XML".into()))?;
-                    debug_assert_eq!(ttlv.tag.as_bytes(), end_tag_vec.as_slice());
+                    debug_assert_eq!(ttlv.tag, end_tag);
                     if let Some(parent) = stack.last_mut() {
                         if let TTLValue::Structure(children) = &mut parent.value {
                             children.push(ttlv);
