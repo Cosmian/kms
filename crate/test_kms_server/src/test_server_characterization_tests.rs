@@ -74,14 +74,16 @@ fn run_child(mode: &str, envs: &[(&str, &str)]) -> String {
                 .or_else(|| line.find("ERROR:"))
                 .and_then(|idx| line.get(idx..))
         })
-        .map(str::to_owned)
-        .unwrap_or_else(|| {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            format!(
-                "NO_OUTPUT status={:?} stdout={stdout} stderr={stderr}",
-                output.status
-            )
-        })
+        .map_or_else(
+            || {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                format!(
+                    "NO_OUTPUT status={:?} stdout={stdout} stderr={stderr}",
+                    output.status
+                )
+            },
+            str::to_owned,
+        )
 }
 
 #[test]
@@ -108,7 +110,10 @@ fn characterization_get_hsm_slot_id_not_numeric_is_an_error() {
         ("abc", "invalid digit found in string"),
         ("", "cannot parse integer from empty string"),
         ("-1", "invalid digit found in string"),
-        ("18446744073709551616", "number too large to fit in target type"),
+        (
+            "18446744073709551616",
+            "number too large to fit in target type",
+        ),
         (" 7", "invalid digit found in string"),
     ] {
         assert_eq!(
@@ -164,9 +169,7 @@ fn characterization_three_softhsm2_missing_or_invalid_slot_ids_abort_the_process
         let output = run_child_output("three_softhsm2", envs);
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            !output.status.success()
-                && !stdout.contains("RESULT:")
-                && !stdout.contains("ERROR:"),
+            !output.status.success() && !stdout.contains("RESULT:") && !stdout.contains("ERROR:"),
             "expected an abort for {envs:?}, got status {:?} stdout {stdout}",
             output.status
         );
