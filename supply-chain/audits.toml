@@ -3,6 +3,286 @@
 
 [audits]
 
+[[trusted.actix-codec]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2023-05-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-cors]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-03-11"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-files]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2019-12-22"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-http]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-02-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-identity]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-03-14"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-macros]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-05-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-router]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2026-02-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-rt]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-04-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-server]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2019-10-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-session]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-03-14"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-tls]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-web]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-03-11"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.actix-web-codegen]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2020-02-25"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.aho-corasick]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-03-28"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.anstream]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-03-16"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.anstyle]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2022-05-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.anstyle-parse]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-03-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.anstyle-query]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-04-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.anstyle-wincon]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-03-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.anyhow]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-10-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.assert_cmd]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2019-03-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.async-trait]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-07-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.atomic]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-02-22"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.autocfg]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-22"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.axum]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2026-04-14"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.bstr]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-04-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.bytes]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-11-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.bytes]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2021-01-11"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.bytestring]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2026-04-30"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.cc]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.cc]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2024-02-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.cc]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2022-10-29"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.cfg-if]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2025-06-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.clap]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2021-12-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.clap_builder]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-03-28"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.clap_derive]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2021-12-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.clap_lex]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2022-04-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.cmake]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2022-10-29"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.colorchoice]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-04-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.console_error_panic_hook]]
+criteria = "safe-to-deploy"
+user-id = 696 # Nick Fitzgerald (fitzgen)
+start = "2021-10-11"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance audit sets"
+
 [[trusted.cosmian_config_utils]]
 criteria = "safe-to-deploy"
 user-id = 138394 # Manuthor
@@ -58,3 +338,1032 @@ user-id = 138394 # Manuthor
 start = "2025-08-06"
 end = "2027-10-15"
 notes = "Cosmian-maintained crate (own organisation)"
+
+[[trusted.csv]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-04-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.csv-core]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-06-26"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.derive_more]]
+criteria = "safe-to-deploy"
+user-id = 3797 # Jelte Fennema-Nio (JelteF)
+start = "2019-05-25"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.derive_more-impl]]
+criteria = "safe-to-deploy"
+user-id = 3797 # Jelte Fennema-Nio (JelteF)
+start = "2023-07-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.displaydoc]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2024-06-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.dyn-clone]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-12-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.either]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-04-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.encoding_rs_io]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-03-03"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.errno]]
+criteria = "safe-to-deploy"
+user-id = 6825 # Dan Gohman (sunfishcode)
+start = "2023-08-29"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.find-msvc-tools]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2025-08-29"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.flate2]]
+criteria = "safe-to-deploy"
+user-id = 980 # Sebastian Thiel (Byron)
+start = "2023-08-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.flate2]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2022-11-24"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.h2]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hashbrown]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-04-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.http]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-04-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.http-body]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-10-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.http-body-util]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2022-10-25"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.httparse]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-07-03"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hyper]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hyper-tls]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-19"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hyper-util]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2022-01-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.icu_collections]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2022-09-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.icu_locale_core]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2025-02-26"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.icu_normalizer]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-04-29"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.icu_normalizer_data]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2023-10-03"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.icu_properties]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2022-01-31"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.icu_properties_data]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2023-10-03"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.icu_provider]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2022-01-31"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.idna]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2024-07-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.indexmap]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2020-01-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.is_terminal_polyfill]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2024-05-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.itoa]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-05-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.jiff]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2024-02-17"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.jiff-core]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2026-06-30"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.jiff-static]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2025-03-06"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.jobserver]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-07-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.js-sys]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.lazy_static]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2024-06-21"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.lazy_static]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2026-10-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.leb128]]
+criteria = "safe-to-deploy"
+user-id = 696 # Nick Fitzgerald (fitzgen)
+start = "2019-05-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance audit sets"
+
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2021-01-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-08-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.libm]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2022-02-06"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.libm]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-10-26"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.libz-sys]]
+criteria = "safe-to-deploy"
+user-id = 980 # Sebastian Thiel (Byron)
+start = "2023-07-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.linux-raw-sys]]
+criteria = "safe-to-deploy"
+user-id = 6825 # Dan Gohman (sunfishcode)
+start = "2021-06-12"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.litemap]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-02-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.lock_api]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-05-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.memchr]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-07-07"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.mime]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-09-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.minicov]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2020-04-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.mio]]
+criteria = "safe-to-deploy"
+user-id = 6025 # Thomas de Zeeuw (Thomasdezeeuw)
+start = "2019-12-17"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.num-bigint]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-09-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.num-iter]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-05-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.once_cell_polyfill]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2025-05-22"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.openssl-probe]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2020-08-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ordered-float]]
+criteria = "safe-to-deploy"
+user-id = 2017 # Matt Brubeck (mbrubeck)
+start = "2019-03-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.parking_lot]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-05-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.parking_lot_core]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-05-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.phf]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2021-06-17"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.phf_shared]]
+criteria = "safe-to-deploy"
+user-id = 51017 # Yuki Okushi (JohnTitor)
+start = "2021-06-17"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.potential_utf]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2024-11-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.proc-macro2]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-04-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ref-cast]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-05-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ref-cast-impl]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-05-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.regex]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-02-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.regex-automata]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-02-25"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.regex-lite]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2023-02-28"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.regex-syntax]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-03-30"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.reqwest]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.rustix]]
+criteria = "safe-to-deploy"
+user-id = 6825 # Dan Gohman (sunfishcode)
+start = "2021-10-29"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.rustversion]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-07-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ryu]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-05-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.same-file]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-07-16"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.scopeguard]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2020-02-16"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-03-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_core]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2025-09-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_derive]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-03-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_derive_internals]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-09-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_ignored]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-08-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_json]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-02-28"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_path_to_error]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-08-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.serde_spanned]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-01-20"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.slab]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2021-10-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.socket2]]
+criteria = "safe-to-deploy"
+user-id = 6025 # Thomas de Zeeuw (Thomasdezeeuw)
+start = "2020-09-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.syn]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-03-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.thiserror]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-10-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.thiserror-impl]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-10-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.thread_local]]
+criteria = "safe-to-deploy"
+user-id = 2915 # Amanieu d'Antras (Amanieu)
+start = "2019-09-07"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tinystr]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-01-14"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.tokio]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2020-12-25"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tokio-macros]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2020-10-26"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tokio-stream]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2021-01-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tokio-util]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2021-01-12"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.toml]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2022-12-14"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.toml_datetime]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2022-10-21"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.toml_edit]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2021-09-13"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.toml_parser]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2025-07-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.toml_write]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2025-04-25"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.toml_writer]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2025-07-08"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tower]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2024-09-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tower-http]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2024-09-23"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.try-lock]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2020-07-10"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ucd-trie]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-07-21"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.unicase]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.unicode-ident]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2021-10-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.unicode-properties]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2023-07-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.url]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-02-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.walkdir]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-06-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.want]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-19"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasi]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2020-06-03"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasi]]
+criteria = "safe-to-deploy"
+user-id = 6825 # Dan Gohman (sunfishcode)
+start = "2019-07-22"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen-futures]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen-macro]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen-macro-support]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen-shared]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen-test]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.wasm-bindgen-test-macro]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.web-sys]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2019-03-04"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.winapi-util]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2020-01-11"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-core]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-11-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-implement]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-01-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-interface]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-02-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-link]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-07-17"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-result]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-02-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-strings]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-02-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-sys]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-11-15"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows-targets]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-09-09"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_aarch64_gnullvm]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-09-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_aarch64_msvc]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-11-05"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_i686_gnu]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-10-28"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_i686_gnullvm]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2024-04-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_i686_msvc]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-10-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_x86_64_gnu]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-10-28"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_x86_64_gnullvm]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2022-09-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.windows_x86_64_msvc]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-10-27"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.winnow]]
+criteria = "safe-to-deploy"
+user-id = 6743 # Ed Page (epage)
+start = "2023-02-22"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.writeable]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-11-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.yoke]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-05-01"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.yoke-derive]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-07-02"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zerofrom]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2022-04-06"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zerofrom-derive]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2022-04-06"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zerotrie]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2023-10-03"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zerovec]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-04-19"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zerovec-derive]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-12-11"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zmij]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2025-12-18"
+end = "2027-10-15"
+notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
