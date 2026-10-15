@@ -372,7 +372,7 @@ tracing = "0.1"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3", default-features = false }
 url = "2.5"
-uuid = "=1.11.1"
+uuid = "=1.28.0"
 wasm-bindgen = "=0.2.108"
 wasm-bindgen-test = "0.3"
 windows-service = "0.8"
