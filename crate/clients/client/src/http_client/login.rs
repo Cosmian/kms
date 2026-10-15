@@ -351,7 +351,7 @@ pub(crate) async fn request_token(
         .post_form(&login_config.token_url, &body, &extra_headers)
         .await
         .map_err(|e| {
-            HttpClientError::Default(format!("failed issuing token exchange request: {e:?}"))
+            HttpClientError::Default(format!("failed issuing token exchange request: {e}"))
         })?;
 
     if response.status != StatusCode::OK {
