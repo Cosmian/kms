@@ -257,3 +257,115 @@ These options can be repeated to configure multiple slots.
 > ```shell
 > ./p11tool -list -shared /lib/libpkcs11c2p.so -verbose
 > ```
+
+## Kubernetes (Helm chart)
+
+Use the official KMS image unmodified. An init container copies `libpkcs11c2p.so` from a small
+client image and unpacks the `[C2P_DIR]` configuration from a Kubernetes Secret. See the
+[Helm chart HSM overview](../integrations/kubernetes/helm.md#hsm).
+
+Unlike other HSM libraries, the Crypt2pay library writes inside `[C2P_DIR]` at runtime: `logs/` and
+the objects directory (`<ObjectsDirectory>` in `c2p.xml`, for example `QuickStart_<date>_p11/`),
+which stores the keys generated through PKCS#11, wrapped by the KDK. `[C2P_DIR]` is therefore a
+**PersistentVolumeClaim** mounted read-write at `/etc/c2p`, and the KMS runs as a **single replica**
+(`replicaCount: 1`, autoscaling disabled). Otherwise each pod would keep its own objects directory.
+
+!!! note
+    This setup applies the pattern validated with Thales Luna. On a Kubernetes cluster, the library
+    loads and `C_Initialize` succeeds, and the volume survives a pod restart. It has not been run
+    against a live Crypt2pay.
+
+### 1. Crypt2pay client image
+
+Build it once per library version. Run `ldd libpkcs11c2p.so`, and copy into `/opt/c2p/lib` every
+listed library that is neither glibc nor `libstdc++.so.6` / `libgcc_s.so.1` (both already in the
+KMS image):
+
+```dockerfile
+FROM debian:bookworm-slim
+COPY libpkcs11c2p.so /opt/c2p/lib/libpkcs11c2p.so
+```
+
+### 2. Crypt2pay configuration in a Secret
+
+Prepare and test `[C2P_DIR]` on a workstation as described above, with `[C2P_DIR]` = `/etc/c2p`.
+Absolute paths under `/etc/c2p` are recommended in `c2p.xml` (`Authorities`, mTLS files,
+`TraceFile`), e.g. `<TraceFile>+/etc/c2p/logs/c2p.trc</TraceFile>`; relative `KSKfile` and
+`ObjectsDirectory` entries resolve under `/etc/c2p`. Pack the configuration, the
+installed CA tree and the key files into one archive (add `<name>.ksk` if used):
+
+```bash
+cd /etc/c2p
+tar -cf c2p-config.tar c2p.xml ssl <name>.kdk
+kubectl -n kms create secret generic c2p-files --from-file=c2p-config.tar
+kubectl -n kms create secret generic c2p-password --from-literal=password='<PIN>'
+```
+
+PersistentVolumeClaim for `[C2P_DIR]`:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: c2p-data
+  namespace: kms
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### 3. Helm values
+
+At each pod start, the init container refreshes the configuration on the volume and leaves the
+objects directory intact:
+
+```yaml
+image:
+  repository: ghcr.io/cosmian/kms
+  tag: <version>
+replicaCount: 1
+extraArgs: [--hsm-model, crypt2pay, --hsm-slot, "<slot>", --hsm-admin, admin]
+extraEnv:
+  - name: CRYPT2PAY_PKCS11_LIB
+    value: /opt/c2p/lib/libpkcs11c2p.so
+  - name: LD_LIBRARY_PATH
+    value: /usr/local/cosmian/lib/hsm:/opt/c2p/lib
+  - name: C2P_CONF
+    value: /etc/c2p/c2p.xml
+  - name: KMS_HSM_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: c2p-password, key: password}
+initContainers:
+  - name: c2p-client
+    image: <registry>/c2p-client:<library-version>
+    command: [sh, -c, 'cp /opt/c2p/lib/* /c2p-lib/ && tar -xf /c2p-secret/c2p-config.tar -C /etc/c2p && mkdir -p /etc/c2p/logs']
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+    volumeMounts:
+      - {name: c2p-lib, mountPath: /c2p-lib}
+      - {name: c2p-secret, mountPath: /c2p-secret, readOnly: true}
+      - {name: c2p, mountPath: /etc/c2p}
+extraVolumes:
+  - name: c2p-lib
+    emptyDir: {}
+  - name: c2p-secret
+    secret:
+      secretName: c2p-files
+      defaultMode: 0440
+  - name: c2p
+    persistentVolumeClaim:
+      claimName: c2p-data
+extraVolumeMounts:
+  - name: c2p-lib
+    mountPath: /opt/c2p/lib
+    readOnly: true
+  - name: c2p
+    mountPath: /etc/c2p
+```
+
+The pod must reach the HSM on TCP port 3001 (TLS).
