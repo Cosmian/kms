@@ -205,26 +205,9 @@ impl ObjectsDB {
         Ok(redis_db_object)
     }
 
-    pub(crate) async fn object_create(
-        &self,
-        uid: &str,
-        redis_db_object: &RedisDbObject,
-    ) -> DbResult<()> {
-        let res: usize = self
-            .mgr
-            .clone()
-            .set_nx(
-                Self::object_key(uid),
-                self.encrypt_object(uid, redis_db_object)?,
-            )
-            .await?;
-        if res == 1 {
-            Ok(())
-        } else {
-            db_bail!("object {uid} already exists")
-        }
-    }
-
+    /// Unconditionally write an object. Test-only (seeds legacy objects): production
+    /// writes go through the CAS script.
+    #[cfg(test)]
     pub(crate) async fn object_upsert(
         &self,
         uid: &str,
@@ -256,6 +239,8 @@ impl ObjectsDB {
         }
     }
 
+    /// Unconditionally delete an object. Test-only: production deletes go through the CAS script.
+    #[cfg(test)]
     pub(crate) async fn object_delete(&self, uid: &str) -> DbResult<()> {
         self.mgr.clone().del::<_, ()>(Self::object_key(uid)).await?;
         Ok(())
@@ -283,35 +268,44 @@ impl ObjectsDB {
 
     /// Execute a batch of [`ScriptOp`]s atomically: either every precondition
     /// holds and every write is applied, or nothing is written.
-    pub(crate) async fn atomic_script(&self, ops: &[ScriptOp]) -> DbResult<AtomicScriptOutcome> {
+    ///
+    /// The script touches several keys in one `EVAL`, so it requires a
+    /// single-node Redis (a Redis Cluster would reject keys in different slots
+    /// with `CROSSSLOT`).
+    pub(crate) async fn atomic_script(
+        &self,
+        ops: &[ScriptOp<'_>],
+    ) -> DbResult<AtomicScriptOutcome> {
         if ops.is_empty() {
             return Ok(AtomicScriptOutcome::Committed);
         }
-        let uids: Vec<&str> = ops.iter().map(ScriptOp::uid).collect();
         let mut invocation = ATOMIC_CAS_SCRIPT.prepare_invoke();
         for op in ops {
+            invocation.key(Self::object_key(op.uid()));
             match op {
                 ScriptOp::Create { uid, value } => {
-                    invocation.key(Self::object_key(uid));
                     invocation.arg("C");
-                    invocation.arg(Vec::<u8>::new());
+                    invocation.arg(NO_BYTES);
                     invocation.arg(self.encrypt_object(uid, value)?);
+                }
+                ScriptOp::Absent { .. } => {
+                    invocation.arg("A");
+                    invocation.arg(NO_BYTES);
+                    invocation.arg(NO_BYTES);
                 }
                 ScriptOp::Cas {
                     uid,
                     expected,
                     value,
                 } => {
-                    invocation.key(Self::object_key(uid));
                     invocation.arg("U");
-                    invocation.arg(expected.as_deref().unwrap_or_default());
+                    invocation.arg(expected.unwrap_or_default());
                     invocation.arg(self.encrypt_object(uid, value)?);
                 }
-                ScriptOp::Delete { uid, expected } => {
-                    invocation.key(Self::object_key(uid));
+                ScriptOp::Delete { expected, .. } => {
                     invocation.arg("D");
-                    invocation.arg(expected.as_deref().unwrap_or_default());
-                    invocation.arg(Vec::<u8>::new());
+                    invocation.arg(expected.unwrap_or_default());
+                    invocation.arg(NO_BYTES);
                 }
             }
         }
@@ -319,8 +313,8 @@ impl ObjectsDB {
         let uid_at = |idx: i64| {
             usize::try_from(idx - 1)
                 .ok()
-                .and_then(|i| uids.get(i))
-                .map(|s| (*s).to_owned())
+                .and_then(|i| ops.get(i))
+                .map(|op| op.uid().to_owned())
                 .unwrap_or_default()
         };
         match status {
@@ -332,31 +326,41 @@ impl ObjectsDB {
     }
 }
 
-/// A single key's intended mutation inside one atomic batch.
-pub(crate) enum ScriptOp {
-    /// Key must not already exist (NX).
-    Create { uid: String, value: RedisDbObject },
+/// A single key's intended mutation inside one atomic batch. Borrows its data
+/// from the caller so building a batch does not copy objects or ciphertexts.
+pub(crate) enum ScriptOp<'a> {
+    /// Key must not already exist (NX); the value is then written.
+    Create {
+        uid: &'a str,
+        value: &'a RedisDbObject,
+    },
+    /// Key must not already exist; nothing is written. Guards a `Create` whose
+    /// object is deleted again within the same batch.
+    Absent { uid: &'a str },
     /// Key must currently equal the raw bytes previously read into `expected`
     /// (`None` = key must be absent). This is how `Upsert`/`UpdateObject`/
     /// `UpdateState` detect a concurrent modification since their baseline read.
     Cas {
-        uid: String,
-        expected: Option<Vec<u8>>,
-        value: RedisDbObject,
+        uid: &'a str,
+        expected: Option<&'a [u8]>,
+        value: &'a RedisDbObject,
     },
     /// Delete the key if it still equals `expected` (`None` = key must be
     /// absent, making the delete a no-op), so a concurrent write is not erased
     /// on the strength of a stale baseline.
     Delete {
-        uid: String,
-        expected: Option<Vec<u8>>,
+        uid: &'a str,
+        expected: Option<&'a [u8]>,
     },
 }
 
-impl ScriptOp {
-    fn uid(&self) -> &str {
+impl ScriptOp<'_> {
+    const fn uid(&self) -> &str {
         match self {
-            Self::Create { uid, .. } | Self::Cas { uid, .. } | Self::Delete { uid, .. } => uid,
+            Self::Create { uid, .. }
+            | Self::Absent { uid }
+            | Self::Cas { uid, .. }
+            | Self::Delete { uid, .. } => uid,
         }
     }
 }
@@ -365,7 +369,7 @@ impl ScriptOp {
 pub(crate) enum AtomicScriptOutcome {
     /// Every operation's precondition held; all writes were applied.
     Committed,
-    /// A `Create` operation's key already existed. Hard failure — never retried.
+    /// A `Create`/`Absent` operation's key already existed. Hard failure — never retried.
     CreateConflict(String),
     /// A `Cas` operation's key no longer matched its expected baseline (lost
     /// a race with a concurrent writer). Transient — the caller should re-read
@@ -383,13 +387,13 @@ pub(crate) enum AtomicScriptOutcome {
 /// commands if this one's precondition fails").
 ///
 /// `ARGV` is laid out as triples per operation, in `KEYS` order:
-/// `mode ('C'|'U'|'D')`, `expected` (CAS baseline, `''` = must-be-absent,
-/// unused for `C`), `new value` (unused for `D`).
+/// `mode ('C'|'A'|'U'|'D')`, `expected` (CAS baseline, `''` = must-be-absent,
+/// unused for `C`/`A`), `new value` (unused for `A`/`D`).
 const ATOMIC_CAS_LUA: &str = r"
 local n = #KEYS
 for i = 1, n do
     local mode = ARGV[3 * (i - 1) + 1]
-    if mode == 'C' then
+    if mode == 'C' or mode == 'A' then
         local current = redis.call('GET', KEYS[i])
         if current ~= false then
             return {2, i}
@@ -413,13 +417,16 @@ for i = 1, n do
     local mode = ARGV[3 * (i - 1) + 1]
     if mode == 'D' then
         redis.call('DEL', KEYS[i])
-    else
+    elseif mode ~= 'A' then
         local newval = ARGV[3 * (i - 1) + 3]
         redis.call('SET', KEYS[i], newval)
     end
 end
 return {1, 0}
 ";
+
+/// Empty `ARGV` slot for script arguments a given mode does not use.
+const NO_BYTES: &[u8] = &[];
 
 static ATOMIC_CAS_SCRIPT: LazyLock<Script> = LazyLock::new(|| Script::new(ATOMIC_CAS_LUA));
 

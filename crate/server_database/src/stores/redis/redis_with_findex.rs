@@ -21,7 +21,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore, UserId,
 };
-use cosmian_logger::{debug, error, trace};
+use cosmian_logger::{debug, error, trace, warn};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
@@ -158,22 +158,99 @@ enum AtomicAttempt {
     Retry,
 }
 
-/// Keyword-index change for one uid: `(uid, old keywords, new keywords)`;
-/// `None` new keywords means the object is deleted.
-type IndexDiff<'a> = (&'a str, HashSet<Keyword>, Option<HashSet<Keyword>>);
+/// Keyword-index change for one uid; `new == None` means the object is deleted.
+struct IndexDiff<'a> {
+    uid: &'a str,
+    old: HashSet<Keyword>,
+    new: Option<HashSet<Keyword>>,
+}
+
+/// Working state of one `try_atomic` attempt: per-uid state plus the net
+/// counter deltas to apply once the batch commits.
+#[derive(Default)]
+struct Attempt {
+    uids: HashMap<String, UidState>,
+    /// Net change of the live-object counter.
+    live_delta: i64,
+    /// Net change of the non-destroyed-key counter.
+    active_key_delta: i64,
+}
+
+impl Attempt {
+    /// Record a liveness change of `delta` for an object; key-type objects also
+    /// move the active-key counter.
+    const fn add_live(&mut self, delta: i64, is_key: bool) {
+        self.live_delta += delta;
+        if is_key {
+            self.active_key_delta += delta;
+        }
+    }
+}
 
 /// Upper bound on whole-batch retries after lost CAS races.
 const MAX_ATOMIC_CAS_ATTEMPTS: u32 = 64;
 
-/// `true` if the stored object carries every tag in `tags`. Used to discard
-/// stale Findex hits (the index is written after the object, see `try_atomic`).
-fn has_all_tags(object: &RedisDbObject, tags: &HashSet<String>) -> bool {
-    tags.iter().all(|tag| {
-        object
-            .tags
-            .as_ref()
-            .is_some_and(|stored| stored.contains(tag))
-    })
+/// Upper bound on in-place retries of the post-commit Findex index writes.
+const INDEX_WRITE_ATTEMPTS: u32 = 3;
+
+/// Capped linear backoff with random jitter: `attempt` ms (max 8) plus 0..=that
+/// again, so writers hammering one uid de-synchronise.
+fn retry_backoff(attempt: u32) -> std::time::Duration {
+    let base = u64::from(attempt.min(8));
+    // A v4 UUID is a cheap source of OS randomness (no extra dependency).
+    let jitter = u64::try_from(Uuid::new_v4().as_u128() % u128::from(base + 1)).unwrap_or(0);
+    std::time::Duration::from_millis(base + jitter)
+}
+
+/// The acting user, which `Create`/`Upsert` need to own the written object.
+fn require_user(user: Option<&UserId>) -> DbResult<&UserId> {
+    user.ok_or_else(|| db_error!("a user is required to create or upsert an object"))
+}
+
+/// Translate the final per-uid working state into the Redis script operations
+/// and the keyword-index changes to apply once the script commits.
+fn build_batch(states: &HashMap<String, UidState>) -> (Vec<ScriptOp<'_>>, Vec<IndexDiff<'_>>) {
+    let mut script_ops = Vec::with_capacity(states.len());
+    let mut index_diffs = Vec::with_capacity(states.len());
+    for (uid, state) in states {
+        let expected = state.baseline_raw.as_deref();
+        match (&state.current, &state.precondition) {
+            (Some(value), Precondition::Create) => script_ops.push(ScriptOp::Create { uid, value }),
+            (Some(value), Precondition::Cas) => script_ops.push(ScriptOp::Cas {
+                uid,
+                expected,
+                value,
+            }),
+            (None, Precondition::Cas) => script_ops.push(ScriptOp::Delete { uid, expected }),
+            // Created then deleted within the batch: nothing to write or index,
+            // but the uid must still have been absent for the `Create` to be valid.
+            (None, Precondition::Create) => {
+                script_ops.push(ScriptOp::Absent { uid });
+                continue;
+            }
+        }
+        index_diffs.push(IndexDiff {
+            uid,
+            old: state
+                .baseline
+                .as_ref()
+                .map(RedisDbObject::keywords)
+                .unwrap_or_default(),
+            new: state.current.as_ref().map(RedisDbObject::keywords),
+        });
+    }
+    (script_ops, index_diffs)
+}
+
+/// `true` if the stored object still carries every keyword in `keywords`. Used
+/// to discard stale Findex hits (the index is written after the object, see
+/// `try_atomic`).
+fn has_all_keywords<'a>(
+    object: &RedisDbObject,
+    keywords: impl IntoIterator<Item = &'a Keyword>,
+) -> bool {
+    let stored = object.keywords();
+    keywords.into_iter().all(|keyword| stored.contains(keyword))
 }
 
 impl RedisWithFindex {
@@ -342,6 +419,25 @@ impl RedisWithFindex {
         Ok(state)
     }
 
+    /// Apply `operations` atomically, retrying the whole batch with fresh
+    /// baselines whenever a concurrent writer wins a CAS race. `user` is the
+    /// acting user; it is required by `Create`/`Upsert` only.
+    async fn run_atomic(
+        &self,
+        user: Option<&UserId>,
+        operations: &[AtomicOperation],
+    ) -> DbResult<Vec<String>> {
+        for attempt in 0..MAX_ATOMIC_CAS_ATTEMPTS {
+            match self.try_atomic(user, operations).await? {
+                AtomicAttempt::Committed(uids) => return Ok(uids),
+                AtomicAttempt::Retry => tokio::time::sleep(retry_backoff(attempt)).await,
+            }
+        }
+        Err(db_error!(
+            "atomic: exceeded {MAX_ATOMIC_CAS_ATTEMPTS} retries due to concurrent modifications"
+        ))
+    }
+
     /// One attempt at applying `operations` atomically. Returns `Retry` on a
     /// lost CAS race; any other error (including a `Create` conflict) is
     /// returned directly and must not be retried by the caller.
@@ -350,229 +446,224 @@ impl RedisWithFindex {
     /// write is confirmed, so a failed batch leaves no trace.
     async fn try_atomic(
         &self,
-        user: &UserId,
+        user: Option<&UserId>,
         operations: &[AtomicOperation],
     ) -> DbResult<AtomicAttempt> {
-        // Multiple operations on the same uid within the batch build on each
-        // other (e.g. UpdateObject then UpdateState) through `UidState::current`.
-        let mut states: HashMap<String, UidState> = HashMap::new();
-        let mut live_delta: i64 = 0;
-        let mut active_key_delta: i64 = 0;
-
+        let mut attempt = Attempt::default();
         for operation in operations {
-            match operation {
-                AtomicOperation::Create((uid, _owner, object, attributes, tags)) => {
-                    let db_object = RedisDbObject::new(
-                        object.clone(),
-                        user.as_str().to_owned(),
-                        attributes.state.unwrap_or(State::PreActive),
-                        Some(tags.clone()),
-                        attributes.clone(),
-                    );
-                    // New objects are always live.
-                    live_delta += 1;
-                    if is_key_type(db_object.object_type) {
-                        active_key_delta += 1;
-                    }
-                    match states.get_mut(uid) {
-                        // Earlier operation in this batch already touched the uid:
-                        // Create is only valid if that left it absent (e.g. Delete
-                        // then Create); the earlier precondition is kept.
-                        Some(entry) if entry.current.is_some() => {
-                            db_bail!("object {uid} already exists")
-                        }
-                        Some(entry) => entry.current = Some(db_object),
-                        None => {
-                            states.insert(
-                                uid.clone(),
-                                UidState {
-                                    precondition: Precondition::Create,
-                                    baseline_raw: None,
-                                    baseline: None,
-                                    current: Some(db_object),
-                                },
-                            );
-                        }
-                    }
-                }
-                AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                    let entry = self.touch(&mut states, uid).await?;
-                    let old_obj = entry.current.take();
-                    if let Some(old) = &old_obj {
-                        if old.owner != user.as_str() {
-                            return Err(DbError::Unauthorized(format!(
-                                "User '{user}' does not own object '{uid}' and cannot overwrite it"
-                            )));
-                        }
-                    }
-                    let old_state = old_obj.as_ref().map(|o| o.state);
-                    let old_object_type = old_obj.as_ref().map(|o| o.object_type);
-                    // `None` tags = keep the current ones (read from the same
-                    // baseline the CAS guards, so a concurrent change retries).
-                    let final_tags = tags.clone().unwrap_or_else(|| {
-                        old_obj
-                            .as_ref()
-                            .and_then(|o| o.tags.clone())
-                            .unwrap_or_default()
-                    });
-                    let db_object = RedisDbObject::new(
-                        object.clone(),
-                        user.as_str().to_owned(),
-                        *state,
-                        Some(final_tags),
-                        attributes.clone(),
-                    );
-                    let new_live = i64::from(is_live(*state));
-                    live_delta +=
-                        old_state.map_or(new_live, |old| new_live - i64::from(is_live(old)));
-                    if is_key_type(db_object.object_type) {
-                        let old_key_live = old_object_type
-                            .filter(|ot| is_key_type(*ot))
-                            .and(old_state)
-                            .map_or(0, |old| i64::from(is_live(old)));
-                        active_key_delta += new_live - old_key_live;
-                    }
-                    entry.current = Some(db_object);
-                }
-                AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                    // State is unchanged by UpdateObject — no counter adjustment.
-                    let entry = self.touch(&mut states, uid).await?;
-                    let Some(db_object) = entry.current.as_mut() else {
-                        return Err(DbError::ItemNotFound(uid.clone()));
-                    };
-                    db_object.object = object.clone();
-                    if tags.is_some() {
-                        db_object.tags.clone_from(tags);
-                    }
-                    db_object.attributes = Some(attributes.clone());
-                }
-                AtomicOperation::UpdateState((uid, state)) => {
-                    let entry = self.touch(&mut states, uid).await?;
-                    let Some(db_object) = entry.current.as_mut() else {
-                        return Err(DbError::ItemNotFound(uid.clone()));
-                    };
-                    let old_live = i64::from(is_live(db_object.state));
-                    let new_live = i64::from(is_live(*state));
-                    db_object.state = *state;
-                    live_delta += new_live - old_live;
-                    if is_key_type(db_object.object_type) {
-                        active_key_delta += new_live - old_live;
-                    }
-                }
-                AtomicOperation::Delete(uid) => {
-                    let entry = self.touch(&mut states, uid).await?;
-                    if let Some(old) = entry.current.take() {
-                        if is_live(old.state) {
-                            live_delta -= 1;
-                            if is_key_type(old.object_type) {
-                                active_key_delta -= 1;
-                            }
-                        }
-                    }
-                }
-            }
+            self.apply_operation(user, operation, &mut attempt).await?;
         }
-
-        let mut script_ops = Vec::with_capacity(states.len());
-        let mut index_diffs: Vec<IndexDiff<'_>> = Vec::with_capacity(states.len());
-        for (uid, state) in &states {
-            let old_keywords = state
-                .baseline
-                .as_ref()
-                .map(RedisDbObject::keywords)
-                .unwrap_or_default();
-            if let Some(value) = &state.current {
-                script_ops.push(match state.precondition {
-                    Precondition::Create => ScriptOp::Create {
-                        uid: uid.clone(),
-                        value: value.clone(),
-                    },
-                    Precondition::Cas => ScriptOp::Cas {
-                        uid: uid.clone(),
-                        expected: state.baseline_raw.clone(),
-                        value: value.clone(),
-                    },
-                });
-                index_diffs.push((uid, old_keywords, Some(value.keywords())));
-            } else {
-                script_ops.push(ScriptOp::Delete {
-                    uid: uid.clone(),
-                    expected: state.baseline_raw.clone(),
-                });
-                index_diffs.push((uid, old_keywords, None));
-            }
-        }
-
+        let (script_ops, index_diffs) = build_batch(&attempt.uids);
         match self.objects_db.atomic_script(&script_ops).await? {
             AtomicScriptOutcome::CreateConflict(uid) => db_bail!("object {uid} already exists"),
             AtomicScriptOutcome::CasConflict => Ok(AtomicAttempt::Retry),
             AtomicScriptOutcome::Committed => {
-                // The object writes are committed: a failure past this point leaves
-                // the Findex index and/or counters behind, so say which uids.
-                let post_commit = async {
-                    for (uid, old_keywords, new_keywords) in index_diffs {
-                        let removes_keywords = if let Some(new_keywords) = new_keywords {
-                            self.update_findex_keywords(uid, &old_keywords, &new_keywords)
-                                .await?;
-                            !old_keywords.is_subset(&new_keywords)
-                        } else {
-                            self.delete_findex_keywords(uid, &old_keywords).await?;
-                            !old_keywords.is_empty()
-                        };
-                        // Post-commit index writers can interleave: a concurrent writer's
-                        // late removal may delete a keyword the final object still has.
-                        // Re-insert from fresh state so every removal is followed by a
-                        // re-insert (extra keywords are filtered on read).
-                        if removes_keywords {
-                            self.reconcile_findex_keywords(uid).await?;
-                        }
-                    }
-                    self.objects_db.adjust_live_count(live_delta).await?;
-                    self.objects_db
-                        .adjust_active_key_count(active_key_delta)
-                        .await
-                };
                 let uids: Vec<String> = operations
                     .iter()
                     .map(|op| op.get_object_uid().to_owned())
                     .collect();
-                if let Err(e) = post_commit.await {
-                    error!(
-                        "atomic: objects {uids:?} were committed but the Findex index or counters \
-                         could not be updated (index/counters need repair): {e}"
-                    );
-                    return Err(e);
-                }
+                self.after_commit(&uids, &index_diffs, &attempt).await?;
                 Ok(AtomicAttempt::Committed(uids))
             }
         }
     }
 
-    /// Prepare a brand-new object for insertion and eagerly write its Findex
-    /// keywords. Used only by the standalone `create()` trait method — `Create`
-    /// inside `atomic()` builds the `RedisDbObject` directly so its Findex
-    /// writes are deferred until the physical write is confirmed.
-    async fn prepare_object_for_create(
+    /// Fold one operation into the working state of the attempt. Several
+    /// operations on the same uid build on each other through `UidState::current`.
+    async fn apply_operation(
         &self,
-        uid: Option<String>,
-        owner: &str,
-        object: &Object,
-        attributes: &Attributes,
-        tags: &HashSet<String>,
-    ) -> DbResult<(String, RedisDbObject)> {
-        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        user: Option<&UserId>,
+        operation: &AtomicOperation,
+        attempt: &mut Attempt,
+    ) -> DbResult<()> {
+        match operation {
+            AtomicOperation::Create(create) => Self::apply_create(user, create, attempt)?,
+            AtomicOperation::Upsert(upsert) => self.apply_upsert(user, upsert, attempt).await?,
+            AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                // State is unchanged by UpdateObject — no counter adjustment.
+                let entry = self.touch(&mut attempt.uids, uid).await?;
+                let Some(db_object) = entry.current.as_mut() else {
+                    return Err(DbError::ItemNotFound(uid.clone()));
+                };
+                db_object.object = object.clone();
+                if tags.is_some() {
+                    db_object.tags.clone_from(tags);
+                }
+                db_object.attributes = Some(attributes.clone());
+            }
+            AtomicOperation::UpdateState((uid, state)) => {
+                let entry = self.touch(&mut attempt.uids, uid).await?;
+                let Some(db_object) = entry.current.as_mut() else {
+                    return Err(DbError::ItemNotFound(uid.clone()));
+                };
+                let liveness_change =
+                    i64::from(is_live(*state)) - i64::from(is_live(db_object.state));
+                let is_key = is_key_type(db_object.object_type);
+                db_object.state = *state;
+                attempt.add_live(liveness_change, is_key);
+            }
+            AtomicOperation::Delete(uid) => {
+                let entry = self.touch(&mut attempt.uids, uid).await?;
+                if let Some(old) = entry.current.take() {
+                    if is_live(old.state) {
+                        attempt.add_live(-1, is_key_type(old.object_type));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_create(
+        user: Option<&UserId>,
+        (uid, _owner, object, attributes, tags): &(
+            String,
+            UserId,
+            Object,
+            Attributes,
+            HashSet<String>,
+        ),
+        attempt: &mut Attempt,
+    ) -> DbResult<()> {
         let db_object = RedisDbObject::new(
             object.clone(),
-            owner.to_owned(),
+            require_user(user)?.as_str().to_owned(),
             attributes.state.unwrap_or(State::PreActive),
             Some(tags.clone()),
             attributes.clone(),
         );
-        let indexed_uid = IndexedValue::from(uid.as_bytes());
-        for keyword in db_object.keywords() {
-            self.findex.insert(keyword, [indexed_uid.clone()]).await?;
+        // New objects are always live.
+        attempt.add_live(1, is_key_type(db_object.object_type));
+        match attempt.uids.get_mut(uid) {
+            // Earlier operation in this batch already touched the uid: Create is
+            // only valid if that left it absent (e.g. Delete then Create); the
+            // earlier precondition is kept.
+            Some(entry) if entry.current.is_some() => db_bail!("object {uid} already exists"),
+            Some(entry) => entry.current = Some(db_object),
+            None => {
+                attempt.uids.insert(
+                    uid.clone(),
+                    UidState {
+                        precondition: Precondition::Create,
+                        baseline_raw: None,
+                        baseline: None,
+                        current: Some(db_object),
+                    },
+                );
+            }
         }
-        Ok((uid, db_object))
+        Ok(())
+    }
+
+    async fn apply_upsert(
+        &self,
+        user: Option<&UserId>,
+        (uid, object, attributes, tags, state): &(
+            String,
+            Object,
+            Attributes,
+            Option<HashSet<String>>,
+            State,
+        ),
+        attempt: &mut Attempt,
+    ) -> DbResult<()> {
+        let user = require_user(user)?;
+        let entry = self.touch(&mut attempt.uids, uid).await?;
+        let old_obj = entry.current.take();
+        if let Some(old) = &old_obj {
+            if old.owner != user.as_str() {
+                return Err(DbError::Unauthorized(format!(
+                    "User '{user}' does not own object '{uid}' and cannot overwrite it"
+                )));
+            }
+        }
+        let old_live = old_obj.as_ref().map(|o| i64::from(is_live(o.state)));
+        let old_key_live = old_obj
+            .as_ref()
+            .filter(|o| is_key_type(o.object_type))
+            .map_or(0, |o| i64::from(is_live(o.state)));
+        // `None` tags = keep the current ones (read from the same baseline the
+        // CAS guards, so a concurrent change retries).
+        let final_tags = tags.clone().unwrap_or_else(|| {
+            old_obj
+                .as_ref()
+                .and_then(|o| o.tags.clone())
+                .unwrap_or_default()
+        });
+        let db_object = RedisDbObject::new(
+            object.clone(),
+            user.as_str().to_owned(),
+            *state,
+            Some(final_tags),
+            attributes.clone(),
+        );
+        let new_live = i64::from(is_live(*state));
+        let is_key = is_key_type(db_object.object_type);
+        entry.current = Some(db_object);
+        attempt.live_delta += new_live - old_live.unwrap_or(0);
+        if is_key {
+            attempt.active_key_delta += new_live - old_key_live;
+        }
+        Ok(())
+    }
+
+    /// Update the Findex index and the counters once the object writes are
+    /// committed. Index writes are idempotent, so a transient failure is retried
+    /// in place; counters (`INCRBY`) are not, and any drift is corrected by the
+    /// periodic `reconcile_counts`.
+    async fn after_commit(
+        &self,
+        uids: &[String],
+        index_diffs: &[IndexDiff<'_>],
+        attempt: &Attempt,
+    ) -> DbResult<()> {
+        let mut indexed = Ok(());
+        for retry in 0..INDEX_WRITE_ATTEMPTS {
+            indexed = self.write_index(index_diffs).await;
+            if indexed.is_ok() {
+                break;
+            }
+            tokio::time::sleep(retry_backoff(retry)).await;
+        }
+        if let Err(e) = indexed {
+            error!(
+                "atomic: objects {uids:?} were committed but the Findex index could not be \
+                 updated after {INDEX_WRITE_ATTEMPTS} attempts (index needs repair): {e}"
+            );
+            return Err(e);
+        }
+        if let Err(e) = self.objects_db.adjust_live_count(attempt.live_delta).await {
+            warn!("atomic: live-object counter not updated for {uids:?} (reconcile will fix): {e}");
+        }
+        if let Err(e) = self
+            .objects_db
+            .adjust_active_key_count(attempt.active_key_delta)
+            .await
+        {
+            warn!("atomic: active-key counter not updated for {uids:?} (reconcile will fix): {e}");
+        }
+        Ok(())
+    }
+
+    /// Write the keyword-index changes of a committed batch.
+    async fn write_index(&self, index_diffs: &[IndexDiff<'_>]) -> DbResult<()> {
+        for IndexDiff { uid, old, new } in index_diffs {
+            let removes_keywords = if let Some(new) = new {
+                self.update_findex_keywords(uid, old, new).await?;
+                !old.is_subset(new)
+            } else {
+                self.delete_findex_keywords(uid, old).await?;
+                !old.is_empty()
+            };
+            // Post-commit index writers can interleave: a concurrent writer's
+            // late removal may delete a keyword the final object still has.
+            // Re-insert from fresh state so every removal is followed by a
+            // re-insert (extra keywords are filtered on read).
+            if removes_keywords {
+                self.reconcile_findex_keywords(uid).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Update Findex index entries: insert new keywords, delete stale ones.
@@ -618,54 +709,6 @@ impl RedisWithFindex {
             self.findex.insert(keyword, [indexed_uid.clone()]).await?;
         }
         Ok(())
-    }
-
-    async fn prepare_object_for_update(
-        &self,
-        uid: &str,
-        object: &Object,
-        attributes: &Attributes,
-        tags: Option<&HashSet<String>>,
-        existing: Option<RedisDbObject>,
-    ) -> DbResult<RedisDbObject> {
-        let mut db_object = match existing {
-            Some(obj) => obj,
-            None => self
-                .objects_db
-                .object_get(uid)
-                .await?
-                .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?,
-        };
-        let old_keywords = db_object.keywords();
-        db_object.object = object.clone();
-        if tags.is_some() {
-            db_object.tags = tags.cloned();
-        }
-        db_object.attributes = Some(attributes.clone());
-
-        let new_keywords = db_object.keywords();
-        self.update_findex_keywords(uid, &old_keywords, &new_keywords)
-            .await?;
-        Ok(db_object)
-    }
-
-    async fn prepare_object_for_state_update(
-        &self,
-        uid: &str,
-        state: State,
-        existing: Option<RedisDbObject>,
-    ) -> DbResult<RedisDbObject> {
-        let mut db_object = match existing {
-            Some(obj) => obj,
-            None => self
-                .objects_db
-                .object_get(uid)
-                .await?
-                .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?,
-        };
-        db_object.state = state;
-        // The state is not indexed, so no Findex updates needed
-        Ok(db_object)
     }
 
     // ── Ceremony helpers ────────────────────────────────────────────────────
@@ -788,19 +831,15 @@ impl ObjectsStore for RedisWithFindex {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
-        let (uid, db_object) = self
-            .prepare_object_for_create(uid, owner.as_str(), object, attributes, tags)
-            .await?;
-
-        // create the object
-        self.objects_db.object_create(&uid, &db_object).await?;
-        // New objects are always PreActive (live) — increment unconditionally.
-        self.objects_db.adjust_live_count(1).await?;
-        // New key objects are non-destroyed by definition — increment the key counter.
-        if is_key_type(db_object.object_type) {
-            self.objects_db.adjust_active_key_count(1).await?;
-        }
-
+        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let operation = AtomicOperation::Create((
+            uid.clone(),
+            owner.clone(),
+            object.clone(),
+            attributes.clone(),
+            tags.clone(),
+        ));
+        self.run_atomic(Some(owner), &[operation]).await?;
         Ok(uid)
     }
 
@@ -842,63 +881,28 @@ impl ObjectsStore for RedisWithFindex {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
     ) -> InterfaceResult<()> {
-        let db_object = self
-            .prepare_object_for_update(uid, object, attributes, tags, None)
-            .await?;
-        self.objects_db.object_upsert(uid, &db_object).await?;
+        let operation = AtomicOperation::UpdateObject((
+            uid.to_owned(),
+            object.clone(),
+            attributes.clone(),
+            tags.cloned(),
+        ));
+        self.run_atomic(None, &[operation]).await?;
         Ok(())
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
-        // Read the object once here so we can:
-        //   1. Capture the old state for the counter delta.
-        //   2. Pass it as `existing` to avoid a second object_get inside
-        //      prepare_object_for_state_update.
-        let existing = self.objects_db.object_get(uid).await?;
-        let old_state = existing.as_ref().map(|o| o.state);
-
-        let db_object = self
-            .prepare_object_for_state_update(uid, state, existing)
-            .await?;
-        self.objects_db.object_upsert(uid, &db_object).await?;
-
-        // Adjust counter only when the liveness crosses a boundary:
-        //   live → destroyed  →  -1
-        //   destroyed → live  →  +1
-        //   no boundary cross →   0
-        if let Some(old) = old_state {
-            let delta = i64::from(is_live(state)) - i64::from(is_live(old));
-            self.objects_db.adjust_live_count(delta).await?;
-            // Mirror the same boundary check for the key counter.
-            if is_key_type(db_object.object_type) {
-                let key_delta = i64::from(!matches!(
-                    state,
-                    State::Destroyed | State::Destroyed_Compromised
-                )) - i64::from(!matches!(
-                    old,
-                    State::Destroyed | State::Destroyed_Compromised
-                ));
-                self.objects_db.adjust_active_key_count(key_delta).await?;
-            }
-        }
+        self.run_atomic(
+            None,
+            &[AtomicOperation::UpdateState((uid.to_owned(), state))],
+        )
+        .await?;
         Ok(())
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
-        if let Some(db_object) = self.objects_db.object_get(uid).await? {
-            self.delete_findex_keywords(uid, &db_object.keywords())
-                .await?;
-            self.objects_db.object_delete(uid).await?;
-            // Only decrement for live objects — destroying an already-destroyed
-            // object must not double-decrement the counter.
-            if is_live(db_object.state) {
-                self.objects_db.adjust_live_count(-1).await?;
-            }
-            // Decrement the key counter if this was a non-destroyed key object.
-            if is_key_type(db_object.object_type) && is_live(db_object.state) {
-                self.objects_db.adjust_active_key_count(-1).await?;
-            }
-        }
+        self.run_atomic(None, &[AtomicOperation::Delete(uid.to_owned())])
+            .await?;
         Ok(())
     }
 
@@ -907,20 +911,7 @@ impl ObjectsStore for RedisWithFindex {
         user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
-        for attempt in 0..MAX_ATOMIC_CAS_ATTEMPTS {
-            match self.try_atomic(user, operations).await? {
-                AtomicAttempt::Committed(uids) => return Ok(uids),
-                // Short growing pause so writers hammering one uid de-synchronise.
-                AtomicAttempt::Retry => {
-                    tokio::time::sleep(std::time::Duration::from_millis(u64::from(attempt.min(8))))
-                        .await;
-                }
-            }
-        }
-        Err(db_error!(
-            "atomic: exceeded {MAX_ATOMIC_CAS_ATTEMPTS} retries due to concurrent modifications"
-        )
-        .into())
+        Ok(self.run_atomic(Some(user), operations).await?)
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -941,10 +932,10 @@ impl ObjectsStore for RedisWithFindex {
         // find the indexed values that match at least one of the tags
         // TODO: upon release of `batch_findex`, use `batch_search` instead of `search`
         let mut uids_per_keyword = HashMap::with_capacity(tag_keywords.len());
-        for keyword in tag_keywords {
+        for keyword in &tag_keywords {
             let search_result = self
                 .findex
-                .search(&keyword)
+                .search(keyword)
                 .await
                 .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
             uids_per_keyword.insert(keyword, search_result);
@@ -972,7 +963,7 @@ impl ObjectsStore for RedisWithFindex {
             .objects_get(&uids)
             .await?
             .into_iter()
-            .filter(|(_, object)| has_all_tags(object, tags))
+            .filter(|(_, object)| has_all_keywords(object, &tag_keywords))
             .map(|(uid, _)| uid)
             .collect())
     }
@@ -987,8 +978,6 @@ impl ObjectsStore for RedisWithFindex {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        let searched_tags =
-            researched_attributes.map_or_else(HashSet::new, |attrs| attrs.get_tags(vendor_id));
         let mut keywords = {
             researched_attributes.map_or_else(HashSet::new, |attributes| {
                 let tags = attributes.get_tags(vendor_id);
@@ -1012,10 +1001,10 @@ impl ObjectsStore for RedisWithFindex {
         }
         // search the keywords in the index
         let mut uids_per_keyword = HashMap::with_capacity(keywords.len());
-        for keyword in keywords {
+        for keyword in &keywords {
             let search_result = self
                 .findex
-                .search(&keyword)
+                .search(keyword)
                 .await
                 .map_err(|e| db_error!(format!("Error while searching for tags: {e:?}")))?;
             uids_per_keyword.insert(keyword, search_result);
@@ -1055,7 +1044,7 @@ impl ObjectsStore for RedisWithFindex {
         Ok(redis_db_objects
             .into_iter()
             .filter(|(uid, redis_db_object)| {
-                has_all_tags(redis_db_object, &searched_tags)
+                has_all_keywords(redis_db_object, &keywords)
                     && state.is_none_or(|state| redis_db_object.state == state)
                     && (if redis_db_object.owner == *user {
                         true
@@ -1183,10 +1172,10 @@ impl ObjectsStore for RedisWithFindex {
         // Fetch the candidate objects
         let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
 
-        // Filter by owner, generation, and latest flag
+        // Filter by owner, generation and the (non-stale) rotate_name keyword
         let mut results = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            if dbo.owner != *owner {
+            if dbo.owner != *owner || !has_all_keywords(&dbo, [&keyword]) {
                 continue;
             }
             let attrs = dbo.attributes.unwrap_or_default();
@@ -1233,6 +1222,10 @@ impl ObjectsStore for RedisWithFindex {
 
         let mut out = Vec::new();
         for (uid, dbo) in redis_db_objects {
+            // Discard stale index hits: the object must still carry the keyword.
+            if !has_all_keywords(&dbo, [&keyword]) {
+                continue;
+            }
             let has_access =
                 dbo.owner == *user || permissions.contains_key(&ObjectUid(uid.clone()));
             if !has_access {
@@ -1667,9 +1660,62 @@ pub(crate) mod tests {
         tests::get_redis_url,
     };
 
+    /// A Findex hit under an *attribute* keyword (here the algorithm) the stored
+    /// object does not carry must not be returned by `find`.
+    pub(crate) async fn test_db_redis_stale_attribute_hit_is_filtered_out()
+    -> crate::error::DbResult<()> {
+        let mut rng = CsRng::from_entropy();
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[8_u8; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
+        store
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &HashSet::new(),
+            )
+            .await?;
+        let stale_algorithm = CryptographicAlgorithm::ChaCha20;
+        store
+            .findex
+            .insert(
+                Keyword::from(stale_algorithm.to_string().as_bytes()),
+                [IndexedValue::from(uid.as_bytes())],
+            )
+            .await?;
+
+        let searched = Attributes {
+            cryptographic_algorithm: Some(stale_algorithm),
+            ..Default::default()
+        };
+        let found = store
+            .find(Some(&searched), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?;
+        assert!(found.is_empty(), "find returned stale hit: {found:?}");
+        let searched = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        };
+        let found = store
+            .find(Some(&searched), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?;
+        assert!(found.iter().any(|(found_uid, ..)| *found_uid == uid));
+        Ok(())
+    }
+
     /// A Findex hit whose tag the stored object does not carry (stale index entry,
     /// e.g. from out-of-order post-commit index updates) must not be returned.
-    #[allow(clippy::panic_in_result_fn)] // test assertions must panic; `?` keeps setup errors readable
     pub(crate) async fn test_db_redis_stale_findex_hit_is_filtered_out()
     -> crate::error::DbResult<()> {
         let mut rng = CsRng::from_entropy();
@@ -1725,7 +1771,6 @@ pub(crate) mod tests {
     /// Writer B (u -> old) finishes its index update before the slower writer A
     /// (old -> u): A's late removal of `old` must not leave the final object
     /// (tagged `old`) unfindable.
-    #[allow(clippy::panic_in_result_fn)] // test assertions must panic; `?` keeps setup errors readable
     pub(crate) async fn test_db_redis_interleaved_index_updates_keep_object_findable()
     -> crate::error::DbResult<()> {
         let mut rng = CsRng::from_entropy();

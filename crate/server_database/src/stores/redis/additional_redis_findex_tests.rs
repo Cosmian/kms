@@ -35,21 +35,18 @@ use crate::{
     tests::get_redis_url,
 };
 
-// The assertions below are the #940 contract tests (upstream commit 763ff9665):
-// they must keep panicking on failure, and the module precedes later test helpers.
-#[allow(clippy::panic_in_result_fn, clippy::items_after_test_module)]
-#[cfg(test)]
 pub(crate) mod issue_940_repro {
     use cosmian_kms_interfaces::AtomicOperation;
     use uuid::Uuid;
 
     use super::*;
 
+    /// Two clients sharing one Redis database (and master key), flushed first.
     async fn clients(database: u8) -> DbResult<(RedisWithFindex, RedisWithFindex)> {
         let url = format!("{}/{database}", get_redis_url());
         let mut rng = CsRng::from_entropy();
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
-        let first = RedisWithFindex::instantiate(&url, master_key.clone(), false).await?;
+        let first = RedisWithFindex::instantiate(&url, master_key.clone(), true).await?;
         let second = RedisWithFindex::instantiate(&url, master_key, false).await?;
         Ok((first, second))
     }
@@ -202,35 +199,18 @@ pub(crate) mod issue_940_repro {
                 })
                 .await
                 .map_err(|error| crate::db_error!(format!("T2 infrastructure timeout: {error}")))?;
-            eprintln!(
-                "T2 round={round} uid={} replace_result={replace_result:?} preserve_result={preserve_result:?}",
-                case.uid
-            );
             replace_result?;
             preserve_result?;
             let stored_tags = second.retrieve_tags(&case.uid).await?;
-            if stored_tags != case.expected_tags {
-                let final_object = second
-                    .retrieve(&case.uid)
-                    .await?
-                    .context("T2 object disappeared")?;
-                let payload = final_object.object().key_block()?.key_bytes()?;
-                eprintln!(
-                    "T2 mismatch round={round} uid={} expected={:?} stored={stored_tags:?} synthetic_payload={payload:?}",
-                    case.uid, case.expected_tags
-                );
-            }
             assert_eq!(
                 stored_tags, case.expected_tags,
                 "Concurrent Upserts lost tags at round {round}, uid={}",
                 case.uid
             );
             if started.elapsed() >= std::time::Duration::from_secs(10) {
-                eprintln!("T2 no mismatch in {round} rounds within the 10-second budget");
                 return Ok(());
             }
         }
-        eprintln!("T2 no mismatch in 10000 rounds");
         Ok(())
     }
 
@@ -371,13 +351,13 @@ pub(crate) mod issue_940_repro {
             )
             .await?;
         let current = store.objects_db().object_get_raw(&uid).await?;
-        let stale = Some(vec![1_u8, 2, 3]);
+        let stale = [1_u8, 2, 3];
 
         let outcome = store
             .objects_db()
             .atomic_script(&[ScriptOp::Delete {
-                uid: uid.clone(),
-                expected: stale,
+                uid: &uid,
+                expected: Some(&stale),
             }])
             .await?;
         assert!(matches!(outcome, AtomicScriptOutcome::CasConflict));
@@ -389,12 +369,114 @@ pub(crate) mod issue_940_repro {
         let outcome = store
             .objects_db()
             .atomic_script(&[ScriptOp::Delete {
-                uid: uid.clone(),
-                expected: current,
+                uid: &uid,
+                expected: current.as_deref(),
             }])
             .await?;
         assert!(matches!(outcome, AtomicScriptOutcome::Committed));
         assert!(store.retrieve(&uid).await?.is_none());
+        Ok(())
+    }
+
+    /// `Create` then `Delete` of the same uid in one batch: a net no-op for an
+    /// absent uid, but the `Create` must still fail fast if the uid exists.
+    pub(crate) async fn t6_create_then_delete_in_one_batch() -> DbResult<()> {
+        let (store, _) = clients(4).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = key(6)?;
+        let batch = || -> DbResult<[AtomicOperation; 2]> {
+            Ok([
+                AtomicOperation::Create((
+                    uid.clone(),
+                    owner.clone(),
+                    object.clone(),
+                    object.attributes()?.clone(),
+                    HashSet::new(),
+                )),
+                AtomicOperation::Delete(uid.clone()),
+            ])
+        };
+        store.atomic(&owner, &batch()?).await?;
+        assert!(store.retrieve(&uid).await?.is_none(), "net no-op expected");
+
+        store.atomic(&owner, &batch()?[..1]).await?;
+        let error = store
+            .atomic(&owner, &batch()?)
+            .await
+            .err()
+            .context("T6 expected a Create conflict")?;
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("object {uid} already exists")),
+            "Unexpected failure: {error}"
+        );
+        assert!(
+            store.retrieve(&uid).await?.is_some(),
+            "existing object must survive the rejected batch"
+        );
+        Ok(())
+    }
+
+    /// Stand-alone `update_object` racing an `Upsert` batch must not lose tags,
+    /// and the stand-alone mutators keep object, index and errors consistent.
+    pub(crate) async fn t8_standalone_mutators_are_cas_guarded() -> DbResult<()> {
+        let (first, second) = clients(5).await?;
+        for _ in 0..50 {
+            let case = tag_case(&first).await?;
+            let object = key(2)?;
+            let (update, upsert) = tokio::join!(
+                first.update_object(
+                    &case.uid,
+                    &object,
+                    object.attributes()?,
+                    Some(&case.expected_tags)
+                ),
+                second.atomic(&case.owner, &case.preserve)
+            );
+            update?;
+            upsert?;
+            assert_eq!(
+                second.retrieve_tags(&case.uid).await?,
+                case.expected_tags,
+                "stand-alone update_object lost tags, uid={}",
+                case.uid
+            );
+        }
+
+        let case = tag_case(&first).await?;
+        let object = key(2)?;
+        let create_error = first
+            .create(
+                Some(case.uid.clone()),
+                &case.owner,
+                &object,
+                object.attributes()?,
+                &HashSet::new(),
+            )
+            .await
+            .err()
+            .context("T8 expected a Create conflict")?;
+        assert!(create_error.to_string().contains("already exists"));
+        first.update_state(&case.uid, State::Active).await?;
+        assert_eq!(
+            first
+                .retrieve(&case.uid)
+                .await?
+                .context("T8 missing")?
+                .state(),
+            State::Active
+        );
+        assert!(
+            first
+                .update_state("no-such-uid", State::Active)
+                .await
+                .is_err()
+        );
+        first.delete(&case.uid).await?;
+        assert!(first.retrieve(&case.uid).await?.is_none());
+        first.delete(&case.uid).await?;
         Ok(())
     }
 
@@ -405,7 +487,10 @@ pub(crate) mod issue_940_repro {
         Box::pin(t3_failed_competing_batch_must_rollback_upsert()).await?;
         Box::pin(t4_same_uid_delete_then_create_and_create_after_upsert()).await?;
         t5_delete_is_guarded_by_baseline().await?;
+        Box::pin(t6_create_then_delete_in_one_batch()).await?;
+        Box::pin(t8_standalone_mutators_are_cas_guarded()).await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_findex_hit_is_filtered_out().await?;
+        crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_attribute_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_interleaved_index_updates_keep_object_findable().await
     }
 }
