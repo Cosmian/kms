@@ -55,10 +55,16 @@ fn characterization_main_audit_short_circuit_missing_file() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
     let stderr = String::from_utf8(out.stderr).unwrap();
-    assert_eq!(
-        stderr.replace(missing, "<PATH>"),
-        "ERROR: No such file or directory (os error 2)\n"
-    );
+    let stderr = stderr.replace(missing, "<PATH>");
+    if cfg!(windows) {
+        // "The system cannot find the file specified." instead of "No such file or directory"
+        assert!(
+            stderr.starts_with("ERROR: ") && stderr.ends_with(" (os error 2)\n"),
+            "{stderr}"
+        );
+    } else {
+        assert_eq!(stderr, "ERROR: No such file or directory (os error 2)\n");
+    }
     // the audit command never needs (nor creates) the configuration file
     assert!(!conf.exists());
 }
@@ -68,7 +74,10 @@ fn characterization_main_help_head() {
     let dir = tempfile::tempdir().unwrap();
     let out = run_ckms(&["--help"], &dir.path().join("ckms.toml"));
     assert_eq!(out.status.code(), Some(0));
-    let stdout = String::from_utf8(out.stdout).unwrap();
+    // the binary is `ckms.exe` on Windows
+    let stdout = String::from_utf8(out.stdout)
+        .unwrap()
+        .replace("ckms.exe", "ckms");
     let head: Vec<&str> = stdout.lines().take(HELP_LINES).collect();
     assert_eq!(head.join("\n"), HELP_HEAD);
 }
@@ -116,10 +125,14 @@ fn characterization_main_missing_config_exit_1() {
     let out = run_ckms(&["sym", "keys", "create"], &conf);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    // the path is Debug-printed in the message: backslashes are doubled on Windows
+    let conf_text = conf.to_str().unwrap();
+    let conf_debug = format!("{conf_text:?}");
     assert_eq!(
-        String::from_utf8(out.stderr)
-            .unwrap()
-            .replace(conf.to_str().unwrap(), "<CONF>"),
+        stderr
+            .replace(conf_debug.trim_matches('"'), "<CONF>")
+            .replace(conf_text, "<CONF>"),
         "ERROR: Not found: Configuration file \"<CONF>\" does not exist\n"
     );
 }
