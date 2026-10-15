@@ -9,12 +9,11 @@ use std::sync::Arc;
 
 use actix_web::{App, test as actix_test, web::Data};
 
+#[cfg(not(windows))]
+use crate::config::ClapConfig;
 use crate::{
-    config::{ClapConfig, ServerParams},
-    core::KMS,
-    openssl_providers::init_openssl_providers_for_tests,
-    routes::access::get_crypto_officer_status,
-    tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, openssl_providers::init_openssl_providers_for_tests,
+    routes::access::get_crypto_officer_status, tests::test_utils::https_clap_config,
 };
 
 #[cfg(not(windows))]
