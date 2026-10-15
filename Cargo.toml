@@ -237,7 +237,7 @@ cosmian_logger = "0.8"
 cosmian_sse_memories = "8.0.2"
 
 # External crates
-actix-cors = "0.6"
+actix-cors = "0.7"
 actix-files = "0.6"
 actix-http = "3.12"
 actix-identity = "0.6"
