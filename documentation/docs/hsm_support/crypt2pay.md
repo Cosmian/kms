@@ -260,8 +260,9 @@ These options can be repeated to configure multiple slots.
 
 ## Kubernetes (Helm chart)
 
-Use the official KMS image unmodified. An init container copies `libpkcs11c2p.so` from a small
-client image and unpacks the `[C2P_DIR]` configuration from a Kubernetes Secret. See the
+Use an official KMS image unmodified (`ghcr.io/cosmian/kms` below, or `ghcr.io/cosmian/kms-fips`).
+An init container copies `libpkcs11c2p.so` from a small client image and unpacks the `[C2P_DIR]`
+configuration from a Kubernetes Secret. See the
 [Helm chart HSM overview](../integrations/kubernetes/helm.md#hsm).
 
 Unlike other HSM libraries, the Crypt2pay library writes inside `[C2P_DIR]` at runtime: `logs/` and
@@ -271,15 +272,15 @@ which stores the keys generated through PKCS#11, wrapped by the KDK. `[C2P_DIR]`
 (`replicaCount: 1`, autoscaling disabled). Otherwise each pod would keep its own objects directory.
 
 !!! note
-    This setup applies the pattern validated with Thales Luna. On a Kubernetes cluster, the library
-    loads and `C_Initialize` succeeds, and the volume survives a pod restart. It has not been run
-    against a live Crypt2pay.
+    Validated on minikube against a live Crypt2pay with the values below, with the non-FIPS and
+    FIPS images: HSM key creation, AES-GCM encryption and decryption through the KMS pod, and
+    decryption with the same HSM key after the pod was deleted and recreated.
 
 ### 1. Crypt2pay client image
 
-Build it once per library version. Run `ldd libpkcs11c2p.so`, and copy into `/opt/c2p/lib` every
-listed library that is neither glibc nor `libstdc++.so.6` / `libgcc_s.so.1` (both already in the
-KMS image):
+Build it once per library version. `libpkcs11c2p.so` links only against glibc (check yours with
+`ldd libpkcs11c2p.so`). If yours lists other libraries, copy them into `/opt/c2p/lib` too and set
+`LD_LIBRARY_PATH` to `/usr/local/cosmian/lib/hsm:/opt/c2p/lib` in `extraEnv`:
 
 ```dockerfile
 FROM debian:bookworm-slim
@@ -291,8 +292,10 @@ COPY libpkcs11c2p.so /opt/c2p/lib/libpkcs11c2p.so
 Prepare and test `[C2P_DIR]` on a workstation as described above, with `[C2P_DIR]` = `/etc/c2p`.
 Absolute paths under `/etc/c2p` are recommended in `c2p.xml` (`Authorities`, mTLS files,
 `TraceFile`), e.g. `<TraceFile>+/etc/c2p/logs/c2p.trc</TraceFile>`; relative `KSKfile` and
-`ObjectsDirectory` entries resolve under `/etc/c2p`. Pack the configuration, the
-installed CA tree and the key files into one archive (add `<name>.ksk` if used):
+`ObjectsDirectory` entries resolve under `/etc/c2p`. Lower `TraceLevel` (for example `error`):
+debug traces grow by gigabytes and share the volume with the objects directory. Pack the
+configuration, the installed CA tree and the key files into one archive (add `<name>.ksk` and the
+mTLS client key file referenced by `<privateKey>`, if used):
 
 ```bash
 cd /etc/c2p
@@ -325,13 +328,12 @@ objects directory intact:
 image:
   repository: ghcr.io/cosmian/kms
   tag: <version>
+nodeSelector: {kubernetes.io/arch: amd64} # the crypt2pay model is Linux x86_64 only
 replicaCount: 1
 extraArgs: [--hsm-model, crypt2pay, --hsm-slot, "<slot>", --hsm-admin, admin]
 extraEnv:
   - name: CRYPT2PAY_PKCS11_LIB
     value: /opt/c2p/lib/libpkcs11c2p.so
-  - name: LD_LIBRARY_PATH
-    value: /usr/local/cosmian/lib/hsm:/opt/c2p/lib
   - name: C2P_CONF
     value: /etc/c2p/c2p.xml
   - name: KMS_HSM_PASSWORD

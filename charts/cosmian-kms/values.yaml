@@ -170,6 +170,10 @@ extraEnv: []
 extraEnvFrom: []
 # -- Extra CLI arguments appended to the `cosmian_kms` entrypoint.
 extraArgs: []
+# -- Replaces the image entrypoint; the chart-built args are passed to it.
+# e.g. [env, -u, OPENSSL_CONF, cosmian_kms] for an HSM library that embeds its
+# own OpenSSL and cannot load the FIPS image's OPENSSL_CONF (Trustway Proteccio).
+command: []
 # -- Extra volumes mounted on the pod.
 extraVolumes: []
 # -- Extra volumeMounts mounted on the container.

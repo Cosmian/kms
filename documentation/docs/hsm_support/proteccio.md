@@ -189,16 +189,25 @@ The `hsm-slot` and `hsm-password` parameters are the slot number and password of
 
 ## Kubernetes (Helm chart)
 
-Use the official KMS image unmodified. An init container copies `libnethsm.so` from a small client
-image, and `/etc/proteccio` is mounted from a Kubernetes Secret. See the
-[Helm chart HSM overview](../integrations/kubernetes/helm.md#hsm). The `nethsm` client library links
-only against glibc (`libc.so.6`, `libdl.so.2`; check yours with `readelf -d libnethsm.so`), so no
-extra runtime library is needed.
+Use an official KMS image unmodified (`ghcr.io/cosmian/kms-fips` below, or `ghcr.io/cosmian/kms`).
+An init container copies `libnethsm.so` from a small client image, and `/etc/proteccio` is mounted
+from a Kubernetes Secret. See the [Helm chart HSM overview](../integrations/kubernetes/helm.md#hsm).
+The `nethsm` client library links only against glibc (`libc.so.6`, `libdl.so.2`; check yours with
+`readelf -d libnethsm.so`), so no extra runtime library is needed.
+
+!!! warning "FIPS image: `command` override"
+    `libnethsm.so` embeds its own OpenSSL, which reads the `OPENSSL_CONF` environment variable. The
+    FIPS image sets it to the KMS FIPS configuration, which the embedded OpenSSL cannot load:
+    `C_Initialize` fails with `CKR_FUNCTION_FAILED` and the pod restarts in a loop. The values below
+    therefore start the KMS with `command: [env, -u, OPENSSL_CONF, cosmian_kms]`: the KMS then
+    reads the same FIPS configuration from its built-in default path, and `libnethsm.so` uses its
+    own defaults. The chart `command` value is available in chart releases after 5.28.0. The
+    non-FIPS image (`ghcr.io/cosmian/kms`) does not need `command`.
 
 !!! note
-    This setup applies the pattern validated with Thales Luna. On a Kubernetes cluster, the KMS
-    loads `libnethsm.so` from the init-container volume. It has not been run against a live
-    Proteccio.
+    Validated on minikube against a live Proteccio (secure channel enabled) with the values below,
+    with the FIPS image (with `command`) and the non-FIPS image (without): HSM key creation, AES-GCM
+    encryption and decryption through the KMS pod.
 
 ### 1. Proteccio client image
 
@@ -247,8 +256,10 @@ With the secure channel enabled (`SEC_CHANNEL=1`), also add `secchannel_hsm.pem`
 
 ```yaml
 image:
-  repository: ghcr.io/cosmian/kms
+  repository: ghcr.io/cosmian/kms-fips
   tag: <version>
+nodeSelector: {kubernetes.io/arch: amd64} # the proteccio model is Linux x86_64 only
+command: [env, -u, OPENSSL_CONF, cosmian_kms] # FIPS image only, see above
 extraArgs: [--hsm-model, proteccio, --hsm-slot, "<slot>", --hsm-admin, admin]
 extraEnv:
   - name: PROTECCIO_PKCS11_LIB
