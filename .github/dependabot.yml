@@ -1,21 +1,32 @@
 ---
 version: 2
 
+# One grouped PR per ecosystem for minor/patch version updates and one for all
+# security updates; majors stay individual PRs since they usually need code changes.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: daily
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
     groups:
-      cargo-patch-minor:
-        update-types:
-          - minor
-          - patch
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: pip
     directories:
@@ -23,11 +34,25 @@ updates:
       - /.mise/scripts/docs
     schedule:
       interval: weekly
+    groups:
+      pip-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: gomod
     directory: /.mise/scripts/kmip-go
     schedule:
       interval: weekly
+    groups:
+      gomod-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      gomod-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: docker
     directories:
@@ -39,3 +64,10 @@ updates:
       # SAP ASE needs libaio.so.1, renamed libaio.so.1t64 from Ubuntu 24.04 on.
       - dependency-name: ubuntu
         update-types: [version-update:semver-major]
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
