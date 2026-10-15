@@ -14,7 +14,7 @@ use std::{
 #[cfg(target_os = "linux")]
 use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
 use cosmian_kms_server_database::{
-    CEREMONY_SECRET_LENGTH, CacheParams, CeremonyKeys, Database, DbMetricsRecorder,
+    CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
         cosmian_kmip::kmip_2_1::kmip_objects::Object,
         cosmian_kms_crypto::crypto::KmsRng,
@@ -186,12 +186,10 @@ impl KMS {
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
-            CacheParams {
-                max_age: server_params.unwrapped_cache_max_age,
-                max_size: cache_max_size,
-                max_ttl: server_params.unwrapped_cache_max_ttl,
-                disabled: server_params.disable_unwrapped_cache,
-            },
+            server_params.unwrapped_cache_max_age,
+            cache_max_size,
+            server_params.unwrapped_cache_max_ttl,
+            server_params.disable_unwrapped_cache,
             db_otel_recorder,
             server_params.ceremony_keys.clone(),
         )

@@ -194,7 +194,6 @@ impl UnwrappedCache {
     reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 mod tests {
-    use crate::CacheParams;
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroUsize,
@@ -227,12 +226,10 @@ mod tests {
             &main_db_params,
             true,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_millis(100),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_millis(100),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None, // recorder
             None, // ceremony_keys
         )

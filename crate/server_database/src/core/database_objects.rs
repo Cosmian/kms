@@ -930,7 +930,6 @@ fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::CacheParams;
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroUsize,
@@ -959,12 +958,10 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_secs(1),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None,
             None,
         )
@@ -1073,12 +1070,10 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(), // no HSM stores registered
-            CacheParams {
-                max_age: Duration::from_secs(1),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None, // recorder
             None, // ceremony_keys
         )
@@ -1181,12 +1176,10 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_secs(1),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             Some(recorder_arc),
             None,
         )
@@ -1391,12 +1384,10 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_secs(900),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(900),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None,
             None,
         )
@@ -1408,12 +1399,10 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_secs(900),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(900),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None,
             None,
         )
@@ -1479,12 +1468,10 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_secs(900),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(900),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None,
             None,
         )
@@ -1495,12 +1482,10 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            CacheParams {
-                max_age: Duration::from_secs(900),
-                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
-                max_ttl: None,
-                disabled: false,
-            },
+            Duration::from_secs(900),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             None,
             None,
         )
