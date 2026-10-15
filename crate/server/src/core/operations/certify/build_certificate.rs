@@ -103,7 +103,10 @@ pub(crate) fn build_and_sign_certificate(
     // RFC 5280 §4.2: user-supplied extensions from vendor attribute CNF
     #[cfg_attr(
         not(feature = "non-fips"),
-        expect(unused_variables, reason = "only read by the non-fips PQC keyUsage warning")
+        expect(
+            unused_variables,
+            reason = "only read by the non-fips PQC keyUsage warning"
+        )
     )]
     let (has_cdp, has_user_key_usage) =
         apply_user_extensions(&mut x509_builder, &mut attributes, vendor_id, issuer)?;

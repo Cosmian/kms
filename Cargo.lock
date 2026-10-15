@@ -6829,8 +6829,6 @@ name = "smartcardhsm_pkcs11_loader"
 version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "libloading",
- "pkcs11-sys",
 ]
 
 [[package]]
@@ -6879,8 +6877,6 @@ name = "softhsm2_pkcs11_loader"
 version = "5.28.0"
 dependencies = [
  "cosmian_kms_base_hsm",
- "libloading",
- "pkcs11-sys",
 ]
 
 [[package]]

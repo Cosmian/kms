@@ -100,7 +100,10 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
 }
 
 /// Ensure localhost bypasses any corporate proxy for tests.
-#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024; test setup")]
+#[expect(
+    unsafe_code,
+    reason = "std::env::set_var is unsafe in edition 2024; test setup"
+)]
 fn ensure_no_proxy_for_localhost() {
     let has_http_proxy = std::env::var_os("HTTP_PROXY").is_some()
         || std::env::var_os("http_proxy").is_some()
@@ -139,7 +142,10 @@ fn ensure_no_proxy_for_localhost() {
 }
 
 /// Clear proxy env vars for the test process so localhost traffic is never proxied.
-#[expect(unsafe_code, reason = "std::env::remove_var is unsafe in edition 2024; test setup")]
+#[expect(
+    unsafe_code,
+    reason = "std::env::remove_var is unsafe in edition 2024; test setup"
+)]
 fn disable_proxies_for_tests() {
     let has_proxy = std::env::var_os("HTTP_PROXY").is_some()
         || std::env::var_os("http_proxy").is_some()

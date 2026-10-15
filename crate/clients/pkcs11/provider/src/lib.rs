@@ -377,9 +377,15 @@ pub unsafe extern "C" fn C_GetInterface(
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[expect(clippy::panic_in_result_fn, reason = "Result-returning tests assert with assert!/assert_eq!")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests;
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[expect(clippy::panic_in_result_fn, reason = "Result-returning tests assert with assert!/assert_eq!")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests_v3;

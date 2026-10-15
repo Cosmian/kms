@@ -18,7 +18,6 @@
 //! - reconstructed key object intact after peer revocation.
 //! - Operator (non-candidate) cannot peer-revoke a CO.
 
-
 use std::sync::Arc;
 
 use cosmian_kms_access::access::CryptoOfficerConfig;

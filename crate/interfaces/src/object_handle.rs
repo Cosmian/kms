@@ -288,6 +288,8 @@ mod handle_tests {
 
     #[test]
     fn test_hsm_parts_rejects_non_hsm() {
-        ObjectHandle::from("my-production-key").hsm_parts().unwrap_err();
+        ObjectHandle::from("my-production-key")
+            .hsm_parts()
+            .unwrap_err();
     }
 }

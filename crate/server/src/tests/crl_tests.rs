@@ -25,7 +25,6 @@
 //! | **Counting** | No-CO: N owners each self-revoke; CRL count == N after every step |
 //! | **Counting** | With CO: CO revokes K certs owned by others; CRL count == K after every step |
 
-
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{

@@ -635,9 +635,7 @@ impl HttpClient {
     /// individually.  The copy is `Box`ed so the async state machine in
     /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
     /// `.await`, avoiding `clippy::large_futures` in callers.
-    fn split_for_retry(
-        request: http::Request<Full<Bytes>>,
-    ) -> HttpClientResult<RetryRequests> {
+    fn split_for_retry(request: http::Request<Full<Bytes>>) -> HttpClientResult<RetryRequests> {
         let mut builder = http::Request::builder()
             .method(request.method().clone())
             .uri(request.uri().clone())

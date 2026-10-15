@@ -3,12 +3,11 @@ use std::sync::Arc;
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
     RecommendedCurve, UniqueIdentifier,
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
     kmip_operations::{Sign, SignResponse, SignatureVerify},
     kmip_types::ValidityIndicator,
-    requests::create_ec_key_pair_request,
+    requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
 };
 use cosmian_logger::log_init;
 use zeroize::Zeroizing;

@@ -270,8 +270,17 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     ))
     .expect("RFC qi is valid BigNum");
 
-    let rsa = Rsa::from_private_components(modulus, public_exponent, private_exponent, prime1, prime2, dp, dq, qi)
-        .expect("RFC RSA key components are valid");
+    let rsa = Rsa::from_private_components(
+        modulus,
+        public_exponent,
+        private_exponent,
+        prime1,
+        prime2,
+        dp,
+        dq,
+        qi,
+    )
+    .expect("RFC RSA key components are valid");
     let pkey = PKey::from_rsa(rsa).expect("PKey::from_rsa should not fail");
     // private_key_to_der() on PKey<Private> produces PKCS#8 DER
     let pkcs8_der = pkey

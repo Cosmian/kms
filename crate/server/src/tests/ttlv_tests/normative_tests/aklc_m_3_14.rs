@@ -5,8 +5,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
         kmip_types::{
-            CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration,
-            RevocationReason, RevocationReasonCode,
+            CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration, RevocationReason,
+            RevocationReasonCode,
         },
     },
     kmip_1_4::{

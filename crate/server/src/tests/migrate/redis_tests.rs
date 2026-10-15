@@ -83,8 +83,6 @@ fn log_init_colorized(rust_log: Option<&str>) {
 // | mt_rsa_pk | cat, fox | RSA | None | mt_owner: ALL permissions|
 // | [UID_Covercrypt] | cat, dog | Covercrypt | The example JSON | mt_owner: ALL permissions |
 // | [UID_Covercrypt]_pk | cat, dog | Covercrypt | The example JSON | mt_owner: ALL permissions |
-#[tokio::test]
-#[ignore = "requires a running Redis server"]
 async fn from_5_2_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
 
@@ -222,8 +220,10 @@ async fn from_5_2_0_to_5_12_0() -> KResult<()> {
 // - revoke mt_should_not_exist key with NA as revocation reason. **Use the UI for this operation to avoid CLI bugs**
 // - destroy mt_should_not_exist, **tick Remove completely from database**
 // The redis database is now ready, dump it using the utility function `dump_all`
-#[tokio::test]
-#[ignore = "requires a running Redis server"]
+#[expect(
+    dead_code,
+    reason = "the 5.1.0 migration is disabled in findex_redis_migration_tests; kept as the documented dump procedure"
+)]
 async fn from_5_1_0_to_5_12_0() -> KResult<()> {
     log_init_colorized(option_env!("RUST_LOG"));
     let dump_file = open_file(TEST_DATA_PATH, "redis_dump_v5_1_0.bin");

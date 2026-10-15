@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn test_enumeration() {
         let variant = KmipEnumerationVariant {
-            value: 0x3, /* AES */
+            value: 0x3, // AES
             name: "AES".to_owned(),
         };
         let original = TTLV {

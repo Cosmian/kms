@@ -1,5 +1,11 @@
 // Embeds a Windows VERSIONINFO resource in cosmian_kms.exe (Explorer Properties > Details tab).
-#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps, reason = "build.rs main returns Result only for the Windows resource step"))]
+#[cfg_attr(
+    not(windows),
+    allow(
+        clippy::unnecessary_wraps,
+        reason = "build.rs main returns Result only for the Windows resource step"
+    )
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     {

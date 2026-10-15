@@ -227,7 +227,10 @@ pub(super) fn generate_key_pair(
     public_key_uid: &str,
     #[cfg_attr(
         not(feature = "non-fips"),
-        expect(unused_variables, reason = "rng is only used by the non-fips PQC generators")
+        expect(
+            unused_variables,
+            reason = "rng is only used by the non-fips PQC generators"
+        )
     )]
     rng: &KmsRng,
 ) -> KResult<KeyPair> {
