@@ -29,6 +29,9 @@ pub const NTE_NOT_SUPPORTED: SecurityStatus = 0x8009_0029_u32.cast_signed();
 pub const NTE_NO_MORE_ITEMS: SecurityStatus = 0x8009_002A_u32.cast_signed();
 pub const NTE_OP_OK: SecurityStatus = 0;
 
+// NTSTATUS success
+pub const STATUS_SUCCESS_VAL: i32 = 0x0000_0000;
+
 /// Errors produced by the CNG KSP implementation.
 #[derive(Debug, Error)]
 pub enum KspError {
