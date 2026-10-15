@@ -154,3 +154,11 @@ fn characterization_aes256_ecb_block_direct() {
     let expected_hex = "8c0dc059e5bb21fbc37442f7c0878022";
     assert_eq!(hex::encode(out), expected_hex);
 }
+
+#[test]
+fn characterization_ff1_internal_error_display_names_the_operation() {
+    assert_eq!(
+        super::NumeralStringError::Internal("AES-256-ECB block encryption").to_string(),
+        "FF1 internal error: AES-256-ECB block encryption failed"
+    );
+}

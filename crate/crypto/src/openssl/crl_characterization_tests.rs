@@ -37,3 +37,29 @@ fn characterization_aki_write_length_short_and_long_forms() {
         "AKI key identifier length 65536 exceeds 65535"
     );
 }
+
+#[test]
+fn characterization_crl_reason_code_as_bn_ulong_matches_rfc_5280() {
+    use super::CrlReasonCode::{
+        AaCompromise, AffiliationChanged, CaCompromise, CertificateHold, CessationOfOperation,
+        KeyCompromise, PrivilegeWithdrawn, RemoveFromCRL, Superseded, Unspecified,
+    };
+    for (reason, value) in [
+        (Unspecified, 0_u8),
+        (KeyCompromise, 1),
+        (CaCompromise, 2),
+        (AffiliationChanged, 3),
+        (Superseded, 4),
+        (CessationOfOperation, 5),
+        (CertificateHold, 6),
+        (RemoveFromCRL, 8),
+        (PrivilegeWithdrawn, 9),
+        (AaCompromise, 10),
+    ] {
+        assert_eq!(
+            reason.as_bn_ulong(),
+            openssl_sys::BN_ULONG::from(value),
+            "{reason:?}"
+        );
+    }
+}
