@@ -125,8 +125,7 @@ impl Backend for CharTestBackend {
         if ciphertext.ends_with(b"_enc") {
             let len = ciphertext.len().saturating_sub(4);
             let mut pt = Vec::new();
-            let slice = ciphertext.get(..len).unwrap();
-            pt.extend_from_slice(slice);
+            pt.extend_from_slice(&ciphertext[..len]);
             Ok(Zeroizing::new(pt))
         } else {
             Ok(Zeroizing::new(ciphertext))
@@ -337,14 +336,16 @@ fn characterization_sessions_search_all_cko_certificate_ensure_x509() {
 #[serial]
 fn characterization_sessions_sign_buffer_size_negotiation_and_too_small() {
     init_char_test_backend();
-    let mut session = Session::default();
-    session.sign_ctx = Some(SignContext {
-        algorithm: SignatureAlgorithm::Ecdsa,
-        private_key: Arc::new(CharEcdsaPrivateKey),
-        operation: SignOperation::Classic,
-        payload: None,
-        pending_signature: None,
-    });
+    let mut session = Session {
+        sign_ctx: Some(SignContext {
+            algorithm: SignatureAlgorithm::Ecdsa,
+            private_key: Arc::new(CharEcdsaPrivateKey),
+            operation: SignOperation::Classic,
+            payload: None,
+            pending_signature: None,
+        }),
+        ..Session::default()
+    };
 
     let data = b"characterization-sign-payload";
     let mut sig_len: CK_ULONG = 0;
@@ -377,21 +378,22 @@ fn characterization_sessions_sign_buffer_size_negotiation_and_too_small() {
             .unwrap();
     }
     assert_eq!(valid_len, 8);
-    const EXPECTED_SIG: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
-    assert_eq!(out_buf, EXPECTED_SIG);
+    assert_eq!(out_buf, [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
 }
 
 #[test]
 #[serial]
 fn characterization_sessions_decrypt_buffer_size_negotiation_and_too_small() {
     init_char_test_backend();
-    let mut session = Session::default();
-    session.decrypt_ctx = Some(DecryptContext {
-        remote_object_id: "char_sym_key".to_owned(),
-        algorithm: EncryptionAlgorithm::AesCbcPad,
-        iv: Some(vec![0; 16]),
-        aad: None,
-    });
+    let mut session = Session {
+        decrypt_ctx: Some(DecryptContext {
+            remote_object_id: "char_sym_key".to_owned(),
+            algorithm: EncryptionAlgorithm::AesCbcPad,
+            iv: Some(vec![0; 16]),
+            aad: None,
+        }),
+        ..Session::default()
+    };
 
     let ciphertext = b"plaintext_enc".to_vec();
     let mut out_len: CK_ULONG = 0;
@@ -460,8 +462,7 @@ fn characterization_utils_helpers_encrypt_decrypt_cycle() {
     let plaintext = b"characterization-utils-pt".to_vec();
     let ct = test_encrypt(session_h, key_h, plaintext.clone());
     let pt = test_decrypt(session_h, key_h, ct);
-    let slice = pt.get(..plaintext.len()).unwrap();
-    assert_eq!(slice, plaintext.as_slice());
+    assert_eq!(&pt[..plaintext.len()], plaintext.as_slice());
 
     C_Finalize(ptr::null_mut());
 }
