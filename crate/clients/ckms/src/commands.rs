@@ -592,3 +592,35 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
     println!("Configuration saved. You're ready to go.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AuthChoice;
+
+    #[test]
+    fn auth_choice_from_index_follows_the_prompt_order() {
+        assert!(matches!(AuthChoice::from_index(0), Some(AuthChoice::None)));
+        assert!(matches!(
+            AuthChoice::from_index(1),
+            Some(AuthChoice::Bearer)
+        ));
+        assert!(matches!(
+            AuthChoice::from_index(2),
+            Some(AuthChoice::PemCert)
+        ));
+        assert!(matches!(
+            AuthChoice::from_index(3),
+            Some(AuthChoice::Pkcs12)
+        ));
+        assert!(matches!(
+            AuthChoice::from_index(4),
+            Some(AuthChoice::PemCertAndToken)
+        ));
+        assert!(matches!(
+            AuthChoice::from_index(5),
+            Some(AuthChoice::Pkcs12AndToken)
+        ));
+        assert!(AuthChoice::from_index(6).is_none());
+        assert!(AuthChoice::from_index(usize::MAX).is_none());
+    }
+}
