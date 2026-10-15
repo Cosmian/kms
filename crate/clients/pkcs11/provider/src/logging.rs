@@ -39,6 +39,10 @@ fn init(
 )]
 /// For Linux, log to `$COSMIAN_PKCS11_LOGGING_FOLDER` if set,
 /// otherwise fall back to `~/.cosmian/` (user-writable, no root required).
+#[expect(
+    clippy::print_stdout,
+    reason = "the module announces its log file on stdout when the PKCS#11 library is loaded"
+)]
 fn init(
     log_name: &str,
     level: Option<Level>,
