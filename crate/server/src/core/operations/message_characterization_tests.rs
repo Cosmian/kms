@@ -3,8 +3,12 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Activate, Create, GetAttributes, Operation, Revoke, Validate},
+        kmip_operations::{
+            Activate, Create, DeleteAttribute, Destroy, Export, Get, GetAttributes, Hash, MAC,
+            Operation, Query, ReKey, Revoke, Sign, SignatureVerify, Validate,
+        },
         kmip_types::UniqueIdentifier,
     },
 };
@@ -18,23 +22,23 @@ fn characterization_get_operation_name_default_constructible_operations() {
         (Operation::CreateKeyPair(Box::default()), "CreateKeyPair"),
         (Operation::Decrypt(Box::default()), "Decrypt"),
         (
-            Operation::DeleteAttribute(Default::default()),
+            Operation::DeleteAttribute(DeleteAttribute::default()),
             "DeleteAttribute",
         ),
-        (Operation::Destroy(Default::default()), "Destroy"),
+        (Operation::Destroy(Destroy::default()), "Destroy"),
         (Operation::Encrypt(Box::default()), "Encrypt"),
-        (Operation::Export(Default::default()), "Export"),
-        (Operation::Get(Default::default()), "Get"),
-        (Operation::Hash(Default::default()), "Hash"),
+        (Operation::Export(Export::default()), "Export"),
+        (Operation::Get(Get::default()), "Get"),
+        (Operation::Hash(Hash::default()), "Hash"),
         (Operation::Locate(Box::default()), "Locate"),
-        (Operation::MAC(Default::default()), "MAC"),
-        (Operation::Query(Default::default()), "Query"),
-        (Operation::ReCertify(Default::default()), "ReCertify"),
-        (Operation::ReKey(Default::default()), "ReKey"),
-        (Operation::ReKeyKeyPair(Default::default()), "ReKeyKeyPair"),
-        (Operation::Sign(Default::default()), "Sign"),
+        (Operation::MAC(MAC::default()), "MAC"),
+        (Operation::Query(Query::default()), "Query"),
+        (Operation::ReCertify(Box::default()), "ReCertify"),
+        (Operation::ReKey(ReKey::default()), "ReKey"),
+        (Operation::ReKeyKeyPair(Box::default()), "ReKeyKeyPair"),
+        (Operation::Sign(Sign::default()), "Sign"),
         (
-            Operation::SignatureVerify(Default::default()),
+            Operation::SignatureVerify(SignatureVerify::default()),
             "SignatureVerify",
         ),
     ];
@@ -55,7 +59,7 @@ fn characterization_get_operation_name_literal_operations() {
     assert_eq!(
         get_operation_name(&Operation::Create(Create {
             object_type: ObjectType::SymmetricKey,
-            attributes: Default::default(),
+            attributes: Attributes::default(),
             protection_storage_masks: None,
         })),
         "Create"
