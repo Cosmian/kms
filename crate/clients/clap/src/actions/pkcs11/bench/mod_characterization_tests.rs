@@ -54,20 +54,22 @@ fn characterization_pkcs11_bench_action_defaults() {
 }
 
 /// Full sanity sweep (2 s per level) of the real `libcosmian_pkcs11` provider against the
-/// in-process test server. Skipped (with a message) when the library has not been built:
-/// `cargo build -p cosmian_pkcs11 --features non-fips` first.
+/// in-process test server. Needs `cargo build -p cosmian_pkcs11 --features non-fips` first (the
+/// non-fips CI flow does it); `cosmian_pkcs11` cannot be built in FIPS mode, so the test is
+/// reported as ignored there instead of failing on the missing library.
 #[tokio::test]
+#[cfg_attr(
+    not(feature = "non-fips"),
+    ignore = "needs libcosmian_pkcs11, which is only built with the non-fips feature"
+)]
 #[serial(bench_files)]
 async fn characterization_pkcs11_bench_process_sanity_aes_gcm() {
     let dylib = provider_dylib();
-    if !dylib.exists() {
-        // Only the non-fips CI/`mise` flow builds `cosmian_pkcs11` before running the tests.
-        eprintln!(
-            "skipping: {} not built (cargo build -p cosmian_pkcs11 --features non-fips)",
-            dylib.display()
-        );
-        return;
-    }
+    assert!(
+        dylib.exists(),
+        "{} not built: run `cargo build -p cosmian_pkcs11 --features non-fips` first",
+        dylib.display()
+    );
     let ctx = start_default_test_kms_server().await;
     let conf = env::temp_dir().join(format!(
         "pkcs11_bench_characterization_{}.toml",
