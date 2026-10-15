@@ -10,6 +10,8 @@
 // Missing or unexpected TTLV structure always yields `None` or a fallback string —
 // never a panic. A failure here affects only the audit record, not the KMIP response.
 
+use std::borrow::Cow;
+
 use actix_web::{HttpMessage, HttpRequest};
 use cosmian_kms_access::audit::AuditResult;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -31,11 +33,11 @@ use crate::middlewares::{
 /// unambiguous because the caller statically knows which enum the field holds, so there
 /// is no cross-enum code collision (unlike a global reverse table where, e.g., `Create`
 /// and `Certificate` share code `0x01`).
-fn enum_field_name(
-    fields: &[TTLV],
+fn enum_field_name<'a>(
+    fields: &'a [TTLV],
     tag: &str,
     resolve: impl Fn(u32) -> Option<&'static str>,
-) -> Option<String> {
+) -> Option<Cow<'a, str>> {
     let variant = fields.iter().find(|f| f.tag == tag).and_then(|f| {
         if let TTLValue::Enumeration(ev) = &f.value {
             Some(ev)
@@ -44,9 +46,9 @@ fn enum_field_name(
         }
     })?;
     if variant.name.is_empty() {
-        resolve(variant.value).map(str::to_owned)
+        resolve(variant.value).map(Cow::Borrowed)
     } else {
-        Some(variant.name.clone())
+        Some(Cow::Borrowed(variant.name.as_ref()))
     }
 }
 
@@ -55,8 +57,8 @@ fn enum_field_name(
 /// * Single-operation requests (e.g. `"Encrypt"`, `"Create"`): returns `ttlv.tag`.
 /// * `RequestMessage` (batch): returns `"RequestMessage"` — callers that need
 ///   per-item operation names should use `extract_batch_audit_contexts` instead.
-pub(super) fn extract_kmip_op_from_ttlv(ttlv: &TTLV) -> String {
-    ttlv.tag.clone()
+pub(super) fn extract_kmip_op_from_ttlv(ttlv: &TTLV) -> &str {
+    &ttlv.tag
 }
 
 /// Extracts per-`BatchItem` audit context from a `RequestMessage` TTLV.
@@ -86,10 +88,14 @@ pub(super) fn extract_batch_audit_contexts(ttlv: &TTLV) -> Vec<BatchItemAuditCon
             // UID/algorithm extraction must descend into it rather than search the
             // `BatchItem` directly (a single-op TTLV has them as direct children).
             let payload = fields.iter().find(|f| f.tag == "RequestPayload");
-            let object_uid = payload.and_then(|p| extract_object_uid(p, &op_name, false));
-            let algorithm = payload.and_then(|p| extract_algorithm(p, &op_name));
+            let object_uid = payload
+                .and_then(|p| extract_object_uid(p, &op_name, false))
+                .map(str::to_owned);
+            let algorithm = payload
+                .and_then(|p| extract_algorithm(p, &op_name))
+                .map(Cow::into_owned);
             Some(BatchItemAuditContext {
-                operation: op_name,
+                operation: op_name.into_owned(),
                 object_uid,
                 algorithm,
                 result: None,
@@ -97,7 +103,6 @@ pub(super) fn extract_batch_audit_contexts(ttlv: &TTLV) -> Vec<BatchItemAuditCon
         })
         .collect()
 }
-
 /// Depth-first search for the first `TTLV` node with the given tag.
 /// Used for response-side extraction where the layout is well-defined.
 fn find_ttlv_recursive<'a>(ttlv: &'a TTLV, tag: &str) -> Option<&'a TTLV> {
@@ -122,10 +127,10 @@ fn find_ttlv_recursive<'a>(ttlv: &'a TTLV, tag: &str) -> Option<&'a TTLV> {
 ///   UID only appears in the response TTLV; performs a recursive search.
 ///
 /// Returns `None` for batch (`RequestMessage`) TTLVs; the caller must not pass those.
-fn extract_object_uid(ttlv: &TTLV, op_name: &str, is_response: bool) -> Option<String> {
-    let text_string = |t: &TTLV| {
+fn extract_object_uid<'a>(ttlv: &'a TTLV, op_name: &str, is_response: bool) -> Option<&'a str> {
+    let text_string = |t: &'a TTLV| {
         if let TTLValue::TextString(s) = &t.value {
-            Some(s.clone())
+            Some(s.as_str())
         } else {
             None
         }
@@ -160,21 +165,21 @@ fn extract_object_uid(ttlv: &TTLV, op_name: &str, is_response: bool) -> Option<S
 ///   `CryptographicParameters → CryptographicAlgorithm`.
 ///
 /// Returns `None` for operations that carry no algorithm information or for batch TTLVs.
-fn extract_algorithm(ttlv: &TTLV, op_name: &str) -> Option<String> {
-    let enum_name = |t: &TTLV| {
+fn extract_algorithm<'a>(ttlv: &'a TTLV, op_name: &str) -> Option<Cow<'a, str>> {
+    let enum_name = |t: &'a TTLV| {
         if let TTLValue::Enumeration(ev) = &t.value {
             if ev.name.is_empty() {
                 // Binary TTLV carries only the numeric code; resolve via the typed enum.
                 CryptographicAlgorithm::from_repr(ev.value)
-                    .map(|a| <&'static str>::from(a).to_owned())
+                    .map(|a| Cow::Borrowed(<&'static str>::from(a)))
             } else {
-                Some(ev.name.clone())
+                Some(Cow::Borrowed(ev.name.as_ref()))
             }
         } else {
             None
         }
     };
-    let child_algo = |parent: &TTLV| -> Option<String> {
+    let child_algo = |parent: &'a TTLV| -> Option<Cow<'a, str>> {
         if let TTLValue::Structure(c) = &parent.value {
             c.iter()
                 .find(|t| t.tag == "CryptographicAlgorithm")
@@ -205,7 +210,7 @@ fn extract_algorithm(ttlv: &TTLV, op_name: &str) -> Option<String> {
                     .iter()
                     .find(|c| {
                         matches!(
-                            c.tag.as_str(),
+                            &*c.tag,
                             "CommonAttributes"
                                 | "CommonTemplateAttribute"
                                 | "PrivateKeyAttributes"
@@ -250,14 +255,14 @@ pub(super) fn inject_audit_request(req: &HttpRequest, ttlv: &TTLV) -> String {
     }
     let op_name = extract_kmip_op_from_ttlv(ttlv);
     let mut ext = req.extensions_mut();
-    ext.insert(KmipOperationName(op_name.clone()));
-    if let Some(uid) = extract_object_uid(ttlv, &op_name, false) {
-        ext.insert(KmipObjectUid(uid));
+    ext.insert(KmipOperationName(op_name.to_owned()));
+    if let Some(uid) = extract_object_uid(ttlv, op_name, false) {
+        ext.insert(KmipObjectUid(uid.to_owned()));
     }
-    if let Some(algo) = extract_algorithm(ttlv, &op_name) {
-        ext.insert(KmipAlgorithm(algo));
+    if let Some(algo) = extract_algorithm(ttlv, op_name) {
+        ext.insert(KmipAlgorithm(algo.into_owned()));
     }
-    op_name
+    op_name.to_owned()
 }
 
 /// Backfills `KmipObjectUid` from the response TTLV for `Create` / `CreateKeyPair`,
@@ -278,14 +283,11 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
         let Some(batch_ops) = ext.get_mut::<KmipBatchOperations>() else {
             return;
         };
-        let response_items = match &response_ttlv.value {
-            TTLValue::Structure(children) => children
-                .iter()
-                .filter(|c| c.tag == "BatchItem")
-                .collect::<Vec<_>>(),
-            _ => return,
+        let TTLValue::Structure(children) = &response_ttlv.value else {
+            return;
         };
-        for (ctx, resp_item) in batch_ops.0.iter_mut().zip(response_items.iter()) {
+        let response_items = children.iter().filter(|c| c.tag == "BatchItem");
+        for (ctx, resp_item) in batch_ops.0.iter_mut().zip(response_items) {
             let TTLValue::Structure(fields) = &resp_item.value else {
                 continue;
             };
@@ -325,6 +327,7 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
                     let reason = enum_field_name(fields, "ResultReason", |code| {
                         ErrorReason::from_repr(code).map(Into::into)
                     })
+                    .map(Cow::into_owned)
                     .or_else(|| {
                         fields
                             .iter()
@@ -351,11 +354,10 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
         && req.extensions().get::<KmipObjectUid>().is_none()
     {
         if let Some(uid) = extract_object_uid(response_ttlv, op_name, true) {
-            req.extensions_mut().insert(KmipObjectUid(uid));
+            req.extensions_mut().insert(KmipObjectUid(uid.to_owned()));
         }
     }
 }
-
 #[cfg(test)]
 #[allow(clippy::indexing_slicing)]
 mod extraction_tests {
@@ -367,24 +369,24 @@ mod extraction_tests {
 
     fn text(tag: &str, value: &str) -> TTLV {
         TTLV {
-            tag: tag.to_owned(),
+            tag: tag.to_owned().into(),
             value: TTLValue::TextString(value.to_owned()),
         }
     }
 
     fn enumv(tag: &str, name: &str) -> TTLV {
         TTLV {
-            tag: tag.to_owned(),
+            tag: tag.to_owned().into(),
             value: TTLValue::Enumeration(KmipEnumerationVariant {
                 value: 0,
-                name: name.to_owned(),
+                name: name.to_owned().into(),
             }),
         }
     }
 
     fn structure(tag: &str, children: Vec<TTLV>) -> TTLV {
         TTLV {
-            tag: tag.to_owned(),
+            tag: tag.to_owned().into(),
             value: TTLValue::Structure(children),
         }
     }
@@ -417,7 +419,7 @@ mod extraction_tests {
             ],
         );
         assert_eq!(
-            extract_object_uid(&ttlv, "Encrypt", false).as_deref(),
+            extract_object_uid(&ttlv, "Encrypt", false),
             Some("my-key-id")
         );
         assert_eq!(extract_algorithm(&ttlv, "Encrypt").as_deref(), Some("AES"));
@@ -427,13 +429,9 @@ mod extraction_tests {
     #[test]
     fn get_request_extracts_uid_no_algorithm() {
         let ttlv = structure("Get", vec![text("UniqueIdentifier", "key-abc")]);
-        assert_eq!(
-            extract_object_uid(&ttlv, "Get", false).as_deref(),
-            Some("key-abc")
-        );
+        assert_eq!(extract_object_uid(&ttlv, "Get", false), Some("key-abc"));
         assert_eq!(extract_algorithm(&ttlv, "Get"), None);
     }
-
     /// Create response: recursive search finds the server-generated UID.
     #[test]
     fn create_response_extracts_uid_recursively() {
@@ -445,7 +443,7 @@ mod extraction_tests {
             ],
         );
         assert_eq!(
-            extract_object_uid(&ttlv, "Create", true).as_deref(),
+            extract_object_uid(&ttlv, "Create", true),
             Some("server-gen-uid")
         );
     }
@@ -457,7 +455,6 @@ mod extraction_tests {
         assert_eq!(extract_object_uid(&ttlv, "Create+Encrypt", false), None);
         assert_eq!(extract_algorithm(&ttlv, "Create+Encrypt"), None);
     }
-
     /// Regression: a UID nested inside a Link structure must NOT be returned
     /// for a direct-child-only search (e.g. on a Get response containing a link).
     #[test]

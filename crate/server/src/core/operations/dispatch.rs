@@ -155,8 +155,7 @@ pub(crate) async fn check_role_permission(
             // CryptoOfficer: enforce allowed_operations(). Ownership bypass is handled
             // at handler level (retrieve_object_utils.rs / locate.rs).
             if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
-                let allowed = Role::CryptoOfficer.allowed_operations();
-                if !allowed.contains(&kmip_op) {
+                if !Role::CryptoOfficer.allows(kmip_op) {
                     kms_bail!(KmsError::Unauthorized(format!(
                         "User `{user}` (role: CryptoOfficer) is not authorized to perform \
                          operation `{operation_tag}` (not in CryptoOfficer allowed operations)"
@@ -180,8 +179,7 @@ pub(crate) async fn check_role_permission(
         Role::Operator => {
             // Enforce allowed_operations() for Operator at dispatch.
             if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
-                let allowed = Role::Operator.allowed_operations();
-                if !allowed.contains(&kmip_op) {
+                if !Role::Operator.allows(kmip_op) {
                     // Lifecycle operations (Create, Import): delegate to enforce_create_permission
                     // which correctly handles default_username, CO-user membership, and explicit grants.
                     if matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
@@ -207,10 +205,9 @@ pub(crate) async fn check_role_permission(
 
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Operation> {
-    let operation_tag = ttlv.tag.clone();
-
     if let Some(ref metrics) = kms.metrics {
         let start = std::time::Instant::now();
+        let operation_tag = ttlv.tag.to_string();
         let result = Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await;
         let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(&operation_tag, user);
@@ -220,6 +217,7 @@ pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Op
         }
         result
     } else {
+        let operation_tag = ttlv.tag.to_string();
         Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await
     }
 }

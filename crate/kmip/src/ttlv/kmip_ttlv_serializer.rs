@@ -97,10 +97,8 @@ impl TtlvSerializer {
     }
 
     /// Get the current tag
-    fn current_tag(&self) -> String {
-        self.stack
-            .peek()
-            .map_or_else(|| "[ROOT]".to_owned(), |p| p.tag.clone())
+    fn current_tag(&self) -> &str {
+        self.stack.peek().map_or("[ROOT]", |p| &*p.tag)
     }
 }
 
@@ -256,9 +254,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         if let Ok(current) = self.current_mut() {
             current.value = TTLValue::ByteString(v.to_owned());
         } else {
-            let tag = "[BYTE_STRING]".to_owned();
             self.stack.push(TTLV {
-                tag,
+                tag: "[BYTE_STRING]".into(),
                 value: TTLValue::ByteString(v.to_owned()),
             });
         }
@@ -334,9 +331,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         if let Some(parent) = self.stack.peek_mut() {
             parent.value = TTLValue::Structure(vec![]);
         } else {
-            let tag = name.to_owned();
             self.stack.push(TTLV {
-                tag,
+                tag: name.into(),
                 value: TTLValue::Structure(vec![]),
             });
         }
@@ -416,7 +412,7 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
             "serialize_newtype_variant, name: {name}::{variant} (variant index: {variant_index})"
         );
         let has_parent = self.stack.peek().is_some();
-        let tag = variant.to_owned();
+        let tag = variant.into();
         self.stack.push(TTLV {
             tag,
             value: TTLValue::Structure(vec![]),
@@ -451,7 +447,7 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     #[instrument(level = "trace", skip(self))]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         if let Some(receiver) = self.stack.peek_mut() {
-            if BYTE_LIKE_TAGS.contains(&receiver.tag.as_str()) {
+            if BYTE_LIKE_TAGS.contains(&&*receiver.tag) {
                 // Byte-like tag: enable byte accumulation mode.
                 // We'll collect all bytes in a flat Vec<u8> and convert to
                 // ByteString in SerializeSeq::end().
@@ -474,9 +470,8 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
                 self.current_tag()
             );
             let cap = len.unwrap_or(0).min(1024);
-            let tag = "[ARRAY]".to_owned();
             self.stack.push(TTLV {
-                tag,
+                tag: "[ARRAY]".into(),
                 value: TTLValue::Structure(Vec::with_capacity(cap)),
             });
         }
@@ -537,16 +532,15 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
             parent.value = TTLValue::Structure(Vec::with_capacity(len));
             if parent.tag == "Object" {
                 trace!("... replacing  \"Object\" with: {name}");
-                name.clone_into(&mut parent.tag);
+                parent.tag = name.into();
             }
         } else {
             trace!(
                 "serialize_struct, no parent found, creating a new one with tag: {}",
                 name
             );
-            let tag = name.to_owned();
             self.stack.push(TTLV {
-                tag,
+                tag: name.into(),
                 value: TTLValue::Structure(Vec::with_capacity(len)),
             });
         }
@@ -587,13 +581,16 @@ impl SerializeSeq for &mut TtlvSerializer {
             return Ok(());
         }
 
-        let tag = self.stack.peek().map_or("", |parent| parent.tag.as_str());
+        let tag = self
+            .stack
+            .peek()
+            .map_or_else(|| "".into(), |parent| parent.tag.clone());
         trace!(
             "Seq Element: serializing a seq element with tag {}, stack is: {:?}",
             tag, self.stack
         );
         self.stack.push(TTLV {
-            tag: tag.to_owned(),
+            tag,
             value: TTLValue::Boolean(true),
         });
         value.serialize(&mut **self)?;
@@ -736,7 +733,7 @@ impl SerializeStruct for &mut TtlvSerializer {
         );
         let mut current_element = {
             self.stack.push(TTLV {
-                tag: key.to_owned(),
+                tag: key.into(),
                 value: TTLValue::Boolean(true),
             });
             value.serialize(&mut **self)?;

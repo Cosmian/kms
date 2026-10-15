@@ -170,7 +170,7 @@ async fn derive_key_symmetric(
     // Extract the key material from the base object (supports both SymmetricKey and SecretData)
     let base_key_bytes = match base_key_owm.object() {
         Object::SymmetricKey(SymmetricKey { key_block })
-        | Object::SecretData(SecretData { key_block, .. }) => key_block.key_bytes()?,
+        | Object::SecretData(SecretData { key_block, .. }) => key_block.key_bytes_ref()?,
         _ => kms_bail!("DeriveKey: base object must be a SymmetricKey or SecretData"),
     };
 
@@ -215,7 +215,7 @@ async fn derive_key_symmetric(
             })?;
 
             derive_pbkdf2(
-                &base_key_bytes,
+                base_key_bytes,
                 salt,
                 iterations_u32,
                 cryptographic_length,
@@ -230,7 +230,7 @@ async fn derive_key_symmetric(
                 .as_deref()
                 .map_or(&[][..], std::vec::Vec::as_slice);
             derive_hkdf(
-                &base_key_bytes,
+                base_key_bytes,
                 salt,
                 info,
                 cryptographic_length,
@@ -258,7 +258,7 @@ async fn derive_key_symmetric(
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentSymmetricKey {
-                        key: (*derived_key_bytes).clone().into(),
+                        key: derived_key_bytes,
                     },
                     attributes: Some(attributes.clone()),
                 }),
@@ -273,7 +273,7 @@ async fn derive_key_symmetric(
                 key_format_type: KeyFormatType::Opaque,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString((*derived_key_bytes).clone().into()),
+                    key_material: KeyMaterial::ByteString(derived_key_bytes),
                     attributes: Some(attributes.clone()),
                 }),
                 cryptographic_algorithm: None,

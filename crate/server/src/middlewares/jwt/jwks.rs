@@ -80,6 +80,50 @@ impl JwksManager {
             .cloned())
     }
 
+    /// Execute a closure with borrowed slice of all JWKs from all registered JWKS sets.
+    ///
+    /// This avoids cloning every `Jwk` in the cache when validating tokens.
+    pub fn with_keys<R>(&self, f: impl FnOnce(&[Jwk]) -> R) -> KResult<R> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        // If there's only one set (common case), we can borrow its slice directly.
+        if jwks_lock.len() == 1 {
+            if let Some(set) = jwks_lock.values().next() {
+                return Ok(f(&set.keys));
+            }
+        }
+        let flattened: Vec<Jwk> = jwks_lock
+            .values()
+            .flat_map(|set| &set.keys)
+            .cloned()
+            .collect();
+        Ok(f(&flattened))
+    }
+
+    /// Execute a closure over each `&Jwk` in the cache until it returns `Some` or finishes.
+    pub fn find_map_key<R>(&self, mut f: impl FnMut(&Jwk) -> Option<R>) -> KResult<Option<R>> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        for set in jwks_lock.values() {
+            for key in &set.keys {
+                if let Some(res) = f(key) {
+                    return Ok(Some(res));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Check whether the JWKS cache is empty without allocating.
+    pub fn is_empty(&self) -> KResult<bool> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        Ok(jwks_lock.values().all(|set| set.keys.is_empty()))
+    }
+
     /// Return all JWKs from all registered JWKS sets, regardless of `kid`.
     ///
     /// Used by the Auth Verifier middleware where tokens are issued without a `kid`

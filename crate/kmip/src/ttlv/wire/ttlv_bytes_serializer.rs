@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn test_write_integer() {
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string().into(),
             value: TTLValue::Integer(123),
         };
         let mut buffer = Vec::new();
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn test_long_integer() {
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string().into(),
             value: TTLValue::LongInteger(1_234_567_890_123_456_789),
         };
         let mut buffer = Vec::new();
@@ -372,7 +372,7 @@ mod tests {
         assert_eq!(bi_bytes.len() % 8, 0);
 
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::D.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::D.to_string().into(),
             value: TTLValue::BigInteger(bi.clone()),
         };
         let mut buffer = Vec::new();
@@ -407,10 +407,12 @@ mod tests {
     fn test_enumeration() {
         let variant = KmipEnumerationVariant {
             value: 0x03,
-            name: "AES".to_owned(),
+            name: "AES".into(),
         };
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm
+                .to_string()
+                .into(),
             value: TTLValue::Enumeration(variant),
         };
         let mut buffer = Vec::new();
@@ -444,7 +446,7 @@ mod tests {
     #[test]
     fn test_boolean() {
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Sensitive.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Sensitive.to_string().into(),
             value: TTLValue::Boolean(true),
         };
         let mut buffer = Vec::new();
@@ -478,7 +480,7 @@ mod tests {
         let msg_len = msg_bytes.len();
 
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Name.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Name.to_string().into(),
             value: TTLValue::TextString(msg.to_owned()),
         };
         let mut buffer = Vec::new();
@@ -512,7 +514,7 @@ mod tests {
         let msg_len = msg.len();
 
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string().into(),
             value: TTLValue::ByteString(msg),
         };
         let mut buffer = Vec::new();
@@ -544,7 +546,9 @@ mod tests {
     fn test_date_time() {
         let now = OffsetDateTime::now_utc();
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::DeactivationDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::DeactivationDate
+                .to_string()
+                .into(),
             value: TTLValue::DateTime(now),
         };
         let mut buffer = Vec::new();
@@ -573,7 +577,9 @@ mod tests {
     #[test]
     fn test_interval() {
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ValidityIndicator.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::ValidityIndicator
+                .to_string()
+                .into(),
             value: TTLValue::Interval(86400),
         };
         let mut buffer = Vec::new();
@@ -608,7 +614,7 @@ mod tests {
             .map_err(|_e| TtlvError::from(format!("Date Time Extended value too large: {now}")))
             .unwrap();
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string().into(),
             value: TTLValue::DateTimeExtended(i128::from(micros)),
         };
         let mut buffer = Vec::new();
@@ -637,14 +643,16 @@ mod tests {
     #[test]
     fn test_structure() {
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Link.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Link.to_string().into(),
             value: TTLValue::Structure(vec![
                 TTLV {
-                    tag: kmip_1_4::kmip_types::Tag::LinkType.to_string(),
+                    tag: kmip_1_4::kmip_types::Tag::LinkType.to_string().into(),
                     value: TTLValue::Integer(123),
                 },
                 TTLV {
-                    tag: kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier.to_string(),
+                    tag: kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier
+                        .to_string()
+                        .into(),
                     value: TTLValue::TextString("Hello KMIP".to_owned()),
                 },
             ]),
@@ -717,7 +725,7 @@ mod tests {
         // An Integer containing the decimal value 8:
         // 42 00 20 | 02 | 00 00 00 04 | 00 00 00 08 00 00 00 00
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::Integer(8),
         };
         let mut buffer = Vec::new();
@@ -739,7 +747,7 @@ mod tests {
         // A Long Integer containing the decimal value 123456789000000000:
         // 42 00 20 | 03 | 00 00 00 08 | 01 B6 9B 4B A5 74 92 00
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(), // tag 42 00 20
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(), // tag 42 00 20
             value: TTLValue::LongInteger(123_456_789_000_000_000),
         };
         buffer.clear();
@@ -762,7 +770,7 @@ mod tests {
         let bi =
             KmipBigInt::from(BigInt::parse_bytes(b"1234567890000000000000000000", 10).unwrap());
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::BigInteger(bi),
         };
         buffer.clear();
@@ -785,10 +793,10 @@ mod tests {
         // 42 00 20 | 05 | 00 00 00 04 | 00 00 00 FF 00 00 00 00
         let variant = KmipEnumerationVariant {
             value: 255,
-            name: "TestEnum".to_owned(),
+            name: "TestEnum".into(),
         };
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::Enumeration(variant),
         };
         buffer.clear();
@@ -810,7 +818,7 @@ mod tests {
         // A Boolean with the value True:
         // 42 00 20 | 06 | 00 00 00 08 | 00 00 00 00 00 00 00 01
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::Boolean(true),
         };
         buffer.clear();
@@ -831,7 +839,7 @@ mod tests {
         // A Text String with the value "Hello World":
         // 42 00 20 | 07 | 00 00 00 0B | 48 65 6C 6C 6F 20 57 6F 72 6C 64 00 00 00 00 00
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::TextString("Hello World".to_owned()),
         };
         buffer.clear();
@@ -853,7 +861,7 @@ mod tests {
         // A Byte String with the value { 0x01, 0x02, 0x03 }:
         // 42 00 20 | 08 | 00 00 00 03 | 01 02 03 00 00 00 00 00
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::ByteString(vec![0x01, 0x02, 0x03]),
         };
         buffer.clear();
@@ -876,7 +884,7 @@ mod tests {
         let dt = datetime!(2008-03-14 11:56:40 UTC);
         // let dt = OffsetDateTime::from_unix_timestamp(1205499400).unwrap();
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::DateTime(dt),
         };
         buffer.clear();
@@ -897,7 +905,7 @@ mod tests {
         // An Interval, containing the value for 10 days:
         // 42 00 20 | 0A | 00 00 00 04 | 00 0D 2F 00 00 00 00 00
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::Interval(864_000), // 10 days in seconds
         };
         buffer.clear();
@@ -922,18 +930,20 @@ mod tests {
         // 42 00 05 | 02 | 00 00 00 04 | 00 00 00 FF 00 00 00 00
         let enum_variant = KmipEnumerationVariant {
             value: 254,
-            name: "TestEnum".to_owned(),
+            name: "TestEnum".into(),
         };
         let ttlv_enum = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation.to_string(), /* "420004", Custom tag from example */
+            tag: kmip_1_4::kmip_types::Tag::ApplicationSpecificInformation
+                .to_string()
+                .into(), // "420004", Custom tag from example
             value: TTLValue::Enumeration(enum_variant),
         };
         let ttlv_int = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ArchiveDate.to_string(), //"420005", Custom tag from example
+            tag: kmip_1_4::kmip_types::Tag::ArchiveDate.to_string().into(), //"420005", Custom tag from example
             value: TTLValue::Integer(255),
         };
         let ttlv = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
             value: TTLValue::Structure(vec![ttlv_enum, ttlv_int]),
         };
         buffer.clear();

@@ -50,53 +50,53 @@ const TTLV_ERROR_RESPONSE: [u8; 160] = [
 /// Generate an "Invalid Message" KMIP error response message in TTLV format
 fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
     TTLV {
-        tag: "ResponseMessage".to_owned(),
+        tag: "ResponseMessage".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "ResponseHeader".to_owned(),
+                tag: "ResponseHeader".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "ProtocolVersion".to_owned(),
+                        tag: "ProtocolVersion".into(),
                         value: TTLValue::Structure(vec![
                             TTLV {
-                                tag: "ProtocolVersionMajor".to_owned(),
+                                tag: "ProtocolVersionMajor".into(),
                                 value: TTLValue::Integer(major),
                             },
                             TTLV {
-                                tag: "ProtocolVersionMinor".to_owned(),
+                                tag: "ProtocolVersionMinor".into(),
                                 value: TTLValue::Integer(minor),
                             },
                         ]),
                     },
                     TTLV {
-                        tag: "TimeStamp".to_owned(),
+                        tag: "TimeStamp".into(),
                         value: TTLValue::DateTime(OffsetDateTime::now_utc()),
                     },
                     TTLV {
-                        tag: "BatchCount".to_owned(),
+                        tag: "BatchCount".into(),
                         value: TTLValue::Integer(1),
                     },
                 ]),
             },
             TTLV {
-                tag: "BatchItem".to_owned(),
+                tag: "BatchItem".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "ResultStatus".to_owned(),
+                        tag: "ResultStatus".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             value: 0x0000_0001,
-                            name: "OperationFailed".to_owned(),
+                            name: "OperationFailed".into(),
                         }),
                     },
                     TTLV {
-                        tag: "ResultReason".to_owned(),
+                        tag: "ResultReason".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             value: 0x0000_0004,
-                            name: "Invalid_Message".to_owned(),
+                            name: "Invalid_Message".into(),
                         }),
                     },
                     TTLV {
-                        tag: "ResultMessage".to_owned(),
+                        tag: "ResultMessage".into(),
                         value: TTLValue::TextString(error_message.to_owned()),
                     },
                 ]),
@@ -161,7 +161,7 @@ pub(crate) async fn kmip_2_1_json(
 
     let user = kms.get_user(&req_http);
     let auth_method = kms.get_auth_method(&req_http);
-    debug!(target: "kmip", user = user.as_str(), ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    debug!(target: "kmip", user = user.as_str(), ?auth_method, tag = &*ttlv.tag, "POST /kmip/2_1. Request: {:?} {}", &*ttlv.tag, user);
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
@@ -192,7 +192,7 @@ async fn handle_ttlv(
     major: i32,
     minor: i32,
 ) -> KResult<TTLV> {
-    if ttlv.tag.as_str() == "RequestMessage" {
+    if &*ttlv.tag == "RequestMessage" {
         let req = match from_ttlv::<RequestMessage>(ttlv) {
             Ok(req) => req,
             Err(e) => {
@@ -279,14 +279,14 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     debug!(
         target: "kmip",
         user = user.as_str(),
-        tag=ttlv.tag.as_str(),
-        "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, ttlv.tag.as_str(), user
+        tag = &*ttlv.tag,
+        "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, &*ttlv.tag, user
     );
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
-        let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
+        let span = tracing::info_span!("kmip", user = user.as_str(), tag = &*ttlv.tag);
         let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
             .instrument(span)
             .await?;
@@ -418,13 +418,13 @@ async fn handle_ttlv_bytes_inner(
     debug!(
         target: "kmip",
         user = user.as_str(),
-        tag=tag,
+        tag = tag.as_ref(),
         "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, tag, user
     );
     debug!(
         target: "kmip",
         user = user.as_str(),
-        tag=tag,
+        tag = tag.as_ref(),
         "Request TTLV: {ttlv:#?}"
     );
 
@@ -436,7 +436,7 @@ async fn handle_ttlv_bytes_inner(
     trace!(
         target: "kmip",
         user = user.as_str(),
-        tag=tag,
+        tag = tag.as_ref(),
         "Request Message: {request_message}"
     );
 
@@ -447,7 +447,7 @@ async fn handle_ttlv_bytes_inner(
     trace!(
         target: "kmip",
         user = user.as_str(),
-        tag=tag,
+        tag = tag.as_ref(),
         "Response Message: {response_message}"
     );
 
@@ -457,7 +457,7 @@ async fn handle_ttlv_bytes_inner(
     debug!(
         target: "kmip",
         user = user.as_str(),
-        tag=tag,
+        tag = tag.as_ref(),
         "Response Message TTLV: {response_ttlv:#?}"
     );
 
@@ -467,7 +467,7 @@ async fn handle_ttlv_bytes_inner(
     debug!(
         target: "kmip",
         user = user.as_str(),
-        tag=tag,
+        tag = tag.as_ref(),
         "Response Message Bytes: {}", hex::encode(&response_bytes)
     );
 
@@ -475,7 +475,7 @@ async fn handle_ttlv_bytes_inner(
 }
 
 fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
-    if ttlv.tag.as_str() != "RequestMessage" {
+    if &*ttlv.tag != "RequestMessage" {
         return Err(KmsError::InvalidRequest(
             "The /kmip endpoint only accepts Request messages".to_owned(),
         ));
@@ -488,7 +488,7 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
     let request_header = children
         .first()
         .context("The RequestMessage should have a RequestHeader")?;
-    if request_header.tag.as_str() != "RequestHeader" {
+    if &*request_header.tag != "RequestHeader" {
         return Err(KmsError::InvalidRequest(
             "The RequestMessage should have a RequestHeader".to_owned(),
         ));
@@ -501,7 +501,7 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
     let protocol_version = children
         .first()
         .context("The RequestMessage should have a ProtocolVersion")?;
-    if protocol_version.tag.as_str() != "ProtocolVersion" {
+    if &*protocol_version.tag != "ProtocolVersion" {
         return Err(KmsError::InvalidRequest(
             "The RequestMessage should have a ProtocolVersion".to_owned(),
         ));
@@ -514,7 +514,7 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
     let major = protocol_version_children
         .first()
         .context("The ProtocolVersion should have a major version")?;
-    if major.tag.as_str() != "ProtocolVersionMajor" {
+    if &*major.tag != "ProtocolVersionMajor" {
         return Err(KmsError::InvalidRequest(
             "The ProtocolVersion should have a major version".to_owned(),
         ));
@@ -527,7 +527,7 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
     let minor = protocol_version_children
         .get(1)
         .context("The ProtocolVersion should have a minor version")?;
-    if minor.tag.as_str() != "ProtocolVersionMinor" {
+    if &*minor.tag != "ProtocolVersionMinor" {
         return Err(KmsError::InvalidRequest(
             "The ProtocolVersion should have a minor version".to_owned(),
         ));

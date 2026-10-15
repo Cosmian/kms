@@ -152,6 +152,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         ))
         .await
         {
+            let owm = std::sync::Arc::unwrap_or_clone(owm);
             let object_type = owm.object().object_type();
             match object_type {
                 // If the user passed a certificate, attempt to renew it

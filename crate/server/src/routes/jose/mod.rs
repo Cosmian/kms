@@ -201,3 +201,51 @@ pub(crate) fn ecdsa_p1363_to_der(p1363: &[u8]) -> Result<Vec<u8>, CryptoApiError
 
     Ok(der)
 }
+
+/// Deserialize a protected-header member as an optional string, treating any
+/// non-string JSON value like an absent member (same as `Value::as_str`).
+/// `Cow` so that strings containing JSON escapes still deserialize.
+pub(super) fn lenient_str<'de, D>(
+    deserializer: D,
+) -> Result<Option<std::borrow::Cow<'de, str>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum MaybeStr<'a> {
+        #[serde(borrow)]
+        Str(std::borrow::Cow<'a, str>),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(
+        match <MaybeStr as serde::Deserialize>::deserialize(deserializer)? {
+            MaybeStr::Str(s) => Some(s),
+            MaybeStr::Other(_) => None,
+        },
+    )
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // test code: unwrap on fixed JSON literals
+mod lenient_str_tests {
+    use std::borrow::Cow;
+
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct H<'a> {
+        #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+        kid: Option<Cow<'a, str>>,
+    }
+
+    #[test]
+    fn escaped_string_is_kept_and_non_string_is_absent() {
+        let h: H = serde_json::from_str(r#"{"kid":"a\u0062\/c"}"#).unwrap();
+        assert_eq!(h.kid.as_deref(), Some("ab/c"));
+        let h: H = serde_json::from_str(r#"{"kid":42}"#).unwrap();
+        assert!(h.kid.is_none());
+        let h: H = serde_json::from_str(r"{}").unwrap();
+        assert!(h.kid.is_none());
+    }
+}

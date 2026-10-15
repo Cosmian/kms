@@ -1,4 +1,5 @@
 use core::fmt;
+use std::str::FromStr;
 
 use cosmian_logger::trace;
 use serde::{
@@ -70,10 +71,11 @@ impl<'de> Deserialize<'de> for TTLV {
                     array.push(element);
                 }
                 // Add a wrapper Array around the elements
+                let tag = array
+                    .first()
+                    .map_or_else(|| "Unknown".into(), |v| v.tag.clone());
                 Ok(TTLV {
-                    tag: array
-                        .first()
-                        .map_or_else(|| "Unknown".to_owned(), |v| v.tag.clone()),
+                    tag,
                     value: TTLValue::Structure(array),
                 })
             }
@@ -219,7 +221,18 @@ impl<'de> Deserialize<'de> for TTLV {
                         }
                     }
                 }
-                let tag = tag.ok_or_else(|| de::Error::missing_field("tag"))?;
+                let tag_str = tag.ok_or_else(|| de::Error::missing_field("tag"))?;
+                let tag = match crate::kmip_2_1::kmip_types::Tag::from_str(&tag_str) {
+                    Ok(known) => {
+                        let static_name: &'static str = known.into();
+                        if static_name == tag_str {
+                            std::borrow::Cow::Borrowed(static_name)
+                        } else {
+                            std::borrow::Cow::Owned(tag_str)
+                        }
+                    }
+                    Err(_) => std::borrow::Cow::Owned(tag_str),
+                };
                 let value = value.ok_or_else(|| de::Error::missing_field("value"))?;
                 Ok(TTLV { tag, value })
             }
@@ -234,43 +247,32 @@ fn deserialize_integer<E>(v: &Value) -> Result<i64, E>
 where
     E: de::Error,
 {
-    let hex: Option<String> = if v.is_string() {
-        let s = v.as_str().map(ToOwned::to_owned).ok_or_else(|| {
-            de::Error::custom(format!("deserialize_integer: failed parsing string {v}"))
-        })?;
-        if s.get(0..2) != Some("0x") {
+    if let Some(s) = v.as_str() {
+        if !s.starts_with("0x") {
             return Err(de::Error::custom(format!(
                 "Invalid value for integer hex String: {s} (should start with 0x)"
             )));
         }
-        Some(s.get(2..).map(ToOwned::to_owned).ok_or_else(|| {
-            de::Error::custom(format!(
-                "visit_map: indexing slicing failed for Integer 2..: {v}"
-            ))
-        })?)
-    } else {
-        None
-    };
-
-    if let Some(mut hex) = hex {
-        if hex.len() == 8 {
-            hex = "00000000".to_owned() + &hex;
-        } else if hex.len() != 16 {
+        let hex_part = &s[2..];
+        let mut buf = [0_u8; 8];
+        if hex_part.len() == 8 {
+            hex::decode_to_slice(hex_part, &mut buf[4..]).map_err(|e| {
+                de::Error::custom(format!(
+                    "Invalid value for i64 hex String: {v} (not a hex string). Error: {e}",
+                ))
+            })?;
+        } else if hex_part.len() == 16 {
+            hex::decode_to_slice(hex_part, &mut buf).map_err(|e| {
+                de::Error::custom(format!(
+                    "Invalid value for i64 hex String: {v} (not a hex string). Error: {e}",
+                ))
+            })?;
+        } else {
             return Err(de::Error::custom(format!(
-                "Invalid value for hex String: {hex}",
+                "Invalid value for hex String: {hex_part}",
             )));
         }
-        let bytes = hex::decode(hex.clone()).map_err(|e| {
-            de::Error::custom(format!(
-                "Invalid value for i64 hex String: {v} (not a hex string). Error: {e}",
-            ))
-        })?;
-        let v = i64::from_be_bytes(bytes.as_slice().try_into().map_err(|e| {
-            de::Error::custom(format!(
-                "Invalid value for i64 hex String: {hex}. Error: {e}",
-            ))
-        })?);
-        return Ok(v);
+        return Ok(i64::from_be_bytes(buf));
     }
     v.as_i64()
         .ok_or_else(|| de::Error::custom(format!("visit_map: not a valid i64 integer: {v}")))
@@ -369,12 +371,12 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
                     })?);
                     Ok(KmipEnumerationVariant {
                         value: index,
-                        name: String::new(),
+                        name: "".into(),
                     })
                 } else {
                     Ok(KmipEnumerationVariant {
                         value: 0,
-                        name: v.to_owned(),
+                        name: v.to_owned().into(),
                     })
                 }
             }
@@ -391,7 +393,7 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
                             "Invalid i64 value for enumeration index: {v}. Error: {e:?}"
                         ))
                     })?,
-                    name: String::new(),
+                    name: "".into(),
                 })
             }
 
@@ -407,7 +409,7 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
                             "Invalid u64 value for enumeration index: {v}. Error: {e:?}"
                         ))
                     })?,
-                    name: String::new(),
+                    name: "".into(),
                 })
             }
 

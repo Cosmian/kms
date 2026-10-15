@@ -77,14 +77,20 @@ impl CryptoOpSpec for MacOp {
         let digest = if let Some(correlation_value) = &request.correlation_value {
             compute_hmac(correlation_value, data, algorithm)?
         } else {
-            let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
-            compute_hmac(key_bytes.as_slice(), data, algorithm)?
+            let key_bytes = owm.object().key_block()?.key_bytes_ref().context("mac")?;
+            compute_hmac(key_bytes, data, algorithm)?
+        };
+
+        let (mac_data, correlation_value) = if request.init_indicator.unwrap_or(false) {
+            (None, Some(digest))
+        } else {
+            (Some(digest), None)
         };
 
         Ok(MACResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
-            correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
+            mac_data,
+            correlation_value,
         })
     }
 
@@ -148,7 +154,7 @@ impl CryptoOpSpec for MacVerifyOp {
         _user: &UserId,
     ) -> KResult<Self::Response> {
         let key_block = owm.object().key_block()?;
-        let key_bytes = key_block.key_bytes().context("mac_verify")?;
+        let key_bytes = key_block.key_bytes_ref().context("mac_verify")?;
 
         // Determine hashing algorithm: prefer explicit request param; otherwise infer from key.
         let algorithm = if let Some(cp) = &request.cryptographic_parameters {
@@ -162,7 +168,7 @@ impl CryptoOpSpec for MacVerifyOp {
             infer_hmac_hashing_algorithm(key_block, owm.attributes())?
         };
 
-        let expected_mac = compute_hmac(key_bytes.as_slice(), &request.data, algorithm)?;
+        let expected_mac = compute_hmac(key_bytes, &request.data, algorithm)?;
         let validity = if expected_mac == request.mac_data {
             ValidityIndicator::Valid
         } else {

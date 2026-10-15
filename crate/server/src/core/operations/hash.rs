@@ -56,9 +56,15 @@ pub(crate) async fn hash_operation(
 
     let hash = compute_hash(&data, algorithm, request.correlation_value)?;
 
+    let (data, correlation_value) = if request.init_indicator.unwrap_or(false) {
+        (None, Some(hash))
+    } else {
+        (Some(hash), None)
+    };
+
     Ok(HashResponse {
-        data: (!request.init_indicator.unwrap_or(false)).then_some(hash.clone()),
-        correlation_value: request.init_indicator.unwrap_or(false).then_some(hash),
+        data,
+        correlation_value,
     })
 }
 

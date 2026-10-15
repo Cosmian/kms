@@ -10,6 +10,8 @@
 //! to the old certificate are updated to point to the new certificate via their
 //! `CertificateLink`.
 
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -106,13 +108,15 @@ impl RekeyOperation for CertificateRekey {
 
         let uid = from_request(request.unique_identifier.as_ref(), "ReCertify")?;
 
-        let owm = Box::pin(retrieve_object_for_operation(
-            uid,
-            KmipOperation::Certify,
-            kms,
-            user,
-        ))
-        .await?;
+        let owm = Arc::unwrap_or_clone(
+            Box::pin(retrieve_object_for_operation(
+                uid,
+                KmipOperation::Certify,
+                kms,
+                user,
+            ))
+            .await?,
+        );
 
         if owm.object().object_type() != ObjectType::Certificate {
             kms_bail!(KmsError::InvalidRequest(format!(
@@ -341,17 +345,14 @@ async fn relink_keys_to_new_certificate(
     new_cert: ObjectHandle<'_>,
     operations: &mut Vec<AtomicOperation>,
 ) -> KResult<()> {
-    // Collect key UIDs linked from the old certificate
-    let key_uids: Vec<String> = [LinkType::PublicKeyLink, LinkType::PrivateKeyLink]
-        .iter()
-        .filter_map(|lt| old_cert_attrs.get_link(*lt).map(|l| l.to_string()))
-        .collect();
-
-    for key_uid in key_uids {
-        if let Some(op) =
-            relink_single_key(kms, ObjectHandle::from(&key_uid), old_cert, new_cert).await?
-        {
-            operations.push(op);
+    for lt in [LinkType::PublicKeyLink, LinkType::PrivateKeyLink] {
+        if let Some(key_uid) = old_cert_attrs.get_link(lt) {
+            let key_uid_str = key_uid.to_string();
+            if let Some(op) =
+                relink_single_key(kms, ObjectHandle::from(&key_uid_str), old_cert, new_cert).await?
+            {
+                operations.push(op);
+            }
         }
     }
     Ok(())
@@ -365,7 +366,7 @@ async fn relink_single_key(
     new_cert: ObjectHandle<'_>,
 ) -> KResult<Option<AtomicOperation>> {
     let key_uid = key.as_str();
-    let Some(key_owm) = kms.database.retrieve_object(key_uid).await? else {
+    let Some(key_owm) = kms.database.retrieve_object_arc(key_uid).await? else {
         return Ok(None);
     };
     let Some(cert_link) = key_owm.attributes().get_link(LinkType::CertificateLink) else {

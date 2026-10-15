@@ -1,3 +1,5 @@
+use std::{borrow::Cow, sync::Arc};
+
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
@@ -48,7 +50,10 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             user,
         ))
         .await?;
-        return Ok((private_key, certificate));
+        return Ok((
+            Arc::unwrap_or_clone(private_key),
+            Arc::unwrap_or_clone(certificate),
+        ));
     }
 
     if let Some(private_key_id) = private_key_id {
@@ -66,7 +71,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             user,
         ))
         .await?;
-        return Ok((private_key, certificate));
+        return Ok((Arc::unwrap_or_clone(private_key), certificate));
     }
 
     if let Some(certificate_id) = certificate_id {
@@ -85,7 +90,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
             user,
         ))
         .await?;
-        return Ok((private_key, certificate));
+        return Ok((private_key, Arc::unwrap_or_clone(certificate)));
     }
 
     kms_bail!(KmsError::InvalidRequest(
@@ -137,8 +142,9 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     };
 
     // retrieve the certificate
+    let certificate_id_str = linked_id_str(&certificate_id);
     let cert_owm = Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(&certificate_id.to_string()),
+        ObjectHandle::from(&*certificate_id_str),
         operation_type,
         kms,
         user,
@@ -152,7 +158,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
         cert_owm.id(),
         private_key.id()
     );
-    Ok(cert_owm)
+    Ok(Arc::unwrap_or_clone(cert_owm))
 }
 
 /// Retrieve the certificate associated to the given private key
@@ -198,8 +204,9 @@ pub(crate) async fn retrieve_private_key_for_certificate(
         .await?
     };
     // retrieve the private key
-    Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(&private_key_id.to_string()),
+    let private_key_id_str = linked_id_str(&private_key_id);
+    let private_key = Box::pin(retrieve_object_for_operation(
+        ObjectHandle::from(&*private_key_id_str),
         operation_type,
         kms,
         user,
@@ -207,7 +214,17 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     .await
     .with_context(|| {
         format!("could not retrieve the private key: {private_key_id} for the certificate")
-    })
+    })?;
+    Ok(Arc::unwrap_or_clone(private_key))
+}
+
+/// Borrow the text of a linked object identifier when it is a text string
+/// (the usual case), allocating only for the numeric/enumeration forms.
+pub(crate) fn linked_id_str(id: &LinkedObjectIdentifier) -> Cow<'_, str> {
+    match id {
+        LinkedObjectIdentifier::TextString(s) => Cow::Borrowed(s.as_str()),
+        other => Cow::Owned(other.to_string()),
+    }
 }
 
 async fn find_link_in_public_key(
@@ -218,8 +235,9 @@ async fn find_link_in_public_key(
     user: &UserId,
 ) -> Result<LinkedObjectIdentifier, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
+    let public_key_id = linked_id_str(public_key_id);
     let public_key_owm = Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(&public_key_id.to_string()),
+        ObjectHandle::from(&*public_key_id),
         operation_type,
         kms,
         user,

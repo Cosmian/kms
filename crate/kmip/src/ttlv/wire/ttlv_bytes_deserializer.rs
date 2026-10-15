@@ -131,7 +131,7 @@ where
                 self.reader.read_exact(&mut buf4)?;
                 let value = TTLValue::Enumeration(KmipEnumerationVariant {
                     value: u32::from_be_bytes(buf4),
-                    name: String::new(),
+                    name: "".into(),
                 });
                 // read the 4 bytes of padding
                 self.reader.read_exact(&mut buf4)?;
@@ -199,9 +199,10 @@ where
             }
         };
 
+        let tag_str: &'static str = tag.into();
         Ok((
             TTLV {
-                tag: tag.to_string(),
+                tag: tag_str.into(),
                 value,
             },
             value_len + 8,
@@ -243,7 +244,7 @@ mod tests {
     #[test]
     fn test_integer() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string().into(),
             value: TTLValue::Integer(123),
         };
         serialize_and_deserialize(&original);
@@ -252,7 +253,7 @@ mod tests {
     #[test]
     fn test_long_integer() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::IterationCount.to_string().into(),
             value: TTLValue::LongInteger(1_234_567_890_123_456_789),
         };
         serialize_and_deserialize(&original);
@@ -262,7 +263,7 @@ mod tests {
     fn test_big_integer() {
         let bi = BigInt::from(12_345_678_901_234_567_890_123_456_789_012_345_678_i128);
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::D.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::D.to_string().into(),
             value: TTLValue::BigInteger(KmipBigInt::from(bi)),
         };
         serialize_and_deserialize(&original);
@@ -273,10 +274,12 @@ mod tests {
     fn test_enumeration() {
         let variant = KmipEnumerationVariant {
             value: kmip_1_4::kmip_types::CryptographicAlgorithm::AES as u32,
-            name: "AES".to_owned(),
+            name: "AES".into(),
         };
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::CryptographicAlgorithm
+                .to_string()
+                .into(),
             value: TTLValue::Enumeration(variant),
         };
         serialize_and_deserialize(&original);
@@ -285,7 +288,7 @@ mod tests {
     #[test]
     fn test_boolean() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Sensitive.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Sensitive.to_string().into(),
             value: TTLValue::Boolean(true),
         };
         serialize_and_deserialize(&original);
@@ -294,7 +297,7 @@ mod tests {
     #[test]
     fn test_text_string() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Name.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Name.to_string().into(),
             value: TTLValue::TextString("Hello KMIP".to_owned()),
         };
         serialize_and_deserialize(&original);
@@ -303,7 +306,7 @@ mod tests {
     #[test]
     fn test_byte_string() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::KeyValue.to_string().into(),
             value: TTLValue::ByteString(vec![1, 2, 3, 4, 5]),
         };
         serialize_and_deserialize(&original);
@@ -313,7 +316,9 @@ mod tests {
     fn test_date_time() {
         let now = OffsetDateTime::now_utc();
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::DeactivationDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::DeactivationDate
+                .to_string()
+                .into(),
             value: TTLValue::DateTime(now),
         };
         serialize_and_deserialize(&original);
@@ -322,7 +327,9 @@ mod tests {
     #[test]
     fn test_interval() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ValidityIndicator.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::ValidityIndicator
+                .to_string()
+                .into(),
             value: TTLValue::Interval(86400),
         };
         serialize_and_deserialize(&original);
@@ -333,7 +340,7 @@ mod tests {
         let now = OffsetDateTime::now_utc();
         let micros = i64::try_from(now.unix_timestamp_nanos() / 1_000).unwrap();
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::ActivationDate.to_string().into(),
             value: TTLValue::DateTimeExtended(i128::from(micros)),
         };
         serialize_and_deserialize(&original);
@@ -342,14 +349,16 @@ mod tests {
     #[test]
     fn test_structure() {
         let original = TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Link.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Link.to_string().into(),
             value: TTLValue::Structure(vec![
                 TTLV {
-                    tag: kmip_1_4::kmip_types::Tag::LinkType.to_string(),
+                    tag: kmip_1_4::kmip_types::Tag::LinkType.to_string().into(),
                     value: TTLValue::Integer(123),
                 },
                 TTLV {
-                    tag: kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier.to_string(),
+                    tag: kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier
+                        .to_string()
+                        .into(),
                     value: TTLValue::TextString("Hello KMIP".to_owned()),
                 },
             ]),
@@ -361,12 +370,12 @@ mod tests {
     fn build_nested_structure(depth: u32) -> TTLV {
         if depth == 0 {
             return TTLV {
-                tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string(),
+                tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string().into(),
                 value: TTLValue::Integer(0),
             };
         }
         TTLV {
-            tag: kmip_1_4::kmip_types::Tag::Link.to_string(),
+            tag: kmip_1_4::kmip_types::Tag::Link.to_string().into(),
             value: TTLValue::Structure(vec![build_nested_structure(depth - 1)]),
         }
     }

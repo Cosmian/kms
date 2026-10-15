@@ -685,7 +685,7 @@ pub async fn digest(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
-        Some(resource_name.clone().into_bytes()),
+        Some(resource_name.as_bytes().to_vec()),
         kms,
     )
     .await?;
@@ -785,7 +785,7 @@ pub async fn privileged_unwrap(
         )
         .await?
     };
-    let resource_name = request.resource_name.clone();
+    let resource_name = request.resource_name;
 
     debug!("unwrap key");
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
@@ -1108,7 +1108,7 @@ pub async fn rewrap(
 
     // Wrap with current KMS (KACLS2)
     debug!("re-wrapping key with current KMS");
-    let resource_name_bytes = resource_name.clone().into_bytes();
+    let resource_name_bytes = resource_name.as_bytes().to_vec();
     let re_wrapped_key =
         cse_key_encrypt(unwrapped_key.clone(), user, Some(resource_name_bytes), kms).await?;
 
@@ -1149,31 +1149,36 @@ async fn cse_wrapped_key_decrypt(
     kms: &Arc<KMS>,
 ) -> KResult<Zeroizing<Vec<u8>>> {
     trace!("wrapped_key length: {} chars", wrapped_key.len());
-    let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
+    let mut wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
     let len = wrapped_key_bytes.len();
     if len < TAG_LENGTH + NONCE_LENGTH {
         return Err(KmsError::InvalidRequest(
             "Invalid wrapped key - insufficient length.".to_owned(),
         ));
     }
-    let iv_counter_nonce = wrapped_key_bytes.get(..NONCE_LENGTH).ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let ciphertext = wrapped_key_bytes
-        .get(NONCE_LENGTH..len - TAG_LENGTH)
-        .ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid wrapped key - missing ciphertext.".to_owned())
-        })?;
-    let authenticated_tag = wrapped_key_bytes.get(len - TAG_LENGTH..).ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing authenticated tag.".to_owned())
-    })?;
 
-    trace!(
-        "iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
-        general_purpose::STANDARD.encode(iv_counter_nonce),
-        general_purpose::STANDARD.encode(ciphertext),
-        general_purpose::STANDARD.encode(authenticated_tag)
-    );
+    if tracing::enabled!(tracing::Level::TRACE) {
+        let nonce_str = wrapped_key_bytes
+            .get(..NONCE_LENGTH)
+            .map(|s| general_purpose::STANDARD.encode(s))
+            .unwrap_or_default();
+        let ct_str = wrapped_key_bytes
+            .get(NONCE_LENGTH..len.saturating_sub(TAG_LENGTH))
+            .map(|s| general_purpose::STANDARD.encode(s))
+            .unwrap_or_default();
+        let tag_str = wrapped_key_bytes
+            .get(len.saturating_sub(TAG_LENGTH)..)
+            .map(|s| general_purpose::STANDARD.encode(s))
+            .unwrap_or_default();
+        trace!(
+            "iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
+            nonce_str, ct_str, tag_str
+        );
+    }
+
+    let authenticated_tag = wrapped_key_bytes.split_off(len - TAG_LENGTH);
+    let ciphertext = wrapped_key_bytes.split_off(NONCE_LENGTH);
+    let iv_counter_nonce = wrapped_key_bytes;
 
     let decryption_request = Decrypt {
         unique_identifier: Some(wrapping_key_id),
@@ -1181,13 +1186,13 @@ async fn cse_wrapped_key_decrypt(
             block_cipher_mode: Some(BlockCipherMode::GCM),
             ..Default::default()
         }),
-        data: Some(ciphertext.to_vec()),
-        i_v_counter_nonce: Some(iv_counter_nonce.to_vec()),
+        data: Some(ciphertext),
+        i_v_counter_nonce: Some(iv_counter_nonce),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
-        authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
+        authenticated_encryption_tag: Some(authenticated_tag),
     };
     let key = decrypt(kms, decryption_request, &UserId::from(user.as_str())).await?;
 

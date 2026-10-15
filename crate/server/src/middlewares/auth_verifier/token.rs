@@ -23,7 +23,7 @@ use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
 use jsonwebtoken::dangerous;
 #[cfg(all(not(test), not(feature = "insecure")))]
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header, jwk::Jwk};
 use serde::Deserialize;
 
 use crate::{
@@ -124,9 +124,8 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
             )));
         }
 
-        // Fetch all public keys — Cosmian tokens have no `kid` so we try them all.
-        let jwks = jwks_manager.find_any()?;
-        if jwks.is_empty() {
+        // Look up key by kid if header provides it, otherwise try all keys without cloning the cache.
+        if jwks_manager.is_empty()? {
             // JWKS cache is empty — the initial fetch at startup may have failed, or the
             // IdP may have been unreachable. Force a refresh, bypassing the normal
             // throttle: a plain `refresh()` call could be a no-op here for up to
@@ -134,18 +133,13 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
             // failed attempt, even though the cache never got populated.
             jwks_manager.force_refresh().await?;
         }
-        let jwks = jwks_manager.find_any()?;
 
         let mut last_error: Option<String> = None;
+        let mut tried_keys = 0usize;
 
-        for jwk in &jwks {
-            let decoding_key = match DecodingKey::from_jwk(jwk) {
-                Ok(k) => k,
-                Err(e) => {
-                    last_error = Some(format!("cannot build decoding key: {e}"));
-                    continue;
-                }
-            };
+        let validate_with_jwk = |jwk: &Jwk| -> Result<String, String> {
+            let decoding_key = DecodingKey::from_jwk(jwk)
+                .map_err(|e| format!("cannot build decoding key: {e}"))?;
 
             let mut validation = Validation::new(header.alg);
             validation.algorithms = vec![header.alg];
@@ -156,19 +150,38 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
             validation.required_spec_claims.clear();
             validation.set_required_spec_claims(&["sub", "exp"]);
 
-            match decode::<AuthVerifierClaims>(token, &decoding_key, &validation) {
-                Ok(data) => {
-                    return Ok(data.claims.sub);
+            decode::<AuthVerifierClaims>(token, &decoding_key, &validation)
+                .map(|data| data.claims.sub)
+                .map_err(|e| format!("{e}"))
+        };
+
+        if let Some(kid) = header.kid.as_deref() {
+            if let Some(jwk) = jwks_manager.find(kid)? {
+                match validate_with_jwk(&jwk) {
+                    Ok(sub) => return Ok(sub),
+                    Err(e) => last_error = Some(e),
                 }
-                Err(e) => {
-                    last_error = Some(format!("{e}"));
+                tried_keys = 1;
+            }
+        } else {
+            let verified = jwks_manager.find_map_key(|jwk| {
+                tried_keys += 1;
+                match validate_with_jwk(jwk) {
+                    Ok(sub) => Some(sub),
+                    Err(e) => {
+                        last_error = Some(e);
+                        None
+                    }
                 }
+            })?;
+            if let Some(sub) = verified {
+                return Ok(sub);
             }
         }
 
         Err(KmsError::Unauthorized(format!(
             "Auth Verifier: token signature validation failed against all {} JWKS key(s): {}",
-            jwks.len(),
+            tried_keys,
             last_error.unwrap_or_else(|| "no keys available".to_owned())
         )))
     }

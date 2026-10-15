@@ -16,10 +16,11 @@ use cosmian_kms_server_database::reexport::{
                 KeyFormatType, RecommendedCurve,
             },
         },
-        ttlv::{TTLV, from_ttlv},
+        ttlv::{TTLV, TtlvDeserializer},
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use serde::Deserialize;
 
 use crate::{config::ServerParams, error::KmsError, result::KResult};
 
@@ -49,8 +50,9 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     let ttlv_tag_for_error = &ttlv.tag;
 
     macro_rules! deserialize_op {
-        ($ty:ty, $name:expr) => {
-            from_ttlv::<$ty>(ttlv.clone()).map_err(|e| {
+        ($ty:ty, $name:expr) => {{
+            let mut deserializer = TtlvDeserializer::from_ttlv(ttlv);
+            <$ty>::deserialize(&mut deserializer).map_err(|e| {
                 KmsError::Kmip21Error(
                     ErrorReason::Invalid_Message,
                     format!(
@@ -59,7 +61,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
                     ),
                 )
             })
-        };
+        }};
     }
     // The root TTLV tag is the operation name (e.g. "Create").
     // Deserialize the *operation payload* (the struct), then wrap it into the `Operation` enum.

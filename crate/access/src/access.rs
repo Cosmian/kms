@@ -94,6 +94,63 @@ impl Role {
     /// are gated via [`LIFECYCLE_OPERATION_TAGS`] in the dispatch layer instead, and are
     /// therefore absent from this set by design. Callers must not assume this set is the
     /// complete permission boundary.
+    /// Checks whether this role is permitted to invoke the given [`KmipOperation`] at dispatch level.
+    ///
+    /// Zero heap allocations. See [`Self::allowed_operations`] for semantic details.
+    #[must_use]
+    pub const fn allows(self, op: KmipOperation) -> bool {
+        match self {
+            Self::Operator => matches!(
+                op,
+                KmipOperation::Encrypt
+                    | KmipOperation::Decrypt
+                    | KmipOperation::Sign
+                    | KmipOperation::SignatureVerify
+                    | KmipOperation::MAC
+                    | KmipOperation::Hash
+                    | KmipOperation::GetAttributes
+                    | KmipOperation::Locate
+                    | KmipOperation::Validate
+            ),
+            Self::CryptoOfficer => matches!(
+                op,
+                // All Operator operations
+                KmipOperation::Encrypt
+                    | KmipOperation::Decrypt
+                    | KmipOperation::Sign
+                    | KmipOperation::SignatureVerify
+                    | KmipOperation::MAC
+                    | KmipOperation::Hash
+                    | KmipOperation::GetAttributes
+                    | KmipOperation::Locate
+                    | KmipOperation::Validate
+                    // CO-only operations
+                    | KmipOperation::Create
+                    | KmipOperation::Certify
+                    | KmipOperation::Import
+                    | KmipOperation::Get
+                    | KmipOperation::Export
+                    | KmipOperation::Rekey
+                    | KmipOperation::DeriveKey
+                    | KmipOperation::Activate
+                    | KmipOperation::Revoke
+                    | KmipOperation::Destroy
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::DeleteAttribute
+            ),
+        }
+    }
+
+    /// Returns the set of [`KmipOperation`]s this role is permitted to invoke at dispatch level.
+    ///
+    /// **Important**: this set is NOT exhaustive of all operations the role may perform.
+    /// Operations without a [`KmipOperation`] variant in the dispatch mapping — specifically
+    /// `CreateKeyPair`, `Register`, `ReKeyKeyPair`, `CreateSplitKey`, and `JoinSplitKey` —
+    /// are gated via [`LIFECYCLE_OPERATION_TAGS`] in the dispatch layer instead, and are
+    /// therefore absent from this set by design. Callers must not assume this set is the
+    /// complete permission boundary.
     #[must_use]
     pub fn allowed_operations(self) -> HashSet<KmipOperation> {
         match self {

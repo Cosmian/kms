@@ -206,8 +206,15 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             }
 
             // One-shot signing
-            let mut req_for_sign = request.clone();
-            req_for_sign.cryptographic_parameters = Some(effective_cp);
+            let req_for_sign = Sign {
+                unique_identifier: request.unique_identifier.clone(),
+                cryptographic_parameters: Some(effective_cp),
+                data: request.data.clone(),
+                digested_data: request.digested_data.clone(),
+                correlation_value: request.correlation_value.clone(),
+                init_indicator: request.init_indicator,
+                final_indicator: request.final_indicator,
+            };
             let signature = sign_with_pkey(&req_for_sign, &private_key)?;
             Ok(SignResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

@@ -95,14 +95,14 @@ impl AdjacentlyTaggedStructure {
         let (tag, content) = match &current.value {
             TTLValue::Structure(ttlvs) => (
                 TTLV {
-                    tag: "Structure".to_owned(),
+                    tag: "Structure".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "Structure".to_owned(),
+                        name: "Structure".into(),
                     }),
                 },
                 further_expand_ttlv_struct(ttlvs.first().unwrap_or(&TTLV {
-                    tag: "ERROR".to_owned(),
+                    tag: "ERROR".into(),
                     value: TTLValue::TextString(
                         "There should be one TTLV in the Structure".to_owned(),
                     ),
@@ -110,131 +110,131 @@ impl AdjacentlyTaggedStructure {
             ),
             TTLValue::Integer(v) => (
                 TTLV {
-                    tag: "Integer".to_owned(),
+                    tag: "Integer".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "Integer".to_owned(),
+                        name: "Integer".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::Integer(*v),
                 },
             ),
             TTLValue::LongInteger(v) => (
                 TTLV {
-                    tag: "LongInteger".to_owned(),
+                    tag: "LongInteger".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "LongInteger".to_owned(),
+                        name: "LongInteger".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::LongInteger(*v),
                 },
             ),
             TTLValue::BigInteger(kmip_big_int) => (
                 TTLV {
-                    tag: "BigInteger".to_owned(),
+                    tag: "BigInteger".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "BigInteger".to_owned(),
+                        name: "BigInteger".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::BigInteger(kmip_big_int.clone()),
                 },
             ),
             TTLValue::Enumeration(kmip_enumeration_variant) => (
                 TTLV {
-                    tag: "Enumeration".to_owned(),
+                    tag: "Enumeration".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "Enumeration".to_owned(),
+                        name: "Enumeration".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::Enumeration(kmip_enumeration_variant.clone()),
                 },
             ),
             TTLValue::Boolean(v) => (
                 TTLV {
-                    tag: "Boolean".to_owned(),
+                    tag: "Boolean".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "Boolean".to_owned(),
+                        name: "Boolean".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::Boolean(*v),
                 },
             ),
             TTLValue::TextString(s) => (
                 TTLV {
-                    tag: "TextString".to_owned(),
+                    tag: "TextString".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "TextString".to_owned(),
+                        name: "TextString".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::TextString(s.clone()),
                 },
             ),
             TTLValue::ByteString(items) => (
                 TTLV {
-                    tag: "ByteString".to_owned(),
+                    tag: "ByteString".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "ByteString".to_owned(),
+                        name: "ByteString".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::ByteString(items.clone()),
                 },
             ),
             TTLValue::DateTime(offset_date_time) => (
                 TTLV {
-                    tag: "DateTime".to_owned(),
+                    tag: "DateTime".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "DateTime".to_owned(),
+                        name: "DateTime".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::DateTime(*offset_date_time),
                 },
             ),
             TTLValue::Interval(v) => (
                 TTLV {
-                    tag: "Interval".to_owned(),
+                    tag: "Interval".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "Interval".to_owned(),
+                        name: "Interval".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::Interval(*v),
                 },
             ),
             TTLValue::DateTimeExtended(dt) => (
                 TTLV {
-                    tag: "DateTimeExtended".to_owned(),
+                    tag: "DateTimeExtended".into(),
                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                         value: 0,
-                        name: "DateTimeExtended".to_owned(),
+                        name: "DateTimeExtended".into(),
                     }),
                 },
                 TTLV {
-                    tag: "_c".to_owned(),
+                    tag: "_c".into(),
                     value: TTLValue::DateTimeExtended(*dt),
                 },
             ),
@@ -254,14 +254,14 @@ impl AdjacentlyTaggedStructure {
 /// However, we need to expand it to a TTLV with a tag, a type and a value for the deserializer
 fn further_expand_ttlv_struct(ttlv: &TTLV) -> TTLV {
     TTLV {
-        tag: "_c".to_owned(),
+        tag: "_c".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "tag".to_owned(),
-                value: TTLValue::TextString(ttlv.tag.clone()),
+                tag: "tag".into(),
+                value: TTLValue::TextString(ttlv.tag.to_string()),
             },
             TTLV {
-                tag: "type".to_owned(),
+                tag: "type".into(),
                 value: TTLValue::TextString(match ttlv.value {
                     TTLValue::Structure(_) => "Structure".to_owned(),
                     TTLValue::Integer(_) => "Integer".to_owned(),
@@ -277,7 +277,7 @@ fn further_expand_ttlv_struct(ttlv: &TTLV) -> TTLV {
                 }),
             },
             TTLV {
-                tag: "value".to_owned(),
+                tag: "value".into(),
                 value: ttlv.value.clone(),
             },
         ]),
@@ -308,7 +308,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
                     map_state: MapAccessState::Key,
                     child_index: 0,
                     current: &TTLV {
-                        tag: "_t".to_owned(),
+                        tag: "_t".into(),
                         value: TTLValue::TextString("_t".to_owned()),
                     },
                     at_root: RwLock::new(true),
@@ -320,7 +320,7 @@ impl<'de> MapAccess<'de> for AdjacentlyTaggedStructure {
             map_state: MapAccessState::Key,
             child_index: 0,
             current: &TTLV {
-                tag: "_c".to_owned(),
+                tag: "_c".into(),
                 value: TTLValue::TextString("_c".to_owned()),
             },
             at_root: RwLock::new(true),

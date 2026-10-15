@@ -19,6 +19,7 @@ use actix_web::{
     Error,
     body::{BoxBody, EitherBody},
     dev::{Payload, Service, ServiceRequest, ServiceResponse, Transform},
+    web::{Bytes, BytesMut},
 };
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use cosmian_logger::debug;
@@ -162,15 +163,16 @@ where
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
 
-            let body_as_bytes = body
+            let body_bytes: Bytes = body
                 .map(Result::unwrap_or_default)
-                .fold(Vec::new(), |mut acc, chunk| async move {
+                .fold(BytesMut::new(), |mut acc, chunk| async move {
                     acc.extend_from_slice(&chunk);
                     acc
                 })
-                .await;
+                .await
+                .freeze();
 
-            let http_request = to_http_request(&actix_web_http_request, &body_as_bytes)?;
+            let http_request = to_http_request(&actix_web_http_request, body_bytes.clone())?;
 
             let access_key_id_for_svc = access_key_id.clone();
             let access_key_for_svc = access_key.clone();
@@ -244,9 +246,8 @@ where
                 )));
             }
 
-            // rebuild request with body_as_bytes and forward to next service
-            let req =
-                ServiceRequest::from_parts(actix_web_http_request, Payload::from(body_as_bytes));
+            // rebuild request with body_bytes and forward to next service
+            let req = ServiceRequest::from_parts(actix_web_http_request, Payload::from(body_bytes));
             let res = service.call(req).await?;
             Ok(res.map_into_left_body())
         })
@@ -261,8 +262,8 @@ fn authentication_failed_error(message: impl Into<String>) -> Error {
     .into()
 }
 
-fn enforce_sigv4_request_freshness(
-    request: &http::Request<Vec<u8>>,
+fn enforce_sigv4_request_freshness<B>(
+    request: &http::Request<B>,
     server_timestamp: DateTime<Utc>,
 ) -> Result<(), Error> {
     let request_timestamp = extract_sigv4_request_timestamp(request)?;
@@ -289,9 +290,7 @@ fn enforce_sigv4_request_freshness(
     Ok(())
 }
 
-fn extract_sigv4_request_timestamp(
-    request: &http::Request<Vec<u8>>,
-) -> Result<DateTime<Utc>, Error> {
+fn extract_sigv4_request_timestamp<B>(request: &http::Request<B>) -> Result<DateTime<Utc>, Error> {
     // Match `scratchstack-aws-signature`'s own precedence and parsing for header-authenticated
     // requests: the `x-amz-date` header takes priority, then the `Date` header — both parsed as
     // the basic SigV4 timestamp format (the validator's `parse_from_iso8601` accepts this format
@@ -412,8 +411,8 @@ fn derive_signing_key(
 
 fn to_http_request(
     actix_req: &actix_web::HttpRequest,
-    body: &[u8],
-) -> Result<http::Request<Vec<u8>>, actix_web::error::Error> {
+    body: Bytes,
+) -> Result<http::Request<Bytes>, actix_web::error::Error> {
     let method: http::Method = actix_req.method().as_str().parse().map_err(|e| {
         actix_web::error::ErrorBadRequest(format!(
             "Failed to parse HTTP method for Sigv4 validation: {e:?}"
@@ -455,7 +454,7 @@ fn to_http_request(
     // http_request_builder =
     //     http_request_builder.header(http::header::HOST, "localhost:9998".as_bytes());
 
-    let http_request = http_request_builder.body(body.to_vec()).map_err(|e| {
+    let http_request = http_request_builder.body(body).map_err(|e| {
         actix_web::error::ErrorBadRequest(format!(
             "Failed to rebuild request for Sigv4 validation: {e:?}"
         ))
@@ -476,7 +475,7 @@ mod tests {
             .uri("/?X-Amz-Date=20260903T120200Z")
             .header("X-Amz-Date", "20260903T120100Z")
             .header(http::header::DATE, "Thu, 03 Sep 2026 12:03:00 GMT")
-            .body(Vec::new())
+            .body(Vec::<u8>::new())
             .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
 
         assert!(matches!(
@@ -493,7 +492,7 @@ mod tests {
         let timestamp = http::Request::builder()
             .uri("/?X-Amz-Date=20260903T120200Z")
             .header(http::header::DATE, "20260903T120100Z")
-            .body(Vec::new())
+            .body(Vec::<u8>::new())
             .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
 
         assert!(matches!(
@@ -509,7 +508,7 @@ mod tests {
         let timestamp = http::Request::builder()
             .uri("/")
             .header(http::header::DATE, "20260903T120000Z")
-            .body(Vec::new())
+            .body(Vec::<u8>::new())
             .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
 
         assert!(matches!(
@@ -522,7 +521,7 @@ mod tests {
     fn extract_sigv4_request_timestamp_supports_query_parameter() {
         let timestamp = http::Request::builder()
             .uri("/?X-Amz-Date=20260903T120200Z")
-            .body(Vec::new())
+            .body(Vec::<u8>::new())
             .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
 
         assert!(matches!(
@@ -536,7 +535,7 @@ mod tests {
         let result = http::Request::builder()
             .uri("/")
             .header("X-Amz-Date", "20260903T115500Z")
-            .body(Vec::new())
+            .body(Vec::<u8>::new())
             .map(|request| {
                 parse_sigv4_header_timestamp("20260903T120000Z").map(|server_timestamp| {
                     enforce_sigv4_request_freshness(&request, server_timestamp)
@@ -554,7 +553,7 @@ mod tests {
         let reply = http::Request::builder()
             .uri("/")
             .header("X-Amz-Date", "20260903T115459Z")
-            .body(Vec::new())
+            .body(Vec::<u8>::new())
             .map(|request| {
                 parse_sigv4_header_timestamp("20260903T120000Z").map(|server_timestamp| {
                     enforce_sigv4_request_freshness(&request, server_timestamp)
@@ -588,7 +587,7 @@ mod tests {
             http::Request::builder()
                 .uri("/")
                 .header("X-Amz-Date", "20260903T115500Z")
-                .body(Vec::new())
+                .body(Vec::<u8>::new())
                 .map(|request| enforce_sigv4_request_freshness(&request, server_timestamp))
         });
 

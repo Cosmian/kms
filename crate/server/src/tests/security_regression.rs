@@ -482,3 +482,213 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
 
     Ok(())
 }
+
+/// Regression test: a wrapped-at-rest key with `fresh=true` retrieved via `Get`
+/// with auto-unwrap must NOT persist the unwrapped plaintext key to the database
+/// during the fresh-bit flip writeback.
+#[tokio::test]
+async fn test_get_fresh_wrapped_key_preserves_wrapping_in_db() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Get;
+
+    // Phase 1: create a wrapping key (KEK) on a plain KMS
+    let clap_config = https_clap_config();
+    let sqlite_path = clap_config.db.sqlite_path.clone();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = UserId::from("test_fresh_unwrap_owner@example.com");
+
+    let kek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms.create(kek_request, &owner).await?.unique_identifier;
+    drop(kms);
+
+    // Phase 2: re-instantiate KMS with KEK and default_unwrap_type so created keys are wrapped at rest
+    let mut clap_config_kek = https_clap_config();
+    clap_config_kek.db.sqlite_path = sqlite_path;
+    clap_config_kek.key_encryption_key = Some(kek_id.to_string());
+    clap_config_kek.default_unwrap_type = Some(vec!["All".to_owned()]);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+
+    // Create a symmetric key while KEK is configured -> wrapped at rest in DB
+    let key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let key_response = kms.create(key_request, &owner).await?;
+    let key_id = key_response.unique_identifier;
+    let key_uid = key_id.to_string();
+
+    // Verify key is wrapped at rest and Fresh is not false before Get
+    let raw_before = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+    assert!(
+        raw_before.object().is_wrapped(),
+        "Key must be wrapped at rest before Get"
+    );
+    assert_ne!(
+        raw_before.attributes().fresh,
+        Some(false),
+        "Key must not have fresh=false before Get"
+    );
+
+    // Phase 3: Perform a Get request with default auto-unwrap (NotWrapped / none)
+    let get_resp = kms
+        .get(
+            Get {
+                unique_identifier: Some(key_id.clone()),
+                key_format_type: None,
+                key_compression_type: None,
+                key_wrap_type: None,
+                key_wrapping_specification: None,
+            },
+            &owner,
+        )
+        .await?;
+
+    // The response returned the key unwrapped
+    assert!(
+        !get_resp.object.is_wrapped(),
+        "Get response should return key unwrapped"
+    );
+
+    // Phase 4: CRITICAL CHECK: In the database, the fresh bit was flipped to false,
+    // BUT the key object must STILL be wrapped at rest!
+    let raw_after = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+
+    assert_eq!(
+        raw_after.attributes().fresh,
+        Some(false),
+        "Fresh attribute must be flipped to false in DB after unwrapped Get"
+    );
+
+    assert!(
+        raw_after.object().is_wrapped(),
+        "SECURITY REGRESSION: Wrapped-at-rest key was persisted as plaintext to the database \
+         during the Fresh-bit flip in export_get!"
+    );
+
+    let kb = raw_after.object().key_block().expect("must have key block");
+    assert!(
+        kb.key_wrapping_data.is_some(),
+        "SECURITY REGRESSION: key_wrapping_data was stripped from the stored object!"
+    );
+
+    Ok(())
+}
+
+/// Regression test: a wrapped-at-rest key with `fresh=true` retrieved via `Get`
+/// with explicit `KeyWrapType::NotWrapped` (no `default_unwrap_type` configured)
+/// must also NOT persist the unwrapped plaintext key to the database.
+#[tokio::test]
+async fn test_get_fresh_wrapped_key_explicit_not_wrapped_preserves_wrapping_in_db() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::KeyWrapType, kmip_2_1::kmip_operations::Get,
+    };
+
+    // Phase 1: create a wrapping key (KEK) on a plain KMS
+    let clap_config = https_clap_config();
+    let sqlite_path = clap_config.db.sqlite_path.clone();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = UserId::from("test_fresh_unwrap_explicit_owner@example.com");
+
+    let kek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms.create(kek_request, &owner).await?.unique_identifier;
+    drop(kms);
+
+    // Phase 2: re-instantiate KMS with KEK (WITHOUT default_unwrap_type)
+    let mut clap_config_kek = https_clap_config();
+    clap_config_kek.db.sqlite_path = sqlite_path;
+    clap_config_kek.key_encryption_key = Some(kek_id.to_string());
+    clap_config_kek.default_unwrap_type = None;
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+
+    // Create a symmetric key while KEK is configured -> wrapped at rest in DB
+    let key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let key_response = kms.create(key_request, &owner).await?;
+    let key_id = key_response.unique_identifier;
+    let key_uid = key_id.to_string();
+
+    let raw_before = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+    assert!(raw_before.object().is_wrapped());
+    assert_ne!(raw_before.attributes().fresh, Some(false));
+
+    // Phase 3: Perform a Get request with explicit KeyWrapType::NotWrapped
+    let get_resp = kms
+        .get(
+            Get {
+                unique_identifier: Some(key_id.clone()),
+                key_format_type: None,
+                key_compression_type: None,
+                key_wrap_type: Some(KeyWrapType::NotWrapped),
+                key_wrapping_specification: None,
+            },
+            &owner,
+        )
+        .await?;
+
+    assert!(!get_resp.object.is_wrapped());
+
+    // Phase 4: CRITICAL CHECK: In DB, key must STILL be wrapped at rest
+    let raw_after = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+
+    assert_eq!(raw_after.attributes().fresh, Some(false));
+    assert!(
+        raw_after.object().is_wrapped(),
+        "SECURITY REGRESSION: Wrapped-at-rest key was persisted as plaintext to the database \
+         during the Fresh-bit flip in export_get (explicit NotWrapped)!"
+    );
+
+    let kb = raw_after.object().key_block().expect("must have key block");
+    assert!(
+        kb.key_wrapping_data.is_some(),
+        "SECURITY REGRESSION: key_wrapping_data was stripped from the stored object!"
+    );
+
+    Ok(())
+}

@@ -170,21 +170,23 @@ pub(crate) async fn certify(
             } else {
                 trace!("Certificate attributes links: None");
             }
+            let private_key_attrs = keypair_data.private_key_object.attributes()?.clone();
+            let public_key_attrs = keypair_data.public_key_object.attributes()?.clone();
             (
                 vec![
                     // upsert the private key
                     AtomicOperation::Upsert((
                         keypair_data.private_key_id.to_string(),
-                        keypair_data.private_key_object.clone(),
-                        keypair_data.private_key_object.attributes()?.clone(),
+                        keypair_data.private_key_object,
+                        private_key_attrs,
                         Some(keypair_data.private_key_tags),
                         State::Active,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
                         keypair_data.public_key_id.to_string(),
-                        keypair_data.public_key_object.clone(),
-                        keypair_data.public_key_object.attributes()?.clone(),
+                        keypair_data.public_key_object,
+                        public_key_attrs,
                         Some(keypair_data.public_key_tags),
                         State::Active,
                     )),

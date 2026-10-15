@@ -186,12 +186,12 @@ impl TTLVXMLDeserializer {
                 "CompromiseDate",
             ];
             children.retain(|c| {
-                if single_instance_tags.contains(&c.tag.as_str()) {
-                    if seen.contains(&c.tag) {
+                if single_instance_tags.contains(&&*c.tag) {
+                    if seen.contains(&*c.tag) {
                         // drop duplicate
                         false
                     } else {
-                        seen.insert(c.tag.clone());
+                        seen.insert(c.tag.to_string());
                         true
                     }
                 } else {
@@ -228,7 +228,7 @@ impl TTLVXMLDeserializer {
                         }
                     }
                     let ttlv = TTLV {
-                        tag: tag.clone(),
+                        tag: tag.clone().into(),
                         value: TTLValue::Structure(Vec::new()),
                     };
                     stack.push(match node_type.as_deref() {
@@ -271,7 +271,7 @@ impl TTLVXMLDeserializer {
                         // Accept an empty structure: either implicit (no type/value) or
                         // explicit type="Structure" on a self-closing element.
                         let ttlv = TTLV {
-                            tag,
+                            tag: tag.into(),
                             value: TTLValue::Structure(Vec::new()),
                         };
                         if let Some(parent) = stack.last_mut() {
@@ -287,7 +287,7 @@ impl TTLVXMLDeserializer {
                         KmipError::Default(format!("missing type attribute for element '{tag}'"))
                     })?;
                     let mut ttlv = TTLV {
-                        tag,
+                        tag: tag.into(),
                         value: Self::parse_primitive(&ty, value.as_deref(), name.as_deref())?,
                     };
                     // Root empty element case
@@ -467,37 +467,38 @@ impl TTLVXMLDeserializer {
                 // Try numeric first; otherwise attempt known textual KMIP enumeration name mapping
                 // via the shared lookup table in `enum_lookup`. Returns (code, canonical_variant_name).
                 // Support decimal or 0x prefixed hexadecimal numeric enumeration literals.
-                let (v, final_name) = if let Some(stripped) = raw.strip_prefix("0x") {
-                    match u32::from_str_radix(stripped, 16) {
-                        Ok(num) => (num, name.unwrap_or("").to_owned()),
-                        Err(_) => {
-                            if let Some((code, canonical)) = lookup_enum_code(raw) {
-                                (code, canonical.to_owned())
-                            } else if let Some(code) = lookup_attribute_reference_tag(raw) {
-                                (code, name.unwrap_or(raw).to_owned())
-                            } else {
-                                return Err(KmipError::Default(format!(
-                                    "unknown Enumeration value '{raw}'"
-                                )));
+                let (v, final_name): (u32, std::borrow::Cow<'static, str>) =
+                    if let Some(stripped) = raw.strip_prefix("0x") {
+                        match u32::from_str_radix(stripped, 16) {
+                            Ok(num) => (num, name.unwrap_or("").to_owned().into()),
+                            Err(_) => {
+                                if let Some((code, canonical)) = lookup_enum_code(raw) {
+                                    (code, canonical.into())
+                                } else if let Some(code) = lookup_attribute_reference_tag(raw) {
+                                    (code, name.unwrap_or(raw).to_owned().into())
+                                } else {
+                                    return Err(KmipError::Default(format!(
+                                        "unknown Enumeration value '{raw}'"
+                                    )));
+                                }
                             }
                         }
-                    }
-                } else {
-                    match raw.parse::<u32>() {
-                        Ok(num) => (num, name.unwrap_or("").to_owned()),
-                        Err(_) => {
-                            if let Some((code, canonical)) = lookup_enum_code(raw) {
-                                (code, canonical.to_owned())
-                            } else if let Some(code) = lookup_attribute_reference_tag(raw) {
-                                (code, name.unwrap_or(raw).to_owned())
-                            } else {
-                                return Err(KmipError::Default(format!(
-                                    "unknown Enumeration value '{raw}'"
-                                )));
+                    } else {
+                        match raw.parse::<u32>() {
+                            Ok(num) => (num, name.unwrap_or("").to_owned().into()),
+                            Err(_) => {
+                                if let Some((code, canonical)) = lookup_enum_code(raw) {
+                                    (code, canonical.into())
+                                } else if let Some(code) = lookup_attribute_reference_tag(raw) {
+                                    (code, name.unwrap_or(raw).to_owned().into())
+                                } else {
+                                    return Err(KmipError::Default(format!(
+                                        "unknown Enumeration value '{raw}'"
+                                    )));
+                                }
                             }
                         }
-                    }
-                };
+                    };
                 Enumeration(KmipEnumerationVariant {
                     value: v,
                     name: final_name,

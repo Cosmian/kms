@@ -348,15 +348,18 @@ fn handle_client(
                 ]))
                 .context("socket server: failed to parse request length")?;
 
-                // Read the rest of the request
-                let mut request_body = vec![0_u8; length];
+                // Read the rest of the request directly into a single contiguous buffer
+                let mut request = vec![0_u8; 8 + length];
+                request
+                    .get_mut(..8)
+                    .context("socket server: failed to get header slice")?
+                    .copy_from_slice(&header);
+                let body_slice = request
+                    .get_mut(8..)
+                    .context("socket server: failed to get body slice")?;
                 tls_stream
-                    .read_exact(&mut request_body)
+                    .read_exact(body_slice)
                     .context("socket server: failed to read request body")?;
-
-                // Concatenate header and body
-                let request = [header.to_vec(), request_body].concat();
-
                 debug!("socket server: received request: {}", hex::encode(&request));
 
                 // Process the request

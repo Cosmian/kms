@@ -22,8 +22,18 @@ use cosmian_kms_server_database::reexport::{
     },
 };
 use cosmian_logger::trace;
+use serde::Deserialize;
 use zeroize::Zeroizing;
 
+#[derive(Deserialize)]
+struct JweUnwrapProtectedHeader<'a> {
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    kid: Option<std::borrow::Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    alg: Option<std::borrow::Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    enc: Option<std::borrow::Cow<'a, str>>,
+}
 use super::{
     CryptoApiError, CryptoResult, JoseAlgorithm, JoseEncAlgorithm, KeyUnwrapRequest,
     KeyUnwrapResponse, b64_decode, cek_size_bytes, jose_oaep_hashes,
@@ -52,38 +62,38 @@ pub(crate) async fn unwrap_key(
 
     // Parse the protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
-    let header_json: serde_json::Value = serde_json::from_slice(&header_bytes).map_err(|e| {
-        CryptoApiError::BadRequest(format!(
-            "Field 'protected' is not valid JSON after base64url decode: {e}"
-        ))
-    })?;
+    let header: JweUnwrapProtectedHeader<'_> =
+        serde_json::from_slice(&header_bytes).map_err(|e| {
+            CryptoApiError::BadRequest(format!(
+                "Field 'protected' is not valid JSON after base64url decode: {e}"
+            ))
+        })?;
 
-    let kid = header_json
-        .get("kid")
-        .and_then(|v| v.as_str())
+    let kid = header
+        .kid
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'kid' field".to_owned())
         })?
         .to_owned();
 
-    let alg: JoseAlgorithm = header_json
-        .get("alg")
-        .and_then(|v| v.as_str())
+    let alg: JoseAlgorithm = header
+        .alg
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'alg' field".to_owned())
         })?
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
-    let enc: JoseEncAlgorithm = header_json
-        .get("enc")
-        .and_then(|v| v.as_str())
+    let enc: JoseEncAlgorithm = header
+        .enc
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'enc' field".to_owned())
         })?
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
-
     // Only RSA-OAEP algorithms are supported for key unwrapping
     match alg {
         JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {}

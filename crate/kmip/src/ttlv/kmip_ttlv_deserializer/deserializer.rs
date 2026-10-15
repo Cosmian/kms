@@ -574,7 +574,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                     "... coerced {} Enumeration(name={}) -> string",
                     element.tag, e.name
                 );
-                return visitor.visit_string(e.name.clone());
+                return visitor.visit_string(e.name.to_string());
             }
             let actual = if e.name.is_empty() {
                 "Enumeration(code)"
@@ -758,7 +758,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                     _ => false,
                 }
             }
-            if BYTE_LIKE_TAGS.contains(&element.tag.as_str()) {
+            if BYTE_LIKE_TAGS.contains(&&*element.tag) {
                 let mut buf: Vec<u8> = Vec::new();
                 let all_byte_like = children.iter().all(|ch| collect_bytes(ch, &mut buf));
                 if all_byte_like {
@@ -1007,7 +1007,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                         tag: element.tag.clone(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             value: n,
-                            name: String::new(),
+                            name: "".into(),
                         }),
                     };
                     visitor.visit_enum(EnumWalker::new(&mut TtlvDeserializer {
@@ -1030,7 +1030,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                         let mut has_attr_name = false;
                         let mut has_attr_value = false;
                         for c in children {
-                            match c.tag.as_str() {
+                            match &*c.tag {
                                 "VendorIdentification" => has_vendor_id = true,
                                 "AttributeName" => has_attr_name = true,
                                 "AttributeValue" => has_attr_value = true,
@@ -1132,8 +1132,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
             // except for the corner case of Objects inside another structure, where the key is always "Object"
-            if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str())
-                || kmip_1_4::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str())
+            if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&&*element.tag)
+                || kmip_1_4::kmip_objects::Object::VARIANTS.contains(&&*element.tag)
             {
                 trace!("... => This is an Object => identifier: key: Object");
                 return visitor.visit_str("Object");
@@ -1159,11 +1159,11 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                 // if the current item is a structure, it may be a KMIP Object
                 // KMIP objects are always present in KMIP structures with "Object" as the property name.
                 // So the deserializer is expecting "Object" as the identifier, not the tag/Object Name
-                if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str()) {
+                if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&&*element.tag) {
                     trace!("... structure: 2.1 Object");
                     return visitor.visit_str("Object");
                 }
-                if kmip_1_4::kmip_objects::Object::VARIANTS.contains(&element.tag.as_str()) {
+                if kmip_1_4::kmip_objects::Object::VARIANTS.contains(&&*element.tag) {
                     trace!("... structure: 1.4 Object");
                     return visitor.visit_str("Object");
                 }

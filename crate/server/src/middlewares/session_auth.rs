@@ -85,10 +85,10 @@ where
         let session = req.get_session();
         match session.get::<String>("user_id") {
             Ok(Some(user_id)) => {
-                let username = UserId::from(user_id.as_str());
+                debug!("Session: authenticated user '{user_id}'");
+                let username = UserId::from(user_id);
                 match reject_reserved_aws_xks_identity(&username) {
                     Ok(()) => {
-                        debug!("Session: authenticated user '{user_id}'");
                         req.extensions_mut().insert(AuthenticatedUser {
                             username,
                             auth_method: AuthMethod::Session,

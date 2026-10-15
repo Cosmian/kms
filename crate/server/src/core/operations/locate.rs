@@ -1,3 +1,5 @@
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -92,9 +94,14 @@ pub(crate) async fn locate(
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }
 
+    #[cfg(feature = "non-fips")]
+    let access_policy_err =
+        access_policy_from_attributes(kms.vendor_id(), &request.attributes).is_err();
     #[cfg(not(feature = "non-fips"))]
-    let mut uids = {
-        let mut uids = Vec::new();
+    let access_policy_err = true;
+
+    let mut uids = Vec::with_capacity(uids_attrs.len().min(effective_max));
+    if access_policy_err {
         for (uid, state_found, attributes) in uids_attrs {
             trace!(
                 "UID: {:?}, State: {:?}, Attributes: {}",
@@ -111,66 +118,25 @@ pub(crate) async fn locate(
                     continue;
                 }
             }
-            // If there is no access structure, accept; otherwise would compare
-            // the access policies
-            uids.push(UniqueIdentifier::TextString(uid));
-        }
-        uids
-    };
 
-    #[cfg(feature = "non-fips")]
-    let mut uids = {
-        // Filter the uids that match the access structure.
-        //
-        // If no explicit state is requested, exclude Destroyed objects by
-        // default per KMIP.
-        use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
-
-        let mut uids = Vec::new();
-        if access_policy_from_attributes(kms.vendor_id(), &request.attributes).is_err() {
-            for (uid, state_found, attributes) in uids_attrs {
-                trace!(
-                    "UID: {:?}, State: {:?}, Attributes: {}",
-                    uid, state_found, attributes
-                );
-                // If an explicit state filter is provided, enforce it strictly.
-                if let Some(s) = effective_state {
-                    if state_found != s {
-                        continue;
-                    }
-                } else {
-                    // Otherwise, exclude destroyed objects
-                    if matches!(state_found, State::Destroyed | State::Destroyed_Compromised) {
-                        continue;
-                    }
-                }
-                // If there is no access structure, accept; otherwise would
-                // compare the access policies
-                uids.push(UniqueIdentifier::TextString(uid));
-            }
-        }
-        uids
-    };
-
-    // HSM key visibility filtering (see `is_hsm_admin` above).
-    if !is_hsm_admin {
-        let mut filtered = Vec::with_capacity(uids.len());
-        for uid in uids {
-            let uid_str = uid.as_str().unwrap_or_default();
-            if ObjectHandle::from(uid_str).is_hsm() {
+            // HSM key visibility filtering (see `is_hsm_admin` above).
+            if !is_hsm_admin && ObjectHandle::from(uid.as_str()).is_hsm() {
                 // Check if user has any granted operation on this HSM key
                 let ops = kms
                     .database
-                    .list_user_operations_on_object(uid_str, user, false)
+                    .list_user_operations_on_object(&uid, user, false)
                     .await?;
                 if ops.is_empty() {
-                    trace!("Locate: filtering out HSM key {uid_str} — user {user} has no grants");
+                    trace!("Locate: filtering out HSM key {uid} — user {user} has no grants");
                     continue;
                 }
             }
-            filtered.push(uid);
+
+            uids.push(UniqueIdentifier::TextString(uid));
+            if uids.len() == effective_max {
+                break;
+            }
         }
-        uids = filtered;
     }
 
     // The stores cap their own results; with several stores (e.g. the database

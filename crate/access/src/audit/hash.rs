@@ -1,7 +1,8 @@
 use sha2::{Digest, Sha256};
 use time::format_description::well_known::Rfc3339;
+use uuid::Uuid;
 
-use super::event::AuditEvent;
+use super::event::{AuditEvent, AuditResult};
 
 /// Builds the deterministic, NUL-delimited binary representation of `event`
 /// that is fed into the SHA-256 digest.
@@ -43,49 +44,63 @@ use super::event::AuditEvent;
 /// in practice because the two fields' value spaces never overlap: `request_id` is always a
 /// 36-character hyphenated UUID, `details` is always a JSON-object string starting with `{`.
 /// Do not weaken either format without revisiting this.
-pub(crate) fn canonical_bytes(event: &AuditEvent) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(256);
-
-    buf.extend_from_slice(&event.prev_hash);
-    buf.extend_from_slice(&event.id.to_be_bytes());
+fn feed_canonical(event: &AuditEvent, mut put: impl FnMut(&[u8])) {
+    put(&event.prev_hash);
+    put(&event.id.to_be_bytes());
 
     let ts = event
         .timestamp
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned());
-    buf.extend_from_slice(ts.as_bytes());
-    buf.push(0x00);
+    put(ts.as_bytes());
+    put(&[0x00]);
 
-    buf.extend_from_slice(event.operation.as_bytes());
-    buf.push(0x00);
+    put(event.operation.as_bytes());
+    put(&[0x00]);
 
-    buf.extend_from_slice(event.user.as_bytes());
-    buf.push(0x00);
+    put(event.user.as_bytes());
+    put(&[0x00]);
 
-    buf.extend_from_slice(event.object_uid.as_deref().unwrap_or("").as_bytes());
-    buf.push(0x00);
+    put(event.object_uid.as_deref().unwrap_or("").as_bytes());
+    put(&[0x00]);
 
-    buf.extend_from_slice(event.algorithm.as_deref().unwrap_or("").as_bytes());
-    buf.push(0x00);
+    put(event.algorithm.as_deref().unwrap_or("").as_bytes());
+    put(&[0x00]);
 
-    buf.extend_from_slice(event.client_ip.as_deref().unwrap_or("").as_bytes());
-    buf.push(0x00);
+    put(event.client_ip.as_deref().unwrap_or("").as_bytes());
+    put(&[0x00]);
 
-    buf.extend_from_slice(event.result.as_canonical_str().as_bytes());
-    buf.push(0x00);
+    // Same bytes as `AuditResult::as_canonical_str`, without building the string.
+    match &event.result {
+        AuditResult::Success => put(b"Success"),
+        AuditResult::Failure(msg) => {
+            put(b"Failure:");
+            put(msg.as_bytes());
+        }
+    }
+    put(&[0x00]);
 
-    buf.extend_from_slice(&event.duration_ms.to_be_bytes());
+    put(&event.duration_ms.to_be_bytes());
 
     if let Some(rid) = &event.request_id {
-        buf.push(0x00);
-        buf.extend_from_slice(rid.hyphenated().to_string().as_bytes());
+        put(&[0x00]);
+        put(rid
+            .hyphenated()
+            .encode_lower(&mut Uuid::encode_buffer())
+            .as_bytes());
     }
 
     if let Some(details) = &event.details {
-        buf.push(0x00);
-        buf.extend_from_slice(details.as_bytes());
+        put(&[0x00]);
+        put(details.as_bytes());
     }
+}
 
+/// Collects the canonical byte form of `event` (see [`compute_row_hash`], which streams it).
+#[cfg(test)]
+pub(crate) fn canonical_bytes(event: &AuditEvent) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(256);
+    feed_canonical(event, |b| buf.extend_from_slice(b));
     buf
 }
 
@@ -94,7 +109,7 @@ pub(crate) fn canonical_bytes(event: &AuditEvent) -> Vec<u8> {
 #[must_use]
 pub fn compute_row_hash(event: &AuditEvent) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(canonical_bytes(event));
+    feed_canonical(event, |b| hasher.update(b));
     hasher.finalize().into()
 }
 
@@ -275,5 +290,57 @@ mod tests {
             n += 1;
         }
         assert!(n > 0, "fixture must contain at least one event");
+    }
+
+    #[test]
+    fn canonical_bytes_matches_reference_buffer_layout() {
+        use time::{format_description::well_known::Rfc3339, macros::datetime};
+        use uuid::Uuid;
+        let event = AuditEvent {
+            id: 42,
+            prev_hash: [0xaa; 32],
+            timestamp: datetime!(2026-07-20 19:02:25.605113314 UTC),
+            operation: "Create".to_owned(),
+            user: "admin".to_owned(),
+            object_uid: Some("359019d8-1543-4e2e-9d96-674dd64fcffc".to_owned()),
+            algorithm: Some("AES".to_owned()),
+            client_ip: Some("127.0.0.1".to_owned()),
+            result: AuditResult::Success,
+            duration_ms: 4,
+            request_id: Some(Uuid::parse_str("4b2e6994-0ef9-4dfe-9804-0da4c5edde4b").unwrap()),
+            details: Some(r#"{"key":"value"}"#.to_owned()),
+            row_hash: [0; 32],
+        };
+
+        // Reference buffer build matching pre-streaming implementation
+        let mut expected = Vec::with_capacity(256);
+        expected.extend_from_slice(&event.prev_hash);
+        expected.extend_from_slice(&event.id.to_be_bytes());
+        let ts = event.timestamp.format(&Rfc3339).unwrap();
+        expected.extend_from_slice(ts.as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(event.operation.as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(event.user.as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(event.object_uid.as_deref().unwrap_or("").as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(event.algorithm.as_deref().unwrap_or("").as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(event.client_ip.as_deref().unwrap_or("").as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(event.result.as_canonical_str().as_bytes());
+        expected.push(0x00);
+        expected.extend_from_slice(&event.duration_ms.to_be_bytes());
+        if let Some(rid) = &event.request_id {
+            expected.push(0x00);
+            expected.extend_from_slice(rid.hyphenated().to_string().as_bytes());
+        }
+        if let Some(details) = &event.details {
+            expected.push(0x00);
+            expected.extend_from_slice(details.as_bytes());
+        }
+
+        assert_eq!(canonical_bytes(&event), expected);
     }
 }

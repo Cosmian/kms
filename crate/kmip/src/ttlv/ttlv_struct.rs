@@ -14,10 +14,21 @@ pub enum KmipFlavor {
     Kmip2,
 }
 
+use std::borrow::Cow;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TTLV {
-    pub tag: String,
+    pub tag: Cow<'static, str>,
     pub value: TTLValue,
+}
+impl TTLV {
+    /// Constructs a TTLV node with a borrowed static tag.
+    #[must_use]
+    pub const fn with_tag(tag: &'static str, value: TTLValue) -> Self {
+        Self {
+            tag: Cow::Borrowed(tag),
+            value,
+        }
+    }
 }
 
 impl TTLV {
@@ -107,7 +118,7 @@ impl TTLV {
                     if let Some((code, canonical)) = lookup_enum_code_for_tag(&en.name, &self.tag) {
                         en.value = code;
                         if !canonical.is_empty() {
-                            en.name = canonical.to_owned();
+                            en.name = canonical.to_owned().into();
                         }
                     }
                 }
@@ -167,7 +178,7 @@ impl PartialEq for TTLValue {
 #[derive(Clone)]
 pub struct KmipEnumerationVariant {
     pub value: u32,
-    pub name: String,
+    pub name: Cow<'static, str>,
 }
 
 impl Debug for KmipEnumerationVariant {

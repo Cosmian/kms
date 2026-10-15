@@ -238,8 +238,8 @@ fn decrypt_bulk(
             // Clone the request once, then only swap the `data` field per ciphertext
             // to avoid cloning the whole Decrypt request on every iteration.
             let mut request = request.clone();
-            for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(ciphertext.to_vec());
+            for mut ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                request.data = Some(std::mem::take(&mut *ciphertext));
                 let response = decrypt_with_covercrypt(owm, &request)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
@@ -252,8 +252,8 @@ fn decrypt_bulk(
             // Clone the request once, then only swap the `data` field per ciphertext
             // to avoid cloning the whole Decrypt request on every iteration.
             let mut request = request.clone();
-            for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(ciphertext.to_vec());
+            for mut ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
+                request.data = Some(std::mem::take(&mut *ciphertext));
                 let response = decrypt_with_private_key(owm, &request, server_params)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
@@ -298,7 +298,7 @@ fn decrypt_bulk(
                     .unwrap_or(PaddingMethod::PKCS5);
                 let plaintext = sym_decrypt(
                     sym_cipher,
-                    &key_bytes,
+                    key_bytes,
                     nonce,
                     &[],
                     ciphertext,
@@ -473,7 +473,7 @@ fn decrypt_single_with_symmetric_key(
             KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
         })?;
         let plaintext = decrypt_fpe(
-            &key_block.key_bytes()?,
+            key_block.key_bytes_ref()?,
             ciphertext,
             request.authenticated_encryption_additional_data.as_deref(),
             request.i_v_counter_nonce.as_deref(),
@@ -584,7 +584,7 @@ fn decrypt_single_with_symmetric_key(
     }
     let plaintext = sym_decrypt(
         aead,
-        &key_bytes,
+        key_bytes,
         nonce,
         aad,
         ciphertext,
@@ -599,10 +599,10 @@ fn decrypt_single_with_symmetric_key(
     }))
 }
 
-fn get_aead_and_key(
-    owm: &ObjectWithMetadata,
+fn get_aead_and_key<'a>(
+    owm: &'a ObjectWithMetadata,
     request: &Decrypt,
-) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
+) -> Result<(&'a [u8], SymCipher), KmsError> {
     let key_block = owm.object().key_block()?;
     // Prevent FPE_FF1 keys from being misused for standard symmetric operations.
     // FPE_FF1 decryption is handled before this point; reaching here with an FPE_FF1
@@ -641,7 +641,7 @@ fn get_aead_and_key(
                 .as_ref()
                 .and_then(|cp| cp.block_cipher_mode)
         });
-    let key_bytes = key_block.key_bytes()?;
+    let key_bytes = key_block.key_bytes_ref()?;
     let aead = SymCipher::from_algorithm_and_key_size(
         cryptographic_algorithm,
         block_cipher_mode,
