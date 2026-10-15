@@ -136,10 +136,14 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "public enum of published crate ckms; frozen until next major"
+)]
 pub enum CliCommands {
     /// Handle KMS actions
     #[clap(flatten)]
-    Kms(Box<KmsActions>),
+    Kms(KmsActions),
     /// Regenerate the CLI documentation in Markdown format.
     ///
     /// Writes a Markdown file documenting all subcommands and their options.
@@ -170,9 +174,7 @@ pub async fn ckms_main() -> CosmianResult<()> {
 
     // Short-circuit: audit commands read the file directly — no server connection
     // or ckms.toml needed.
-    if let CliCommands::Kms(kms_actions) = &cli.command
-        && let KmsActions::Audit(audit_action) = &**kms_actions
-    {
+    if let CliCommands::Kms(KmsActions::Audit(audit_action)) = &cli.command {
         return audit_action.process().map_err(Into::into);
     }
 
@@ -205,7 +207,7 @@ pub async fn ckms_main() -> CosmianResult<()> {
             return Ok(());
         }
         CliCommands::Kms(kms_actions) => {
-            let new_kms_config = Box::pin((*kms_actions).process(kms_rest_client)).await?;
+            let new_kms_config = Box::pin(kms_actions.process(kms_rest_client)).await?;
             if config.kms_config != new_kms_config {
                 config.kms_config = new_kms_config;
                 config.save(cli.conf_path.clone())?;
