@@ -16,6 +16,12 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 ## Skill Index
 
+### Issue → PR Workflow
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, plan, branch/stack, test-first implement, test, document, run `AGENTS.md` §5, commit, open the PR, report CI status once, handle review feedback (never waits for CI, never merges). |
+
 ### Security
 
 | Skill | Command | Description |
@@ -25,6 +31,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Cryptographic Review | `/cryptography-review [path]` | Multi-standard cryptographic audit: FIPS 140-3, BSI TR-02102, ANSSI, NIST SP 800-series. Algorithm allow-list, key sizes, feature-flag gating, OpenSSL provider init, key lifecycle (SP 800-57), multi-standard compliance matrix, academic cryptanalysis cross-check. |
 | Standards Review | `/standards-review [path]` | Verify code against exact text of applicable standards (FIPS, NIST SP, RFC, KMIP, PKCS, BSI, ANSSI, OWASP). Every citation is URL-verified — no hallucinated section numbers. Includes per-algorithm compliance checklist. |
 | Threat Model | `/threat-model` | STRIDE-A full threat model or incremental update. Pre-seeded with KMS trust boundaries (client → KMIP → HSM/DB). |
+| Actix-web Middleware Audit | `/actix-web-middleware-audit` | Audit middleware ordering (LIFO `.wrap()`), Condition guards, request-extension injection in `start_kms_server.rs`. |
 
 ### KMIP / Protocol
 
@@ -49,6 +56,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md` with correct sections, component grouping, and PR/issue links. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |
 | **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms`. |
+| MISE | `/mise` | Create/modify MISE task and library Bash scripts following `.mise/` conventions. |
 
 ### Code Quality
 
@@ -68,13 +76,21 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review/rust-async-refactor.md`. |
 | CI Efficiency | `/ci-efficiency` | Audit GitHub Actions workflows for waste (missing caches, over-broad triggers, no concurrency cancellation). |
 | CI Dedupe | `/ci-dedupe` | Audit GitHub Actions workflows for duplicated step blocks; recommend/extract local composite actions under `.github/actions/` to simplify workflow YAML. |
+| Simplify Code | `/simplify-code` | Behavior-preserving tidy pass over recently changed code. |
+
+### Pre-Merge / PR Gate
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| **KMS PR Review** | `/kms-pr-review [PR#]` | Two-pass diff review; self-review mode auto-applies confirmed fixes (≤ 2 cycles); writes `review/final.md`. |
+| KMS Adversarial Test | `/kms-adversarial-test` | Live adversarial quality gate against a running KMS; once for significant PRs. |
 
 ### Documentation
 
 | Skill | Command | Description |
 |-------|---------|-------------|
 | Docs Writer | `/docs-writer` | Diátaxis expert: Tutorial / How-To / Reference / Explanation. Adapted to `documentation/docs/` + mdBook nav (`SUMMARY.md` + `nav.yml`). |
-| ADR | `/adr` | Create an Architectural Decision Record under `documentation/docs/adr/`. |
+| ADR | `/adr` | Create an Architectural Decision Record under `documentation/adr/`. |
 
 ### UI / Frontend
 
@@ -83,13 +99,23 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Playwright KMS | `/playwright-kms` | Create E2E tests: `data-testid`, Ant Design Select portal helpers, regex assertions, FIPS skip pattern. |
 | React/Ant Patterns | `/react-ant-patterns` | React 19 + Ant Design 5 + Tailwind 4 + Vite 7 patterns: WASM integration, FIPS guard, TypeScript strict mode. |
 
+### PKCS#11
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| PKCS#11 Check | `/pkcs11-check` | External PKCS#11 battle tests via `mise run test:pkcs11:tool`; report interpretation. |
+
 ---
 
 ## Quick Start
 
 ```bash
+# Given a GitHub issue: /issue-workflow <issue-number>
+
 # After any code change — always run this first:
 # /kms-sync-rules
+
+# Before marking work done (auto-fixes): /kms-pr-review
 
 # New KMIP operation workflow:
 # 1. /kmip-compliance <OperationName>   ← spec validation
@@ -163,3 +189,4 @@ Several skills load detailed guidance from `references/` subdirectories:
 3. Optionally add resources (scripts, templates, examples) in the same directory
 4. Add a row to this README's index table
 5. The skill appears immediately as `/<skill-name>` in VS Code Chat, Copilot CLI, and cloud agent
+6. Run `mise run docs:check-ai` (also runs as a pre-commit hook).

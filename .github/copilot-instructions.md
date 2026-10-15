@@ -12,12 +12,12 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 
 | Instruction file | Applies to |
 |-----------------|------------|
-| `rust.instructions.md` | All `*.rs` files |
+| `rust.instructions.md` | `**/*.rs` |
 | `rust-server.instructions.md` | `crate/server/**/*.rs` |
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
-| `database-tables.instructions.md` | `crate/server_database/src/stores/sql/*.sql` |
+| `database-tables.instructions.md` | `**/*.sql` |
 | `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` |
 | `routes.instructions.md` | `crate/server/src/routes/**/*.rs`, `crate/server/documentation/openapi.yaml` |
 | `kmip-operations.instructions.md` | `crate/kmip/src/**/*.rs`, `crate/server/src/core/operations/**/*.rs` |
@@ -27,7 +27,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` |
 | `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` |
 | `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` |
-| `cloud-providers.instructions.md` | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/**` |
+| `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` |
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
@@ -42,7 +42,8 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `markdown.instructions.md` | `**/*.md` |
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` |
 | `nix.instructions.md` | `nix/**/*.nix` |
-| `docker.instructions.md` | `nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, charts/cosmian-kms/**/*` |
+| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` |
+| `mermaid.instructions.md` | `**/*.md` |
 
 ---
 
@@ -111,6 +112,7 @@ branch again; never rewrite shared history. Applies to every branch.
 
 | Command | When to use |
 |---------|-------------|
+| `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
 | `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review/` |
 | `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
@@ -125,6 +127,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/rust-error-propagation` | Audit `Result` propagation chains |
 | `/react-ant-patterns` | UI coding conventions |
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
+| `/kms-pr-review` | Mandatory self-review — two-pass diff review that auto-applies confirmed fixes (≤ 2 cycles) |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |
 
@@ -134,3 +137,4 @@ branch again; never rewrite shared history. Applies to every branch.
 - Gate specialized reviews on inspected diff scope and affected callers. A clean mechanical scan does not justify skipping security, crypto, or protocol reasoning.
 - Full, release, and pre-release gates override focused-scope skips. State why any skill was inapplicable.
 - Skills cannot select a model or guarantee latency. Do not claim token/percentage savings without observed usage data.
+- `/kms-pr-review` Phase 1 overlaps `/kms-caveman`; if `/kms-caveman` already ran this session, feed its findings into `/kms-pr-review` instead of re-scanning.

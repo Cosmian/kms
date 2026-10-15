@@ -104,7 +104,7 @@ have a corresponding UI action.
 For new features, open an issue first describing the use case and approach - A Cosmian KMS collaborator will review it and might assist you in coding the feature if it's accepted. Bug fixes can go straight to a PR.
 
 All three test layers must pass before merging (E2E Playwright, Vitest integration, Vitest unit). See
-[§8 Web UI & Playwright E2E tests](AGENTS.md#8-web-ui--playwright-e2e-tests) in AGENTS.md for how to run them.
+[§8.1 UI-specific rules](AGENTS.md#81-ui-specific-rules) in AGENTS.md for how to run them.
 
 ## Setting up Rust to work on Cosmian KMS
 
@@ -116,8 +116,8 @@ If you have never worked with Rust before, you will have to complete the followi
 4. Build the project: `cargo build --release`
 
 For build commands and local setup, see [Quick start](README.md#-quick-start) in the README. For Nix-based
-reproducible builds and CI, see [§1 Build & test cheatsheet](AGENTS.md#1-build--test-cheatsheet) and
-[§13 Nix packaging](AGENTS.md#13-nix-packaging) in AGENTS.md.
+reproducible builds and CI, see [§2 Build & test cheatsheet](AGENTS.md#build--test-cheatsheet) and
+[§8.6 Nix packaging](AGENTS.md#86-nix-packaging) in AGENTS.md.
 
 If you are using an AI coding assistant that does not natively support `AGENTS.md` (e.g. Claude Code, at the time of
 writing), create a symbolic link so it picks up the agent instructions automatically:
@@ -160,9 +160,9 @@ Before submitting a pull request, please ensure that:
 • If you've added new functionality, include appropriate unit and/or integration tests
 
 For database-specific testing, you may need to set up local database instances. See
-[§1 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
+[§2 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
 
-If you have access to LLM coding tools, we recommend to use the [kms-last-test-vx](.github/skills/kms-last-test-v5) skill before considering work as finished, as it operates as last human-like sanity check.
+If you have access to LLM coding tools, we recommend to use the [kms-adversarial-test](.github/skills/kms-adversarial-test) skill before considering work as finished, as it operates as last human-like sanity check.
 
 ## Contributor License Agreement
 

@@ -32,7 +32,7 @@ available corpus after downloading vector data with `pkcs11-check fetch-data all
 
 Reports are written to `test_reports/` as JSON, JUnit XML, and sidecar quality artifacts. Provider
 `xfail` and `fail` findings are evidence, not certification verdicts; crashes, timeouts, incomplete
-runs, and critical findings fail the task. See [the battle-test skill](../../../.github/skills/pkcs11-check.md)
+runs, and critical findings fail the task. See [the battle-test skill](../../../.github/skills/pkcs11-check/SKILL.md)
 for report interpretation and baseline comparison.
 
 The following implementation boundaries are intentional and should be cross-referenced when
