@@ -35,3 +35,7 @@ updates:
       - /.mise/scripts/edb_tde
     schedule:
       interval: weekly
+    ignore:
+      # SAP ASE needs libaio.so.1, renamed libaio.so.1t64 from Ubuntu 24.04 on.
+      - dependency-name: ubuntu
+        update-types: [version-update:semver-major]
