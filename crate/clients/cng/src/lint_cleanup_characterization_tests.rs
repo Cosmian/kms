@@ -35,7 +35,8 @@ fn characterization_security_status_constants() {
 
 #[test]
 fn characterization_status_success_val() {
-    assert_eq!(error::ERROR_SUCCESS, 0);
+    assert_eq!(error::STATUS_SUCCESS_VAL, 0);
+    assert_eq!(error::STATUS_SUCCESS_VAL, error::ERROR_SUCCESS);
 }
 
 #[test]
