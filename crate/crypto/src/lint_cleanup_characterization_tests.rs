@@ -172,9 +172,9 @@ fn characterization_number_aggregator() {
 #[cfg(feature = "non-fips")]
 fn characterization_number_scaler() {
     let scaler = NumberScaler::new(10.0, 2.0, 1.0, 0.0).unwrap(); // mean 10, std 2 -> z = (x-10)/2
-    assert_eq!(scaler.apply_on_int(-1_234_567), -617289);
+    assert_eq!(scaler.apply_on_int(-1_234_567), -617_289);
     assert_eq!(scaler.apply_on_int(0), -5);
-    assert_eq!(scaler.apply_on_int(999_999), 499995);
+    assert_eq!(scaler.apply_on_int(999_999), 499_995);
 }
 
 #[test]
@@ -237,10 +237,9 @@ fn characterization_ecdsa_verify_known_signature_and_flipped_byte() {
     assert_eq!(validity, ValidityIndicator::Valid);
 
     // Flipped byte in signature yields Invalid
-    let mut corrupted_sig = sig.clone();
+    let mut corrupted_sig = sig;
     let last_slot = corrupted_sig.len() - 1;
-    let byte_ref = corrupted_sig.get_mut(last_slot).unwrap();
-    *byte_ref ^= 0xFF;
+    corrupted_sig[last_slot] ^= 0xFF;
 
     let corrupted_validity = ecdsa_verify(&pub_pkey, data, &corrupted_sig, &cp, false).unwrap();
     assert_eq!(corrupted_validity, ValidityIndicator::Invalid);
