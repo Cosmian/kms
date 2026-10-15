@@ -11,4 +11,4 @@ cryptography>=50.0.0,<51.0.0
 #     Bleichenbacher oracle via distinguishable errors/timing). The ceiling was
 #     raised from 49.x (which fixed CVE-2026-69249 / GHSA-jwv3-5hgf-82ww,
 #     exponential certificate path-building) to pick up this fix.
-jwcrypto==1.5.7
+jwcrypto==1.6.1
