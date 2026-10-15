@@ -70,12 +70,33 @@ helm install my-kms cosmian/cosmian-kms \
   --set image.repository=ghcr.io/cosmian/kms
 ```
 
-### HSM (Thales Luna)
+### HSM
 
-The KMS images (FIPS and non-FIPS) load the Thales Luna PKCS#11 library. Keep the official image and
-bring the Luna Client runtime with an init container, and the Luna configuration and credentials
-with Secrets, through `initContainers`, `extraVolumes`, `extraVolumeMounts`, `extraEnv` and
-`extraArgs`: see [Thales Luna on Kubernetes](../../hsm_support/luna.md#kubernetes-helm-chart).
+The official KMS images (FIPS and non-FIPS) load the vendor PKCS#11 client library of the HSM at
+runtime. The vendor HSM models are built for Linux x86_64 only: pin the pod to `amd64` nodes. Keep
+the image unmodified and add the HSM through the chart's extension values:
+
+- an **init container** copies the vendor client library from a small image you build from the
+  vendor package into an `emptyDir` volume, and the KMS loads it from there through the model's
+  library-path environment variable;
+- the vendor **configuration and credentials** come from Kubernetes Secrets, mounted with
+  `extraVolumes` / `extraVolumeMounts`;
+- `extraArgs` sets `--hsm-model`, `--hsm-slot` and `--hsm-admin`, and `extraEnv` passes the slot
+  password from a Secret as `KMS_HSM_PASSWORD`.
+- with the FIPS image, `command: [env, -u, OPENSSL_CONF, cosmian_kms]` for a vendor library that
+  embeds its own OpenSSL and cannot load the image's FIPS `OPENSSL_CONF` (Trustway Proteccio).
+
+The vendor library is upgraded independently of the KMS image, no image holds a secret, and the
+chart's default hardening (UID 1000, read-only root filesystem) is kept. The image ships the C++
+runtime (`libstdc++.so.6`, `libgcc_s.so.1`) in `/usr/local/cosmian/lib/hsm`, which is on
+`LD_LIBRARY_PATH`. If the vendor library needs other libraries outside glibc, copy them next to it
+and append that directory to `LD_LIBRARY_PATH`.
+
+| HSM | `--hsm-model` | Library path variable | Vendor configuration | Guide |
+| --- | --- | --- | --- | --- |
+| Thales Luna | `luna` | `LUNA_PKCS11_LIB` | `Chrystoki.conf` in the directory set by `ChrystokiConfigurationPath` | [Luna on Kubernetes](../../hsm_support/luna.md#kubernetes-helm-chart) |
+| Trustway Proteccio | `proteccio` | `PROTECCIO_PKCS11_LIB` | `/etc/proteccio` (read-only); FIPS image: `command` override | [Proteccio on Kubernetes](../../hsm_support/proteccio.md#kubernetes-helm-chart) |
+| Trustway Crypt2pay | `crypt2pay` | `CRYPT2PAY_PKCS11_LIB` | `c2p.xml` set by `C2P_CONF`, in a writable, persistent directory | [Crypt2pay on Kubernetes](../../hsm_support/crypt2pay.md#kubernetes-helm-chart) |
 
 ### Database configuration
 
@@ -171,6 +192,7 @@ for the full list of configurable parameters. Key settings:
 | `resources` | CPU/memory requests and limits |
 | `extraEnv` / `extraEnvFrom` / `extraArgs` | Escape hatches for settings not covered by a dedicated value (e.g. `--hsm-model`) |
 | `initContainers` / `extraVolumes` / `extraVolumeMounts` | Extra init containers and volumes (e.g. HSM client runtime and configuration) |
+| `command` | Replaces the image entrypoint; the chart-built args are passed to it (e.g. Proteccio with the FIPS image) |
 
 Every `kms.*` value maps to a `KMS_*` environment variable or CLI flag consumed
 directly by the `cosmian_kms` binary. See

@@ -407,6 +407,30 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # Same HSM, same concurrency group: deploys the KMS with the documented Helm values
+      # (docs/hsm_support/<model>.md) on minikube, with the FIPS and non-FIPS images.
+      - name: Install Helm
+        if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
+        uses: azure/setup-helm@v5
+
+      - name: Start Minikube
+        if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
+        uses: medyagh/setup-minikube@v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Test Kubernetes deployment (FIPS and non-FIPS images)
+        if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
+        env:
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+        run: |
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant fips
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant non-fips
+
   helm:
     name: Helm chart E2E (minikube)
     runs-on: ubuntu-24.04
