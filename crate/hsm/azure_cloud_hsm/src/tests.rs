@@ -7,7 +7,7 @@ use cosmian_kms_base_hsm::{HResult, RsaOaepDigest, tests_shared as shared};
 use crate::{AZURE_CLOUD_HSM_PKCS11_LIB, AzureCloudHsmCapabilityProvider};
 
 fn cfg() -> HResult<shared::HsmTestConfig> {
-    let slot = cosmian_kms_base_hsm::test_helpers::get_hsm_slot_id().unwrap_or(0);
+    let slot = cosmian_kms_base_hsm::test_helpers::get_hsm_slot_id()?;
     let password = cosmian_kms_base_hsm::test_helpers::get_hsm_password()?;
     Ok(shared::HsmTestConfig {
         lib_path: shared::lib_path("AZURE_CLOUD_HSM_PKCS11_LIB", AZURE_CLOUD_HSM_PKCS11_LIB),
