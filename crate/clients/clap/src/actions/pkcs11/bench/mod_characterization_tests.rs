@@ -2,11 +2,10 @@ use std::{env, path::PathBuf};
 
 use ::clap::Parser as _;
 use cosmian_config_utils::ConfigUtils;
-use serial_test::serial;
-use test_kms_server::start_default_test_kms_server;
-
 use cosmian_kms_client::KmsClientConfig;
 use serde::{Deserialize, Serialize};
+use serial_test::serial;
+use test_kms_server::start_default_test_kms_server;
 
 use super::Pkcs11BenchAction;
 use crate::actions::bench::output::criterion_home;

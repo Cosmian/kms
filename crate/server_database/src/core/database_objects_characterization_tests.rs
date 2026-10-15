@@ -1,7 +1,11 @@
 //! Characterization tests pinning the BASE behavior of `Database::atomic` and of the cache
 //! parameters threaded through `Database::instantiate` (sqlite backend).
 
-use std::{collections::HashMap, collections::HashSet, num::NonZeroUsize, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    num::NonZeroUsize,
+    time::Duration,
+};
 
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
