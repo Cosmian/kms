@@ -8,47 +8,46 @@ use super::CliBackend;
 fn format_token_serial_number(version_bytes: &[u8]) -> [u8; 16] {
     let len = version_bytes.len().min(16);
     let mut sn = [0x20; 16];
-    let dst_slice = sn.get_mut(..len).unwrap();
-    let src_slice = version_bytes.get(..len).unwrap();
-    dst_slice.copy_from_slice(src_slice);
+    sn[..len].copy_from_slice(&version_bytes[..len]);
     sn
 }
 
 #[test]
 fn characterization_token_serial_number_empty_version() {
-    let sn = format_token_serial_number(b"");
-    const EXPECTED: [u8; 16] = [0x20; 16];
-    assert_eq!(sn, EXPECTED);
+    assert_eq!(format_token_serial_number(b""), [0x20; 16]);
 }
 
 #[test]
 fn characterization_token_serial_number_len_5() {
-    let sn = format_token_serial_number(b"5.28.");
-    const EXPECTED: [u8; 16] = [
-        0x35, 0x2e, 0x32, 0x38, 0x2e, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-        0x20,
-    ];
-    assert_eq!(sn, EXPECTED);
+    assert_eq!(
+        format_token_serial_number(b"5.28."),
+        [
+            0x35, 0x2e, 0x32, 0x38, 0x2e, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+            0x20, 0x20,
+        ]
+    );
 }
 
 #[test]
 fn characterization_token_serial_number_len_16() {
-    let sn = format_token_serial_number(b"1234567890abcdef");
-    const EXPECTED: [u8; 16] = [
-        0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x61, 0x62, 0x63, 0x64, 0x65,
-        0x66,
-    ];
-    assert_eq!(sn, EXPECTED);
+    assert_eq!(
+        format_token_serial_number(b"1234567890abcdef"),
+        [
+            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x61, 0x62, 0x63, 0x64,
+            0x65, 0x66,
+        ]
+    );
 }
 
 #[test]
 fn characterization_token_serial_number_len_20() {
-    let sn = format_token_serial_number(b"1234567890abcdefghij");
-    const EXPECTED: [u8; 16] = [
-        0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x61, 0x62, 0x63, 0x64, 0x65,
-        0x66,
-    ];
-    assert_eq!(sn, EXPECTED);
+    assert_eq!(
+        format_token_serial_number(b"1234567890abcdefghij"),
+        [
+            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x61, 0x62, 0x63, 0x64,
+            0x65, 0x66,
+        ]
+    );
 }
 
 #[test]
@@ -67,15 +66,15 @@ fn characterization_token_serial_number_backend_direct_call() {
     let version_bytes = env!("CARGO_PKG_VERSION").as_bytes();
     let len = version_bytes.len().min(16);
     let mut expected_derived = [0x20; 16];
-    let dst = expected_derived.get_mut(..len).unwrap();
-    let src = version_bytes.get(..len).unwrap();
-    dst.copy_from_slice(src);
+    expected_derived[..len].copy_from_slice(&version_bytes[..len]);
     assert_eq!(sn, expected_derived);
 
     // 2. Literal pinned expectation for package version "5.28.0" (ASCII bytes + space padding to 16 bytes)
-    const EXPECTED_LITERAL_5_28_0: [u8; 16] = [
-        0x35, 0x2e, 0x32, 0x38, 0x2e, 0x30, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
-        0x20,
-    ];
-    assert_eq!(sn, EXPECTED_LITERAL_5_28_0);
+    assert_eq!(
+        sn,
+        [
+            0x35, 0x2e, 0x32, 0x38, 0x2e, 0x30, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+            0x20, 0x20,
+        ]
+    );
 }
