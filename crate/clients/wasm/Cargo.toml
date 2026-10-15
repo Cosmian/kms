@@ -33,6 +33,8 @@ pem = { workspace = true }
 serde = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 serde_json = { workspace = true }
+# uuid >= 1.12 needs an explicit RNG source on wasm32-unknown-unknown (v4 is enabled by cosmian_kmip).
+uuid = { workspace = true, features = ["js"] }
 # Pinned to exact version: nix/ui.nix builds wasm-bindgen-cli at the same version.
 # If you upgrade this, also update `wasmBindgenCli.version` in nix/ui.nix
 # (along with its src sha256 and cargoHash).
@@ -41,7 +43,7 @@ x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }
 
 [package.metadata.cargo-machete]
-ignored = ["getrandom"]
+ignored = ["getrandom", "uuid"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

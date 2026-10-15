@@ -1724,6 +1724,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "x509-cert",
