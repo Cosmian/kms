@@ -95,7 +95,7 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
 
     // Step 2: export the wrapped key
     let export_action = ExportByokAction {
@@ -181,7 +181,7 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
 
     // Step 2: Export the wrapped key
     let export_action = ExportByokAction {
@@ -265,7 +265,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
     let output_file_path = temp_dir.join(format!("wrapped_key_test_{private_key_id}.bin"));
 
     // Step 2: Export the wrapped key
@@ -337,7 +337,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
 
     let output_file_path = temp_dir.join(format!("wrapped_key_test_{private_key_id}.bin"));
 

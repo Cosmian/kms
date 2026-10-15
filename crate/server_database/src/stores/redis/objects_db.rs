@@ -250,6 +250,10 @@ impl ObjectsDB {
         &self,
         uids: &HashSet<String>,
     ) -> DbResult<HashMap<String, RedisDbObject>> {
+        // redis >= 1.0 rejects an empty pipeline with "empty command".
+        if uids.is_empty() {
+            return Ok(HashMap::new());
+        }
         let mut pipeline = pipe();
         for uid in uids {
             pipeline.get(Self::object_key(uid));
