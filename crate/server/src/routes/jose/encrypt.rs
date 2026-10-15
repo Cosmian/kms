@@ -60,7 +60,15 @@ pub(crate) async fn encrypt(
     match body.alg {
         JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {
             Box::pin(encrypt_rsa_oaep(
-                &kms, &user, body.kid, body.alg, body.enc, &plaintext, body.aad,
+                &kms,
+                &user,
+                EncryptRsaOaepParams {
+                    kid: &body.kid,
+                    alg: body.alg,
+                    enc: body.enc,
+                    plaintext: &plaintext,
+                    aad: body.aad,
+                },
             ))
             .await
         }
@@ -128,6 +136,15 @@ async fn encrypt_dir(
     }))
 }
 
+/// Arguments of [`encrypt_rsa_oaep`] other than the KMS and the calling user.
+struct EncryptRsaOaepParams<'a> {
+    kid: &'a str,
+    alg: JoseAlgorithm,
+    enc: super::JoseEncAlgorithm,
+    plaintext: &'a [u8],
+    aad: Option<String>,
+}
+
 /// RSA-OAEP key wrapping: generate ephemeral CEK, wrap with RSA public key, AES-GCM encrypt.
 ///
 /// Follows RFC 7516 §5.1 (JWE Encryption):
@@ -135,19 +152,21 @@ async fn encrypt_dir(
 /// 2. Wrap CEK with RSA-OAEP using the recipient's public key
 /// 3. Encrypt plaintext with AES-GCM using the CEK
 /// 4. Return JWE Flattened JSON with `encrypted_key` populated
-#[allow(clippy::too_many_arguments)]
 async fn encrypt_rsa_oaep(
     kms: &KMS,
     user: &UserId,
-    kid: String,
-    alg: JoseAlgorithm,
-    enc: super::JoseEncAlgorithm,
-    plaintext: &[u8],
-    aad: Option<String>,
+    params: EncryptRsaOaepParams<'_>,
 ) -> CryptoResult<CryptoEncryptResponse> {
+    let EncryptRsaOaepParams {
+        kid,
+        alg,
+        enc,
+        plaintext,
+        aad,
+    } = params;
     // Resolve the key — accept either private or public key UID
     let owm = Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(&kid),
+        ObjectHandle::from(kid),
         KmipOperation::Encrypt,
         kms,
         user,
@@ -192,14 +211,14 @@ async fn encrypt_rsa_oaep(
                     ))
                 })?
             };
-            (pkey, kid.clone())
+            (pkey, kid.to_owned())
         }
         kmip_2_1::kmip_objects::Object::PublicKey { .. } => {
             // Already a public key — resolve linked private key UID for the protected header
             let priv_key_uid = owm
                 .attributes()
                 .get_link(LinkType::PrivateKeyLink)
-                .map_or_else(|| kid.clone(), |l| l.to_string());
+                .map_or_else(|| kid.to_owned(), |l| l.to_string());
             let pkey = kmip_public_key_to_openssl(owm.object()).map_err(|e| {
                 CryptoApiError::CryptoFailure(format!(
                     "RSA-OAEP encrypt: failed to load public key: {e}"

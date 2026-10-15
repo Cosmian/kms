@@ -381,7 +381,10 @@ impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
 // `KSecretKey::from_str` only accepts exactly M-4 chars (default M=44 → 40 chars); `KSigningKey`
 // has no public constructor from raw bytes, so transmute is the only sound approach without
 // modifying the upstream scratchstack library.
-#[allow(unsafe_code)]
+#[expect(
+    unsafe_code,
+    reason = "transmute into scratchstack KSigningKey, which has no public constructor from raw bytes"
+)]
 fn derive_signing_key(
     secret: &str,
     date: chrono::NaiveDate,

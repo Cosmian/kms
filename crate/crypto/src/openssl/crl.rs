@@ -35,9 +35,19 @@ pub enum CrlReasonCode {
 
 impl CrlReasonCode {
     /// Returns the reason code as an `openssl_sys::BN_ULONG`.
-    #[expect(clippy::as_conversions)]
     fn as_bn_ulong(self) -> openssl_sys::BN_ULONG {
-        openssl_sys::BN_ULONG::from(self as u32)
+        openssl_sys::BN_ULONG::from(match self {
+            Self::Unspecified => 0_u32,
+            Self::KeyCompromise => 1,
+            Self::CaCompromise => 2,
+            Self::AffiliationChanged => 3,
+            Self::Superseded => 4,
+            Self::CessationOfOperation => 5,
+            Self::CertificateHold => 6,
+            Self::RemoveFromCRL => 8,
+            Self::PrivilegeWithdrawn => 9,
+            Self::AaCompromise => 10,
+        })
     }
 }
 
@@ -68,7 +78,7 @@ pub struct RevokedEntry {
 ///
 /// # Errors
 /// Returns `CryptoError` on any OpenSSL failure.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn build_crl(
     issuer_cert: &X509Ref,
     issuer_key: &PKeyRef<Private>,
@@ -171,7 +181,7 @@ pub fn build_crl(
 struct CrlGuard(*mut openssl_sys::X509_CRL);
 
 impl Drop for CrlGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was either null-checked before wrapping or is handled by
         // X509_CRL_free which accepts null as a no-op.
@@ -180,7 +190,7 @@ impl Drop for CrlGuard {
 }
 
 /// Add a single revoked certificate entry to the CRL.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_revoked_entry(
     crl: *mut openssl_sys::X509_CRL,
     entry: &RevokedEntry,
@@ -265,7 +275,7 @@ unsafe fn add_revoked_entry(
 /// Since openssl-sys 0.9 does not expose `ASN1_ENUMERATED_new`/`_set`, we
 /// create an `ASN1_INTEGER` via `BN_to_ASN1_INTEGER` and cast. The i2d handler
 /// for `NID_crl_reason` expects an `ASN1_ENUMERATED*` which works transparently.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_reason_code_extension(
     revoked: *mut openssl_sys::X509_REVOKED,
     reason: CrlReasonCode,
@@ -313,7 +323,7 @@ unsafe fn add_reason_code_extension(
 /// `GeneralizedTime`.  We therefore build the time value via `ASN1_TIME_set_string` with
 /// an explicit `"YYYYMMDDHHmmssZ"` string (`GeneralizedTime` format), which causes OpenSSL
 /// to store the value with the `V_ASN1_GENERALIZEDTIME` tag regardless of the date.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_invalidity_date_extension(
     revoked: *mut openssl_sys::X509_REVOKED,
     date: OffsetDateTime,
@@ -382,7 +392,7 @@ unsafe fn add_invalidity_date_extension(
 ///   keyIdentifier [0] IMPLICIT KeyIdentifier OPTIONAL }
 /// KeyIdentifier ::= OCTET STRING
 /// ```
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn add_aki_extension(
     crl: *mut openssl_sys::X509_CRL,
     issuer_cert: &X509Ref,
@@ -437,25 +447,14 @@ fn add_aki_extension(
 /// Write an ASN.1 DER length field into `buf` (short or long form).
 ///
 /// Supports lengths up to 65 535.
-// SAFETY: casts are guarded by explicit range checks immediately above each cast.
-#[expect(
-    clippy::as_conversions,
-    reason = "casts are guarded by explicit range checks immediately above each `as` conversion"
-)]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "casts are guarded by explicit range checks immediately above each `as` conversion"
-)]
 fn aki_write_length(buf: &mut Vec<u8>, len: usize) -> Result<(), CryptoError> {
+    let [.., hi, lo] = len.to_be_bytes();
     if len < 0x80 {
-        buf.push(len as u8);
+        buf.push(lo);
     } else if len <= 0xFF {
-        buf.push(0x81_u8);
-        buf.push(len as u8);
+        buf.extend([0x81, lo]);
     } else if len <= 0xFFFF {
-        buf.push(0x82_u8);
-        buf.push((len >> 8) as u8);
-        buf.push((len & 0xFF) as u8);
+        buf.extend([0x82, hi, lo]);
     } else {
         return Err(CryptoError::Default(format!(
             "AKI key identifier length {len} exceeds 65535"
@@ -465,7 +464,7 @@ fn aki_write_length(buf: &mut Vec<u8>, len: usize) -> Result<(), CryptoError> {
 }
 
 /// Add CRL Number extension (RFC 5280 §5.2.3 — MUST, non-critical).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_crl_number_extension(
     crl: *mut openssl_sys::X509_CRL,
     crl_number: u64,
@@ -507,7 +506,7 @@ unsafe fn add_crl_number_extension(
 /// Select the message digest for CRL signing based on the key type.
 ///
 /// Mirrors the logic in `build_certificate.rs::signing_digest`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn signing_md(key: &PKeyRef<Private>) -> *const openssl_sys::EVP_MD {
     // SAFETY: EVP_sha256/EVP_md_null return static pointers — no allocation.
     unsafe {
@@ -521,7 +520,6 @@ fn signing_md(key: &PKeyRef<Private>) -> *const openssl_sys::EVP_MD {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use openssl::{
         pkey::PKey,
@@ -766,3 +764,6 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+#[path = "crl_characterization_tests.rs"]
+mod characterization_tests;

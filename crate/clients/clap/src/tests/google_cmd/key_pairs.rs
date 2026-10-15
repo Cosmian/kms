@@ -122,8 +122,8 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
         user_id: "marta.doe@acme.com".to_owned(),
-        cse_key_id: "google_cse".to_string(),
-        issuer_private_key_id: Some(issuer_private_key_id.to_string()),
+        cse_key_id: "google_cse".to_owned(),
+        issuer_private_key_id: Some(issuer_private_key_id.clone()),
         subject_name: "CN=Marta Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
         rsa_private_key_id: None,
         sensitive: false,
@@ -244,12 +244,12 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
     let digest_b64 = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=".to_owned();
     // In tests, token validation is disabled (see server test utils), so any non-empty strings will do
     let req = PrivateKeySignRequest {
-        authentication: "test".to_string(),
-        authorization: "test".to_string(),
-        algorithm: "SHA256withRSA".to_string(),
+        authentication: "test".to_owned(),
+        authorization: "test".to_owned(),
+        algorithm: "SHA256withRSA".to_owned(),
         digest: digest_b64,
         rsa_pss_salt_length: None,
-        reason: "CLI test".to_string(),
+        reason: "CLI test".to_owned(),
         wrapped_private_key: pkcs1_b64,
     };
 

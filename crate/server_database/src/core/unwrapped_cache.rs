@@ -83,7 +83,6 @@ impl UnwrappedCache {
     ///   plaintext key residency for continuously-accessed (hot) keys.
     /// * `disabled` — when `true`, bypasses the cache entirely.
     #[must_use]
-    #[allow(clippy::as_conversions)]
     pub fn new(
         max_age: Duration,
         max_size: NonZeroUsize,
@@ -91,7 +90,7 @@ impl UnwrappedCache {
         disabled: bool,
     ) -> Self {
         let mut builder = Cache::builder()
-            .max_capacity(max_size.get() as u64)
+            .max_capacity(u64::try_from(max_size.get()).unwrap_or(u64::MAX))
             .time_to_idle(max_age);
         if let Some(ttl) = max_ttl {
             builder = builder.time_to_live(ttl);
@@ -190,15 +189,11 @@ impl UnwrappedCache {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
-    #![allow(
-        clippy::panic_in_result_fn,
-        clippy::unwrap_in_result,
-        clippy::assertions_on_result_states,
-        clippy::assertions_on_constants,
-        // Test helpers use NonZeroUsize::new(N).expect() with literal non-zero constants.
-        clippy::expect_used
-    )]
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroUsize,
@@ -233,10 +228,10 @@ mod tests {
             HashMap::new(),
             Duration::from_millis(100),
             NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,  // cache_max_ttl
-            false, // disable_unwrapped_cache
-            None,  // recorder
-            None,  // ceremony_keys
+            None,
+            false,
+            None, // recorder
+            None, // ceremony_keys
         )
         .await?;
 
@@ -282,7 +277,7 @@ mod tests {
         let owm = database.retrieve_object(&uid).await?;
         match owm {
             Some(obj) => assert_eq!(obj.id(), &uid),
-            None => assert!(false, "expected object to be present"),
+            None => panic!("expected object to be present"),
         }
         // Non-wrapped keys must NOT be placed in the unwrapped cache.
         assert!(!database.unwrapped_cache.contains(&uid).await);
@@ -297,7 +292,7 @@ mod tests {
 
         // Create a cache with a short GC interval and max age
         let cache = super::UnwrappedCache::new(
-            Duration::from_millis(100), // Keys expire after 100 ms, GC runs every 150 ms.
+            Duration::from_millis(100),
             NonZeroUsize::new(100).expect("100 is non-zero"),
             None,
             false,
@@ -397,3 +392,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "unwrapped_cache_characterization_tests.rs"]
+mod characterization_tests;

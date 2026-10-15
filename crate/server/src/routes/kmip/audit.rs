@@ -357,7 +357,6 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing)]
 mod extraction_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{
         KmipEnumerationVariant, TTLV, TTLValue,

@@ -56,16 +56,14 @@ impl Display for MainDbParams {
 }
 
 /// Redact the username and password from the URL for logging purposes
-#[expect(clippy::expect_used)]
 fn redact_url(original: &Url) -> Url {
     let mut url = original.clone();
 
     if url.username() != "" {
-        url.set_username("****").expect("masking username failed");
+        url.set_username("****").ok();
     }
     if url.password().is_some() {
-        url.set_password(Some("****"))
-            .expect("masking password failed");
+        url.set_password(Some("****")).ok();
     }
 
     url
@@ -126,7 +124,6 @@ pub enum AdditionalObjectStoresParams {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -204,3 +201,7 @@ mod tests {
         assert_eq!(redact_connection_string("not-a-url"), "not-a-url");
     }
 }
+
+#[cfg(test)]
+#[path = "main_db_params_characterization_tests.rs"]
+mod characterization_tests;

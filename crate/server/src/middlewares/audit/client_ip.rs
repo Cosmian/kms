@@ -50,7 +50,6 @@ pub(super) fn extract_client_ip(req: &ServiceRequest, trusted_proxies: &[IpNet])
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

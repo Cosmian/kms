@@ -419,7 +419,10 @@ async fn create_nonfips_transit_key(
 
 /// FIPS-build stub: no non-FIPS transit key types exist.
 #[cfg(not(feature = "non-fips"))]
-#[allow(clippy::unused_async)] // async required to match the non-fips signature awaited by the caller
+#[expect(
+    clippy::unused_async,
+    reason = "async required to match the non-fips signature awaited by the caller"
+)]
 async fn create_nonfips_transit_key(
     _kms: &KMS,
     _user: &UserId,
@@ -880,7 +883,10 @@ async fn sign_with_transit_key_impl(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,

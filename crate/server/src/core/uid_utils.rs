@@ -323,7 +323,6 @@ pub(crate) async fn walk_keyset_chain(
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
 mod tests {
     use super::*;
 

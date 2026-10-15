@@ -13,9 +13,6 @@
 //! KMS_URL=http://<your-local-ip> \
 //!   cargo test --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy
 //! ```
-
-#![allow(deprecated)]
-
 use std::process::Command;
 
 use assert_cmd::prelude::*;

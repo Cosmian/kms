@@ -200,7 +200,6 @@ impl<'de> Deserialize<'de> for KmipBigInt {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
 mod tests {
     use num_bigint_dig::BigInt;
     use num_traits::pow::Pow;

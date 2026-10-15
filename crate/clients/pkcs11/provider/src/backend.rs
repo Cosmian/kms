@@ -245,12 +245,12 @@ impl Backend for CliBackend {
         *b"software        "
     }
 
-    #[expect(clippy::indexing_slicing)]
     fn token_serial_number(&self) -> [u8; 16] {
         let version = env!("CARGO_PKG_VERSION").as_bytes();
-        let len = version.len().min(16);
         let mut sn = [0x20; 16];
-        sn[0..len].copy_from_slice(&version[..len]);
+        for (dst, src) in sn.iter_mut().zip(version) {
+            *dst = *src;
+        }
         sn
     }
 
@@ -691,3 +691,6 @@ impl Backend for CliBackend {
         .map_err(Into::into)
     }
 }
+#[cfg(test)]
+#[path = "backend_characterization_tests.rs"]
+mod characterization_tests;

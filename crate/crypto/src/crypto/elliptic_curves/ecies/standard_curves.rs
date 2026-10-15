@@ -16,43 +16,44 @@ use crate::{
 
 /// Derive an initialization vector from recipient public key `Q` and
 /// ephemeral public key `R` using the supplied hashing algorithm.
-#[expect(non_snake_case)]
 fn ecies_get_iv(
-    Q: &EcPointRef,
-    R: &EcPointRef,
+    recipient_public: &EcPointRef,
+    ephemeral_public: &EcPointRef,
     curve: &EcGroupRef,
     iv_size: usize,
     message_digest: MessageDigest,
 ) -> Result<Vec<u8>, CryptoError> {
     let mut ctx = BigNumContext::new()?;
-    let Q_bytes = Q.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
-    let R_bytes = R.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let recipient_public_bytes =
+        recipient_public.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let ephemeral_public_bytes =
+        ephemeral_public.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
     let mut iv = vec![0; iv_size];
 
     let mut hasher = Hasher::new(message_digest)?;
-    hasher.update(&R_bytes)?;
-    hasher.update(&Q_bytes)?;
+    hasher.update(&ephemeral_public_bytes)?;
+    hasher.update(&recipient_public_bytes)?;
     hasher.finish_xof(&mut iv)?;
 
     Ok(iv)
 }
 
-/// Derive S into the symmetric secret key using SHAKE128.
-#[expect(non_snake_case)]
+/// Derive the symmetric secret key from the shared point using SHAKE128.
 fn ecies_get_key(
-    S: &EcPointRef,
+    shared_point: &EcPointRef,
     curve: &EcGroupRef,
     key_size: usize,
     message_digest: MessageDigest,
 ) -> Result<Vec<u8>, CryptoError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let S_bytes = S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let shared_point_bytes =
+        shared_point.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
     let mut key = vec![0; key_size];
 
     let mut hasher = Hasher::new(message_digest)?;
-    hasher.update(&S_bytes)?;
+    hasher.update(&shared_point_bytes)?;
     hasher.finish_xof(&mut key)?;
 
     Ok(key)
@@ -71,36 +72,47 @@ fn ecies_get_key(
 ///
 /// Notice we don't send the IV since it is derived by hashing the public key as
 /// well as the ephemeral public key.
-#[expect(non_snake_case)]
 pub(super) fn ecies_encrypt(
     pubkey: &PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let Q = pubkey.ec_key()?;
-    let curve = Q.group();
+    let recipient_public = pubkey.ec_key()?;
+    let curve = recipient_public.group();
     let (aead, md) = aead_and_digest(curve)?;
 
     // Generating random ephemeral private key `r` and associated public key
     // `R`.
     let r = EcKey::generate(curve)?;
-    let R = EcKey::from_public_key(curve, r.public_key())?;
+    let ephemeral_public = EcKey::from_public_key(curve, r.public_key())?;
 
     // Compute shared secret from recipient public key `S = rQ`.
-    let mut S = EcPoint::new(curve)?;
-    S.mul2(curve, Q.public_key(), r.private_key(), &mut ctx)?;
+    let mut shared_point = EcPoint::new(curve)?;
+    shared_point.mul2(
+        curve,
+        recipient_public.public_key(),
+        r.private_key(),
+        &mut ctx,
+    )?;
 
-    let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
-    let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve, aead.nonce_size(), md)?;
+    let key = ecies_get_key(&shared_point, curve, aead.key_size(), md)?;
+    let iv = ecies_get_iv(
+        recipient_public.public_key(),
+        ephemeral_public.public_key(),
+        curve,
+        aead.nonce_size(),
+        md,
+    )?;
 
     // Encrypt data using the provided.
     let (ciphertext, tag) = encrypt(aead, &key, &iv, &[], plaintext, None)?;
 
-    let R_bytes = R
-        .public_key()
-        .to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let ephemeral_public_bytes =
+        ephemeral_public
+            .public_key()
+            .to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
-    Ok([R_bytes, ciphertext, tag].concat())
+    Ok([ephemeral_public_bytes, ciphertext, tag].concat())
 }
 
 /// When using standard curves, the hashing algorithm is SHAKE128, the
@@ -112,7 +124,6 @@ pub(super) fn ecies_encrypt(
 ///
 /// The IV for decryption is computed by taking the hash of the recipient public
 /// key and the ephemeral public key.
-#[expect(non_snake_case)]
 pub(super) fn ecies_decrypt(
     private_key: &PKey<Private>,
     ciphertext: &[u8],
@@ -131,9 +142,9 @@ pub(super) fn ecies_decrypt(
 
     // Ciphertext received is a concatenation of `R | ct | tag` with `R`
     // and `ct` of variable size and `tag` of size 128 bits.
-    let R_bytes = ciphertext
-        .get(..pubkey_vec_size)
-        .ok_or_else(|| CryptoError::IndexingSlicing("ecies_decrypt: R_bytes".to_owned()))?;
+    let ephemeral_public_bytes = ciphertext.get(..pubkey_vec_size).ok_or_else(|| {
+        CryptoError::IndexingSlicing("ecies_decrypt: ephemeral_public_bytes".to_owned())
+    })?;
 
     let ct_offset = ciphertext.len() - aead.tag_size();
     let ct = ciphertext
@@ -144,14 +155,20 @@ pub(super) fn ecies_decrypt(
         .get(ct_offset..)
         .ok_or_else(|| CryptoError::IndexingSlicing("ecies_decrypt: tag".to_owned()))?;
 
-    let R = EcPoint::from_bytes(curve, R_bytes, &mut ctx)?;
+    let ephemeral_public = EcPoint::from_bytes(curve, ephemeral_public_bytes, &mut ctx)?;
 
     // Compute secret key from recipient public key `S = rQ = rdG = dR`.
-    let mut S = EcPoint::new(curve)?;
-    S.mul2(curve, &R, d.private_key(), &mut ctx)?;
+    let mut shared_point = EcPoint::new(curve)?;
+    shared_point.mul2(curve, &ephemeral_public, d.private_key(), &mut ctx)?;
 
-    let iv = ecies_get_iv(d.public_key(), &R, curve, aead.nonce_size(), md)?;
-    let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
+    let iv = ecies_get_iv(
+        d.public_key(),
+        &ephemeral_public,
+        curve,
+        aead.nonce_size(),
+        md,
+    )?;
+    let key = ecies_get_key(&shared_point, curve, aead.key_size(), md)?;
 
     // We could use ou own aead to offer more DEM options.
     let plaintext = decrypt(aead, &key, &iv, &[], ct, tag, None)?;
@@ -170,7 +187,6 @@ fn aead_and_digest(curve: &EcGroupRef) -> Result<(SymCipher, MessageDigest), Cry
     Ok((aead, md))
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 

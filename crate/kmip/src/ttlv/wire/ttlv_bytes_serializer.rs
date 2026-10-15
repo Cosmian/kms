@@ -158,9 +158,6 @@ where
     }
 }
 
-#[expect(clippy::unwrap_used)]
-#[expect(clippy::as_conversions)]
-#[expect(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -173,22 +170,25 @@ mod tests {
         ttlv::{
             KmipBigInt, KmipEnumerationVariant, TTLV, TTLVBytesSerializer, TTLValue, TtlvError,
             TtlvType,
-            wire::ttlv_bytes_serializer::{write_length, write_tag, write_type},
+            wire::{
+                kmip_tag::KmipTag,
+                ttlv_bytes_serializer::{write_length, write_tag, write_type},
+            },
         },
     };
 
     #[test]
     fn test_tag_u32_from_tag_name() {
         let tag = kmip_2_1::kmip_types::Tag::from_str("Link").unwrap();
-        let tag_u32 = tag as u32;
+        let tag_u32 = tag.to_u32();
         assert_eq!(tag_u32, 0x42_004A);
 
         let tag = kmip_2_1::kmip_types::Tag::from_str("PublicProtectionStorageMasks").unwrap();
-        let tag_u32 = tag as u32;
+        let tag_u32 = tag.to_u32();
         assert_eq!(tag_u32, 0x42_0165);
 
         let tag = kmip_1_4::kmip_types::Tag::from_str("Link").unwrap();
-        let tag_u32 = tag as u32;
+        let tag_u32 = tag.to_u32();
         assert_eq!(tag_u32, 0x42_004A);
     }
 
@@ -198,7 +198,7 @@ mod tests {
 
         // Get a Tag value (Link = 0x42_004A)
         let tag = kmip_1_4::kmip_types::Tag::from_str("Link").unwrap();
-        let tag_u32: u32 = tag as u32;
+        let tag_u32: u32 = tag.to_u32();
 
         // Convert to big-endian bytes
         let tag_bytes = tag_u32.to_be_bytes();
@@ -211,7 +211,7 @@ mod tests {
 
         // Test with another tag (ObjectType = 0x42_0057)
         let tag2 = kmip_1_4::kmip_types::Tag::from_str("ObjectType").unwrap();
-        let tag2_u32: u32 = tag2 as u32;
+        let tag2_u32: u32 = tag2.to_u32();
         let tag2_bytes = tag2_u32.to_be_bytes();
         let last_three_bytes2 = &tag2_bytes[1..];
 
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn test_write_tag() {
         let tag = kmip_1_4::kmip_types::Tag::from_str("Link").unwrap();
-        let tag_u32: u32 = tag as u32;
+        let tag_u32: u32 = tag.to_u32();
         let tag_bytes = tag_u32.to_be_bytes();
         let last_three_bytes = &tag_bytes[1..];
 
@@ -302,10 +302,10 @@ mod tests {
         // Check the first 3 bytes (tag) - BatchCount
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::BatchCount as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::BatchCount.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::Integer as u8);
+        assert_eq!(buffer[3], TtlvType::Integer.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x04]);
         // Check the value bytes
@@ -333,10 +333,12 @@ mod tests {
         // Check the first 3 bytes (tag) - IterationCount
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::IterationCount as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::IterationCount
+                .to_u32()
+                .to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::LongInteger as u8);
+        assert_eq!(buffer[3], TtlvType::LongInteger.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
         // Check the value bytes
@@ -369,10 +371,10 @@ mod tests {
         // Check the first 3 bytes (tag) - D
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::D as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::D.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::BigInteger as u8);
+        assert_eq!(buffer[3], TtlvType::BigInteger.to_byte());
         // Check the length bytes
         assert_eq!(
             &buffer[4..8],
@@ -407,17 +409,16 @@ mod tests {
         // Check the first 3 bytes (tag) - CryptographicAlgorithm
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::CryptographicAlgorithm as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::CryptographicAlgorithm
+                .to_u32()
+                .to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::Enumeration as u8);
+        assert_eq!(buffer[3], TtlvType::Enumeration.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x04]);
         // Check the value bytes
-        assert_eq!(
-            &buffer[8..12],
-            u32::to_be_bytes(kmip_1_4::kmip_types::CryptographicAlgorithm::AES as u32)
-        );
+        assert_eq!(&buffer[8..12], u32::to_be_bytes(0x3 /* AES */));
         // Check the padding bytes
         assert_eq!(&buffer[12..16], &[0; 4]);
     }
@@ -441,10 +442,10 @@ mod tests {
         // Check the first 3 bytes (tag) - Sensitive
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::Sensitive as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::Sensitive.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::Boolean as u8);
+        assert_eq!(buffer[3], TtlvType::Boolean.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
         // Check the value bytes
@@ -475,10 +476,10 @@ mod tests {
         // Check the first 3 bytes (tag) - Name
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::Name as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::Name.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::TextString as u8);
+        assert_eq!(buffer[3], TtlvType::TextString.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], u32::try_from(msg_len).unwrap().to_be_bytes());
         // Check the value bytes
@@ -509,10 +510,10 @@ mod tests {
         // Check the first 3 bytes (tag) - KeyValue
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::KeyValue as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::KeyValue.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::ByteString as u8);
+        assert_eq!(buffer[3], TtlvType::ByteString.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], u32::try_from(msg_len).unwrap().to_be_bytes());
         // Check the value bytes
@@ -541,10 +542,12 @@ mod tests {
         // Check the first 3 bytes (tag) - DeactivationDate
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::DeactivationDate as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::DeactivationDate
+                .to_u32()
+                .to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::DateTime as u8);
+        assert_eq!(buffer[3], TtlvType::DateTime.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
         // Check the value bytes
@@ -570,10 +573,12 @@ mod tests {
         // Check the first 3 bytes (tag) - ValidityIndicator
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::ValidityIndicator as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::ValidityIndicator
+                .to_u32()
+                .to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::Interval as u8);
+        assert_eq!(buffer[3], TtlvType::Interval.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x04]);
         // Check the value bytes
@@ -605,10 +610,12 @@ mod tests {
         // Check the first 3 bytes (tag) - ActivationDate
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::ActivationDate as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::ActivationDate
+                .to_u32()
+                .to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::DateTimeExtended as u8);
+        assert_eq!(buffer[3], TtlvType::DateTimeExtended.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &[0x00, 0x00, 0x00, 0x08]);
         // Check the value bytes
@@ -617,6 +624,8 @@ mod tests {
 
     #[test]
     fn test_structure() {
+        const OFFSET_1: usize = 8;
+        const OFFSET_2: usize = 8 + 16;
         let ttlv = TTLV {
             tag: kmip_1_4::kmip_types::Tag::Link.to_string(),
             value: TTLValue::Structure(vec![
@@ -646,22 +655,20 @@ mod tests {
         // Check the first 3 bytes (tag) - Link
         assert_eq!(
             &buffer[0..3],
-            &(kmip_1_4::kmip_types::Tag::Link as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::Link.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3], TtlvType::Structure as u8);
+        assert_eq!(buffer[3], TtlvType::Structure.to_byte());
         // Check the length bytes
         assert_eq!(&buffer[4..8], &(8_u32 + 8 + 8 + 16).to_be_bytes());
 
         // Check LinkType inner structure
-        #[expect(clippy::items_after_statements)]
-        const OFFSET_1: usize = 8;
         assert_eq!(
             &buffer[OFFSET_1..3 + OFFSET_1],
-            &(kmip_1_4::kmip_types::Tag::LinkType as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::LinkType.to_u32().to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3 + OFFSET_1], TtlvType::Integer as u8);
+        assert_eq!(buffer[3 + OFFSET_1], TtlvType::Integer.to_byte());
         // Check the length bytes
         assert_eq!(
             &buffer[4 + OFFSET_1..8 + OFFSET_1],
@@ -673,14 +680,14 @@ mod tests {
         assert_eq!(&buffer[12 + OFFSET_1..16 + OFFSET_1], &[0; 4]);
 
         // Check LinkedObjectIdentifier inner structure
-        #[expect(clippy::items_after_statements)]
-        const OFFSET_2: usize = 8 + 16;
         assert_eq!(
             &buffer[OFFSET_2..3 + OFFSET_2],
-            &(kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier as u32).to_be_bytes()[1..4]
+            &kmip_1_4::kmip_types::Tag::LinkedObjectIdentifier
+                .to_u32()
+                .to_be_bytes()[1..4]
         );
         // Check the type byte
-        assert_eq!(buffer[3 + OFFSET_2], TtlvType::TextString as u8);
+        assert_eq!(buffer[3 + OFFSET_2], TtlvType::TextString.to_byte());
         // Check the length bytes
         assert_eq!(
             &buffer[4 + OFFSET_2..8 + OFFSET_2],

@@ -30,7 +30,7 @@ pub(super) struct TokenizeResponse {
 }
 
 impl TokenizeResponse {
-    #[allow(clippy::print_stdout)] // intentional: CLI output to stdout
+    #[expect(clippy::print_stdout, reason = "tokenize writes its result to stdout")]
     pub(super) fn print(&self) {
         println!("{}", self.result);
     }

@@ -1,4 +1,4 @@
-#[allow(
+#[expect(
     clippy::disallowed_types,
     reason = "CsRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
 )]
@@ -36,7 +36,7 @@ pub(super) fn sealbox_encrypt(
 ) -> Result<Vec<u8>, CryptoError> {
     let mut seed = Zeroizing::new([0_u8; 32]);
     rng.fill_bytes(&mut seed[..])?;
-    #[allow(
+    #[expect(
         clippy::disallowed_types,
         reason = "CsRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
     )]

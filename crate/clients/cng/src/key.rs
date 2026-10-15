@@ -21,7 +21,7 @@ use crate::{
 
 /// Algorithm families supported by this KSP.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum KeyAlgorithm {
+pub(crate) enum KeyAlgorithm {
     Rsa { bits: u32 },
     Ec { curve: EcCurve },
 }
@@ -29,7 +29,7 @@ pub enum KeyAlgorithm {
 impl KeyAlgorithm {
     /// Return the CNG algorithm identifier wide string (e.g. `"RSA"`, `"ECDSA_P256"`).
     #[must_use]
-    pub fn cng_alg_id(&self) -> &'static str {
+    pub(crate) const fn cng_alg_id(&self) -> &'static str {
         match self {
             Self::Rsa { .. } => "RSA",
             Self::Ec { curve } => match curve {
@@ -41,7 +41,7 @@ impl KeyAlgorithm {
     }
 
     /// Parse from the CNG algorithm name supplied to `CreatePersistedKey`.
-    pub fn from_cng_name(name: &str, bits: u32) -> KspResult<Self> {
+    pub(crate) fn from_cng_name(name: &str, bits: u32) -> KspResult<Self> {
         match name.to_ascii_uppercase().as_str() {
             "RSA" => {
                 let bits = if bits == 0 { 2048 } else { bits };
@@ -66,18 +66,18 @@ impl KeyAlgorithm {
 bitflags::bitflags! {
     /// Key usage flags as defined by `NCRYPT_KEY_USAGE_PROPERTY`.
     #[derive(Clone, Copy, Debug, Default)]
-    pub struct KeyUsage: u32 {
+    pub(crate) struct KeyUsage: u32 {
         const DECRYPT      = 0x0000_0001;
         const SIGN         = 0x0000_0002;
         const KEY_AGREEMENT= 0x0000_0004;
     }
 }
 
-/// Export policy flags (NCRYPT_EXPORT_POLICY_PROPERTY).
+/// Export policy flags (`NCRYPT_EXPORT_POLICY_PROPERTY`).
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ExportPolicy {
-    pub allow_export: bool,
-    pub allow_plaintext_export: bool,
+pub(crate) struct ExportPolicy {
+    pub(crate) allow_export: bool,
+    pub(crate) allow_plaintext_export: bool,
 }
 
 // ─── Pending creation parameters (before FinalizeKey) ────────────────────────
@@ -85,21 +85,31 @@ pub struct ExportPolicy {
 /// Parameters accumulated during `CreatePersistedKey` / `SetKeyProperty` and
 /// consumed by `FinalizeKey` to actually create the key in the KMS.
 #[derive(Clone, Debug)]
-pub struct PendingCreation {
-    pub algorithm: KeyAlgorithm,
-    pub key_name: String,
-    pub usage: KeyUsage,
-    pub export_policy: ExportPolicy,
+pub(crate) struct PendingCreation {
+    pub(crate) algorithm: KeyAlgorithm,
+    pub(crate) key_name: String,
+    pub(crate) usage: KeyUsage,
+    pub(crate) export_policy: ExportPolicy,
     /// If set, contains a raw CNG key blob (e.g. `RSAFULLPRIVATEBLOB`) to be
     /// imported into the KMS instead of generating a new key pair.
-    pub import_blob: Option<Vec<u8>>,
+    pub(crate) import_blob: Option<Vec<u8>>,
+}
+
+/// Parameters of a key already persisted in the KMS (see [`CngKeyCtx::new_persisted`]).
+pub(crate) struct PersistedKeyParams {
+    pub(crate) priv_uid: String,
+    pub(crate) pub_uid: Option<String>,
+    pub(crate) algorithm: KeyAlgorithm,
+    pub(crate) key_name: String,
+    pub(crate) usage: KeyUsage,
+    pub(crate) export_policy: ExportPolicy,
 }
 
 // ─── Key state ───────────────────────────────────────────────────────────────
 
 /// State of a key context.
 #[derive(Debug)]
-pub enum KeyState {
+pub(crate) enum KeyState {
     /// Key has been created on the KMS; `priv_uid` is the KMS UUID of the
     /// private key, `pub_uid` the public key's UUID.
     Persisted {
@@ -118,65 +128,54 @@ pub enum KeyState {
 // ─── Key context ─────────────────────────────────────────────────────────────
 
 /// Magic number stored in `CngKeyCtx` so we can validate handles before use.
-pub const KEY_CTX_MAGIC: u32 = 0x0C05_1AAC; // "COSMIANAC"
+pub(crate) const KEY_CTX_MAGIC: u32 = 0x0C05_1AAC; // "COSMIANAC"
 
 /// Heap-allocated key context.  Its address is used as `NCRYPT_KEY_HANDLE`.
-pub struct CngKeyCtx {
+pub(crate) struct CngKeyCtx {
     /// Guard against stale / bogus handles.
-    pub magic: u32,
+    pub(crate) magic: u32,
     /// Shared KMS client (owned by the provider context).
-    pub client: Arc<KmsClient>,
+    pub(crate) client: Arc<KmsClient>,
     /// Vendor identification string for KMIP tag operations.
-    pub vendor_id: String,
+    pub(crate) vendor_id: String,
     /// The key state.
-    pub state: KeyState,
+    pub(crate) state: KeyState,
 }
 
 impl CngKeyCtx {
     /// Create a new context for a key that is already persisted in the KMS.
-    // Box is intentional: the context is passed to Windows as a raw handle via Box::into_raw.
-    #[allow(clippy::unnecessary_box_returns, clippy::too_many_arguments)]
-    pub fn new_persisted(
+    pub(crate) fn new_persisted(
         client: Arc<KmsClient>,
         vendor_id: String,
-        priv_uid: String,
-        pub_uid: Option<String>,
-        algorithm: KeyAlgorithm,
-        key_name: String,
-        usage: KeyUsage,
-        export_policy: ExportPolicy,
-    ) -> Box<Self> {
-        #[allow(clippy::box_default)]
-        Box::new(Self {
+        params: PersistedKeyParams,
+    ) -> Self {
+        Self {
             magic: KEY_CTX_MAGIC,
             client,
             vendor_id,
             state: KeyState::Persisted {
-                priv_uid,
-                pub_uid,
-                algorithm,
-                key_name,
-                usage,
-                export_policy,
+                priv_uid: params.priv_uid,
+                pub_uid: params.pub_uid,
+                algorithm: params.algorithm,
+                key_name: params.key_name,
+                usage: params.usage,
+                export_policy: params.export_policy,
             },
-        })
+        }
     }
 
     /// Create a new context for a key that is pending creation.
-    // Box is intentional: the context is passed to Windows as a raw handle via Box::into_raw.
-    #[allow(clippy::unnecessary_box_returns)]
-    pub fn new_pending(
+    pub(crate) const fn new_pending(
         client: Arc<KmsClient>,
         vendor_id: String,
         pending: PendingCreation,
-    ) -> Box<Self> {
-        #[allow(clippy::box_default)]
-        Box::new(Self {
+    ) -> Self {
+        Self {
             magic: KEY_CTX_MAGIC,
             client,
             vendor_id,
             state: KeyState::Pending(pending),
-        })
+        }
     }
 
     /// Validate that a raw pointer is a valid `CngKeyCtx`.
@@ -184,12 +183,12 @@ impl CngKeyCtx {
     /// # Safety
     /// The caller must ensure the pointer was produced by `Box::into_raw` and
     /// has not been freed.
-    pub unsafe fn from_handle(handle: usize) -> KspResult<&'static mut Self> {
+    #[expect(unsafe_code, reason = "raw CNG handle is a Box pointer")]
+    pub(crate) unsafe fn from_handle(handle: usize) -> KspResult<&'static mut Self> {
         if handle == 0 {
             return Err(KspError::InvalidHandle);
         }
-        #[allow(clippy::as_conversions)]
-        let ptr = handle as *mut Self;
+        let ptr = std::ptr::with_exposed_provenance_mut::<Self>(handle);
         // SAFETY: caller guarantees this came from Box::into_raw
         let ctx = unsafe { &mut *ptr };
         if ctx.magic != KEY_CTX_MAGIC {
@@ -203,12 +202,12 @@ impl CngKeyCtx {
     /// # Safety
     /// The caller must ensure the handle was produced by `Box::into_raw`
     /// and that no other reference to it exists.
-    pub unsafe fn free(handle: usize) {
+    #[expect(unsafe_code, reason = "raw CNG handle is a Box pointer")]
+    pub(crate) unsafe fn free(handle: usize) {
         if handle == 0 {
             return;
         }
-        #[allow(clippy::as_conversions)]
-        let ptr = handle as *mut Self;
+        let ptr = std::ptr::with_exposed_provenance_mut::<Self>(handle);
         // SAFETY: caller guarantees this came from Box::into_raw
         let mut ctx = unsafe { Box::from_raw(ptr) };
         ctx.magic = 0; // invalidate before drop
@@ -216,7 +215,7 @@ impl CngKeyCtx {
 
     // ── Accessors ─────────────────────────────────────────────────────────
 
-    pub fn priv_uid(&self) -> KspResult<&str> {
+    pub(crate) fn priv_uid(&self) -> KspResult<&str> {
         match &self.state {
             KeyState::Persisted { priv_uid, .. } => Ok(priv_uid.as_str()),
             KeyState::Pending(_) => Err(KspError::InvalidParameter(
@@ -226,7 +225,7 @@ impl CngKeyCtx {
     }
 
     /// Returns the public key UID (falls back to private key UID).
-    pub fn pub_uid(&self) -> KspResult<&str> {
+    pub(crate) fn pub_uid(&self) -> KspResult<&str> {
         match &self.state {
             KeyState::Persisted {
                 pub_uid: Some(uid), ..
@@ -238,28 +237,28 @@ impl CngKeyCtx {
         }
     }
 
-    pub fn key_name(&self) -> &str {
+    pub(crate) const fn key_name(&self) -> &str {
         match &self.state {
             KeyState::Persisted { key_name, .. }
             | KeyState::Pending(PendingCreation { key_name, .. }) => key_name.as_str(),
         }
     }
 
-    pub fn algorithm(&self) -> &KeyAlgorithm {
+    pub(crate) const fn algorithm(&self) -> &KeyAlgorithm {
         match &self.state {
             KeyState::Persisted { algorithm, .. }
             | KeyState::Pending(PendingCreation { algorithm, .. }) => algorithm,
         }
     }
 
-    pub fn usage(&self) -> KeyUsage {
+    pub(crate) const fn usage(&self) -> KeyUsage {
         match &self.state {
             KeyState::Persisted { usage, .. }
             | KeyState::Pending(PendingCreation { usage, .. }) => *usage,
         }
     }
 
-    pub fn export_policy(&self) -> ExportPolicy {
+    pub(crate) const fn export_policy(&self) -> ExportPolicy {
         match &self.state {
             KeyState::Persisted { export_policy, .. }
             | KeyState::Pending(PendingCreation { export_policy, .. }) => *export_policy,
@@ -270,7 +269,7 @@ impl CngKeyCtx {
 
     /// Finalize key creation: create the key pair in the KMS and transition
     /// from `Pending` to `Persisted`.
-    pub fn finalize(&mut self) -> KspResult<()> {
+    pub(crate) fn finalize(&mut self) -> KspResult<()> {
         let pending = match &self.state {
             KeyState::Persisted { .. } => {
                 // Already finalized — idempotent
@@ -288,14 +287,14 @@ impl CngKeyCtx {
             debug!(
                 "CNG KSP: finalize import blob len={}, first_bytes={:?}",
                 blob.len(),
-                &blob[..blob.len().min(20)]
+                blob.get(..blob.len().min(20)).unwrap_or_default()
             );
             let pkcs8_der = if blob.starts_with(b"-----") {
                 // PEM: strip headers and base64-decode
                 let der = decode_pem_to_der(blob)?;
                 debug!("CNG KSP: decoded PEM to {} bytes DER", der.len());
                 der
-            } else if blob.len() > 4 && &blob[0..4] == b"RSA3" {
+            } else if blob.len() > 4 && blob.starts_with(b"RSA3") {
                 // CNG RSAFULLPRIVATEBLOB binary format
                 crate::blob::pkcs8_from_rsa_full_private_blob(blob)?
             } else {
@@ -351,7 +350,7 @@ impl CngKeyCtx {
     }
 
     /// Export the public key as a `BCRYPT_RSAKEY_BLOB` or `BCRYPT_ECCKEY_BLOB`.
-    pub fn export_public_blob(&self) -> KspResult<Vec<u8>> {
+    pub(crate) fn export_public_blob(&self) -> KspResult<Vec<u8>> {
         let (pub_uid, alg) = match &self.state {
             KeyState::Persisted {
                 pub_uid: Some(uid),
@@ -391,7 +390,7 @@ impl CngKeyCtx {
     /// Export the private key as PKCS#8 DER bytes from the KMS.
     ///
     /// Used by `NCryptExportKey` with the `PKCS8_PRIVATEKEY` blob type.
-    pub fn export_private_pkcs8(&self) -> KspResult<Vec<u8>> {
+    pub(crate) fn export_private_pkcs8(&self) -> KspResult<Vec<u8>> {
         let priv_uid = match &self.state {
             KeyState::Persisted { priv_uid, .. } => priv_uid.as_str(),
             KeyState::Pending(_) => {
@@ -422,3 +421,7 @@ fn decode_pem_to_der(pem_bytes: &[u8]) -> KspResult<Vec<u8>> {
         .decode(b64.as_bytes())
         .map_err(|e| KspError::InvalidParameter(format!("PEM base64 decode failed: {e}")))
 }
+
+#[cfg(test)]
+#[path = "key_characterization_tests.rs"]
+mod characterization_tests;

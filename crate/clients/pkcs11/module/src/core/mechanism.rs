@@ -17,8 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::as_conversions)]
-
 use std::slice;
 
 use cosmian_logger::{debug, error};
@@ -104,7 +102,16 @@ pub enum Mechanism {
     RsaOaep,
 }
 
-#[expect(clippy::missing_safety_doc)]
+/// Parses a raw `CK_MECHANISM` into a [`Mechanism`].
+///
+/// # Safety
+///
+/// `mechanism.pParameter` must be null or point to `mechanism.ulParameterLen` readable bytes
+/// laid out as the parameter structure required by `mechanism.mechanism`.
+#[expect(
+    unsafe_code,
+    reason = "dereferences the C caller's mechanism parameter pointer"
+)]
 pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, ModuleError> {
     debug!("parse_mechanism: {mechanism:?}");
     match mechanism.mechanism {
@@ -260,7 +267,10 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
                 digest_algorithm: hash_alg,
                 mask_generation_function: mgf,
                 // CK_ULONG is u32 on Windows, u64 on Linux; the conversion is needed for Windows
-                #[allow(clippy::useless_conversion)]
+                #[allow(
+                    clippy::useless_conversion,
+                    reason = "CK_ULONG is u32 on Windows, u64 on Unix"
+                )]
                 salt_length: u64::from(salt_len),
             })
         }
@@ -386,7 +396,10 @@ impl TryFrom<Mechanism> for KeyAlgorithm {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
+#[expect(
+    unsafe_code,
+    reason = "tests call the unsafe `parse_mechanism` with in-scope buffers"
+)]
 mod tests {
     use pkcs11_sys::CK_MECHANISM;
 

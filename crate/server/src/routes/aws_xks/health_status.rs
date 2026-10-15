@@ -43,14 +43,14 @@ use crate::core::KMS;
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Deserialize, Debug, Serialize)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct GetHealthStatusRequest {
     pub requestMetadata: RequestMetadata,
 }
 
 /// Request Payload Parameters: The HTTP body of the request only contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct RequestMetadata {
     /// This is the requestId of the call made by AWS KMS as part of
     /// a periodic health check which is visible in AWS `CloudTrail`.
@@ -74,7 +74,7 @@ pub(crate) struct RequestMetadata {
 
 // External Key Manager Details
 #[derive(Serialize, Deserialize, Debug)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct EkmFleetDetails {
     /// Unique identifier for the external key manager in the external key manager cluster.
     pub id: String,
@@ -93,7 +93,7 @@ pub(crate) struct EkmFleetDetails {
 /// Response Payload Parameters: The HTTP body of the response contains
 /// the health status of the XKS Proxy and the external key manager.
 #[derive(Serialize, Deserialize, Debug)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct GetHealthStatusResponse {
     ///  Size of XKS proxy fleet. This MUST be an integer greater than zero.
     pub xksProxyFleetSize: u16,

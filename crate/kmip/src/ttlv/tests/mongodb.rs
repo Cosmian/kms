@@ -1,29 +1,13 @@
-#![allow(unused)]
-use std::option;
-
 use cosmian_logger::{info, log_init};
-use zeroize::Zeroizing;
 
 use crate::{
     kmip_0::{
-        self,
-        kmip_messages::{
-            RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
-            ResponseMessageBatchItemVersioned,
-        },
-        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
+        kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned},
         kmip_types::CryptographicUsageMask,
     },
     kmip_1_4::{
-        self,
-        kmip_attributes::{Attribute, CustomAttributeValue},
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, TemplateAttribute},
-        kmip_objects::{Object, SymmetricKey},
-        kmip_operations::{
-            AddAttribute, Create, CreateResponse, Get, GetAttributes, GetAttributesResponse,
-            GetResponse, Operation, Query, QueryResponse, Register,
-        },
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, ObjectType},
+        kmip_attributes::Attribute, kmip_data_structures::TemplateAttribute,
+        kmip_operations::Operation, kmip_types::ObjectType,
     },
     ttlv::{KmipFlavor, TTLV, from_ttlv},
 };

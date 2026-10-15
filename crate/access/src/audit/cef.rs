@@ -165,11 +165,6 @@ fn escape_ext_value(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::unseparated_literal_suffix,
-    clippy::expect_used
-)]
 mod tests {
     use time::OffsetDateTime;
 
@@ -192,8 +187,8 @@ mod tests {
             duration_ms: 12,
             request_id: None,
             details: None,
-            prev_hash: [0u8; 32],
-            row_hash: [0u8; 32],
+            prev_hash: [0_u8; 32],
+            row_hash: [0_u8; 32],
         };
         ev.row_hash = compute_row_hash(&ev);
         ev
@@ -600,3 +595,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "cef_characterization_tests.rs"]
+mod characterization_tests;

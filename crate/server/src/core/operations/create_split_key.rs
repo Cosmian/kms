@@ -529,11 +529,6 @@ pub(crate) fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> 
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::SecretDataType,
@@ -611,7 +606,7 @@ mod tests {
     fn test_total_parts_u32_conversion_is_fallible_not_silent() {
         // Verify that u32::try_from returns Err for negative i32 values.
         let negative: i32 = -1;
-        assert!(u32::try_from(negative).is_err());
+        u32::try_from(negative).unwrap_err();
         let valid: i32 = 5;
         assert_eq!(u32::try_from(valid).unwrap(), 5_u32);
     }

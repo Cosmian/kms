@@ -18,7 +18,7 @@ use crate::error::{KmsCliError, result::KmsCliResult};
 pub(crate) fn generate_rsa_keypair() -> KmsCliResult<(PKey<Private>, PKey<Public>)> {
     let key_sizes = [2048, 3072, 4096];
     let mut rng = CsRng::from_entropy();
-    let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
+    let bits = key_sizes[usize::try_from(rng.next_u32()).unwrap_or_default() % key_sizes.len()];
 
     let rsa = Rsa::generate(bits)
         .map_err(|e| KmsCliError::Default(format!("Failed to generate RSA key: {e}")))?;

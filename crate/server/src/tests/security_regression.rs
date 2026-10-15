@@ -2,7 +2,6 @@
 //!
 //! These tests ensure that security fixes are not accidentally reverted in future
 //! development. Each test documents the vulnerability it guards against.
-#![allow(clippy::unwrap_in_result)]
 
 use std::sync::Arc;
 

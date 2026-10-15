@@ -1,5 +1,5 @@
 use chrono::{DateTime, TimeZone};
-#[allow(
+#[expect(
     clippy::disallowed_types,
     reason = "differential-privacy noise is not secret material or a key/nonce/token"
 )]
@@ -101,7 +101,7 @@ where
     rand_distr::StandardNormal: rand_distr::Distribution<F>,
 {
     method: NoiseMethod<F>,
-    #[allow(
+    #[expect(
         clippy::disallowed_types,
         reason = "differential-privacy noise is not secret material or a key/nonce/token"
     )]
@@ -236,16 +236,16 @@ impl NoiseGenerator<f64> {
     /// # Returns
     ///
     /// Original data with added noise
+    // Noise arithmetic happens in f64; rounding back to i64 is the expected semantics for a
+    // noisy integer.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::as_conversions,
+        reason = "float arithmetic on bounded values; no lossless std conversion"
+    )]
     pub fn apply_on_int(&mut self, data: i64) -> i64 {
-        // Precision loss and truncation are intentional: noise arithmetic happens in f64,
-        // and rounding back to i64 is the expected semantics for a noisy integer.
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_possible_truncation,
-            clippy::as_conversions
-        )]
-        let res = self.apply_on_float(data as f64).round() as i64;
-        res
+        self.apply_on_float(data as f64).round() as i64
     }
 
     /// Applies the selected noise method on a given date string.

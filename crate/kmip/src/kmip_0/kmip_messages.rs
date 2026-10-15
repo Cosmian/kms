@@ -38,7 +38,10 @@ enum KmipVersion {
 
 #[derive(PartialEq, Eq, Serialize, Clone, Debug)]
 #[serde(untagged)]
-#[expect(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
+)]
 pub enum RequestMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::RequestMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::RequestMessageBatchItem),
@@ -333,7 +336,10 @@ impl Display for RequestMessageHeader {
 
 #[derive(PartialEq, Eq, Serialize, Debug)]
 #[serde(untagged)]
-#[expect(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
+)]
 pub enum ResponseMessageBatchItemVersioned {
     V14(crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem),
     V21(crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem),

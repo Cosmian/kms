@@ -1,12 +1,7 @@
-#![allow(deprecated)]
-#![allow(clippy::unwrap_used)]
-#![allow(clippy::expect_used)]
-#![allow(clippy::str_to_string)]
-#![allow(clippy::panic)]
-#![allow(clippy::unwrap_in_result)]
-#![allow(clippy::assertions_on_result_states)]
-#![allow(clippy::panic_in_result_fn)]
-
+#![expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod ensure_binary;
 
 #[cfg(all(feature = "non-fips", not(target_os = "windows")))]
@@ -55,7 +50,6 @@ pub(crate) use ensure_binary::ensure_ckms_binary;
 
 // Ensure ckms binary is built when test module loads
 // This runs once before any tests in this module execute
-#[allow(dead_code)]
 static ENSURE_BINARY_ON_LOAD: std::sync::LazyLock<()> = std::sync::LazyLock::new(|| {
     ensure_ckms_binary();
 });
@@ -69,15 +63,3 @@ fn ensure_binary_built() {
 }
 
 pub(crate) const PROG_NAME: &str = "ckms";
-
-/// Create a Command for the ckms binary, ensuring it's built first
-/// Use this instead of `Command::cargo_bin()` directly in tests
-#[allow(dead_code)]
-pub(crate) fn ckms_command() -> std::process::Command {
-    use assert_cmd::cargo::CommandCargoExt;
-
-    // Access the lazy lock to ensure binary is built
-    *ENSURE_BINARY_ON_LOAD;
-
-    std::process::Command::cargo_bin(PROG_NAME).expect("Failed to find ckms binary")
-}

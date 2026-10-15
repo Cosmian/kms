@@ -289,7 +289,10 @@ fn infer_hmac_hashing_algorithm(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use std::sync::Arc;
 
@@ -360,7 +363,6 @@ mod tests {
         Ok(())
     }
 
-    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
         let kms = Arc::new(

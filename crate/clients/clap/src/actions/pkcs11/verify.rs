@@ -9,7 +9,11 @@
 //! conformance-profile self-declaration — to verify connectivity and
 //! correctness end to end.
 
-#![allow(unsafe_code, clippy::print_stdout)]
+#![expect(
+    unsafe_code,
+    clippy::print_stdout,
+    reason = "dlopen of a PKCS#11 module drives its C ABI; the verify command reports to stdout"
+)]
 
 use std::{env, ffi::c_void, mem::size_of, path::Path, ptr, sync::Mutex};
 

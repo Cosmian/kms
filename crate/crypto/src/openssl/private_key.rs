@@ -532,7 +532,6 @@ pub fn openssl_private_key_to_kmip(
     Ok(Object::PrivateKey(PrivateKey { key_block }))
 }
 
-#[expect(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "non-fips")]

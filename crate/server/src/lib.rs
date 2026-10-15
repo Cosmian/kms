@@ -6,7 +6,7 @@
 // the `clippy.toml` bans (see ADR 2026-10-10).
 #![cfg_attr(
     test,
-    allow(
+    expect(
         clippy::disallowed_methods,
         clippy::disallowed_types,
         reason = "test fixtures only; production code must use KmsRng"
@@ -28,14 +28,13 @@ pub mod tls_config;
 pub mod windows_service;
 
 #[expect(
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::expect_used,
     clippy::panic_in_result_fn,
-    clippy::cognitive_complexity,
-    unsafe_code,
-    clippy::indexing_slicing,
-    dead_code
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 #[cfg(test)]
 pub mod tests;
+
+#[cfg(test)]
+mod lint_cleanup_core_characterization_tests;
+#[cfg(test)]
+mod lint_cleanup_routes_characterization_tests;

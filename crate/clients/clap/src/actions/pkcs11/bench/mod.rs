@@ -6,17 +6,6 @@
 //! `cosmian_pkcs11` shared library — the same call path real-world consumers
 //! (Oracle TDE, OpenSSH, disk-encryption tools, ...) use.
 
-#![allow(
-    unsafe_code,
-    non_snake_case,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    clippy::format_push_string
-)]
-
 pub(crate) mod criterion_bench;
 pub(crate) mod error;
 pub(crate) mod load;
@@ -48,7 +37,7 @@ static CKMS_CONF_LOCK: Mutex<()> = Mutex::new(());
 
 /// Real PKCS#11 (`dlopen()`) load benchmark for the `cosmian_pkcs11` provider.
 #[derive(Parser, Debug)]
-#[allow(clippy::struct_excessive_bools)] // CLI flag structs legitimately have many boolean flags
+#[expect(clippy::struct_excessive_bools, reason = "each bool is a CLI flag")]
 pub struct Pkcs11BenchAction {
     /// Path to the PKCS#11 shared library (`libcosmian_pkcs11.so` / `.dylib` / `.dll`).
     #[arg(long, value_name = "PATH")]
@@ -145,7 +134,10 @@ fn parse_concurrency(spec: &str) -> BenchResult<Vec<usize>> {
         .collect()
 }
 
-#[allow(clippy::print_stdout)]
+#[expect(
+    clippy::print_stdout,
+    reason = "this command writes its result to stdout"
+)]
 fn print_results(results: &[LoadResult]) {
     println!(
         "{:<18} {:>12} {:>14} {:>10} {:>10} {:>10} {:>10}",
@@ -222,7 +214,10 @@ impl Pkcs11BenchAction {
                 .map_err(|_lock_err| KmsCliError::Default("CKMS_CONF_LOCK poisoned".to_owned()))?;
             if let Some(conf_path) = conf {
                 // SAFETY: protected by mutex to ensure exclusive access to environment variables
-                unsafe { env::set_var("CKMS_CONF", conf_path) };
+                #[expect(unsafe_code, reason = "env::set_var is unsafe in edition 2024")]
+                unsafe {
+                    env::set_var("CKMS_CONF", conf_path);
+                }
             }
 
             let pool_size = if shared_session {
@@ -313,3 +308,7 @@ mod tests {
         assert_eq!(action.hsm_slot, 42);
     }
 }
+
+#[cfg(test)]
+#[path = "mod_characterization_tests.rs"]
+mod characterization_tests;

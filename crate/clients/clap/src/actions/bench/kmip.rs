@@ -1,3 +1,8 @@
+#![expect(
+    clippy::expect_used,
+    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
+)]
+
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 #[cfg(feature = "non-fips")]
@@ -158,7 +163,7 @@ pub(super) fn bench_encrypt_aes_gcm(
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(enc_resp.data.map_or_else(Vec::new, |z| z.to_vec())),
+            data: Some(enc_resp.data.unwrap_or_default()),
             i_v_counter_nonce: enc_resp.i_v_counter_nonce,
             authenticated_encryption_tag: enc_resp.authenticated_encryption_tag,
             ..Default::default()
@@ -220,7 +225,7 @@ pub(super) fn bench_encrypt_chacha20(
     let dec_req = Decrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(params),
-        data: Some(enc_resp.data.map_or_else(Vec::new, |z| z.to_vec())),
+        data: Some(enc_resp.data.unwrap_or_default()),
         i_v_counter_nonce: enc_resp.i_v_counter_nonce,
         authenticated_encryption_tag: enc_resp.authenticated_encryption_tag,
         ..Default::default()
@@ -289,7 +294,7 @@ fn bench_rsa_encrypt_family(
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encrypt for decrypt");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        let ct = enc_resp.data.unwrap_or_default();
         let dec_req = Decrypt {
             unique_identifier: Some(priv_id),
             cryptographic_parameters: Some(params.clone()),
@@ -361,7 +366,7 @@ pub(super) fn bench_encrypt_aes_xts(
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(enc_resp.data.map_or_else(Vec::new, |z| z.to_vec())),
+            data: Some(enc_resp.data.unwrap_or_default()),
             i_v_counter_nonce: enc_resp.i_v_counter_nonce,
             ..Default::default()
         };
@@ -427,7 +432,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(enc_resp.data.map_or_else(Vec::new, |z| z.to_vec())),
+            data: Some(enc_resp.data.unwrap_or_default()),
             i_v_counter_nonce: enc_resp.i_v_counter_nonce,
             authenticated_encryption_tag: enc_resp.authenticated_encryption_tag,
             ..Default::default()
@@ -491,7 +496,7 @@ pub(super) fn bench_encrypt_ecies(
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encrypt for decrypt");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        let ct = enc_resp.data.unwrap_or_default();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
             &mut group,
@@ -545,7 +550,7 @@ pub(super) fn bench_encrypt_salsa(
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
         .expect("pre-encrypt for decrypt");
-    let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+    let ct = enc_resp.data.unwrap_or_default();
     let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
     bench_op(
         &mut group,
@@ -658,7 +663,7 @@ pub(super) fn bench_encrypt_covercrypt(
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
         .expect("pre-encrypt for decrypt");
-    let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+    let ct = enc_resp.data.unwrap_or_default();
     let dec_req = decrypt_request(
         &usk_str,
         None,
@@ -755,7 +760,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        let ct = enc_resp.data.unwrap_or_default();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
             None,
@@ -821,7 +826,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
         // Standard PQC KEM: ciphertext is in i_v_counter_nonce
         let ct = enc_resp
             .i_v_counter_nonce
-            .unwrap_or_else(|| enc_resp.data.map_or_else(Vec::new, |z| z.to_vec()));
+            .unwrap_or_else(|| enc_resp.data.unwrap_or_default());
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
             &mut group,
@@ -913,7 +918,8 @@ pub(super) fn bench_key_creation(
     // RSA key pairs
     {
         let mut group = timed_group(c, format!("{slug}/key-creation/rsa"));
-        for bits in [4096] {
+        {
+            let bits = 4096;
             let req = with_fips_rsa_masks(
                 create_rsa_key_pair_request(&vid, None, Vec::<String>::new(), bits, false, None)
                     .expect("RSA kp request"),
@@ -1984,11 +1990,11 @@ pub(super) fn bench_batch_aes_bulk(
             let pre_resp = rt
                 .block_on(client.encrypt(req.clone()))
                 .expect("pre-encrypt bulk request");
-            let ciphertext = pre_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+            let ciphertext = pre_resp.data.unwrap_or_default();
             let dec_req =
                 decrypt_request(&key_str, None, ciphertext, None, None, Some(params.clone()));
 
-            group.throughput(Throughput::Elements(n as u64));
+            group.throughput(Throughput::Elements(u64::try_from(n).unwrap_or(u64::MAX)));
             bench_op_id(
                 &mut group,
                 client,
@@ -2056,7 +2062,7 @@ pub(super) fn bench_batch_rsa_message(
         )
         .expect("pre-encrypt request");
         let pre_resp = rt.block_on(client.encrypt(pre_req)).expect("pre-encrypt");
-        let ciphertext = pre_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        let ciphertext = pre_resp.data.unwrap_or_default();
 
         let rsa_batch_sizes: &[usize] = if sanity { &[1] } else { &[1, 10, 50, 100] };
         for n in rsa_batch_sizes.iter().copied() {
@@ -2094,7 +2100,7 @@ pub(super) fn bench_batch_rsa_message(
                     .collect(),
             };
 
-            group.throughput(Throughput::Elements(n as u64));
+            group.throughput(Throughput::Elements(u64::try_from(n).unwrap_or(u64::MAX)));
             bench_message_id(
                 &mut group,
                 client,

@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
 #[cfg(feature = "non-fips")]
 use std::collections::HashSet;
 use std::sync::Arc;

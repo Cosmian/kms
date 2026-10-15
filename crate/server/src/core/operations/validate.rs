@@ -1181,12 +1181,6 @@ fn check_crl_freshness(crl: &X509Crl, crl_path: &str) -> KResult<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::indexing_slicing
-    )]
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,

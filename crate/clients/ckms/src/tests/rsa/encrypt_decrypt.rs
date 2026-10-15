@@ -22,7 +22,6 @@ use crate::{
 };
 
 /// Encrypts a file using the given public key
-#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],
@@ -31,7 +30,7 @@ pub(crate) fn encrypt(
     hash_fn: Option<HashFn>,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
-) -> CosmianResult<()> {
+) {
     let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
@@ -44,14 +43,14 @@ pub(crate) fn encrypt(
         .to_possible_value()
         .expect("valid RSA algorithm")
         .get_name()
-        .to_string();
+        .to_owned();
     args.push(&encryption_algorithm);
     let hash_fn_s = hash_fn
         .map(|h| {
             h.to_possible_value()
                 .expect("valid hash")
                 .get_name()
-                .to_string()
+                .to_owned()
         })
         .unwrap_or_default();
     if hash_fn.is_some() {
@@ -71,7 +70,6 @@ pub(crate) fn encrypt(
     cmd.assert().success().stdout(predicate::str::contains(
         "The encrypted file is available at",
     ));
-    Ok(())
 }
 
 /// Decrypt a file using the given private key
@@ -93,14 +91,14 @@ pub(crate) fn decrypt(
         .to_possible_value()
         .expect("valid RSA algorithm")
         .get_name()
-        .to_string();
+        .to_owned();
     args.push(&encryption_algorithm);
     let hash_fn_str = hash_fn
         .map(|h| {
             h.to_possible_value()
                 .expect("valid hash")
                 .get_name()
-                .to_string()
+                .to_owned()
         })
         .unwrap_or_default();
     if hash_fn.is_some() {
@@ -161,7 +159,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CosmianResult<()> {
         None,
         Some(output_file.to_str().unwrap()),
         None,
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -234,7 +232,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CosmianResult<()>
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -319,7 +317,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CosmianResult<()> 
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -387,7 +385,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CosmianResult<()> {
     let (private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            tags: HashSet::from(["tag_rsa".to_string()]),
+            tags: HashSet::from(["tag_rsa".to_owned()]),
             ..Default::default()
         },
     )?;
@@ -400,7 +398,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> CosmianResult<()> {
         Some(HashFn::Sha256),
         Some(output_file.to_str().unwrap()),
         None,
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(

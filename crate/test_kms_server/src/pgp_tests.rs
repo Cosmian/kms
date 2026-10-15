@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::time_normalize,

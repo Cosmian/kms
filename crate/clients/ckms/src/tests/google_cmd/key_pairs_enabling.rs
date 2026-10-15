@@ -13,24 +13,18 @@ use crate::{
 };
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
-#[allow(dead_code)]
 struct KaclsKeyMetadata {
     kaclsUri: String,
     kaclsData: String,
 }
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
-#[allow(dead_code)]
 struct PrivateKeyMetaData {
     privateKeyMetadataId: String,
     kaclsKeyMetadata: KaclsKeyMetadata,
 }
 
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
-#[allow(dead_code)]
 struct KeyPairs {
     keyPairId: String,
     pem: String,
@@ -40,8 +34,6 @@ struct KeyPairs {
     privateKeyMetadata: Vec<PrivateKeyMetaData>,
 }
 #[derive(Deserialize)]
-#[allow(non_snake_case)]
-#[allow(dead_code)]
 struct ListKeyPairsResponse {
     cseKeyPairs: Vec<KeyPairs>,
 }

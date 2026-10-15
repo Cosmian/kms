@@ -22,7 +22,10 @@ use crate::{
 
 /// Start a `KmsPluginService` gRPC server on a temp Unix socket and return
 /// a connected `KeyManagementServiceClient`.
-#[allow(clippy::expect_used, dead_code)]
+#[expect(
+    clippy::expect_used,
+    reason = "test helper; module is cfg(all(test, unix)), outside clippy test exemption"
+)]
 async fn start_plugin_on_tmp_socket(
     kms_url: &str,
     wrapping_key_uid: String,
@@ -98,7 +101,6 @@ async fn start_plugin_on_tmp_socket(
 /// - `Encrypt` wraps a 32-byte DEK, returns non-empty ciphertext and `key_id`
 /// - `Decrypt` unwraps to the original DEK bytes
 /// - A wrong `key_id` on `Decrypt` returns an error
-#[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_grpc_encrypt_decrypt_roundtrip() {
     test_kms_server::init_test_logging();

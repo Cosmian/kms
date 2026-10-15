@@ -286,7 +286,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::as_conversions)] // this a test, it's okay
     fn test_perm_triple_serialization_randomized() {
         use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
             CsRng, reexport::rand_core::RngCore,
@@ -303,7 +302,8 @@ mod tests {
         for _ in 0..10 {
             let obj_uid = ObjectUid(Uuid::new_v4().to_string());
             let user_id = FindexUserId(Uuid::new_v4().to_string());
-            let permission = all_operations[rng.next_u32() as usize % all_operations.len()];
+            let permission =
+                all_operations[usize::try_from(rng.next_u32()).unwrap() % all_operations.len()];
 
             let perm = PermTriple {
                 obj_uid,

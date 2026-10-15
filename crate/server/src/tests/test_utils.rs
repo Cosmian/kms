@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::expect_used)]
-
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -47,24 +45,6 @@ pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
     Ok(Arc::new(
         KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
     ))
-}
-
-/// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`
-/// environment variable that is set *before* the test helpers clear it, then assigns it
-/// to the server's `proxy_params` so that server-side outbound requests (e.g. CRL fetches)
-/// are routed through the configured corporate proxy.
-pub(crate) fn https_clap_config_with_external_proxy() -> ClapConfig {
-    // Capture proxy URL before disable_proxies_for_tests() removes it from the environment.
-    let proxy_url = std::env::var("HTTPS_PROXY")
-        .ok()
-        .or_else(|| std::env::var("https_proxy").ok())
-        .or_else(|| std::env::var("HTTP_PROXY").ok())
-        .or_else(|| std::env::var("http_proxy").ok());
-    let mut config = https_clap_config_opts(None);
-    if let Some(url) = proxy_url {
-        config.proxy.proxy_url = Some(url);
-    }
-    config
 }
 
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
@@ -120,6 +100,10 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
 }
 
 /// Ensure localhost bypasses any corporate proxy for tests.
+#[expect(
+    unsafe_code,
+    reason = "std::env::set_var is unsafe in edition 2024; test setup"
+)]
 fn ensure_no_proxy_for_localhost() {
     let has_http_proxy = std::env::var_os("HTTP_PROXY").is_some()
         || std::env::var_os("http_proxy").is_some()
@@ -150,6 +134,7 @@ fn ensure_no_proxy_for_localhost() {
 
     let updated = parts.join(",");
     // Set both uppercase and lowercase to cover different libraries' expectations
+    // SAFETY: test setup runs before the server threads read these variables.
     unsafe {
         std::env::set_var("NO_PROXY", &updated);
         std::env::set_var("no_proxy", &updated);
@@ -157,6 +142,10 @@ fn ensure_no_proxy_for_localhost() {
 }
 
 /// Clear proxy env vars for the test process so localhost traffic is never proxied.
+#[expect(
+    unsafe_code,
+    reason = "std::env::remove_var is unsafe in edition 2024; test setup"
+)]
 fn disable_proxies_for_tests() {
     let has_proxy = std::env::var_os("HTTP_PROXY").is_some()
         || std::env::var_os("http_proxy").is_some()
@@ -165,6 +154,7 @@ fn disable_proxies_for_tests() {
     if !has_proxy {
         return;
     }
+    // SAFETY: test setup runs before the server threads read these variables.
     unsafe {
         std::env::remove_var("HTTP_PROXY");
         std::env::remove_var("http_proxy");
@@ -299,6 +289,7 @@ pub(crate) async fn test_app(
 ///
 /// This is useful for end-to-end KMIP policy tests that need to tune allowlists
 /// and enforcement settings and then validate behavior through the HTTP stack.
+#[cfg(feature = "non-fips")]
 pub(crate) async fn test_app_with_clap_config(
     clap_config: ClapConfig,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {

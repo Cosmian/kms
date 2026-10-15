@@ -26,7 +26,7 @@ pub(crate) fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     // log_init(Some("info,cosmian_kms_server=debug"));
     let owner_client_conf_path = owner_config(ctx);
 
-    let hsm_key_id = "hsm::0::".to_string() + &Uuid::new_v4().to_string();
+    let hsm_key_id = "hsm::0::".to_owned() + &Uuid::new_v4().to_string();
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
         &[
@@ -82,7 +82,7 @@ pub(crate) fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> CosmianResult<()> {
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(2048),
             sensitive: true,
             ..Default::default()
@@ -132,7 +132,7 @@ pub(crate) fn test_unwrap_on_export(ctx: &TestsContext) -> CosmianResult<()> {
     let (_private_key_id, public_key_id) = create_rsa_key_pair(
         &owner_client_conf_path,
         &RsaKeyPairOptions {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
+            key_id: Some("hsm::0::".to_owned() + &Uuid::new_v4().to_string()),
             number_of_bits: Some(2048),
             sensitive: true,
             ..Default::default()
@@ -182,7 +182,7 @@ pub(crate) fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> CosmianResult<()> 
     let owner_client_conf_path = owner_config(ctx);
 
     // Create a sensitive AES key on the HSM (non-extractable, identified by hsm:: prefix).
-    let hsm_key_id = "hsm::0::".to_string() + &Uuid::new_v4().to_string();
+    let hsm_key_id = "hsm::0::".to_owned() + &Uuid::new_v4().to_string();
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
         &[

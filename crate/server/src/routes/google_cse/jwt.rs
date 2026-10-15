@@ -358,7 +358,6 @@ pub async fn validate_cse_authentication_token(
 
 /// Validate the authorization token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[expect(clippy::ref_option)]
 pub(super) async fn validate_cse_authorization_token(
     authorization_token: &str,
     google_cse_kacls_url: &str,
@@ -445,7 +444,6 @@ pub(super) struct TokenExtractedContent {
 
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[expect(clippy::ref_option)]
 pub(super) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
@@ -494,7 +492,6 @@ pub(super) async fn validate_tokens(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
@@ -1058,6 +1055,10 @@ mod tests {
 
     #[ignore = "Requires Google CSE credentials; not available in CI"]
     #[tokio::test]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var is unsafe in edition 2024; test sets process env before any thread reads it"
+    )]
     async fn test_wrap_auth() {
         log_init(option_env!("RUST_LOG"));
 
@@ -1127,6 +1128,7 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
+        // SAFETY: the test mutates the environment before spawning any code that reads it.
         unsafe {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);

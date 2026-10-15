@@ -138,23 +138,23 @@ pub struct CreateKeyPairsAction {
 }
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct KeyPairInfo {
     pkcs7: String,
-    privateKeyMetadata: Vec<PrivateKeyMetadata>,
+    private_key_metadata: Vec<PrivateKeyMetadata>,
 }
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct PrivateKeyMetadata {
-    kaclsKeyMetadata: KaclsKeyMetadata,
+    kacls_key_metadata: KaclsKeyMetadata,
 }
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct KaclsKeyMetadata {
-    kaclsUri: String,
-    kaclsData: String,
+    kacls_uri: String,
+    kacls_data: String,
 }
 
 impl CreateKeyPairsAction {
@@ -166,10 +166,10 @@ impl CreateKeyPairsAction {
     ) -> Result<(), KmsCliError> {
         let key_pair_info = KeyPairInfo {
             pkcs7: pem::encode(&pem::Pem::new(String::from("PKCS7"), certificate_value)),
-            privateKeyMetadata: vec![PrivateKeyMetadata {
-                kaclsKeyMetadata: KaclsKeyMetadata {
-                    kaclsUri: kacls_url,
-                    kaclsData: wrapped_private_key,
+            private_key_metadata: vec![PrivateKeyMetadata {
+                kacls_key_metadata: KaclsKeyMetadata {
+                    kacls_uri: kacls_url,
+                    kacls_data: wrapped_private_key,
                 },
             }],
         };
@@ -206,7 +206,10 @@ impl CreateKeyPairsAction {
     }
 
     /// Resolve or create the RSA key pair and export the wrapped private key.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     async fn resolve_key_pair(
         &self,
         kms_rest_client: &KmsClient,
@@ -281,7 +284,10 @@ impl CreateKeyPairsAction {
     }
 
     /// Resolve the leaf certificate: use an existing one, create from extensions, or import PKCS12.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     async fn resolve_certificate(
         &self,
         kms_rest_client: &KmsClient,
@@ -392,7 +398,10 @@ impl CreateKeyPairsAction {
     }
 
     /// Export the PKCS7 certificate chain and push the key pair to Gmail.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     async fn push_to_gmail(
         &self,
         kms_rest_client: &KmsClient,
@@ -454,3 +463,7 @@ impl CreateKeyPairsAction {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "create_characterization_tests.rs"]
+mod characterization_tests;

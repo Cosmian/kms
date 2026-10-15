@@ -225,7 +225,14 @@ pub(super) fn generate_key_pair(
     request: CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
-    #[cfg_attr(not(feature = "non-fips"), expect(unused_variables))] rng: &KmsRng,
+    #[cfg_attr(
+        not(feature = "non-fips"),
+        expect(
+            unused_variables,
+            reason = "rng is only used by the non-fips PQC generators"
+        )
+    )]
+    rng: &KmsRng,
 ) -> KResult<KeyPair> {
     trace!("Internal create key pair");
 

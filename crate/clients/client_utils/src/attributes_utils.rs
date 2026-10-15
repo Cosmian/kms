@@ -730,7 +730,6 @@ pub fn build_selected_attribute(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
     use crate::reexport::cosmian_kmip::kmip_2_1::{

@@ -501,7 +501,7 @@ async fn test_x25519_key_creation_rejected_in_fips_build() -> KResult<()> {
 
     let http_req = test::TestRequest::post()
         .uri("/v1/crypto/keys")
-        .set_json(&json!({"kty": "OKP", "crv": "X25519", "alg": "ECDH-ES"}))
+        .set_json(json!({"kty": "OKP", "crv": "X25519", "alg": "ECDH-ES"}))
         .to_request();
     let resp = test::call_service(&app, http_req).await;
     assert_ne!(

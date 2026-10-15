@@ -271,26 +271,36 @@ enum AbsentMode {
     PassThrough,
 }
 
+/// Arguments of [`process_vault_token`] other than the request and the next service.
+struct VaultTokenParams<'a> {
+    cache: &'a SpireTokenCache,
+    auth_verifier_url: &'a Url,
+    client: &'a reqwest::Client,
+    default_username: &'a str,
+    absent_mode: AbsentMode,
+    log_prefix: &'a str,
+}
+
 /// Shared vault-token processing extracted from [`spire_token_middleware`] and
 /// [`vault_token_optional_middleware`].  The two wrappers differ only in how they
 /// handle the *absent* header case; `Valid`, `InvalidEncoding`, and `Invalid` are
 /// identical.
-// All 8 parameters are required by the token-validation logic; grouping into a
-// struct would add more boilerplate than benefit for a private helper.
-#[allow(clippy::too_many_arguments)]
 async fn process_vault_token<B>(
     req: ServiceRequest,
     next: Next<B>,
-    cache: &SpireTokenCache,
-    auth_verifier_url: &Url,
-    client: &reqwest::Client,
-    default_username: &str,
-    absent_mode: AbsentMode,
-    log_prefix: &str,
+    params: &VaultTokenParams<'_>,
 ) -> Result<ServiceResponse<BoxBody>, Error>
 where
     B: MessageBody + 'static,
 {
+    let VaultTokenParams {
+        cache,
+        auth_verifier_url,
+        client,
+        default_username,
+        absent_mode,
+        log_prefix,
+    } = params;
     match check_vault_token(&req, cache, auth_verifier_url, client, default_username).await {
         VaultTokenResult::Valid(user) => {
             debug!(
@@ -376,12 +386,14 @@ where
             process_vault_token(
                 req,
                 next,
-                &cache,
-                &auth_verifier_url,
-                &client,
-                &default_username,
-                AbsentMode::Reject,
-                "spire_token_middleware",
+                &VaultTokenParams {
+                    cache: &cache,
+                    auth_verifier_url: &auth_verifier_url,
+                    client: &client,
+                    default_username: &default_username,
+                    absent_mode: AbsentMode::Reject,
+                    log_prefix: "spire_token_middleware",
+                },
             )
             .await
         }
@@ -426,12 +438,14 @@ where
             process_vault_token(
                 req,
                 next,
-                &cache,
-                &auth_verifier_url,
-                &client,
-                &default_username,
-                AbsentMode::PassThrough,
-                "vault_token_optional_middleware",
+                &VaultTokenParams {
+                    cache: &cache,
+                    auth_verifier_url: &auth_verifier_url,
+                    client: &client,
+                    default_username: &default_username,
+                    absent_mode: AbsentMode::PassThrough,
+                    log_prefix: "vault_token_optional_middleware",
+                },
             )
             .await
         }
@@ -439,7 +453,6 @@ where
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use std::time::Duration;
 
