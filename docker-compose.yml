@@ -86,8 +86,11 @@ services:
       - MYSQL_DATABASE=kms
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
+  # ── mTLS database variants ──────────────────────────────────────────────────
+  # Start with: docker compose --profile mtls up -d
   postgres-mtls:
     image: postgres:18
+    profiles: [mtls]
     ports:
       - ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433}:5432
     environment:
@@ -130,6 +133,7 @@ services:
       retries: 30
   mysql-mtls:
     image: mysql:8.0
+    profiles: [mtls]
     ports:
       - ${KMS_SLOT_MYSQL_MTLS_PORT:-3309}:3306
     environment:
@@ -151,8 +155,11 @@ services:
     ports:
       - ${KMS_SLOT_REDIS_PORT:-6379}:6379
 
+  # ── OTLP integration-test stack (jaeger + otel-collector) ───────────────────
+  # Start with: docker compose --profile otel-test up -d
   jaeger:
     image: jaegertracing/all-in-one:1.55
+    profiles: [otel-test]
     ports:
       - ${KMS_SLOT_JAEGER_PORT:-16686}:16686
     environment:
@@ -163,6 +170,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.144.0
+    profiles: [otel-test]
     command: [--config=/etc/otel-collector-config.yaml]
     volumes:
       - ./monitoring/ci-otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
