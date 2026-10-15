@@ -54,7 +54,11 @@ fn unhex(s: &str) -> Vec<u8> {
 }
 
 fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut hex, b| {
+        write!(hex, "{b:02x}").unwrap();
+        hex
+    })
 }
 
 /// Client that never reaches a server (port 1 is closed).
@@ -78,7 +82,10 @@ struct Capture(Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl std::io::Write for Capture {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        self.0
+            .lock()
+            .map_err(|e| std::io::Error::other(e.to_string()))?
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
 
@@ -460,7 +467,7 @@ fn characterization_rsa3_fixture_converts_to_fixture_der_structure() {
     let der = crate::blob::pkcs8_from_rsa_full_private_blob(&unhex(RSA3_BLOB_HEX)).unwrap();
     assert_eq!(der.len(), 1219);
     assert_eq!(
-        to_hex(der.get(..32).unwrap()),
+        to_hex(&der[..32]),
         "308204bf020100300d06092a864886f70d0101010500048204a9308204a50201"
     );
 }
@@ -526,7 +533,7 @@ mod with_server {
         let blob = ctx.export_public_blob().unwrap();
         assert_eq!(blob.len(), 24 + 3 + 256);
         assert_eq!(
-            to_hex(blob.get(..24).unwrap()),
+            to_hex(&blob[..24]),
             "52534131000800000300000000010000".to_owned() + "0000000000000000"
         );
         assert!(!ctx.export_private_pkcs8().unwrap().is_empty());
@@ -550,11 +557,8 @@ mod with_server {
             );
             let blob = ctx.export_public_blob().unwrap();
             assert_eq!(blob.len(), 8 + 2 * coord);
-            assert_eq!(to_hex(blob.get(..4).unwrap()), head);
-            assert_eq!(
-                blob.get(4..8).unwrap(),
-                u32::try_from(coord).unwrap().to_le_bytes()
-            );
+            assert_eq!(to_hex(&blob[..4]), head);
+            assert_eq!(&blob[4..8], u32::try_from(coord).unwrap().to_le_bytes());
             cleanup(&client, &ctx);
         }
     }
@@ -569,7 +573,7 @@ mod with_server {
         let exported = ctx.export_private_pkcs8().unwrap();
         assert_eq!(exported.len(), 1219);
         assert_eq!(
-            to_hex(exported.get(..24).unwrap()),
+            to_hex(&exported[..24]),
             "308204bf020100300d06092a864886f70d01010105000482"
         );
         cleanup(client, &ctx);
