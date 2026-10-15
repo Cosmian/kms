@@ -3,15 +3,19 @@
 use super::*;
 
 fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut hex, b| {
+        write!(hex, "{b:02x}").unwrap();
+        hex
+    })
 }
 
 fn head_hex(bytes: &[u8], n: usize) -> String {
-    to_hex(bytes.get(..n).unwrap())
+    to_hex(&bytes[..n])
 }
 
 fn tail_hex(bytes: &[u8], n: usize) -> String {
-    to_hex(bytes.get(bytes.len() - n..).unwrap())
+    to_hex(&bytes[bytes.len() - n..])
 }
 
 /// DER TLV with short or long-form length.
@@ -242,8 +246,8 @@ fn characterization_ec_public_blob_all_curves() {
         (EcCurve::P521, 66, false, "45434b3542000000", "b2b1b0af"),
     ] {
         let p = point(coord);
-        let x = p.get(1..=coord).unwrap();
-        let y = p.get(1 + coord..).unwrap();
+        let x = &p[1..=coord];
+        let y = &p[1 + coord..];
         {
             let blob = ec_public_blob(curve, x, y, ecdsa);
             assert_eq!(blob.len(), 8 + 2 * coord);
@@ -259,12 +263,7 @@ fn characterization_ec_public_blob_from_uncompressed_ok_and_errors() {
     let blob = ec_public_blob_from_uncompressed(EcCurve::P256, &p, true).unwrap();
     assert_eq!(
         blob,
-        ec_public_blob(
-            EcCurve::P256,
-            p.get(1..33).unwrap(),
-            p.get(33..).unwrap(),
-            true
-        )
+        ec_public_blob(EcCurve::P256, &p[1..33], &p[33..], true)
     );
     let blob = ec_public_blob_from_uncompressed(EcCurve::P256, &p, false).unwrap();
     assert_eq!(head_hex(&blob, 8), "45434b3120000000");
@@ -279,7 +278,7 @@ fn characterization_ec_public_blob_from_uncompressed_ok_and_errors() {
         msg
     );
     assert_eq!(
-        ec_public_blob_from_uncompressed(EcCurve::P256, p.get(..64).unwrap(), true)
+        ec_public_blob_from_uncompressed(EcCurve::P256, &p[..64], true)
             .unwrap_err()
             .to_string(),
         msg
