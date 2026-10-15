@@ -293,7 +293,7 @@ ipnet = "2"
 itertools = "0.10"
 js-sys = "0.3"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
-k256 = "0.13"
+k256 = "0.14"
 k8s-openapi = "0.28"
 kube = "4.2"
 lazy_static = "1.5"
