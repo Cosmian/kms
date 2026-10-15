@@ -16,6 +16,7 @@ apply their normal review gates.
 
 - [ ] Update `nix/expected-hashes/` files with the correct `sha256-...` hash from CI output
 - Hash files: `server.vendor.{static,dynamic}.sha256`, `cli.vendor.{static,dynamic}.{darwin,linux}.sha256`, `ui.vendor.{fips,non-fips}.sha256`, `ui.pnpm.{darwin,linux}.sha256`
+- [ ] New or bumped third-party packages in either lock file also go through `dependencies.instructions.md` (rule 4.19): `cargo vet check --locked` for `Cargo.lock`; release age, install scripts and `pnpm audit` for `ui/pnpm-lock.yaml`.
 
 When CI reports a hash mismatch, first verify the lock file changed **intentionally** in this PR;
 if not, revert it.

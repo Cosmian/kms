@@ -2,6 +2,8 @@ module github.com/cosmian/kms/kmip-go-tests
 
 go 1.25.5
 
+toolchain go1.27.2
+
 require (
     github.com/ovh/kmip-go v0.9.2
     github.com/stretchr/testify v1.11.1

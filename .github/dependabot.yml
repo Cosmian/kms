@@ -6,3 +6,32 @@ updates:
     directory: /
     schedule:
       interval: daily
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-patch-minor:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: pip
+    directories:
+      - /.mise/scripts/test
+      - /.mise/scripts/docs
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /.mise/scripts/kmip-go
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /.mise/scripts/docker/ase
+      - /.mise/scripts/edb_tde
+    schedule:
+      interval: weekly

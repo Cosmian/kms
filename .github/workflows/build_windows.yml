@@ -26,11 +26,11 @@ jobs:
       - name: Print ENV
         run: printenv
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
@@ -45,12 +45,12 @@ jobs:
         run: |
           Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
 
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.17.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
 
@@ -130,7 +130,7 @@ jobs:
           }
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ inputs.archive-name }}-release
           # Single glob keeps target/release as the artifact root so the sign
@@ -145,7 +145,7 @@ jobs:
   sign:
     name: ${{ inputs.archive-name }} - sign installers
     needs: cargo-build
-    uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@develop
+    uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@54c23fe09936c084848b4495cf5bb744720b9d0c # develop
     with:
       artifact-to-download: ${{ inputs.archive-name }}-release
       files-folder: to-sign
@@ -163,7 +163,7 @@ jobs:
     name: ${{ inputs.archive-name }} - test on clean env.
     runs-on: windows-2022
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ inputs.archive-name }}-release-signed
 
@@ -229,12 +229,12 @@ jobs:
 
     steps:
       - name: Checkout repository (for release metadata)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
 
       - name: Download Windows build artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ inputs.archive-name }}-release-signed
           path: .
@@ -265,7 +265,7 @@ jobs:
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
             cosmian-kms-server*.exe

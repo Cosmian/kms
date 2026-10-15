@@ -8,6 +8,7 @@
         - [Changelog Entries](#changelog-entries)
     - [Contributing to the UI](#contributing-to-the-ui)
     - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
+    - [Supply-chain / dependency policy](#supply-chain--dependency-policy)
     - [Testing](#testing)
     - [Contributor License Agreement](#contributor-license-agreement)
     - [Code of Conduct](#code-of-conduct)
@@ -147,6 +148,39 @@ For FIPS gating rules, multi-standard algorithm compliance, and key lifecycle, s
 [`.github/skills/cryptography-review/SKILL.md`](.github/skills/cryptography-review/SKILL.md).
 For React/TypeScript/WASM conventions, see
 [`.github/skills/react-ant-patterns/SKILL.md`](.github/skills/react-ant-patterns/SKILL.md).
+
+---
+
+## Supply-chain / dependency policy
+
+- **Rust dependencies** — after adding or bumping a crate, run `cargo vet check`. If it fails, either add an
+  exemption (`cargo vet add-exemption <crate> <version>`) with a reason, or record a real audit
+  (`cargo vet certify`). The `cargo-vet` CI job blocks the merge otherwise. Existing exemptions for build-time code
+  (`-sys`, proc-macro, `build.rs` crates) are tagged `priority: build-time code` in `supply-chain/config.toml` and are
+  the audit backlog.
+- **Python test dependencies** — edit the human-authored `.in` file next to the requirements (for example
+  `.mise/scripts/test/requirements-jose.in`), then regenerate the hash-pinned lockfile with
+  `pip-compile --generate-hashes --output-file=<name>.txt <name>.in` and commit both. Never hand-edit the `.txt`;
+  install sites use `pip install --require-hashes`. The `jose` and `cef` lockfiles are compiled with Python 3.9 because
+  `.mise/scripts/common.sh` puts the macOS Command Line Tools `python3` first in `PATH`; the other lockfiles are
+  compiled with Python 3.12 (the CI `ubuntu-24.04` interpreter) and need Python ≥ 3.10. Check each result with
+  `pip-audit -r <name>.txt`; the `python-dependency-audit` CI job runs it on every lockfile.
+- **Go test dependencies** — `.mise/scripts/kmip-go/go.mod` pins the Go `toolchain`; the `govulncheck` CI job
+  (`govulncheck -test ./...`) must report no vulnerabilities.
+- **GitHub Actions** — every `uses:` reference must be a full 40-character commit SHA followed by a `# <tag>`
+  comment (local `./.github/actions/...` paths excepted). Dependabot (`github-actions` ecosystem) bumps these
+  automatically.
+- **Docker base images** in `.mise/scripts/docker/**` must be pinned by digest (`FROM image:tag@sha256:...`).
+- **Bootstrap installers** — never pipe a remote script into a shell. Download it, verify its SHA-256, then run it
+  (see `.github/actions/install-mise/action.yml`), or use a version pinned by a git submodule.
+
+Pre-commit hooks enforce the policy locally (`.pre-commit-config.yaml`): `cargo-vet`, `github-actions-sha-pin`,
+`docker-base-image-digest-pin` and `no-curl-pipe-shell` run on commit; `pip-audit-lockfiles` and `govulncheck`
+(which need `pip-audit` and `govulncheck` installed, and network access) run on `pre-push`.
+
+Reference: [`supply-chain/config.toml`](supply-chain/config.toml), [`.github/dependabot.yml`](.github/dependabot.yml),
+[`.github/workflows/main_base.yml`](.github/workflows/main_base.yml), and the pre-existing
+[`.cargo/audit.toml`](.cargo/audit.toml) / [`deny.toml`](deny.toml).
 
 ---
 

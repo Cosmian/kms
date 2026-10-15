@@ -15,12 +15,12 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
           # This might remove tools that are actually needed,
           # if set to "true" but frees about 6 GB
@@ -38,13 +38,13 @@ jobs:
       - uses: ./.github/actions/cleanup-runner
 
       - name: Dump context for debug
-        uses: crazy-max/ghaction-dump-context@v3
+        uses: crazy-max/ghaction-dump-context@4d9eeaf15dd59aa4346919ea84a84ccf514b4db8 # v3
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy

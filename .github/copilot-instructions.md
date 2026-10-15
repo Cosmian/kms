@@ -30,6 +30,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` |
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` |
+| `dependencies.instructions.md` | `**/Cargo.toml`, `Cargo.lock`, `supply-chain/**`, `deny.toml`, `ui/package.json`, `ui/pnpm-lock.yaml`, `**/requirements*.{in,txt}`, `**/go.{mod,sum}`, `**/Dockerfile*`, `.github/dependabot.yml`, `.github/workflows/**`, `.github/actions/**` |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |

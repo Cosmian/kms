@@ -34,6 +34,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` | Sync rule 4.13 — PKCS#11 loader ⇔ HSM model enum ⇔ wizard ⇔ test vectors ⇔ CI matrix |
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
+| `dependencies.instructions.md` | `**/Cargo.toml`, `Cargo.lock`, `supply-chain/**`, `deny.toml`, `.cargo/audit.toml`, `ui/package.json`, `ui/pnpm-lock.yaml`, `crate/clients/wasm/package.json`, `**/requirements*.in`, `**/requirements*.txt`, `**/go.mod`, `**/go.sum`, `**/Dockerfile*`, `.github/dependabot.yml`, `.github/workflows/**`, `.github/actions/**` | Sync rule 4.19 — third-party dependency vetting (cargo-vet, pnpm, pip, Go, Docker digests, Action SHAs, installers) per issue #1265 |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` | Locale bundles, en/zh-CN parity, useTranslation/Trans |
@@ -363,9 +364,10 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | Documentation/behavior change | 4.14 |
 | Playwright E2E test change | 4.16 |
 | OpenSSL upgrade | 4.17 |
-| `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
+| `Cargo.lock` or `pnpm-lock.yaml` change | 4.11, 4.19 |
+| New or bumped third-party dependency (crate, npm/Python/Go package, base image, action, installer) | 4.19 (+ 4.11 when a lock file changed) |
 
-> **Full sub-rule checklists** (4.1–4.18) live in `.github/instructions/*.instructions.md`; only rule 4.8 lives in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.19) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 

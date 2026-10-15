@@ -67,9 +67,26 @@ setup_venv_and_pykmip() {
     print_status "Removed existing virtual environment at .venv"
   fi
 
-  # Install pyenv
+  # Install pyenv (content-hash pinned; re-verify and update this hash
+  # deliberately when the installer needs to change — same pattern as
+  # nix/expected-hashes/)
   if [[ ! -d "$HOME/.pyenv" ]]; then
-    curl -fsSL https://pyenv.run | bash
+    local pyenv_installer expected_sha256 actual_sha256
+    pyenv_installer="$(mktemp)"
+    curl -fsSL https://pyenv.run -o "$pyenv_installer"
+    expected_sha256="1065197a9fff657e0e2941e4ca8c8b6e72833833466b777b9eddd0fff335ec41"
+    if command -v sha256sum >/dev/null 2>&1; then
+      actual_sha256="$(sha256sum "$pyenv_installer" | awk '{print $1}')"
+    else
+      actual_sha256="$(shasum -a 256 "$pyenv_installer" | awk '{print $1}')"
+    fi
+    if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+      rm -f "$pyenv_installer"
+      print_error "pyenv installer checksum mismatch (expected $expected_sha256, got $actual_sha256) — aborting"
+      exit 1
+    fi
+    bash "$pyenv_installer"
+    rm -f "$pyenv_installer"
   fi
   export PYENV_ROOT="$HOME/.pyenv"
   [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"

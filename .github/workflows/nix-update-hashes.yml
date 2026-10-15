@@ -91,7 +91,7 @@ jobs:
         runner: [ubuntu-24.04, macos-15]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # workflow_dispatch: fall back to the dispatched branch when no
           # explicit ref is given.
