@@ -24,6 +24,9 @@ helm install my-kms ./charts/cosmian-kms \
   --set image.repository=ghcr.io/cosmian/kms
 ```
 
+HSM: for Thales Luna (Luna Client from an init container, configuration from Secrets), see the
+[Luna HSM documentation](../../documentation/docs/hsm_support/luna.md#kubernetes-helm-chart).
+
 ## Source files
 
 - [`values.yaml`](values.yaml) — all configurable parameters and defaults

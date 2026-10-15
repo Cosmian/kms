@@ -31,6 +31,8 @@ use gcp_cloud_hsm_pkcs11_loader::{GCP_CLOUD_HSM_PKCS11_LIB, GcpCloudHsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use kryoptic_pkcs11_loader::{KRYOPTIC_PKCS11_LIB, Kryoptic};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use luna_pkcs11_loader::{LUNA_PKCS11_LIB, Luna};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
@@ -549,6 +551,14 @@ impl KMS {
                 "GCP Cloud HSM",
                 slot_passwords
             )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "luna" => Ok(instantiate_hsm_with_env!(
+                Luna,
+                "LUNA_PKCS11_LIB",
+                LUNA_PKCS11_LIB,
+                "Luna",
+                slot_passwords
+            )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
@@ -559,7 +569,7 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
+                 luna, proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
                  softhsm2, utimaco, kryoptic, other"
             ),
         }

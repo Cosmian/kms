@@ -5,6 +5,7 @@ wrapped by the HSM keys.
 This provides the best of both worlds: the security of an HSM at rest and the scalability of a KMS at runtime.
 
 The Eviden KMS natively integrates with
+the [Thales Luna Network HSM](../luna.md),
 the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/),
 the [Utimaco general purpose](https://utimaco.com/),
 the [Smartcard HSM](https://www.smartcard-hsm.com/features.html),

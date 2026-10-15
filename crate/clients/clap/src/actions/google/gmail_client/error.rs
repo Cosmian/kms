@@ -12,6 +12,9 @@ pub enum GoogleApiError {
     // A serialization error occurred
     #[error("Serialization error `{0}`")]
     Serde(serde_json::Error),
+    /// The `OAuth2` token endpoint rejected the service-account assertion.
+    #[error("Google token endpoint error: {0}")]
+    TokenEndpoint(String),
 }
 
 impl From<jsonwebtoken::errors::Error> for GoogleApiError {

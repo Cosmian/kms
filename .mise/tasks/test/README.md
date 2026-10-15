@@ -171,7 +171,7 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`
+**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`, `test:hsm-luna`
 **Orchestrator:** `test:hsm:_default`
 **Matrix:** `test:matrix` (cross-product HSM × DB × variant)
 
@@ -181,6 +181,7 @@ sequenceDiagram
 | `hsm-utimaco` | Utimaco simulator | Linux only | passthrough |
 | `hsm-proteccio` | Proteccio | Linux only | passthrough |
 | `hsm-crypt2pay` | Crypt2Pay | Linux only | passthrough |
+| `hsm-luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
 
 ### Architecture Overview
 

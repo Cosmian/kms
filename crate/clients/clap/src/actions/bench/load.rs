@@ -181,7 +181,7 @@ impl PreparedLoadOp {
                     256,
                     CryptographicAlgorithm::AES,
                     ["load"],
-                    false,
+                    true, // sensitive: HSMs (e.g. Luna) may refuse extractable keys
                     None,
                 ) else {
                     return false;
@@ -197,7 +197,7 @@ impl PreparedLoadOp {
                     Some(UniqueIdentifier::TextString(uid)),
                     ["load"],
                     2048,
-                    false,
+                    true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
                     None,
                 ) else {
                     return false;
@@ -294,7 +294,13 @@ fn prepare_load_ops(
 
     // ── TTLV JSON load ops ───────────────────────────────────────────────
     if run_json && needs_encrypt {
-        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            "load-json-encrypt-aes-128",
+            128,
+            CryptographicAlgorithm::AES,
+        );
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -316,7 +322,12 @@ fn prepare_load_ops(
     }
 
     if run_json && needs_sign {
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::P256) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-json-sign-ecdsa-p256",
+            RecommendedCurve::P256,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -336,7 +347,12 @@ fn prepare_load_ops(
         }
 
         #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::CURVEED25519) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-json-sign-eddsa-ed25519",
+            RecommendedCurve::CURVEED25519,
+        ) {
             // No `digital_signature_algorithm` needed: the server dispatches to
             // EdDSA based on the key's own cryptographic algorithm (Ed25519).
             let req = Sign {
@@ -354,7 +370,12 @@ fn prepare_load_ops(
         }
 
         #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::SECP256K1) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-json-sign-ecdsa-secp256k1",
+            RecommendedCurve::SECP256K1,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -375,7 +396,13 @@ fn prepare_load_ops(
     }
 
     if run_json && needs_batch {
-        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            "load-json-batch-aes-128",
+            128,
+            CryptographicAlgorithm::AES,
+        );
         let key_str = key_id.to_string();
         let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; plaintext_size]); 10])
             .serialize()
@@ -398,7 +425,13 @@ fn prepare_load_ops(
 
     // ── TTLV Bytes load ops ───────────────────────────────────────────────
     if run_wire && needs_encrypt {
-        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            "load-bytes-encrypt-aes-128",
+            128,
+            CryptographicAlgorithm::AES,
+        );
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -413,7 +446,12 @@ fn prepare_load_ops(
     }
 
     if run_wire && needs_sign {
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::P256) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-bytes-sign-ecdsa-p256",
+            RecommendedCurve::P256,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -431,7 +469,12 @@ fn prepare_load_ops(
         }
 
         #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::CURVEED25519) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-bytes-sign-eddsa-ed25519",
+            RecommendedCurve::CURVEED25519,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 data: Some(Zeroizing::new(vec![0x42_u8; 32])),
@@ -445,7 +488,12 @@ fn prepare_load_ops(
         }
 
         #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::SECP256K1) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-bytes-sign-ecdsa-secp256k1",
+            RecommendedCurve::SECP256K1,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -600,6 +648,7 @@ fn prepare_hsm_load_ops(
             rt,
             client,
             hsm_prefix,
+            "load-encrypt-aes-gcm-256",
             256,
             CryptographicAlgorithm::AES,
             ledger,
@@ -621,9 +670,14 @@ fn prepare_hsm_load_ops(
             eprintln!("[load] HSM AES-GCM not available, skipping HSM encrypt load test");
         }
 
-        if let Some((pub_id, _priv_id)) =
-            try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, ledger)
-        {
+        if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-encrypt-rsa-2048",
+            2048,
+            ledger,
+        ) {
             for (label, params) in [
                 ("rsa-oaep", rsa_oaep_params()),
                 ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
@@ -652,6 +706,7 @@ fn prepare_hsm_load_ops(
             rt,
             client,
             hsm_prefix,
+            "load-encrypt-aes-cbc-256",
             256,
             CryptographicAlgorithm::AES,
             ledger,
@@ -677,9 +732,14 @@ fn prepare_hsm_load_ops(
 
     if needs_sign {
         // RSA-PSS
-        if let Some((_pub_id, priv_id)) =
-            try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, ledger)
-        {
+        if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-sign-rsa-pss-2048",
+            2048,
+            ledger,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -702,9 +762,14 @@ fn prepare_hsm_load_ops(
 
         // RSA PKCS#1 v1.5 hash-and-sign (SHA1/256/384/512). One RSA-2048 key
         // pair is reused for all four hash variants.
-        if let Some((_pub_id, priv_id)) =
-            try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, ledger)
-        {
+        if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-sign-rsa-pkcs1v15-2048",
+            2048,
+            ledger,
+        ) {
             for (label, dsa) in [
                 (
                     "rsa-pkcs1v15-sha1",
@@ -742,9 +807,14 @@ fn prepare_hsm_load_ops(
         }
 
         // ECDSA P-256 — prehashed only (SoftHSM2 lacks combined CKM_ECDSA_SHA*).
-        if let Some((_pub_id, priv_id)) =
-            try_create_hsm_ec_kp(rt, client, hsm_prefix, RecommendedCurve::P256, ledger)
-        {
+        if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-sign-ecdsa-p256",
+            RecommendedCurve::P256,
+            ledger,
+        ) {
             let digest = Sha256::digest([0x42_u8; 32]).to_vec();
             let req = Sign {
                 unique_identifier: Some(priv_id),
@@ -783,9 +853,14 @@ fn prepare_hsm_load_ops(
                 CryptographicAlgorithm::Ed448,
             ),
         ] {
-            if let Some((_pub_id, priv_id)) =
-                try_create_hsm_ec_kp(rt, client, hsm_prefix, curve, ledger)
-            {
+            if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+                rt,
+                client,
+                hsm_prefix,
+                &format!("load-sign-{label}"),
+                curve,
+                ledger,
+            ) {
                 let req = Sign {
                     unique_identifier: Some(priv_id),
                     cryptographic_parameters: Some(CryptographicParameters {
@@ -977,7 +1052,6 @@ pub(super) fn bench_load(
     );
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
-        return Vec::new();
     }
 
     let mut results = Vec::new();

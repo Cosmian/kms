@@ -47,8 +47,11 @@ fn add_supported_oaep_algorithms(
     }
 }
 
-/// Query a slot's supported cryptographic algorithms using one opened session.
+/// Query a slot's supported cryptographic algorithms, computed once per slot and cached.
 pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgorithm>> {
+    if let Some(algorithms) = slot.supported_algorithms.get() {
+        return Ok(algorithms.clone());
+    }
     let mechanisms = slot.get_supported_mechanisms()?;
     let session = slot.open_session(true)?;
     let supported_hashes = session.get_supported_oaep_hash()?;
@@ -66,7 +69,8 @@ pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgor
         }
     }
 
-    Ok(algorithms)
+    // A concurrent first call may have filled the cache already: both results are identical.
+    Ok(slot.supported_algorithms.get_or_init(|| algorithms).clone())
 }
 
 struct SlotState {

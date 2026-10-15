@@ -25,12 +25,13 @@ members = [
   "crate/hsm/base_hsm",
   "crate/hsm/aws_cloudhsm",
   "crate/hsm/gcp_cloud_hsm",
-  "crate/hsm/crypt2pay",
-  "crate/hsm/kryoptic",
   "crate/hsm/proteccio",
-  "crate/hsm/smartcardhsm",
+  "crate/hsm/crypt2pay",
   "crate/hsm/softhsm2",
+  "crate/hsm/kryoptic",
+  "crate/hsm/smartcardhsm",
   "crate/hsm/utimaco",
+  "crate/hsm/luna",
   "crate/interfaces",
   "crate/server",
   "crate/server_database",
@@ -220,6 +221,7 @@ crypt2pay_pkcs11_loader = { path = "crate/hsm/crypt2pay", version = "5.28.0" }
 gcp_cloud_hsm_pkcs11_loader = { path = "crate/hsm/gcp_cloud_hsm", version = "5.28.0" }
 kmip-derive = { path = "crate/kmip-derive", version = "5.28.0" }
 kryoptic_pkcs11_loader = { path = "crate/hsm/kryoptic", version = "5.28.0" }
+luna_pkcs11_loader = { path = "crate/hsm/luna", version = "5.28.0" }
 proteccio_pkcs11_loader = { path = "crate/hsm/proteccio", version = "5.28.0" }
 smartcardhsm_pkcs11_loader = { path = "crate/hsm/smartcardhsm", version = "5.28.0" }
 softhsm2_pkcs11_loader = { path = "crate/hsm/softhsm2", version = "5.28.0" }

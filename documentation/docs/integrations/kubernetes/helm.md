@@ -70,6 +70,13 @@ helm install my-kms cosmian/cosmian-kms \
   --set image.repository=ghcr.io/cosmian/kms
 ```
 
+### HSM (Thales Luna)
+
+The KMS images (FIPS and non-FIPS) load the Thales Luna PKCS#11 library. Keep the official image and
+bring the Luna Client runtime with an init container, and the Luna configuration and credentials
+with Secrets, through `initContainers`, `extraVolumes`, `extraVolumeMounts`, `extraEnv` and
+`extraArgs`: see [Thales Luna on Kubernetes](../../hsm_support/luna.md#kubernetes-helm-chart).
+
 ### Database configuration
 
 By default the chart deploys with the `sqlite` backend, backed by a
@@ -162,7 +169,8 @@ for the full list of configurable parameters. Key settings:
 | `podDisruptionBudget.*` | Optional `PodDisruptionBudget` |
 | `networkPolicy.*` | Optional `NetworkPolicy` restricting ingress to the KMS port |
 | `resources` | CPU/memory requests and limits |
-| `extraEnv` / `extraEnvFrom` / `extraArgs` | Escape hatches for settings not covered by a dedicated value |
+| `extraEnv` / `extraEnvFrom` / `extraArgs` | Escape hatches for settings not covered by a dedicated value (e.g. `--hsm-model`) |
+| `initContainers` / `extraVolumes` / `extraVolumeMounts` | Extra init containers and volumes (e.g. HSM client runtime and configuration) |
 
 Every `kms.*` value maps to a `KMS_*` environment variable or CLI flag consumed
 directly by the `cosmian_kms` binary. See

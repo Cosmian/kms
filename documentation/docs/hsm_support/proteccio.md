@@ -22,9 +22,9 @@ following files:
 | `proteccio.crt` | Server TLS certificate (PEM) used to authenticate the HSM appliance |
 | `proteccio_client.key` | Client TLS private key (PEM) for mutual TLS authentication |
 | `proteccio_client.crt` | Client TLS certificate (PEM) for mutual TLS authentication |
-| `secchannel_hsm.pem` | HSM secure-channel public key (EC, PEM) |
-| `secchl_clt_privkey.pem` | Client secure-channel private key (PEM) |
-| `secchl_clt_pubkey.pem` | Client secure-channel public key (PEM) |
+| `secchannel_hsm.pem` | HSM secure-channel public key (EC, PEM) — only if the secure channel is enabled |
+| `secchl_clt_privkey.pem` | Client secure-channel private key (PEM) — only if the secure channel is enabled |
+| `secchl_clt_pubkey.pem` | Client secure-channel public key (PEM) — only if the secure channel is enabled |
 
 The `proteccio.rc` / `proteccio.ini` file contains two sections:
 
@@ -56,6 +56,97 @@ monitoring daemon and records HSM availability events. It is not read by the KMS
 
 Please run the `nethsmstatus` tool to check the status of the HSM before proceeding with the
 rest of the installation.
+
+### Installing the client on Debian (x86_64)
+
+The Proteccio client package ships an interactive `Linux/install.sh` (root, language prompt). The same result
+can be obtained non-interactively with the steps below, which were validated on Debian 13 against a
+Proteccio running firmware 194 (client library `nethsm` 4.5, PKCS#11 token flags `login required`).
+
+1. Unpack the package delivered by Eviden and locate the 64-bit client files in `Client_Software/linux64`
+   (`libnethsm.so`, `nethsmstatus`, `nethsmtool`). Keep the client certificate pair and the HSM server
+   certificate provided with your HSM (`proteccio_client.crt`, `proteccio_client.key`, server `.crt`).
+
+2. Install the library and tools:
+
+    ```bash
+    sudo cp Client_Software/linux64/libnethsm.so /lib/libnethsm.so
+    sudo ln -sf /lib/libnethsm.so /usr/lib/libnethsm.so
+    sudo install -m 755 Client_Software/linux64/nethsmstatus /usr/local/bin/nethsmstatus
+    sudo install -m 755 Client_Software/linux64/nethsmtool   /usr/local/bin/nethsmtool
+    ```
+
+    `nethsmstatus` is linked against `libnethsm.so`; it fails with `libnethsm.so => not found` until the
+    library is installed in a standard library path.
+
+3. Install the certificates in `/etc/proteccio`. The HSM server certificate **must** be renamed
+   `proteccio.crt` to match `SrvCert`:
+
+    ```bash
+    sudo mkdir -p /etc/proteccio
+    sudo cp <server_cert>.crt        /etc/proteccio/proteccio.crt
+    sudo cp proteccio_client.crt     /etc/proteccio/proteccio_client.crt
+    sudo cp proteccio_client.key     /etc/proteccio/proteccio_client.key
+    sudo chmod 644 /etc/proteccio/proteccio.crt /etc/proteccio/proteccio_client.crt
+    sudo chmod 600 /etc/proteccio/proteccio_client.key
+    ```
+
+4. Create `/etc/proteccio/proteccio.ini` and copy it to `proteccio.rc` (the library reads `proteccio.rc`,
+   as printed by `nethsmstatus`). The package default points at `192.168.0.1` with `SSL=0`: replace the
+   address and enable TLS.
+
+    ```ini
+    [PROTECCIO]
+    IPaddr=<HSM_IP_ADDRESS>
+    SSL=1
+    SrvCert=proteccio.crt
+
+    [CLIENT]
+    Mode=0
+    LoggingLevel=0
+    LogFile=/dev/null
+    StatusFile=/dev/null
+    ClntKey=proteccio_client.key
+    ClntCert=proteccio_client.crt
+    ```
+
+    ```bash
+    sudo cp /etc/proteccio/proteccio.ini /etc/proteccio/proteccio.rc
+    ```
+
+    !!! warning "Keep `LoggingLevel=0` for production and benchmarks"
+
+        The Proteccio manual states that enabling traces has a direct impact on performance
+        (`LoggingLevel` ranges from 0, no trace, to 7). Use a non-zero level only while debugging.
+
+5. Check connectivity and the virtual HSMs (slots):
+
+    ```bash
+    nethsmstatus
+    ```
+
+    The command must print `TLS is enabled`, `Token state: 0X40 OPERATIONAL` and one `Token (Slot N)` block
+    per virtual HSM, with its label. The `N` shown is the slot number to configure in `hsm_slot`.
+
+6. Optionally verify the PKCS#11 login of one slot with `pkcs11-tool` (package `opensc`). Run it **once**:
+   repeated failed logins can lock the virtual HSM.
+
+    ```bash
+    pkcs11-tool --module /lib/libnethsm.so --list-slots
+    pkcs11-tool --module /lib/libnethsm.so --slot <0xN> --login --pin <password> --list-objects
+    ```
+
+    `pkcs11-tool --slot` expects the PKCS#11 slot ID (hexadecimal): Proteccio slot `4` is `0x4`, whereas
+    `--slot-index` is zero-based (slot `4` is index `3`).
+
+### Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `libnethsm.so => not found` when running `nethsmstatus` | Library not in `/lib` or `/usr/lib`; redo step 2 |
+| Client cannot reach the HSM | Check `IPaddr`, TCP port 5552 (TLS) or 5551 (plain) through firewalls |
+| TLS handshake fails | Server certificate not named `proteccio.crt`, or the client certificate is not imported on the HSM |
+| Very low signature throughput | `LoggingLevel` is not `0`; see step 4 |
 
 ## KMS configuration
 
