@@ -35,6 +35,466 @@ use crate::{
     tests::get_redis_url,
 };
 
+pub(crate) mod issue_940_repro {
+    use cosmian_kms_interfaces::AtomicOperation;
+    use uuid::Uuid;
+
+    use super::*;
+
+    /// Two clients sharing one Redis database (and master key), flushed first.
+    async fn clients(database: u8) -> DbResult<(RedisWithFindex, RedisWithFindex)> {
+        let url = format!("{}/{database}", get_redis_url());
+        let mut rng = CsRng::from_entropy();
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let first = RedisWithFindex::instantiate(&url, master_key.clone(), true).await?;
+        let second = RedisWithFindex::instantiate(&url, master_key, false).await?;
+        Ok((first, second))
+    }
+
+    fn key(marker: u8) -> DbResult<Object> {
+        Ok(create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[marker; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?)
+    }
+
+    fn upsert(
+        uid: &str,
+        object: &Object,
+        tags: Option<HashSet<String>>,
+    ) -> DbResult<AtomicOperation> {
+        Ok(AtomicOperation::Upsert((
+            uid.to_owned(),
+            object.clone(),
+            object.attributes()?.clone(),
+            tags,
+            State::PreActive,
+        )))
+    }
+
+    struct TagCase {
+        uid: String,
+        owner: UserId,
+        expected_tags: HashSet<String>,
+        replace: [AtomicOperation; 1],
+        preserve: [AtomicOperation; 1],
+    }
+
+    async fn tag_case(writer: &RedisWithFindex) -> DbResult<TagCase> {
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let old_tags = HashSet::from([format!("old-{uid}")]);
+        let expected_tags = HashSet::from([format!("new-{uid}")]);
+        let first_key = key(2)?;
+        writer
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &first_key,
+                first_key.attributes()?,
+                &old_tags,
+            )
+            .await?;
+        Ok(TagCase {
+            replace: [upsert(&uid, &first_key, Some(expected_tags.clone()))?],
+            preserve: [upsert(&uid, &key(3)?, None)?],
+            uid,
+            owner,
+            expected_tags,
+        })
+    }
+
+    async fn sequential_controls(
+        first: &RedisWithFindex,
+        second: &RedisWithFindex,
+    ) -> DbResult<()> {
+        for replace_first in [true, false] {
+            let case = tag_case(first).await?;
+            if replace_first {
+                first.atomic(&case.owner, &case.replace).await?;
+                second.atomic(&case.owner, &case.preserve).await?;
+            } else {
+                second.atomic(&case.owner, &case.preserve).await?;
+                first.atomic(&case.owner, &case.replace).await?;
+            }
+            let actual = second.retrieve_tags(&case.uid).await?;
+            assert_eq!(
+                actual, case.expected_tags,
+                "Sequential control failed: replace_first={replace_first}"
+            );
+            eprintln!(
+                "T2 sequential control replace_first={replace_first}: PASS uid={} tags={actual:?}",
+                case.uid
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn t1_removed_tag_must_not_select_existing_object() -> DbResult<()> {
+        let (writer, reader) = clients(1).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let old_tags = HashSet::from([format!("old-{uid}")]);
+        let new_tags = HashSet::from([format!("new-{uid}")]);
+        let object = key(1)?;
+        writer
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &old_tags,
+            )
+            .await?;
+        let operations = [upsert(&uid, &object, Some(new_tags.clone()))?];
+        writer.atomic(&owner, &operations).await?;
+        assert!(reader.retrieve(&uid).await?.is_some(), "K must still exist");
+        let stored_tags = reader.retrieve_tags(&uid).await?;
+        assert_eq!(stored_tags, new_tags, "Upsert must replace stored tags");
+        let old_lookup = reader.list_uids_for_tags(&old_tags).await?;
+        let new_lookup = reader.list_uids_for_tags(&new_tags).await?;
+        let mut attributes = Attributes::default();
+        attributes.set_tags(VENDOR_ID_COSMIAN, old_tags.clone())?;
+        let old_find = reader
+            .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?
+            .into_iter()
+            .map(|(found, ..)| found)
+            .collect::<HashSet<_>>();
+        attributes.set_tags(VENDOR_ID_COSMIAN, new_tags.clone())?;
+        let new_find = reader
+            .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
+            .await?
+            .into_iter()
+            .map(|(found, ..)| found)
+            .collect::<HashSet<_>>();
+        eprintln!(
+            "T1 uid={uid} stored_tags={stored_tags:?} old_lookup={old_lookup:?} new_lookup={new_lookup:?} old_find={old_find:?} new_find={new_find:?}"
+        );
+        assert!(new_lookup.contains(&uid), "New tag must select K");
+        assert!(new_find.contains(&uid), "Find must select K by new tag");
+        assert!(
+            !old_lookup.contains(&uid) && !old_find.contains(&uid),
+            "Removed tag still selects existing K: list={old_lookup:?}, find={old_find:?}"
+        );
+        Ok(())
+    }
+
+    pub(crate) async fn t2_concurrent_upserts_must_preserve_tags() -> DbResult<()> {
+        let (first, second) = clients(2).await?;
+        sequential_controls(&first, &second).await?;
+        let started = std::time::Instant::now();
+        for round in 1..=10_000 {
+            let case = tag_case(&first).await?;
+            let (replace_result, preserve_result) =
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    tokio::join!(
+                        first.atomic(&case.owner, &case.replace),
+                        second.atomic(&case.owner, &case.preserve)
+                    )
+                })
+                .await
+                .map_err(|error| crate::db_error!(format!("T2 infrastructure timeout: {error}")))?;
+            replace_result?;
+            preserve_result?;
+            let stored_tags = second.retrieve_tags(&case.uid).await?;
+            assert_eq!(
+                stored_tags, case.expected_tags,
+                "Concurrent Upserts lost tags at round {round}, uid={}",
+                case.uid
+            );
+            if started.elapsed() >= std::time::Duration::from_secs(10) {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn t3_failed_competing_batch_must_rollback_upsert() -> DbResult<()> {
+        let (first, second) = clients(3).await?;
+        let shared = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{shared}"));
+        let marker_a = format!("marker-a-{shared}");
+        let marker_b = format!("marker-b-{shared}");
+        let batch = |marker: &str, object: &Object| -> DbResult<[AtomicOperation; 2]> {
+            Ok([
+                upsert(
+                    marker,
+                    object,
+                    Some(HashSet::from([format!("tag-{marker}")])),
+                )?,
+                AtomicOperation::Create((
+                    shared.clone(),
+                    owner.clone(),
+                    object.clone(),
+                    object.attributes()?.clone(),
+                    HashSet::new(),
+                )),
+            ])
+        };
+        let first_operations = batch(&marker_a, &key(4)?)?;
+        let second_operations = batch(&marker_b, &key(5)?)?;
+        let (first_result, second_result) = tokio::join!(
+            first.atomic(&owner, &first_operations),
+            second.atomic(&owner, &second_operations)
+        );
+        eprintln!(
+            "T3 shared={shared} marker_a={marker_a} marker_b={marker_b} first_result={first_result:?} second_result={second_result:?}"
+        );
+        let (winner, loser, conflict) = match (first_result, second_result) {
+            (Ok(_), Err(error)) => (&marker_a, &marker_b, error),
+            (Err(error), Ok(_)) => (&marker_b, &marker_a, error),
+            results => {
+                return Err(crate::db_error!(format!(
+                    "T3 expected exactly one successful batch: {results:?}"
+                )));
+            }
+        };
+        assert!(
+            conflict
+                .to_string()
+                .contains(&format!("object {shared} already exists")),
+            "Unexpected failure: {conflict}"
+        );
+        assert!(
+            first.retrieve(&shared).await?.is_some(),
+            "Winning shared object must exist"
+        );
+        assert!(
+            first.retrieve(winner).await?.is_some(),
+            "Winning marker must exist"
+        );
+        let loser_exists = first.retrieve(loser).await?.is_some();
+        let loser_lookup = first
+            .list_uids_for_tags(&HashSet::from([format!("tag-{loser}")]))
+            .await?;
+        eprintln!(
+            "T3 winner={winner} loser={loser} loser_exists={loser_exists} loser_lookup={loser_lookup:?}"
+        );
+        assert!(
+            !loser_exists && !loser_lookup.contains(loser),
+            "Failed batch left partial effects: loser={loser}, exists={loser_exists}, indexed={loser_lookup:?}"
+        );
+        Ok(())
+    }
+
+    /// A batch may delete a uid and re-create it; a Create after a live
+    /// operation on the same uid in one batch must still fail atomically.
+    pub(crate) async fn t4_same_uid_delete_then_create_and_create_after_upsert() -> DbResult<()> {
+        let (store, _) = clients(4).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = key(6)?;
+        let create = || -> DbResult<AtomicOperation> {
+            Ok(AtomicOperation::Create((
+                uid.clone(),
+                owner.clone(),
+                object.clone(),
+                object.attributes()?.clone(),
+                HashSet::from([format!("tag-{uid}")]),
+            )))
+        };
+        store.atomic(&owner, &[create()?]).await?;
+
+        // Delete + Create of an existing uid in one batch succeeds.
+        store
+            .atomic(&owner, &[AtomicOperation::Delete(uid.clone()), create()?])
+            .await?;
+        assert!(store.retrieve(&uid).await?.is_some(), "re-created object");
+
+        // Create after a live Upsert of the same uid in one batch fails and writes nothing.
+        let fresh = Uuid::new_v4().to_string();
+        let batch = [
+            upsert(&fresh, &object, None)?,
+            AtomicOperation::Create((
+                fresh.clone(),
+                owner.clone(),
+                object.clone(),
+                object.attributes()?.clone(),
+                HashSet::new(),
+            )),
+        ];
+        let error = store
+            .atomic(&owner, &batch)
+            .await
+            .err()
+            .context("T4 expected a Create conflict")?;
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("object {fresh} already exists")),
+            "Unexpected failure: {error}"
+        );
+        assert!(store.retrieve(&fresh).await?.is_none(), "no partial write");
+        Ok(())
+    }
+
+    /// A delete based on a stale baseline must not erase a concurrent write.
+    pub(crate) async fn t5_delete_is_guarded_by_baseline() -> DbResult<()> {
+        use crate::stores::redis::objects_db::{AtomicScriptOutcome, ScriptOp};
+
+        let (store, _) = clients(5).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = key(7)?;
+        store
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &object,
+                object.attributes()?,
+                &HashSet::new(),
+            )
+            .await?;
+        let current = store.objects_db().object_get_raw(&uid).await?;
+        let stale = [1_u8, 2, 3];
+
+        let outcome = store
+            .objects_db()
+            .atomic_script(&[ScriptOp::Delete {
+                uid: &uid,
+                expected: Some(&stale),
+            }])
+            .await?;
+        assert!(matches!(outcome, AtomicScriptOutcome::CasConflict));
+        assert!(
+            store.retrieve(&uid).await?.is_some(),
+            "stale delete erased the object"
+        );
+
+        let outcome = store
+            .objects_db()
+            .atomic_script(&[ScriptOp::Delete {
+                uid: &uid,
+                expected: current.as_deref(),
+            }])
+            .await?;
+        assert!(matches!(outcome, AtomicScriptOutcome::Committed));
+        assert!(store.retrieve(&uid).await?.is_none());
+        Ok(())
+    }
+
+    /// `Create` then `Delete` of the same uid in one batch: a net no-op for an
+    /// absent uid, but the `Create` must still fail fast if the uid exists.
+    pub(crate) async fn t6_create_then_delete_in_one_batch() -> DbResult<()> {
+        let (store, _) = clients(4).await?;
+        let uid = Uuid::new_v4().to_string();
+        let owner = UserId::from(format!("owner-{uid}"));
+        let object = key(6)?;
+        let batch = || -> DbResult<[AtomicOperation; 2]> {
+            Ok([
+                AtomicOperation::Create((
+                    uid.clone(),
+                    owner.clone(),
+                    object.clone(),
+                    object.attributes()?.clone(),
+                    HashSet::new(),
+                )),
+                AtomicOperation::Delete(uid.clone()),
+            ])
+        };
+        store.atomic(&owner, &batch()?).await?;
+        assert!(store.retrieve(&uid).await?.is_none(), "net no-op expected");
+
+        store.atomic(&owner, &batch()?[..1]).await?;
+        let error = store
+            .atomic(&owner, &batch()?)
+            .await
+            .err()
+            .context("T6 expected a Create conflict")?;
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("object {uid} already exists")),
+            "Unexpected failure: {error}"
+        );
+        assert!(
+            store.retrieve(&uid).await?.is_some(),
+            "existing object must survive the rejected batch"
+        );
+        Ok(())
+    }
+
+    /// Stand-alone `update_object` racing an `Upsert` batch must not lose tags,
+    /// and the stand-alone mutators keep object, index and errors consistent.
+    pub(crate) async fn t8_standalone_mutators_are_cas_guarded() -> DbResult<()> {
+        let (first, second) = clients(5).await?;
+        for _ in 0..50 {
+            let case = tag_case(&first).await?;
+            let object = key(2)?;
+            let (update, upsert) = tokio::join!(
+                first.update_object(
+                    &case.uid,
+                    &object,
+                    object.attributes()?,
+                    Some(&case.expected_tags)
+                ),
+                second.atomic(&case.owner, &case.preserve)
+            );
+            update?;
+            upsert?;
+            assert_eq!(
+                second.retrieve_tags(&case.uid).await?,
+                case.expected_tags,
+                "stand-alone update_object lost tags, uid={}",
+                case.uid
+            );
+        }
+
+        let case = tag_case(&first).await?;
+        let object = key(2)?;
+        let create_error = first
+            .create(
+                Some(case.uid.clone()),
+                &case.owner,
+                &object,
+                object.attributes()?,
+                &HashSet::new(),
+            )
+            .await
+            .err()
+            .context("T8 expected a Create conflict")?;
+        assert!(create_error.to_string().contains("already exists"));
+        first.update_state(&case.uid, State::Active).await?;
+        assert_eq!(
+            first
+                .retrieve(&case.uid)
+                .await?
+                .context("T8 missing")?
+                .state(),
+            State::Active
+        );
+        assert!(
+            first
+                .update_state("no-such-uid", State::Active)
+                .await
+                .is_err()
+        );
+        first.delete(&case.uid).await?;
+        assert!(first.retrieve(&case.uid).await?.is_none());
+        first.delete(&case.uid).await?;
+        Ok(())
+    }
+
+    /// Run every #940 contract test; called from `test_db_redis_with_findex`.
+    pub(crate) async fn test_issue_940() -> DbResult<()> {
+        t1_removed_tag_must_not_select_existing_object().await?;
+        Box::pin(t2_concurrent_upserts_must_preserve_tags()).await?;
+        Box::pin(t3_failed_competing_batch_must_rollback_upsert()).await?;
+        Box::pin(t4_same_uid_delete_then_create_and_create_after_upsert()).await?;
+        t5_delete_is_guarded_by_baseline().await?;
+        Box::pin(t6_create_then_delete_in_one_batch()).await?;
+        Box::pin(t8_standalone_mutators_are_cas_guarded()).await?;
+        crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_findex_hit_is_filtered_out().await?;
+        crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_attribute_hit_is_filtered_out().await?;
+        crate::stores::redis::redis_with_findex::tests::test_db_redis_interleaved_index_updates_keep_object_findable().await
+    }
+}
+
 async fn clear_all(mgr: &mut ConnectionManager) -> DbResult<()> {
     redis::cmd("FLUSHDB").query_async::<()>(mgr).await?;
     Ok(())
