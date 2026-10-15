@@ -102,7 +102,7 @@ async fn kms_without_key() -> KResult<Arc<KMS>> {
 }
 
 async fn kms_with_ca(with_certificate: bool) -> KResult<Arc<KMS>> {
-    let kms = kms_without_key().await?;
+    let kms = Box::pin(kms_without_key()).await?;
     let owner = UserId::from(kms.params.default_username.as_str());
     let attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -177,7 +177,7 @@ async fn call(kms: &Arc<KMS>, body: &Value) -> (u16, Value) {
 
 #[tokio::test]
 async fn characterization_sign_intermediate_signs_csr_with_ca() {
-    let kms = kms_with_ca(true).await.unwrap();
+    let kms = Box::pin(kms_with_ca(true)).await.unwrap();
     let (status, body) = call(
         &kms,
         &json!({"csr": csr_pem(), "uri_sans": ["spiffe://example.org/x"], "ttl": "48h"}),
@@ -227,7 +227,7 @@ async fn characterization_sign_intermediate_signs_csr_with_ca() {
 
 #[tokio::test]
 async fn characterization_sign_intermediate_rejects_empty_uri_sans() {
-    let kms = kms_with_ca(true).await.unwrap();
+    let kms = Box::pin(kms_with_ca(true)).await.unwrap();
     let (status, body) = call(&kms, &json!({"csr": csr_pem()})).await;
     assert_eq!(status, 400);
     assert_eq!(
@@ -238,7 +238,7 @@ async fn characterization_sign_intermediate_rejects_empty_uri_sans() {
 
 #[tokio::test]
 async fn characterization_sign_intermediate_rejects_invalid_body() {
-    let kms = kms_with_ca(true).await.unwrap();
+    let kms = Box::pin(kms_with_ca(true)).await.unwrap();
     let (status, body) = call(&kms, &json!({"uri_sans": ["a"]})).await;
     assert_eq!(status, 400);
     assert_eq!(
@@ -249,7 +249,7 @@ async fn characterization_sign_intermediate_rejects_invalid_body() {
 
 #[tokio::test]
 async fn characterization_sign_intermediate_without_ca_key() {
-    let kms = kms_without_key().await.unwrap();
+    let kms = Box::pin(kms_without_key()).await.unwrap();
     let (status, body) = call(&kms, &json!({"csr": csr_pem(), "uri_sans": "a"})).await;
     assert_eq!(status, 500);
     assert_eq!(
@@ -260,7 +260,7 @@ async fn characterization_sign_intermediate_without_ca_key() {
 
 #[tokio::test]
 async fn characterization_sign_intermediate_without_ca_certificate() {
-    let kms = kms_with_ca(false).await.unwrap();
+    let kms = Box::pin(kms_with_ca(false)).await.unwrap();
     let (status, body) = call(&kms, &json!({"csr": csr_pem(), "uri_sans": "a"})).await;
     assert_eq!(status, 500);
     assert_eq!(
