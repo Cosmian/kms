@@ -206,6 +206,7 @@ pub fn rekey_edit_action_from_attributes(
 #[cfg(test)]
 mod tests {
     use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
+    use cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
     use cosmian_kms_client_utils::cover_crypt_rekey_utils::{
         CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
     };
@@ -295,8 +296,12 @@ mod tests {
     /// The client-side request for `action`, and the action the server reads back from it,
     /// as JSON.
     fn client_side(action: &RekeyEditAction) -> Result<(String, String), CryptoError> {
-        let request = build_covercrypt_rekey_keypair_request(VENDOR, "msk", &mirror(action))
-            .map_err(|e| CryptoError::Default(e.to_string()))?;
+        let request = build_covercrypt_rekey_keypair_request(
+            VENDOR.to_owned(),
+            UniqueIdentifier::TextString("msk".to_owned()),
+            &mirror(action),
+        )
+        .map_err(|e| CryptoError::Default(e.to_string()))?;
         let attributes = request
             .private_key_attributes
             .as_ref()
