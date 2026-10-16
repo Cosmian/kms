@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# SCEP (RFC 8894) interoperability test: micromdm `scepclient` + Apple SCEP profile.
+# SCEP (RFC 8894) interoperability test against the micromdm `scepclient`.
+# The native Apple client is covered by test_scep_apple.sh (`mise run test:scep-apple`).
 #
 # Scenarios (all against a live KMS server, no internal API):
 #   1. GetCACaps advertises exactly POSTPKIOperation / SHA-256 / AES / Renewal (no DES3, no SHA-1)
 #   2. scepclient PKCSReq with the challenge password   -> certificate issued by the KMS CA
 #   3. scepclient RenewalReq (existing cert) w/o challenge -> renewed certificate
 #   4. scepclient PKCSReq with a wrong challenge        -> failInfo: badRequest
-#   5. (macOS) Apple `com.apple.security.scep` profile lints and drives an enrollment
 #
 # Usage: bash .mise/scripts/test/test_scep_interop.sh [--variant fips|non-fips]
 set -euo pipefail
@@ -116,7 +116,7 @@ print_success "PASS: GetCACaps = POSTPKIOperation, SHA-256, AES, Renewal"
 
 # scepclient keeps its CSR (csr.pem) next to the private key and reuses it on later runs,
 # so every device gets its own directory.
-mkdir -p "${WORKDIR}/dev1" "${WORKDIR}/bad" "${WORKDIR}/mac"
+mkdir -p "${WORKDIR}/dev1" "${WORKDIR}/bad"
 
 # enroll <cn> <key> <cert> [extra scepclient args...]
 enroll() {
@@ -154,58 +154,5 @@ if [ "${RC}" -eq 0 ]; then
 fi
 assert_contains "${OUT}" "failInfo: badRequest" "wrong challenge reports failInfo badRequest"
 [ ! -e "${WORKDIR}/bad/bad.crt" ] || print_error "FAIL: no certificate must be written on failure"
-
-if [ "$(uname -s)" = "Darwin" ] && command -v plutil >/dev/null 2>&1; then
-  print_header "Scenario 5: Apple com.apple.security.scep configuration profile"
-  PROFILE="${WORKDIR}/scep.mobileconfig"
-  cat >"${PROFILE}" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>PayloadType</key><string>Configuration</string>
-  <key>PayloadVersion</key><integer>1</integer>
-  <key>PayloadIdentifier</key><string>com.cosmian.kms.scep.profile</string>
-  <key>PayloadUUID</key><string>5F0B6F2C-7A6B-4B52-8E55-0C1D4E9F2A11</string>
-  <key>PayloadDisplayName</key><string>KMS SCEP test profile</string>
-  <key>PayloadContent</key>
-  <array>
-    <dict>
-      <key>PayloadType</key><string>com.apple.security.scep</string>
-      <key>PayloadVersion</key><integer>1</integer>
-      <key>PayloadIdentifier</key><string>com.cosmian.kms.scep.test</string>
-      <key>PayloadUUID</key><string>E5868B42-4581-42C4-82D5-5D9F0E177A19</string>
-      <key>PayloadContent</key>
-      <dict>
-        <key>URL</key><string>${SCEP_URL}</string>
-        <key>Name</key><string>KMS SCEP CA</string>
-        <key>Subject</key><array><array><array><string>CN</string><string>mac-mdm-client.corp</string></array></array></array>
-        <key>Challenge</key><string>${CHALLENGE}</string>
-        <key>Keysize</key><integer>2048</integer>
-        <key>Key Type</key><string>RSA</string>
-        <key>Key Usage</key><integer>5</integer>
-      </dict>
-    </dict>
-  </array>
-</dict>
-</plist>
-PLIST
-  plutil -lint "${PROFILE}"
-  P_URL=$(plutil -extract PayloadContent.0.PayloadContent.URL raw "${PROFILE}")
-  P_CN=$(plutil -extract PayloadContent.0.PayloadContent.Subject.0.0.1 raw "${PROFILE}")
-  P_CHALLENGE=$(plutil -extract PayloadContent.0.PayloadContent.Challenge raw "${PROFILE}")
-  P_KEYSIZE=$(plutil -extract PayloadContent.0.PayloadContent.Keysize raw "${PROFILE}")
-  [ "${P_URL}" = "${SCEP_URL}" ] || print_error "FAIL: profile URL mismatch (${P_URL})"
-  "${SCEPCLIENT}" -server-url "${P_URL}" -cn "${P_CN}" -keySize "${P_KEYSIZE}" -challenge "${P_CHALLENGE}" \
-    -private-key "${WORKDIR}/mac/mac.key" -certificate "${WORKDIR}/mac/mac.crt"
-  openssl verify -CAfile "${WORKDIR}/ca.crt" "${WORKDIR}/mac/mac.crt"
-  rm -f "${WORKDIR}/mac/csr.pem"
-  "${SCEPCLIENT}" -server-url "${P_URL}" -cn "${P_CN}" -keySize "${P_KEYSIZE}" \
-    -private-key "${WORKDIR}/mac/mac.key" -certificate "${WORKDIR}/mac/mac.crt"
-  openssl verify -CAfile "${WORKDIR}/ca.crt" "${WORKDIR}/mac/mac.crt"
-  print_success "PASS: Apple SCEP profile parses; enrollment and renewal driven by its parameters succeed"
-else
-  echo "Skipping Apple profile scenario (needs macOS plutil)"
-fi
 
 print_success "All SCEP interoperability scenarios passed"

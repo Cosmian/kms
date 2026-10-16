@@ -36,7 +36,7 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::openssl::{
-        csr_attrs::csr_with_challenge_password,
+        csr_attrs::{csr_challenge_password, csr_with_challenge_password},
         scep_cms::{
             FAIL_INFO_BAD_CERT_ID, FAIL_INFO_BAD_REQUEST, MESSAGE_TYPE_CERT_REP,
             MESSAGE_TYPE_PKCS_REQ, MESSAGE_TYPE_RENEWAL_REQ, NONCE_LEN, PKI_STATUS_FAILURE,
@@ -711,6 +711,58 @@ async fn scep_pkcsreq_with_challenge_issues_certificate() -> KResult<()> {
         assert!(cert.public_key().unwrap().public_eq(&key));
     }
     Ok(())
+}
+
+/// Captures of the native macOS SCEP client (`mise run test:scep-apple`) must stay parseable by
+/// the server: a signed `PKCSReq` whose envelope decrypts with the test CA to an RSA-2048 CSR
+/// carrying the challenge and the profile's CN.
+#[tokio::test]
+async fn apple_scep_fixtures_parse() {
+    init_openssl_providers_for_tests();
+    let mut captures = 0;
+    for entry in std::fs::read_dir("../../test_data/scep/apple").unwrap() {
+        let dir = entry.unwrap().path();
+        let read = |name: &str| std::fs::read(dir.join(name)).unwrap();
+        let ca = X509::from_pem(&read("ca.crt")).unwrap();
+        let ca_key = PKey::private_key_from_pem(&read("ca.key")).unwrap();
+
+        let parsed = parse_signed_pkimessage(&read("pkcsreq.der")).unwrap();
+        assert_eq!(
+            parsed.attrs.message_type,
+            MESSAGE_TYPE_PKCS_REQ,
+            "{}",
+            dir.display()
+        );
+        assert!(!parsed.attrs.transaction_id.is_empty());
+        let csr =
+            X509Req::from_der(&decrypt_envelope(&parsed.content, &ca_key, &ca).unwrap()).unwrap();
+        let key = csr.public_key().unwrap();
+        assert!(csr.verify(&key).unwrap(), "CSR proof of possession");
+        assert_eq!(key.bits(), 2048);
+        assert_eq!(csr_challenge_password(&csr).as_deref(), Some(CHALLENGE));
+        let cn = csr
+            .subject_name()
+            .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+            .next()
+            .unwrap()
+            .data()
+            .as_slice();
+        assert_eq!(cn, b"mac-01.iot.example");
+
+        // Renewal capture (if any) is observational: it only has to be a valid pkiMessage.
+        if dir.join("renewal.der").exists() {
+            let renewal = parse_signed_pkimessage(&read("renewal.der")).unwrap();
+            assert!(
+                [MESSAGE_TYPE_PKCS_REQ, MESSAGE_TYPE_RENEWAL_REQ]
+                    .contains(&renewal.attrs.message_type)
+            );
+        }
+        captures += 1;
+    }
+    assert!(
+        captures > 0,
+        "no Apple SCEP capture under test_data/scep/apple"
+    );
 }
 
 #[tokio::test]
