@@ -57,6 +57,12 @@ tags:
       Vault-compatible PKI secrets engine (intermediate CA certificate signing).
       Enabled only when `vault_api_enabled = true` in server config.
       All endpoints require a valid `X-Vault-Token` header.
+  - name: Vault KV
+    description: |
+      Vault KV v2-compatible secret store backed by KMIP `SecretData` objects.
+      Enabled when `kv_enabled = true`. The paths below use the default `kv` mount
+      (configurable with `kv_mount`) and are served both as `/kv/...` and as
+      `/v1/kv/...`: `vault` and `bao` always send the `/v1` prefix.
 
 components:
   securitySchemes:
@@ -1493,6 +1499,109 @@ components:
         message:
           type: string
           description: Human-readable error description
+
+    # ── Vault KV / Transit / PKI ──────────────────────────────────────────────
+
+    KvPutRequest:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+          description: Secret key/value pairs.
+        options:
+          type: object
+          properties:
+            ttl:
+              type: string
+              description: Optional TTL such as `30s`, `5m`, `1h`, or `2d`.
+
+    KvPutResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [version, created_time, deletion_time, destroyed]
+          properties:
+            version:
+              type: integer
+              format: uint64
+            created_time:
+              type: string
+              format: date-time
+            deletion_time:
+              type: string
+            destroyed:
+              type: boolean
+
+    KvSecretResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data, metadata]
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+            metadata:
+              $ref: '#/components/schemas/KvVersionMetadata'
+
+    KvVersionMetadata:
+      type: object
+      required: [version, created_time, deletion_time, destroyed]
+      properties:
+        version:
+          type: integer
+          format: uint64
+        created_time:
+          type: string
+          format: date-time
+        deletion_time:
+          type: string
+        destroyed:
+          type: boolean
+
+    KvMetadataResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [current_version, oldest_version, created_time, updated_time, versions]
+          properties:
+            current_version:
+              type: integer
+              format: uint64
+            oldest_version:
+              type: integer
+              format: uint64
+            created_time:
+              type: string
+              format: date-time
+            updated_time:
+              type: string
+              format: date-time
+            versions:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/KvVersionMetadata'
+
+    KvListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [keys]
+          properties:
+            keys:
+              type: array
+              items:
+                type: string
 
     # ── Vault Transit / PKI ───────────────────────────────────────────────────
 
@@ -4132,6 +4241,190 @@ paths:
                     y: x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0
         '500':
           description: Internal server error
+
+  # ── Vault KV ────────────────────────────────────────────────────────────────
+  # The default mount is /kv; configure kv_mount to use another prefix.
+
+  /kv/data/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Secret path. Nested paths may contain `/`.
+    post:
+      tags: [Vault KV]
+      summary: Write a KV secret version
+      description: |
+        `PUT` is accepted with the same body and responses; it is the method `vault kv put`
+        and `bao kv put` send.
+      operationId: kvPutSecret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KvPutRequest'
+      security:
+        - vaultToken: []
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Secret version created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KvPutResponse'
+        '400':
+          description: Invalid secret path, body, or TTL.
+        '403':
+          description: The caller lacks the `Import` right on the path.
+        '404':
+          description: The path does not exist for an update.
+    get:
+      tags: [Vault KV]
+      summary: Read a KV secret version
+      operationId: kvGetSecret
+      parameters:
+        - name: version
+          in: query
+          schema:
+            type: integer
+            format: uint64
+          description: Return this version instead of the latest version.
+      security:
+        - vaultToken: []
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Secret data and version metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KvSecretResponse'
+        '403':
+          description: The caller lacks the `Get` right on the path.
+        '404':
+          description: The path or requested version does not exist.
+    delete:
+      tags: [Vault KV]
+      summary: Soft-delete the latest KV secret version
+      operationId: kvDeleteSecret
+      security:
+        - vaultToken: []
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '204':
+          description: Latest version marked as deleted.
+        '403':
+          description: The caller lacks the `Destroy` right on the path.
+        '404':
+          description: The path does not exist.
+
+  /kv/metadata/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Secret path or listing prefix. Nested paths may contain `/`.
+    get:
+      tags: [Vault KV]
+      summary: Read KV metadata or list child paths
+      operationId: kvReadMetadata
+      parameters:
+        - name: list
+          in: query
+          schema:
+            type: string
+            enum: ['true']
+          description: Set to `true` to list immediate child keys under the prefix.
+      security:
+        - vaultToken: []
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: KV metadata or child key names.
+          content:
+            application/json:
+              oneOf:
+                - $ref: '#/components/schemas/KvMetadataResponse'
+                - $ref: '#/components/schemas/KvListResponse'
+        '403':
+          description: The caller lacks the `Locate` right on the path.
+        '404':
+          description: The path does not exist when reading metadata.
+    delete:
+      tags: [Vault KV]
+      summary: Destroy all versions of a KV path
+      operationId: kvDestroyPath
+      security:
+        - vaultToken: []
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '204':
+          description: All versions and metadata marked as destroyed.
+        '403':
+          description: The caller lacks the `Destroy` right on the path.
+        '404':
+          description: The path does not exist.
+
+  /v1/sys/internal/ui/mounts/{path}:
+    get:
+      tags: [Vault KV]
+      summary: Detect the KV v2 mount (CLI pre-flight)
+      description: |
+        The request `vault kv` and `bao kv` send before every command to choose between KV v1
+        and v2. Answers only for paths under the KV mount; any other path is a `404`, which
+        the CLI reads as KV v1.
+      operationId: kvMountPreflight
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: A path below the mount, e.g. `kv/myapp/config`.
+      security:
+        - vaultToken: []
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: The KV v2 mount.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [path, type, options]
+                    properties:
+                      path:
+                        type: string
+                        example: kv/
+                      type:
+                        type: string
+                        example: kv
+                      description:
+                        type: string
+                      options:
+                        type: object
+                        properties:
+                          version:
+                            type: string
+                            example: '2'
+        '404':
+          description: The path is not under the KV mount.
 
   # ── Vault Transit ──────────────────────────────────────────────────────────
   # Enabled only when vault_api_enabled = true in server config.

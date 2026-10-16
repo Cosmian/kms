@@ -521,6 +521,11 @@ vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
 
+[kv]
+kv_enabled = false
+kv_mount = ""
+kv_ttl_check_interval_secs = 0
+
 [audit]
 enabled = false
 channel_capacity = 0

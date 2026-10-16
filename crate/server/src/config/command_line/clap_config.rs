@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use super::{
     AuditConfig, AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig,
     IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, OcspConfig, RolesConfig,
-    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
-    ui_config::UiConfig, vault_config::VaultConfig,
+    WorkspaceConfig, kv_config::KvConfig, logging::LoggingConfig,
+    secret_backends::SecretBackendConfig, ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -101,6 +101,7 @@ impl Default for ClapConfig {
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
+            kv: KvConfig::default(),
             audit: AuditConfig::default(),
             crl: CrlConfig::default(),
             ocsp: OcspConfig::default(),
@@ -307,6 +308,11 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(default)]
     pub vault: VaultConfig,
+
+    /// Configuration for the Vault KV v2-compatible secret store (`/<kv_mount>/` scope).
+    #[command(flatten)]
+    #[serde(default)]
+    pub kv: KvConfig,
 
     #[clap(flatten)]
     #[serde(rename = "audit")]
