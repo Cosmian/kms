@@ -760,6 +760,7 @@
         "title": "销毁 {{typeString}} {{label}}",
         "warningTitle": "警告：这是破坏性操作。",
         "mustRevoked": "{{label}}必须先被撤销",
+        "revokeFirst": "请先撤销{{label}}。",
         "destroyKeyPair": "销毁公钥或私钥中的任意一个都会销毁整个密钥对",
         "hsmRemoved": "外部存储（HSM）中的密钥会被自动删除",
         "certNotDestroy": "销毁证书不会销毁其关联的私钥",
