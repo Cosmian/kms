@@ -840,6 +840,49 @@ sequenceDiagram
 
 ---
 
+### `test:openbao`
+
+**Description:** The real OpenBao CLI (`bao kv`, container image `ghcr.io/openbao/openbao`) against the KMS Vault KV v2-compatible secret store. Runs in both FIPS and non-FIPS variants and needs only Docker: the KMS uses native authentication (the default user), so there is no auth-verifier and no submodule. The `X-Vault-Token` path is the shared Vault middleware, covered by the SPIRE tasks.
+
+The CLI always prefixes requests with `/v1/`, writes with `PUT` and first calls `GET /v1/sys/internal/ui/mounts/<path>` to detect KV v2; the KMS serves the KV routes on both `/<kv_mount>` and `/v1/<kv_mount>` for that reason. The scenario ([`test_openbao_kv.sh`](../../scripts/test/test_openbao_kv.sh)) covers put/get, versioning (`-version=1`), `metadata get`, `list`, delete, `metadata delete` and the `options.ttl` sweep (`kv_ttl_check_interval_secs = 1`). Authorization (`403`) is covered by the unit tests; setting `BAO_TOKEN_OTHER` makes the scenario check it too when it is replayed against an authenticated KMS (`BAO_ADDR`, `BAO_TOKEN`).
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:openbao"]
+        KMS7["Cosmian KMS<br/>kv_enabled"]
+    end
+
+    subgraph Docker["Docker"]
+        Bao["OpenBao CLI<br/>bao kv"]
+    end
+
+    Task --> KMS7
+    Bao --> |"PUT, GET on /v1/kv"| KMS7
+```
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Test as test:openbao script
+    participant KMS as KMS (kv_enabled)
+    participant Bao as bao CLI container
+
+    Test->>KMS: start KMS with the kv section
+    Test->>Bao: bao kv put, get, list, delete
+    Bao->>KMS: GET /v1/sys/internal/ui/mounts (KV v2 detection)
+    KMS-->>Bao: type kv, options version 2
+    Bao->>KMS: PUT, GET /v1/kv/data and /v1/kv/metadata
+    KMS-->>Bao: versioned secrets
+    Test->>KMS: write with options.ttl, wait for sweep
+    KMS-->>Test: 404 after expiry
+```
+
+---
+
 ## 7. PKI & Revocation
 
 **Tasks:** `test:ocsp`, `test:pki-revocation`
