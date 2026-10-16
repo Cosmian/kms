@@ -29,10 +29,8 @@ jobs:
           - otel
           - redis
           - pykmip
-          - wasm
           - xks
           - azure-ekm
-          - ui
           - gcp-cmek
           - openssh
           - gnupg
@@ -43,7 +41,6 @@ jobs:
           - db2
           - ase
           - secret_cosmian_kms
-          - spire
           - kmip-go
           - cef
           - monitoring
@@ -92,9 +89,6 @@ jobs:
           # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
           # google-cse, secret_vault, secret_aws and secret_azure need upstream-only secrets:
           # they run in the `test-nix-upstream` job, which is skipped on forks.
-          # spire relies on the Vault API which is non-fips only
-          - type: spire
-            features: fips
           - type: cef
             features: fips
           # monitoring tests work with both variants, but run non-fips only to avoid
@@ -225,6 +219,56 @@ jobs:
         if: matrix.type == 'ase' && matrix.features == 'non-fips'
         run: |
           mise run test:pkcs11:support --variant non-fips
+
+  # Test types that run pnpm install and the JS toolchain (vite, vitest, playwright):
+  # any npm dependency can read this job's environment, so it gets no cloud/test secrets.
+  test-nix-js:
+    name: Test on ${{ matrix.type }} - ${{ matrix.features }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    strategy:
+      fail-fast: false
+      matrix:
+        type:
+          - wasm
+          - ui
+          - spire
+        features: [fips, non-fips]
+        exclude:
+          # spire relies on the Vault API which is non-fips only
+          - type: spire
+            features: fips
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
+      # Only spire pulls images; the stored credential is then readable by later steps.
+      - name: Docker login (Docker Hub)
+        if: ${{ matrix.type == 'spire' && env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Test
+        env:
+          # Read-only (contents: read); lets mise install tools without hitting the rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -ex
+          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
   # Test types that depend on upstream-only secrets / external services. Kept out of
   # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
@@ -411,11 +455,11 @@ jobs:
       # (docs/hsm_support/<model>.md) on minikube, with the FIPS and non-FIPS images.
       - name: Install Helm
         if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       - name: Start Minikube
         if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
-        uses: medyagh/setup-minikube@v0.0.21
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
@@ -535,6 +579,7 @@ jobs:
   cargo-publish:
     needs:
       - test-nix
+      - test-nix-js
       - test-nix-upstream
       - hsm
       - hsm-upstream

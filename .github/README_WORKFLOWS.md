@@ -136,6 +136,11 @@ flowchart TB
 > (AWS XKS — remote server). They are separate jobs
 > because a job-level `if` cannot read the `matrix` context.
 
+**JS-toolchain job**: `test-nix-js` runs the test types that execute `pnpm install` and the
+JS toolchain (`ui`, `wasm`, `spire`). Any npm dependency can read its job environment, so it
+receives no cloud or test secrets, only a read-only `GITHUB_TOKEN` (and Docker Hub login for
+`spire`). See [CONTRIBUTING.md](../CONTRIBUTING.md#supply-chain--dependency-policy).
+
 ---
 
 ## 5. Windows Test Workflow (`test_windows.yml`)

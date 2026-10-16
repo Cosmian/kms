@@ -31,7 +31,7 @@ REPO_ROOT="$(get_repo_root)"
 WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
 
 require_cmd wasm-pack
-require_cmd pnpm
+require_cmd corepack
 
 # wasm32-unknown-unknown does not accept macOS framework link flags (-F ...).
 # Clear any host-specific RUSTFLAGS/LDFLAGS set by ensure_macos_frameworks_ldflags.
@@ -86,7 +86,7 @@ echo "Running UI unit tests..."
   cd "${REPO_ROOT}/ui"
   export OPENSSL_CONF=/dev/null
   unset OPENSSL_MODULES LD_PRELOAD OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH || true
-  ensure_pnpm_v10
+  ensure_pnpm
   pnpm install --frozen-lockfile
   pnpm run check
   pnpm run test:unit

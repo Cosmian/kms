@@ -14,7 +14,7 @@
 # Prerequisite tools expected on PATH (installed by the CI workflow steps):
 #   • cargo / rustup  (with wasm32-unknown-unknown target)
 #   • wasm-pack       (cargo install wasm-pack --locked)
-#   • pnpm            (pnpm/action-setup GitHub Action)
+#   • pnpm            (corepack enable pnpm; version and sha512 pinned in ui/package.json)
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +27,7 @@ $UiDir = Join-Path $RepoRoot "ui"
 # ── Require pnpm ─────────────────────────────────────────────────────────────
 $pnpmCmd = "pnpm"
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-    throw "pnpm not found on PATH. Install it via 'pnpm/action-setup' in the CI workflow or 'npm install -g pnpm' locally."
+    throw "pnpm not found on PATH. Run 'corepack enable pnpm' (Node.js 22)."
 }
 
 # Resolve the full .cmd path for use with Start-Process (Win32 requires a real executable)
@@ -85,7 +85,7 @@ Copy-Item (Join-Path $PkgSrc "*") -Destination $PkgDst -Recurse -Force
 Write-Host "==> Installing UI dependencies ..." -ForegroundColor Cyan
 Push-Location $UiDir
 try {
-    Invoke-Checked $pnpmCmd @("install", "--prefer-frozen-lockfile")
+    Invoke-Checked $pnpmCmd @("install", "--frozen-lockfile")
 
     Write-Host "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) ..." -ForegroundColor Cyan
     # Write a .env.production.local file so Vite picks up the variables even

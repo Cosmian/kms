@@ -3,7 +3,7 @@
     "private": true,
     "version": "5.28.0",
     "type": "module",
-    "packageManager": "pnpm@10.17.1",
+    "packageManager": "pnpm@10.17.1+sha512.17c560fca4867ae9473a3899ad84a88334914f379be46d455cbf92e5cf4b39d34985d452d2583baf19967fa76cb5c17bc9e245529d0b98745721aa7200ecaf7a",
     "scripts": {
         "dev": "VITE_DEV_MODE=true vite",
         "preview": "vite preview",
@@ -28,7 +28,6 @@
         "dayjs": "^1.11.21",
         "i18next": "^26.3.6",
         "i18next-browser-languagedetector": "^8.2.1",
-        "moment": "^2.31.0",
         "react": "^19.2.4",
         "react-dom": "^19.2.4",
         "react-i18next": "^17.0.11",
@@ -72,30 +71,24 @@
         },
         "overrides": {
             "esbuild": "^0.28.1",
-            "ws": ">=8.20.1",
-            "brace-expansion": ">=5.0.12",
+            "ws": "^8.20.1",
+            "brace-expansion": "^5.0.12",
             "nanoid": "3.3.18",
             "@babel/runtime": "^7.26.10",
-            "minimatch": ">=10.2.1",
-            "picomatch": ">=4.0.4",
-            "rollup": ">=4.59.0",
+            "minimatch": "^10.2.1",
+            "picomatch": "^4.0.4",
+            "rollup": "^4.59.0",
             "ajv": "^6.14.0",
-            "flatted": ">=3.4.2",
-            "js-yaml": ">=5.4.1",
-            "postcss": ">=8.5.18",
-            "smol-toml": ">=1.9.0",
-            "source-map-js": ">=1.2.2"
+            "flatted": "^3.4.2",
+            "js-yaml": "^5.4.1",
+            "postcss": "^8.5.18",
+            "smol-toml": "^1.9.0",
+            "source-map-js": "^1.2.2"
         },
-        "onlyBuiltDependencies": [
-            "@playwright/test",
+        "onlyBuiltDependencies": [],
+        "ignoredBuiltDependencies": [
             "@swc/core",
-            "bcrypt",
-            "canvas",
-            "esbuild",
-            "nodegit",
-            "playwright",
-            "sharp",
-            "sodium-native"
+            "esbuild"
         ]
     }
 }

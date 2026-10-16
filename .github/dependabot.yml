@@ -67,6 +67,24 @@ updates:
         applies-to: security-updates
         patterns: ['*']
 
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+    # Matches minimum-release-age in ui/.npmrc; security updates are not delayed.
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
+
   - package-ecosystem: docker
     directories:
       - /.mise/scripts/docker/ase

@@ -175,28 +175,19 @@ require_cmd() {
 # Usage: has_cmd <cmd>
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
-# Ensure pnpm >= 10 is available on PATH.
+# Put a Corepack pnpm shim first on PATH.
 #
-# The UI lockfile uses lockfileVersion 9.0 which requires pnpm 10+. Some
-# environments (e.g. nix-shell, fresh CI runners) only provide pnpm 9.x or no
-# pnpm at all, so this installs pnpm 10.17.1 from npm into a temp dir and
-# prepends it to PATH when the installed pnpm is too old or missing.
-# Usage: ensure_pnpm_v10
-ensure_pnpm_v10() {
-  local pnpm_major
-  pnpm_major=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
-  if [ "${pnpm_major}" -ge 10 ]; then
-    return 0
-  fi
-  if command -v npm >/dev/null 2>&1; then
-    local _pnpm_tmp
-    _pnpm_tmp="$(mktemp -d)"
-    npm install "pnpm@10.17.1" --prefix "${_pnpm_tmp}" --no-save --quiet >/dev/null 2>&1 || true
-    if [ -f "${_pnpm_tmp}/node_modules/.bin/pnpm" ]; then
-      export PATH="${_pnpm_tmp}/node_modules/.bin:${PATH}"
-      echo "Upgraded to pnpm $(pnpm --version)"
-    fi
-  fi
+# Corepack runs the exact pnpm pinned in ui/package.json "packageManager" and
+# refuses a download whose sha512 does not match; `npm install pnpm` checks nothing.
+# Usage: ensure_pnpm
+ensure_pnpm() {
+  require_cmd corepack "Corepack (bundled with Node.js 22) is required to run the hash-pinned pnpm."
+  local shim_dir="${TMPDIR:-/tmp}/kms-corepack-shims"
+  mkdir -p "${shim_dir}"
+  run_isolated corepack enable --install-directory "${shim_dir}" pnpm
+  export PATH="${shim_dir}:${PATH}"
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  (cd "$(get_repo_root)/ui" && run_isolated pnpm --version >/dev/null)
 }
 
 # Returns success only if every named environment variable is set and non-empty.

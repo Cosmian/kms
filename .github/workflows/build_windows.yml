@@ -45,14 +45,14 @@ jobs:
         run: |
           Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
 
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: 10.17.1
-
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
+
+      # Corepack runs the pnpm pinned with its sha512 in ui/package.json.
+      - name: Enable Corepack pnpm
+        run: corepack enable pnpm
 
       - name: Build UI
         shell: pwsh

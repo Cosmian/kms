@@ -167,6 +167,27 @@ For React/TypeScript/WASM conventions, see
   `pip-audit -r <name>.txt`; the `python-dependency-audit` CI job runs it on every lockfile.
 - **Go test dependencies** — `.mise/scripts/kmip-go/go.mod` pins the Go `toolchain`; the `govulncheck` CI job
   (`govulncheck -test ./...`) must report no vulnerabilities.
+- **Web UI (npm) dependencies** — the policy lives in `ui/package.json` and `ui/.npmrc`:
+    - pnpm is pinned with its hash (`"packageManager": "pnpm@<version>+sha512.<hex>"`). Run it through Corepack
+    (`corepack enable pnpm`, bundled with Node.js 22), which refuses a pnpm whose hash does not match; never
+    `npm install -g pnpm`. To bump pnpm, get the hex hash with
+    `npm view pnpm@<version> dist.integrity | sed 's/^sha512-//' | base64 -d | od -An -tx1 -v | tr -d ' \n'`.
+    - Install scripts are blocked: `pnpm.onlyBuiltDependencies` stays empty, and `strict-dep-builds=true` fails the
+    install when a dependency ships a script nobody reviewed. If it is not needed (the usual case: a native binary
+    already arrives as an optional dependency), add the package to `pnpm.ignoredBuiltDependencies`.
+    - `minimum-release-age=10080` makes pnpm refuse versions published less than 7 days ago when resolving.
+    - `pnpm.overrides` (CVE pins) use `^` ranges, never `>=`.
+    - Always install with `pnpm install --frozen-lockfile`; update dependencies with `pnpm add`/`pnpm update` and
+    review the resulting `ui/pnpm-lock.yaml` change. Lockfile changes also require updating the Nix `ui.pnpm.*`
+    hashes in `nix/expected-hashes/`.
+    - The `npm-dependency-audit` CI job runs `mise run audit:npm`: `pnpm audit --prod`, OSV-Scanner on
+    `ui/pnpm-lock.yaml` and `npm audit signatures`. Ignore an advisory only in `ui/osv-scanner.toml`, with a reason
+    and an `ignoreUntil` date.
+    - The `ui`, `wasm` and `spire` CI test types run in the `test-nix-js` job, which receives no cloud or test
+    secrets: never add one there.
+    - The settings stay in `ui/.npmrc` rather than `pnpm-workspace.yaml` because the Nix build uses pnpm 9, which
+    rejects a settings-only workspace file. pnpm 11 reads them only from `pnpm-workspace.yaml`: move them when
+    upgrading.
 - **GitHub Actions** — every `uses:` reference must be a full 40-character commit SHA followed by a `# <tag>`
   comment (local `./.github/actions/...` paths excepted). Dependabot (`github-actions` ecosystem) bumps these
   automatically.
@@ -175,8 +196,9 @@ For React/TypeScript/WASM conventions, see
   (see `.github/actions/install-mise/action.yml`), or use a version pinned by a git submodule.
 
 Pre-commit hooks enforce the policy locally (`.pre-commit-config.yaml`): `cargo-vet`, `github-actions-sha-pin`,
-`docker-base-image-digest-pin` and `no-curl-pipe-shell` run on commit; `pip-audit-lockfiles` and `govulncheck`
-(which need `pip-audit` and `govulncheck` installed, and network access) run on `pre-push`.
+`docker-base-image-digest-pin`, `no-curl-pipe-shell`, `npm-policy` and `pnpm-frozen-lockfile` run on commit;
+`pip-audit-lockfiles`, `govulncheck` and `npm-audit` (which need `pip-audit`, `govulncheck` and Node.js installed, and
+network access) run on `pre-push`.
 
 Reference: [`supply-chain/config.toml`](supply-chain/config.toml), [`.github/dependabot.yml`](.github/dependabot.yml),
 [`.github/workflows/main_base.yml`](.github/workflows/main_base.yml), and the pre-existing

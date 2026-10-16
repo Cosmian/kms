@@ -89,6 +89,25 @@ jobs:
         working-directory: .mise/scripts/kmip-go
         run: govulncheck -test ./...
 
+  npm-dependency-audit:
+    name: Supply chain — npm audit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Audit UI npm dependencies
+        run: mise run audit:npm
+
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
     with:

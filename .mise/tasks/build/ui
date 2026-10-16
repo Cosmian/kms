@@ -10,13 +10,13 @@ kms_init_env "${usage_variant:-fips}" "static"
 
 print_header "Building Web UI (${VARIANT_NAME})"
 
-require_cmd pnpm
+ensure_pnpm
 
 REPO_ROOT="$(get_repo_root)"
 UI_DIR="${REPO_ROOT}/ui"
 
 cd "$UI_DIR"
-run_isolated pnpm install
+run_isolated pnpm install --frozen-lockfile
 run_isolated pnpm run build
 run_isolated pnpm run test:unit
 

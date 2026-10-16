@@ -1,5 +1,5 @@
 import { Button, Card, Form, Select, Space, Typography } from "antd";
-import moment from "moment";
+import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
@@ -67,7 +67,7 @@ const AttributeSetForm: React.FC = () => {
             // Date attributes: convert DatePicker value to Unix timestamp in seconds
             const entry = ATTRIBUTE_REGISTRY.find((a) => a.value === values.attribute_name);
             if (entry?.inputType === "date" && attributeValue) {
-                const date = moment(attributeValue);
+                const date = dayjs(attributeValue);
                 attributeValue = Math.floor(date.valueOf() / 1000).toString();
             }
             const request = set_attribute_ttlv_request(id, values.attribute_name, attributeValue);

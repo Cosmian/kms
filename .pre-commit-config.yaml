@@ -256,6 +256,29 @@ repos:
         files: ^\.mise/scripts/kmip-go/(go\.(mod|sum)|.*\.go)$
         stages: [pre-push]
 
+      - id: npm-policy
+        name: Web UI npm policy (no install scripts, 7-day cooldown, hash-pinned pnpm)
+        entry: python3 .mise/scripts/pre-commit/check_npm_policy.py
+        language: system
+        pass_filenames: false
+        files: ^(ui/(package\.json|\.npmrc)|\.mise/scripts/pre-commit/check_npm_policy\.py)$
+
+      - id: pnpm-frozen-lockfile
+        name: pnpm install must use --frozen-lockfile
+        description: Without it pnpm may re-resolve versions and bypass lockfile review.
+        language: pygrep
+        entry: '^(?!\s*#)(?!.*\becho\b).*\b(pnpm|run_pnpm)\s+(install|i)\b(?!.*--frozen-lockfile)'
+        files: ^(\.github/(workflows|actions)/.*\.ya?ml|\.mise/(tasks|lib|scripts)/.*)$
+        exclude: \.(md|py)$
+
+      - id: npm-audit
+        name: npm audit, OSV-Scanner and registry signatures (ui)
+        entry: mise run audit:npm
+        language: system
+        pass_filenames: false
+        files: ^ui/(package\.json|pnpm-lock\.yaml|osv-scanner\.toml)$
+        stages: [pre-push]
+
   # ═══════════════════════════════════════════════════════════════════════
   # 4. Testing (slow, conditional on changed crate)
   # ═══════════════════════════════════════════════════════════════════════

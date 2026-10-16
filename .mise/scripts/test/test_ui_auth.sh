@@ -51,12 +51,6 @@ run_pnpm() {
   env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
 }
 
-ensure_pnpm() {
-  if ! command -v pnpm &>/dev/null; then
-    npm install -g pnpm@10.17.1
-  fi
-}
-
 _get_free_port() {
   node -e "const net=require('node:net'); const server=net.createServer(); server.listen(0,'127.0.0.1',()=>{console.log(server.address().port); server.close();});"
 }

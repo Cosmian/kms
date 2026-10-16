@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#MISE description="Supply-chain checks on the Web UI npm dependencies (pnpm audit, OSV-Scanner, npm signatures)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# To bump: update both, taking the hash from the release's osv-scanner_SHA256SUMS.
+OSV_SCANNER_VERSION="v2.7.0"
+OSV_SCANNER_LINUX_AMD64_SHA256="160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
+
+print_header "npm supply-chain audit"
+
+REPO_ROOT="$(get_repo_root)"
+UI_DIR="${REPO_ROOT}/ui"
+
+ensure_pnpm
+require_cmd npm
+
+resolve_osv_scanner() {
+  if has_cmd osv-scanner; then
+    command -v osv-scanner
+    return 0
+  fi
+  if [ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ]; then
+    print_error "osv-scanner not found; install ${OSV_SCANNER_VERSION} (only the linux amd64 binary is fetched automatically)."
+  fi
+  local bin="${TMPDIR:-/tmp}/osv-scanner-${OSV_SCANNER_VERSION}"
+  if [ ! -x "${bin}" ] || [ "$(compute_sha256 "${bin}")" != "${OSV_SCANNER_LINUX_AMD64_SHA256}" ]; then
+    run_isolated curl -fsSL -o "${bin}.download" \
+      "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+    if [ "$(compute_sha256 "${bin}.download")" != "${OSV_SCANNER_LINUX_AMD64_SHA256}" ]; then
+      rm -f "${bin}.download"
+      print_error "osv-scanner ${OSV_SCANNER_VERSION}: SHA-256 mismatch, refusing to run it."
+    fi
+    chmod +x "${bin}.download"
+    mv "${bin}.download" "${bin}"
+  fi
+  echo "${bin}"
+}
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: ${name}"
+  if "$@"; then
+    print_success "${name} passed"
+  else
+    print_warning "${name} FAILED (continuing...)"
+    FAILED+=("${name}")
+  fi
+}
+
+OSV_SCANNER="$(resolve_osv_scanner)"
+
+cd "${UI_DIR}"
+run_step "pnpm audit --prod" run_isolated pnpm audit --prod
+# Reads ui/osv-scanner.toml for documented, time-boxed ignores.
+run_step "osv-scanner" run_isolated "${OSV_SCANNER}" scan source --lockfile pnpm-lock.yaml
+# npm audit signatures needs node_modules; --ignore-scripts keeps the install inert.
+run_step "pnpm install (no scripts)" run_isolated pnpm install --frozen-lockfile --ignore-scripts
+run_step "npm audit signatures" run_isolated npm audit signatures
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  print_error "npm supply-chain audit failed: ${FAILED[*]}"
+fi
+print_success "npm supply-chain audit passed"

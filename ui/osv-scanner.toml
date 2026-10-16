@@ -1,0 +1,4 @@
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2027-04-16T00:00:00Z
+reason = "braces <=3.0.3 has no fixed release; dev-only (knip > fast-glob > micromatch), never shipped in the UI bundle. Re-check on expiry."
