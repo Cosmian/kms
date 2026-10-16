@@ -2,31 +2,38 @@
 version: 2
 
 # One grouped PR per ecosystem for minor/patch version updates and one for all
-# security updates; majors stay individual PRs since they usually need code changes.
+# security updates. Major version updates are ignored: they usually break the build
+# and must be done by hand with the matching code changes.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: daily
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
     groups:
       actions-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
       actions-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
     groups:
       cargo-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
       cargo-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
   - package-ecosystem: pip
     directories:
@@ -34,25 +41,31 @@ updates:
       - /.mise/scripts/docs
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
     groups:
       pip-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
       pip-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
   - package-ecosystem: gomod
     directory: /.mise/scripts/kmip-go
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
     groups:
       gomod-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
       gomod-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
   - package-ecosystem: docker
     directories:
@@ -61,8 +74,8 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      # SAP ASE needs libaio.so.1, renamed libaio.so.1t64 from Ubuntu 24.04 on.
-      - dependency-name: ubuntu
+      # Also keeps SAP ASE on Ubuntu 22.04: it needs libaio.so.1, renamed libaio.so.1t64 from 24.04 on.
+      - dependency-name: '*'
         update-types: [version-update:semver-major]
     groups:
       docker-minor-patch:
@@ -70,4 +83,4 @@ updates:
         update-types: [minor, patch]
       docker-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
