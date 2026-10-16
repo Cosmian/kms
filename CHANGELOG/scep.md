@@ -19,8 +19,10 @@
 - Extended-key-usage entries in X.509 extension files now accept dotted OIDs.
 - Added `cosmian_kms_crypto::openssl::{scep_cms, csr_attrs}` (CMS signed attributes through
   the OpenSSL partial-CMS API, challenge-password access).
-- Added the `mise run test:scep-interop` (micromdm `scepclient` + Apple `com.apple.security.scep`
-  profile) and `mise run test:est-interop` (globalsign `estclient`, TLS and mTLS) black-box tests.
+- Added the `mise run test:scep-interop` (micromdm `scepclient`) and `mise run test:est-interop`
+  (globalsign `estclient`, TLS and mTLS) black-box tests, and the interactive macOS
+  `mise run test:scep-apple` (native Apple SCEP client through a recording proxy) whose capture
+  (`test_data/scep/apple/`) is replayed in CI by `apple_scep_fixtures_parse`.
   Note: the stock `scepclient` always encrypts with single DES-CBC, which the server refuses;
   the test builds it with AES-128-CBC selected.
 - `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented; issuance is synchronous.

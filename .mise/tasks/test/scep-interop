@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="SCEP (RFC 8894) interoperability test against the micromdm scepclient and an Apple SCEP profile"
+#MISE description="SCEP (RFC 8894) interoperability test against the micromdm scepclient"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -10,8 +10,7 @@
 # Black-box test: starts a live KMS server with SCEP enabled and drives it with the
 # third-party `scepclient` (github.com/micromdm/scep, as used by MicroMDM / Smallstep and
 # Apple-MDM deployments): PKCSReq with challenge, challenge-less RenewalReq, wrong challenge.
-# On macOS it also validates an Apple `com.apple.security.scep` configuration profile and
-# enrolls with the parameters taken from it.
+# Apple's native client: see `mise run test:scep-apple` (interactive, macOS).
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"

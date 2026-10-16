@@ -155,10 +155,11 @@ scep_template = "iot_device"
 with a certificate previously issued by the SCEP CA that is within its validity period and `Active`
 (not revoked); it needs no challenge and must keep the Subject and SubjectAltName of that
 certificate. `DES3` and `SHA-1` are not supported: clients must negotiate `AES` and `SHA-256`.
-The implementation is designed for clients that honour `GetCACaps`, as the Apple and Windows MDM SCEP
-payloads are documented to; it is verified only against the micromdm `scepclient`, whose stock build
-hard-codes single DES and needs AES-128-CBC selected (see `mise run test:scep-interop`). Apple and
-Windows clients themselves were not run.
+The implementation is designed for clients that honour `GetCACaps`. It is verified against the micromdm
+`scepclient`, whose stock build hard-codes single DES and needs AES-128-CBC selected (see
+`mise run test:scep-interop`), and against the native macOS 26.6 SCEP client (profile payload), which
+negotiates AES-128-CBC and SHA-256 with an RSA-2048 key (see `mise run test:scep-apple`). Renewal by
+the Apple client and Windows clients were not verified.
 
 ```mermaid
 sequenceDiagram
@@ -181,7 +182,11 @@ synchronous (`PENDING` is never returned).
 
 ## Verifying the setup
 
-- `mise run test:scep-interop`: micromdm `scepclient` enrollment, challenge-less renewal, wrong
-  challenge, and an Apple `com.apple.security.scep` profile (macOS).
+- `mise run test:scep-interop`: micromdm `scepclient` enrollment, challenge-less renewal and wrong
+  challenge.
+- `mise run test:scep-apple` (macOS, interactive): installs a `com.apple.security.scep` profile with
+  a `CAFingerprint` pin; you approve it in System Settings. Checks the Apple request (SHA-256, AES,
+  RSA-2048, challenge) and the issued identity in the keychain, then stores the capture under
+  `test_data/scep/apple/` for the CI test `apple_scep_fixtures_parse`.
 - `mise run test:est-interop`: globalsign `estclient` over TLS: `cacerts`, `csrattrs`,
   `enroll`, mTLS `reenroll` and rejections.
