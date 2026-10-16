@@ -700,8 +700,6 @@ Crate path: `crate/server`
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
-| `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
-| `warn` | `{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth:                      {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
 | `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers              these operations on your behalf — configure a Crypto Officer identity backed by a              real credential (TLS certificate CN / OIDC subject matching `default_username`) so              XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
 | `error` | `AWS XKS: failed to spawn key access migration thread: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
@@ -783,6 +781,9 @@ Crate path: `crate/server`
 | `warn` | `Socket server: cannot set socket timeouts, dropping connection: {e}` | `src/socket_server.rs` | `e` | - |
 | `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
 | `debug` | `Generated JWT for original KACLS` | `src/routes/google_cse/operations.rs` | - | - |
+| `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
+| `warn` | `Session: rejecting reserved service identity from stored session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
+| `warn` | `{log_prefix}: rejecting reserved service identity in SPIRE auth: {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
 
 ### `cosmian_kms_server_database`
 

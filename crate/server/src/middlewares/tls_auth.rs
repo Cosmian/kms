@@ -15,12 +15,15 @@ use actix_web::{
     rt::net::TcpStream,
 };
 use cosmian_logger::{debug, trace};
-use openssl::{nid::Nid, x509::X509};
+use openssl::{
+    nid::Nid,
+    x509::{X509, X509Ref},
+};
 
 use crate::{
     error::KmsError,
     kms_bail,
-    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity},
     result::KResult,
 };
 
@@ -113,6 +116,6 @@ pub(crate) fn client_cert_username(cert: &X509) -> KResult<UserId> {
     }
     trace!("Client certificate common name: {}", username);
     let username = UserId::from(trimmed);
-    reject_reserved_aws_xks_identity(&username)?;
+    reject_reserved_service_identity(&username)?;
     Ok(username)
 }

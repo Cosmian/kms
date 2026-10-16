@@ -19,6 +19,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
+    middlewares::user_from_client_certificate,
     middlewares::{UserId, client_cert_username},
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
@@ -513,27 +514,40 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, fs, io, net::TcpListener, thread};
+    use std::{
+        error::Error,
+        fs, io,
+        net::{TcpListener, TcpStream},
+        thread,
+    };
 
     use openssl::{
-        pkey::PKey,
-        ssl::{SslConnector, SslConnectorBuilder, SslFiletype, SslMethod, SslVerifyMode},
-        x509::X509,
+        asn1::Asn1Time,
+        bn::BigNum,
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::{PKey, Private},
+        ssl::{
+            SslConnector, SslConnectorBuilder, SslFiletype, SslMethod, SslStream, SslVerifyMode,
+        },
+        x509::{X509, X509NameBuilder, extension::BasicConstraints},
     };
 
     use super::{
-        MAX_SOCKET_REQUEST_BODY, SocketServerParams, create_openssl_acceptor, read_request,
+        MAX_SOCKET_REQUEST_BODY, SocketServerParams, client_username, create_openssl_acceptor, read_request,
     };
+    use crate::routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER};
 
     type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
     const CERTS: &str = "../../test_data/certificates/client_server";
 
-    /// Run one server-side TLS handshake against a client built by `client_setup`
-    /// and return whether the *server* accepted the handshake.
-    fn server_accepts(
+    /// Run one server-side TLS handshake against a client built by `client_setup` and return
+    /// `on_accept` applied to the accepted server stream (`None` when the server refused it).
+    fn serve_one<T: Send + 'static>(
         client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
-    ) -> TestResult<bool> {
+        on_accept: impl FnOnce(&SslStream<&mut TcpStream>) -> T + Send + 'static,
+    ) -> TestResult<Option<T>> {
         let cert = fs::read(format!("{CERTS}/server/kmserver.acme.com.crt"))?;
         let key = PKey::private_key_from_pem(&fs::read(format!(
             "{CERTS}/server/kmserver.acme.com.key"
@@ -554,19 +568,82 @@ mod tests {
         let acceptor = create_openssl_acceptor(&params)?;
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let addr = listener.local_addr()?;
-        let server = thread::spawn(move || -> io::Result<bool> {
-            let (stream, _) = listener.accept()?;
-            Ok(acceptor.accept(stream).is_ok())
+        let server = thread::spawn(move || -> io::Result<Option<T>> {
+            let (mut stream, _) = listener.accept()?;
+            Ok(acceptor.accept(&mut stream).ok().map(|tls| on_accept(&tls)))
         });
 
         let mut builder = SslConnector::builder(SslMethod::tls())?;
         builder.set_verify(SslVerifyMode::NONE);
         client_setup(&mut builder)?;
-        let stream = std::net::TcpStream::connect(addr)?;
+        let stream = TcpStream::connect(addr)?;
         // The client may succeed or fail (TLS 1.3 client finishes before the server
         // alert arrives); only the server verdict matters.
         let _client = builder.build().connect("kmserver.acme.com", stream);
         Ok(server.join().map_err(|_e| "server thread panicked")??)
+    }
+
+    /// Run one server-side TLS handshake and return whether the *server* accepted it.
+    fn server_accepts(
+        client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
+    ) -> TestResult<bool> {
+        Ok(serve_one(client_setup, |_| ())?.is_some())
+    }
+
+    /// A client certificate for `cn`, issued by the trusted test client CA.
+    fn client_certificate(cn: &str, key: &PKey<Private>) -> TestResult<X509> {
+        let ca = X509::from_pem(&fs::read(format!("{CERTS}/ca/ca.crt"))?)?;
+        let ca_key = PKey::private_key_from_pem(&fs::read(format!("{CERTS}/ca/ca.key"))?)?;
+        let mut name = X509NameBuilder::new()?;
+        name.append_entry_by_nid(Nid::COMMONNAME, cn)?;
+        let name = name.build();
+        let mut builder = X509::builder()?;
+        builder.set_version(2)?;
+        builder.set_serial_number(BigNum::from_u32(1)?.to_asn1_integer()?.as_ref())?;
+        builder.set_subject_name(&name)?;
+        builder.set_issuer_name(ca.subject_name())?;
+        builder.set_pubkey(key)?;
+        builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
+        builder.set_not_after(Asn1Time::days_from_now(1)?.as_ref())?;
+        builder.append_extension(BasicConstraints::new().build()?)?;
+        builder.sign(&ca_key, MessageDigest::sha256())?;
+        Ok(builder.build())
+    }
+
+    /// Username the socket server resolves for a client presenting a CA-issued certificate
+    /// for `cn`; the outer error means the TLS handshake itself failed.
+    fn socket_username(cn: &str, key: &PKey<Private>) -> TestResult<Result<String, String>> {
+        let cert = client_certificate(cn, key)?;
+        let key = key.clone();
+        Ok(serve_one(
+            move |b| {
+                b.set_certificate(&cert)?;
+                b.set_private_key(&key)?;
+                Ok(())
+            },
+            |tls| client_username(tls).map_err(|e| e.to_string()),
+        )?
+        .ok_or("the TLS handshake must succeed: the certificate is CA-issued")?)
+    }
+
+    #[test]
+    fn reserved_service_identity_cn_is_rejected() -> TestResult {
+        let key = PKey::private_key_from_pem(&fs::read(format!(
+            "{CERTS}/user/user.client.acme.com.key"
+        ))?)?;
+        for cn in [ENROLLMENT_SERVICE_USER, AWS_XKS_SERVICE_USER] {
+            if let Ok(user) = socket_username(cn, &key)? {
+                return Err(
+                    format!("socket server resolved reserved CN {cn} to user {user}").into(),
+                );
+            }
+        }
+        // Control: a regular certificate from the same CA resolves to its CN.
+        let user = socket_username("alice@example.com", &key)??;
+        if user != "alice@example.com" {
+            return Err(format!("unexpected username {user}").into());
+        }
+        Ok(())
     }
 
     #[test]

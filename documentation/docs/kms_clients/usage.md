@@ -19,13 +19,12 @@ Commands:
   cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
   fpe            Manage FPE keys and perform FPE encryption/decryption through KMIP Encrypt/Decrypt
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
-  pgp            Create, import, export and use OpenPGP keys (non-FIPS builds only)
+  pgp            Create, import, export and use `OpenPGP` keys (non-FIPS builds only)
   tokenize       Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
   cng            Manage the Windows CNG Key Storage Provider (KSP)
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
-  est            Interact with the KMS EST (RFC 7030) enrollment endpoints as a client
   google         Manage google elements. Handle key pairs and identities from Gmail API
   locate         Locate cryptographic objects inside the KMS
   login          Login to the KMS server identity provider.

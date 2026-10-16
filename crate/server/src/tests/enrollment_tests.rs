@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use actix_web::{
     App,
@@ -17,11 +17,16 @@ use actix_web::{
     web::Data,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
         kmip_2_1::{
-            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
+            KmipOperation,
+            extra::{
+                VENDOR_ATTR_X509_EXTENSION,
+                tagging::{SYSTEM_TAG_CERTIFICATE, VENDOR_ID_COSMIAN},
+            },
             kmip_attributes::Attributes,
             kmip_operations::{Certify, Revoke},
             kmip_types::{
@@ -39,6 +44,7 @@ use cosmian_kms_server_database::reexport::{
             envelope_for_recipient, parse_signed_pkimessage,
         },
     },
+    cosmian_kms_interfaces::ObjectHandle,
 };
 use openssl::{
     asn1::Asn1Time,
@@ -53,11 +59,14 @@ use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::{
     config::{EstConfig, ScepConfig, ServerParams},
-    core::{KMS, operations::certify::template::CertTemplate},
+    core::{
+        KMS, certificate::retrieve_issuer_private_key_and_certificate,
+        operations::certify::template::CertTemplate,
+    },
     middlewares::UserId,
     openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
-    routes::{est, scep},
+    routes::{enrollment::ENROLLMENT_SERVICE_USER, est, scep},
     tests::test_utils::https_clap_config,
 };
 
@@ -102,7 +111,8 @@ fn config(est_enabled: bool, scep_enabled: bool, allow_renewal: bool) -> crate::
     c
 }
 
-/// Start a KMS with the enrollment endpoints configured and create the CA.
+/// Start a KMS with the enrollment endpoints configured, create the CA (owned by
+/// `default_username`) and delegate it to the enrollment service identity.
 async fn make_kms(
     est_enabled: bool,
     scep_enabled: bool,
@@ -124,8 +134,14 @@ async fn make_kms_with(
         scep_enabled,
         allow_renewal,
         tweak,
+        None,
     ))
     .await
+}
+
+/// SCEP-enabled KMS whose CA is created and delegated by `ca_owner` (not `default_username`).
+async fn make_scep_kms_with_ca_owner(ca_owner: &str) -> KResult<(Arc<KMS>, X509)> {
+    Box::pin(make_kms_inner(false, true, true, |_| {}, Some(ca_owner))).await
 }
 
 async fn make_kms_inner(
@@ -133,13 +149,15 @@ async fn make_kms_inner(
     scep_enabled: bool,
     allow_renewal: bool,
     tweak: impl FnOnce(&mut crate::config::ClapConfig),
+    ca_owner: Option<&str>,
 ) -> KResult<(Arc<KMS>, X509)> {
     cosmian_logger::log_init(None);
     init_openssl_providers_for_tests();
     let mut conf = config(est_enabled, scep_enabled, allow_renewal);
     tweak(&mut conf);
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?);
-    let owner: UserId = kms.params.default_username.clone().into();
+    let owner = UserId::from(ca_owner.unwrap_or(kms.params.default_username.as_str()));
+
     let attrs = Attributes {
         unique_identifier: Some(UniqueIdentifier::TextString(CA_UID.to_owned())),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -162,10 +180,44 @@ async fn make_kms_inner(
         &owner,
     )
     .await?;
+    // Delegate the CA to enrollment: `certify` on the CA certificate and its private key.
+    let (ca_key, _) = Box::pin(retrieve_issuer_private_key_and_certificate(
+        None,
+        Some(ObjectHandle::from(CA_UID)),
+        &kms,
+        &owner,
+    ))
+    .await?;
+    for uid in [CA_UID.to_owned(), ca_key.id().to_owned()] {
+        kms.grant_access(&certify_grant(uid), &owner).await?;
+    }
     let ca_cert = crate::routes::enrollment::load_ca_chain(&kms, CA_UID)
         .await?
         .remove(0);
     Ok((kms, ca_cert))
+}
+
+/// The `certify` grant delegating object `uid` to the enrollment service identity.
+fn certify_grant(uid: String) -> Access {
+    Access {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid)),
+        user_id: ENROLLMENT_SERVICE_USER.to_owned(),
+        operation_types: vec![KmipOperation::Certify],
+    }
+}
+
+/// Revoke the enrollment delegation on the CA private key.
+async fn undelegate_ca_key(kms: &KMS) -> KResult<()> {
+    let owner: UserId = kms.params.default_username.clone().into();
+    let (ca_key, _) = Box::pin(retrieve_issuer_private_key_and_certificate(
+        None,
+        Some(ObjectHandle::from(CA_UID)),
+        kms,
+        &owner,
+    ))
+    .await?;
+    kms.revoke_access(&certify_grant(ca_key.id().to_owned()), &owner)
+        .await
 }
 
 macro_rules! app {
@@ -528,6 +580,47 @@ struct Outcome {
     certificate: Option<X509>,
 }
 
+/// Fixed `senderNonce` of the test SCEP requests.
+const SENDER_NONCE: [u8; NONCE_LEN] = [0x5A_u8; NONCE_LEN];
+
+/// Build a signed SCEP `pkiMessage` carrying `csr` encrypted to `ca`.
+fn pki_message(
+    ca: &X509,
+    signer_cert: &X509,
+    signer_key: &PKey<Private>,
+    csr: &X509Req,
+    message_type: u8,
+    transaction_id: &str,
+) -> Vec<u8> {
+    let envelope = envelope_for_recipient(ca, &csr.to_der().unwrap()).unwrap();
+    build_signed_pkimessage(
+        signer_cert,
+        signer_key,
+        &envelope,
+        &ScepAttrs {
+            transaction_id: transaction_id.to_owned(),
+            message_type,
+            pki_status: None,
+            fail_info: None,
+            sender_nonce: SENDER_NONCE,
+            recipient_nonce: None,
+        },
+    )
+    .unwrap()
+}
+
+/// A `PKCSReq` with the right challenge, signed by a self-signed bootstrap certificate.
+fn scep_pkcs_req_message(ca: &X509, key: &PKey<Private>, cn: &str) -> Vec<u8> {
+    pki_message(
+        ca,
+        &self_signed(key, cn),
+        key,
+        &pkcs_req_csr(key, cn, CHALLENGE),
+        MESSAGE_TYPE_PKCS_REQ,
+        "TX-PKCS-REQ",
+    )
+}
+
 /// Send one `PKIOperation` the way a SCEP client does and decode the `CertRep`.
 #[allow(clippy::too_many_arguments)]
 async fn scep_roundtrip<S, B>(
@@ -544,22 +637,14 @@ where
     S: Service<actix_http::Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: actix_web::body::MessageBody,
 {
-    let envelope = envelope_for_recipient(ca, &csr.to_der().unwrap()).unwrap();
-    let sender_nonce = [0x5A_u8; NONCE_LEN];
-    let message = build_signed_pkimessage(
+    let message = pki_message(
+        ca,
         signer_cert,
         signer_key,
-        &envelope,
-        &ScepAttrs {
-            transaction_id: transaction_id.to_owned(),
-            message_type,
-            pki_status: None,
-            fail_info: None,
-            sender_nonce,
-            recipient_nonce: None,
-        },
-    )
-    .unwrap();
+        csr,
+        message_type,
+        transaction_id,
+    );
     let req = if via_get {
         let encoded = url::form_urlencoded::byte_serialize(STANDARD.encode(&message).as_bytes())
             .collect::<String>();
@@ -581,7 +666,7 @@ where
     assert_eq!(parsed.signer_cert.to_der().unwrap(), ca.to_der().unwrap());
     assert_eq!(parsed.attrs.message_type, MESSAGE_TYPE_CERT_REP);
     assert_eq!(parsed.attrs.transaction_id, transaction_id);
-    assert_eq!(parsed.attrs.recipient_nonce, Some(sender_nonce));
+    assert_eq!(parsed.attrs.recipient_nonce, Some(SENDER_NONCE));
     let certificate = if parsed.attrs.pki_status == Some(PKI_STATUS_SUCCESS) {
         let inner = decrypt_envelope(&parsed.content, signer_key, signer_cert).unwrap();
         Some(certs_of(&inner).remove(0))
@@ -901,4 +986,91 @@ async fn startup_rejects_unsafe_enrollment_configuration() {
         );
     }
     ServerParams::try_from(config(true, true, true)).unwrap();
+
+    // The enrollment service identity is reserved: no configured principal may use it.
+    let reserved: [(&str, Tweak); 2] = [
+        ("reserved default_username", |c| {
+            c.default_username = ENROLLMENT_SERVICE_USER.to_owned();
+        }),
+        ("reserved crypto officer", |c| {
+            c.roles.crypto_officer_users = Some(vec![ENROLLMENT_SERVICE_USER.to_owned()]);
+        }),
+    ];
+    for (name, tweak) in reserved {
+        let mut conf = config(true, true, true);
+        tweak(&mut conf);
+        let err = ServerParams::try_from(conf).expect_err(name).to_string();
+        assert!(
+            err.contains("reserved enrollment service identity"),
+            "{name}: {err}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn issued_certificate_is_owned_by_the_ca_owner_not_the_service_identity() -> KResult<()> {
+    // A CA owner distinct from `default_username` tells the CA-owner path apart from the
+    // former default-user behaviour.
+    const CA_OWNER: &str = "ca-owner@example.com";
+    let (kms, ca) = make_scep_kms_with_ca_owner(CA_OWNER).await?;
+    let app = app!(kms);
+    let (_, cert) = enroll_device(&app, &ca, "dev1.iot.example").await;
+    let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
+    let (uid, _, _) = Box::pin(kms.database.find_certificate_by_serial(
+        CA_UID,
+        &serial_hex,
+        kms.vendor_id(),
+    ))
+    .await?
+    .expect("issued certificate is tracked");
+    let owm = kms.database.retrieve_object(&uid).await?.expect("stored");
+    assert_eq!(owm.owner_id(), CA_OWNER);
+    Ok(())
+}
+
+/// UIDs of every certificate object in the database.
+async fn certificate_uids(kms: &KMS) -> KResult<HashSet<String>> {
+    Ok(kms
+        .database
+        .list_uids_for_tags(&HashSet::from([SYSTEM_TAG_CERTIFICATE.to_owned()]))
+        .await?)
+}
+
+#[tokio::test]
+async fn enrollment_without_certify_grant_fails_closed() -> KResult<()> {
+    let (kms, ca) = make_kms(true, true, true).await?;
+    undelegate_ca_key(&kms).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let before = certificate_uids(&kms).await?;
+
+    let (status, body, _) = est_enroll(
+        &app,
+        &csr(&key, "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    assert!(
+        !status.is_success(),
+        "EST must not issue without the grant: {status} {}",
+        String::from_utf8_lossy(&body)
+    );
+
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .insert_header(("Content-Type", "application/x-pki-message"))
+        .set_payload(scep_pkcs_req_message(&ca, &key, "dev1.iot.example"))
+        .to_request();
+    let (status, _, _) = body_of(test::call_service(&app, req).await).await;
+    assert!(
+        !status.is_success(),
+        "SCEP must not issue without the grant: {status}"
+    );
+
+    assert_eq!(
+        certificate_uids(&kms).await?,
+        before,
+        "a refused enrollment must not create any certificate object"
+    );
+    Ok(())
 }

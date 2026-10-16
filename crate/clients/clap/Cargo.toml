@@ -52,7 +52,6 @@ jsonwebtoken = { workspace = true }
 leb128 = { workspace = true }
 libc = { workspace = true }
 libloading = { workspace = true }
-openssl = { workspace = true }
 pem = { workspace = true }
 pkcs11-sys = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls-tls", "cookies"] }

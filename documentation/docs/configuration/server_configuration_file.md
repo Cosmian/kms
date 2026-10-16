@@ -678,7 +678,9 @@ est_enabled = false
 # UID of the CA certificate object in the KMS that signs EST-enrolled certificates.
 #
 # The CA private key must be linked to this certificate. Must be set when
-# `est_enabled = true`.
+# `est_enabled = true`. Certificates are issued as the reserved `[enrollment-service]`
+# identity: the CA owner must grant it `certify` on this certificate and on its private
+# key. Issued certificates are owned by the CA owner.
 # est_ca_uid = "..."
 # Require TLS client-certificate authentication for `/simpleenroll` (RFC 7030 §3.3.2).
 #
@@ -708,6 +710,9 @@ scep_enabled = false
 #
 # SCEP encrypts requests to the CA public key, so this MUST be an RSA CA whose private
 # key is linked to the certificate. Must be set when `scep_enabled = true`.
+# Certificates are issued as the reserved `[enrollment-service]` identity: the CA owner
+# must grant it `certify` on this certificate and on its private key. Issued certificates
+# are owned by the CA owner.
 # scep_ca_uid = "..."
 # Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
 # initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.

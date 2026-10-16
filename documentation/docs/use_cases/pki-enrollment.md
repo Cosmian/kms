@@ -6,11 +6,34 @@ enrollment protocols: **EST** ([RFC 7030](https://www.rfc-editor.org/rfc/rfc7030
 `Certify` operation as the rest of the PKI, signed by a CA certificate stored in the KMS, and are
 constrained by a **certificate template**. Both are disabled by default.
 
+## Purpose
+
+Both protocols let a device obtain an X.509 certificate without an operator in the loop: the device
+generates its own key pair, sends a CSR, and receives a certificate signed by the CA. The private key
+never leaves the device.
+
+- **EST** (Enrollment over Secure Transport) is the modern choice: plain HTTPS, authentication by TLS
+  client certificate (or HTTP Basic for bootstrap), and renewal authenticated by the current
+  certificate. Typical for IoT fleets, network gear and services.
+- **SCEP** (Simple Certificate Enrollment Protocol) is the legacy choice still required by MDM
+  ecosystems (Apple, Windows Intune) and many routers. It runs over HTTP or HTTPS (served on the
+  KMS listener). Requests are protected by CMS signing and encryption to the CA key, and initial
+  enrollment is authorized by a shared challenge password. Over plain HTTP, `GetCACert` is
+  unauthenticated: devices must pin the CA certificate or fingerprint out of band, otherwise an
+  on-path attacker can substitute its own CA.
+
+```mermaid
+flowchart LR
+    D[Device<br/>generates key pair + CSR] -->|EST: HTTPS + mTLS or Basic| K[KMS<br/>template checks]
+    D -->|SCEP: HTTP or HTTPS + CMS + challenge| K
+    K -->|Certify| CA[CA key in KMS]
+    CA -->|signed certificate| D
+```
+
 ## Prerequisites
 
 Create a CA with the KMS and note its certificate unique identifier. The CA private key must be
-`Active` and owned by `default_username`. For SCEP, the CA must be an RSA CA, since requests are
-encrypted to the CA public key.
+`Active`. For SCEP, the CA must be an RSA CA, since requests are encrypted to the CA public key.
 
 ```sh
 cat > ca.ext <<'EOF2'
@@ -21,6 +44,31 @@ EOF2
 ckms certificates certify --certificate-id device-ca --generate-key-pair --algorithm rsa2048 \
   --subject-name "CN=Device CA,O=ACME,C=FR" --days 3650 --certificate-extensions ca.ext
 ```
+
+### Delegate the CA to the enrollment service identity
+
+EST and SCEP issue certificates as the reserved identity `[enrollment-service]`, not as
+`default_username`. No client can authenticate as this identity (it is rejected on every JWT,
+mTLS, SPIRE and UI session path), and it holds no right until the CA owner delegates a CA to
+it. Grant it `certify` on the CA certificate and on the CA private key:
+
+```sh
+ckms attributes get -i device-ca -a LinkType -l private-key   # prints the PrivateKeyLink UID
+ckms access-rights grant "[enrollment-service]" -i device-ca certify
+ckms access-rights grant "[enrollment-service]" -i <ca private key uid> certify
+```
+
+Without these grants, enrollment fails closed and the server logs a warning naming the CA and the
+grants it needs. Also:
+
+- when `crypto_officer_users` is configured, a Crypto Officer must grant it the `create` right
+  (`ckms access-rights grant "[enrollment-service]" create`);
+- when the CA private key is wrapped, grant it `decrypt` on the wrapping key.
+
+Do not grant it `get`, `export` or a Crypto Officer role: issuance needs none of them. Issued
+certificates are stored under the **CA owner**, who can list, revoke and destroy them as usual.
+`default_username` and `crypto_officer_users` must not use the name `[enrollment-service]`;
+the server refuses to start otherwise when EST or SCEP is enabled.
 
 ## Certificate templates
 
@@ -74,6 +122,23 @@ carry the same Subject and SubjectAltName as the certificate, which must be issu
 still `Active`. `/simpleenroll` applies the same identity rule when the client presents a certificate
 issued by the EST CA.
 
+```mermaid
+sequenceDiagram
+    participant D as Device
+    participant K as KMS (EST)
+    D->>K: GET /.well-known/est/cacerts
+    K-->>D: CA chain (PKCS#7)
+    D->>K: GET /.well-known/est/csrattrs
+    K-->>D: CSR attributes
+    D->>K: POST simpleenroll (CSR, TLS client cert or Basic)
+    K->>K: Template checks, then Certify with CA key
+    K-->>D: Device certificate
+    Note over D,K: Before expiry
+    D->>K: POST simplereenroll (new CSR, mTLS with current cert)
+    K->>K: Same Subject and SAN, cert Active
+    K-->>D: Renewed certificate
+```
+
 ## SCEP
 
 ```toml
@@ -94,6 +159,22 @@ The implementation is designed for clients that honour `GetCACaps`, as the Apple
 payloads are documented to; it is verified only against the micromdm `scepclient`, whose stock build
 hard-codes single DES and needs AES-128-CBC selected (see `mise run test:scep-interop`). Apple and
 Windows clients themselves were not run.
+
+```mermaid
+sequenceDiagram
+    participant D as Device / MDM
+    participant K as KMS (SCEP)
+    D->>K: GetCACaps
+    K-->>D: POSTPKIOperation, SHA-256, AES, Renewal
+    D->>K: GetCACert
+    K-->>D: CA certificate (RSA)
+    D->>K: PKIOperation PKCSReq<br/>CSR + challenge, encrypted to CA, signed by device
+    K->>K: Decrypt, check challenge and template, Certify
+    K-->>D: CertRep SUCCESS (certificate encrypted to device)
+    Note over D,K: Before expiry
+    D->>K: PKIOperation RenewalReq<br/>signed with current certificate, no challenge
+    K-->>D: CertRep SUCCESS (renewed certificate)
+```
 
 Limitations: `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented, and issuance is
 synchronous (`PENDING` is never returned).

@@ -58,17 +58,17 @@ Possible values:  `"true", "false"`
 
 **`pqc`** [[9]](#9-ckms-pqc)  Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
 
-**`tokenize`** [[10]](#10-ckms-tokenize)  Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
+**`pgp`** [[10]](#10-ckms-pgp)  Create, import, export and use `OpenPGP` keys (non-FIPS builds only)
 
-**`certificates`** [[11]](#11-ckms-certificates)  Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+**`tokenize`** [[11]](#11-ckms-tokenize)  Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
 
-**`cng`** [[12]](#12-ckms-cng)  Manage the Windows CNG Key Storage Provider (KSP)
+**`certificates`** [[12]](#12-ckms-certificates)  Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
-**`derive-key`** [[13]](#13-ckms-derive-key)  Derive a new key from an existing key
+**`cng`** [[13]](#13-ckms-cng)  Manage the Windows CNG Key Storage Provider (KSP)
 
-**`ec`** [[14]](#14-ckms-ec)  Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+**`derive-key`** [[14]](#14-ckms-derive-key)  Derive a new key from an existing key
 
-**`est`** [[15]](#15-ckms-est)  Interact with the KMS EST (RFC 7030) enrollment endpoints as a client
+**`ec`** [[15]](#15-ckms-ec)  Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
 **`google`** [[16]](#16-ckms-google)  Manage google elements. Handle key pairs and identities from Gmail API
 
@@ -202,7 +202,7 @@ Grant another user one or multiple access rights to an object
 
 `--object-uid [-i] <OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATIONS>` The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`)
+` <OPERATIONS>` The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`, `certify`)
 
 
 
@@ -221,7 +221,7 @@ Revoke another user one or multiple access rights to an object
 
 `--object-uid [-i] <OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATIONS>` The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
+` <OPERATIONS>` The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `certify`)
 
 
 
@@ -900,16 +900,19 @@ Export a key or secret data from the KMS
 `--key-format [-f] <EXPORT_FORMAT>` The format of the key
 
  - `json-ttlv` [default]. It should be the format to use to later re-import the key
- - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `sec1-pem` and `sec1-der` only apply to NIST EC private keys (not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `pgp-secret` exports an ASCII-armored `OpenPGP` transferable secret key accepted by `GnuPG`
+ - `pgp-public` exports an ASCII-armored `OpenPGP` transferable public key accepted by `GnuPG`
+ - `pgp-secret-binary` and `pgp-public-binary` export binary `OpenPGP` transferable keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
       - secret data
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw", "pgp-secret", "pgp-public", "pgp-secret-binary", "pgp-public-binary"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -955,9 +958,9 @@ Import a secret data or a key in the KMS.
 
 ` <KEY_ID>` The unique ID of the key; a random UUID is generated if not specified
 
-`--key-format [-f] <KEY_FORMAT>` The format of the key
+`--key-format [-f] <KEY_FORMAT>` The input format. `pgp` accepts `GnuPG` transferable public or secret keys in binary or ASCII-armored form
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20", "pgp"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key ID, if any
 
@@ -1360,16 +1363,19 @@ Export a key or secret data from the KMS
 `--key-format [-f] <EXPORT_FORMAT>` The format of the key
 
  - `json-ttlv` [default]. It should be the format to use to later re-import the key
- - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `sec1-pem` and `sec1-der` only apply to NIST EC private keys (not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `pgp-secret` exports an ASCII-armored `OpenPGP` transferable secret key accepted by `GnuPG`
+ - `pgp-public` exports an ASCII-armored `OpenPGP` transferable public key accepted by `GnuPG`
+ - `pgp-secret-binary` and `pgp-public-binary` export binary `OpenPGP` transferable keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
       - secret data
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw", "pgp-secret", "pgp-public", "pgp-secret-binary", "pgp-public-binary"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1415,9 +1421,9 @@ Import a secret data or a key in the KMS.
 
 ` <KEY_ID>` The unique ID of the key; a random UUID is generated if not specified
 
-`--key-format [-f] <KEY_FORMAT>` The format of the key
+`--key-format [-f] <KEY_FORMAT>` The input format. `pgp` accepts `GnuPG` transferable public or secret keys in binary or ASCII-armored form
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20", "pgp"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key ID, if any
 
@@ -1715,16 +1721,19 @@ Export a key or secret data from the KMS
 `--key-format [-f] <EXPORT_FORMAT>` The format of the key
 
  - `json-ttlv` [default]. It should be the format to use to later re-import the key
- - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `sec1-pem` and `sec1-der` only apply to NIST EC private keys (not Curve25519 or X448)
  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `pgp-secret` exports an ASCII-armored `OpenPGP` transferable secret key accepted by `GnuPG`
+ - `pgp-public` exports an ASCII-armored `OpenPGP` transferable public key accepted by `GnuPG`
+ - `pgp-secret-binary` and `pgp-public-binary` export binary `OpenPGP` transferable keys
  - `raw` returns the raw bytes of
       - symmetric keys
       - Covercrypt keys
       - wrapped keys
       - secret data
 
-Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw", "pgp-secret", "pgp-public", "pgp-secret-binary", "pgp-public-binary"` [default: `"json-ttlv"`]
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
@@ -1770,9 +1779,9 @@ Import a secret data or a key in the KMS.
 
 ` <KEY_ID>` The unique ID of the key; a random UUID is generated if not specified
 
-`--key-format [-f] <KEY_FORMAT>` The format of the key
+`--key-format [-f] <KEY_FORMAT>` The input format. `pgp` accepts `GnuPG` transferable public or secret keys in binary or ASCII-armored form
 
-Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20"` [default: `"json-ttlv"`]
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20", "pgp"` [default: `"json-ttlv"`]
 
 `--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key ID, if any
 
@@ -2017,7 +2026,313 @@ Verify a PQC signature (ML-DSA or SLH-DSA) for a given data file.
 
 ---
 
-## 10 ckms tokenize
+## 10 ckms pgp
+
+Create, import, export and use `OpenPGP` keys (non-FIPS builds only)
+
+### Usage
+`ckms pgp <subcommand>`
+
+### Subcommands
+
+**`keys`** [[10.1]](#101-ckms-pgp-keys)  Create, revoke, and destroy `OpenPGP` keys
+
+**`export`** [[10.2]](#102-ckms-pgp-export)  Export a key or secret data from the KMS
+
+**`import`** [[10.3]](#103-ckms-pgp-import)  Import a secret data or a key in the KMS.
+
+**`encrypt`** [[10.4]](#104-ckms-pgp-encrypt)  Encrypt a file to an `OpenPGP` key
+
+**`decrypt`** [[10.5]](#105-ckms-pgp-decrypt)  Decrypt an `OpenPGP` message
+
+**`sign`** [[10.6]](#106-ckms-pgp-sign)  Sign data with an `OpenPGP` key
+
+**`sign-verify`** [[10.7]](#107-ckms-pgp-sign-verify)  Verify an `OpenPGP` detached signature for a given data file
+
+---
+
+## 10.1 ckms pgp keys
+
+Create, revoke, and destroy `OpenPGP` keys
+
+### Usage
+`ckms pgp keys <subcommand>`
+
+### Subcommands
+
+**`create`** [[10.1.1]](#1011-ckms-pgp-keys-create)  Create a new `OpenPGP` key (v4 transferable secret key)
+
+**`revoke`** [[10.1.2]](#1012-ckms-pgp-keys-revoke)  Revoke an `OpenPGP` key
+
+**`destroy`** [[10.1.3]](#1013-ckms-pgp-keys-destroy)  Destroy an `OpenPGP` key
+
+---
+
+## 10.1.1 ckms pgp keys create
+
+Create a new `OpenPGP` key (v4 transferable secret key)
+
+### Usage
+`ckms pgp keys create [options] [KEY_ID]
+`
+### Arguments
+`--algorithm [-a] <ALGORITHM>` The `OpenPGP` key algorithm
+
+Possible values:  `"ed25519", "rsa"` [default: `"ed25519"`]
+
+`--size_in_bits [-s] <KEY_SIZE>` RSA modulus size in bits: 2048, 3072 or 4096. Ignored unless `--algorithm rsa`
+
+`--user-id [-u] <USER_ID>` The `OpenPGP` User ID packet, e.g. "Alice <alice@example.com>"
+
+`--tag [-t] <TAG>` The tag to associate with the key. Repeat for multiple tags
+
+` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
+
+`--sensitive <SENSITIVE>` Sensitive: if set, the key will not be exportable
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap this new key with. Note: a wrapped `OpenPGP` key cannot be unwrapped on export
+
+
+
+---
+
+## 10.1.2 ckms pgp keys revoke
+
+Revoke an `OpenPGP` key
+
+### Usage
+`ckms pgp keys revoke [options] <REVOCATION_REASON>
+`
+### Arguments
+` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 10.1.3 ckms pgp keys destroy
+
+Destroy an `OpenPGP` key
+
+### Usage
+`ckms pgp keys destroy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to destroy If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--remove <REMOVE>` If the key should be removed from the database
+If not specified, the key will be destroyed
+but its metadata will still be available in the database.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+
+---
+
+## 10.2 ckms pgp export
+
+Export a key or secret data from the KMS
+
+### Usage
+`ckms pgp export [options] <KEY_FILE>
+`
+### Arguments
+` <KEY_FILE>` The file to export the key to
+
+`--key-id [-k] <KEY_ID>` The key or secret data unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key or secret data id is specified. To specify multiple tags, use the option multiple times
+
+`--key-format [-f] <EXPORT_FORMAT>` The format of the key
+
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der` only apply to NIST EC private keys (not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `pgp-secret` exports an ASCII-armored `OpenPGP` transferable secret key accepted by `GnuPG`
+ - `pgp-public` exports an ASCII-armored `OpenPGP` transferable public key accepted by `GnuPG`
+ - `pgp-secret-binary` and `pgp-public-binary` export binary `OpenPGP` transferable keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
+      - secret data
+
+Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "base64", "raw", "pgp-secret", "pgp-public", "pgp-secret-binary", "pgp-public-binary"` [default: `"json-ttlv"`]
+
+`--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate (a.k.a. Key Encryption Key - KEK) to use to wrap this key before export
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
+The user must be the owner of the key.
+Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--wrapping-algorithm [-m] <WRAPPING_ALGORITHM>` Wrapping algorithm to use when exporting the key
+The possible wrapping algorithms are
+
+ - using a symmetric KEK:
+    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `aes-gcm`
+ - using an RSA KEK:
+    - `rsa-oaep` (default - CKM-RSA-OAEP)
+    - `rsa-aes-key-wrap` (CKM-RSA-AES-KEY-WRP)
+    - `rsa-pkcs-v15` (CKM-RSA v1.5)
+
+Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
+
+`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
+
+
+
+---
+
+## 10.3 ckms pgp import
+
+Import a secret data or a key in the KMS.
+
+### Usage
+`ckms pgp import [options] <KEY_FILE>
+ [KEY_ID]
+`
+### Arguments
+` <KEY_FILE>` The file holding the key or secret data to import
+
+` <KEY_ID>` The unique ID of the key; a random UUID is generated if not specified
+
+`--key-format [-f] <KEY_FORMAT>` The input format. `pgp` accepts `GnuPG` transferable public or secret keys in binary or ASCII-armored form
+
+Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8-priv", "pkcs8-pub", "aes", "chacha20", "pgp"` [default: `"json-ttlv"`]
+
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding KMS public key ID, if any
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding KMS private key ID, if any
+
+`--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate ID, if any
+
+`--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same ID
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+`--key-usage <KEY_USAGE>` The cryptographic operations the key is allowed to perform
+
+Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
+
+`--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap this imported key with.
+If the wrapping key is:
+
+- A symmetric key, AES-GCM will be used,
+- An RSA key, RSA-OAEP with SHA-256 will be used,
+- An EC key, ECIES will be used (salsa20poly1305 for X25519),
+
+
+
+---
+
+## 10.4 ckms pgp encrypt
+
+Encrypt a file to an `OpenPGP` key
+
+### Usage
+`ckms pgp encrypt [options] <FILE>
+`
+### Arguments
+` <FILE>` The file to encrypt
+
+`--key-id [-k] <KEY_ID>` The `OpenPGP` key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. Repeat for multiple tags
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path. Defaults to `<FILE>.gpg`
+
+
+
+---
+
+## 10.5 ckms pgp decrypt
+
+Decrypt an `OpenPGP` message
+
+### Usage
+`ckms pgp decrypt [options] <FILE>
+`
+### Arguments
+` <FILE>` The file to decrypt
+
+`--key-id [-k] <KEY_ID>` The `OpenPGP` key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. Repeat for multiple tags
+
+`--output-file [-o] <OUTPUT_FILE>` The decrypted output file path. Defaults to `<FILE>.plain`
+
+
+
+---
+
+## 10.6 ckms pgp sign
+
+Sign data with an `OpenPGP` key
+
+### Usage
+`ckms pgp sign [options] <FILE>
+`
+### Arguments
+` <FILE>` The file to sign
+
+`--key-id [-k] <KEY_ID>` The `OpenPGP` key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The signature output file path
+
+
+
+---
+
+## 10.7 ckms pgp sign-verify
+
+Verify an `OpenPGP` detached signature for a given data file
+
+### Usage
+`ckms pgp sign-verify [options] <FILE>
+ <SIGNATURE_FILE>
+`
+### Arguments
+` <FILE>` The data that was signed
+
+` <SIGNATURE_FILE>` The detached signature file (binary or ASCII-armored)
+
+`--key-id [-k] <KEY_ID>` The `OpenPGP` key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+
+---
+
+## 11 ckms tokenize
 
 Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
 
@@ -2026,25 +2341,25 @@ Anonymization utilities: hash, noise, word masking, pattern masking, aggregation
 
 ### Subcommands
 
-**`hash`** [[10.1]](#101-ckms-tokenize-hash)  Hash a string with SHA2, SHA3, or Argon2
+**`hash`** [[11.1]](#111-ckms-tokenize-hash)  Hash a string with SHA2, SHA3, or Argon2
 
-**`noise`** [[10.2]](#102-ckms-tokenize-noise)  Add statistical noise to a number or date
+**`noise`** [[11.2]](#112-ckms-tokenize-noise)  Add statistical noise to a number or date
 
-**`word-mask`** [[10.3]](#103-ckms-tokenize-word-mask)  Replace sensitive words with "XXXX"
+**`word-mask`** [[11.3]](#113-ckms-tokenize-word-mask)  Replace sensitive words with "XXXX"
 
-**`word-tokenize`** [[10.4]](#104-ckms-tokenize-word-tokenize)  Replace sensitive words with consistent random hex tokens
+**`word-tokenize`** [[11.4]](#114-ckms-tokenize-word-tokenize)  Replace sensitive words with consistent random hex tokens
 
-**`word-pattern-mask`** [[10.5]](#105-ckms-tokenize-word-pattern-mask)  Replace regex-matched substrings with a replacement string
+**`word-pattern-mask`** [[11.5]](#115-ckms-tokenize-word-pattern-mask)  Replace regex-matched substrings with a replacement string
 
-**`aggregate-number`** [[10.6]](#106-ckms-tokenize-aggregate-number)  Round a number to the nearest power of ten
+**`aggregate-number`** [[11.6]](#116-ckms-tokenize-aggregate-number)  Round a number to the nearest power of ten
 
-**`aggregate-date`** [[10.7]](#107-ckms-tokenize-aggregate-date)  Truncate a date to a specified time unit
+**`aggregate-date`** [[11.7]](#117-ckms-tokenize-aggregate-date)  Truncate a date to a specified time unit
 
-**`scale-number`** [[10.8]](#108-ckms-tokenize-scale-number)  Normalize and scale a number using z-score transformation
+**`scale-number`** [[11.8]](#118-ckms-tokenize-scale-number)  Normalize and scale a number using z-score transformation
 
 ---
 
-## 10.1 ckms tokenize hash
+## 11.1 ckms tokenize hash
 
 Hash a string with SHA2, SHA3, or Argon2
 
@@ -2061,7 +2376,7 @@ Hash a string with SHA2, SHA3, or Argon2
 
 ---
 
-## 10.2 ckms tokenize noise
+## 11.2 ckms tokenize noise
 
 Add statistical noise to a number or date
 
@@ -2086,7 +2401,7 @@ Add statistical noise to a number or date
 
 ---
 
-## 10.3 ckms tokenize word-mask
+## 11.3 ckms tokenize word-mask
 
 Replace sensitive words with "XXXX"
 
@@ -2101,7 +2416,7 @@ Replace sensitive words with "XXXX"
 
 ---
 
-## 10.4 ckms tokenize word-tokenize
+## 11.4 ckms tokenize word-tokenize
 
 Replace sensitive words with consistent random hex tokens
 
@@ -2116,7 +2431,7 @@ Replace sensitive words with consistent random hex tokens
 
 ---
 
-## 10.5 ckms tokenize word-pattern-mask
+## 11.5 ckms tokenize word-pattern-mask
 
 Replace regex-matched substrings with a replacement string
 
@@ -2133,7 +2448,7 @@ Replace regex-matched substrings with a replacement string
 
 ---
 
-## 10.6 ckms tokenize aggregate-number
+## 11.6 ckms tokenize aggregate-number
 
 Round a number to the nearest power of ten
 
@@ -2150,7 +2465,7 @@ Round a number to the nearest power of ten
 
 ---
 
-## 10.7 ckms tokenize aggregate-date
+## 11.7 ckms tokenize aggregate-date
 
 Truncate a date to a specified time unit
 
@@ -2165,7 +2480,7 @@ Truncate a date to a specified time unit
 
 ---
 
-## 10.8 ckms tokenize scale-number
+## 11.8 ckms tokenize scale-number
 
 Normalize and scale a number using z-score transformation
 
@@ -2189,7 +2504,7 @@ Normalize and scale a number using z-score transformation
 
 ---
 
-## 11 ckms certificates
+## 12 ckms certificates
 
 Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
@@ -2198,36 +2513,36 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 ### Subcommands
 
-**`activate`** [[11.1]](#111-ckms-certificates-activate)  Activate a cryptographic object (key, certificate, etc.)
+**`activate`** [[12.1]](#121-ckms-certificates-activate)  Activate a cryptographic object (key, certificate, etc.)
 
-**`certify`** [[11.2]](#112-ckms-certificates-certify)  Issue or renew a X509 certificate
+**`certify`** [[12.2]](#122-ckms-certificates-certify)  Issue or renew a X509 certificate
 
-**`decrypt`** [[11.3]](#113-ckms-certificates-decrypt)  Decrypt a file using the private key of a certificate
+**`decrypt`** [[12.3]](#123-ckms-certificates-decrypt)  Decrypt a file using the private key of a certificate
 
-**`encrypt`** [[11.4]](#114-ckms-certificates-encrypt)  Encrypt a file using the certificate public key
+**`encrypt`** [[12.4]](#124-ckms-certificates-encrypt)  Encrypt a file using the certificate public key
 
-**`export`** [[11.5]](#115-ckms-certificates-export)  Export a certificate from the KMS
+**`export`** [[12.5]](#125-ckms-certificates-export)  Export a certificate from the KMS
 
-**`generate-crl`** [[11.6]](#116-ckms-certificates-generate-crl)  Generate a Certificate Revocation List (CRL) for a CA certificate.
+**`generate-crl`** [[12.6]](#126-ckms-certificates-generate-crl)  Generate a Certificate Revocation List (CRL) for a CA certificate.
 
-**`import`** [[11.7]](#117-ckms-certificates-import)  Import one of the following:
+**`import`** [[12.7]](#127-ckms-certificates-import)  Import one of the following:
 
 - a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
 - a certificate chain as a PEM-stack (chain)
 - a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
 - the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 
-**`revoke`** [[11.8]](#118-ckms-certificates-revoke)  Revoke a certificate
+**`revoke`** [[12.8]](#128-ckms-certificates-revoke)  Revoke a certificate
 
-**`destroy`** [[11.9]](#119-ckms-certificates-destroy)  Destroy a certificate
+**`destroy`** [[12.9]](#129-ckms-certificates-destroy)  Destroy a certificate
 
-**`set-rotation-policy`** [[11.10]](#1110-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+**`set-rotation-policy`** [[12.10]](#1210-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
 
-**`validate`** [[11.11]](#1111-ckms-certificates-validate)  Validate a certificate
+**`validate`** [[12.11]](#1211-ckms-certificates-validate)  Validate a certificate
 
 ---
 
-## 11.1 ckms certificates activate
+## 12.1 ckms certificates activate
 
 Activate a cryptographic object (key, certificate, etc.)
 
@@ -2242,7 +2557,7 @@ Activate a cryptographic object (key, certificate, etc.)
 
 ---
 
-## 11.2 ckms certificates certify
+## 12.2 ckms certificates certify
 
 Issue or renew a X509 certificate
 
@@ -2287,7 +2602,7 @@ with the x509 extensions to use. For instance:
 
 ---
 
-## 11.3 ckms certificates decrypt
+## 12.3 ckms certificates decrypt
 
 Decrypt a file using the private key of a certificate
 
@@ -2315,7 +2630,7 @@ Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"`
 
 ---
 
-## 11.4 ckms certificates encrypt
+## 12.4 ckms certificates encrypt
 
 Encrypt a file using the certificate public key
 
@@ -2343,7 +2658,7 @@ Possible values:  `"ckm-rsa-pkcs", "ckm-rsa-pkcs-oaep", "ckm-rsa-aes-key-wrap"`
 
 ---
 
-## 11.5 ckms certificates export
+## 12.5 ckms certificates export
 
 Export a certificate from the KMS
 
@@ -2375,7 +2690,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 11.6 ckms certificates generate-crl
+## 12.6 ckms certificates generate-crl
 
 Generate a Certificate Revocation List (CRL) for a CA certificate.
 
@@ -2394,7 +2709,7 @@ Generate a Certificate Revocation List (CRL) for a CA certificate.
 
 ---
 
-## 11.7 ckms certificates import
+## 12.7 ckms certificates import
 
 Import one of the following:
 
@@ -2440,7 +2755,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 11.8 ckms certificates revoke
+## 12.8 ckms certificates revoke
 
 Revoke a certificate
 
@@ -2460,7 +2775,7 @@ Revoke a certificate
 
 ---
 
-## 11.9 ckms certificates destroy
+## 12.9 ckms certificates destroy
 
 Destroy a certificate
 
@@ -2482,7 +2797,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 11.10 ckms certificates set-rotation-policy
+## 12.10 ckms certificates set-rotation-policy
 
 Set the automatic rotation policy on a certificate (interval, offset, keyset name)
 
@@ -2501,7 +2816,7 @@ Set the automatic rotation policy on a certificate (interval, offset, keyset nam
 
 ---
 
-## 11.11 ckms certificates validate
+## 12.11 ckms certificates validate
 
 Validate a certificate
 
@@ -2517,7 +2832,7 @@ Validate a certificate
 
 ---
 
-## 12 ckms cng
+## 13 ckms cng
 
 Manage the Windows CNG Key Storage Provider (KSP)
 
@@ -2526,19 +2841,19 @@ Manage the Windows CNG Key Storage Provider (KSP)
 
 ### Subcommands
 
-**`register`** [[12.1]](#121-ckms-cng-register)  Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
+**`register`** [[13.1]](#131-ckms-cng-register)  Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
 
-**`unregister`** [[12.2]](#122-ckms-cng-unregister)  Unregister the Cosmian KMS CNG Key Storage Provider from the Windows Registry
+**`unregister`** [[13.2]](#132-ckms-cng-unregister)  Unregister the Cosmian KMS CNG Key Storage Provider from the Windows Registry
 
-**`status`** [[12.3]](#123-ckms-cng-status)  Show the CNG KSP registration status (is the provider registered?)
+**`status`** [[13.3]](#133-ckms-cng-status)  Show the CNG KSP registration status (is the provider registered?)
 
-**`list-keys`** [[12.4]](#124-ckms-cng-list-keys)  List all private keys stored in Cosmian KMS that belong to this CNG KSP
+**`list-keys`** [[13.4]](#134-ckms-cng-list-keys)  List all private keys stored in Cosmian KMS that belong to this CNG KSP
 
-**`verify`** [[12.5]](#125-ckms-cng-verify)  Load the CNG KSP DLL and exercise all `NCrypt` function-table entry points
+**`verify`** [[13.5]](#135-ckms-cng-verify)  Load the CNG KSP DLL and exercise all `NCrypt` function-table entry points
 
 ---
 
-## 12.1 ckms cng register
+## 13.1 ckms cng register
 
 Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
 
@@ -2551,7 +2866,7 @@ Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
 
 ---
 
-## 12.2 ckms cng unregister
+## 13.2 ckms cng unregister
 
 Unregister the Cosmian KMS CNG Key Storage Provider from the Windows Registry
 
@@ -2561,7 +2876,7 @@ Unregister the Cosmian KMS CNG Key Storage Provider from the Windows Registry
 
 ---
 
-## 12.3 ckms cng status
+## 13.3 ckms cng status
 
 Show the CNG KSP registration status (is the provider registered?)
 
@@ -2571,7 +2886,7 @@ Show the CNG KSP registration status (is the provider registered?)
 
 ---
 
-## 12.4 ckms cng list-keys
+## 13.4 ckms cng list-keys
 
 List all private keys stored in Cosmian KMS that belong to this CNG KSP
 
@@ -2581,7 +2896,7 @@ List all private keys stored in Cosmian KMS that belong to this CNG KSP
 
 ---
 
-## 12.5 ckms cng verify
+## 13.5 ckms cng verify
 
 Load the CNG KSP DLL and exercise all `NCrypt` function-table entry points
 
@@ -2595,7 +2910,7 @@ Load the CNG KSP DLL and exercise all `NCrypt` function-table entry points
 
 ---
 
-## 13 ckms derive-key
+## 14 ckms derive-key
 
 Derive a new key from an existing key
 
@@ -2605,6 +2920,14 @@ Derive a new key from an existing key
 `--key-id [-k] <KEY_ID>` The unique identifier of the base key to derive from Mutually exclusive with --password and --x25519
 
 `--password [-p] <PASSWORD>` UTF-8 password to use as base material for key derivation Will create a `SecretData` of type Password internally Mutually exclusive with --key-id and --x25519
+
+`--x25519 <X25519>` Perform an asymmetric X25519 ECDH key agreement instead of a symmetric (PBKDF2/HKDF) derivation. Requires --private-key-id and --peer-public-key-id. The result is always a non-extractable 256-bit `SecretData` object. Available in non-FIPS mode only. Mutually exclusive with --key-id and --password
+
+Possible values:  `"true", "false"`
+
+`--private-key-id <PRIVATE_KEY_ID>` The unique identifier of the local X25519 private key. Required (and only used) with --x25519
+
+`--peer-public-key-id <PEER_PUBLIC_KEY_ID>` The unique identifier of the peer's X25519 public key. Required (and only used) with --x25519
 
 `--derivation-method [-m] <DERIVATION_METHOD>` The derivation method to use (PBKDF2 or HKDF). Ignored with --x25519
 
@@ -2632,7 +2955,7 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 ---
 
-## 14 ckms ec
+## 15 ckms ec
 
 Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
@@ -2641,19 +2964,19 @@ Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
 ### Subcommands
 
-**`keys`** [[14.1]](#141-ckms-ec-keys)  Create, destroy, import, and export elliptic curve key pairs
+**`keys`** [[15.1]](#151-ckms-ec-keys)  Create, destroy, import, and export elliptic curve key pairs
 
-**`encrypt`** [[14.2]](#142-ckms-ec-encrypt)  Encrypt a file with the given public key using ECIES
+**`encrypt`** [[15.2]](#152-ckms-ec-encrypt)  Encrypt a file with the given public key using ECIES
 
-**`decrypt`** [[14.3]](#143-ckms-ec-decrypt)  Decrypts a file with the given private key using ECIES
+**`decrypt`** [[15.3]](#153-ckms-ec-decrypt)  Decrypts a file with the given private key using ECIES
 
-**`sign`** [[14.4]](#144-ckms-ec-sign)  Sign a file using elliptic curve digital signature algorithms (ECDSA)
+**`sign`** [[15.4]](#154-ckms-ec-sign)  Sign a file using elliptic curve digital signature algorithms (ECDSA)
 
-**`sign-verify`** [[14.5]](#145-ckms-ec-sign-verify)  Verify an ECDSA signature for a given data file
+**`sign-verify`** [[15.5]](#155-ckms-ec-sign-verify)  Verify an ECDSA signature for a given data file
 
 ---
 
-## 14.1 ckms ec keys
+## 15.1 ckms ec keys
 
 Create, destroy, import, and export elliptic curve key pairs
 
@@ -2662,31 +2985,31 @@ Create, destroy, import, and export elliptic curve key pairs
 
 ### Subcommands
 
-**`activate`** [[14.1.1]](#1411-ckms-ec-keys-activate)  Activate a cryptographic object (key, certificate, etc.)
+**`activate`** [[15.1.1]](#1511-ckms-ec-keys-activate)  Activate a cryptographic object (key, certificate, etc.)
 
-**`create`** [[14.1.2]](#1412-ckms-ec-keys-create)  Create an elliptic curve key pair
+**`create`** [[15.1.2]](#1512-ckms-ec-keys-create)  Create an elliptic curve key pair
 
-**`export`** [[14.1.3]](#1413-ckms-ec-keys-export)  Export a key or secret data from the KMS
+**`export`** [[15.1.3]](#1513-ckms-ec-keys-export)  Export a key or secret data from the KMS
 
-**`import`** [[14.1.4]](#1414-ckms-ec-keys-import)  Import a secret data or a key in the KMS.
+**`import`** [[15.1.4]](#1514-ckms-ec-keys-import)  Import a secret data or a key in the KMS.
 
-**`wrap`** [[14.1.5]](#1415-ckms-ec-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
+**`wrap`** [[15.1.5]](#1515-ckms-ec-keys-wrap)  Locally wrap a secret data or key in KMIP JSON TTLV format.
 
-**`unwrap`** [[14.1.6]](#1416-ckms-ec-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
+**`unwrap`** [[15.1.6]](#1516-ckms-ec-keys-unwrap)  Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
-**`revoke`** [[14.1.7]](#1417-ckms-ec-keys-revoke)  Revoke a public or private key
+**`revoke`** [[15.1.7]](#1517-ckms-ec-keys-revoke)  Revoke a public or private key
 
-**`destroy`** [[14.1.8]](#1418-ckms-ec-keys-destroy)  Destroy a public or private key
+**`destroy`** [[15.1.8]](#1518-ckms-ec-keys-destroy)  Destroy a public or private key
 
-**`re-key`** [[14.1.9]](#1419-ckms-ec-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+**`re-key`** [[15.1.9]](#1519-ckms-ec-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
 
-**`set-rotation-policy`** [[14.1.10]](#14110-ckms-ec-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+**`set-rotation-policy`** [[15.1.10]](#15110-ckms-ec-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
 
-**`get-rotation-policy`** [[14.1.11]](#14111-ckms-ec-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+**`get-rotation-policy`** [[15.1.11]](#15111-ckms-ec-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
 
 ---
 
-## 14.1.1 ckms ec keys activate
+## 15.1.1 ckms ec keys activate
 
 Activate a cryptographic object (key, certificate, etc.)
 
@@ -2701,7 +3024,7 @@ Activate a cryptographic object (key, certificate, etc.)
 
 ---
 
-## 14.1.2 ckms ec keys create
+## 15.1.2 ckms ec keys create
 
 Create an elliptic curve key pair
 
@@ -2742,7 +3065,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 14.1.3 ckms ec keys export
+## 15.1.3 ckms ec keys export
 
 Export a key or secret data from the KMS
 
@@ -2804,7 +3127,7 @@ Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs
 
 ---
 
-## 14.1.4 ckms ec keys import
+## 15.1.4 ckms ec keys import
 
 Import a secret data or a key in the KMS.
 
@@ -2852,7 +3175,7 @@ If the wrapping key is:
 
 ---
 
-## 14.1.5 ckms ec keys wrap
+## 15.1.5 ckms ec keys wrap
 
 Locally wrap a secret data or key in KMIP JSON TTLV format.
 
@@ -2877,7 +3200,7 @@ Locally wrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 14.1.6 ckms ec keys unwrap
+## 15.1.6 ckms ec keys unwrap
 
 Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
@@ -2900,7 +3223,7 @@ Locally unwrap a secret data or key in KMIP JSON TTLV format.
 
 ---
 
-## 14.1.7 ckms ec keys revoke
+## 15.1.7 ckms ec keys revoke
 
 Revoke a public or private key
 
@@ -2920,7 +3243,7 @@ Revoke a public or private key
 
 ---
 
-## 14.1.8 ckms ec keys destroy
+## 15.1.8 ckms ec keys destroy
 
 Destroy a public or private key
 
@@ -2942,7 +3265,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 14.1.9 ckms ec keys re-key
+## 15.1.9 ckms ec keys re-key
 
 Rotate an existing asymmetric key pair, generating a new private/public key pair
 
@@ -2955,7 +3278,7 @@ Rotate an existing asymmetric key pair, generating a new private/public key pair
 
 ---
 
-## 14.1.10 ckms ec keys set-rotation-policy
+## 15.1.10 ckms ec keys set-rotation-policy
 
 Set the automatic rotation policy on a key or key pair.
 
@@ -2974,7 +3297,7 @@ Set the automatic rotation policy on a key or key pair.
 
 ---
 
-## 14.1.11 ckms ec keys get-rotation-policy
+## 15.1.11 ckms ec keys get-rotation-policy
 
 Get the automatic rotation policy for a key or key pair.
 
@@ -2988,7 +3311,7 @@ Get the automatic rotation policy for a key or key pair.
 
 ---
 
-## 14.2 ckms ec encrypt
+## 15.2 ckms ec encrypt
 
 Encrypt a file with the given public key using ECIES
 
@@ -3008,7 +3331,7 @@ Encrypt a file with the given public key using ECIES
 
 ---
 
-## 14.3 ckms ec decrypt
+## 15.3 ckms ec decrypt
 
 Decrypts a file with the given private key using ECIES
 
@@ -3028,7 +3351,7 @@ Decrypts a file with the given private key using ECIES
 
 ---
 
-## 14.4 ckms ec sign
+## 15.4 ckms ec sign
 
 Sign a file using elliptic curve digital signature algorithms (ECDSA)
 
@@ -3056,7 +3379,7 @@ Possible values:  `"true", "false"`
 
 ---
 
-## 14.5 ckms ec sign-verify
+## 15.5 ckms ec sign-verify
 
 Verify an ECDSA signature for a given data file
 
@@ -3078,58 +3401,6 @@ Verify an ECDSA signature for a given data file
 `--digested <DIGESTED>` Treat data input as already-digested (pre-hash)
 
 Possible values:  `"true", "false"`
-
-
-
-
----
-
-## 15 ckms est
-
-Interact with the KMS EST (RFC 7030) enrollment endpoints as a client
-
-### Usage
-`ckms est <subcommand>`
-
-### Subcommands
-
-**`cacerts`** [[15.1]](#151-ckms-est-cacerts)  Download the CA certificate chain (public endpoint)
-
-**`enroll`** [[15.2]](#152-ckms-est-enroll)  Enroll a device certificate from a PKCS#10 CSR via the KMS EST (RFC 7030) `/.well-known/est/simpleenroll` endpoint
-
----
-
-## 15.1 ckms est cacerts
-
-Download the CA certificate chain (public endpoint)
-
-### Usage
-`ckms est cacerts [options]`
-### Arguments
-`--out [-o] <OUT>` The file to write the CA certificate chain to (PEM)
-
-
-
----
-
-## 15.2 ckms est enroll
-
-Enroll a device certificate from a PKCS#10 CSR via the KMS EST (RFC 7030) `/.well-known/est/simpleenroll` endpoint
-
-### Usage
-`ckms est enroll [options]`
-### Arguments
-`--csr [-r] <CSR>` Path to the PKCS#10 certificate signing request to submit
-
-`--csr-format [-f] <CSR_FORMAT>` The format of the certificate signing request
-
-Possible values:  `"pem", "der"` [default: `"pem"`]
-
-`--out [-o] <OUT>` The file to write the issued certificate to (PEM)
-
-`--user <USER>` Username for HTTP Basic bootstrap authentication. Requires `--password`
-
-`--password <PASSWORD>` Password for HTTP Basic bootstrap authentication. Requires `--user`
 
 
 
@@ -5502,3 +5773,6 @@ Configure the KMS CLI (create ckms.toml)
 
 ### Usage
 `ckms configure`
+
+
+

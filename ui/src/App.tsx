@@ -16,8 +16,6 @@ import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
 import CertificateGenerateCrlForm from "./actions/Certificates/CertificateGenerateCrl";
-import EstCaCertsForm from "./actions/Certificates/EstCaCerts";
-import EstEnrollForm from "./actions/Certificates/EstEnroll";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
 import CertificateReCertifyForm from "./actions/Certificates/CertificateReCertify";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
@@ -461,8 +459,6 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="decrypt" element={<CertificateDecryptForm />} />
                             <Route path="certs/certify" element={<CertificateCertifyForm />} />
                             <Route path="certs/recertify" element={<CertificateReCertifyForm />} />
-                            <Route path="enrollment/cacerts" element={<EstCaCertsForm />} />
-                            <Route path="enrollment/enroll" element={<EstEnrollForm />} />
                         </Route>
                         <Route path="attributes">
                             <Route path="get" element={<AttributeGetForm />} />

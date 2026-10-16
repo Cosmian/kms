@@ -1,8 +1,10 @@
 //! Helpers shared by the EST (RFC 7030) and SCEP (RFC 8894) enrollment endpoints.
 //!
 //! Both protocols issue certificates from a configured CA certificate (`est_ca_uid` /
-//! `scep_ca_uid`) through the regular KMIP `Certify` operation, executed as the server
-//! identity (`default_username`), and constrained by a [`CertTemplate`].
+//! `scep_ca_uid`) through the regular KMIP `Certify` operation, constrained by a
+//! [`CertTemplate`]. Issuance runs as the reserved [`ENROLLMENT_SERVICE_USER`], which may only
+//! use a CA whose owner granted it the `certify` right on the CA certificate and private key;
+//! the issued certificate is stored under the CA owner.
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -16,7 +18,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::openssl::{kmip_certificate_to_openssl, kmip_private_key_to_openssl},
     cosmian_kms_interfaces::ObjectHandle,
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, warn};
 use openssl::{
     asn1::Asn1Time,
     pkey::{PKey, Private},
@@ -28,8 +30,9 @@ use x509_parser::prelude::{FromDer, ParsedExtension, X509Certificate, X509Certif
 
 use crate::{
     core::{
-        KMS, certificate::retrieve_issuer_private_key_and_certificate,
-        operations::certify::template::CertTemplate,
+        KMS,
+        certificate::retrieve_issuer_private_key_and_certificate,
+        operations::certify::{certify_for_owner, template::CertTemplate},
     },
     error::KmsError,
     middlewares::UserId,
@@ -39,9 +42,23 @@ use crate::{
 /// Maximum number of certificates followed when walking up an issuer chain.
 const MAX_CHAIN_DEPTH: usize = 8;
 
-/// The identity under which enrollment protocols use the CA key.
-pub(crate) fn enrollment_user(kms: &KMS) -> UserId {
-    kms.params.default_username.clone().into()
+/// Reserved identity under which EST/SCEP use the CA key.
+///
+/// Like `AWS_XKS_SERVICE_USER`, it is wrapped in square brackets and rejected on every
+/// externally-derived authentication path (`reject_reserved_service_identity`), so no client
+/// can authenticate as it. It holds no right by default: a CA owner delegates a CA to
+/// enrollment by granting it `certify` on the CA certificate and its private key (plus
+/// `decrypt` on the wrapping key when the CA key is wrapped, and the `create` right when Crypto
+/// Officers are configured).
+pub(crate) const ENROLLMENT_SERVICE_USER: &str = "[enrollment-service]";
+
+/// Server-side hint logged when the CA cannot be used by the enrollment service identity.
+fn log_ca_use_failure(ca_uid: &str, error: &KmsError) {
+    warn!(
+        "enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. \
+         The CA owner must grant it `certify` on the CA certificate and private key (and \
+         `decrypt` on the wrapping key if the CA key is wrapped)."
+    );
 }
 
 /// Compare two secrets in constant time (both are hashed first so that the length is not leaked).
@@ -78,7 +95,7 @@ pub(crate) async fn load_ca_signing_material(
     kms: &KMS,
     ca_uid: &str,
 ) -> KResult<(X509, PKey<Private>)> {
-    let user = enrollment_user(kms);
+    let user = UserId::from(ENROLLMENT_SERVICE_USER);
     let ca_uid = ca_uid.to_owned();
     let (private_key, certificate) = Box::pin(retrieve_issuer_private_key_and_certificate(
         None,
@@ -86,15 +103,17 @@ pub(crate) async fn load_ca_signing_material(
         kms,
         &user,
     ))
-    .await?;
+    .await
+    .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;
     if private_key.state() != State::Active {
         return Err(KmsError::InvalidRequest(format!(
             "the CA private key '{}' is not Active",
             private_key.id()
         )));
     }
-    let unwrapped =
-        Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), &user)).await?;
+    let unwrapped = Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), &user))
+        .await
+        .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;
     Ok((
         kmip_certificate_to_openssl(certificate.object())?,
         kmip_private_key_to_openssl(&unwrapped)?,
@@ -102,7 +121,7 @@ pub(crate) async fn load_ca_signing_material(
 }
 
 /// Issue a certificate for `csr` from the CA `ca_uid` after enforcing `template`
-/// (a baseline template when `None`). Returns the issued certificate.
+/// (a baseline template when `None`). The certificate is stored under the CA certificate owner.
 pub(crate) async fn issue_from_csr(
     kms: &KMS,
     ca_uid: &str,
@@ -110,7 +129,15 @@ pub(crate) async fn issue_from_csr(
     template: Option<&CertTemplate>,
     requested_validity_days: Option<u32>,
 ) -> KResult<X509> {
-    let user = enrollment_user(kms);
+    let user = UserId::from(ENROLLMENT_SERVICE_USER);
+    let ca_owner = kms
+        .database
+        .retrieve_object(ca_uid)
+        .await
+        .context("retrieve CA certificate")?
+        .ok_or_else(|| KmsError::ItemNotFound(format!("CA certificate not found: {ca_uid}")))?
+        .owner_id()
+        .to_owned();
     let mut attributes = Attributes::default();
     attributes.set_link(
         LinkType::CertificateLink,
@@ -123,23 +150,22 @@ pub(crate) async fn issue_from_csr(
         requested_validity_days,
         &mut attributes,
     )?;
-    let response = kms
-        .certify(
-            Certify {
-                unique_identifier: None,
-                certificate_request_type: Some(CertificateRequestType::PKCS10),
-                certificate_request_value: Some(csr.to_der()?),
-                attributes: Some(attributes),
-                protection_storage_masks: None,
-            },
-            &user,
-        )
-        .await?;
+    let response = Box::pin(certify_for_owner(
+        kms,
+        Certify {
+            unique_identifier: None,
+            certificate_request_type: Some(CertificateRequestType::PKCS10),
+            certificate_request_value: Some(csr.to_der()?),
+            attributes: Some(attributes),
+            protection_storage_masks: None,
+        },
+        &user,
+        &ca_owner,
+    ))
+    .await
+    .inspect_err(|e| log_ca_use_failure(ca_uid, e))?;
     let uid = response.unique_identifier.to_string();
-    debug!(
-        "enrollment: issued certificate {uid} from CA {uid}",
-        uid = uid
-    );
+    debug!("enrollment: issued certificate {uid} from CA {ca_uid}");
     let owm = kms
         .database
         .retrieve_object(&uid)

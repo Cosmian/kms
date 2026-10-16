@@ -87,6 +87,13 @@ ckms certificates certify --certificate-id "${CA_UID}" --generate-key-pair \
   --algorithm rsa2048 --subject-name "CN=SCEP Test CA,O=Cosmian Test,C=FR" \
   --days 3650 --certificate-extensions "${WORKDIR}/ca.ext" >/dev/null
 ckms certificates export "${WORKDIR}/ca.crt" --certificate-id "${CA_UID}" --format pem >/dev/null
+# Delegate the CA to the reserved enrollment identity: `certify` on the CA certificate and
+# its private key (issuance fails closed without these grants).
+ckms attributes get -i "${CA_UID}" -a LinkType -l private-key -o "${WORKDIR}/ca-links.json" >/dev/null
+CA_SK_UID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["PrivateKeyLink"])' \
+  "${WORKDIR}/ca-links.json")
+ckms access-rights grant "[enrollment-service]" -i "${CA_UID}" certify >/dev/null
+ckms access-rights grant "[enrollment-service]" -i "${CA_SK_UID}" certify >/dev/null
 
 assert_contains() {
   if ! grep -Eqi "$2" <<<"$1"; then

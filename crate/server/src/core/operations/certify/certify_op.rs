@@ -31,6 +31,21 @@ pub(crate) async fn certify(
     request: Certify,
     user: &UserId,
 ) -> KResult<CertifyResponse> {
+    Box::pin(certify_for_owner(kms, request, user, user)).await
+}
+
+/// [`certify`] with the authorization checks (issuer `Certify` grant, `Create` right) evaluated
+/// for `user` while the created objects are stored, in the same atomic write, under `owner`.
+///
+/// Used by EST/SCEP enrollment: the reserved enrollment service identity is authorized through
+/// its explicit grant on the CA, and the issued certificate belongs to the CA owner, who can
+/// therefore revoke and manage it without any post-issuance grant.
+pub(crate) async fn certify_for_owner(
+    kms: &KMS,
+    request: Certify,
+    user: &UserId,
+    owner: &UserId,
+) -> KResult<CertifyResponse> {
     trace!("{}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
@@ -205,7 +220,7 @@ pub(crate) async fn certify(
     };
 
     // perform DB operations
-    kms.database.atomic(user, &operations).await?;
+    kms.database.atomic(owner, &operations).await?;
 
     Ok(CertifyResponse { unique_identifier })
 }
