@@ -593,7 +593,11 @@ impl HttpClient {
         &self,
         build: impl Fn() -> HttpClientResult<http::Request<Full<Bytes>>>,
     ) -> HttpClientResult<HttpResponse> {
-        let response = match self.client.request(build()?).await {
+        let request = build()?;
+        // `Uri` is ref-counted: this clone is O(1) and lets error messages name the target
+        // after `request` has been moved into the client.
+        let uri = request.uri().clone();
+        let response = match self.client.request(request).await {
             Ok(r) => r,
             Err(e) if e.is_connect() => {
                 tracing::debug!("Connection error, retrying with backoff (is_connect): {e}");
@@ -606,15 +610,13 @@ impl HttpClient {
                     }
                 }
                 return Err(HttpClientError::Default(format!(
-                    "HTTP request to {} failed: {}",
-                    retry_req.uri(),
+                    "HTTP request to {uri} failed: {}",
                     error_chain(&last_err)
                 )));
             }
             Err(e) => {
                 return Err(HttpClientError::Default(format!(
-                    "HTTP request to {} failed: {}",
-                    retry_req.uri(),
+                    "HTTP request to {uri} failed: {}",
                     error_chain(&e)
                 )));
             }
