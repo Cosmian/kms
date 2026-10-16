@@ -960,6 +960,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| COSMIAN-2026-031 | Moderate | before this branch | Unreleased | `Get`/`Export` Fresh-bit write-back could persist an auto-unwrapped key |
 | COSMIAN-2026-030 | Low      | 4.19.0 – 5.28.0   | 5.29.0   | SetAttribute permits changes to read-only metadata |
 | GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths |
 | GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite |

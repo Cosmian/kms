@@ -86,14 +86,6 @@ pub enum Role {
 }
 
 impl Role {
-    /// Returns the set of [`KmipOperation`]s this role is permitted to invoke at dispatch level.
-    ///
-    /// **Important**: this set is NOT exhaustive of all operations the role may perform.
-    /// Operations without a [`KmipOperation`] variant in the dispatch mapping — specifically
-    /// `CreateKeyPair`, `Register`, `ReKeyKeyPair`, `CreateSplitKey`, and `JoinSplitKey` —
-    /// are gated via [`LIFECYCLE_OPERATION_TAGS`] in the dispatch layer instead, and are
-    /// therefore absent from this set by design. Callers must not assume this set is the
-    /// complete permission boundary.
     /// Checks whether this role is permitted to invoke the given [`KmipOperation`] at dispatch level.
     ///
     /// Zero heap allocations. See [`Self::allowed_operations`] for semantic details.
@@ -404,4 +396,28 @@ pub struct CreatePermissionResponse {
 #[derive(Serialize)]
 pub struct PrivilegedAccessResponse {
     pub has_privileged_access: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KmipOperation, Role};
+
+    /// `allows` is a hand-written `matches!` kept allocation-free for the dispatch hot path;
+    /// it must never drift from the reference set returned by `allowed_operations`.
+    #[test]
+    fn role_allows_matches_allowed_operations() {
+        for role in [Role::Operator, Role::CryptoOfficer] {
+            let allowed = role.allowed_operations();
+            for repr in 0..=u8::MAX {
+                let Some(op) = KmipOperation::from_repr(repr) else {
+                    continue;
+                };
+                assert_eq!(
+                    role.allows(op),
+                    allowed.contains(&op),
+                    "{role:?} / op #{repr}"
+                );
+            }
+        }
+    }
 }
