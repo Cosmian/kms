@@ -9,9 +9,10 @@
 ## Documentation
 
 - Database configuration page: remove the non-working MySQL `--mysql-user-cert-file` example (use `ssl-client-identity` in the database URL instead), fix the migration table name (`parameters`), fix heading levels and admonition rendering, and keep a single Redis section ([#1136](https://github.com/Cosmian/kms/issues/1136))
-- Home page: list every integration instead of duplicated entries and `...`
+- Home page: list every integration instead of duplicated entries and `...` ([#1226](https://github.com/Cosmian/kms/issues/1226))
 
 ---
 
 Closes #1207
+Closes #1226
 Closes #1136
