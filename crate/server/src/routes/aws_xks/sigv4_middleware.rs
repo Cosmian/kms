@@ -19,14 +19,8 @@ use actix_web::{
     Error,
     body::{BoxBody, EitherBody},
     dev::{Payload, Service, ServiceRequest, ServiceResponse, Transform},
-    error::InternalError,
-    http::StatusCode,
 };
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::Get,
-    kmip_types::{KeyFormatType, UniqueIdentifier},
-};
 use cosmian_logger::debug;
 use futures::{
     Future, StreamExt,
@@ -38,11 +32,9 @@ use scratchstack_aws_signature::{
 };
 use tokio::sync::Semaphore;
 use url::form_urlencoded;
-use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,
-    middlewares::UserId,
     routes::aws_xks::error::{XksErrorName, XksErrorReply},
 };
 
@@ -470,48 +462,6 @@ fn to_http_request(
     })?;
 
     Ok(http_request)
-}
-
-/// Retrieves the AWS XKS sigv4 signing key from the KMS server
-#[allow(dead_code)]
-async fn get_aws_key(
-    kms_server: &Arc<KMS>,
-    sigv4_access_key_id: &str,
-    sigv4_access_key_user: &str,
-) -> Result<Zeroizing<Vec<u8>>, actix_web::error::InternalError<String>> {
-    kms_server
-        .get(
-            Get {
-                unique_identifier: Some(UniqueIdentifier::TextString(
-                    sigv4_access_key_id.to_owned(),
-                )),
-                key_format_type: Some(KeyFormatType::Raw),
-                ..Default::default()
-            },
-            &UserId::from(sigv4_access_key_user),
-        )
-        .await
-        .map_err(|e| {
-            InternalError::new(
-                format!("Failed to get AWS XKS sigv4 key from KMS: {e:?}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        })?
-        .object
-        .key_block()
-        .map_err(|e| {
-            InternalError::new(
-                format!("Failed to get AWS XKS sigv4 key block from KMS: {e:?}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        })?
-        .secret_data_bytes()
-        .map_err(|e| {
-            InternalError::new(
-                format!("Failed to get AWS XKS sigv4 key bytes from KMS: {e:?}"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        })
 }
 
 #[cfg(test)]

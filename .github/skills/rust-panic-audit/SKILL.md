@@ -95,6 +95,18 @@ rg -n '\[\s*[a-z_][a-zA-Z0-9_]*\s*\]' --type rust ${SCOPE} \
   | grep -v 'cfg\|macro\|derive\|//\|test'
 ```
 
+### Optional: shrink wide-scope hit lists
+
+When `omp-jev-tools` is installed (OMP only — not available in VS Code
+Copilot Chat, Copilot CLI, or Copilot Cloud Agent) and Pass C, G, or H
+returns more hits than fit a manual pass, rerank each hit with `jev_rerank`:
+`query` is the pass's own heading text (e.g. "Direct slice indexing on
+non-literal indices"), one candidate per hit (`id` = `path:line`, `text` =
+the matched line plus two lines of context), keep only the top half by
+relevance before Step 3. Never apply this to Pass A, B, D, E, or F — every
+hit from those passes must still reach Step 3. Without the tool, review
+every hit from every pass.
+
 ---
 
 ## Step 3 — Classify findings

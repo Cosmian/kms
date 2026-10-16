@@ -39,12 +39,13 @@ Apply this path → rule mapping to the detected file list:
 | `crate/server_database/**` | **4.18** |
 | `crate/server/src/middlewares/**` or `crate/server/src/config/wizard/auth_wizard.rs` | **4.9** |
 | `test_data/vectors/**` or `crate/test_kms_server/**` | verify 4.10 completeness |
-| `Cargo.lock` or `ui/pnpm-lock.yaml` | **4.11** |
+| `Cargo.lock` or `ui/pnpm-lock.yaml` | **4.11**, 4.19 |
 | `crate/server/src/routes/aws_xks/**` or `azure_ekm/**` or `google_cse/**` or `ms_dke/**` | **4.12**, 4.10 |
 | `crate/hsm/**` | **4.13** |
 | `documentation/**` or `README.md` | **4.14** |
 | `ui/tests/e2e/**` | **4.16** |
 | `crate/crypto/build.rs` | **4.17** |
+| `**/Cargo.toml`, `supply-chain/**`, `deny.toml`, `.cargo/audit.toml`, `ui/package.json`, `crate/clients/wasm/package.json`, `**/requirements*.in`, `**/requirements*.txt`, `**/go.mod`, `**/go.sum`, `**/Dockerfile*`, `.github/dependabot.yml` (dependency added, bumped or re-sourced), or a submodule gitlink (`authentication`, `documentation/theme`, `kmip`, `test_data`, `.github/reusable_scripts`) | **4.19** |
 
 > **Instruction files are normative.** Every rule below except **4.8** has a corresponding
 > `.github/instructions/*.instructions.md` file with an `applyTo` frontmatter — that file is the
@@ -58,6 +59,15 @@ Additional heuristic checks:
 - If `crate/clients/ckms/src/commands.rs` changed → add **4.15**
 - If `crate/server/src/start_kms_server.rs` changed → verify 4.1, 4.2, 4.8, 4.9 as applicable
 - If any changed file is in `crate/server/src/middlewares/`, `crate/server/src/core/operations/`, or `crate/crypto/src/` **and** the change fixes a security bug → remind: **update `SECURITY.md`** with a `COSMIAN-YYYY-NNN` entry (run `/security-review` to generate it)
+- If a changed file under `.github/workflows/`, `.github/actions/` or `.mise/` adds or changes a `uses:` reference, a tool install (`cargo install`, `go install`, `pip install`, `npm install -g`) or a `curl`/`wget` download → add **4.19**
+- Changed path matches no pattern in the table above and `omp-jev-tools` is
+  installed (OMP only — not available in VS Code Copilot Chat, Copilot CLI,
+  or Copilot Cloud Agent): call `jev_route` with `options` set to the
+  sub-rule numbers from the table (one short description per rule) to get a
+  candidate rule plus an ACT/CONFIRM/ESCALATE gate. Treat ACT as a candidate
+  to verify manually before emitting it; treat CONFIRM or ESCALATE as a
+  reason to ask the user which rule applies instead of guessing. Without the
+  tool, ask the user directly.
 
 ## Step 3 — Emit the Applicable Checklist
 
@@ -90,6 +100,7 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 | 4.16 | E2E test documentation | `ui/tests/e2e/**` | `playwright.instructions.md` |
 | 4.17 | OpenSSL version updates | `crate/crypto/build.rs` | `openssl-build.instructions.md` |
 | 4.18 | Database schema/backend ⇔ docs | `crate/server_database/**` | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`) |
+| 4.19 | Third-party dependencies ⇔ supply-chain gates (#1265) | dependency manifests and lock files, `supply-chain/**`, `**/Dockerfile*`, workflow `uses:`/tool installs, submodule bumps | `dependencies.instructions.md` |
 
 ### Rule 4.8 — Non-FIPS gating across the stack
 

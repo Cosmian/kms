@@ -6,8 +6,9 @@ use cosmian_kms_client::{
     cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
     kmip_2_1::{kmip_types::UniqueIdentifier, requests::import_object_request},
     read_bytes_from_file,
-    reexport::cosmian_kms_client_utils::import_utils::{
-        ImportKeyFormat, KeyUsage, prepare_key_import_elements,
+    reexport::cosmian_kms_client_utils::{
+        import_utils::{ImportKeyFormat, KeyMaterialSource, KeyUsage, prepare_key_import_elements},
+        locate_utils::ObjectLinkIds,
     },
 };
 
@@ -17,8 +18,7 @@ use crate::{actions::console, error::result::KmsCliResult};
 ///
 /// When no unique ID is specified, a unique ID is generated.
 ///
-/// By default, the format is expected to be JSON TTLV but
-/// other formats can be specified with the `-f` option.
+/// By default, the format is expected to be JSON TTLV but other formats can be specified with the `-f` option.
 ///   * json-ttlv (the default)
 ///   * pem (PKCS#1, PKCS#8, SEC1): the function will attempt to detect the type of key and key format
 ///   * sec1: an elliptic curve private key in SEC1 DER format (NIST curves only - SECG SEC1-v2 #C.4)
@@ -27,6 +27,7 @@ use crate::{actions::console, error::result::KmsCliResult};
 ///   * pkcs8: an RSA or Elliptic Curve private key in PKCS#8 DER format (RFC 5208 and 5958)
 ///   * aes: the bytes of an AES symmetric key
 ///   * chacha20: the bytes of a `ChaCha20` symmetric key
+///   * pgp: a `GnuPG`/`OpenPGP` transferable public key or unprotected secret key in ASCII armor or binary form
 ///
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Default, Debug)]
@@ -41,7 +42,8 @@ pub struct ImportSecretDataOrKeyAction {
     #[clap(required = false)]
     pub(crate) key_id: Option<String>,
 
-    /// The format of the key.
+    /// The input format. `pgp` accepts `GnuPG` transferable public or secret keys in
+    /// binary or ASCII-armored form.
     #[clap(long, short = 'f', default_value = "json-ttlv")]
     pub(crate) key_format: ImportKeyFormat,
 
@@ -119,11 +121,15 @@ impl ImportSecretDataOrKeyAction {
         let (object, import_attributes) = prepare_key_import_elements(
             vendor_id,
             &self.key_usage,
-            &self.key_format,
-            key_bytes,
-            &self.certificate_id,
-            &self.private_key_id,
-            &self.public_key_id,
+            KeyMaterialSource {
+                format: &self.key_format,
+                bytes: key_bytes,
+            },
+            &ObjectLinkIds {
+                certificate_id: self.certificate_id.clone(),
+                private_key_id: self.private_key_id.clone(),
+                public_key_id: self.public_key_id.clone(),
+            },
             self.wrapping_key_id.as_ref(),
         )?;
         let object_type: ObjectType = object.object_type();

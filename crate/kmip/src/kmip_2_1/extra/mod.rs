@@ -10,3 +10,5 @@ pub use tagging::VENDOR_ID_COSMIAN;
 
 /// The vendor attribute name to use for x.509 extensions
 pub const VENDOR_ATTR_X509_EXTENSION: &str = "x509-extension";
+/// Vendor attribute carrying the `OpenPGP` User ID packet content for Create.
+pub const VENDOR_ATTR_PGP_USER_ID: &str = "pgp-user-id";

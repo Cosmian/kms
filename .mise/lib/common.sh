@@ -252,8 +252,8 @@ wait_for_port() {
   local start now
   start=$(date +%s)
   while true; do
-    if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then
-      exec 3>&- 3<&-
+    # Bound each probe: a connect to a blackholed route (e.g. a VPN still coming up) blocks for minutes.
+    if timeout 2 bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
       return 0
     fi
     now=$(date +%s)

@@ -455,7 +455,7 @@ VENV_DIR="$(mktemp -d -t jose-interop-venv-XXXXXX)"
 python3 -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
-pip install --quiet -r "${SCRIPT_DIR}/requirements-jose.txt"
+pip install --quiet --require-hashes -r "${SCRIPT_DIR}/requirements-jose.txt"
 
 python3 "${HELPER}" --help >/dev/null 2>&1 || {
   echo "ERROR: jose_interop_helper.py failed to load" >&2

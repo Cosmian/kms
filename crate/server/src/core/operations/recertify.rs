@@ -195,7 +195,7 @@ impl RekeyOperation for CertificateRekey {
         let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
         // Build and sign the new certificate
         let (certificate_object, tags, attributes) = build_and_sign_certificate(
-            kms.vendor_id(),
+            kms,
             &issuer,
             &subject,
             certify_request,
@@ -265,15 +265,15 @@ impl RekeyOperation for CertificateRekey {
         Ok(())
     }
 
-    async fn rewrap_new_objects(
+    fn rewrap_new_objects(
         &self,
         _kms: &KMS,
         _user: &UserId,
         _replacements: &mut [ReplacementObject; 1],
         _wrap_specs: &[Option<KeyWrappingSpecification>],
-    ) -> KResult<()> {
-        // Certificates are never wrapped — no-op.
-        Ok(())
+    ) -> impl Future<Output = KResult<()>> {
+        // Certificates are never wrapped — no-op, hence an already-completed future.
+        std::future::ready(Ok(()))
     }
 
     async fn finalize_dependants(

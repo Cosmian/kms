@@ -571,6 +571,6 @@ mod tests {
     #[test]
     fn string_or_vec_defaults_to_empty() {
         let h: Holder = serde_json::from_str("{}").unwrap();
-        assert!(h.values.is_empty());
+        assert_eq!(h.values.len(), 0);
     }
 }

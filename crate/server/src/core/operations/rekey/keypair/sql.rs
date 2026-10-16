@@ -135,75 +135,13 @@ impl RekeyOperation for SqlKeypairRekeyer {
         ])
     }
 
-    async fn generate_replacement(
+    fn generate_replacement(
         &self,
         kms: &KMS,
         candidates: &[RotationCandidate; 2],
-    ) -> KResult<[ReplacementObject; 2]> {
-        let [sk_candidate, pk_candidate] = candidates;
-
-        let common_attrs = sk_candidate
-            .owm
-            .attributes()
-            .clean_for_generation(kms.vendor_id());
-        let new_sk_uid = UniqueIdentifier::rotation_successor(
-            sk_candidate.owm.attributes().rotate_name.as_deref(),
-            sk_candidate.owm.attributes().rotate_generation,
-        );
-        // The public key UID always mirrors the private key UID with the "_pk" suffix.
-        let new_pk_uid = format!("{new_sk_uid}_pk");
-
-        // Propagate the CryptographicUsageMask from the old keys so that
-        // FIPS-mode key-pair generators receive the required mask value.
-        let resolve_mask = |owm: &ObjectWithMetadata| {
-            owm.attributes().cryptographic_usage_mask.or_else(|| {
-                owm.object()
-                    .attributes()
-                    .ok()
-                    .and_then(|a| a.cryptographic_usage_mask)
-            })
-        };
-        let sk_mask = resolve_mask(&sk_candidate.owm);
-        let pk_mask = resolve_mask(&pk_candidate.owm);
-        let private_key_attributes = sk_mask.map(|m| Attributes {
-            cryptographic_usage_mask: Some(m),
-            ..Attributes::default()
-        });
-        let public_key_attributes = pk_mask.map(|m| Attributes {
-            cryptographic_usage_mask: Some(m),
-            ..Attributes::default()
-        });
-
-        let create_kp_request = CreateKeyPair {
-            common_attributes: Some(common_attrs),
-            private_key_attributes,
-            public_key_attributes,
-            common_protection_storage_masks: None,
-            private_protection_storage_masks: None,
-            public_protection_storage_masks: None,
-        };
-
-        let key_pair =
-            generate_key_pair(kms.vendor_id(), create_kp_request, &new_sk_uid, &new_pk_uid)?;
-
-        Ok([
-            ReplacementObject {
-                new_uid: new_sk_uid,
-                old_uid: sk_candidate.uid.clone(),
-                object: key_pair.private_key().to_owned(),
-                attributes: Attributes::default(), // filled in prepare_attributes
-                tags: HashSet::new(),              // filled in prepare_attributes
-                rewrap_to: None,                   // private keys are not wrapping keys
-            },
-            ReplacementObject {
-                new_uid: new_pk_uid,
-                old_uid: pk_candidate.uid.clone(),
-                object: key_pair.public_key().to_owned(),
-                attributes: Attributes::default(), // filled in prepare_attributes
-                tags: HashSet::new(),              // filled in prepare_attributes
-                rewrap_to: None,                   // set in prepare_attributes
-            },
-        ])
+    ) -> impl Future<Output = KResult<[ReplacementObject; 2]>> {
+        // Key-pair generation is synchronous CPU work: no suspension point is needed.
+        std::future::ready(Self::build_replacement(kms, candidates))
     }
 
     fn prepare_attributes(
@@ -270,5 +208,83 @@ impl RekeyOperation for SqlKeypairRekeyer {
             private_key_unique_identifier: UniqueIdentifier::TextString(sk_rep.new_uid.clone()),
             public_key_unique_identifier: UniqueIdentifier::TextString(pk_rep.new_uid.clone()),
         }
+    }
+}
+
+impl SqlKeypairRekeyer {
+    /// Generates the replacement key pair (synchronous CPU work).
+    fn build_replacement(
+        kms: &KMS,
+        candidates: &[RotationCandidate; 2],
+    ) -> KResult<[ReplacementObject; 2]> {
+        let [sk_candidate, pk_candidate] = candidates;
+
+        let common_attrs = sk_candidate
+            .owm
+            .attributes()
+            .clean_for_generation(kms.vendor_id());
+        let new_sk_uid = UniqueIdentifier::rotation_successor(
+            sk_candidate.owm.attributes().rotate_name.as_deref(),
+            sk_candidate.owm.attributes().rotate_generation,
+        );
+        // The public key UID always mirrors the private key UID with the "_pk" suffix.
+        let new_pk_uid = format!("{new_sk_uid}_pk");
+
+        // Propagate the CryptographicUsageMask from the old keys so that
+        // FIPS-mode key-pair generators receive the required mask value.
+        let resolve_mask = |owm: &ObjectWithMetadata| {
+            owm.attributes().cryptographic_usage_mask.or_else(|| {
+                owm.object()
+                    .attributes()
+                    .ok()
+                    .and_then(|a| a.cryptographic_usage_mask)
+            })
+        };
+        let sk_mask = resolve_mask(&sk_candidate.owm);
+        let pk_mask = resolve_mask(&pk_candidate.owm);
+        let private_key_attributes = sk_mask.map(|m| Attributes {
+            cryptographic_usage_mask: Some(m),
+            ..Attributes::default()
+        });
+        let public_key_attributes = pk_mask.map(|m| Attributes {
+            cryptographic_usage_mask: Some(m),
+            ..Attributes::default()
+        });
+
+        let create_kp_request = CreateKeyPair {
+            common_attributes: Some(common_attrs),
+            private_key_attributes,
+            public_key_attributes,
+            common_protection_storage_masks: None,
+            private_protection_storage_masks: None,
+            public_protection_storage_masks: None,
+        };
+
+        let key_pair = generate_key_pair(
+            kms.vendor_id(),
+            create_kp_request,
+            &new_sk_uid,
+            &new_pk_uid,
+            &kms.rng,
+        )?;
+
+        Ok([
+            ReplacementObject {
+                new_uid: new_sk_uid,
+                old_uid: sk_candidate.uid.clone(),
+                object: key_pair.private_key().to_owned(),
+                attributes: Attributes::default(), // filled in prepare_attributes
+                tags: HashSet::new(),              // filled in prepare_attributes
+                rewrap_to: None,                   // private keys are not wrapping keys
+            },
+            ReplacementObject {
+                new_uid: new_pk_uid,
+                old_uid: pk_candidate.uid.clone(),
+                object: key_pair.public_key().to_owned(),
+                attributes: Attributes::default(), // filled in prepare_attributes
+                tags: HashSet::new(),              // filled in prepare_attributes
+                rewrap_to: None,                   // set in prepare_attributes
+            },
+        ])
     }
 }

@@ -28,7 +28,7 @@ impl CsiProviderConfig {
         let content = std::fs::read_to_string(path).map_err(|e| {
             crate::error::CsiProviderError::Config(format!("cannot read {path}: {e}"))
         })?;
-        serde_yaml::from_str(&content).map_err(|e| {
+        serde_saphyr::from_str(&content).map_err(|e| {
             crate::error::CsiProviderError::Config(format!("invalid YAML in {path}: {e}"))
         })
     }

@@ -28,9 +28,11 @@ use std::{
 
 use cosmian_logger::{debug, trace, warn};
 use pkcs11_sys::{
-    CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_ULONG,
-    CK_ULONG_PTR,
+    CK_BYTE_PTR, CK_FLAGS, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_PROFILE_ID, CK_SESSION_HANDLE,
+    CK_ULONG, CK_ULONG_PTR, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
+    CKP_PUBLIC_CERTIFICATES_TOKEN,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     MResultHelper, ModuleError, ModuleResult,
@@ -40,8 +42,43 @@ use crate::{
         object::{Object, ObjectType},
     },
     objects_store::{OBJECTS_STORE, ObjectsStore},
-    traits::{DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, backend},
+    profiling::{self, SignPhase},
+    traits::{
+        DecryptContext, EncryptContext, KeyAlgorithm, MessageEncryptionOutput, PendingSignature,
+        SearchOptions, SignContext, SignOperation, VerifyContext, backend, use_pin_as_access_token,
+    },
 };
+
+/// PKCS#11 v3.1 conformance profiles ([OASIS PKCS#11 Profiles v3.1]) that this module
+/// self-declares via `CKO_PROFILE` objects returned by `C_FindObjects`.
+///
+/// - `CKP_BASELINE_PROVIDER`: mandatory Session and Object Management functions.
+/// - `CKP_EXTENDED_PROVIDER`: Baseline plus `C_GetMechanismList`/`C_GetMechanismInfo` and
+///   `C_Login`/`C_LoginUser`/`C_Logout` — satisfied now that `C_LoginUser` is implemented.
+/// - `CKP_AUTHENTICATION_TOKEN`: Baseline plus asymmetric key pairs usable for
+///   challenge/response authentication — satisfied by the existing private-key signing
+///   support.
+/// - `CKP_PUBLIC_CERTIFICATES_TOKEN`: Baseline plus `CKO_CERTIFICATE` objects discoverable
+///   without login — satisfied by the existing certificate support, **except** in
+///   OIDC-pin-as-access-token mode: there, `C_Logout` clears the registered backend (see
+///   `traits::backend::clear_backend`), so `find_all_certificates()` starts returning
+///   `UserNotLoggedIn` for the remainder of the session and the "discoverable without
+///   login" guarantee would no longer hold. This profile is therefore omitted while that
+///   mode is active.
+///
+/// `CKP_COMPLETE_PROVIDER` is intentionally NOT declared: it additionally requires
+/// `C_WrapKey`/`C_UnwrapKey`/`C_DeriveKey` and digest mechanisms that are not implemented.
+fn supported_profiles() -> Vec<CK_PROFILE_ID> {
+    let mut profiles = vec![
+        CKP_BASELINE_PROVIDER,
+        CKP_EXTENDED_PROVIDER,
+        CKP_AUTHENTICATION_TOKEN,
+    ];
+    if !use_pin_as_access_token() {
+        profiles.push(CKP_PUBLIC_CERTIFICATES_TOKEN);
+    }
+    profiles
+}
 
 /// Prefix used to identify Oracle Key Management (KM) encryption keys.
 /// This prefix is typically used in PKCS#11 object labels or attributes to mark
@@ -78,9 +115,22 @@ static NEXT_SESSION_HANDLE: sync::atomic::AtomicU64 = sync::atomic::AtomicU64::n
 #[cfg(target_os = "windows")]
 static NEXT_SESSION_HANDLE: sync::atomic::AtomicU32 = sync::atomic::AtomicU32::new(1);
 
-type SessionMap = HashMap<CK_SESSION_HANDLE, Session>;
+/// Each session is individually guarded by its own `Mutex` (instead of the whole map
+/// being behind one lock) so that a slow, blocking operation on one session — e.g.
+/// `C_Sign`/`C_Verify`/`C_Encrypt`/`C_Decrypt`, all of which round-trip synchronously
+/// to the remote KMS server via `RUNTIME.block_on(...)` — never blocks operations on
+/// *other* sessions. Only [`session`]'s brief `Arc` clone (no I/O) touches the
+/// per-session lock while the outer map lock is held; the actual (potentially slow)
+/// callback runs after the outer lock has already been released.
+type SessionMap = HashMap<CK_SESSION_HANDLE, Arc<sync::Mutex<Session>>>;
 
-static SESSIONS: std::sync::LazyLock<sync::Mutex<SessionMap>> =
+/// `RwLock`, not `Mutex`: [`session`]/[`exists`]/[`flags`] only ever need to *read*
+/// this map (to clone an `Arc` or check/read a key), and are called on every single
+/// Cryptoki operation; only [`create`]/[`close`]/[`close_all`] mutate it, and do so
+/// far less often (once per `C_OpenSession`/`C_CloseSession`). Letting readers run
+/// concurrently keeps session lookup itself from becoming a second global
+/// bottleneck now that the per-session `Mutex` above no longer is one.
+static SESSIONS: std::sync::LazyLock<sync::RwLock<SessionMap>> =
     std::sync::LazyLock::new(Default::default);
 
 #[derive(Default)]
@@ -90,11 +140,34 @@ pub(crate) struct Session {
     /// and that have not yet been read by `C_FindObjects`
     pub find_objects_ctx: Vec<CK_OBJECT_HANDLE>,
     pub sign_ctx: Option<SignContext>,
+    pub verify_ctx: Option<VerifyContext>,
     pub decrypt_ctx: Option<DecryptContext>,
     pub encrypt_ctx: Option<EncryptContext>,
+    /// Whether the active encrypt context came from `C_MessageEncryptInit`.
+    pub message_encrypt_active: bool,
+    /// Whether the active decrypt context came from `C_MessageDecryptInit`.
+    pub message_decrypt_active: bool,
 }
 
 impl Session {
+    fn fixed_signature_len(sign_ctx: &SignContext) -> Option<usize> {
+        match (&sign_ctx.algorithm, sign_ctx.private_key.algorithm()) {
+            (crate::traits::SignatureAlgorithm::EdDsa, KeyAlgorithm::Ed25519) => Some(64),
+            (crate::traits::SignatureAlgorithm::EdDsa, KeyAlgorithm::Ed448) => Some(114),
+            (
+                crate::traits::SignatureAlgorithm::RsaRaw
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Raw
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha1
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha256
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha384
+                | crate::traits::SignatureAlgorithm::RsaPkcs1v15Sha512
+                | crate::traits::SignatureAlgorithm::RsaPss { .. },
+                KeyAlgorithm::Rsa,
+            ) => Some(sign_ctx.private_key.key_size().div_ceil(8)),
+            _ => None,
+        }
+    }
+
     pub(crate) fn update_find_objects_context(
         &mut self,
         object: Arc<Object>,
@@ -130,9 +203,58 @@ impl Session {
 
     pub(crate) fn load_find_context(&mut self, attributes: &Attributes) -> ModuleResult<()> {
         if attributes.is_empty() {
-            return Err(ModuleError::BadArguments(
-                "load_find_context: empty attributes".to_owned(),
-            ));
+            // A NULL/empty search template is spec-valid and means "match
+            // every object visible in this session" (e.g. `pkcs11-tool -O`
+            // with no filters calls `C_FindObjectsInit(hSession, NULL, 0)`).
+            // Populate the find context with every object instead of
+            // rejecting the call.
+            self.clear_find_objects_ctx();
+            for object in backend()?.find_all_objects()? {
+                self.update_find_objects_context(object)?;
+            }
+            return Ok(());
+        }
+        if attributes
+            .get(crate::core::attribute::AttributeType::ProfileId)
+            .is_some()
+        {
+            // A template combining `CKA_PROFILE_ID` with an explicit, *different*
+            // `CKA_CLASS` (e.g. `CKO_PRIVATE_KEY`) asks for an object that is
+            // simultaneously a profile object and something else: no object in this
+            // module's model ever satisfies both (profile objects carry no other
+            // class-identifying attributes, and non-profile objects never carry
+            // `CKA_PROFILE_ID`), so it correctly yields no matches instead of being
+            // incorrectly routed to the profile-only fast path below, which would
+            // otherwise ignore the requested class and any other template attributes
+            // entirely.
+            match attributes.get_class() {
+                Ok(class) if class != pkcs11_sys::CKO_PROFILE => {
+                    self.clear_find_objects_ctx();
+                    return Ok(());
+                }
+                _ => return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE),
+            }
+        }
+        if attributes
+            .get(crate::core::attribute::AttributeType::ProfileId)
+            .is_some()
+        {
+            // A template combining `CKA_PROFILE_ID` with an explicit, *different*
+            // `CKA_CLASS` (e.g. `CKO_PRIVATE_KEY`) asks for an object that is
+            // simultaneously a profile object and something else: no object in this
+            // module's model ever satisfies both (profile objects carry no other
+            // class-identifying attributes, and non-profile objects never carry
+            // `CKA_PROFILE_ID`), so it correctly yields no matches instead of being
+            // incorrectly routed to the profile-only fast path below, which would
+            // otherwise ignore the requested class and any other template attributes
+            // entirely.
+            match attributes.get_class() {
+                Ok(class) if class != pkcs11_sys::CKO_PROFILE => {
+                    self.clear_find_objects_ctx();
+                    return Ok(());
+                }
+                _ => return self.load_find_context_by_class(attributes, pkcs11_sys::CKO_PROFILE),
+            }
         }
         // Find all objects
         for object in backend()?.find_all_objects()? {
@@ -143,16 +265,24 @@ impl Session {
         if let Ok(search_class) = search_class {
             self.load_find_context_by_class(attributes, search_class)
         } else {
-            let label = attributes.get_label()?;
-            let label = Self::map_oracle_tde_security_to_mk(&label)?;
+            // Try CKA_LABEL first (legacy), then CKA_ID (new generic API)
+            let label_or_id = attributes
+                .get_label()
+                .map(|label| String::from_utf8_lossy(&label.into_bytes()).into_owned())
+                .or_else(|_| {
+                    attributes
+                        .get_id()
+                        .map(|id| String::from_utf8_lossy(&id).into_owned())
+                })?;
+            let label_or_id = Self::map_oracle_tde_security_to_mk(&label_or_id)?;
             let find_ctx = OBJECTS_STORE.read()?;
             debug!(
-                "load_find_context: loading for label: {label:?} and attributes: {attributes:?}"
+                "load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}"
             );
             debug!("load_find_context: display current store: {find_ctx}");
-            if let Some((object, handle)) = find_ctx.get_using_id(&label) {
+            if let Some((object, handle)) = find_ctx.get_using_id(&label_or_id) {
                 debug!(
-                    "load_find_context: search by id: {label} -> handle: {} -> object: {}: {}",
+                    "load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}",
                     handle,
                     object.name(),
                     object.remote_id()
@@ -160,7 +290,7 @@ impl Session {
                 self.clear_find_objects_ctx();
                 self.add_to_find_objects_ctx(handle);
             } else {
-                warn!("load_find_context: id {label} not found in store");
+                warn!("load_find_context: id {label_or_id} not found in store");
                 self.clear_find_objects_ctx();
                 return Ok(());
             }
@@ -231,28 +361,72 @@ impl Session {
                         // cannot be fetched (e.g. old SecretData objects in unexpected state).
                         // Using the local store avoids that fragility entirely.
                         let label_filter = attributes.get_label().ok();
-                        let find_ctx = OBJECTS_STORE.read()?;
-                        let data_objects = find_ctx.get_using_type(&ObjectType::DataObject);
-                        debug!(
-                            "CKO_DATA search: label_filter={:?}, store has {} DataObjects",
-                            label_filter,
-                            data_objects.len()
-                        );
+                        let matched: Vec<(String, CK_OBJECT_HANDLE)> = {
+                            let find_ctx = OBJECTS_STORE.read()?;
+                            let data_objects = find_ctx.get_using_type(&ObjectType::DataObject);
+                            debug!(
+                                "CKO_DATA search: label_filter={:?}, store has {} DataObjects",
+                                label_filter,
+                                data_objects.len()
+                            );
+                            data_objects
+                                .into_iter()
+                                .filter_map(|(object, handle)| {
+                                    if let Object::DataObject(data) = &*object {
+                                        if label_filter
+                                            .as_ref()
+                                            .is_none_or(|l| data.remote_id() == *l)
+                                        {
+                                            return Some((data.remote_id().to_owned(), handle));
+                                        }
+                                    }
+                                    None
+                                })
+                                .collect()
+                        };
                         let mut result = vec![];
-                        for (object, handle) in data_objects {
-                            if let Object::DataObject(data) = &*object {
-                                if label_filter.as_ref().is_none_or(|l| data.remote_id() == *l) {
-                                    debug!(
-                                        "CKO_DATA match: remote_id={}, handle={}",
-                                        data.remote_id(),
-                                        handle
+                        for (remote_id, handle) in matched {
+                            debug!("CKO_DATA match: remote_id={remote_id}, handle={handle}");
+                            // The store entry may be a metadata-only stub (e.g. built by the
+                            // generic bulk-listing scan, with an empty CKA_VALUE) - refresh it
+                            // with a full KMS fetch so CKA_VALUE is populated, replacing the
+                            // stub at the same handle (upsert semantics). The read lock above
+                            // is dropped before this call to avoid deadlocking on the write
+                            // lock taken by `update_find_objects_context`.
+                            match backend()?.find_data_object(SearchOptions::Id(remote_id.clone()))
+                            {
+                                Ok(Some(full_data)) => {
+                                    self.update_find_objects_context(Arc::new(
+                                        Object::DataObject(full_data),
+                                    ))?;
+                                }
+                                Ok(None) => {
+                                    warn!(
+                                        "CKO_DATA search: full fetch for {remote_id} returned no \
+                                         object, keeping cached stub"
                                     );
-                                    self.find_objects_ctx.push(handle);
-                                    result.push(handle);
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "CKO_DATA search: failed to refresh {remote_id} from \
+                                         KMS: {e}, keeping cached stub"
+                                    );
                                 }
                             }
+                            self.find_objects_ctx.push(handle);
+                            result.push(handle);
                         }
                         result
+                    }
+                    pkcs11_sys::CKO_PROFILE => {
+                        // Profile objects are static/local: no KMIP round-trip needed, the
+                        // module self-declares which OASIS conformance profiles it satisfies.
+                        supported_profiles()
+                            .into_iter()
+                            .map(|id| {
+                                self.update_find_objects_context(Arc::new(Object::Profile(id)))
+                            })
+                            .collect::<ModuleResult<Vec<_>>>()?
                     }
                     o => return Err(ModuleError::Todo(format!("Object not supported: {o}"))),
                 };
@@ -304,6 +478,7 @@ impl Session {
                     // base UID (`<base>`), so the suffix is stripped before lookup.
                     let resolved = Self::resolve_object_by_class(&find_ctx, &id, search_class);
                     if let Some((object, handle)) = resolved {
+                        drop(find_ctx);
                         debug!(
                             "load_find_context_by_class: search by id: {} -> handle: {} -> \
                              object: {}:{}",
@@ -312,6 +487,34 @@ impl Session {
                             object.name(),
                             object.remote_id()
                         );
+                        // `find_all_objects` (called from `load_find_context`) only
+                        // populates the store with lightweight, metadata-only public
+                        // key stubs (no raw key bytes), to avoid a KMIP export
+                        // round-trip for every object during a bulk scan. A direct
+                        // by-id lookup (e.g. `--read-object -d <id>`) needs the real
+                        // key material for attributes such as CKA_MODULUS,
+                        // CKA_PUBLIC_EXPONENT, CKA_EC_POINT and CKA_VALUE, so refresh
+                        // the store with a fully-fetched object here, replacing the
+                        // stub at the same handle.
+                        let handle = if search_class == pkcs11_sys::CKO_PUBLIC_KEY {
+                            match backend()?.find_public_key(SearchOptions::Id(object.remote_id()))
+                            {
+                                Ok(full_pk) => self.update_find_objects_context(Arc::new(
+                                    Object::PublicKey(full_pk),
+                                ))?,
+                                Err(e) => {
+                                    warn!(
+                                        "load_find_context_by_class: failed to refresh public \
+                                         key {} with full key material: {e}, using cached \
+                                         (metadata-only) object",
+                                        object.remote_id()
+                                    );
+                                    handle
+                                }
+                            }
+                        } else {
+                            handle
+                        };
                         self.clear_find_objects_ctx();
                         self.add_to_find_objects_ctx(handle);
                     } else if search_class == pkcs11_sys::CKO_PRIVATE_KEY {
@@ -357,6 +560,12 @@ impl Session {
                         );
                         self.clear_find_objects_ctx();
                     }
+                }
+            }
+            SearchOptions::ProfileId(id) => {
+                self.clear_find_objects_ctx();
+                if search_class == pkcs11_sys::CKO_PROFILE && supported_profiles().contains(&id) {
+                    self.update_find_objects_context(Arc::new(Object::Profile(id)))?;
                 }
             }
         }
@@ -434,33 +643,183 @@ impl Session {
         let Some(sign_ctx) = self.sign_ctx.as_mut() else {
             return Err(ModuleError::OperationNotInitialized(0));
         };
+        if sign_ctx.operation != SignOperation::Classic {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
+            if pSignature.is_null() {
+                // A PKCS#11 length query must leave the operation initialized for
+                // the subsequent buffer-filling call. EdDSA and RSA signature sizes
+                // are fixed by the key, so no remote KMS Sign is needed to answer it.
+                unsafe {
+                    *pulSignatureLen = signature_len.try_into()?;
+                }
+                return Ok(());
+            }
+            if unsafe { usize::try_from(*pulSignatureLen)? } < signature_len {
+                // The required size is known without signing; report it and keep the
+                // operation initialized so the caller can retry with a larger buffer.
+                unsafe {
+                    *pulSignatureLen = signature_len.try_into()?;
+                }
+                return Err(ModuleError::BufferTooSmall);
+            }
+        }
         let data = data
             .or(sign_ctx.payload.as_deref())
             .ok_or(ModuleError::OperationNotInitialized(0))?;
-        let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
-            Ok(sig) => sig,
-            Err(e) => {
-                return Err(ModuleError::BadArguments(format!(
-                    "signature failed: {e:?}"
-                )));
-            }
+        // Variable-length algorithms (currently ECDSA) must sign to discover
+        // the exact encoded length. The signature produced on the first call that
+        // reaches this point (whether a NULL-buffer length query or a direct
+        // one-call C_Sign) is cached in `pending_signature` and reused by every
+        // subsequent call for this same operation. Re-signing on a later call
+        // would risk a different-length DER signature (ECDSA's leading-zero
+        // bytes in r/s vary from signature to signature), which would make the
+        // length reported by an earlier query call inconsistent with the bytes
+        // actually produced later - causing a spurious CKR_BUFFER_TOO_SMALL on
+        // the caller's second, real-buffer call.
+        let cached = sign_ctx
+            .pending_signature
+            .as_ref()
+            .filter(|pending| pending.data == data)
+            .map(|pending| pending.signature.clone());
+        let signature = if let Some(cached) = cached {
+            cached
+        } else {
+            let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
+            let signature = match sign_ctx.private_key.sign(&sign_ctx.algorithm, data) {
+                Ok(sig) => sig,
+                Err(e) => {
+                    // Per the PKCS#11 spec, any C_Sign/C_SignFinal failure other
+                    // than CKR_BUFFER_TOO_SMALL terminates the active signing
+                    // operation. Leaving `sign_ctx` set here would make every
+                    // subsequent C_SignInit in this session fail spuriously with
+                    // CKR_OPERATION_ACTIVE, even for an unrelated key/mechanism.
+                    self.sign_ctx = None;
+                    return Err(ModuleError::BadArguments(format!(
+                        "signature failed: {e:?}"
+                    )));
+                }
+            };
+            drop(private_key_sign);
+            sign_ctx.pending_signature = Some(PendingSignature {
+                data: data.to_vec(),
+                signature: signature.clone(),
+            });
+            signature
         };
-        if !pSignature.is_null() {
-            // TODO(bweeks): This will cause a second sign call when this function is
-            // called again with an appropriately-sized buffer. Do we really need to
-            // sign twice for ECDSA? Consider storing the signature in the ctx for the next
-            // call.
-            if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
-                return Err(ModuleError::BufferTooSmall);
+        if pSignature.is_null() {
+            unsafe {
+                *pulSignatureLen = signature.len().try_into()?;
             }
-            unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
-                .copy_from_slice(&signature);
-            self.sign_ctx = None;
+            return Ok(());
         }
+        if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
+            // Keep the operation (and the cached signature) initialized so the
+            // caller can retry with a larger buffer using the SAME signature.
+            unsafe {
+                *pulSignatureLen = signature.len().try_into()?;
+            }
+            return Err(ModuleError::BufferTooSmall);
+        }
+        let signature_copy = profiling::phase(SignPhase::SignatureCopy);
+        unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
+            .copy_from_slice(&signature);
+        drop(signature_copy);
+        self.sign_ctx = None;
         unsafe {
             *pulSignatureLen = signature.len().try_into()?;
         }
         Ok(())
+    }
+
+    /// Signs one complete PKCS#11 v3 message while keeping the message-sign
+    /// operation initialized for subsequent independent messages.
+    pub(crate) unsafe fn sign_message(
+        &mut self,
+        data: &[u8],
+        p_signature: CK_BYTE_PTR,
+        p_signature_len: CK_ULONG_PTR,
+    ) -> ModuleResult<()> {
+        let Some(sign_ctx) = self.sign_ctx.as_ref() else {
+            return Err(ModuleError::OperationNotInitialized(0));
+        };
+        if sign_ctx.operation != SignOperation::Message {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
+            if p_signature.is_null() {
+                unsafe {
+                    *p_signature_len = signature_len.try_into()?;
+                }
+                return Ok(());
+            }
+            if unsafe { usize::try_from(*p_signature_len)? } < signature_len {
+                unsafe {
+                    *p_signature_len = signature_len.try_into()?;
+                }
+                return Err(ModuleError::BufferTooSmall);
+            }
+        }
+
+        let private_key_sign = profiling::phase(SignPhase::PrivateKeySign);
+        let signature = sign_ctx
+            .private_key
+            .sign(&sign_ctx.algorithm, data)
+            .map_err(|error| {
+                ModuleError::BadArguments(format!("message signature failed: {error:?}"))
+            })?;
+        drop(private_key_sign);
+        if p_signature.is_null() {
+            unsafe {
+                *p_signature_len = signature.len().try_into()?;
+            }
+            return Ok(());
+        }
+        if unsafe { usize::try_from(*p_signature_len)? } < signature.len() {
+            unsafe {
+                *p_signature_len = signature.len().try_into()?;
+            }
+            return Err(ModuleError::BufferTooSmall);
+        }
+
+        let signature_copy = profiling::phase(SignPhase::SignatureCopy);
+        unsafe { std::slice::from_raw_parts_mut(p_signature, signature.len()) }
+            .copy_from_slice(&signature);
+        drop(signature_copy);
+        unsafe {
+            *p_signature_len = signature.len().try_into()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish_message_sign(&mut self) -> ModuleResult<()> {
+        if self
+            .sign_ctx
+            .as_ref()
+            .is_none_or(|context| context.operation != SignOperation::Message)
+        {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.sign_ctx = None;
+        Ok(())
+    }
+
+    /// Verify `signature` over the provided data (or accumulated `C_VerifyUpdate` payload if
+    /// data is not provided). A cryptographically invalid signature surfaces as
+    /// `ModuleError::SignatureInvalid`, which the `C_Verify`/`C_VerifyFinal` callers must not
+    /// mask as a generic error — PKCS#11 clients rely on `CKR_SIGNATURE_INVALID` specifically
+    /// to distinguish "verification failed" from "operation error".
+    pub(crate) fn verify(&mut self, data: Option<&[u8]>, signature: &[u8]) -> ModuleResult<()> {
+        let Some(verify_ctx) = self.verify_ctx.take() else {
+            return Err(ModuleError::OperationNotInitialized(0));
+        };
+        let data = data
+            .or(verify_ctx.payload.as_deref())
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        verify_ctx
+            .public_key
+            .verify(&verify_ctx.algorithm, data, signature)
     }
 
     pub(crate) fn decrypt(
@@ -511,10 +870,58 @@ impl Session {
                 }
                 std::slice::from_raw_parts_mut(pEncryptedData, ciphertext.len())
                     .copy_from_slice(&ciphertext);
+                *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
                 self.encrypt_ctx = None;
             }
             *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
         }
+        Ok(())
+    }
+
+    /// Encrypt one PKCS#11 v3 AES-GCM message with a KMS-generated nonce.
+    pub(crate) fn encrypt_message(
+        &self,
+        cleartext: Vec<u8>,
+    ) -> ModuleResult<MessageEncryptionOutput> {
+        let encrypt_ctx = self
+            .encrypt_ctx
+            .as_ref()
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        backend()?.encrypt_message(encrypt_ctx, cleartext)
+    }
+
+    /// Decrypt one PKCS#11 v3 AES-GCM message with caller-supplied message artifacts.
+    pub(crate) fn decrypt_message(
+        &self,
+        ciphertext_and_tag: Vec<u8>,
+    ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        if !self.message_decrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        let decrypt_ctx = self
+            .decrypt_ctx
+            .as_ref()
+            .ok_or(ModuleError::OperationNotInitialized(0))?;
+        backend()?.decrypt(decrypt_ctx, ciphertext_and_tag)
+    }
+
+    /// Finish a PKCS#11 v3 message encryption operation.
+    pub(crate) fn finish_message_encrypt(&mut self) -> ModuleResult<()> {
+        if !self.message_encrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.encrypt_ctx = None;
+        self.message_encrypt_active = false;
+        Ok(())
+    }
+
+    /// Finish a PKCS#11 v3 message decryption operation.
+    pub(crate) fn finish_message_decrypt(&mut self) -> ModuleResult<()> {
+        if !self.message_decrypt_active {
+            return Err(ModuleError::OperationNotInitialized(0));
+        }
+        self.decrypt_ctx = None;
+        self.message_decrypt_active = false;
         Ok(())
     }
 
@@ -587,6 +994,17 @@ impl Session {
         let mut objects_store = OBJECTS_STORE.write()?;
         match objects_store.get_using_handle(handle) {
             Some(object) => {
+                // Profile objects are synthetic, module-local objects that self-declare the
+                // module's conformance profiles (OASIS PKCS#11 Profiles v3.1 §Object Model).
+                // They are not backed by any real KMS object, and their `remote_id()` (e.g.
+                // "pkcs11-profile:<id>") is only a local namespacing convention, not a
+                // cryptographically-guaranteed-unique identifier. Forwarding a destroy/revoke
+                // request for that fake id to the backend could accidentally hit an unrelated
+                // real KMS object whose unique identifier happens to collide with it. Reject
+                // destruction of such synthetic objects instead of ever calling the backend.
+                if matches!(object.as_ref(), Object::Profile(_)) {
+                    return Err(ModuleError::ActionProhibited(handle));
+                }
                 backend()?.revoke_object(&object.remote_id())?;
                 backend()?.destroy_object(&object.remote_id())?;
             }
@@ -611,14 +1029,14 @@ fn ignore_sessions() -> bool {
 pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     if ignore_sessions() {
         {
-            let mut session_map = SESSIONS.lock().expect("failed locking the sessions map");
+            let mut session_map = SESSIONS.write().expect("failed locking the sessions map");
             if session_map.is_empty() {
                 session_map.insert(
                     0,
-                    Session {
+                    Arc::new(sync::Mutex::new(Session {
                         flags,
                         ..Default::default()
-                    },
+                    })),
                 );
             }
         }
@@ -626,14 +1044,14 @@ pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
     } else {
         let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
         SESSIONS
-            .lock()
+            .write()
             .expect("failed locking the sessions map")
             .insert(
                 handle,
-                Session {
+                Arc::new(sync::Mutex::new(Session {
                     flags,
                     ..Default::default()
-                },
+                })),
             );
         handle
     }
@@ -641,36 +1059,58 @@ pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
 
 pub(crate) fn exists(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
     Ok(SESSIONS
-        .lock()
+        .read()
         .context("failed locking the sessions map")?
         .contains_key(&handle))
 }
 
 pub(crate) fn flags(handle: CK_SESSION_HANDLE) -> ModuleResult<CK_FLAGS> {
-    Ok(SESSIONS
-        .lock()
+    let session = SESSIONS
+        .read()
         .context("failed locking the sessions map")?
         .get(&handle)
-        .ok_or_else(|| ModuleError::SessionHandleInvalid(handle))?
-        .flags)
+        .ok_or(ModuleError::SessionHandleInvalid(handle))?
+        .clone();
+    let flags = session.lock().context("failed locking the session")?.flags;
+    Ok(flags)
 }
 
+/// Runs `callback` against the session identified by `h`.
+///
+/// The outer [`SESSIONS`] map lock is only held long enough to clone the per-session
+/// `Arc` (a cheap, non-blocking refcount bump) — it is released *before* `callback`
+/// runs. `callback` then blocks only on that one session's own `Mutex`, so a slow
+/// operation (e.g. `C_Sign`/`C_Verify`/`C_Encrypt`/`C_Decrypt`, which round-trip
+/// synchronously to the remote KMS server) on session `h` never blocks any other
+/// session's concurrent operations, while still serializing concurrent calls that
+/// target the *same* session handle (as the Cryptoki spec requires without extra
+/// application-level synchronization).
 pub(crate) fn session<F>(h: CK_SESSION_HANDLE, callback: F) -> ModuleResult<()>
 where
     F: FnOnce(&mut Session) -> ModuleResult<()>,
 {
-    let mut session_map = SESSIONS.lock().context("failed locking the sessions map")?;
-    let session = session_map
-        .get_mut(&h)
-        .ok_or(ModuleError::SessionHandleInvalid(h))?;
+    let map_lookup = profiling::phase(SignPhase::SessionMapLookup);
+    let session_arc = SESSIONS
+        .read()
+        .context("failed locking the sessions map")?
+        .get(&h)
+        .ok_or(ModuleError::SessionHandleInvalid(h))?
+        .clone();
+    drop(map_lookup);
+    let lock_wait = profiling::phase(SignPhase::SessionLockWait);
+    let mut session = session_arc.lock().context("failed locking the session")?;
+    drop(lock_wait);
     debug!("session: {h} found");
-    callback(session)
+    let session_callback = profiling::phase(SignPhase::SessionCallback);
+    let result = callback(&mut session);
+    drop(session_callback);
+    result
 }
 
 pub(crate) fn close(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
     if !ignore_sessions() {
         return Ok(SESSIONS
-            .lock()
+            .write()
             .context("failed locking the sessions map")?
             .remove(&handle)
             .is_some());
@@ -680,7 +1120,7 @@ pub(crate) fn close(handle: CK_SESSION_HANDLE) -> ModuleResult<bool> {
 
 pub(crate) fn close_all() -> ModuleResult<()> {
     SESSIONS
-        .lock()
+        .write()
         .context("failed locking the sessions map")?
         .clear();
     Ok(())
@@ -689,7 +1129,295 @@ pub(crate) fn close_all() -> ModuleResult<()> {
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    use zeroize::Zeroizing;
+
     use super::*;
+
+    #[derive(Debug)]
+    struct CountingEd25519PrivateKey {
+        sign_calls: Arc<AtomicUsize>,
+    }
+
+    impl crate::traits::PrivateKey for CountingEd25519PrivateKey {
+        fn remote_id(&self) -> &'static str {
+            "counting-ed25519"
+        }
+
+        fn sign(
+            &self,
+            _algorithm: &crate::traits::SignatureAlgorithm,
+            _data: &[u8],
+        ) -> ModuleResult<Vec<u8>> {
+            self.sign_calls.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(vec![0x42; 64])
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::Ed25519
+        }
+
+        fn key_size(&self) -> usize {
+            256
+        }
+
+        fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+    }
+
+    #[test]
+    fn ed25519_length_query_does_not_sign_remotely() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::EdDsa,
+                private_key: Arc::new(CountingEd25519PrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x24_u8; 32];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: the data slice and output-length pointer remain valid for the call;
+        // a null signature pointer is the standard PKCS#11 length-query convention.
+        unsafe {
+            session
+                .sign(Some(&data), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 64);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 0);
+        assert!(session.sign_ctx.is_some());
+
+        let mut message_signature = [0_u8; 64];
+        let mut message_signature_len: CK_ULONG = 64;
+        // SAFETY: buffers are valid; a classic sign context must not be usable by
+        // the v3 message-sign operation.
+        let message_result = unsafe {
+            session.sign_message(
+                &data,
+                message_signature.as_mut_ptr(),
+                &raw mut message_signature_len,
+            )
+        };
+        assert!(matches!(
+            message_result,
+            Err(ModuleError::OperationNotInitialized(_))
+        ));
+
+        let mut undersized_signature = [0_u8; 63];
+        signature_len = 63;
+        // SAFETY: the undersized buffer and output-length pointer remain valid for
+        // the call; the implementation must reject it before any remote signing.
+        let undersized_result = unsafe {
+            session.sign(
+                Some(&data),
+                undersized_signature.as_mut_ptr(),
+                &raw mut signature_len,
+            )
+        };
+        assert!(matches!(
+            undersized_result,
+            Err(ModuleError::BufferTooSmall)
+        ));
+        assert_eq!(signature_len, 64);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 0);
+        assert!(session.sign_ctx.is_some());
+
+        let mut signature = [0_u8; 64];
+        // SAFETY: `signature` has exactly the queried capacity and both pointers
+        // remain valid for the duration of the call.
+        unsafe {
+            session
+                .sign(Some(&data), signature.as_mut_ptr(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 64);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
+        assert!(session.sign_ctx.is_none());
+    }
+
+    /// Variable-length (ECDSA) test key whose "signature" is the signed data itself, so a
+    /// test can tell which data a returned signature was computed over.
+    #[derive(Debug)]
+    struct EchoEcdsaPrivateKey {
+        sign_calls: Arc<AtomicUsize>,
+    }
+
+    impl crate::traits::PrivateKey for EchoEcdsaPrivateKey {
+        fn remote_id(&self) -> &'static str {
+            "echo-ecdsa"
+        }
+
+        fn sign(
+            &self,
+            _algorithm: &crate::traits::SignatureAlgorithm,
+            data: &[u8],
+        ) -> ModuleResult<Vec<u8>> {
+            self.sign_calls.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(data.to_vec())
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::EccP256
+        }
+
+        fn key_size(&self) -> usize {
+            256
+        }
+
+        fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+    }
+
+    #[test]
+    fn variable_length_cached_signature_is_bound_to_its_data() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(EchoEcdsaPrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let first = [0x11_u8; 8];
+        let second = [0x22_u8; 8];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: the data slice and output-length pointer remain valid for the call;
+        // a null signature pointer is the standard PKCS#11 length-query convention.
+        unsafe {
+            session
+                .sign(Some(&first), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature_len, 8);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
+
+        // The follow-up call changes the data: the signature cached for `first` must not
+        // be returned for `second`.
+        let mut signature = [0_u8; 8];
+        // SAFETY: `signature` has the queried capacity and both pointers remain valid.
+        unsafe {
+            session
+                .sign(
+                    Some(&second),
+                    signature.as_mut_ptr(),
+                    &raw mut signature_len,
+                )
+                .unwrap();
+        }
+        assert_eq!(signature, second);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 2);
+        assert!(session.sign_ctx.is_none());
+    }
+
+    #[test]
+    fn variable_length_cached_signature_is_reused_for_the_same_data() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(EchoEcdsaPrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x33_u8; 8];
+        let mut signature_len: CK_ULONG = 0;
+
+        // SAFETY: see `variable_length_cached_signature_is_bound_to_its_data`.
+        unsafe {
+            session
+                .sign(Some(&data), std::ptr::null_mut(), &raw mut signature_len)
+                .unwrap();
+        }
+        let mut signature = [0_u8; 8];
+        // SAFETY: `signature` has the queried capacity and both pointers remain valid.
+        unsafe {
+            session
+                .sign(Some(&data), signature.as_mut_ptr(), &raw mut signature_len)
+                .unwrap();
+        }
+        assert_eq!(signature, data);
+        assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[test]
+    fn ed25519_message_sign_keeps_context_for_multiple_messages() {
+        let sign_calls = Arc::new(AtomicUsize::new(0));
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: crate::traits::SignatureAlgorithm::EdDsa,
+                private_key: Arc::new(CountingEd25519PrivateKey {
+                    sign_calls: Arc::clone(&sign_calls),
+                }),
+                operation: SignOperation::Message,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Default::default()
+        };
+        let data = [0x24_u8; 32];
+        let mut signature = [0_u8; 64];
+
+        let mut classic_signature_len: CK_ULONG = 64;
+        // SAFETY: buffers are valid; a v3 message context must not be consumable by
+        // the classic `C_Sign` path.
+        let classic_result = unsafe {
+            session.sign(
+                Some(&data),
+                signature.as_mut_ptr(),
+                &raw mut classic_signature_len,
+            )
+        };
+        assert!(matches!(
+            classic_result,
+            Err(ModuleError::OperationNotInitialized(_))
+        ));
+
+        for expected_calls in 1..=2 {
+            let mut signature_len: CK_ULONG = 64;
+            // SAFETY: the input/output buffers and length pointer remain valid for
+            // the duration of each one-shot message-sign call.
+            unsafe {
+                session
+                    .sign_message(&data, signature.as_mut_ptr(), &raw mut signature_len)
+                    .unwrap();
+            }
+            assert_eq!(signature_len, 64);
+            assert_eq!(sign_calls.load(AtomicOrdering::Relaxed), expected_calls);
+            assert!(session.sign_ctx.is_some());
+        }
+
+        session.finish_message_sign().unwrap();
+        assert!(session.sign_ctx.is_none());
+    }
 
     #[test]
     fn test_map_oracle_tde_security_to_mk() {

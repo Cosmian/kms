@@ -262,7 +262,7 @@ crypto_officer_require_ceremony = true
 # Generate with: openssl rand -hex 32
 ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-# (ADP-26, planned) UID of a KMS symmetric key to use as the ceremony sealing key.
+# (planned) UID of a KMS symmetric key to use as the ceremony sealing key.
 # When set, takes precedence over ceremony_secret. Enables key rotation and HSM backing.
 # The key must be created before enabling require_ceremony (use config-only mode first).
 # ceremony_key_id = "ceremony-seal-2026"

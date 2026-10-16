@@ -1,4 +1,6 @@
 ---
+name: 'Mermaid Diagrams'
+description: 'Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset'
 applyTo: "**/*.md"
 ---
 

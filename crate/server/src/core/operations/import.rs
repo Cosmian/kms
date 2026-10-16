@@ -8,8 +8,9 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
             extra::tagging::{
-                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PRIVATE_KEY,
-                SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
+                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY,
+                SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA,
+                SYSTEM_TAG_SYMMETRIC_KEY,
             },
             kmip_attributes::Attributes,
             kmip_data_structures::KeyValue,
@@ -33,6 +34,7 @@ use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 
+use super::pgp_ops;
 use crate::{
     core::{
         KMS,
@@ -153,6 +155,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
         ObjectType::PublicKey => Box::pin(process_public_key(kms, request, user)).await?,
         ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, user)).await?,
         ObjectType::SecretData => Box::pin(process_secret_data(kms, request, user)).await?,
+        ObjectType::PGPKey => Box::pin(process_pgp_key(kms, request, user)).await?,
         ObjectType::OpaqueObject => process_opaque_object(kms.vendor_id(), request, user)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
@@ -421,14 +424,25 @@ pub(super) async fn process_public_key(
         attributes.initialize_always_sensitive();
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
-    // import it as a PKCS8
-    // TODO: add Covercrypt keys when support for SPKI is added
+    // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
+    // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
+    // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
+    // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
+    // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
+    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
-            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+            && !matches!(
+                object_key_block.cryptographic_algorithm,
+                Some(
+                    CryptographicAlgorithm::CoverCrypt
+                        | CryptographicAlgorithm::ConfigurableKEM
+                        | CryptographicAlgorithm::X25519MLKEM768
+                        | CryptographicAlgorithm::X448MLKEM1024
+                )
+            )
         {
             object = openssl_public_key_to_kmip(
                 &kmip_public_key_to_openssl(&object)?,
@@ -548,14 +562,25 @@ pub(super) async fn process_private_key(
         attributes.merge(object_attributes, false);
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
-    // import it as a PKCS8
-    // TODO: remove Covercrypt keys from this exception when support for PKCS#8 is added
+    // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
+    // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
+    // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
+    // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
+    // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
+    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
-            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+            && !matches!(
+                object_key_block.cryptographic_algorithm,
+                Some(
+                    CryptographicAlgorithm::CoverCrypt
+                        | CryptographicAlgorithm::ConfigurableKEM
+                        | CryptographicAlgorithm::X25519MLKEM768
+                        | CryptographicAlgorithm::X448MLKEM1024
+                )
+            )
         {
             // Skip OpenSSL re-encoding for Transparent DSA private keys; retain original structure.
             if object_key_block.key_format_type != KeyFormatType::TransparentDSAPrivateKey {
@@ -980,7 +1005,7 @@ async fn process_pkcs12(
             // (according to the KMIP spec, this would be LinkType::CertificateLink)
             chain_attributes.set_link(
                 LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(parent_certificate_id.clone()),
+                LinkedObjectIdentifier::TextString(parent_certificate_id),
             );
         }
         operations.push(single_operation(
@@ -1078,6 +1103,77 @@ pub(super) async fn process_secret_data(
     .await?;
     // If the object was wrapped, record the WrappingKeyLink in the stored attributes
     // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
+
+    Ok((
+        uid.clone(),
+        vec![single_operation(
+            tags,
+            replace_existing,
+            object,
+            attributes,
+            uid,
+            user,
+        )],
+    ))
+}
+pub(super) async fn process_pgp_key(
+    kms: &KMS,
+    request: Import,
+    user: &UserId,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    trace!("import pgp_key: uid={}", request.unique_identifier);
+    let replace_existing = request.replace_existing.unwrap_or(false);
+
+    let uid = match request.unique_identifier.to_string() {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid,
+    };
+
+    let mut object = request.object;
+    if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
+    }
+
+    let mut tags = recover_tags(kms.vendor_id(), &request.attributes, &object);
+    tags.insert(SYSTEM_TAG_PGP_KEY.to_owned());
+
+    let mut attributes = request.attributes;
+    attributes.object_type = Some(ObjectType::PGPKey);
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
+
+    pgp_ops::pgp_normalize_for_import(&mut object, &mut attributes)?;
+
+    attributes.set_tags(kms.vendor_id(), tags.clone())?;
+    if let Ok(object_attributes) = object.key_block()?.attributes() {
+        attributes.merge(object_attributes, false);
+    }
+
+    if attributes.initial_date.is_none() {
+        attributes.initial_date = Some(time_normalize()?);
+    }
+
+    if attributes.always_sensitive.is_none() {
+        attributes.initialize_always_sensitive();
+    }
+    attributes.initialize_never_extractable();
+
+    if let Ok(key_block) = object.key_block_mut() {
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attrs = Some(attributes.clone());
+        }
+    }
+
+    Box::pin(wrap_and_cache(
+        kms,
+        user,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut object,
+    ))
+    .await?;
     object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((

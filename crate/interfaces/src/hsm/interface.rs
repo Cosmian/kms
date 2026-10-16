@@ -2,6 +2,8 @@
 //! This module defines the interface that an HSM must implement to be used as an object store and
 //! a crypto oracle.
 
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
     kmip_attributes::Attributes, kmip_objects::ObjectType, kmip_types::CryptographicAlgorithm,
@@ -9,8 +11,8 @@ use cosmian_kmip::kmip_2_1::{
 use zeroize::Zeroizing;
 
 use crate::{
-    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, SigningAlgorithm,
-    crypto_oracle::EncryptedContent,
+    CryptoAlgorithm, InterfaceError, InterfaceResult, KeyMetadata, KeyType, MacAlgorithm,
+    MacKeyMetadata, SigningAlgorithm, SigningKeyMetadata, crypto_oracle::EncryptedContent,
 };
 
 /// Supported key algorithms
@@ -19,8 +21,81 @@ pub enum HsmKeyAlgorithm {
 }
 
 /// Supported key pair algorithms
+#[derive(Debug, Clone, Copy)]
 pub enum HsmKeypairAlgorithm {
     RSA,
+    /// FIPS-approved NIST elliptic curve selected by `key_length_in_bits`.
+    EC,
+    /// secp256k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp256k1,
+    /// secp192k1 (`CKM_EC_KEY_PAIR_GEN`) for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp192k1,
+    /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// Ed448 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
+    #[cfg(feature = "non-fips")]
+    Ed448,
+    /// X25519 (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`) for ECDH key agreement.
+    #[cfg(feature = "non-fips")]
+    X25519,
+}
+
+/// Elliptic curves supported for HSM-delegated key generation and signing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EcCurve {
+    P224,
+    P256,
+    P384,
+    P521,
+    /// secp256k1, used for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp256k1,
+    /// secp192k1, used for non-FIPS ECDSA signing.
+    #[cfg(feature = "non-fips")]
+    Secp192k1,
+    /// Edwards curve used for `EdDSA` signing.
+    #[cfg(feature = "non-fips")]
+    Ed25519,
+    /// Edwards curve used for `EdDSA` signing.
+    #[cfg(feature = "non-fips")]
+    Ed448,
+    /// Montgomery curve used for X25519 ECDH key agreement.
+    #[cfg(feature = "non-fips")]
+    X25519,
+}
+
+impl EcCurve {
+    /// Select a FIPS-approved NIST curve from a requested key length in bits.
+    pub fn from_key_length_in_bits(key_length_in_bits: usize) -> InterfaceResult<Self> {
+        match key_length_in_bits {
+            256 => Ok(Self::P256),
+            384 => Ok(Self::P384),
+            521 => Ok(Self::P521),
+            x => Err(InterfaceError::Default(format!(
+                "Invalid key length: {x} bits, for an HSM EC key (valid values are 256, 384, 521)"
+            ))),
+        }
+    }
+
+    /// Return the curve field size in bits.
+    #[must_use]
+    pub const fn key_length_in_bits(self) -> usize {
+        match self {
+            Self::P224 => 224,
+            Self::P256 => 256,
+            Self::P384 => 384,
+            Self::P521 => 521,
+            #[cfg(feature = "non-fips")]
+            Self::Secp256k1 | Self::Ed25519 | Self::X25519 => 256,
+            #[cfg(feature = "non-fips")]
+            Self::Secp192k1 => 192,
+            #[cfg(feature = "non-fips")]
+            Self::Ed448 => 456,
+        }
+    }
 }
 
 /// Supported object filters on find
@@ -31,6 +106,9 @@ pub enum HsmObjectFilter {
     RsaKey,
     RsaPrivateKey,
     RsaPublicKey,
+    EcKey,
+    EcPrivateKey,
+    EcPublicKey,
 }
 
 impl TryFrom<&Attributes> for HsmObjectFilter {
@@ -43,6 +121,11 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
             match cryptographic_algorithm {
                 CryptographicAlgorithm::AES => Self::AesKey,
                 CryptographicAlgorithm::RSA => Self::RsaKey,
+                CryptographicAlgorithm::EC
+                | CryptographicAlgorithm::ECDSA
+                | CryptographicAlgorithm::ECDH => Self::EcKey,
+                #[cfg(feature = "non-fips")]
+                CryptographicAlgorithm::Ed25519 | CryptographicAlgorithm::Ed448 => Self::EcKey,
                 _ => {
                     return Err(InterfaceError::Default(format!(
                         "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
@@ -56,9 +139,9 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
         if let Some(object_type) = researched_attributes.object_type {
             object_filter = match object_type {
                 ObjectType::SymmetricKey => {
-                    if object_filter == Self::RsaKey {
+                    if object_filter == Self::RsaKey || object_filter == Self::EcKey {
                         return Err(InterfaceError::Default(
-                            "Incompatible object type: SymmetricKey with RSA".to_owned(),
+                            "Incompatible object type: SymmetricKey with RSA/EC".to_owned(),
                         ));
                     }
                     Self::AesKey
@@ -69,7 +152,11 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                             "Incompatible object type: PublicKey with AES".to_owned(),
                         ));
                     }
-                    Self::RsaPublicKey
+                    if object_filter == Self::EcKey {
+                        Self::EcPublicKey
+                    } else {
+                        Self::RsaPublicKey
+                    }
                 }
                 ObjectType::PrivateKey => {
                     if object_filter == Self::AesKey {
@@ -77,7 +164,11 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                             "Incompatible object type: PrivateKey with AES".to_owned(),
                         ));
                     }
-                    Self::RsaPrivateKey
+                    if object_filter == Self::EcKey {
+                        Self::EcPrivateKey
+                    } else {
+                        Self::RsaPrivateKey
+                    }
                 }
                 _ => {
                     return Err(InterfaceError::Default(format!(
@@ -113,12 +204,30 @@ pub struct RsaPublicKeyMaterial {
     pub public_exponent: Vec<u8>,
 }
 
+/// EC private key value representation.
+/// `d` is the private scalar in big-endian format; `curve` identifies the NIST curve.
+#[derive(Debug)]
+pub struct EcPrivateKeyMaterial {
+    pub curve: EcCurve,
+    pub d: Zeroizing<Vec<u8>>,
+}
+
+/// EC public key value representation.
+/// `q` is the public point in uncompressed X9.62 format (`0x04 || X || Y`).
+#[derive(Debug)]
+pub struct EcPublicKeyMaterial {
+    pub curve: EcCurve,
+    pub q: Vec<u8>,
+}
+
 /// Key material representation
 #[derive(Debug)]
 pub enum KeyMaterial {
     AesKey(Zeroizing<Vec<u8>>),
     RsaPrivateKey(RsaPrivateKeyMaterial),
     RsaPublicKey(RsaPublicKeyMaterial),
+    EcPrivateKey(EcPrivateKeyMaterial),
+    EcPublicKey(EcPublicKeyMaterial),
 }
 
 /// HSM object representation
@@ -126,14 +235,16 @@ pub enum KeyMaterial {
 pub struct HsmObject {
     key_material: KeyMaterial,
     id: String,
+    tags: HashSet<String>,
 }
 
 impl HsmObject {
     #[must_use]
-    pub const fn new(key_material: KeyMaterial, label: String) -> Self {
+    pub const fn new(key_material: KeyMaterial, label: String, tags: HashSet<String>) -> Self {
         Self {
             key_material,
             id: label,
+            tags,
         }
     }
 
@@ -146,6 +257,20 @@ impl HsmObject {
     pub fn id(&self) -> &str {
         &self.id
     }
+
+    #[must_use]
+    pub const fn tags(&self) -> &HashSet<String> {
+        &self.tags
+    }
+}
+
+/// Borrowed identifiers for an HSM key pair.
+#[derive(Clone, Copy)]
+pub struct HsmKeyPairIds<'a> {
+    /// Private-key identifier.
+    pub private: &'a [u8],
+    /// Public-key identifier.
+    pub public: &'a [u8],
 }
 
 /// HSM trait
@@ -186,15 +311,17 @@ pub trait HSM: Send + Sync {
     /// * `algorithm` - the key algorithm to use
     /// * `key_length_in_bits` - the length of the key in bits
     /// * `sensitive` - whether the key should be exportable
+    /// * `tags` - tags persisted with the key
     /// # Returns
     /// * `PluginResult<usize>` - the ID of the key
-    async fn create_key(
-        &self,
+    async fn create_key<'a>(
+        &'a self,
         slot_id: usize,
-        id: &[u8],
+        id: &'a [u8],
         algorithm: HsmKeyAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()>;
 
     /// Create the given key pair in the HSM.
@@ -204,21 +331,21 @@ pub trait HSM: Send + Sync {
     /// The key pair will not be exportable from the HSM if the sensitive flag is set to true.
     /// # Arguments
     /// * `slot_id` - the slot ID of the HSM
-    /// * `sk_id` - the ID of the private key
-    /// * `pk_id` - the ID of the public key
+    /// * `ids` - the private and public key identifiers
     /// * `algorithm` - the key pair algorithm to use
     /// * `key_length_in_bits` - the length of the key in bits
     /// * `sensitive` - whether the key pair should be exportable
+    /// * `tags` - tags persisted with both keys
     /// # Returns
     /// * `PluginResult<(usize, usize)>` - the IDs of the private and public keys
-    async fn create_keypair(
-        &self,
+    async fn create_keypair<'a>(
+        &'a self,
         slot_id: usize,
-        sk_id: &[u8],
-        pk_id: &[u8],
+        ids: HsmKeyPairIds<'a>,
         algorithm: HsmKeypairAlgorithm,
         key_length_in_bits: usize,
         sensitive: bool,
+        tags: &'a HashSet<String>,
     ) -> InterfaceResult<()>;
 
     /// Export objects from the HSN.
@@ -257,14 +384,16 @@ pub trait HSM: Send + Sync {
     /// * `key_id` - the ID of the key to use for encryption
     /// * `algorithm` - the encryption algorithm to use
     /// * `data` - the data to encrypt
+    /// * `iv_counter_nonce` - caller-supplied IV or nonce
     /// # Returns
     /// * `PluginResult<Vec<u8>>` - the encrypted data
-    async fn encrypt(
-        &self,
+    async fn encrypt<'a>(
+        &'a self,
         slot_id: usize,
-        key_id: &[u8],
+        key_id: &'a [u8],
         algorithm: CryptoAlgorithm,
-        data: &[u8],
+        data: &'a [u8],
+        iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent>;
 
     /// Decrypt data using the given key in the HSM.
@@ -306,21 +435,137 @@ pub trait HSM: Send + Sync {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>>;
 
-    /// Sign data using the given private key in the HSM.
+    /// Sign data using the given private key in the HSM, resolving the HSM-specific signing
+    /// mechanism from the key's own on-HSM metadata within the SAME checked-out PKCS#11
+    /// session as the sign operation itself — a single session checkout for the whole KMIP
+    /// `Sign`, instead of a separate `get_key_metadata` call followed by a separate `sign`
+    /// call.
+    ///
     /// # Arguments
     /// * `slot_id` - the slot ID of the HSM
     /// * `key_id` - the ID of the private key to use for signing
-    /// * `algorithm` - the signing algorithm to use
+    /// * `resolve_algorithm` - called once, synchronously, with the key's on-HSM metadata
+    ///   (`SigningKeyMetadata`) resolved during this call's own session checkout; must select the
+    ///   concrete `SigningAlgorithm` (or return an `Err`, which aborts the sign before any
+    ///   `C_SignInit` call and is propagated to the caller)
     /// * `data` - the data to sign
     /// # Returns
     /// * `InterfaceResult<Vec<u8>>` - the signature bytes
-    async fn sign(
+    async fn sign_with_metadata(
         &self,
         slot_id: usize,
         key_id: &[u8],
-        algorithm: SigningAlgorithm,
+        resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>>;
+
+    /// Verify a signature using the given key in the HSM, resolving the HSM-specific signing
+    /// mechanism from the key's own on-HSM metadata within the SAME checked-out PKCS#11
+    /// session as the verify operation itself. See `sign_with_metadata` for the rationale.
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key to use for verification
+    /// * `resolve_algorithm` - called once, synchronously, with the key's `SigningKeyMetadata`
+    ///   resolved during this call's own session checkout; must select the concrete
+    ///   `SigningAlgorithm` the signature was produced with (or return an `Err`, which aborts
+    ///   the verify before any `C_VerifyInit` call)
+    /// * `data` - the data that was signed
+    /// * `signature` - the signature to verify
+    /// # Returns
+    /// * `InterfaceResult<bool>` - `true` if the signature is valid, `false` for a
+    ///   cryptographically invalid signature. Returns `Err` for any other failure, including
+    ///   an unsupported mechanism or an error returned by `resolve_algorithm`.
+    async fn verify_with_metadata(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        data: &[u8],
+        signature: &[u8],
+    ) -> InterfaceResult<bool>;
+
+    /// Compute a MAC over `data` using the given key in the HSM, resolving the HSM-specific MAC
+    /// mechanism from the key's own on-HSM metadata within the SAME checked-out PKCS#11 session
+    /// as the MAC operation itself. See `sign_with_metadata` for the rationale.
+    ///
+    /// The default implementation returns `InterfaceError::NotSupported`, preserving today's
+    /// behavior for every HSM backend that does not override it (issue #1215).
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key to use for MAC computation
+    /// * `resolve_algorithm` - called once, synchronously, with the key's on-HSM metadata
+    ///   (`MacKeyMetadata`) resolved during this call's own session checkout; must select the
+    ///   concrete `MacAlgorithm` (or return an `Err`, which aborts the MAC before any
+    ///   `C_SignInit` call and is propagated to the caller)
+    /// * `data` - the data to authenticate
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - the MAC bytes
+    async fn mac_with_metadata(
+        &self,
+        _slot_id: usize,
+        _key_id: &[u8],
+        _resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        _data: &[u8],
+    ) -> InterfaceResult<Vec<u8>> {
+        Err(InterfaceError::NotSupported(
+            "MAC generation via this HSM backend is not supported".to_owned(),
+        ))
+    }
+
+    /// Verify a MAC using the given key in the HSM, resolving the HSM-specific MAC mechanism
+    /// from the key's own on-HSM metadata within the SAME checked-out PKCS#11 session as the
+    /// verify operation itself. See `sign_with_metadata` for the rationale.
+    ///
+    /// The default implementation returns `InterfaceError::NotSupported`, preserving today's
+    /// behavior for every HSM backend that does not override it (issue #1215).
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key to use for MAC verification
+    /// * `resolve_algorithm` - called once, synchronously, with the key's `MacKeyMetadata`
+    ///   resolved during this call's own session checkout; must select the concrete
+    ///   `MacAlgorithm` the MAC was produced with (or return an `Err`, which aborts the verify
+    ///   before any `C_VerifyInit` call)
+    /// * `data` - the data that was authenticated
+    /// * `mac_data` - the MAC to verify
+    /// # Returns
+    /// * `InterfaceResult<bool>` - `true` if the MAC is valid, `false` for a cryptographically
+    ///   invalid MAC. Returns `Err` for any other failure, including an unsupported mechanism or
+    ///   an error returned by `resolve_algorithm`.
+    async fn verify_mac_with_metadata(
+        &self,
+        _slot_id: usize,
+        _key_id: &[u8],
+        _resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        _data: &[u8],
+        _mac_data: &[u8],
+    ) -> InterfaceResult<bool> {
+        Err(InterfaceError::NotSupported(
+            "MAC verification via this HSM backend is not supported".to_owned(),
+        ))
+    }
 
     /// Generate cryptographically secure random bytes using the HSM RNG.
     ///
@@ -382,4 +627,206 @@ pub trait HSM: Send + Sync {
     /// # Returns
     /// * `Option<&dyn std::any::Any>` - A trait object that can be downcast to `Arc<HsmLib>`
     fn hsm_lib(&self) -> Option<&dyn std::any::Any>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type MacAlgorithmResolver = Box<
+        dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm> + Send + Sync + 'static,
+    >;
+
+    /// An `HSM` implementor that overrides nothing beyond the required methods — every real
+    /// vendor backend today (`BaseHsm<P>`) is in exactly this situation for MAC generate/verify.
+    struct NoopHsm;
+
+    #[async_trait]
+    impl HSM for NoopHsm {
+        async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn get_supported_algorithms(
+            &self,
+            _slot_id: usize,
+        ) -> InterfaceResult<Vec<CryptoAlgorithm>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn create_key<'a>(
+            &'a self,
+            _slot_id: usize,
+            _id: &'a [u8],
+            _algorithm: HsmKeyAlgorithm,
+            _key_length_in_bits: usize,
+            _sensitive: bool,
+            _tags: &'a HashSet<String>,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn create_keypair<'a>(
+            &'a self,
+            _slot_id: usize,
+            _ids: HsmKeyPairIds<'a>,
+            _algorithm: HsmKeypairAlgorithm,
+            _key_length_in_bits: usize,
+            _sensitive: bool,
+            _tags: &'a HashSet<String>,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn export(
+            &self,
+            _slot_id: usize,
+            _object_id: &[u8],
+        ) -> InterfaceResult<Option<HsmObject>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn delete(&self, _slot_id: usize, _object_id: &[u8]) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn find(
+            &self,
+            _slot_id: usize,
+            _object_filter: HsmObjectFilter,
+        ) -> InterfaceResult<Vec<Vec<u8>>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn encrypt<'a>(
+            &'a self,
+            _slot_id: usize,
+            _key_id: &'a [u8],
+            _algorithm: CryptoAlgorithm,
+            _data: &'a [u8],
+            _iv_counter_nonce: &'a [u8],
+        ) -> InterfaceResult<EncryptedContent> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn decrypt(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _algorithm: CryptoAlgorithm,
+            _data: &[u8],
+        ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn get_key_type(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+        ) -> InterfaceResult<Option<KeyType>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn get_key_metadata(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+        ) -> InterfaceResult<Option<KeyMetadata>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn sign_with_metadata(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _resolve_algorithm: Box<
+                dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                    + Send
+                    + Sync
+                    + 'static,
+            >,
+            _data: &[u8],
+        ) -> InterfaceResult<Vec<u8>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn verify_with_metadata(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _resolve_algorithm: Box<
+                dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
+                    + Send
+                    + Sync
+                    + 'static,
+            >,
+            _data: &[u8],
+            _signature: &[u8],
+        ) -> InterfaceResult<bool> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn generate_random(&self, _slot_id: usize, _len: usize) -> InterfaceResult<Vec<u8>> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn seed_random(&self, _slot_id: usize, _seed: &[u8]) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn set_key_dates(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _start_date: Option<time::Date>,
+            _end_date: Option<time::Date>,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        async fn set_key_label(
+            &self,
+            _slot_id: usize,
+            _key_id: &[u8],
+            _label: &str,
+        ) -> InterfaceResult<()> {
+            Err(InterfaceError::NotSupported("stub".to_owned()))
+        }
+
+        fn hsm_lib(&self) -> Option<&dyn std::any::Any> {
+            None
+        }
+    }
+
+    /// Resolver that fails with a non-`NotSupported` error: the trait defaults must return
+    /// `NotSupported` without ever invoking it.
+    fn failing_resolver() -> MacAlgorithmResolver {
+        Box::new(|_metadata: &MacKeyMetadata| {
+            Err(InterfaceError::Default(
+                "resolve_algorithm must not be called by the default implementation".to_owned(),
+            ))
+        })
+    }
+
+    /// Issue #1215: any `HSM` implementor that does not override `mac_with_metadata` /
+    /// `verify_mac_with_metadata` must keep today's "not supported" behavior — every current
+    /// vendor backend (`BaseHsm<P>`) is such an implementor.
+    #[tokio::test]
+    async fn test_mac_default_is_not_supported() {
+        let result = NoopHsm
+            .mac_with_metadata(0, b"key", failing_resolver(), b"data")
+            .await;
+
+        assert!(matches!(result, Err(InterfaceError::NotSupported(_))));
+    }
+
+    /// Issue #1215: same guarantee as `test_mac_default_is_not_supported`, for MAC verify.
+    #[tokio::test]
+    async fn test_verify_mac_default_is_not_supported() {
+        let result = NoopHsm
+            .verify_mac_with_metadata(0, b"key", failing_resolver(), b"data", b"mac")
+            .await;
+
+        assert!(matches!(result, Err(InterfaceError::NotSupported(_))));
+    }
 }

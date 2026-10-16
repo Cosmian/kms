@@ -10,7 +10,7 @@
 //!
 //! `HSM_SLOT_ID` must also be exported (the MISE task calls
 //! `softhsm2_init_standard_tokens` which outputs the slot ID).
-//! `start_default_test_kms_server_with_softhsm2_and_kek` panics with a
+//! `start_default_test_kms_server_with_hsm_and_kek` panics with a
 //! descriptive error if `HSM_SLOT_ID` is absent — **no silent skip**.
 //!
 //! # Running manually
@@ -42,7 +42,7 @@ use cosmian_kms_client::{
     },
 };
 
-use crate::{init_test_logging, start_default_test_kms_server_with_softhsm2_and_kek};
+use crate::{init_test_logging, start_default_test_kms_server_with_hsm_and_kek};
 
 /// Full key lifecycle exercised against the HSM-backed KMS.
 ///
@@ -75,7 +75,7 @@ async fn test_db_softhsm2_impl() -> Result<(), KmsClientError> {
     init_test_logging();
 
     // Panics if HSM_SLOT_ID is not set — the desired "fail, don't skip" behaviour.
-    let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
+    let ctx = start_default_test_kms_server_with_hsm_and_kek().await;
     let client = ctx.get_owner_client();
 
     // ── 1. Create ─────────────────────────────────────────────────────────────

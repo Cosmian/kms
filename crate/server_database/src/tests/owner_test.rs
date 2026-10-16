@@ -98,7 +98,7 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
     let objects = db
         .find(None, None, &user_id_2, true, VENDOR_ID_COSMIAN)
         .await?;
-    assert!(objects.is_empty());
+    assert_eq!(objects.len(), 0);
 
     let objects = db.list_user_operations_granted(&user_id_2).await?;
     assert_eq!(

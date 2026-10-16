@@ -23,7 +23,7 @@ default_username = "admin"
 #   Configure with [[hsm_instances]] sections (one per device):
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
@@ -91,6 +91,17 @@ hostname = "0.0.0.0"
 # load balancer. Leave it unset otherwise (client_ip then always reflects the
 # real TCP peer address).
 # trusted_proxy_cidrs = ["10.0.0.0/8"]
+#
+# Alternative to [audit.file]: a PostgreSQL-backed audit trail. Mutually
+# exclusive at runtime with the file backend — setting url here selects
+# PostgreSQL instead. Must be a different database than [db] database_url.
+# [audit.postgres]
+# url = "postgresql://kms_audit:password@localhost:5432/kms_audit"
+#
+# Stable across restarts, unique per KMS instance sharing the audit database —
+# no hostname-based default; an incorrect guess risks two instances silently
+# sharing a chain.
+# instance_id = "kms-primary"
 
 [db]
 database_type = "redis-findex"

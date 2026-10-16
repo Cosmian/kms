@@ -17,7 +17,7 @@ Key unwrapping on import is supported for all keys. Please check the
 [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md)
 for more details.
 
-For the list of supported key formats, please check the [formats page](./formats.md).
+For the list of supported key formats, please check the [formats page](./formats.md). OpenPGP keys (`PGPKey`) can be imported as transferable secret or public keys (ASCII armored or binary bytes) in non-FIPS mode.
 
 ## Example - A NIST P-256 EC private key in SEC1 format
 

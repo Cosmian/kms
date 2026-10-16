@@ -49,7 +49,7 @@ impl CryptoOpSpec for MacOp {
         matches!(owm.object(), Object::SymmetricKey { .. })
     }
 
-    async fn execute_local(
+    fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
@@ -141,7 +141,7 @@ impl CryptoOpSpec for MacVerifyOp {
         matches!(owm.object(), Object::SymmetricKey { .. })
     }
 
-    async fn execute_local(
+    fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,

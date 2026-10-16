@@ -26,12 +26,17 @@ require_cmd cargo
 
 # PROTECCIO_PKCS11_LIB matches the crate constant in proteccio_pkcs11_loader.
 # HSM_USER_PASSWORD and HSM_SLOT_ID are read by the Rust test harness.
-PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
+# The vendor library (libnethsm.so) fails in C_Initialize (CKR_FUNCTION_FAILED) when the
+# nix-shell FIPS OpenSSL bootstrap variables are inherited, so run the test with a clean
+# OpenSSL environment (same as the nethsmstatus check in prepare_proteccio.sh).
+env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
   HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}" \
   HSM_SLOT_ID="${PROTECCIO_SLOT}" \
   cargo test \
   -p proteccio_pkcs11_loader \
   --features proteccio \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_proteccio_all --ignored --exact
 
 print_success "Proteccio HSM tests completed"

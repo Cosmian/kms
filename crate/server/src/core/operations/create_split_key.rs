@@ -17,7 +17,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
-use rand_chacha::ChaCha20Rng;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -168,12 +167,15 @@ pub(crate) async fn create_split_key(
         )));
     }
 
-    let mut rng = rand::make_rng::<ChaCha20Rng>();
-
     let raw_shares: Vec<Zeroizing<Vec<u8>>> = match request.split_key_method {
         SplitKeyMethod::XOR => {
-            cosmian_kms_crypto::crypto::split_key::xor_split(&key_bytes, total_parts_u32, &mut rng)
-                .map_err(|e| KmsError::InvalidRequest(format!("CreateSplitKey error: {e}")))?
+            cosmian_kms_crypto::crypto::split_key::xor_split(&key_bytes, total_parts_u32, &kms.rng)
+                .map_err(|e| match e {
+                    cosmian_kms_crypto::crypto::split_key::SplitKeyError::Rng(_) => {
+                        KmsError::ServerError(format!("CreateSplitKey error: {e}"))
+                    }
+                    _ => KmsError::InvalidRequest(format!("CreateSplitKey error: {e}")),
+                })?
         }
         SplitKeyMethod::PolynomialSharingGf28
         | SplitKeyMethod::PolynomialSharingGf216

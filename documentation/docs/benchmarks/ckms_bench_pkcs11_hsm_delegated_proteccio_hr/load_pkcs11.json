@@ -1,0 +1,6 @@
+{"protocol":"pkcs11","operation":"sign/ecdsa-p256","concurrency":1,"throughput_rps":36.69,"p50_ms":27.550,"p95_ms":28.720,"p99_ms":29.432}
+{"protocol":"pkcs11","operation":"sign/ecdsa-p256","concurrency":32,"throughput_rps":1168.16,"p50_ms":27.360,"p95_ms":29.962,"p99_ms":31.871}
+{"protocol":"pkcs11","operation":"sign/ecdsa-p256","concurrency":64,"throughput_rps":1791.26,"p50_ms":35.180,"p95_ms":43.875,"p99_ms":48.955}
+{"protocol":"pkcs11","operation":"verify/ecdsa-p256","concurrency":1,"throughput_rps":23.31,"p50_ms":43.019,"p95_ms":44.153,"p99_ms":45.215}
+{"protocol":"pkcs11","operation":"verify/ecdsa-p256","concurrency":32,"throughput_rps":785.77,"p50_ms":40.443,"p95_ms":43.504,"p99_ms":45.040}
+{"protocol":"pkcs11","operation":"verify/ecdsa-p256","concurrency":64,"throughput_rps":1310.85,"p50_ms":48.540,"p95_ms":57.416,"p99_ms":63.252}

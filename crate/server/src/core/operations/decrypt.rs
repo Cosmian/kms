@@ -38,6 +38,7 @@ use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 
+use super::pgp_ops;
 #[cfg(feature = "non-fips")]
 use crate::core::operations::algorithm_policy::enforce_ecies_fixed_suite_for_attributes;
 use crate::{
@@ -89,6 +90,9 @@ impl CryptoOpSpec for DecryptOp {
         if let Object::SymmetricKey { .. } = owm.object() {
             return owm.has_usage_mask(CryptographicUsageMask::Decrypt, false);
         }
+        if let Object::PGPKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Decrypt, false);
+        }
         if let Object::PrivateKey { .. } = owm.object() {
             if !owm.has_usage_mask(CryptographicUsageMask::Decrypt, false) {
                 return false;
@@ -132,7 +136,7 @@ impl CryptoOpSpec for DecryptOp {
         }
     }
 
-    async fn execute_local(
+    fn execute_local(
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
@@ -329,6 +333,9 @@ fn decrypt_single(
     request: &Decrypt,
 ) -> KResult<DecryptResponse> {
     trace!("Extracting key block for decryption to identify key format type...");
+    if let Object::PGPKey { .. } = owm.object() {
+        return pgp_ops::pgp_decrypt(owm, request);
+    }
     let key_block = owm.object().key_block()?;
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]

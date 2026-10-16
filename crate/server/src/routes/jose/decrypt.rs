@@ -26,7 +26,6 @@ use cosmian_kms_server_database::reexport::{
     },
 };
 use cosmian_logger::{debug, trace};
-use openssl::rand::rand_bytes;
 use zeroize::Zeroizing;
 
 use super::{
@@ -313,7 +312,7 @@ async fn decrypt_rsa_oaep(
                             "RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection"
                         );
                         let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
-                        rand_bytes(&mut random_cek).map_err(|e| {
+                        kms.rng.fill_bytes(&mut random_cek).map_err(|e| {
                             CryptoApiError::InternalError(format!(
                                 "Failed to generate random CEK for implicit rejection: {e}"
                             ))

@@ -110,11 +110,11 @@ fn test_query_(major: i32, minor: i32) {
         let Some(operations) = &query_response.operation else {
             panic!("Expected operations");
         };
-        assert!(!operations.is_empty());
+        assert_ne!(operations.as_slice(), []);
         let Some(object_types) = &query_response.object_type else {
             panic!("Expected object types");
         };
-        assert!(!object_types.is_empty());
+        assert_ne!(object_types.as_slice(), []);
         let Some(vendor_identification) = &query_response.vendor_identification else {
             panic!("Expected vendor identification");
         };
@@ -131,11 +131,11 @@ fn test_query_(major: i32, minor: i32) {
         let Some(operations) = &query_response.operation else {
             panic!("Expected operations");
         };
-        assert!(!operations.is_empty());
+        assert_ne!(operations.as_slice(), []);
         let Some(object_types) = &query_response.object_type else {
             panic!("Expected object types");
         };
-        assert!(!object_types.is_empty());
+        assert_ne!(object_types.as_slice(), []);
         let Some(vendor_identification) = &query_response.vendor_identification else {
             panic!("Expected vendor identification");
         };

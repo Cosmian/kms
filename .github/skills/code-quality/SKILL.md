@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: 'Run a scoped code-quality audit: one KMS Caveman pass first, followed by applicable Rust review skills, Clippy, MISE conventions, and CI-efficiency review. Deduplicates findings into a ranked report. Use before a PR or when improving code quality.'
+description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/skills/shared/orchestrator-contract.md (KMS Caveman first, then MISE, Clippy, error-prop, refactor + simplify, patterns, async, CI efficiency). Each phase is a sub-agent (contract §6). One ranked report deduplicating overlapping findings. Use before PRs or when improving code quality.'
 ---
 
 # Code Quality Audit
@@ -8,6 +8,7 @@ description: 'Run a scoped code-quality audit: one KMS Caveman pass first, follo
 Orchestrates six Rust-focused audit skills, MISE Bash checks, Clippy, and CI efficiency in one ranked report. The read-only KMS Caveman pass runs first; findings from deeper reviews are deduplicated.
 
 **Usage**: `/code-quality` (full workspace) or `/code-quality crate/server/src/`
+> **Canonical Reference**: This orchestrator's phase ordering, skip gates, and deduplication rules follow `.github/skills/shared/orchestrator-contract.md`. Each phase runs as a sub-agent per contract §6 (cheap routing for mechanical phases, reasoning routing for judgment phases where the harness supports it).
 
 ## Orchestration rationale
 
@@ -326,7 +327,7 @@ Invoke `/ci-efficiency`. Check:
 - Missing caches (Nix store, Cargo registry, pnpm store)
 - Over-broad workflow triggers (`on: push` without path filters)
 - No concurrency cancellation on PR workflows
-- Redundant matrix jobs between `pr.yml` and `test_all.yml`
+- Redundant matrix jobs between `main.yml` and `test_all.yml`
 
 **Output**: top 3 efficiency improvements ranked by CI-minutes saved.
 

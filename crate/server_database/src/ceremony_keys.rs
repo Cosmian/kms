@@ -10,12 +10,12 @@
 //! 3. **Key obfuscation** (Redis): Role names are not stored in plaintext as Redis
 //!    keys — an attacker cannot enumerate which roles have ceremonies.
 
-use std::sync::Mutex;
-
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    Aes256Gcm, CsRng, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey, kdf256,
-    reexport::rand_core::SeedableRng,
+use cosmian_kms_crypto::{
+    crypto::KmsRng,
+    reexport::cosmian_crypto_core::{
+        Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey, kdf256,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,8 +57,6 @@ pub struct CeremonyKeys {
     /// Key material for SHAKE-256 obfuscation of Redis key names.
     /// Heap-pinned: moves copy only the fat pointer, not the 32 key bytes.
     obfuscation_key: SymmetricKey<32>,
-    /// Thread-safe RNG for nonce generation.
-    rng: Mutex<CsRng>,
 }
 
 impl CeremonyKeys {
@@ -82,7 +80,6 @@ impl CeremonyKeys {
         Self {
             aes_key,
             obfuscation_key,
-            rng: Mutex::new(CsRng::from_entropy()),
         }
     }
 
@@ -94,10 +91,11 @@ impl CeremonyKeys {
     /// binding the ciphertext to a specific role and preventing cross-role replay.
     pub fn seal(&self, payload: &CeremonyPayload, role: &str) -> DbResult<String> {
         let nonce = {
-            let mut rng = self.rng.lock().map_err(|e| {
-                DbError::DatabaseError(format!("failed acquiring lock on ceremony RNG: {e:?}"))
-            })?;
-            Nonce::new(&mut *rng)
+            let mut nonce_bytes = [0_u8; Aes256Gcm::NONCE_LENGTH];
+            KmsRng::new()
+                .fill_bytes(&mut nonce_bytes)
+                .map_err(|e| DbError::CryptographicError(format!("RNG failure: {e}")))?;
+            Nonce::from(nonce_bytes)
         };
         let plaintext = serde_json::to_vec(payload).map_err(|e| {
             DbError::DatabaseError(format!("failed to serialize ceremony payload: {e}"))

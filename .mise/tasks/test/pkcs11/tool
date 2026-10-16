@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Run HSM-KEK pkcs11-tool and pkcs11-check battle tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--marker <marker>" env="PKCS11_CHECK_MARKER" help="pkcs11-check marker" default="smoke"
+set -euo pipefail
+exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/hsm-pkcs11-tool" \
+  --variant "${usage_variant:-non-fips}" \
+  --link "${usage_link:-static}" \
+  --marker "${usage_marker:-smoke}"

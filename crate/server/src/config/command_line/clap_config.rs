@@ -856,7 +856,8 @@ mod tests {
             .unwrap()
             .as_nanos();
         let thread_id = std::thread::current().id();
-        let fname = format!("kms_test_conf_{ts}_{thread_id:?}.toml");
+        let pid = std::process::id();
+        let fname = format!("kms_test_conf_{pid}_{ts}_{thread_id:?}.toml");
         p.push(fname);
         fs::write(&p, contents).expect("write temp toml");
         p
@@ -877,7 +878,8 @@ mod tests {
             .unwrap()
             .as_nanos();
         let thread_id = std::thread::current().id();
-        let fname = format!("kms_test_default_conf_{ts}_{thread_id:?}.toml");
+        let pid = std::process::id();
+        let fname = format!("kms_test_default_conf_{pid}_{ts}_{thread_id:?}.toml");
         p.push(fname);
         p
     }

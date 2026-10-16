@@ -601,6 +601,41 @@ mod real_validation {
         accept(&config, &token).expect_err("missing audience must be rejected");
     }
 
+    /// `jsonwebtoken` parses but never enforces `crit` (RFC 7515 §4.1.11): the production
+    /// path must refuse such a token itself. The header segment is forged by hand, and the
+    /// error message proves the refusal comes from the `crit` check, not the signature.
+    #[tokio::test]
+    async fn token_with_crit_header_is_rejected() {
+        let key = generate_key();
+        let config = config(&key).await;
+        let token = sign(&key, KID, Algorithm::ES256, &valid_claims());
+        let forged_header = URL_SAFE_NO_PAD
+            .encode(json!({"alg": "ES256", "kid": KID, "crit": ["b64"]}).to_string());
+        let forged = format!(
+            "{forged_header}.{}",
+            token.split_once('.').expect("compact JWT").1
+        );
+        let err = config
+            .validate_signed_token(&forged, true)
+            .expect_err("a token with `crit` must be rejected");
+        assert!(err.to_string().contains("critical"), "{err}");
+    }
+
+    /// A correctly signed nested JWT (`cty: JWT`) is refused: it is not supported.
+    #[tokio::test]
+    async fn nested_jwt_is_rejected() {
+        let key = generate_key();
+        let config = config(&key).await;
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some(KID.to_owned());
+        header.cty = Some("JWT".to_owned());
+        let token = encode(&header, &valid_claims(), &key.encoding_key).expect("sign JWT");
+        let err = config
+            .validate_signed_token(&token, true)
+            .expect_err("a nested JWT must be rejected");
+        assert!(err.to_string().contains("Nested"), "{err}");
+    }
+
     #[tokio::test]
     async fn expired_svid_is_rejected() {
         let key = generate_key();

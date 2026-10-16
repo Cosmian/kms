@@ -17,7 +17,7 @@ workspace = true
 ignored = ["winresource"]
 
 [target.'cfg(windows)'.build-dependencies]
-winresource = "0.1"
+winresource = { workspace = true }
 
 [lib]
 name = "cosmian_pkcs11"
@@ -27,31 +27,33 @@ crate-type = ["rlib", "cdylib"]
 doctest = false
 
 [features]
+default = []
 non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]
-ckms = { path = "../../ckms", version = "5.28.0" }
+ckms = { workspace = true }
 cosmian_logger = { workspace = true }
-cosmian_pkcs11_module = { path = "../module", version = "5.28.0" }
-etcetera = "0.8.0"
-hex = "0.4"
-p256 = { version = "0.13.2", default-features = false, features = [
+cosmian_pkcs11_module = { workspace = true }
+etcetera = { workspace = true }
+hex = { workspace = true, features = ["std"] }
+p256 = { workspace = true, features = [
   "arithmetic",
   "pkcs8",
   "std",
 ] }
-pkcs1 = "0.7.5"
+pkcs1 = { workspace = true }
 pkcs11-sys = { workspace = true }
 serde_json = { workspace = true }
-sha3 = { version = "0.10", default-features = false }
+sha3 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-tracing-error = "0.2.1"
+tracing-error = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-x509-cert = { version = "0.2", default-features = false }
+x509-cert = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_config_utils = { workspace = true }
-serial_test = { version = "3.2.0", default-features = true }
-test_kms_server = { path = "../../../test_kms_server" }
+openssl = { workspace = true }
+serial_test = { workspace = true }
+test_kms_server = { workspace = true }

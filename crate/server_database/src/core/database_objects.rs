@@ -78,7 +78,6 @@ impl Database {
         result
     }
 
-    #[allow(dead_code)]
     /// Register an Objects store for Objects `uid` starting with `<prefix>::`.
     ///
     /// This function registers an `ObjectsStore` for objects whose unique identifiers
@@ -105,7 +104,6 @@ impl Database {
         map.insert(prefix.to_owned(), objects_store);
     }
 
-    #[allow(dead_code)]
     /// Unregister the default objects store or a store for the given prefix
     pub async fn unregister_object_store(&self, prefix: Option<&str>) {
         let mut map = self.objects.write().await;
@@ -210,13 +208,18 @@ impl Database {
         if let Some(ref uid) = uid {
             reject_reserved_uid(uid)?;
         }
-        self.record("create", async move {
-            let db = self
-                .get_object_store(uid.as_deref().unwrap_or_default())
-                .await?;
-            Ok(db.create(uid, owner, object, attributes, tags).await?)
-        })
-        .await
+        let uid = self
+            .record("create", async move {
+                let db = self
+                    .get_object_store(uid.as_deref().unwrap_or_default())
+                    .await?;
+                Ok(db.create(uid, owner, object, attributes, tags).await?)
+            })
+            .await?;
+        if let Some(name) = attributes.rotate_name.as_deref() {
+            self.rotate_name_cache.invalidate_name(name);
+        }
+        Ok(uid)
     }
 
     /// Retrieve objects from the database.
@@ -421,6 +424,8 @@ impl Database {
         .await?;
         // Invalidate the object cache since attributes or key material may have changed.
         self.object_cache.invalidate(uid).await;
+        self.rotate_name_cache
+            .invalidate_member(uid, attributes.rotate_name.as_deref());
         // Validate the unwrapped cache: if the object fingerprint changed (e.g. a
         // re-wrap), evict the stale unwrapped entry so the next get_unwrapped call
         // performs a fresh unwrap instead of returning stale key material.
@@ -436,6 +441,7 @@ impl Database {
         })
         .await?;
         self.object_cache.invalidate(uid).await;
+        self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
     }
 
@@ -448,6 +454,7 @@ impl Database {
         .await?;
         self.object_cache.invalidate(uid).await;
         self.unwrapped_cache.clear_cache(uid).await;
+        self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
     }
 
@@ -723,7 +730,39 @@ impl Database {
     /// Find objects by their `x-rotate-name` vendor attribute.
     ///
     /// Queries all registered object stores and returns matching `(uid, attributes)` pairs.
+    ///
+    /// Backed by a short-TTL [`crate::core::RotateNameCache`] (see its module docs): every
+    /// delegated PKCS#11 Sign/Verify call resolves a keyset reference this way, even for a
+    /// plain (non-rotated) HSM UID, and for an HSM-backed store this otherwise means a full
+    /// `C_FindObjects` scan plus a `C_GetAttributeValue` round-trip per object on *every*
+    /// cryptographic operation. Rotation is a rare, explicit administrative action, so a
+    /// worst-case few-second staleness window before a new generation becomes visible is an
+    /// accepted trade-off for key *resolution*. Local writes invalidate the cache eagerly;
+    /// writes from other KMS nodes sharing the database are only seen after the TTL.
+    ///
+    /// Paths whose correctness depends on the current keyset state (re-key eligibility,
+    /// next-generation allocation) must use [`Self::find_by_rotate_name_uncached`] instead.
     pub async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &UserId,
+    ) -> DbResult<Vec<(String, Attributes)>> {
+        if let Some(cached) = self.rotate_name_cache.get(name, generation, owner).await {
+            return Ok(cached);
+        }
+        let results = self
+            .find_by_rotate_name_uncached(name, generation, owner)
+            .await?;
+        self.rotate_name_cache
+            .insert(name, generation, owner, results.clone())
+            .await;
+        Ok(results)
+    }
+
+    /// Same as [`Self::find_by_rotate_name`], but always queries the object stores,
+    /// bypassing (and not populating) the [`crate::core::RotateNameCache`].
+    pub async fn find_by_rotate_name_uncached(
         &self,
         name: &str,
         generation: Option<i32>,
@@ -741,12 +780,24 @@ impl Database {
         Ok(results)
     }
 
+    /// Invalidate every cached `find_by_rotate_name` entry for keyset `name`
+    /// (all owners, all generation filters).
+    ///
+    /// Call this after a rotation (rekey) creates a new generation so the next
+    /// resolution sees it immediately instead of waiting out the cache's TTL.
+    pub fn invalidate_rotate_name_cache(&self, name: &str) {
+        self.rotate_name_cache.invalidate_name(name);
+    }
+
     /// Set the `CKA_LABEL` (or equivalent) on a key identified by `uid`.
     ///
     /// Routes to the object store responsible for `uid`. SQL stores silently ignore this.
     pub async fn set_key_label(&self, uid: &str, label: &str) -> DbResult<()> {
         let store = self.get_object_store(uid).await?;
-        store.set_key_label(uid, label).await.map_err(Into::into)
+        store.set_key_label(uid, label).await?;
+        // On HSM stores the label carries the keyset name and generation.
+        self.rotate_name_cache.invalidate_member(uid, None);
+        Ok(())
     }
 
     /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
@@ -809,23 +860,30 @@ impl Database {
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
-                AtomicOperation::Create((uid, _owner, object, ..)) => {
+                AtomicOperation::Create((uid, _owner, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
+                    if let Some(name) = attributes.rotate_name.as_deref() {
+                        self.rotate_name_cache.invalidate_name(name);
+                    }
                 }
-                AtomicOperation::UpdateObject((uid, object, ..))
-                | AtomicOperation::Upsert((uid, object, ..)) => {
+                AtomicOperation::UpdateObject((uid, object, attributes, ..))
+                | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
+                    self.rotate_name_cache
+                        .invalidate_member(uid, attributes.rotate_name.as_deref());
                 }
                 AtomicOperation::Delete(uid) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
+                    self.rotate_name_cache.invalidate_member(uid, None);
                 }
                 AtomicOperation::UpdateState((uid, _)) => {
                     // Evict the stale object so the new lifecycle state is
                     // visible immediately on the next retrieve_object call.
                     self.object_cache.invalidate(uid).await;
+                    self.rotate_name_cache.invalidate_member(uid, None);
                 }
             }
         }
@@ -1036,6 +1094,52 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `unregister_object_store` must undo `register_objects_store`: UIDs under the
+    /// prefix stop routing to the registered store (here falling back to the
+    /// "no HSM configured" error for `hsm::` prefixes), and unregistering the default
+    /// store (`None`) leaves no store for unprefixed UIDs.
+    #[tokio::test]
+    async fn test_unregister_object_store() {
+        let db = test_db().await;
+        let default_store = db
+            .get_object_store("plain-uid")
+            .await
+            .expect("default store is registered");
+
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let extra: Arc<dyn cosmian_kms_interfaces::ObjectsStore + Sync + Send> = Arc::new(
+            crate::stores::SqlitePool::instantiate(&tmp.path().join("extra.db"), true, None)
+                .await
+                .expect("Failed to instantiate extra store"),
+        );
+        db.register_objects_store("hsm::extra", Arc::clone(&extra))
+            .await;
+
+        let routed = db
+            .get_object_store("hsm::extra::0::key")
+            .await
+            .expect("registered prefix must route to the extra store");
+        assert!(Arc::ptr_eq(&routed, &extra));
+
+        db.unregister_object_store(Some("hsm::extra")).await;
+        match db.get_object_store("hsm::extra::0::key").await {
+            Ok(_) => panic!("unregistered hsm prefix must no longer resolve"),
+            Err(e) => assert!(
+                e.to_string().contains("No HSM is configured"),
+                "unexpected error: {e}"
+            ),
+        }
+        // The default store is untouched by removing a prefixed one.
+        let still_default = db
+            .get_object_store("plain-uid")
+            .await
+            .expect("default store must remain");
+        assert!(Arc::ptr_eq(&still_default, &default_store));
+
+        db.unregister_object_store(None).await;
+        assert!(db.get_object_store("plain-uid").await.is_err());
     }
 
     /// Verify that the `DbMetricsRecorder` injected into `Database` is called when

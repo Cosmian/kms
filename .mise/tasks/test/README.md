@@ -103,7 +103,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 | Task | Backend | FIPS? | Notes |
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
-| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). |
+| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. |
 | `mysql` | MySQL | yes | Disabled in CI. |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
@@ -171,7 +171,7 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`
+**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`, `test:hsm-luna`
 **Orchestrator:** `test:hsm:_default`
 **Matrix:** `test:matrix` (cross-product HSM × DB × variant)
 
@@ -181,6 +181,7 @@ sequenceDiagram
 | `hsm-utimaco` | Utimaco simulator | Linux only | passthrough |
 | `hsm-proteccio` | Proteccio | Linux only | passthrough |
 | `hsm-crypt2pay` | Crypt2Pay | Linux only | passthrough |
+| `hsm-luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
 
 ### Architecture Overview
 

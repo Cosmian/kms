@@ -199,6 +199,7 @@ impl SqlitePool {
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
+        let clean_crls = pool.get_query("clean-table-crls")?.to_owned();
         // The schema-bootstrap transaction needs a write lock; retry on a transient lock
         // (see `retry_on_transient_lock`) in case a previous writer connection to the same
         // file (e.g. from an immediately-preceding `KMS` instance in the same process) has
@@ -220,6 +221,7 @@ impl SqlitePool {
             let clean_objects = clean_objects.clone();
             let clean_read_access = clean_read_access.clone();
             let clean_tags = clean_tags.clone();
+            let clean_crls = clean_crls.clone();
             async {
                 pool.writer
                     .call(
@@ -245,6 +247,7 @@ impl SqlitePool {
                                 tx.execute(&clean_objects, [])?;
                                 tx.execute(&clean_read_access, [])?;
                                 tx.execute(&clean_tags, [])?;
+                                tx.execute(&clean_crls, [])?;
                             }
                             tx.commit()?;
                             Ok(())
@@ -1049,33 +1052,6 @@ impl ObjectsStore for SqlitePool {
 
 #[async_trait(?Send)]
 impl Migrate for SqlitePool {
-    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
-        let select_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("select-parameter")
-                .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
-        );
-        let res: Option<String> = self
-            .reader()
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&select_param)?;
-                    let row = stmt
-                        .query_row(params_from_iter([&"db_state"]), |row| {
-                            row.get::<_, String>(0)
-                        })
-                        .optional()?;
-                    Ok(row)
-                },
-            )
-            .await
-            .map_err(DbError::from)?;
-        match res {
-            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
-            None => Ok(None),
-        }
-    }
-
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
         let upsert_param = replace_dollars_with_qn(
             PGSQL_QUERIES
@@ -1105,30 +1081,6 @@ impl Migrate for SqlitePool {
         })
         .await?;
         Ok(())
-    }
-
-    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let select_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("select-parameter")
-                .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
-        );
-        let res: Option<String> = self
-            .reader()
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&select_param)?;
-                    let row = stmt
-                        .query_row(params_from_iter([&"db_version"]), |row| {
-                            row.get::<_, String>(0)
-                        })
-                        .optional()?;
-                    Ok(row)
-                },
-            )
-            .await
-            .map_err(DbError::from)?;
-        Ok(res)
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
@@ -1783,4 +1735,105 @@ fn apply_owned_ops(
         }
     }
     Ok(uids)
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kms_interfaces::PermissionsStore;
+    use tempfile::TempDir;
+
+    use super::SqlitePool;
+    use crate::{
+        DbError,
+        error::DbResult,
+        stores::migrate::{DbState, Migrate},
+    };
+
+    /// Fail unless the `parameters` row `name` currently holds `expected`.
+    async fn expect_parameter(
+        pool: &SqlitePool,
+        name: &'static str,
+        expected: &str,
+    ) -> DbResult<()> {
+        let actual = pool.get_parameter(name).await?;
+        if actual.as_deref() != Some(expected) {
+            return Err(DbError::DatabaseError(format!(
+                "parameter '{name}': expected {expected:?}, got {actual:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// A freshly initialised database records its version and a `ready` state in the
+    /// `parameters` table, and `set_db_state` / `set_current_db_version` overwrite them
+    /// using the serialized (`snake_case`) representation read back by other backends.
+    #[tokio::test]
+    async fn test_migration_markers_roundtrip() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let pool = SqlitePool::instantiate(&dir.path().join("markers.db"), true, None).await?;
+
+        expect_parameter(&pool, "db_version", env!("CARGO_PKG_VERSION")).await?;
+        expect_parameter(&pool, "db_state", "\"ready\"").await?;
+
+        pool.set_db_state(DbState::Upgrading).await?;
+        expect_parameter(&pool, "db_state", "\"upgrading\"").await?;
+
+        pool.set_current_db_version("0.0.1-test").await?;
+        expect_parameter(&pool, "db_version", "0.0.1-test").await
+    }
+
+    /// Re-opening an existing database (`clear_database == false`) must not reset the
+    /// recorded state or version.
+    #[tokio::test]
+    async fn test_migration_markers_survive_reopen() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let file = dir.path().join("reopen.db");
+        {
+            let pool = SqlitePool::instantiate(&file, true, None).await?;
+            pool.set_db_state(DbState::Upgrading).await?;
+            pool.set_current_db_version("0.0.2-test").await?;
+        }
+        let reopened = SqlitePool::instantiate(&file, false, None).await?;
+        expect_parameter(&reopened, "db_state", "\"upgrading\"").await?;
+        expect_parameter(&reopened, "db_version", "0.0.2-test").await
+    }
+
+    /// Fail unless the `crls` table holds exactly `expected` issuers.
+    async fn expect_crl_issuers(pool: &SqlitePool, expected: usize) -> DbResult<()> {
+        let actual = pool
+            .list_crl_issuers()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?
+            .len();
+        if actual != expected {
+            return Err(DbError::DatabaseError(format!(
+                "crls: expected {expected} issuer(s), got {actual}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `clear_database` must also empty the `crls` table, not leave stale CRLs behind.
+    #[tokio::test]
+    async fn test_clear_database_empties_crls() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let file = dir.path().join("crls.db");
+        {
+            let pool = SqlitePool::instantiate(&file, true, None).await?;
+            pool.upsert_crl(
+                "issuer",
+                &[1, 2, 3],
+                1,
+                "2026-01-01T00:00:00Z",
+                "2026-01-02T00:00:00Z",
+            )
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+            expect_crl_issuers(&pool, 1).await?;
+        }
+        // Re-opening without clearing keeps the CRL...
+        expect_crl_issuers(&SqlitePool::instantiate(&file, false, None).await?, 1).await?;
+        // ...clearing removes it.
+        expect_crl_issuers(&SqlitePool::instantiate(&file, true, None).await?, 0).await
+    }
 }

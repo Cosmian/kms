@@ -13,7 +13,7 @@ in this operation into the ID Placeholder variable.
 
 ## Implementation
 
-This operation can be used to create a new symmetric key or a new Covercrypt user decryption key.
+This operation can be used to create a new symmetric key, a new Covercrypt user decryption key, or an OpenPGP key (`PGPKey`, non-FIPS mode).
 
 ## Example - Symmetric Key
 

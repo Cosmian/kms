@@ -310,7 +310,12 @@ async fn wrap_using_kms(
         object.key_block()?.key_format_type
     );
     // wrap the object
-    wrap_object_with_key(object, &wrapping_key_object, key_wrapping_specification)?;
+    wrap_object_with_key(
+        object,
+        &wrapping_key_object,
+        key_wrapping_specification,
+        &kms.rng,
+    )?;
     Ok(())
 }
 
@@ -362,7 +367,7 @@ async fn wrap_using_crypto_oracle(
         KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
     let encrypted_content = crypto_oracle
-        .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
+        .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None, None)
         .await?;
     if let Some(ref metrics) = kms.metrics {
         let model =

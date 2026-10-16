@@ -54,8 +54,8 @@ setup_test_logging
 
 CERT_DIR="${REPO_ROOT}/test_data/certificates/client_server"
 CA_CERT="${CERT_DIR}/ca/ca.crt"
-SERVER_P12="${CERT_DIR}/server/kmserver.acme.com.p12"
-SERVER_P12_PASSWORD="password"
+SERVER_CERT="${CERT_DIR}/server/kmserver.acme.com.crt"
+SERVER_KEY="${CERT_DIR}/server/kmserver.acme.com.key"
 CLIENT_CERT="${CERT_DIR}/owner/owner.client.acme.com.crt"
 CLIENT_KEY="${CERT_DIR}/owner/owner.client.acme.com.key"
 
@@ -89,15 +89,16 @@ CKMS_BIN="${REPO_ROOT}/target/debug/ckms"
 CKMS_URL="https://127.0.0.1:${KMS_HTTP_PORT}"
 
 # Write a ckms config that authenticates over mTLS with the test client cert.
-# The KMS HTTP port uses TLS (--tls-p12-file) and requires a client certificate
-# (--clients-ca-cert-file), so ckms must present the owner client P12.
+# The KMS HTTP port uses TLS and requires a client certificate (--clients-ca-cert-file),
+# so ckms must present the owner client certificate. PEM is used for both server and
+# client because PKCS#12 is not supported by FIPS builds.
 CKMS_CONF="${KMS_SQLITE_DIR}/ckms.toml"
 cat >"${CKMS_CONF}" <<CKMS_CONF_EOF
 [http_config]
 server_url = "${CKMS_URL}"
 accept_invalid_certs = true
-tls_client_pkcs12_path = "${CLIENT_CERT%.*}.p12"
-tls_client_pkcs12_password = "password"
+tls_client_pem_cert_path = "${CLIENT_CERT}"
+tls_client_pem_key_path = "${CLIENT_KEY}"
 CKMS_CONF_EOF
 
 echo "==> Starting KMS (socket port ${KMS_KMIP_PORT}, HTTP port ${KMS_HTTP_PORT})…"
@@ -107,8 +108,8 @@ RUST_LOG="${RUST_LOG:-cosmian_kms_server=info,cosmian_kmip=warn}" \
   --database-type sqlite \
   --sqlite-path "${KMS_SQLITE_DIR}" \
   --socket-server-port "${KMS_KMIP_PORT}" \
-  --tls-p12-file "${SERVER_P12}" \
-  --tls-p12-password "${SERVER_P12_PASSWORD}" \
+  --tls-cert-file "${SERVER_CERT}" \
+  --tls-key-file "${SERVER_KEY}" \
   --clients-ca-cert-file "${CA_CERT}" \
   --port "${KMS_HTTP_PORT}" \
   --hostname "127.0.0.1" \

@@ -18,16 +18,22 @@ doctest = false
 
 [dependencies]
 async-trait = { workspace = true }
-cosmian_kmip = { path = "../kmip", version = "5.28.0" }
+cosmian_kmip = { workspace = true }
+cosmian_kms_access = { workspace = true }
 cosmian_logger = { workspace = true }
 num-bigint-dig = { workspace = true, features = ["std", "rand", "serde", "zeroize"] }
 openssl = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 zeroize = { workspace = true, default-features = true }
 
 [dev-dependencies]
-mockall = "0.13"
+mockall = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[features]
+# Enables HSM-delegated EdDSA (Ed25519/Ed448) signing and X25519 ECDH key agreement types,
+# mirroring the software crypto path gating in `crate/crypto/src/crypto/elliptic_curves/sign.rs`.
+# See issue #1157 ("HSM delegation Track B").
+non-fips = []

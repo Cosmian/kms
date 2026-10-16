@@ -1,0 +1,10 @@
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":1,"throughput_rps":847.30,"p50_ms":1.151,"p95_ms":1.469,"p99_ms":2.049}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":16,"throughput_rps":7935.15,"p50_ms":1.884,"p95_ms":2.934,"p99_ms":3.784}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":32,"throughput_rps":9512.95,"p50_ms":3.249,"p95_ms":4.733,"p99_ms":5.777}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":64,"throughput_rps":10261.70,"p50_ms":6.155,"p95_ms":8.012,"p99_ms":9.299}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":96,"throughput_rps":10398.95,"p50_ms":9.161,"p95_ms":11.240,"p99_ms":12.672}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":1,"throughput_rps":540.45,"p50_ms":1.811,"p95_ms":2.170,"p99_ms":2.663}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":16,"throughput_rps":1017.45,"p50_ms":15.649,"p95_ms":16.257,"p99_ms":17.339}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":32,"throughput_rps":1021.45,"p50_ms":31.287,"p95_ms":32.229,"p99_ms":32.985}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":64,"throughput_rps":1029.10,"p50_ms":61.856,"p95_ms":63.512,"p99_ms":64.942}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/eddsa-ed25519","concurrency":96,"throughput_rps":1030.85,"p50_ms":93.381,"p95_ms":95.017,"p99_ms":96.659}

@@ -101,6 +101,7 @@ impl From<GoogleApiError> for CosmianError {
             GoogleApiError::Jwt(e) => Self::GmailApiError(e.to_string()),
             GoogleApiError::Reqwest(e) => Self::GmailApiError(e.to_string()),
             GoogleApiError::Serde(e) => Self::GmailApiError(e.to_string()),
+            GoogleApiError::TokenEndpoint(msg) => Self::GmailApiError(msg),
         }
     }
 }

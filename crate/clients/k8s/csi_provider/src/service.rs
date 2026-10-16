@@ -48,8 +48,11 @@ struct ObjectSpec {
     #[serde(alias = "kmsUID")]
     kms_uid: String,
     /// Optional expected version — empty string means "latest".
+    ///
+    /// The version of an object is the lower-hex SHA-256 digest of its content (see
+    /// [`content_version`]); when set, the mount fails unless the fetched content has
+    /// exactly this version.
     #[serde(default)]
-    #[expect(dead_code, reason = "reserved for future server-side version pinning")]
     object_version: String,
 }
 
@@ -98,7 +101,8 @@ impl CsiDriverProvider for CsiProviderService {
     /// 1. Calls `KmsClient::get()` with the declared `kmsUID`.
     /// 2. Extracts the raw key/secret bytes.
     /// 3. Computes a SHA-256 hex digest of the bytes as the object version.
-    /// 4. Returns a `File` entry at the `objectName` path.
+    /// 4. Fails if the object declares an `objectVersion` that differs from that digest.
+    /// 5. Returns a `File` entry at the `objectName` path.
     ///
     /// If the computed version differs from the version stored in
     /// `current_object_version`, the CSI driver will trigger pod secret
@@ -128,6 +132,7 @@ impl CsiDriverProvider for CsiProviderService {
                 .map_err(Status::from)?;
 
             let version = content_version(&bytes);
+            check_pinned_version(spec, &version).map_err(Status::from)?;
 
             // Warn when rotation is detected so operators can monitor logs.
             if let Some(prev_version) = current_versions.get(&spec.kms_uid) {
@@ -179,7 +184,7 @@ fn parse_attributes(attributes: &str) -> Result<Vec<ObjectSpec>, CsiProviderErro
         ))
     })?;
 
-    let specs: Vec<ObjectSpec> = serde_yaml::from_str(&attrs.objects).map_err(|e| {
+    let specs: Vec<ObjectSpec> = serde_saphyr::from_str(&attrs.objects).map_err(|e| {
         CsiProviderError::InvalidAttributes(format!("objects field is not valid YAML: {e}"))
     })?;
 
@@ -220,6 +225,20 @@ async fn fetch_secret_bytes(
     Ok(Zeroizing::new(bytes.to_vec()))
 }
 
+/// Fail when `spec` pins an `objectVersion` that differs from the `actual` version of
+/// the object fetched from the KMS. An empty `objectVersion` means "latest".
+fn check_pinned_version(spec: &ObjectSpec, actual: &str) -> Result<(), CsiProviderError> {
+    if spec.object_version.is_empty() || spec.object_version == actual {
+        Ok(())
+    } else {
+        Err(CsiProviderError::VersionMismatch {
+            uid: spec.kms_uid.clone(),
+            expected: spec.object_version.clone(),
+            actual: actual.to_owned(),
+        })
+    }
+}
+
 /// Compute a deterministic version string for `bytes` as the lower-hex SHA-256
 /// digest of the content.  A change in content → different version → rotation.
 fn content_version(bytes: &[u8]) -> String {
@@ -245,6 +264,67 @@ mod tests {
         let first = specs.first().expect("at least one spec");
         assert_eq!(first.object_name, "my-api-key");
         assert_eq!(first.kms_uid, "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(first.object_version, "");
+    }
+
+    #[test]
+    fn parse_attributes_reads_object_version_pin() {
+        let objects_yaml = "- objectName: a\n  kmsUID: uid-a\n  objectVersion: abc123\n- objectName: b\n  kmsUid: uid-b\n";
+        let attributes = serde_json::json!({ "objects": objects_yaml }).to_string();
+        let specs = parse_attributes(&attributes).unwrap_or_else(|e| panic!("should parse: {e}"));
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs.first().expect("first").object_version, "abc123");
+        assert_eq!(specs.get(1).expect("second").object_version, "");
+    }
+
+    fn spec_with_version(object_version: &str) -> ObjectSpec {
+        ObjectSpec {
+            object_name: "secret".to_owned(),
+            kms_uid: "uid-1".to_owned(),
+            object_version: object_version.to_owned(),
+        }
+    }
+
+    #[test]
+    fn unpinned_spec_accepts_any_version() {
+        assert!(
+            check_pinned_version(&spec_with_version(""), &content_version(b"x"))
+                .err()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn pinned_version_matching_content_digest_is_accepted() {
+        let pinned = content_version(b"secret-bytes");
+        assert!(
+            check_pinned_version(
+                &spec_with_version(&pinned),
+                &content_version(b"secret-bytes")
+            )
+            .err()
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn pinned_version_mismatch_is_a_failed_precondition() {
+        let pinned = content_version(b"old");
+        let actual = content_version(b"rotated");
+        let err = check_pinned_version(&spec_with_version(&pinned), &actual)
+            .expect_err("mismatching pinned version must be rejected");
+        assert!(
+            matches!(
+                &err,
+                CsiProviderError::VersionMismatch { uid, expected, actual: got }
+                    if uid == "uid-1" && *expected == pinned && *got == actual
+            ),
+            "{err}"
+        );
+        assert_eq!(
+            tonic::Status::from(err).code(),
+            tonic::Code::FailedPrecondition
+        );
     }
 
     #[test]

@@ -48,17 +48,17 @@ Options:
 
       --hsm-model <HSM_MODEL>
           The HSM model.
-          `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, and `SoftHSM2` are natively supported.
+          `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+          `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
+          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, kryoptic, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
           HSM admins can create, destroy, and potentially export objects on the HSM.
-          Use `"*"` as the only entry to grant all authenticated users admin access.
+          Use "*" as the only entry to grant all authenticated users admin access.
           Repeat the option or use a comma-separated list to specify multiple admins:
             `--hsm-admin alice@example.com --hsm-admin bob@example.com`
             or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
@@ -855,13 +855,41 @@ Options:
       --audit-file-max-size-bytes <AUDIT_FILE_MAX_SIZE_BYTES>
           Stops all further writes once the audit file reaches this many bytes.
 
-          The event that pushes the file to or past this size is still persisted; every event
-          after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
-          and the KMS is restarted.
+          The event that would reach this size is replaced by a final
+          `audit:size-cap-reached` event. Later events are dropped according to
+          `--audit-failure-mode` until the log is remediated and the KMS is restarted.
 
           Omitted (the default) means unlimited. Must be > 0 when set.
 
           [env: KMS_AUDIT_FILE_MAX_SIZE_BYTES=]
+
+      --audit-postgres-url <AUDIT_POSTGRES_URL>
+          `PostgreSQL` connection URL for the audit database.
+
+          When set, audit events are written to this `PostgreSQL` database instead of the
+          JSONL file — backend selection is config-time only, based solely on whether this
+          is set; there is no runtime fallback between the two: a connectivity failure at
+          startup still aborts the server. If `--audit-file-path` is also set, it is only
+          used to log a warning that it's ignored (or, on connection failure, that it is
+          NOT used as a fallback). This database MUST be a different database than the
+          main object-storage database (`--database-url`) when that database is also
+          `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+          would let the KMS's own object-store role bypass the audit database's
+          append-only grants.
+
+          [env: KMS_AUDIT_POSTGRES_URL=]
+
+      --audit-instance-id <AUDIT_INSTANCE_ID>
+          Identifies this KMS instance's audit hash chain when using the `PostgreSQL`
+          backend.
+
+          Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
+          database — a second instance reusing an `instance_id` is rejected at startup by an
+          advisory-lock check, before any event is written. Required (no default) when
+          `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+          `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
+
+          [env: KMS_AUDIT_INSTANCE_ID=]
 
       --audit-channel-capacity <AUDIT_CHANNEL_CAPACITY>
           Capacity of the bounded in-memory channel between request threads and the

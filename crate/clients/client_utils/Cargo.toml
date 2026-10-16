@@ -21,6 +21,7 @@ doctest = false
 
 [features]
 non-fips = ["cosmian_kmip/non-fips", "dep:cosmian_cover_crypt"]
+openpgp-export = ["non-fips", "dep:pgp"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -28,10 +29,11 @@ clap = { workspace = true, features = ["std", "derive"] }
 cosmian_config_utils = { workspace = true }
 # non-fips only. Default features (ML-KEM-512, Curve25519): no OpenSSL, so it builds for WASM.
 cosmian_cover_crypt = { workspace = true, optional = true }
-cosmian_kmip = { path = "../../kmip", version = "5.28.0" }
-cosmian_kms_access = { path = "../../access", version = "5.28.0" }
+cosmian_kmip = { workspace = true }
+cosmian_kms_access = { workspace = true }
 cosmian_logger = { workspace = true }
 pem = { workspace = true }
+pgp = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

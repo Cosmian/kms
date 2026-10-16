@@ -8,32 +8,44 @@ const HSM_ADMIN_DEFAULT: &str = "admin";
 /// Supported HSM models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HsmModel {
+    Luna,
     Proteccio,
     Crypt2pay,
     Utimaco,
     Softhsm2,
     Smartcardhsm,
+    Kryoptic,
+    AwsCloudhsm,
+    GcpCloudHsm,
     Other,
 }
 
 impl HsmModel {
     pub const VARIANTS: &'static [Self] = &[
+        Self::Luna,
         Self::Proteccio,
         Self::Crypt2pay,
         Self::Utimaco,
         Self::Softhsm2,
         Self::Smartcardhsm,
+        Self::Kryoptic,
+        Self::AwsCloudhsm,
+        Self::GcpCloudHsm,
         Self::Other,
     ];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Luna => "luna",
             Self::Proteccio => "proteccio",
             Self::Crypt2pay => "crypt2pay",
             Self::Utimaco => "utimaco",
             Self::Softhsm2 => "softhsm2",
             Self::Smartcardhsm => "smartcardhsm",
+            Self::Kryoptic => "kryoptic",
+            Self::AwsCloudhsm => "aws_cloudhsm",
+            Self::GcpCloudHsm => "gcp_cloud_hsm",
             Self::Other => "other",
         }
     }
@@ -49,20 +61,31 @@ impl fmt::Display for HsmModel {
 #[serde(default)]
 pub struct HsmConfig {
     /// The HSM model.
-    /// `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-    /// `Smartcard HSM`, and `SoftHSM2` are natively supported.
+    /// `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+    /// `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
     /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
         verbatim_doc_comment,
         long,
-        value_parser(["proteccio", "crypt2pay", "utimaco", "softhsm2", "smartcardhsm", "other"]),
+        value_parser([
+            "luna",
+            "proteccio",
+            "crypt2pay",
+            "utimaco",
+            "softhsm2",
+            "smartcardhsm",
+            "aws_cloudhsm",
+            "gcp_cloud_hsm",
+            "kryoptic",
+            "other"
+        ]),
         default_value = "proteccio"
     )]
     pub hsm_model: String,
 
     /// List of KMS usernames that are granted HSM admin privileges.
     /// HSM admins can create, destroy, and potentially export objects on the HSM.
-    /// Use `"*"` as the only entry to grant all authenticated users admin access.
+    /// Use "*" as the only entry to grant all authenticated users admin access.
     /// Repeat the option or use a comma-separated list to specify multiple admins:
     ///   `--hsm-admin alice@example.com --hsm-admin bob@example.com`
     ///   or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`

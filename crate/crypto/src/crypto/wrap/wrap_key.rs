@@ -26,7 +26,7 @@ use crate::crypto::rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_key_wrap;
 use crate::{
     CryptoResultHelper,
     crypto::{
-        FIPS_MIN_SALT_SIZE,
+        FIPS_MIN_SALT_SIZE, KmsRng,
         password_derivation::derive_key_from_password,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
@@ -93,12 +93,14 @@ fn check_block_cipher_mode_in_encryption_key_information(
 /// * `object` - the  object to wrap
 /// * `wrapping_key` - the wrapping key
 /// * `key_wrapping_specification` - the key wrapping specification
+/// * `rng` - the KMS random number generator used for nonces and ephemeral keys
 /// # Returns
 /// * `KResult<()>` - the result of the operation
 pub fn wrap_object_with_key(
     object: &mut Object,
     wrapping_key: &Object,
     key_wrapping_specification: &KeyWrappingSpecification,
+    rng: &KmsRng,
 ) -> Result<(), CryptoError> {
     // extract data to wrap
     let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
@@ -114,6 +116,7 @@ pub fn wrap_object_with_key(
         wrapping_key,
         &key_wrapping_specification.get_key_wrapping_data(),
         &data_to_wrap,
+        rng,
     )?;
 
     // update the key block with the wrapped key
@@ -227,6 +230,7 @@ pub(super) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
+    rng: &KmsRng,
 ) -> Result<Vec<u8>, CryptoError> {
     trace!("with object type: {:?}", wrapping_key.object_type());
     match wrapping_key {
@@ -240,7 +244,7 @@ pub(super) fn wrap(
                     "invalid certificate public key: error: {e:?}"
                 ))
             })?;
-            wrap_with_public_key(&public_key, key_wrapping_data, key_to_wrap)
+            wrap_with_public_key(&public_key, key_wrapping_data, key_to_wrap, rng)
         }
         Object::PGPKey(PGPKey { key_block, .. })
         | Object::SecretData(SecretData { key_block, .. })
@@ -328,7 +332,7 @@ pub(super) fn wrap(
                             key_bytes.len(),
                         )?;
 
-                        let nonce = random_nonce(aead)?;
+                        let nonce = random_nonce(rng, aead)?;
 
                         let (ct, authenticated_encryption_tag) = encrypt(
                             aead,
@@ -366,12 +370,12 @@ pub(super) fn wrap(
                     // convert to transparent key and wrap
                     // note: when moving to full openssl this double conversion will be unnecessary
                     let p_key = kmip_public_key_to_openssl(wrapping_key)?;
-                    wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)
+                    wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap, rng)
                 }
                 // this really is SPKI
                 KeyFormatType::PKCS8 => {
                     let p_key = PKey::public_key_from_der(&key_block.pkcs_der_bytes()?)?;
-                    wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap)
+                    wrap_with_public_key(&p_key, key_wrapping_data, key_to_wrap, rng)
                 }
                 x => {
                     crypto_bail!(
@@ -393,11 +397,12 @@ fn wrap_with_public_key(
     public_key: &PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
+    rng: &KmsRng,
 ) -> Result<Vec<u8>, CryptoError> {
     match public_key.id() {
-        Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap),
+        Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap, rng),
         #[cfg(feature = "non-fips")]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(public_key, key_to_wrap),
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(rng, public_key, key_to_wrap),
         other => Err(crypto_error!(
             "Unable to wrap key: wrapping public key type not supported: {other:?}"
         )),
@@ -408,13 +413,14 @@ fn wrap_with_rsa(
     public_key: &PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
     key_to_wrap: &[u8],
+    rng: &KmsRng,
 ) -> Result<Vec<u8>, CryptoError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
     match algorithm {
         CryptographicAlgorithm::RSA => match padding {
             PaddingMethod::None => {
                 debug!("wrapping with CKM_RSA_AES_KEY_WRAP and hashing function: {hashing_fn}");
-                ckm_rsa_aes_key_wrap(public_key, hashing_fn, key_to_wrap)
+                ckm_rsa_aes_key_wrap(rng, public_key, hashing_fn, key_to_wrap)
             }
             PaddingMethod::OAEP => {
                 debug!("wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}");

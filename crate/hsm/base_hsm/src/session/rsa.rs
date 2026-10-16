@@ -1,4 +1,4 @@
-use std::ptr;
+use std::{collections::HashSet, ptr};
 
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_PTR,
@@ -9,11 +9,11 @@ use pkcs11_sys::{
     CKM_SHA_1, CKM_SHA256, CKO_SECRET_KEY, CKZ_DATA_SPECIFIED,
 };
 
-use crate::{HResult, hsm_call, session::Session};
+use super::{serialize_tagged_label, utf8_label};
+use crate::{HError, HResult, hsm_call, session::Session};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RsaKeySize {
-    Rsa1024,
     Rsa2048,
     Rsa3072,
     Rsa4096,
@@ -45,41 +45,59 @@ impl Session {
         pk_id: &[u8],
         key_size: RsaKeySize,
         sensitive: bool,
+        tags: Option<&HashSet<String>>,
     ) -> HResult<(CK_OBJECT_HANDLE, CK_OBJECT_HANDLE)> {
-        let key_size: usize = match key_size {
-            RsaKeySize::Rsa1024 => 1024,
+        let key_type = CKK_RSA;
+        let true_value = CK_TRUE;
+        let modulus_bits: CK_ULONG = match key_size {
             RsaKeySize::Rsa2048 => 2048,
             RsaKeySize::Rsa3072 => 3072,
             RsaKeySize::Rsa4096 => 4096,
         };
         let public_exponent: [u8; 3] = [0x01, 0x00, 0x01];
-        let sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        let is_sensitive = if sensitive { CK_TRUE } else { CK_FALSE };
+        // A sensitive private key must not be extractable: derive CKA_EXTRACTABLE
+        // from the `sensitive` flag instead of hard-coding it to CK_TRUE.
+        let extractable = if sensitive { CK_FALSE } else { CK_TRUE };
+        let sk_label = serialize_tagged_label(sk_id, tags, self.hsm_capabilities().max_label_len)?
+            .unwrap_or_else(|| utf8_label(sk_id));
+        let pk_label = serialize_tagged_label(pk_id, tags, self.hsm_capabilities().max_label_len)?
+            .unwrap_or_else(|| utf8_label(pk_id));
         let mut pub_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_RSA)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_TOKEN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PRIVATE,
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ENCRYPT,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_MODULUS_BITS,
-                pValue: (&raw const key_size).cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(size_of::<CK_ULONG>())?,
+                pValue: std::ptr::from_ref(&modulus_bits)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(size_of_val(&modulus_bits))?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PUBLIC_EXPONENT,
@@ -91,8 +109,8 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: pk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(pk_id.len())?,
+                pValue: pk_label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(pk_label.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,
@@ -101,14 +119,14 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_WRAP,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_VERIFY,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
@@ -118,36 +136,36 @@ impl Session {
         let mut priv_key_template = vec![
             CK_ATTRIBUTE {
                 type_: CKA_KEY_TYPE,
-                pValue: std::ptr::from_ref(&CKK_RSA)
+                pValue: std::ptr::from_ref(&key_type)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_KEY_TYPE>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_TOKEN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_PRIVATE,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_DECRYPT,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_LABEL,
-                pValue: sk_id.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
-                ulValueLen: CK_ULONG::try_from(sk_id.len())?,
+                pValue: sk_label.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(sk_label.len())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_ID,
@@ -156,31 +174,40 @@ impl Session {
             },
             CK_ATTRIBUTE {
                 type_: CKA_UNWRAP,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_SIGN,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: std::ptr::from_ref(&true_value)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_SENSITIVE,
-                pValue: (&raw const sensitive).cast::<std::ffi::c_void>().cast_mut(),
+                pValue: std::ptr::from_ref(&is_sensitive)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
             CK_ATTRIBUTE {
                 type_: CKA_EXTRACTABLE,
-                pValue: std::ptr::from_ref(&CK_TRUE)
+                pValue: (&raw const extractable)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
                 ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
             },
         ];
+
+        // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
+        // since it explicitly rejects any explicit value for RSA keys.
+        // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
+        if !self.hsm_capabilities().supports_rsa_sensitive_attribute {
+            priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
+        }
 
         let mut mechanism = CK_MECHANISM {
             mechanism: CKM_RSA_PKCS_KEY_PAIR_GEN,
@@ -220,7 +247,13 @@ impl Session {
         aes_key_handle: CK_OBJECT_HANDLE,
         digest: RsaOaepDigest,
     ) -> HResult<Vec<u8>> {
-        // Initialize the RSA-OAEP mechanism
+        if !self.hsm_capabilities().supports_rsa_oaep_key_wrap {
+            return Err(HError::Default(
+                "RSA-OAEP key wrapping (CKM_RSA_PKCS_OAEP C_WrapKey/C_UnwrapKey) is not \
+                 supported by this HSM"
+                    .to_owned(),
+            ));
+        }
         let mut oaep_params = match digest {
             RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA256,
@@ -244,24 +277,12 @@ impl Session {
             ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
         };
 
-        // Determine the length of the wrapped key
-        let mut wrapped_key_len: CK_ULONG = 0;
-        hsm_call!(
-            self.hsm(),
-            "Failed to get wrapped key length",
-            C_WrapKey,
-            self.session_handle(),
-            &raw mut mechanism,
-            wrapping_key_handle,
-            aes_key_handle,
-            ptr::null_mut(),
-            &raw mut wrapped_key_len
-        );
+        // SoftHSM2 rejects the PKCS#11 two-call length probe for RSA-OAEP
+        // wrapping. Allocate the largest supported RSA ciphertext buffer
+        // directly; C_WrapKey returns the actual length.
+        let mut wrapped_key = vec![0_u8; 4096 / 8];
+        let mut wrapped_key_len = CK_ULONG::try_from(wrapped_key.len())?;
 
-        // Allocate buffer for the wrapped key
-        let mut wrapped_key = vec![0_u8; usize::try_from(wrapped_key_len)?];
-
-        // Wrap the key
         hsm_call!(
             self.hsm(),
             "Failed to wrap key",
@@ -274,7 +295,6 @@ impl Session {
             &raw mut wrapped_key_len
         );
 
-        // Truncate the buffer to the actual size of the wrapped key
         wrapped_key.truncate(usize::try_from(wrapped_key_len)?);
         Ok(wrapped_key)
     }
@@ -286,21 +306,35 @@ impl Session {
         aes_key_label: &str,
         digest: RsaOaepDigest,
     ) -> HResult<CK_OBJECT_HANDLE> {
+        if !self.hsm_capabilities().supports_rsa_oaep_key_wrap {
+            return Err(HError::Default(
+                "RSA-OAEP key wrapping (CKM_RSA_PKCS_OAEP C_WrapKey/C_UnwrapKey) is not \
+                 supported by this HSM"
+                    .to_owned(),
+            ));
+        }
         let mut wrapped_key = wrapped_aes_key.to_vec();
-        // Initialize the RSA-OAEP mechanism
+        // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
+        // CloudHSM requires NULL (see `rsa_oaep_requires_source_data_ptr`).
+        let mut oaep_label = 0_u8;
+        let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+            (&raw mut oaep_label).cast::<std::ffi::c_void>()
+        } else {
+            ptr::null_mut()
+        };
         let mut oaep_params = match digest {
             RsaOaepDigest::SHA256 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA256,
                 mgf: CKG_MGF1_SHA256,
                 source: CKZ_DATA_SPECIFIED,
-                pSourceData: ptr::null_mut(),
+                pSourceData: source_data,
                 ulSourceDataLen: 0,
             },
             RsaOaepDigest::SHA1 => CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: CKM_SHA_1,
                 mgf: CKG_MGF1_SHA1,
                 source: CKZ_DATA_SPECIFIED,
-                pSourceData: ptr::null_mut(),
+                pSourceData: source_data,
                 ulSourceDataLen: 0,
             },
         };

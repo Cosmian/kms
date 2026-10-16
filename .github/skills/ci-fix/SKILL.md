@@ -62,6 +62,16 @@ Read the failing step and enough surrounding output to identify the root cause. 
 
 ## Step 4 — Categorize
 
+When `omp-jev-tools` is installed (OMP only — not available in VS Code
+Copilot Chat, Copilot CLI, or Copilot Cloud Agent), classify failures the
+table below cannot match with `jev_judge` in one batched call: one `noul`
+question per unmatched failure, `instructions: "Is this failure flaky or
+infrastructure-related rather than a real code defect?"`. Treat `noul > 0.7`
+as flaky, `noul < 0.3` as a real defect, and anything between as
+undetermined — undetermined failures, and every failure the table already
+matches, still go through the table below. Without the tool, use the table
+for every failure.
+
 | Category | Indicators | Fix strategy |
 | ---------- | ----------- | -------------- |
 | **Formatting** | `error: would reformat` / `cargo fmt` / `rustfmt` | `cargo fmt --all` |

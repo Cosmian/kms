@@ -25,6 +25,8 @@ http_cache.sqlite
 result*
 sbom.*
 resources/cli.zip
+/test_reports/
+.*pkcs11-check-**
 .cache
 
 # HSM / Crypto Libraries

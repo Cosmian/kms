@@ -289,6 +289,8 @@ impl From<CryptoError> for DbError {
             CryptoError::SerdeJsonError(e) => CryptographicError(e.to_string()),
             #[cfg(feature = "non-fips")]
             CryptoError::Covercrypt(e) => CryptographicError(e.to_string()),
+            #[cfg(feature = "non-fips")]
+            CryptoError::OpenPgpFormat(e) => CryptographicError(e.to_string()),
             CryptoError::TryFromSliceError(e) => CryptographicError(e.to_string()),
         }
     }

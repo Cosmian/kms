@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
-use super::key_ops::ObjectLifecycleExt;
+use super::{key_ops::ObjectLifecycleExt, pgp_ops};
 use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
@@ -24,9 +24,23 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
     kms.enforce_create_permission(owner).await?;
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
-        ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::SymmetricKey => kms.create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
-        ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
+        ObjectType::SecretData => kms.create_secret_data_and_tags(&request)?,
+        ObjectType::PGPKey => {
+            // OpenPGP key generation is CPU-bound (pure-Rust RSA takes tens of seconds in
+            // unoptimized builds). Run it on the blocking pool: on the HTTP worker thread it
+            // would stall every other connection served by that worker until their request
+            // head times out with `408 Request Timeout`.
+            let vendor_id = kms.vendor_id().to_owned();
+            let create_request = request.clone();
+            let rng = kms.rng.clone();
+            tokio::task::spawn_blocking(move || {
+                pgp_ops::create_pgp_key_and_tags(&vendor_id, &create_request, &rng)
+            })
+            .await
+            .map_err(|e| KmsError::Default(format!("OpenPGP key generation task failed: {e}")))??
+        }
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",

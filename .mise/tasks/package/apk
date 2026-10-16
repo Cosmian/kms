@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Build Alpine Linux .apk packages (musl) for the KMS server and/or ckms CLI"
+#USAGE flag "-c --component <component>" env="COMPONENT" help="Package to build (all = server + cli)" default="all" {
+#USAGE   choices "all" "server" "cli"
+#USAGE }
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+REPO_ROOT="${MISE_CONFIG_ROOT}"
+
+COMPONENT="${usage_component:-all}"
+VARIANT="${usage_variant:-fips}"
+
+if [ "${COMPONENT}" = "all" ]; then
+  COMPONENTS=(server cli)
+else
+  COMPONENTS=("${COMPONENT}")
+fi
+
+for c in "${COMPONENTS[@]}"; do
+  bash "${REPO_ROOT}/.mise/scripts/package/package_apk.sh" --component "${c}" --variant "${VARIANT}"
+done

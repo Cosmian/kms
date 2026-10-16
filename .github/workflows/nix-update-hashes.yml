@@ -88,10 +88,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, macos-15]
+        runner: [ubuntu-24.04, macos-15]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # workflow_dispatch: fall back to the dispatched branch when no
           # explicit ref is given.
@@ -147,7 +147,7 @@ jobs:
     name: Dispatch packaging.yml
     needs: update-nix-hashes
     if: inputs.trigger_packaging
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Dispatch packaging.yml on ${{ inputs.ref || github.ref_name }}

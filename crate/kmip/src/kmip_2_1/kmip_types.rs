@@ -116,8 +116,10 @@ pub enum KeyFormatType {
     ConfigurableKEMPublicKey = 0x8880_0004,
     EnclaveECKeyPair = 0x8880_0005,
     EnclaveECSharedKey = 0x8880_0006,
-    // Available slot 0x8880_0007,
-    // Available slot 0x8880_0008,
+    /// Cosmian extension: armored `OpenPGP` Transferable Secret Key (RFC 9580 §10.2).
+    OpenPgpSecretKey = 0x8880_0007,
+    /// Cosmian extension: armored `OpenPGP` Transferable Public Key (RFC 9580 §10.1).
+    OpenPgpPublicKey = 0x8880_0008,
     // Available slot 0x8880_0009,
     // Available slot 0x8880_000A,
     // Available slot 0x8880_000B,

@@ -1,0 +1,5 @@
+{"protocol":"ttlv-json","operation":"hsm/encrypt/aes-gcm","concurrency":1,"throughput_rps":554.30,"p50_ms":1.756,"p95_ms":2.237,"p99_ms":2.747}
+{"protocol":"ttlv-json","operation":"hsm/encrypt/aes-gcm","concurrency":16,"throughput_rps":4093.60,"p50_ms":3.742,"p95_ms":5.882,"p99_ms":7.082}
+{"protocol":"ttlv-json","operation":"hsm/encrypt/aes-gcm","concurrency":32,"throughput_rps":3986.50,"p50_ms":7.390,"p95_ms":11.044,"p99_ms":13.319}
+{"protocol":"ttlv-json","operation":"hsm/encrypt/aes-gcm","concurrency":64,"throughput_rps":4012.90,"p50_ms":14.653,"p95_ms":19.796,"p99_ms":24.526}
+{"protocol":"ttlv-json","operation":"hsm/encrypt/aes-gcm","concurrency":96,"throughput_rps":4135.15,"p50_ms":21.227,"p95_ms":28.002,"p99_ms":37.855}

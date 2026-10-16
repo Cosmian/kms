@@ -11,6 +11,7 @@
 //! - `pgsql`: Contains the implementation for `PostgreSQL` database.
 //! - `redis`: Contains the implementation for Redis database.
 //! - `sqlite`: Contains the implementation for `SQLite` database.
+//! - `audit`: Contains the `PostgreSQL` audit backend (`PgAuditSink`/`PgAuditReader`).
 //! - `locate_query`: Contains utility functions for locating queries.
 //! - `migrate`: Contains functions for database migration.
 //! - `retrieve_object_utils`: Contains utility functions for retrieving objects.
@@ -34,10 +35,21 @@
 //! from the underlying database operations or from the functions defined in the submodules.
 //! The specific error types and conditions are documented in the respective functions.
 
+// Test fixtures draw throw-away data from non-`KmsRng` generators; production code stays under
+// the `clippy.toml` bans (see ADR 2026-10-10).
+#![cfg_attr(
+    test,
+    allow(
+        clippy::disallowed_methods,
+        clippy::disallowed_types,
+        reason = "test fixtures only; production code must use KmsRng"
+    )
+)]
+
 mod core;
 pub use core::{
     AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,
-    MainDbParams, ObjectCache, UnwrappedCache,
+    MainDbParams, ObjectCache, RotateNameCache, UnwrappedCache, redact_connection_string,
 };
 pub mod ceremony_keys;
 pub use ceremony_keys::{CEREMONY_SECRET_LENGTH, CeremonyKeys, CeremonyPayload};
@@ -46,6 +58,7 @@ pub use error::DbError;
 mod stores;
 #[cfg(feature = "non-fips")]
 pub use stores::redis_master_key_from_password;
+pub use stores::{PgAuditReader, PgAuditSink};
 #[cfg(test)]
 mod tests;
 

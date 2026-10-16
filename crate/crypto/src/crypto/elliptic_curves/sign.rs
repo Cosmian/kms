@@ -1,6 +1,9 @@
 use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::DigitalSignatureAlgorithm};
 #[cfg(feature = "non-fips")]
-use k256::ecdsa::{Signature as K256Signature, SigningKey as K256SigningKey};
+use k256::ecdsa::{
+    Signature as K256Signature, SigningKey as K256SigningKey,
+    signature::{Signer as _, hazmat::PrehashSigner as _},
+};
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
@@ -89,11 +92,11 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
                             CryptoError::NotSupported(format!("Sign (K256) error: {e}"))
                         })?
                     } else {
-                        key.sign_digest(Sha256::new().chain_update(&msg_bytes))
+                        // k256 `Signer` hashes with SHA-256 (RFC 6979), same as the P-256 path.
+                        key.sign(&msg_bytes)
                     };
                     // Apply Low-S normalization
-                    let normalized = sig.normalize_s().unwrap_or(sig);
-                    Ok(normalized.to_der().as_bytes().to_vec())
+                    Ok(sig.normalize_s().to_der().as_bytes().to_vec())
                 };
             }
         }
@@ -278,7 +281,7 @@ mod tests {
             };
             let req = Sign {
                 data: Some(b"supported curves signing".to_vec().into()),
-                cryptographic_parameters: Some(cp.clone()),
+                cryptographic_parameters: Some(cp),
                 ..Default::default()
             };
 

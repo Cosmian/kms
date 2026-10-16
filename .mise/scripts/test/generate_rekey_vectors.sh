@@ -4,7 +4,13 @@ set -euo pipefail
 
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 REPO_ROOT="$(get_repo_root)"
-BASE="${REPO_ROOT}/test_data/vectors"
+VECTORS_DIR="${REPO_ROOT}/test_data/vectors"
+
+# Vectors are generated into a scratch directory and merged at the end: existing vectors in
+# test_data/vectors are curated (and updated independently of this script), so they must
+# never be overwritten. Only vectors that do not exist yet are added.
+BASE="$(mktemp -d -t kms-rekey-vectors-XXXXXX)"
+trap 'rm -rf "${BASE}"' EXIT
 
 # ===== HELPER: Common JSON fragments =====
 
@@ -332,6 +338,7 @@ EOF
 
 # ===== 1. rekey_wrapped_fails =====
 DIR="$BASE/fips/kmip_operations/rekey_wrapped_fails"
+mkdir -p "$DIR"
 
 create_sym_key_named "rekey-wrapped-test" >"$DIR/step1_create.json"
 # Step 2: Export with wrapping (wrap the key using itself for test purposes)
@@ -402,6 +409,7 @@ destroy_request "new_key_id" >"$DIR/step6_destroy_new.json"
 
 # ===== 2. rekey_with_offset =====
 DIR="$BASE/fips/kmip_operations/rekey_with_offset"
+mkdir -p "$DIR"
 
 create_sym_key_named "rekey-offset-test" >"$DIR/step1_create.json"
 rekey_with_offset "key_id" 3600 >"$DIR/step2_rekey.json"
@@ -462,6 +470,7 @@ EOF
 
 # ===== 3. rekey_double_chain =====
 DIR="$BASE/fips/kmip_operations/rekey_double_chain"
+mkdir -p "$DIR"
 
 create_sym_key_named "rekey-chain-test" >"$DIR/step1_create.json"
 rekey_request "key_id" >"$DIR/step2_rekey_first.json"
@@ -563,6 +572,7 @@ EOF
 
 # ===== 4. rekey_old_key_still_decrypts =====
 DIR="$BASE/fips/kmip_operations/rekey_old_key_still_decrypts"
+mkdir -p "$DIR"
 
 create_sym_key_named "rekey-decrypt-test" >"$DIR/step1_create.json"
 encrypt_request "key_id" >"$DIR/step2_encrypt.json"
@@ -642,6 +652,7 @@ EOF
 
 # ===== 5. rekey_name_removed_from_old =====
 DIR="$BASE/fips/kmip_operations/rekey_name_removed_from_old"
+mkdir -p "$DIR"
 
 create_sym_key_named "rekey-name-remove-test" >"$DIR/step1_create.json"
 rekey_request "key_id" >"$DIR/step2_rekey.json"
@@ -708,6 +719,7 @@ echo "ReKey symmetric vectors created."
 # Helper for EC keypair rekey vectors with full link verification
 create_rekey_keypair_ec_links_vector() {
   local dir="$1"
+  mkdir -p "$dir"
   local algo="$2"
   local curve="$3"
 
@@ -727,6 +739,7 @@ create_rekey_keypair_ec_links_vector() {
 
 # ===== 6. rekey_keypair_ec_with_links =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_ec_with_links"
+mkdir -p "$DIR"
 create_rekey_keypair_ec_links_vector "$DIR" "ECDSA" "P256"
 
 cat >"$DIR/manifest.toml" <<'EOF'
@@ -818,6 +831,7 @@ EOF
 
 # ===== 7. rekey_keypair_rsa_with_links =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_rsa_with_links"
+mkdir -p "$DIR"
 create_keypair_rsa 2048 >"$DIR/step1_create_keypair.json"
 rekey_keypair_request "private_key_id" >"$DIR/step2_rekey_keypair.json"
 get_attributes "private_key_id" >"$DIR/step3_get_attrs_old_sk.json"
@@ -902,6 +916,7 @@ EOF
 
 # ===== 8. rekey_keypair_ec_locate_by_name =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_ec_locate_by_name"
+mkdir -p "$DIR"
 create_keypair_ec_named "ECDSA" "P256" "rekey-kp-locate-test" >"$DIR/step1_create_keypair.json"
 locate_by_name "rekey-kp-locate-test" >"$DIR/step2_locate_before.json"
 rekey_keypair_request "private_key_id" >"$DIR/step3_rekey_keypair.json"
@@ -986,6 +1001,7 @@ EOF
 
 # ===== 9. rekey_keypair_ec_sign_verify =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_ec_sign_verify"
+mkdir -p "$DIR"
 create_keypair_ec "ECDSA" "P256" >"$DIR/step1_create_keypair.json"
 rekey_keypair_request "private_key_id" >"$DIR/step2_rekey_keypair.json"
 sign_request "new_private_key_id" >"$DIR/step3_sign.json"
@@ -1069,6 +1085,7 @@ EOF
 # ===== Simple ReKeyKeyPair vectors for different algorithms =====
 create_simple_rekey_keypair_vector() {
   local dir="$1"
+  mkdir -p "$dir"
   local name="$2"
   local create_json="$3"
 
@@ -1184,6 +1201,7 @@ create_simple_rekey_keypair_vector \
 
 # 18. RSA encrypt/decrypt with new key
 DIR="$BASE/fips/kmip_operations/rekey_keypair_rsa_encrypt_decrypt"
+mkdir -p "$DIR"
 create_keypair_rsa 2048 >"$DIR/step1_create_keypair.json"
 rekey_keypair_request "private_key_id" >"$DIR/step2_rekey_keypair.json"
 cat >"$DIR/step3_encrypt.json" <<'EOF'
@@ -1288,6 +1306,7 @@ EOF
 
 # ===== 19. rekey_keypair_with_offset =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_with_offset"
+mkdir -p "$DIR"
 create_keypair_ec "ECDSA" "P256" >"$DIR/step1_create_keypair.json"
 rekey_keypair_with_offset "private_key_id" 7200 >"$DIR/step2_rekey_keypair.json"
 get_attributes "new_private_key_id" >"$DIR/step3_get_attrs_new.json"
@@ -1361,6 +1380,7 @@ EOF
 
 # ===== 20. rekey_keypair_double_chain =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_double_chain"
+mkdir -p "$DIR"
 create_keypair_ec "ECDSA" "P256" >"$DIR/step1_create_keypair.json"
 rekey_keypair_request "private_key_id" >"$DIR/step2_rekey_first.json"
 rekey_keypair_request "new_sk_1" >"$DIR/step3_rekey_second.json"
@@ -1481,6 +1501,7 @@ EOF
 
 # ===== 21. Negative: rekey_keypair_deactivated_fails =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_deactivated_fails"
+mkdir -p "$DIR"
 create_keypair_ec "ECDSA" "P256" >"$DIR/step1_create_keypair.json"
 revoke_request "private_key_id" >"$DIR/step2_revoke.json"
 rekey_keypair_request "private_key_id" >"$DIR/step3_rekey_keypair.json"
@@ -1526,6 +1547,7 @@ EOF
 
 # ===== 22. Negative: rekey_keypair_change_algo_fails =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_change_algo_fails"
+mkdir -p "$DIR"
 create_keypair_ec "ECDSA" "P256" >"$DIR/step1_create_keypair.json"
 rekey_keypair_change_algo "private_key_id" >"$DIR/step2_rekey_keypair.json"
 revoke_request "private_key_id" >"$DIR/step3_revoke.json"
@@ -1572,6 +1594,7 @@ EOF
 
 # ===== 23. rekey_keypair_old_key_still_active =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_old_key_still_active"
+mkdir -p "$DIR"
 create_keypair_ec "ECDSA" "P256" >"$DIR/step1_create_keypair.json"
 rekey_keypair_request "private_key_id" >"$DIR/step2_rekey_keypair.json"
 get_attributes "private_key_id" >"$DIR/step3_get_attrs_old.json"
@@ -1646,6 +1669,7 @@ EOF
 
 # ===== 24. rekey_keypair_name_removed_from_old =====
 DIR="$BASE/fips/kmip_operations/rekey_keypair_name_removed_from_old"
+mkdir -p "$DIR"
 create_keypair_ec_named "ECDSA" "P256" "rekey-kp-name-rm-test" >"$DIR/step1_create_keypair.json"
 rekey_keypair_request "private_key_id" >"$DIR/step2_rekey_keypair.json"
 get_attributes "private_key_id" >"$DIR/step3_get_attrs_old.json"
@@ -1721,6 +1745,7 @@ EOF
 
 # 25. Ed25519
 DIR="$BASE/non-fips/rekey_keypair_ed25519"
+mkdir -p "$DIR"
 cat >"$DIR/step1_create_keypair.json" <<'EOF'
 {
   "tag": "CreateKeyPair",
@@ -1799,6 +1824,7 @@ EOF
 
 # 26. X25519
 DIR="$BASE/non-fips/rekey_keypair_x25519"
+mkdir -p "$DIR"
 cat >"$DIR/step1_create_keypair.json" <<'EOF'
 {
   "tag": "CreateKeyPair",
@@ -1877,6 +1903,7 @@ EOF
 
 # 27. secp256k1
 DIR="$BASE/non-fips/rekey_keypair_secp256k1"
+mkdir -p "$DIR"
 cat >"$DIR/step1_create_keypair.json" <<'EOF'
 {
   "tag": "CreateKeyPair",
@@ -1953,4 +1980,29 @@ request = "step8_destroy_new_pk.json"
 assert_success = true
 EOF
 
-echo "All test vectors created successfully!"
+echo "All test vectors generated, merging into ${VECTORS_DIR}..."
+
+# Command substitution (not `< <(find …)`) so a failing `find` aborts under `set -e`.
+# `-exec dirname` instead of GNU-only `-printf '%h\n'` keeps this working with BSD/macOS find.
+generated_dirs="$(find "${BASE}" -name manifest.toml -exec dirname {} \; | sort)"
+if [ -z "${generated_dirs}" ]; then
+  echo "ERROR: no vector was generated under ${BASE}" >&2
+  exit 1
+fi
+
+added=0
+kept=0
+while IFS= read -r generated_dir; do
+  relative="${generated_dir#"${BASE}"/}"
+  if [ -e "${VECTORS_DIR}/${relative}" ]; then
+    kept=$((kept + 1))
+    echo "  kept existing vector: ${relative}"
+  else
+    mkdir -p "$(dirname "${VECTORS_DIR}/${relative}")"
+    cp -R "${generated_dir}" "${VECTORS_DIR}/${relative}"
+    added=$((added + 1))
+    echo "  added new vector: ${relative}"
+  fi
+done <<<"${generated_dirs}"
+
+echo "Test vectors merged: ${added} added, ${kept} existing left untouched."

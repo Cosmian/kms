@@ -171,6 +171,7 @@ pub(crate) async fn recursively_revoke_key(
                 | ObjectType::Certificate
                 | ObjectType::SymmetricKey
                 | ObjectType::PublicKey
+                | ObjectType::PGPKey
                 | ObjectType::SecretData
                 | ObjectType::OpaqueObject
                 | ObjectType::SplitKey
@@ -231,6 +232,7 @@ pub(crate) async fn recursively_revoke_key(
                 }
             }
             ObjectType::SymmetricKey
+            | ObjectType::PGPKey
             | ObjectType::SecretData
             | ObjectType::OpaqueObject
             | ObjectType::SplitKey => {
@@ -299,7 +301,7 @@ pub(crate) async fn recursively_revoke_key(
                 ))
                 .await?;
             }
-            x => kms_bail!(KmsError::NotSupported(format!(
+            x @ ObjectType::CertificateRequest => kms_bail!(KmsError::NotSupported(format!(
                 "revoke operation is not supported for object type {x:?}"
             ))),
         }

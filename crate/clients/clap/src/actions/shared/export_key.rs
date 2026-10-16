@@ -10,7 +10,8 @@ use cosmian_kms_client::{
         kmip_types::UniqueIdentifier,
     },
     reexport::cosmian_kms_client_utils::export_utils::{
-        ExportKeyFormat, WrappingAlgorithm, der_to_pem, prepare_key_export_elements,
+        ExportKeyFormat, WrappingAlgorithm, der_to_pem, openpgp_key_to_binary,
+        prepare_key_export_elements,
     },
     write_bytes_to_file, write_kmip_object_to_file,
 };
@@ -60,9 +61,12 @@ pub struct ExportSecretDataOrKeyAction {
 
     /// The format of the key
     ///  - `json-ttlv` [default]. It should be the format to use to later re-import the key
-    ///  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+    ///  - `sec1-pem` and `sec1-der` only apply to NIST EC private keys (not Curve25519 or X448)
     ///  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
     ///  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+    ///  - `pgp-secret` exports an ASCII-armored `OpenPGP` transferable secret key accepted by `GnuPG`
+    ///  - `pgp-public` exports an ASCII-armored `OpenPGP` transferable public key accepted by `GnuPG`
+    ///  - `pgp-secret-binary` and `pgp-public-binary` export binary `OpenPGP` transferable keys
     ///  - `raw` returns the raw bytes of
     ///       - symmetric keys
     ///       - Covercrypt keys
@@ -174,6 +178,12 @@ impl ExportSecretDataOrKeyAction {
                 .encode(get_object_bytes(&object)?)
                 .to_lowercase();
             write_bytes_to_file(base64_key.as_bytes(), &self.key_file)?;
+        } else if matches!(
+            &self.export_format,
+            ExportKeyFormat::PgpSecretBinary | ExportKeyFormat::PgpPublicBinary
+        ) {
+            let bytes = openpgp_key_to_binary(&get_object_bytes(&object)?)?;
+            write_bytes_to_file(bytes.as_slice(), &self.key_file)?;
         } else {
             // export the bytes only
             let bytes = {

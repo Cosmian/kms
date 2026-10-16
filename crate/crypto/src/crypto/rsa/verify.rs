@@ -38,6 +38,10 @@ fn default_digest_for_signature_algorithm(
     signature_algorithm: DigitalSignatureAlgorithm,
 ) -> CryptoResult<MessageDigest> {
     Ok(match signature_algorithm {
+        // Mirrors sign_rsa_with_pkey's hash inference (crate/crypto/src/crypto/rsa/sign.rs):
+        // non-FIPS builds support SHA-1 RSA-PKCS1v1.5 verification (FIPS providers reject
+        // SHA-1 at the OpenSSL layer regardless).
+        DigitalSignatureAlgorithm::SHA1WithRSAEncryption => MessageDigest::sha1(),
         DigitalSignatureAlgorithm::RSASSAPSS
         | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => MessageDigest::sha256(),
         DigitalSignatureAlgorithm::SHA384WithRSAEncryption => MessageDigest::sha384(),

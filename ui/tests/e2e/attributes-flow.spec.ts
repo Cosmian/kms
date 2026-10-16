@@ -9,7 +9,7 @@
  *       - set
  *       - set → get (value readable, not hex bytes in VendorExtension)
  *       - set → modify → delete (full lifecycle)
- *   • cryptographic_length: set → get (value present) → verify modify is rejected (read-only per spec)
+ *   • cryptographic_length: set and modify rejected (read-only per spec)
  *   • key_usage: set → delete
  *   • cryptographic_algorithm: set
  *   • multiple link attributes set in one key
@@ -205,26 +205,25 @@ test.describe("Object attributes", () => {
      *   "Modifiable by client: No"
      *   "Deletable by client: No"
      *
-     * SetAttribute for metadata purposes is allowed (the value may be
-     * overridden by the client when the server has not locked it).
-     * ModifyAttribute MUST be rejected with Attribute_Read_Only.
+     * §6.1.51: read-only attributes SHALL NOT be added or modified by Set Attribute,
+     * so both SetAttribute and ModifyAttribute MUST be rejected with Attribute_Read_Only.
      */
-    test("set a cryptographic_length attribute and verify modification is rejected", async ({ page }) => {
+    test("set a cryptographic_length attribute and verify set and modify are rejected", async ({ page }) => {
         const keyId = await createSymKey(page);
 
-        // SetAttribute: override the server-set value ─────────────────────────
+        // SetAttribute MUST be rejected ─────────────────────────
         await gotoAndWait(page, "/ui/attributes/set");
         await page.fill('input[placeholder="Enter object ID"]', keyId);
         await selectOption(page, "attribute-name-select", "Cryptographic Length");
         await page.locator('input[type="number"]').fill("128");
         const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute has been set for/i);
+        expect(setText).toMatch(/Attribute_Read_Only/);
 
-        // Get: verify value is 128 ─────────────────────────────────────────────
+        // Get: value is unchanged ─────────────────────────────────────────────
         await gotoAndWait(page, "/ui/attributes/get");
         await page.fill('input[placeholder="Enter object ID"]', keyId);
         const getAfterSet = await submitAndWaitForResponse(page);
-        expect(getAfterSet).toContain("128");
+        expect(getAfterSet).toContain("256");
 
         // ModifyAttribute MUST be rejected — CryptographicLength is read-only ──
         // KMIP spec: "Modifiable by client: No" (KMIP 2.1 §4.15 Table 58).
@@ -233,9 +232,7 @@ test.describe("Object attributes", () => {
         await selectOption(page, "attribute-name-select", "Cryptographic Length");
         await page.locator('input[type="number"]').fill("256");
         const modifyText = await submitAndWaitForResponse(page);
-        // The server MUST reject this with Attribute_Read_Only.
-        expect(modifyText).not.toMatch(/Attribute has been modified for/i);
-        expect(modifyText.length).toBeGreaterThan(0);
+        expect(modifyText).toMatch(/Attribute_Read_Only/);
     });
 
     // ── Key Usage ─────────────────────────────────────────────────────────────

@@ -260,7 +260,7 @@ pub(crate) struct AggregateDateRequest {
 /// Truncate an RFC3339 date to the specified time unit.
 #[post("/aggregate-date")]
 pub(crate) async fn aggregate_date(body: Json<AggregateDateRequest>) -> HttpResponse {
-    let unit = try_ano!(TimeUnit::try_from(body.time_unit.as_str()));
+    let unit = try_ano!(body.time_unit.parse::<TimeUnit>());
     let agg = DateAggregator::new(unit);
     let result = try_ano!(agg.apply_on_date(&body.data));
     HttpResponse::Ok().json(TokenizeResponse {

@@ -29,7 +29,7 @@ use serde::Deserialize;
 use crate::{
     error::KmsError,
     middlewares::{
-        AuthMethod, AuthenticatedUser, JwksManager, UserId, extract_bearer_token,
+        AuthMethod, AuthenticatedUser, JwksManager, JwtTokenHeaders, UserId, extract_bearer_token,
         reject_reserved_aws_xks_identity,
     },
     result::KResult,
@@ -97,6 +97,10 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
     jwks_manager: &Arc<JwksManager>,
     token: &str,
 ) -> KResult<String> {
+    // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here, in every build
+    // (the signature check below is skipped in test/insecure builds).
+    JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
+
     // In test/insecure builds skip signature validation — decode only.
     #[cfg(any(test, feature = "insecure"))]
     {
@@ -167,5 +171,57 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
             jwks.len(),
             last_error.unwrap_or_else(|| "no keys available".to_owned())
         )))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use std::sync::Arc;
+
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
+    use super::verify_auth_verifier_jwt_subject;
+    use crate::middlewares::JwksManager;
+
+    fn token(header: &str) -> String {
+        format!(
+            "{}.{}.c2ln",
+            URL_SAFE_NO_PAD.encode(header),
+            URL_SAFE_NO_PAD.encode(r#"{"sub":"alice"}"#)
+        )
+    }
+
+    async fn verify(header: &str) -> crate::result::KResult<String> {
+        let jwks = Arc::new(
+            JwksManager::new(vec![], None)
+                .await
+                .expect("empty JwksManager"),
+        );
+        verify_auth_verifier_jwt_subject(&jwks, &token(header)).await
+    }
+
+    #[tokio::test]
+    async fn token_with_crit_header_is_rejected() {
+        let err = verify(r#"{"alg":"RS256","crit":["b64"],"b64":false}"#)
+            .await
+            .expect_err("a token with `crit` must be rejected");
+        assert!(err.to_string().contains("critical"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn nested_jwt_is_rejected() {
+        let err = verify(r#"{"alg":"RS256","cty":"JWT"}"#)
+            .await
+            .expect_err("a nested JWT must be rejected");
+        assert!(err.to_string().contains("Nested"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn plain_token_still_yields_its_subject() {
+        let sub = verify(r#"{"alg":"RS256","typ":"JWT"}"#)
+            .await
+            .expect("a plain token must be accepted in test builds");
+        assert_eq!(sub, "alice");
     }
 }

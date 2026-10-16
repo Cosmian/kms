@@ -26,10 +26,9 @@ MISE task scripts must include the `#MISE description` and `#USAGE` annotations 
 ```bash
 #!/usr/bin/env bash
 #MISE description="One-line human-readable description"
-#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant (fips|non-fips)" default="fips" {
-#  "fips"
-#  "non-fips"
-#}
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
 set -euo pipefail
 ```
 
@@ -38,8 +37,7 @@ Use the shared library helpers from `.mise/lib/` rather than duplicating logic:
 ```bash
 # Source shared helpers
 # shellcheck source=.mise/lib/common.sh
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "${ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 ```
 
 ## Variable quoting and expansion
