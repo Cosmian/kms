@@ -167,9 +167,23 @@ jobs:
           args: --config lychee.toml 'documentation/docs/**/*.md'
           fail: false
 
-  public_documentation:
+  docs-staging-parity:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
-      || startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    # feat/subrepo-docs-check: re-pin to develop once public_documentation#160 is merged
+    uses: Cosmian/public_documentation/.github/workflows/check-subrepo-docs.yml@d8bfd75701c6d385bfb6d82d5d6af843d12384cd
+    with:
+      subrepo: kms
+      ref: ${{ github.ref }}
+      base_ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+    secrets: inherit
+
+  public_documentation:
+    # Parity is skipped on tags: a plain `needs` would skip the prod deploy with it
+    needs: docs-staging-parity
+    if: ${{ !failure() && !cancelled() && (github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+      || startsWith(github.ref, 'refs/tags/')) }}
     runs-on: ubuntu-24.04
 
     steps:

@@ -76,8 +76,10 @@ flowchart TB
     machete["cargo-machete<br/>(external reusable)"]
     publish["cargo-publish<br/>dry-run: non-tags<br/>publish: tags"]
     tests["test_all.yml"]
+    parity["docs-staging-parity<br/>(same-repo PRs only)<br/>combined public docs build, new errors only"]
     docs["public_documentation<br/>staging: develop branch<br/>production: tags"]
-    base --> cla & clippy & deny & machete & publish & tests & docs
+    base --> cla & clippy & deny & machete & publish & tests & parity & docs
+    parity -.-> docs
 ```
 
 ---
