@@ -15,12 +15,15 @@ use actix_web::{
     rt::net::TcpStream,
 };
 use cosmian_logger::{debug, trace};
-use openssl::{nid::Nid, x509::X509};
+use openssl::{
+    nid::Nid,
+    x509::{X509, X509Ref},
+};
 
 use crate::{
     error::KmsError,
     kms_bail,
-    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity},
     result::KResult,
 };
 
@@ -83,9 +86,19 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         ));
     };
 
-    // Extract the common name from the peer certificate.
+    Ok(AuthenticatedUser {
+        username: user_from_client_certificate(&certificate.cert)?,
+        auth_method: AuthMethod::Mtls,
+    })
+}
+
+/// Map a verified client certificate to a KMS user: its first Common Name, trimmed.
+///
+/// Shared by the HTTPS mTLS middleware and the KMIP socket server so both apply the same
+/// rules: the CN must be present, UTF-8, non-empty, not the `*` wildcard, and not a reserved
+/// internal service identity.
+pub(crate) fn user_from_client_certificate(certificate: &X509Ref) -> KResult<UserId> {
     match certificate
-        .cert
         .subject_name()
         .entries_by_nid(Nid::COMMONNAME)
         .next()
@@ -106,11 +119,8 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                 }
                 trace!("Client certificate common name: {}", username);
                 let username = UserId::from(trimmed);
-                reject_reserved_aws_xks_identity(&username)?;
-                Ok(AuthenticatedUser {
-                    username,
-                    auth_method: AuthMethod::Mtls,
-                })
+                reject_reserved_service_identity(&username)?;
+                Ok(username)
             }
             Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
         },

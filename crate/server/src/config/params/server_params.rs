@@ -986,6 +986,20 @@ impl ServerParams {
             }
         }
 
+        // EST/SCEP issue certificates as the reserved enrollment service identity: no
+        // configured principal may share its name.
+        if res.est_enabled || res.scep_enabled {
+            let reserved = crate::routes::enrollment::ENROLLMENT_SERVICE_USER;
+            if res.default_username == reserved
+                || res.crypto_officer.users.iter().any(|u| u == reserved)
+            {
+                return Err(KmsError::ServerError(format!(
+                    "EST/SCEP is enabled: `default_username` and `crypto_officer_users` must not \
+                     use the reserved enrollment service identity `{reserved}`"
+                )));
+            }
+        }
+
         debug!("{res:#?}");
 
         Ok(res)

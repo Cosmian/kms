@@ -25,7 +25,8 @@
   the test builds it with AES-128-CBC selected.
 - `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented; issuance is synchronous.
   EST over plain HTTP is not refused (a startup warning is logged when Basic bootstrap runs without TLS).
-- The CLI (`ckms`) and the Web UI for these endpoints follow in separate pull requests.
+- No EST/SCEP client is provided in `ckms` or the Web UI: devices and MDM use their own clients
+  (e.g. `estclient`, `scepclient`, Apple/Windows MDM payloads).
 
 ### Security
 
@@ -34,3 +35,15 @@
 - Anonymization word tokens and noise generators are drawn from, or seeded by, `KmsRng`; the unused PKCS#11 `random_label` helper is removed.
 - The root `clippy.toml` now bans every ambient entropy source (OpenSSL `rand` / `BigNum` rand, `rand::rng`, `thread_rng`, `OsRng`, `getrandom`, `from_entropy`, `cookie::Key::generate`, non-cryptographic PRGs) with no suppression allowed, test fixtures included. Seeded PRGs are allowed only through `KmsRng::seeded_csrng` or `from_seed` with `KmsRng` bytes.
 - New CI job "KmsRng Policy" (`mise run audit:rng-policy`) rejects lint suppressions, lint-level overrides in Cargo manifests and any additional `clippy.toml`.
+- EST/SCEP issue certificates as the reserved identity `[enrollment-service]` instead of `default_username`.
+  It is rejected on every externally authenticated path (JWT, mTLS CN, SPIRE, UI session; the guard is now
+  `reject_reserved_service_identity`, shared with `[aws-xks-service]`). It may only use a CA whose owner
+  granted it `certify` on the CA certificate and private key (fail closed otherwise). Issued certificates are
+  stored atomically under the CA owner, who keeps revoke/destroy control. Startup refuses
+  `default_username` or `crypto_officer_users` equal to `[enrollment-service]` when EST or SCEP is enabled.
+  **Setup action:** `ckms access-rights grant "[enrollment-service]" -i <ca cert uid> certify` and the same
+  for the CA private key.
+- The KMIP socket server (TLS port 5696) now maps the client certificate to a user with the same checks as HTTPS
+  mTLS (`user_from_client_certificate`): the CN must be non-empty, not `*`, and not a reserved service identity.
+  Previously a client certificate from the trusted client CA with `CN=[enrollment-service]` or
+  `CN=[aws-xks-service]` acted as that identity over KMIP, bypassing the enrollment templates and AWS SigV4.

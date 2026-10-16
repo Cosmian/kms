@@ -28,7 +28,6 @@ use crate::{
         console::Stdout,
         derive_key::DeriveKeyAction,
         elliptic_curves::EllipticCurveCommands,
-        est::EstCommands,
         google::GoogleCommands,
         hash::HashAction,
         login::{LoginAction, LoginCredential},
@@ -130,9 +129,6 @@ pub enum KmsActions {
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
-    /// Interact with the KMS EST (RFC 7030) enrollment endpoints as a client.
-    Est(EstCommands),
-    #[command(subcommand)]
     Google(GoogleCommands),
     Locate(LocateObjectsAction),
     Login(LoginAction),
@@ -201,7 +197,6 @@ impl KmsActions {
                 Box::pin(action.run(&kms_rest_client)).await?;
             }
             Self::Ec(action) => Box::pin(action.process(kms_rest_client)).await?,
-            Self::Est(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Google(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Locate(action) => {
                 Box::pin(action.run(kms_rest_client)).await?;

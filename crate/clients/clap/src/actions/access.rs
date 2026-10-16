@@ -71,7 +71,7 @@ impl AccessAction {
 /// This command can only be called by the owner of the object.
 ///
 /// The right is granted for one or multiple supported KMIP operations:
-/// `create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`.
+/// `create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `certify`.
 ///
 /// Multiple operations must be supplied whitespace separated, such as: 'create get rekey'
 #[derive(Parser, Debug)]
@@ -84,7 +84,7 @@ pub struct GrantAccess {
     #[clap(long, short = 'i')]
     pub object_uid: Option<String>,
 
-    /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`)
+    /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`, `certify`)
     #[clap(required = true)]
     pub operations: Vec<KmipOperation>,
 }
@@ -145,7 +145,7 @@ impl GrantAccess {
 /// This command can only be called by the owner of the object.
 ///
 /// The right is revoked for one or multiple supported KMIP operations:
-/// `create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`
+/// `create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `certify`
 ///
 /// Multiple operations must be supplied whitespace separated, such as: 'create get rekey'
 #[derive(Parser, Debug)]
@@ -158,7 +158,7 @@ pub struct RevokeAccess {
     #[clap(long, short = 'i')]
     pub(crate) object_uid: Option<String>,
 
-    /// The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
+    /// The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `certify`)
     #[clap(required = true)]
     pub(crate) operations: Vec<KmipOperation>,
 }

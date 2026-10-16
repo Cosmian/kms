@@ -46,7 +46,7 @@ pub(crate) mod issue_940_repro {
     /// Two clients sharing one Redis database (and master key), flushed first.
     async fn clients(database: u8) -> DbResult<(RedisWithFindex, RedisWithFindex)> {
         let url = format!("{}/{database}", get_redis_url());
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let first = RedisWithFindex::instantiate(&url, master_key.clone(), true).await?;
         let second = RedisWithFindex::instantiate(&url, master_key, false).await?;

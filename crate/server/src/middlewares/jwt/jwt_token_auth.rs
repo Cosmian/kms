@@ -14,7 +14,7 @@ use super::UserClaim;
 use crate::{
     error::KmsError,
     middlewares::{
-        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_aws_xks_identity,
+        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_service_identity,
     },
     result::KResult,
 };
@@ -92,7 +92,7 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
     }
     debug!("JWT-SVID access granted to {sub}!");
     let username = UserId::from(sub.to_owned());
-    reject_reserved_aws_xks_identity(&username)?;
+    reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
         auth_method: AuthMethod::JwtSvid,
@@ -114,7 +114,7 @@ fn resolve_authenticated_user(
         // Authentication successful with valid email
         debug!("JWT Access granted to {email}!");
         let username = UserId::from(email.to_owned());
-        reject_reserved_aws_xks_identity(&username)?;
+        reject_reserved_service_identity(&username)?;
         return Ok(AuthenticatedUser {
             username,
             auth_method: AuthMethod::OidcJwt,

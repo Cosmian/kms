@@ -31,7 +31,9 @@ pub struct EstConfig {
     /// UID of the CA certificate object in the KMS that signs EST-enrolled certificates.
     ///
     /// The CA private key must be linked to this certificate. Must be set when
-    /// `est_enabled = true`.
+    /// `est_enabled = true`. Certificates are issued as the reserved `[enrollment-service]`
+    /// identity: the CA owner must grant it `certify` on this certificate and on its private
+    /// key. Issued certificates are owned by the CA owner.
     #[clap(long, verbatim_doc_comment)]
     pub est_ca_uid: Option<String>,
 
