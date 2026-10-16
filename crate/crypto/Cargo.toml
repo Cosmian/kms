@@ -88,7 +88,7 @@ zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [dev-dependencies]
 aes-kw = { workspace = true }
-# `CoverCryptRekeyAction`, the WASM-friendly mirror of `RekeyEditAction`: tested against it.
+# Checks that the WASM client builds the same re-key requests as the server.
 cosmian_kms_client_utils = { workspace = true, features = ["non-fips"] }
 cosmian_logger = { workspace = true }
 ctor = { workspace = true }

@@ -4,7 +4,8 @@ use base64::{Engine as _, engine::general_purpose};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client_utils::cover_crypt_rekey_utils::{
     CoverCryptRekeyAction, EncryptionHint, QualifiedAttribute,
-    build_covercrypt_rekey_keypair_request, parse_encryption_hint, parse_qualified_attribute,
+    build_covercrypt_rekey_keypair_request, check_access_policy, parse_encryption_hint,
+    parse_qualified_attribute,
 };
 use cosmian_kms_client_utils::{
     attributes_utils::{
@@ -1961,20 +1962,17 @@ pub fn decrypt_cc_ttlv_request(
     to_wasm_ttlv(&request)
 }
 
-// Covercrypt master key edits — `ReKeyKeyPair` requests carrying a Covercrypt action, one
-// per `ckms cc` command (`keys rekey`/`prune`, `access-structure add-attribute`/…/
-// `add-dimension`). Their response parses with `parse_rekey_keypair_ttlv_response`. A
-// qualified attribute is written `"Dimension::name"`; an encryption hint is `Classic`,
-// `PostQuantum` or `Hybridized`. Non-FIPS builds only, like Covercrypt itself.
-
 #[cfg(feature = "non-fips")]
 fn cc_rekey_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     action: &CoverCryptRekeyAction,
 ) -> Result<JsValue, JsValue> {
-    let request =
-        build_covercrypt_rekey_keypair_request(&get_vendor_id(), master_secret_key_id, action)
-            .map_err(|e| JsValue::from_str(&format!("Covercrypt re-key request failed: {e}")))?;
+    let request = build_covercrypt_rekey_keypair_request(
+        get_vendor_id(),
+        UniqueIdentifier::TextString(msk_uid),
+        action,
+    )
+    .map_err(|e| JsValue::from_str(&e.to_string()))?;
     to_wasm_ttlv(&request)
 }
 
@@ -1988,120 +1986,134 @@ fn cc_attribute(attribute: &str) -> Result<QualifiedAttribute, JsValue> {
     parse_qualified_attribute(attribute).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Renew the master secrets of every right `access_policy` covers — user keys are then
-/// refreshed by the server (`ckms cc keys rekey`).
+#[cfg(feature = "non-fips")]
+fn cc_access_policy(access_policy: String) -> Result<String, JsValue> {
+    check_access_policy(&access_policy).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(access_policy)
+}
+
+/// Build the request renewing the secrets of every right covered by `access_policy` in the
+/// master secret key `msk_uid`. The server also refreshes the matching user keys.
+/// Fails if `access_policy` is not a valid access policy.
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn rekey_cc_access_policy_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     access_policy: String,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
-        master_secret_key_id,
-        &CoverCryptRekeyAction::RekeyAccessPolicy(access_policy),
+        msk_uid,
+        &CoverCryptRekeyAction::RekeyAccessPolicy(cc_access_policy(access_policy)?),
     )
 }
 
-/// Remove all but the latest master secret of every right `access_policy` covers
-/// (`ckms cc keys prune`).
+/// Build the request removing all but the latest secret of every right covered by
+/// `access_policy` in the master secret key `msk_uid`.
+/// Fails if `access_policy` is not a valid access policy.
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn prune_cc_access_policy_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     access_policy: String,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
-        master_secret_key_id,
-        &CoverCryptRekeyAction::PruneAccessPolicy(access_policy),
+        msk_uid,
+        &CoverCryptRekeyAction::PruneAccessPolicy(cc_access_policy(access_policy)?),
     )
 }
 
-/// Add `attribute` (`"Dimension::name"`) to an existing dimension — in a hierarchical one,
-/// ranked right above the existing attribute named `after` (`None`: at the very bottom)
-/// (`ckms cc access-structure add-attribute`).
+/// Build the request adding the qualified attribute `attribute` (`"Dimension::name"`) to
+/// the master secret key `msk_uid`, with the given encryption hint (`Classic`,
+/// `PostQuantum` or `Hybridized`).
+/// In case its dimension is hierarchical, `after` specifies the (unqualified) name of the
+/// existing attribute after which the new attribute is inserted. If `after` is left
+/// unspecified, the new attribute is lower than all existing attributes in its dimension.
+/// If the dimension is not hierarchical, `after` must be left unspecified: the server
+/// returns an error otherwise.
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn add_cc_attribute_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     attribute: &str,
     encryption_hint: &str,
     after: Option<String>,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
-        master_secret_key_id,
+        msk_uid,
         &CoverCryptRekeyAction::AddAttribute(vec![(
             cc_attribute(attribute)?,
             cc_encryption_hint(encryption_hint)?,
-            none_if_empty(after),
+            after,
         )]),
     )
 }
 
-/// Rename `attribute` (`"Dimension::name"`) to `new_name` (unqualified)
-/// (`ckms cc access-structure rename-attribute`).
+/// Build the request renaming the qualified attribute `attribute` (`"Dimension::name"`) of
+/// the master secret key `msk_uid` to `new_name` (unqualified).
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn rename_cc_attribute_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     attribute: &str,
     new_name: String,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
-        master_secret_key_id,
+        msk_uid,
         &CoverCryptRekeyAction::RenameAttribute(vec![(cc_attribute(attribute)?, new_name)]),
     )
 }
 
-/// Stop encrypting under `attribute` (`"Dimension::name"`) — existing ciphertexts still
-/// decrypt (`ckms cc access-structure disable-attribute`).
+/// Build the request disabling the qualified attribute `attribute` (`"Dimension::name"`)
+/// of the master secret key `msk_uid`: nothing new can be encrypted under it, but existing
+/// ciphertexts can still be decrypted.
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn disable_cc_attribute_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     attribute: &str,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
-        master_secret_key_id,
+        msk_uid,
         &CoverCryptRekeyAction::DisableAttribute(vec![cc_attribute(attribute)?]),
     )
 }
 
-/// Remove `attribute` (`"Dimension::name"`) from the access structure
-/// (`ckms cc access-structure remove-attribute`).
+/// Build the request removing the qualified attribute `attribute` (`"Dimension::name"`)
+/// from the master secret key `msk_uid`.
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn remove_cc_attribute_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     attribute: &str,
 ) -> Result<JsValue, JsValue> {
     cc_rekey_ttlv_request(
-        master_secret_key_id,
+        msk_uid,
         &CoverCryptRekeyAction::DeleteAttribute(vec![cc_attribute(attribute)?]),
     )
 }
 
-/// Add a new dimension named `dimension` with `attributes` (unqualified names, lowest first
-/// if `hierarchical`), `encryption_hints[i]` being the hint of `attributes[i]` — both must
-/// have the same length (`ckms cc access-structure add-dimension`).
+/// Build the request adding the dimension `dimension` to the master secret key `msk_uid`.
+/// `attributes` is an array of `[name, encryption_hint]` pairs, where `name` is unqualified
+/// and `encryption_hint` is `Classic`, `PostQuantum` or `Hybridized`. If `hierarchical`,
+/// attributes are given from the lowest to the highest.
+/// Returns the TTLV request; parse the response with `parse_rekey_keypair_ttlv_response`.
 #[cfg(feature = "non-fips")]
 #[wasm_bindgen]
 pub fn add_cc_dimension_ttlv_request(
-    master_secret_key_id: &str,
+    msk_uid: String,
     dimension: String,
-    attributes: Vec<String>,
-    encryption_hints: Vec<String>,
+    attributes: JsValue,
     hierarchical: bool,
 ) -> Result<JsValue, JsValue> {
-    if attributes.len() != encryption_hints.len() {
-        return Err(JsValue::from_str(&format!(
-            "{} attributes but {} encryption hints: one hint per attribute is expected",
-            attributes.len(),
-            encryption_hints.len()
-        )));
-    }
+    let attributes: Vec<(String, String)> = serde_wasm_bindgen::from_value(attributes)?;
     let attributes = attributes
         .into_iter()
-        .zip(encryption_hints)
         .map(|(name, hint)| {
             Ok((
                 QualifiedAttribute::new(&dimension, &name),
@@ -2110,7 +2122,7 @@ pub fn add_cc_dimension_ttlv_request(
         })
         .collect::<Result<_, JsValue>>()?;
     cc_rekey_ttlv_request(
-        master_secret_key_id,
+        msk_uid,
         &if hierarchical {
             CoverCryptRekeyAction::AddHierarchy(dimension, attributes)
         } else {
