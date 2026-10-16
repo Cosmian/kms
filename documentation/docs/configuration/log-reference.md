@@ -766,6 +766,12 @@ Crate path: `crate/server`
 | `debug` | `{log_prefix}: validated entity={} policies={:?}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), x5t: {:?}); the key is taken from the configured JWKS` | `src/middlewares/jwt/jwt_config.rs` | - | - |
 | `trace` | `valid_jwt headers: typ={:?} alg={:?} kid={:?}` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `warn` | `[kv-ttl-cron] destroyed version {version} of '{path}' but failed to update its metadata: {e}` | `src/routes/kv/metadata.rs` | `version`, `path`, `e` | - |
+| `warn` | `[kv-ttl-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[kv-ttl-cron] failed to list KV objects: {e}` | `src/routes/kv/metadata.rs` | `e` | - |
+| `warn` | `KV API internal error: {m}` | `src/routes/kv/error.rs` | `m` | - |
+| `info` | `[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)` | `src/cron.rs` | `destroyed` | - |
+| `debug` | `[kv-ttl-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

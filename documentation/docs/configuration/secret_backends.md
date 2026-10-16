@@ -185,6 +185,59 @@ cosmian_kms --backend cosmian-kms -c /etc/cosmian/kms.toml
 
 ---
 
+## Vault-compatible KV Secret Store
+
+The KMS can expose a Vault KV v2-compatible secret store backed by KMIP
+`SecretData` objects. Enable it in the server configuration:
+
+```toml
+[kv]
+kv_enabled = true
+kv_mount = "kv"
+kv_ttl_check_interval_secs = 30
+```
+
+The API is available below `/<kv_mount>/data/*` and
+`/<kv_mount>/metadata/*`, and also below `/v1/<kv_mount>/...` because the `vault` and `bao` CLIs always send the `/v1` prefix. Writes are accepted with `POST` or `PUT`. The `kv_mount` name must be a single path segment that does not collide with another scope (`v1`, `sys`, `auth`, `crypto`, `kmip`, `ui`, `aws`, `ms_dke`, `google_cse`, `tokenize`, `vault_transit_mount`, `vault_pki_mount`); the server refuses to start otherwise. An empty value means `kv`. A write creates a new version, while reads return
+the latest version unless `?version=<number>` is provided. All versions are
+retained indefinitely. Metadata listing uses `GET /<kv_mount>/metadata/<prefix>?list=true`.
+
+KV operations use the metadata object's access rights:
+
+| KV operation | Required KMIP access right |
+|--------------|----------------------------|
+| Write a secret | `Import` |
+| Read a secret | `Get` |
+| Read metadata or list paths | `Locate` |
+| Soft-delete or hard-delete | `Destroy` |
+
+The first writer owns the path. Other identities must receive the matching
+access right on the metadata object through the normal access-grant API. A
+`DELETE` on `data/<path>` soft-deletes the current version; a `DELETE` on
+`metadata/<path>` destroys all versions and the metadata object.
+
+An optional write TTL can be supplied with the Vault KV v2 request body. The
+background sweep marks expired versions as destroyed at the configured
+`kv_ttl_check_interval_secs` interval. Set the interval to `0` to disable the
+sweep.
+
+When the Vault-compatible authentication API is enabled and an auth-verifier
+URL is configured, requests may authenticate with the `X-Vault-Token` header.
+Native KMS authentication methods remain available on the same scope.
+
+The OpenBao CLI works unchanged against this store. Point it at the KMS and use the `kv` mount:
+
+```bash
+export BAO_ADDR=https://kms.example.com:9998
+export BAO_TOKEN=<token issued by the auth-verifier>
+bao kv put kv/myapp/config api_key=xyz
+bao kv get kv/myapp/config
+bao kv get -version=1 kv/myapp/config
+bao kv list kv/myapp
+```
+
+This is exercised in CI by `mise run test:openbao --variant non-fips`.
+
 ## Security considerations
 
 | Concern | Mitigation |
