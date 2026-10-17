@@ -59,9 +59,10 @@ function Invoke-Native {
         $argumentLine = ($Arguments | ForEach-Object {
             if ($_ -match '[\s"]' -or $_ -eq '') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
         }) -join ' '
-        $process = Start-Process -FilePath $Program -ArgumentList $argumentLine -NoNewWindow -Wait -PassThru `
+        $process = Start-Process -FilePath $Program -ArgumentList $argumentLine -NoNewWindow -PassThru `
             -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
         $null = $process.Handle
+        $process.WaitForExit()
         $stdout = Get-Content -Path $stdoutFile -Raw -ErrorAction SilentlyContinue
         $stderr = Get-Content -Path $stderrFile -Raw -ErrorAction SilentlyContinue
         $script:LastNativeExitCode = $process.ExitCode
