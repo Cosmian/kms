@@ -359,14 +359,12 @@ impl KMS {
                 // A caller that already holds an explicit grant on the key learns nothing
                 // new from a permission error (XKS needs InvalidKeyUsage for a revoked
                 // operation); any other caller gets "not found" (COSMIAN-2026-037).
-                if !found_but_no_permission
-                    && !self
+                if !found_but_no_permission {
+                    found_but_no_permission = !self
                         .database
                         .list_user_operations_on_object(owm.id(), user, true)
                         .await?
-                        .is_empty()
-                {
-                    found_but_no_permission = true;
+                        .is_empty();
                 }
                 continue;
             }
@@ -376,7 +374,7 @@ impl KMS {
             if !Spec::accepted_states().contains(&effective) {
                 // Track live-but-wrong-state for a useful error message.
                 // Skip Destroyed/DestroyedCompromised: those behave as "not found".
-                if effective != State::Destroyed && effective != State::Destroyed_Compromised {
+                if !matches!(effective, State::Destroyed | State::Destroyed_Compromised) {
                     wrong_state.get_or_insert_with(|| (owm.id().to_owned(), effective));
                 }
                 continue;

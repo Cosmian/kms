@@ -80,27 +80,6 @@ impl JwksManager {
             .cloned())
     }
 
-    /// Execute a closure with borrowed slice of all JWKs from all registered JWKS sets.
-    ///
-    /// This avoids cloning every `Jwk` in the cache when validating tokens.
-    pub fn with_keys<R>(&self, f: impl FnOnce(&[Jwk]) -> R) -> KResult<R> {
-        let jwks_lock = self.jwks.read().map_err(|e| {
-            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
-        })?;
-        // If there's only one set (common case), we can borrow its slice directly.
-        if jwks_lock.len() == 1 {
-            if let Some(set) = jwks_lock.values().next() {
-                return Ok(f(&set.keys));
-            }
-        }
-        let flattened: Vec<Jwk> = jwks_lock
-            .values()
-            .flat_map(|set| &set.keys)
-            .cloned()
-            .collect();
-        Ok(f(&flattened))
-    }
-
     /// Execute a closure over each `&Jwk` in the cache until it returns `Some` or finishes.
     pub fn find_map_key<R>(&self, mut f: impl FnMut(&Jwk) -> Option<R>) -> KResult<Option<R>> {
         let jwks_lock = self.jwks.read().map_err(|e| {

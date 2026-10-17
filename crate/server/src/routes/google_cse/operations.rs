@@ -40,7 +40,7 @@ use super::GoogleCseConfig;
 use crate::{
     core::{
         KMS,
-        certificate::is_blocked_ip,
+        certificate::{is_blocked_hostname, is_blocked_ip},
         operations::{decrypt, encrypt},
     },
     error::KmsError,
@@ -64,7 +64,6 @@ pub(crate) const GOOGLE_CSE_ID: &str = "google_cse";
 /// link-local IPv4/IPv6 target, whether given literally or obtained by resolving the
 /// hostname. The checked address is pinned on the client so a second DNS answer cannot
 /// redirect the request (DNS rebinding), and redirects are never followed.
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
 async fn kacls_client(url_str: &str) -> KResult<Client> {
     let invalid = |msg: &str| KmsError::InvalidRequest(format!("original_kacls_url {msg}"));
     let parsed = Url::parse(url_str).map_err(|e| invalid(&format!("is invalid: {e}")))?;
@@ -83,9 +82,7 @@ async fn kacls_client(url_str: &str) -> KResult<Client> {
         url::Host::Ipv6(v6) if is_blocked_ip(v6.into()) => return Err(blocked_target()),
         url::Host::Ipv4(_) | url::Host::Ipv6(_) => builder,
         url::Host::Domain(domain) => {
-            // `.local` / `.internal` are DNS suffixes, not file extensions
-            let lower = domain.to_lowercase();
-            if lower == "localhost" || lower.ends_with(".local") || lower.ends_with(".internal") {
+            if is_blocked_hostname(domain) {
                 return Err(invalid("must not target internal hostnames"));
             }
             let port = parsed.port_or_known_default().unwrap_or(443);

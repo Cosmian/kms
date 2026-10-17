@@ -92,47 +92,44 @@ impl Role {
     #[must_use]
     pub const fn allows(self, op: KmipOperation) -> bool {
         match self {
-            Self::Operator => matches!(
-                op,
-                KmipOperation::Encrypt
-                    | KmipOperation::Decrypt
-                    | KmipOperation::Sign
-                    | KmipOperation::SignatureVerify
-                    | KmipOperation::MAC
-                    | KmipOperation::Hash
-                    | KmipOperation::GetAttributes
-                    | KmipOperation::Locate
-                    | KmipOperation::Validate
-            ),
-            Self::CryptoOfficer => matches!(
-                op,
-                // All Operator operations
-                KmipOperation::Encrypt
-                    | KmipOperation::Decrypt
-                    | KmipOperation::Sign
-                    | KmipOperation::SignatureVerify
-                    | KmipOperation::MAC
-                    | KmipOperation::Hash
-                    | KmipOperation::GetAttributes
-                    | KmipOperation::Locate
-                    | KmipOperation::Validate
-                    // CO-only operations
-                    | KmipOperation::Create
-                    | KmipOperation::Certify
-                    | KmipOperation::Import
-                    | KmipOperation::Get
-                    | KmipOperation::Export
-                    | KmipOperation::Rekey
-                    | KmipOperation::DeriveKey
-                    | KmipOperation::Activate
-                    | KmipOperation::Revoke
-                    | KmipOperation::Destroy
-                    | KmipOperation::SetAttribute
-                    | KmipOperation::ModifyAttribute
-                    | KmipOperation::AddAttribute
-                    | KmipOperation::DeleteAttribute
-            ),
+            Self::Operator => Self::is_operator_operation(op),
+            Self::CryptoOfficer => {
+                Self::is_operator_operation(op)
+                    || matches!(
+                        op,
+                        KmipOperation::Create
+                            | KmipOperation::Certify
+                            | KmipOperation::Import
+                            | KmipOperation::Get
+                            | KmipOperation::Export
+                            | KmipOperation::Rekey
+                            | KmipOperation::DeriveKey
+                            | KmipOperation::Activate
+                            | KmipOperation::Revoke
+                            | KmipOperation::Destroy
+                            | KmipOperation::SetAttribute
+                            | KmipOperation::ModifyAttribute
+                            | KmipOperation::AddAttribute
+                            | KmipOperation::DeleteAttribute
+                    )
+            }
         }
+    }
+
+    /// Operations every role may invoke; the Crypto Officer adds its own on top.
+    const fn is_operator_operation(op: KmipOperation) -> bool {
+        matches!(
+            op,
+            KmipOperation::Encrypt
+                | KmipOperation::Decrypt
+                | KmipOperation::Sign
+                | KmipOperation::SignatureVerify
+                | KmipOperation::MAC
+                | KmipOperation::Hash
+                | KmipOperation::GetAttributes
+                | KmipOperation::Locate
+                | KmipOperation::Validate
+        )
     }
 
     /// Returns the set of [`KmipOperation`]s this role is permitted to invoke at dispatch level.

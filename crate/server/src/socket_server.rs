@@ -321,8 +321,13 @@ impl SocketServer {
                     {
                         break;
                     }
-                    if active_connections.fetch_add(1, Ordering::AcqRel) >= MAX_SOCKET_CONNECTIONS {
-                        active_connections.fetch_sub(1, Ordering::AcqRel);
+                    // Reserve a slot atomically so the counter never exceeds the limit.
+                    if active_connections
+                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                            (n < MAX_SOCKET_CONNECTIONS).then_some(n + 1)
+                        })
+                        .is_err()
+                    {
                         warn!(
                             "Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, \
                              dropping new connection"

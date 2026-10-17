@@ -426,40 +426,27 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
                 certificate,
             );
 
-            let mut insertion: Option<(usize, X509)> = None;
-            for (idx, sorted_certificate) in sorted_chains.iter().enumerate() {
-                let (ski_2, aki_2) = get_certificate_identifiers(sorted_certificate);
-                trace_certificate("Iterate on sorted certificates", sorted_certificate);
-
-                // Found a certificate child
-                if aki == ski_2 && !aki.is_empty() && !sorted_chains.contains(certificate) {
-                    trace_certificate(
-                        &format!("Insert certificate at index: {}", idx + 1),
-                        certificate,
-                    );
-                    insertion = Some((idx + 1, certificate.to_owned()));
-                    break;
-                }
-
-                // Found the authority of the certificate
-                if ski == aki_2 && !ski.is_empty() && !sorted_chains.contains(certificate) {
-                    trace_certificate(&format!("Insert certificate at index: {idx}"), certificate);
-                    insertion = Some((idx, certificate.to_owned()));
-                    break;
-                }
-
-                // Not yet placeable: this sorted_certificate is not the right neighbour.
-                // Try the next sorted candidate in the inner loop before giving up.
-                trace!(
-                    "Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}",
-                    hex::encode(aki),
-                    hex::encode(ski),
-                    hex::encode(ski_2),
-                    hex::encode(aki_2)
-                );
+            if sorted_chains.contains(certificate) {
+                continue;
             }
-            if let Some((idx, cert)) = insertion {
-                sorted_chains.insert(idx, cert);
+            // The certificate goes right after its issuer's child, or right before its own issuer.
+            let insertion =
+                sorted_chains
+                    .iter()
+                    .enumerate()
+                    .find_map(|(idx, sorted_certificate)| {
+                        let (ski_2, aki_2) = get_certificate_identifiers(sorted_certificate);
+                        if !aki.is_empty() && aki == ski_2 {
+                            Some(idx + 1)
+                        } else if !ski.is_empty() && ski == aki_2 {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    });
+            if let Some(idx) = insertion {
+                trace_certificate(&format!("Insert certificate at index: {idx}"), certificate);
+                sorted_chains.insert(idx, certificate.to_owned());
                 break;
             }
         }

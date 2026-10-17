@@ -28,6 +28,21 @@ pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
     }
 }
 
+/// Is `host` a well-known internal DNS name (`localhost`, `*.local`, `*.internal`, which also
+/// covers `metadata.google.internal`)? IP literals are rejected separately by [`is_blocked_ip`].
+///
+/// `.local` and `.internal` are DNS suffixes, not file extensions; the comparison is done on
+/// ASCII-case-insensitive bytes, so it covers multi-label names such as `svc.cluster.local`.
+pub(crate) fn is_blocked_hostname(host: &str) -> bool {
+    let ends_with = |suffix: &str| {
+        host.len()
+            .checked_sub(suffix.len())
+            .and_then(|start| host.as_bytes().get(start..))
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix.as_bytes()))
+    };
+    host.eq_ignore_ascii_case("localhost") || ends_with(".local") || ends_with(".internal")
+}
+
 /// Validates that a CRL Distribution Point URL is safe to fetch.
 ///
 /// Mitigations applied (COSMIAN-2026-021):
@@ -44,8 +59,8 @@ pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
 ///   `http://[::ffff:169.254.169.254]/` cannot be used to reach cloud
 ///   metadata endpoints. See RFC 6890 for the full special-purpose address
 ///   registry these ranges are drawn from.
-/// - Well-known internal hostnames (`localhost`, `*.local`, `*.internal`,
-///   `metadata.google.internal`, `169.254.169.254`) are rejected.
+/// - Well-known internal hostnames (see [`is_blocked_hostname`]) are rejected; the cloud
+///   metadata address `169.254.169.254` is an IPv4 literal, covered by the IP checks.
 /// - `file://` URLs and bare filesystem paths are rejected separately in
 ///   `get_crl_bytes()` before this function is called.
 ///
@@ -53,11 +68,6 @@ pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
 /// [`url::Url::host_str()`]: `host_str()` returns IPv6 hosts wrapped in
 /// brackets (e.g. `"[::1]"`), which fails to parse as `std::net::IpAddr` and
 /// would silently skip every IP-literal check below for IPv6 URLs.
-// allow: `.local` and `.internal` are DNS suffixes here, not file extensions;
-// the comparison is intentionally case-sensitive because the input is already
-// `.to_lowercase()`.  Using Path::extension() would give false negatives for
-// multi-label suffixes such as `svc.cluster.local`.
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub(crate) fn validate_crl_url(url_str: &str) -> crate::result::KResult<()> {
     use url::{Host, Url};
 
@@ -93,18 +103,7 @@ pub(crate) fn validate_crl_url(url_str: &str) -> crate::result::KResult<()> {
     }
 
     // Reject well-known internal hostnames.
-    // `.local` and `.internal` are DNS suffixes, not file extensions — see
-    // the function-level `#[allow]` above.
-    let host_str = parsed.host_str().unwrap_or_default();
-    let lower = host_str.to_lowercase();
-    if lower == "localhost"
-        || lower.ends_with(".local")
-        || lower.ends_with(".internal")
-        || lower == "metadata.google.internal"
-        // Cloud metadata endpoints expressed as raw IPs are already caught above,
-        // but reject the hostname form explicitly as well.
-        || lower == "169.254.169.254"
-    {
+    if parsed.host_str().is_some_and(is_blocked_hostname) {
         return Err(crate::error::KmsError::Certificate(
             "CRL Distribution Point URL must not target internal or cloud-metadata \
              hostnames"
@@ -113,4 +112,33 @@ pub(crate) fn validate_crl_url(url_str: &str) -> crate::result::KResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_blocked_hostname;
+
+    #[test]
+    fn blocked_hostnames_match_whole_dns_suffixes_case_insensitively() {
+        for host in [
+            "localhost",
+            "LocalHost",
+            "metadata.google.internal",
+            "svc.cluster.LOCAL",
+            "a.internal",
+        ] {
+            assert!(is_blocked_hostname(host), "{host}");
+        }
+        // Only the exact names and the ".local" / ".internal" suffixes are blocked.
+        for host in [
+            "",
+            "local",
+            "internal",
+            "example.com",
+            "notlocalhost",
+            "kms.localhost.com",
+        ] {
+            assert!(!is_blocked_hostname(host), "{host}");
+        }
+    }
 }

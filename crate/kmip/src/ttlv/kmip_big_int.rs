@@ -95,7 +95,7 @@ impl KmipBigInt {
     pub fn encoded_len(&self) -> usize {
         let bits = self.0.bits();
         let negative_top_power_of_two =
-            self.0.sign() == Sign::Minus && self.0.trailing_zeros().map(|t| t + 1) == Some(bits);
+            self.0.sign() == Sign::Minus && self.0.trailing_zeros().is_some_and(|t| t + 1 == bits);
         let sign_byte = bits > 0 && bits.is_multiple_of(8) && !negative_top_power_of_two;
         (bits.div_ceil(8).max(1) + usize::from(sign_byte)).next_multiple_of(8)
     }

@@ -223,15 +223,10 @@ impl<'de> Deserialize<'de> for TTLV {
                 }
                 let tag_str = tag.ok_or_else(|| de::Error::missing_field("tag"))?;
                 let tag = match crate::kmip_2_1::kmip_types::Tag::from_str(&tag_str) {
-                    Ok(known) => {
-                        let static_name: &'static str = known.into();
-                        if static_name == tag_str {
-                            std::borrow::Cow::Borrowed(static_name)
-                        } else {
-                            std::borrow::Cow::Owned(tag_str)
-                        }
+                    Ok(known) if <&'static str>::from(known) == tag_str => {
+                        std::borrow::Cow::Borrowed(known.into())
                     }
-                    Err(_) => std::borrow::Cow::Owned(tag_str),
+                    _ => std::borrow::Cow::Owned(tag_str),
                 };
                 let value = value.ok_or_else(|| de::Error::missing_field("value"))?;
                 Ok(TTLV { tag, value })
