@@ -195,3 +195,65 @@ jobs:
           path: |
             ${{ runner.temp }}\kms-cng-test-server.log
             ${{ runner.temp }}\kms-cng-test-server.log.err
+
+  test-est-interop:
+    name: ${{ inputs.archive-name }} - EST interoperability tests
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.2'
+
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          choco install ninja -y --no-progress
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        env:
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
+        run: |
+          $ErrorActionPreference = "Stop"
+          vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          vcpkg integrate install
+
+      - name: Run EST interoperability tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .mise\scripts\windows\test_est_windows.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: est-interop-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log.err
+            ${{ runner.temp }}\kms-est-win-*\kms.log
+            ${{ runner.temp }}\kms-est-win-*\kms.log.err

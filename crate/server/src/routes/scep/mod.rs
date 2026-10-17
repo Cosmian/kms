@@ -9,6 +9,9 @@
 //! POST /scep?operation=PKIOperation          (body: application/x-pki-message)
 //! ```
 //!
+//! Both resources are also served under `/scep/pkiclient.exe`: the Windows MDM SCEP (NDES)
+//! client appends that suffix to the configured URL.
+//!
 //! Authentication happens inside the CMS `pkiMessage` (RFC 8894 §2.3), so no HTTP-level
 //! authentication is applied. The route answers 404 unless `scep_enabled = true`.
 
@@ -19,7 +22,7 @@ mod pki_operation;
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, HttpResponse, get, post,
+    HttpRequest, HttpResponse, routes,
     web::{Bytes, Data, Query},
 };
 use serde::Deserialize;
@@ -40,7 +43,9 @@ fn bad_request(message: &str) -> HttpResponse {
 }
 
 /// Handle `GET /scep?operation=...`.
+#[routes]
 #[get("/scep")]
+#[get("/scep/pkiclient.exe")]
 pub(crate) async fn scep_get(
     _req: HttpRequest,
     kms: Data<Arc<KMS>>,
@@ -65,7 +70,9 @@ pub(crate) async fn scep_get(
 }
 
 /// Handle `POST /scep?operation=PKIOperation`.
+#[routes]
 #[post("/scep")]
+#[post("/scep/pkiclient.exe")]
 pub(crate) async fn scep_post(
     _req: HttpRequest,
     kms: Data<Arc<KMS>>,

@@ -590,6 +590,42 @@ async fn scep_get_ca_caps_is_fips_conformant() -> KResult<()> {
     Ok(())
 }
 
+/// The Windows MDM (NDES) client appends `/pkiclient.exe` to the profile URL.
+#[tokio::test]
+async fn scep_is_served_under_pkiclient_exe() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let caps = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/scep/pkiclient.exe?operation=GetCACaps&message=default")
+            .to_request(),
+    )
+    .await;
+    let (status, body, _) = body_of(caps).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, b"POSTPKIOperation\nSHA-256\nAES\nRenewal");
+    let cert = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/scep/pkiclient.exe?operation=GetCACert&message=default")
+            .to_request(),
+    )
+    .await;
+    let (status, body, _) = body_of(cert).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, ca.to_der().unwrap());
+    let post = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/scep/pkiclient.exe?operation=Unknown")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(post.status(), StatusCode::BAD_REQUEST);
+    Ok(())
+}
+
 #[tokio::test]
 async fn scep_get_ca_cert_returns_raw_der() -> KResult<()> {
     let (kms, ca) = make_kms(false, true, true).await?;

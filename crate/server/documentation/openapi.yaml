@@ -2753,6 +2753,67 @@ paths:
         '404':
           description: SCEP disabled (`scep_enabled = false`, the default)
 
+  /scep/pkiclient.exe:
+    get:
+      tags: [Enrollment]
+      summary: Alias of `GET /scep` for the Windows MDM (NDES) SCEP client
+      description: |
+        Same behavior as `GET /scep`. The Windows SCEP client appends `/pkiclient.exe` to the
+        configured profile URL and also sends `message=default` for `GetCACaps` / `GetCACert`.
+      operationId: scepGetPkiclient
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [GetCACaps, GetCACert, PKIOperation]
+        - name: message
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation result, see `GET /scep`
+        '400':
+          description: Missing or unsupported `operation`, or unreadable `pkiMessage`
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
+    post:
+      tags: [Enrollment]
+      summary: Alias of `POST /scep` for the Windows MDM (NDES) SCEP client
+      description: Same behavior as `POST /scep` (`PKIOperation`).
+      operationId: scepPostPkiclient
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PKIOperation]
+      requestBody:
+        required: true
+        content:
+          application/x-pki-message:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Signed `CertRep` `pkiMessage`
+          content:
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported operation or unreadable `pkiMessage`
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
+
   /v1/crypto/encrypt:
     post:
       tags: [REST Crypto API]
