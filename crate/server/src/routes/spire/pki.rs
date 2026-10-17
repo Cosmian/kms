@@ -319,7 +319,7 @@ pub(crate) async fn sign_intermediate(
     // Retrieve the signed certificate
     let cert_owm = kms
         .database
-        .retrieve_object(&cert_uid)
+        .retrieve_object_arc(&cert_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| {
@@ -371,7 +371,7 @@ pub(crate) async fn sign_intermediate(
 async fn authorize_ca_use(kms: &KMS, ca_sk_uid: &str, user: &UserId) -> SpireResult<()> {
     let ca_sk_owm = kms
         .database
-        .retrieve_object(ca_sk_uid)
+        .retrieve_object_arc(ca_sk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
@@ -428,7 +428,7 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
     // Retrieve the CA private key to get the public key link
     let ca_sk_owm = kms
         .database
-        .retrieve_object(ca_sk_uid)
+        .retrieve_object_arc(ca_sk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
@@ -442,7 +442,7 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 
     let pk_owm = kms
         .database
-        .retrieve_object(&pk_uid)
+        .retrieve_object_arc(&pk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(no_ca_cert_error)?;
@@ -455,7 +455,7 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 
     let cert_owm = kms
         .database
-        .retrieve_object(&cert_uid)
+        .retrieve_object_arc(&cert_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(no_ca_cert_error)?;

@@ -21,6 +21,7 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::openssl::kmip_public_key_to_openssl,
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{info, trace, warn};
 use jsonwebtoken::jwk::{
@@ -104,13 +105,12 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
 
 /// Build the JWK Set and a boolean indicating whether the result was truncated.
 async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
-    let objects = Box::pin(discover_eligible_public_keys(kms)).await?;
     let max_keys = kms.params.jwks_endpoint.jwks_endpoint_max_keys;
-    let truncated = objects.len() > max_keys;
+    let (objects, truncated) = Box::pin(discover_eligible_public_keys(kms, max_keys)).await?;
 
-    let mut keys = Vec::with_capacity(objects.len().min(max_keys));
-    for (uid, object, attributes) in objects.into_iter().take(max_keys) {
-        match object_to_jwk(&uid, &object, &attributes) {
+    let mut keys = Vec::with_capacity(objects.len());
+    for (uid, owm) in objects {
+        match object_to_jwk(&uid, owm.object(), owm.attributes()) {
             Ok(Some(jwk)) => keys.push(jwk),
             Ok(None) => {
                 // Unsupported key type — silently skip (e.g., Ed448).
@@ -135,7 +135,10 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
 /// The order is stable within a session but is not guaranteed to be stable across
 /// server restarts or across different database backends (`PostgreSQL`, `MySQL`).
 /// JWKS consumers **must not** rely on position — always match keys by `kid`.
-async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object, Attributes)>> {
+async fn discover_eligible_public_keys(
+    kms: &KMS,
+    max_keys: usize,
+) -> KResult<(Vec<(String, Arc<ObjectWithMetadata>)>, bool)> {
     let mut filter = Attributes {
         object_type: Some(ObjectType::PublicKey),
         ..Default::default()
@@ -156,17 +159,21 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
         )
         .await?;
 
-    let mut objects = Vec::new();
+    let mut objects = Vec::with_capacity(results.len().min(max_keys));
+    let mut eligible_count = 0_usize;
     for (uid, state, _attrs) in results {
         // Include Active (in service) and Deactivated (retired, rotation overlap).
         // Exclude Compromised, Destroyed, and Destroyed_Compromised.
         if !matches!(state, State::Active | State::Deactivated) {
             continue;
         }
-        match kms.database.retrieve_object(&uid).await? {
-            Some(owm) => objects.push((uid, owm.object().clone(), owm.attributes().clone())),
-            None => {
-                warn!("Key uid={uid} found by Locate but missing on retrieve — skipping");
+        eligible_count += 1;
+        if objects.len() < max_keys {
+            match kms.database.retrieve_object_arc(&uid).await? {
+                Some(owm) => objects.push((uid, owm)),
+                None => {
+                    warn!("Key uid={uid} found by Locate but missing on retrieve — skipping");
+                }
             }
         }
     }
@@ -175,7 +182,8 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
          Returning {} eligible key(s); consumers must match by `kid`, not position.",
         objects.len()
     );
-    Ok(objects)
+    let truncated = eligible_count > max_keys;
+    Ok((objects, truncated))
 }
 
 /// Convert a KMIP `PublicKey` object to a JWK, serialized as raw JSON.
@@ -462,11 +470,8 @@ mod tests {
             )
             .await?;
 
-        let published: Vec<String> = Box::pin(discover_eligible_public_keys(&kms))
-            .await?
-            .into_iter()
-            .map(|(uid, _, _)| uid)
-            .collect();
+        let (keys, _truncated) = Box::pin(discover_eligible_public_keys(&kms, usize::MAX)).await?;
+        let published: Vec<String> = keys.into_iter().map(|(uid, _)| uid).collect();
         assert!(
             !published.contains(&foreign.public_key_unique_identifier.to_string()),
             "a key shared with the default user must not be published"

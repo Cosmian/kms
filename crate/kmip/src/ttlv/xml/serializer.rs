@@ -33,18 +33,18 @@ impl TTLVXMLSerializer {
     fn write_ttlv(w: &mut Writer<Vec<u8>>, ttlv: &TTLV) -> Result<(), KmipError> {
         match &ttlv.value {
             TTLValue::Structure(children) => {
-                let mut elem = BytesStart::new(ttlv.tag.as_str());
+                let mut elem = BytesStart::new(&*ttlv.tag);
                 elem.push_attribute(("type", "Structure"));
                 w.write_event(Event::Start(elem))
                     .map_err(|e| KmipError::Default(format!("xml write: {e}")))?;
                 for c in children {
                     Self::write_ttlv(w, c)?;
                 }
-                w.write_event(Event::End(BytesStart::new(ttlv.tag.as_str()).to_end()))
+                w.write_event(Event::End(BytesStart::new(&*ttlv.tag).to_end()))
                     .map_err(|e| KmipError::Default(format!("xml write: {e}")))?;
             }
             primitive => {
-                let mut elem = BytesStart::new(ttlv.tag.as_str());
+                let mut elem = BytesStart::new(&*ttlv.tag);
                 match primitive {
                     TTLValue::Integer(v) => push_typed_value!(elem, "Integer", v),
                     TTLValue::LongInteger(v) => push_typed_value!(elem, "LongInteger", v),
@@ -57,7 +57,7 @@ impl TTLVXMLSerializer {
                         let val = evar.value.to_string();
                         elem.push_attribute(("value", val.as_str()));
                         if !evar.name.is_empty() {
-                            elem.push_attribute(("name", evar.name.as_str()));
+                            elem.push_attribute(("name", &*evar.name));
                         }
                     }
                     TTLValue::Boolean(b) => {

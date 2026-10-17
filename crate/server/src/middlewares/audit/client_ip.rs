@@ -10,12 +10,12 @@ use ipnet::IpNet;
 /// For KMIP requests the route handler injects a `KmipOperationName` extension with
 /// the exact operation name — this function only provides the fallback used when no
 /// extension is present (non-KMIP paths, or failures before dispatch).
-pub(super) fn extract_operation(path: &str) -> String {
+pub(super) fn extract_operation(path: &str) -> &str {
     let segment = path.trim_start_matches('/').split('/').next().unwrap_or("");
     if segment.is_empty() {
-        "unknown".to_owned()
+        "unknown"
     } else {
-        segment.to_owned()
+        segment
     }
 }
 

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use actix_web::{
     HttpRequest, post,
@@ -26,13 +26,60 @@ use cosmian_kms_server_database::reexport::{
     },
 };
 use cosmian_logger::{debug, trace};
+use serde::Deserialize;
 use zeroize::Zeroizing;
 
+#[derive(Deserialize, Default)]
+struct JweEpk<'a> {
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    kty: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    crv: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    x: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    y: Option<Cow<'a, str>>,
+}
+
+/// A non-object `epk` is treated like an object without members, as the
+/// `Value`-based parsing did.
+fn lenient_epk<'de, D>(deserializer: D) -> Result<Option<JweEpk<'de>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MaybeEpk<'a> {
+        #[serde(borrow)]
+        Obj(JweEpk<'a>),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(Some(
+        match <MaybeEpk as Deserialize>::deserialize(deserializer)? {
+            MaybeEpk::Obj(e) => e,
+            MaybeEpk::Other(_) => JweEpk::default(),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct JweProtectedHeader<'a> {
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    kid: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    alg: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    enc: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "lenient_epk")]
+    epk: Option<JweEpk<'a>>,
+    apu: Option<serde_json::Value>,
+    apv: Option<serde_json::Value>,
+}
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
     JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode, cek_cache,
-    cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
-    keys::nid_from_crv,
+    cek_size_bytes, encrypt::build_jwe_aad, ensure_json_object, jose_oaep_hashes,
+    jose_to_kmip_params, keys::nid_from_crv,
 };
 use crate::{
     core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
@@ -61,54 +108,45 @@ pub(crate) async fn decrypt(
 
     // Parse protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
-    let header_json: serde_json::Value = serde_json::from_slice(&header_bytes).map_err(|e| {
+    ensure_json_object(&header_bytes)?;
+    let header: JweProtectedHeader<'_> = serde_json::from_slice(&header_bytes).map_err(|e| {
         CryptoApiError::BadRequest(format!(
             "Field 'protected' is not valid JSON after base64url decode: {e}"
         ))
     })?;
 
-    let kid = header_json
-        .get("kid")
-        .and_then(|v| v.as_str())
+    let kid = header
+        .kid
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'kid' field".to_owned())
         })?
         .to_owned();
 
-    let alg: JoseAlgorithm = header_json
-        .get("alg")
-        .and_then(|v| v.as_str())
+    let alg: JoseAlgorithm = header
+        .alg
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'alg' field".to_owned())
         })?
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
-    let enc: JoseEncAlgorithm = header_json
-        .get("enc")
-        .and_then(|v| v.as_str())
+    let enc: JoseEncAlgorithm = header
+        .enc
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'enc' field".to_owned())
         })?
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
-
     match alg {
         JoseAlgorithm::Dir => decrypt_dir(&kms, &user, kid, alg, enc, &body).await,
         JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {
             Box::pin(decrypt_rsa_oaep(&kms, &user, kid, alg, enc, &body)).await
         }
         JoseAlgorithm::EcdhEs | JoseAlgorithm::EcdhEsA128KW | JoseAlgorithm::EcdhEsA256KW => {
-            Box::pin(decrypt_ecdh_es(
-                &kms,
-                &user,
-                kid,
-                alg,
-                enc,
-                &header_json,
-                &body,
-            ))
-            .await
+            Box::pin(decrypt_ecdh_es(&kms, &user, kid, alg, enc, &header, &body)).await
         }
         _ => Err(CryptoApiError::UnsupportedAlgorithm(format!(
             "Algorithm '{alg}' is not a key-management algorithm. Supported: dir, RSA-OAEP, \
@@ -153,7 +191,7 @@ async fn decrypt_dir(
         )));
     }
 
-    let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;
+    let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?.into_owned();
 
     let decrypt_req = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(kid.clone())),
@@ -333,7 +371,7 @@ async fn decrypt_rsa_oaep(
         &iv_bytes,
         &ciphertext_bytes,
         &tag_bytes,
-        &aad_bytes,
+        aad_bytes.as_ref(),
     )?;
 
     Ok(Json(CryptoDecryptResponse {
@@ -362,18 +400,18 @@ async fn decrypt_ecdh_es(
     kid: String,
     alg: JoseAlgorithm,
     enc: JoseEncAlgorithm,
-    header_json: &serde_json::Value,
+    header: &JweProtectedHeader<'_>,
     body: &DecryptRequest,
 ) -> CryptoResult<CryptoDecryptResponse> {
-    let epk = header_json.get("epk").ok_or_else(|| {
+    let epk = header.epk.as_ref().ok_or_else(|| {
         CryptoApiError::BadRequest(
             "Protected header missing required 'epk' field for ECDH-ES".to_owned(),
         )
     })?;
-    let epk_kty = epk.get("kty").and_then(|v| v.as_str()).ok_or_else(|| {
+    let epk_kty = epk.kty.as_deref().ok_or_else(|| {
         CryptoApiError::BadRequest("'epk' is missing required 'kty' field".to_owned())
     })?;
-    let epk_crv = epk.get("crv").and_then(|v| v.as_str()).ok_or_else(|| {
+    let epk_crv = epk.crv.as_deref().ok_or_else(|| {
         CryptoApiError::BadRequest("'epk' is missing required 'crv' field".to_owned())
     })?;
 
@@ -473,10 +511,10 @@ async fn decrypt_ecdh_es(
                 )));
             }
 
-            let x_b64 = epk.get("x").and_then(|v| v.as_str()).ok_or_else(|| {
+            let x_b64 = epk.x.as_deref().ok_or_else(|| {
                 CryptoApiError::BadRequest("'epk' is missing required 'x' field".to_owned())
             })?;
-            let y_b64 = epk.get("y").and_then(|v| v.as_str()).ok_or_else(|| {
+            let y_b64 = epk.y.as_deref().ok_or_else(|| {
                 CryptoApiError::BadRequest("'epk' is missing required 'y' field".to_owned())
             })?;
             let x_bytes = b64_decode("epk.x", x_b64)?;
@@ -499,7 +537,7 @@ async fn decrypt_ecdh_es(
                     private_key.id()
                 )));
             }
-            let x_b64 = epk.get("x").and_then(|v| v.as_str()).ok_or_else(|| {
+            let x_b64 = epk.x.as_deref().ok_or_else(|| {
                 CryptoApiError::BadRequest("'epk' is missing required 'x' field".to_owned())
             })?;
             let peer_public_bytes = b64_decode("epk.x", x_b64)?;
@@ -523,7 +561,7 @@ async fn decrypt_ecdh_es(
     // Per RFC 7159/7518, if present these header members MUST be base64url-encoded
     // strings; a present-but-non-string value (e.g. a number or boolean) is a
     // malformed header and must be rejected rather than silently treated as absent.
-    let apu = match header_json.get("apu") {
+    let apu = match &header.apu {
         None | Some(serde_json::Value::Null) => Vec::new(),
         Some(serde_json::Value::String(s)) => b64_decode("apu", s)?,
         Some(_) => {
@@ -532,7 +570,7 @@ async fn decrypt_ecdh_es(
             ));
         }
     };
-    let apv = match header_json.get("apv") {
+    let apv = match &header.apv {
         None | Some(serde_json::Value::Null) => Vec::new(),
         Some(serde_json::Value::String(s)) => b64_decode("apv", s)?,
         Some(_) => {
@@ -566,14 +604,8 @@ async fn decrypt_ecdh_es(
             let key_data_len_bits = u32::try_from(cek_size_bytes(enc) * 8).map_err(|e| {
                 CryptoApiError::InternalError(format!("ECDH-ES decrypt: CEK size overflow: {e}"))
             })?;
-            concat_kdf(
-                &z,
-                key_data_len_bits,
-                enc.to_string().as_bytes(),
-                &apu,
-                &apv,
-            )
-            .map_err(|e| CryptoApiError::CryptoFailure(e.to_string()))?
+            concat_kdf(&z, key_data_len_bits, enc.as_str().as_bytes(), &apu, &apv)
+                .map_err(|e| CryptoApiError::CryptoFailure(e.to_string()))?
         }
         JoseAlgorithm::EcdhEsA128KW | JoseAlgorithm::EcdhEsA256KW => {
             // Key wrapping: encrypted_key must be present, and the Concat KDF
@@ -595,7 +627,7 @@ async fn decrypt_ecdh_es(
             } else {
                 256
             };
-            let kek = concat_kdf(&z, kek_bits, alg.to_string().as_bytes(), &apu, &apv)
+            let kek = concat_kdf(&z, kek_bits, alg.as_str().as_bytes(), &apu, &apv)
                 .map_err(|e| CryptoApiError::CryptoFailure(e.to_string()))?;
 
             rfc3394_unwrap(&encrypted_key_bytes, &kek)
@@ -617,7 +649,7 @@ async fn decrypt_ecdh_es(
         &iv_bytes,
         &ciphertext_bytes,
         &tag_bytes,
-        &aad_bytes,
+        aad_bytes.as_ref(),
     )?;
 
     Ok(Json(CryptoDecryptResponse {

@@ -135,7 +135,7 @@ pub(crate) async fn regenerate_crl_as_issuer_owner(
 ) -> KResult<X509Crl> {
     let issuer_owner = kms
         .database
-        .retrieve_object(issuer_certificate_id)
+        .retrieve_object_arc(issuer_certificate_id)
         .await?
         .map(|owm| owm.owner_id().clone())
         .ok_or_else(|| {
@@ -198,7 +198,7 @@ pub(crate) async fn generate_crl(
     let issuer_cert_der = match issuer_owm.object() {
         Object::Certificate(Certificate {
             certificate_value, ..
-        }) => certificate_value.clone(),
+        }) => certificate_value.as_slice(),
         _ => {
             kms_bail!(KmsError::InvalidRequest(format!(
                 "Object '{issuer_certificate_id}' is not a certificate"
@@ -206,7 +206,7 @@ pub(crate) async fn generate_crl(
         }
     };
 
-    let issuer_x509 = X509::from_der(&issuer_cert_der).map_err(|e| {
+    let issuer_x509 = X509::from_der(issuer_cert_der).map_err(|e| {
         KmsError::InvalidRequest(format!("Failed to parse issuer certificate DER: {e}"))
     })?;
 
@@ -216,7 +216,7 @@ pub(crate) async fn generate_crl(
     // RFC-conforming relying parties will reject during path validation.
     {
         use x509_parser::prelude::{FromDer, ParsedExtension, X509Certificate};
-        let Ok((_, parsed)) = X509Certificate::from_der(&issuer_cert_der) else {
+        let Ok((_, parsed)) = X509Certificate::from_der(issuer_cert_der) else {
             kms_bail!(KmsError::InvalidRequest(format!(
                 "Failed to parse issuer certificate '{issuer_certificate_id}' for keyUsage check"
             )));
@@ -372,23 +372,23 @@ async fn find_revoked_certificates(
     // Search for certificates with CertificateLink pointing to this issuer.
     // Destroyed certificates must stay listed (RFC 5280 §3.3: until they expire):
     // Destroy keeps the issuer link and revocation details for exactly this purpose.
+    let search_attrs = Attributes {
+        object_type: Some(ObjectType::Certificate),
+        link: Some(vec![Link {
+            link_type: LinkType::CertificateLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                issuer_certificate_id.to_owned(),
+            ),
+        }]),
+        ..Attributes::default()
+    };
+
     for state in [
         State::Deactivated,
         State::Compromised,
         State::Destroyed,
         State::Destroyed_Compromised,
     ] {
-        let search_attrs = Attributes {
-            object_type: Some(ObjectType::Certificate),
-            link: Some(vec![Link {
-                link_type: LinkType::CertificateLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    issuer_certificate_id.to_owned(),
-                ),
-            }]),
-            ..Attributes::default()
-        };
-
         // Use find_all to bypass user ownership filters — the CRL must include
         // every revoked certificate issued by this CA, regardless of who owns it.
         let results = kms
@@ -403,7 +403,7 @@ async fn find_revoked_certificates(
                 continue;
             }
             // Retrieve the actual certificate to extract serial number
-            let Some(owm) = kms.database.retrieve_object(&uid).await? else {
+            let Some(owm) = kms.database.retrieve_object_arc(&uid).await? else {
                 continue;
             };
 

@@ -18,7 +18,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
     tests::test_utils::https_clap_config,
 };
 
@@ -480,5 +480,429 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
          with UsageLimits! The decrement_usage_limits path must preserve wrapping."
     );
 
+    Ok(())
+}
+
+/// Regression test: a wrapped-at-rest key with `fresh=true` retrieved via `Get`
+/// with auto-unwrap must NOT persist the unwrapped plaintext key to the database
+/// during the fresh-bit flip writeback.
+#[tokio::test]
+async fn test_get_fresh_wrapped_key_preserves_wrapping_in_db() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Get;
+
+    // Phase 1: create a wrapping key (KEK) on a plain KMS
+    let clap_config = https_clap_config();
+    let sqlite_path = clap_config.db.sqlite_path.clone();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = UserId::from("test_fresh_unwrap_owner@example.com");
+
+    let kek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms.create(kek_request, &owner).await?.unique_identifier;
+    drop(kms);
+
+    // Phase 2: re-instantiate KMS with KEK and default_unwrap_type so created keys are wrapped at rest
+    let mut clap_config_kek = https_clap_config();
+    clap_config_kek.db.sqlite_path = sqlite_path;
+    clap_config_kek.key_encryption_key = Some(kek_id.to_string());
+    clap_config_kek.default_unwrap_type = Some(vec!["All".to_owned()]);
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+
+    // Create a symmetric key while KEK is configured -> wrapped at rest in DB
+    let key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let key_response = kms.create(key_request, &owner).await?;
+    let key_id = key_response.unique_identifier;
+    let key_uid = key_id.to_string();
+
+    // Verify key is wrapped at rest and Fresh is not false before Get
+    let raw_before = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+    assert!(
+        raw_before.object().is_wrapped(),
+        "Key must be wrapped at rest before Get"
+    );
+    assert_ne!(
+        raw_before.attributes().fresh,
+        Some(false),
+        "Key must not have fresh=false before Get"
+    );
+
+    // Phase 3: Perform a Get request with default auto-unwrap (NotWrapped / none)
+    let get_resp = kms
+        .get(
+            Get {
+                unique_identifier: Some(key_id.clone()),
+                key_format_type: None,
+                key_compression_type: None,
+                key_wrap_type: None,
+                key_wrapping_specification: None,
+            },
+            &owner,
+        )
+        .await?;
+
+    // The response returned the key unwrapped
+    assert!(
+        !get_resp.object.is_wrapped(),
+        "Get response should return key unwrapped"
+    );
+
+    // Phase 4: CRITICAL CHECK: In the database, the fresh bit was flipped to false,
+    // BUT the key object must STILL be wrapped at rest!
+    let raw_after = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+
+    assert_eq!(
+        raw_after.attributes().fresh,
+        Some(false),
+        "Fresh attribute must be flipped to false in DB after unwrapped Get"
+    );
+
+    assert!(
+        raw_after.object().is_wrapped(),
+        "SECURITY REGRESSION: Wrapped-at-rest key was persisted as plaintext to the database \
+         during the Fresh-bit flip in export_get!"
+    );
+
+    let kb = raw_after.object().key_block().expect("must have key block");
+    assert!(
+        kb.key_wrapping_data.is_some(),
+        "SECURITY REGRESSION: key_wrapping_data was stripped from the stored object!"
+    );
+
+    Ok(())
+}
+
+/// Regression test: a wrapped-at-rest key with `fresh=true` retrieved via `Get`
+/// with explicit `KeyWrapType::NotWrapped` (no `default_unwrap_type` configured)
+/// must also NOT persist the unwrapped plaintext key to the database.
+#[tokio::test]
+async fn test_get_fresh_wrapped_key_explicit_not_wrapped_preserves_wrapping_in_db() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::KeyWrapType, kmip_2_1::kmip_operations::Get,
+    };
+
+    // Phase 1: create a wrapping key (KEK) on a plain KMS
+    let clap_config = https_clap_config();
+    let sqlite_path = clap_config.db.sqlite_path.clone();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = UserId::from("test_fresh_unwrap_explicit_owner@example.com");
+
+    let kek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms.create(kek_request, &owner).await?.unique_identifier;
+    drop(kms);
+
+    // Phase 2: re-instantiate KMS with KEK (WITHOUT default_unwrap_type)
+    let mut clap_config_kek = https_clap_config();
+    clap_config_kek.db.sqlite_path = sqlite_path;
+    clap_config_kek.key_encryption_key = Some(kek_id.to_string());
+    clap_config_kek.default_unwrap_type = None;
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+
+    // Create a symmetric key while KEK is configured -> wrapped at rest in DB
+    let key_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let key_response = kms.create(key_request, &owner).await?;
+    let key_id = key_response.unique_identifier;
+    let key_uid = key_id.to_string();
+
+    let raw_before = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+    assert!(raw_before.object().is_wrapped());
+    assert_ne!(raw_before.attributes().fresh, Some(false));
+
+    // Phase 3: Perform a Get request with explicit KeyWrapType::NotWrapped
+    let get_resp = kms
+        .get(
+            Get {
+                unique_identifier: Some(key_id.clone()),
+                key_format_type: None,
+                key_compression_type: None,
+                key_wrap_type: Some(KeyWrapType::NotWrapped),
+                key_wrapping_specification: None,
+            },
+            &owner,
+        )
+        .await?;
+
+    assert!(!get_resp.object.is_wrapped());
+
+    // Phase 4: CRITICAL CHECK: In DB, key must STILL be wrapped at rest
+    let raw_after = kms
+        .database
+        .retrieve_object(&key_uid)
+        .await?
+        .expect("key must exist");
+
+    assert_eq!(raw_after.attributes().fresh, Some(false));
+    assert!(
+        raw_after.object().is_wrapped(),
+        "SECURITY REGRESSION: Wrapped-at-rest key was persisted as plaintext to the database \
+         during the Fresh-bit flip in export_get (explicit NotWrapped)!"
+    );
+
+    let kb = raw_after.object().key_block().expect("must have key block");
+    assert!(
+        kb.key_wrapping_data.is_some(),
+        "SECURITY REGRESSION: key_wrapping_data was stripped from the stored object!"
+    );
+
+    Ok(())
+}
+
+/// Regression test: a crypto operation on a key the caller may not use fails exactly
+/// like one on a missing key, so key UIDs cannot be enumerated.
+///
+/// Guards: COSMIAN-2026-037 (existence and state oracle in key selection)
+#[tokio::test]
+async fn test_crypto_op_does_not_reveal_foreign_keys() -> KResult<()> {
+    let kms = test_kms().await?;
+    let foreign_key = create_aes_key(&kms, "oracle_owner@example.com").await?;
+    let intruder = UserId::from("oracle_intruder@example.com");
+    let encrypt = |uid: &str| Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        }),
+        data: Some(Zeroizing::new(b"probe".to_vec())),
+        ..Default::default()
+    };
+
+    let foreign = kms
+        .encrypt(encrypt(&foreign_key.to_string()), &intruder)
+        .await
+        .expect_err("intruder must not use the owner's key");
+    let missing = kms
+        .encrypt(encrypt("oracle-no-such-key"), &intruder)
+        .await
+        .expect_err("missing key must fail");
+    assert!(matches!(foreign, KmsError::ItemNotFound(_)), "{foreign:?}");
+    assert!(matches!(missing, KmsError::ItemNotFound(_)), "{missing:?}");
+
+    // A non-active foreign key must not reveal its state either.
+    {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::{
+            kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+            kmip_2_1::kmip_operations::Revoke,
+        };
+        kms.revoke(
+            Revoke {
+                unique_identifier: Some(foreign_key.clone()),
+                revocation_reason: RevocationReason {
+                    revocation_reason_code: RevocationReasonCode::Unspecified,
+                    revocation_message: None,
+                },
+                compromise_occurrence_date: None,
+                cascade: true,
+            },
+            &UserId::from("oracle_owner@example.com"),
+        )
+        .await?;
+    }
+    let revoked = kms
+        .encrypt(encrypt(&foreign_key.to_string()), &intruder)
+        .await
+        .expect_err("intruder must not use the owner's revoked key");
+    assert!(matches!(revoked, KmsError::ItemNotFound(_)), "{revoked:?}");
+    Ok(())
+}
+
+/// Regression test: a caller holding a grant on a key but not the requested operation gets a
+/// permission error (AWS XKS maps it to `InvalidKeyUsageException`), not "not found".
+///
+/// Guards: COSMIAN-2026-037 (masking must not apply to callers that already know the key)
+#[tokio::test]
+async fn test_crypto_op_reports_permission_error_to_grantee() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
+
+    let kms = test_kms().await?;
+    let key = create_aes_key(&kms, "grant_owner@example.com").await?;
+    let grantee = UserId::from("grant_grantee@example.com");
+    kms.database
+        .grant_operations(
+            &key.to_string(),
+            &grantee,
+            HashSet::from([KmipOperation::Encrypt]),
+        )
+        .await?;
+
+    let decrypt = Decrypt {
+        unique_identifier: Some(key.clone()),
+        data: Some(vec![0_u8; 32]),
+        ..Default::default()
+    };
+    let err = kms
+        .decrypt(decrypt, &grantee)
+        .await
+        .expect_err("grantee has no Decrypt permission");
+    assert!(matches!(err, KmsError::Unauthorized(_)), "{err:?}");
+    Ok(())
+}
+
+/// Regression test: `/kmip/2_1` only accepts a JSON Content-Type, so a cross-origin page
+/// cannot send it a CORS "simple" (non-preflighted) request carrying the session cookie.
+///
+/// Guards: COSMIAN-2026-039 (session-cookie requests from other same-site origins)
+#[tokio::test]
+async fn test_kmip_json_endpoint_requires_json_content_type() -> KResult<()> {
+    use actix_web::{http::StatusCode, test};
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_2_1::kmip_operations::Query, ttlv::to_ttlv,
+    };
+
+    let app = crate::tests::test_utils::test_app(None).await;
+    let body = serde_json::to_vec(&to_ttlv(&Query::default())?)?;
+    for (content_type, accepted) in [
+        ("text/plain", false),
+        ("application/x-www-form-urlencoded", false),
+        ("application/json; charset=utf-8", true),
+    ] {
+        let req = test::TestRequest::post()
+            .uri("/kmip/2_1")
+            .insert_header(("Content-Type", content_type))
+            .set_payload(body.clone())
+            .to_request();
+        let status = test::call_service(&app, req).await.status();
+        assert_eq!(
+            status == StatusCode::OK,
+            accepted,
+            "{content_type}: {status}"
+        );
+    }
+    Ok(())
+}
+
+/// Regression test: oversized KMIP batches and PBKDF2 iteration counts are refused
+/// up front instead of tying up a worker.
+///
+/// Guards: COSMIAN-2026-036 (unbounded batch, PBKDF2 and RSA work per request)
+#[tokio::test]
+async fn test_request_work_limits() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            },
+            kmip_types::ProtocolVersion,
+        },
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::DerivationParameters,
+            kmip_messages::RequestMessageBatchItem,
+            kmip_objects::ObjectType,
+            kmip_operations::{DeriveKey, Operation, Query},
+            kmip_types::DerivationMethod,
+            requests::create_derivation_object_request,
+        },
+    };
+
+    use crate::core::operations::MAX_BATCH_ITEMS;
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("limits_owner@example.com");
+
+    let message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: i32::try_from(MAX_BATCH_ITEMS + 1)?,
+            ..Default::default()
+        },
+        batch_item: (0..=MAX_BATCH_ITEMS)
+            .map(|_| {
+                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                    Operation::Query(Query::default()),
+                ))
+            })
+            .collect(),
+    };
+    let err = kms
+        .message(message, &owner)
+        .await
+        .expect_err("a batch above the limit must be refused");
+    assert!(err.to_string().contains("batch items"), "{err}");
+
+    let base_key = kms
+        .create(
+            create_derivation_object_request(ObjectType::SymmetricKey)?,
+            &owner,
+        )
+        .await?
+        .unique_identifier;
+    for iteration_count in [i32::MAX, 0, -1] {
+        let derive = DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            base_key.clone(),
+            DerivationMethod::PBKDF2,
+            DerivationParameters {
+                salt: Some(b"limits salt".to_vec()),
+                iteration_count: Some(iteration_count),
+                ..DerivationParameters::default()
+            },
+            Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(128),
+                object_type: Some(ObjectType::SymmetricKey),
+                ..Attributes::default()
+            },
+        );
+        let err = kms
+            .derive_key(derive, &owner)
+            .await
+            .expect_err("an out-of-range iteration count must be refused");
+        assert!(
+            matches!(err, KmsError::InvalidRequest(_))
+                && err.to_string().contains("iteration count"),
+            "{iteration_count}: {err:?}"
+        );
+    }
     Ok(())
 }

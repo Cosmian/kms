@@ -195,12 +195,10 @@ Crate path: `crate/server`
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |
 | `debug` | `Key wrapped successfully by key {}` | `src/core/wrapping/wrap.rs` | - | - |
-| `debug` | `ModifyAttribute: persisting attributes for {}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `debug` | `no token validation` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Number of certificates in chain: {certificates_number}` | `src/core/operations/validate.rs` | `certificates_number`: number of certificates in chain | - |
 | `debug` | `object is not wrapped, no need to unwrap` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Object type: {}, with unique identifier: {}, destroyed by user {}` | `src/core/operations/destroy.rs` | - | - |
-| `debug` | `Object with unique identifier: {} revoked` | `src/core/operations/revoke.rs` | - | - |
 | `debug` | `Object with unique identifier: {} revoked by user {}` | `src/core/operations/revoke.rs` | - | - |
 | `debug` | `OpenSSL Extensions: {}` | `src/core/operations/certify/build_certificate.rs` | - | - |
 | `debug` | `Parent CRL verification: revocation status: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
@@ -270,7 +268,6 @@ Crate path: `crate/server`
 | `trace` | `Certificate attribute link: {}` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `Certificate attributes links: None` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `certificate parent id is:  {}` | `src/core/operations/export_get.rs` | — | — |
-| `trace` | `Certificate parent id is: {parent_id}` | `src/core/operations/export_get.rs` | `parent_id` — … | — |
 | `trace` | `Certify KeypairAndSubjectName:{unique_identifier} : keypair data: {keypair_data}` | `src/core/operations/certify/certify_op.rs` | `unique_identifier` — …<br>`keypair_data` — … | — |
 | `trace` | `Certify X509Req or Certificate:{unique_identifier}` | `src/core/operations/certify/certify_op.rs` | `unique_identifier` — … | — |
 | `trace` | `Checking key with ID: {}` | `src/core/retrieve_object_utils.rs` | — | — |
@@ -337,7 +334,6 @@ Crate path: `crate/server`
 | `trace` | `key_material key format: {:?}` | `src/core/operations/digest.rs` | — | — |
 | `trace` | `Leaf certificate extracted from PKCS12` | `src/core/operations/import.rs` | — | — |
 | `trace` | `Link: {}` | `src/core/operations/attributes/add.rs` | — | — |
-| `trace` | `Locate: filtering out HSM key {uid_str} — user {user} has no grants` | `src/core/operations/locate.rs` | `uid_str` — …<br>`user` — … | — |
 | `trace` | `Mac: algorithm: {algorithm:?}` | `src/core/operations/mac.rs` | `algorithm` — … | — |
 | `trace` | `Mac: data len: {}` | `src/core/operations/mac.rs` | — | — |
 | `trace` | `matching on key format type: {:?}` | `src/core/operations/encrypt.rs` | — | — |
@@ -392,7 +388,6 @@ Crate path: `crate/server`
 | `trace` | `Retrieved certificate: {} for private key: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Retrieved object for: {}` | `src/core/operations/activate.rs` | — | — |
 | `trace` | `Retrieved object for: {}` | `src/core/operations/attributes/add.rs` | — | — |
-| `trace` | `Retrieved object for: {}` | `src/core/operations/attributes/delete.rs` | — | — |
 | `trace` | `Retrieving certificate for private key: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `RNGRetrieve: {}` | `src/core/operations/rng_retrieve.rs` | — | — |
@@ -412,7 +407,7 @@ Crate path: `crate/server`
 | `trace` | `Token authentication using this API token ID: {api_token_id}` | `src/middlewares/api_token/api_token_auth.rs` | `api_token_id` — … | — |
 | `trace` | `token decoded with {app_name} jwt config` | `src/routes/google_cse/jwt.rs` | `app_name` — … | — |
 | `trace` | `Try to validate token from issuer: {issuer_uri:?}` | `src/routes/google_cse/jwt.rs` | `issuer_uri` — … | — |
-| `trace` | `UID: {:?}, State: {:?}, Attributes: {}` | `src/core/operations/locate.rs` | — | ×2 in this file |
+| `trace` | `UID: {:?}, State: {:?}, Attributes: {}` | `src/core/operations/locate.rs` | — | - |
 | `trace` | `uid={:?}` | `src/core/operations/mac.rs` | — | — |
 | `trace` | `uid={:?}, data_len={}` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `uid={}` | `src/core/operations/mac.rs` | — | — |
@@ -518,9 +513,6 @@ Crate path: `crate/server`
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReCertify: {}` | `src/core/operations/recertify.rs` | - | - |
 | `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
-| `trace` | `SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{}' (rotation disabled)` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | Emitted at session-key derivation time when `ui_session_salt` is absent. The ephemeral key means all browser sessions are lost on restart. Set `ui_session_salt` (or env `KMS_UI_SESSION_SALT`) to a stable 32-byte+ secret for production. |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
@@ -570,7 +562,6 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Skipping HSM key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `debug` | `[auto-rotate] Skipping {uid}: object type {other:?} has no auto-rotation support` | `src/core/operations/auto_rotate.rs` | `uid`, `other` | - |
 | `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
-| `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | - | - |
 | `warn` | `Azure EKM JSON deserialization error: {err}` | `src/routes/azure_ekm/mod.rs` | `err` | - |
 | `warn` | `` JWKS endpoint enabled — all active public keys with the "jwks" tag will be publicly exposed (unauthenticated) at                  `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served.                  Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file. `` | `src/start_kms_server.rs` | `kms_public_url` | - |
 | `warn` | `JWKS response truncated: more than {} eligible public keys found` | `src/routes/jwks.rs` | - | - |
@@ -766,6 +757,20 @@ Crate path: `crate/server`
 | `debug` | `{log_prefix}: validated entity={} policies={:?}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), x5t: {:?}); the key is taken from the configured JWKS` | `src/middlewares/jwt/jwt_config.rs` | - | - |
 | `trace` | `valid_jwt headers: typ={:?} alg={:?} kid={:?}` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `debug` | `ModifyAttribute: persisting attributes for {id}` | `src/core/operations/attributes/modify.rs` | `id` | - |
+| `debug` | `Object with unique identifier: {id} revoked` | `src/core/operations/revoke.rs` | `id` | - |
+| `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{id}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | `id` | - |
+| `trace` | `Certificate parent id is: {parent_id_str}` | `src/core/operations/export_get.rs` | `parent_id_str` | - |
+| `trace` | `Locate: filtering out HSM key {uid} — user {user} has no grants` | `src/core/operations/locate.rs` | `uid`, `user` | - |
+| `trace` | `Retrieved object for: {object}` | `src/core/operations/attributes/delete.rs` | `object` | - |
+| `trace` | `SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{id}' (rotation disabled)` | `src/core/operations/attributes/set.rs` | `id` | - |
+| `trace` | `SetAttribute: writing CKA_LABEL '{label}' on HSM key '{id}'` | `src/core/operations/attributes/set.rs` | `label`, `id` | - |
+| `trace` | `SetAttribute: writing CKA_START_DATE={today} CKA_END_DATE={end_date} on HSM key '{id}'` | `src/core/operations/attributes/set.rs` | `today`, `end_date`, `id` | - |
+| `warn` | `SECURITY: no authentication method is configured: every request is served as the default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: rate_limit_per_second is not set: request rate limiting is disabled.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `Socket server: cannot set socket timeouts, dropping connection: {e}` | `src/socket_server.rs` | `e` | - |
+| `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -981,7 +986,6 @@ Crate path: `crate/kmip`
 | `trace` | `deserialize_u8: state:  {:?}`                                                                                            | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `deserialize_unit: state:  {:?}`                                                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `deserialize_unit_struct with name: {name}, state:  {:?}`                                                                 | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …                                         | —               |
-| `trace` | `deserializing bytes string at tag: {}, of len: {}`                                                                       | `src/ttlv/kmip_ttlv_deserializer/byte_string_deserializer.rs`      | —                                                  | —               |
 | `trace` | `deserializing OffsetDateTime at tag: {}, value: {}, index: {}`                                                           | `src/ttlv/kmip_ttlv_deserializer/offset_date_time_deserializer.rs` | —                                                  | —               |
 | `trace` | `element:  {:?}`                                                                                                          | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | —                                                  | —               |
 | `trace` | `element: {:?}`                                                                                                           | `src/ttlv/kmip_ttlv_deserializer/structure_walker.rs`              | —                                                  | —               |

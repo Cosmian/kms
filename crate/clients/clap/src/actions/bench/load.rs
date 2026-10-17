@@ -5,6 +5,7 @@ use std::{
 
 use cosmian_kms_client::{
     KmsClient,
+    http_client::Bytes,
     jose::{JoseEncReq, JoseSignReq, b64url},
     kmip_2_1::{
         extra::BulkData,
@@ -77,14 +78,14 @@ enum PreparedLoadOp {
     PreSerialized {
         name: &'static str,
         url: String,
-        body: Vec<u8>,
+        body: Bytes,
     },
     /// Pre-serialized binary TTLV (wire format).
     /// Sent with `application/octet-stream` content-type to POST /kmip.
     PreSerializedBinary {
         name: &'static str,
         url: String,
-        body: Vec<u8>,
+        body: Bytes,
     },
     /// AES-256 symmetric key creation.  Cannot be pre-serialized because each
     /// invocation must allocate a distinct key object on the server.
@@ -218,7 +219,9 @@ fn preserialized_op(name: &'static str, client: &KmsClient, op: Operation) -> Pr
     use cosmian_kms_client::cosmian_kmip::ttlv::to_ttlv;
     let req = make_wire_request(op);
     let ttlv = to_ttlv(&req).expect("TTLV serialization");
-    let body = serde_json::to_vec(&ttlv).expect("JSON serialization");
+    let body = serde_json::to_vec(&ttlv)
+        .expect("JSON serialization")
+        .into();
     let url = format!("{}/kmip/2_1", client.client.server_url);
     PreparedLoadOp::PreSerialized { name, url, body }
 }
@@ -226,7 +229,7 @@ fn preserialized_op(name: &'static str, client: &KmsClient, op: Operation) -> Pr
 /// Serialize a KMIP operation to binary TTLV wire bytes (one-time cost at preparation).
 /// Wraps the operation in a `RequestMessage` as required by the binary wire endpoint.
 fn preserialized_wire_op(name: &'static str, client: &KmsClient, op: Operation) -> PreparedLoadOp {
-    let body = to_wire_bytes(&make_wire_request(op));
+    let body = to_wire_bytes(&make_wire_request(op)).into();
     let url = format!("{}/kmip", client.client.server_url);
     PreparedLoadOp::PreSerializedBinary { name, url, body }
 }
@@ -524,9 +527,9 @@ fn prepare_load_ops(
             let body = serde_json::to_vec(&jose_enc_req).expect("JOSE encrypt JSON serialization");
             let url = format!("{}/v1/crypto/encrypt", client.client.server_url);
             ops.push(PreparedLoadOp::PreSerialized {
-                name: "jose/encrypt/a256gcm",
+                name: "jose/encrypt/aes-gcm",
                 url,
-                body,
+                body: body.into(),
             });
         } else {
             eprintln!("[load] JOSE A256GCM key creation failed, skipping JOSE encrypt load test");
@@ -545,7 +548,7 @@ fn prepare_load_ops(
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/sign-verify/ecdsa-p256",
                 url,
-                body,
+                body: body.into(),
             });
         } else {
             eprintln!("[load] JOSE ES256 key creation failed, skipping JOSE sign load test");
@@ -563,7 +566,7 @@ fn prepare_load_ops(
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/sign-verify/eddsa-ed25519",
                 url,
-                body,
+                body: body.into(),
             });
         } else {
             eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");

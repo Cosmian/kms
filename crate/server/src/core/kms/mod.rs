@@ -200,7 +200,7 @@ impl KMS {
         // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
         if let Some(ref key_id) = server_params.ceremony_key_id {
             let owm = database
-                .retrieve_object(key_id)
+                .retrieve_object_arc(key_id)
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(

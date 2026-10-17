@@ -155,7 +155,7 @@ async fn persist_tags(
 ) -> Result<(), CryptoApiError> {
     let owm = kms
         .database
-        .retrieve_object(kid)
+        .retrieve_object_arc(kid)
         .await
         .map_err(|e| CryptoApiError::from(KmsError::from(e)))?
         .ok_or_else(|| CryptoApiError::NotFound(format!("Key '{kid}' not found")))?;

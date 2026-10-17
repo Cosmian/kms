@@ -40,6 +40,7 @@ use super::GoogleCseConfig;
 use crate::{
     core::{
         KMS,
+        certificate::{is_blocked_hostname, is_blocked_ip},
         operations::{decrypt, encrypt},
     },
     error::KmsError,
@@ -58,48 +59,47 @@ const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
 pub(crate) const GOOGLE_CSE_ID: &str = "google_cse";
 
-/// Validates that a KACLS URL is safe to call: must use HTTPS and must not
-/// target private/loopback IP ranges (SSRF mitigation).
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
-fn validate_kacls_url(url_str: &str) -> KResult<()> {
-    let parsed = Url::parse(url_str)
-        .map_err(|e| KmsError::InvalidRequest(format!("Invalid original_kacls_url: {e}")))?;
-
+/// Validates that a KACLS URL is safe to call and returns the HTTP client to call it with
+/// (SSRF mitigation): HTTPS only, no internal hostname, and no private, loopback or
+/// link-local IPv4/IPv6 target, whether given literally or obtained by resolving the
+/// hostname. The checked address is pinned on the client so a second DNS answer cannot
+/// redirect the request (DNS rebinding), and redirects are never followed.
+async fn kacls_client(url_str: &str) -> KResult<Client> {
+    let invalid = |msg: &str| KmsError::InvalidRequest(format!("original_kacls_url {msg}"));
+    let parsed = Url::parse(url_str).map_err(|e| invalid(&format!("is invalid: {e}")))?;
     if parsed.scheme() != "https" {
-        return Err(KmsError::InvalidRequest(
-            "original_kacls_url must use HTTPS scheme".to_owned(),
-        ));
+        return Err(invalid("must use HTTPS scheme"));
     }
-
-    let host = parsed.host_str().ok_or_else(|| {
-        KmsError::InvalidRequest("original_kacls_url must contain a host".to_owned())
-    })?;
-
-    // Reject IP-based hosts that target private/loopback/link-local ranges
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        if ip.is_loopback()
-            || ip.is_unspecified()
-            || matches!(ip, std::net::IpAddr::V4(v4) if v4.is_private() || v4.is_link_local())
-        {
-            return Err(KmsError::InvalidRequest(
-                "original_kacls_url must not target private or loopback addresses".to_owned(),
-            ));
+    let host = parsed
+        .host()
+        .ok_or_else(|| invalid("must contain a host"))?;
+    let blocked_target = || invalid("must not target private or loopback addresses");
+    let builder = Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(30));
+    let builder = match host {
+        url::Host::Ipv4(v4) if is_blocked_ip(v4.into()) => return Err(blocked_target()),
+        url::Host::Ipv6(v6) if is_blocked_ip(v6.into()) => return Err(blocked_target()),
+        url::Host::Ipv4(_) | url::Host::Ipv6(_) => builder,
+        url::Host::Domain(domain) => {
+            if is_blocked_hostname(domain) {
+                return Err(invalid("must not target internal hostnames"));
+            }
+            let port = parsed.port_or_known_default().unwrap_or(443);
+            let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((domain, port))
+                .await
+                .map_err(|e| invalid(&format!("host cannot be resolved: {e}")))?
+                .collect();
+            let Some(first) = addrs.first() else {
+                return Err(invalid("host cannot be resolved"));
+            };
+            if addrs.iter().any(|a| is_blocked_ip(a.ip())) {
+                return Err(blocked_target());
+            }
+            builder.resolve(domain, *first)
         }
-    }
-
-    // Reject well-known internal hostnames
-    let lower = host.to_lowercase();
-    if lower == "localhost"
-        || lower.ends_with(".local")
-        || lower.ends_with(".internal")
-        || lower == "metadata.google.internal"
-    {
-        return Err(KmsError::InvalidRequest(
-            "original_kacls_url must not target internal hostnames".to_owned(),
-        ));
-    }
-
-    Ok(())
+    };
+    Ok(builder.build()?)
 }
 
 #[derive(PartialEq, Eq)]
@@ -685,7 +685,7 @@ pub async fn digest(
         request.wrapped_key,
         UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
         user,
-        Some(resource_name.clone().into_bytes()),
+        Some(resource_name.as_bytes().to_vec()),
         kms,
     )
     .await?;
@@ -785,7 +785,7 @@ pub async fn privileged_unwrap(
         )
         .await?
     };
-    let resource_name = request.resource_name.clone();
+    let resource_name = request.resource_name;
 
     debug!("unwrap key");
     let data: Zeroizing<Vec<u8>> = cse_wrapped_key_decrypt(
@@ -1086,9 +1086,8 @@ pub async fn rewrap(
     debug!("Generated JWT for original KACLS: {jwt:?}");
 
     // Call privileged unwrap on original KACLS
-    // SECURITY: Validate the URL to prevent SSRF attacks targeting internal services.
-    // Only HTTPS URLs are allowed, and private/loopback IP ranges are rejected.
-    validate_kacls_url(&request.original_kacls_url)?;
+    // SECURITY: the URL is validated (SSRF) and its resolved address pinned in the client.
+    let client = kacls_client(&request.original_kacls_url).await?;
     let unwrap_request = PrivilegedUnwrapRequest {
         authentication: jwt,
         wrapped_key: request.wrapped_key.clone(),
@@ -1096,7 +1095,7 @@ pub async fn rewrap(
         resource_name: resource_name.clone(),
     };
 
-    let unwrapped_key = Client::new()
+    let unwrapped_key = client
         .post(format!("{}/privilegedunwrap", request.original_kacls_url))
         .json(&unwrap_request)
         .send()
@@ -1108,7 +1107,7 @@ pub async fn rewrap(
 
     // Wrap with current KMS (KACLS2)
     debug!("re-wrapping key with current KMS");
-    let resource_name_bytes = resource_name.clone().into_bytes();
+    let resource_name_bytes = resource_name.as_bytes().to_vec();
     let re_wrapped_key =
         cse_key_encrypt(unwrapped_key.clone(), user, Some(resource_name_bytes), kms).await?;
 
@@ -1149,31 +1148,36 @@ async fn cse_wrapped_key_decrypt(
     kms: &Arc<KMS>,
 ) -> KResult<Zeroizing<Vec<u8>>> {
     trace!("wrapped_key length: {} chars", wrapped_key.len());
-    let wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
+    let mut wrapped_key_bytes = general_purpose::STANDARD.decode(&wrapped_key)?;
     let len = wrapped_key_bytes.len();
     if len < TAG_LENGTH + NONCE_LENGTH {
         return Err(KmsError::InvalidRequest(
             "Invalid wrapped key - insufficient length.".to_owned(),
         ));
     }
-    let iv_counter_nonce = wrapped_key_bytes.get(..NONCE_LENGTH).ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
-    })?;
-    let ciphertext = wrapped_key_bytes
-        .get(NONCE_LENGTH..len - TAG_LENGTH)
-        .ok_or_else(|| {
-            KmsError::InvalidRequest("Invalid wrapped key - missing ciphertext.".to_owned())
-        })?;
-    let authenticated_tag = wrapped_key_bytes.get(len - TAG_LENGTH..).ok_or_else(|| {
-        KmsError::InvalidRequest("Invalid wrapped key - missing authenticated tag.".to_owned())
-    })?;
 
-    trace!(
-        "iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
-        general_purpose::STANDARD.encode(iv_counter_nonce),
-        general_purpose::STANDARD.encode(ciphertext),
-        general_purpose::STANDARD.encode(authenticated_tag)
-    );
+    if tracing::enabled!(tracing::Level::TRACE) {
+        let nonce_str = wrapped_key_bytes
+            .get(..NONCE_LENGTH)
+            .map(|s| general_purpose::STANDARD.encode(s))
+            .unwrap_or_default();
+        let ct_str = wrapped_key_bytes
+            .get(NONCE_LENGTH..len.saturating_sub(TAG_LENGTH))
+            .map(|s| general_purpose::STANDARD.encode(s))
+            .unwrap_or_default();
+        let tag_str = wrapped_key_bytes
+            .get(len.saturating_sub(TAG_LENGTH)..)
+            .map(|s| general_purpose::STANDARD.encode(s))
+            .unwrap_or_default();
+        trace!(
+            "iv_counter_nonce: {}, ciphertext: {}, authenticated_tag: {}",
+            nonce_str, ct_str, tag_str
+        );
+    }
+
+    let authenticated_tag = wrapped_key_bytes.split_off(len - TAG_LENGTH);
+    let ciphertext = wrapped_key_bytes.split_off(NONCE_LENGTH);
+    let iv_counter_nonce = wrapped_key_bytes;
 
     let decryption_request = Decrypt {
         unique_identifier: Some(wrapping_key_id),
@@ -1181,13 +1185,13 @@ async fn cse_wrapped_key_decrypt(
             block_cipher_mode: Some(BlockCipherMode::GCM),
             ..Default::default()
         }),
-        data: Some(ciphertext.to_vec()),
-        i_v_counter_nonce: Some(iv_counter_nonce.to_vec()),
+        data: Some(ciphertext),
+        i_v_counter_nonce: Some(iv_counter_nonce),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
-        authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
+        authenticated_encryption_tag: Some(authenticated_tag),
     };
     let key = decrypt(kms, decryption_request, &UserId::from(user.as_str())).await?;
 
@@ -1288,4 +1292,36 @@ pub fn compute_resource_key_hash(
 
     // Encode the result as a base64 string
     Ok(general_purpose::STANDARD.encode(hmac_result))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::kacls_client;
+
+    /// IPv6 literals (bracketed in URLs), IPv4-mapped addresses and internal names are
+    /// refused before any network I/O (COSMIAN-2026-035).
+    #[tokio::test]
+    async fn kacls_url_rejects_internal_targets() {
+        for url in [
+            "http://kacls.example.com",
+            "https://127.0.0.1",
+            "https://169.254.169.254/computeMetadata",
+            "https://[::1]",
+            "https://[fd00::1]",
+            "https://[fe80::1]",
+            "https://[::ffff:169.254.169.254]",
+            "https://localhost",
+            "https://metadata.google.internal",
+        ] {
+            assert!(kacls_client(url).await.is_err(), "{url} must be rejected");
+        }
+    }
+
+    #[tokio::test]
+    async fn kacls_url_accepts_public_ip() -> crate::result::KResult<()> {
+        for url in ["https://[2001:4860:4860::8888]", "https://8.8.8.8"] {
+            kacls_client(url).await?;
+        }
+        Ok(())
+    }
 }
