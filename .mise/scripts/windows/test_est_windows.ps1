@@ -122,6 +122,25 @@ function Get-CertificateSerial {
     return (Invoke-Native $OpensslExe @("x509", "-in", $CertificatePath, "-noout", "-serial") "failed to read certificate serial").Trim()
 }
 
+function Set-OpenSslDirectory {
+    param([string]$RepositoryRoot)
+    $manifestDir = Join-Path $RepositoryRoot "vcpkg_installed\x64-windows-static"
+    $manifestHeader = Join-Path $manifestDir "include\openssl\ssl.h"
+    if (Test-Path $manifestHeader) {
+        $env:OPENSSL_DIR = $manifestDir
+        return
+    }
+    if ($env:VCPKG_INSTALLATION_ROOT) {
+        $classicDir = Join-Path $env:VCPKG_INSTALLATION_ROOT "packages\openssl_x64-windows-static"
+        $classicHeader = Join-Path $classicDir "include\openssl\ssl.h"
+        if (Test-Path $classicHeader) {
+            $env:OPENSSL_DIR = $classicDir
+            return
+        }
+    }
+    Fail "OpenSSL headers were not found in $manifestDir or the VCPKG_INSTALLATION_ROOT package directory"
+}
+
 try {
     foreach ($command in "go", "openssl", "cargo", "curl.exe") {
         if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { Fail "$command not found in PATH" }
@@ -149,6 +168,7 @@ try {
         'subjectKeyIdentifier = hash'
     ) | Set-Content -Path $env:OPENSSL_CONF -Encoding ASCII
 
+    Set-OpenSslDirectory $RepoRoot
     Write-Step "Build KMS server and ckms (non-fips)"
     if (-not $NoBuild) {
         Push-Location $RepoRoot
