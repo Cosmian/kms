@@ -398,12 +398,12 @@ async fn reserved_xks_identity_cannot_be_used_as_the_monitoring_operator() -> KR
     // The Crypto Officer responsible for monitoring/managing XKS keys must never be the
     // reserved `AWS_XKS_SERVICE_USER` delegate: that identity is intentionally unreachable
     // through any real credential (TLS/OIDC/SPIRE/UI session — see
-    // `reject_reserved_aws_xks_identity` in `middlewares/mod.rs`), and even if it were
+    // `reject_reserved_service_identity` in `middlewares/mod.rs`), and even if it were
     // reachable, it only holds Encrypt/Decrypt/GetAttributes, never Revoke/Destroy/Get.
-    use crate::middlewares::reject_reserved_aws_xks_identity;
+    use crate::middlewares::reject_reserved_service_identity;
 
     assert!(
-        reject_reserved_aws_xks_identity(&UserId::from(AWS_XKS_SERVICE_USER)).is_err(),
+        reject_reserved_service_identity(&UserId::from(AWS_XKS_SERVICE_USER)).is_err(),
         "the reserved AWS XKS service identity must stay unreachable through any \
          externally-authenticated path, including for monitoring purposes"
     );

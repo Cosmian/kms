@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Fail if the KmsRng-only randomness policy (root clippy.toml) can be bypassed"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+require_cmd git
+cd "$(get_repo_root)"
+
+FOUND=0
+# The bans are clippy::style lints: an allow/expect of them, or of clippy::style / clippy::all, in Rust code
+# silently disables them; so does a lint-level override in Cargo or cargo configuration.
+if git grep -nE 'clippy::(disallowed_(method|type)s?|style|all)([^a-z_]|$)' -- '*.rs'; then FOUND=1; fi
+if git grep -nE 'disallowed_(method|type)s?|clippy::(style|all)([^a-z_]|$)' -- '*.toml' ':!clippy.toml' ':!Cargo.toml' '.cargo/*'; then FOUND=1; fi
+# Member crates must inherit the workspace clippy lint groups (`[lints] workspace = true`).
+if git grep -nE '^[[:space:]]*(style|all)[[:space:]]*=' -- '*Cargo.toml' ':!Cargo.toml'; then FOUND=1; fi
+# The root manifest pins both bans and keeps the groups that contain them at deny.
+for pat in '^disallowed_methods = \{ level = "deny", priority = 100 \}$' \
+  '^disallowed_types = \{ level = "deny", priority = 100 \}$' \
+  '^style = \{ level = "deny"' '^all = \{ level = "deny"'; do
+  if ! git grep -qE "$pat" -- Cargo.toml; then
+    echo "Cargo.toml: missing or weakened: $pat"
+    FOUND=1
+  fi
+done
+
+# Clippy reads only the nearest clippy.toml (no merge): any other one drops the bans for its crate.
+if git ls-files '*clippy.toml' | grep -vx 'clippy.toml'; then FOUND=1; fi
+if [ "$FOUND" -ne 0 ]; then
+  print_error "KmsRng policy bypass above: use KmsRng instead (.github/instructions/rust.instructions.md, Randomness)"
+fi
+print_success "KmsRng policy holds: no lint suppression, no level override, single clippy.toml"

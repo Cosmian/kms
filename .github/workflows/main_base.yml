@@ -31,6 +31,18 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
+  rng-policy:
+    name: KmsRng Policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/install-mise
+      - name: Check the randomness policy cannot be bypassed
+        run: mise run audit:rng-policy
+
   cargo-vet:
     name: Supply chain — cargo vet
     runs-on: ubuntu-24.04
@@ -128,6 +140,40 @@ jobs:
             export FEATURES_FLAG="";
           fi
           cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
+
+  # EST / SCEP interoperability against third-party clients (micromdm scepclient with an
+  # Apple SCEP profile check, globalsign estclient) on macOS; Linux runs them in `test_all.yml`.
+  interop-macos:
+    name: Interop (macOS) - ${{ matrix.type }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [scep-interop, est-interop]
+
+    steps:
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      # estclient / scepclient are Go programs built by the interop scripts
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      - name: Interop test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -ex
+          mise run test:${{ matrix.type }} --variant fips
 
   test: # Run all tests
     if: github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]' || startsWith(github.ref,

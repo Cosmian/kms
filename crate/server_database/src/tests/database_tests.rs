@@ -13,9 +13,9 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng,
+    reexport::cosmian_crypto_core::{CsRng, reexport::rand_core::RngCore},
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, ObjectsStore, PermissionsStore, UserId,
@@ -31,7 +31,7 @@ use crate::{
 pub(super) async fn tx_and_list<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // Create key
@@ -113,7 +113,7 @@ pub(super) async fn tx_and_list<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // Create key
@@ -288,7 +288,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // Create key
@@ -358,7 +358,7 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     let owner = "eyJhbGciOiJSUzI1Ni";
 
@@ -546,7 +546,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
         .map_err(|e| DbError::ServerError(e.to_string()))
     };
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     // ── obj_due: initial_date 2 h ago, interval 1 h → overdue ────────────
     let uid_due = Uuid::new_v4().to_string();
@@ -649,7 +649,7 @@ pub(super) async fn count_non_destroyed_keys_test<DB: ObjectsStore>(db: &DB) -> 
     let owner = UserId::from("count_keys_test_owner");
     let baseline = db.count_non_destroyed_keys().await?;
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let key_attributes = Attributes {
         object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -764,7 +764,7 @@ pub(super) async fn find_with_options_test<DB: ObjectsStore + PermissionsStore>(
     };
 
     // uids[0]: t1 t2 t3 | uids[1]: t1 t2 | uids[2]: t1 t3 | uids[3]: t1 t2, destroyed
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut uids = Vec::with_capacity(4);
     for (tags, destroyed) in [
         (vec![&t1, &t2, &t3], false),
@@ -916,7 +916,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
     .await?;
 
     // ── Unwrapped object: must not be returned by find_wrapped_by ─────────
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut key = vec![0_u8; 32];
     rng.fill_bytes(&mut key);
     let plain_uid = Uuid::new_v4().to_string();

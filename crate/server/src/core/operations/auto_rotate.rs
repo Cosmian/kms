@@ -340,16 +340,18 @@ fn days_until_next_rotation(
 mod tests {
     use std::{collections::HashSet, sync::Arc};
 
-    use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_attributes::{Attribute, Attributes},
-            kmip_operations::SetAttribute,
-            kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
-            requests::create_symmetric_key_kmip_object,
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                kmip_attributes::{Attribute, Attributes},
+                kmip_operations::SetAttribute,
+                kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+                requests::create_symmetric_key_kmip_object,
+            },
         },
+        cosmian_kms_crypto::crypto::KmsRng,
     };
-    use openssl::rand::rand_bytes;
 
     use super::days_until_next_rotation;
     use crate::{
@@ -380,7 +382,7 @@ mod tests {
     -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object {
         let mut bytes = [0_u8; 32];
         #[expect(clippy::unwrap_used)]
-        rand_bytes(&mut bytes).unwrap();
+        KmsRng::new().fill_bytes(&mut bytes).unwrap();
         #[expect(clippy::unwrap_used)]
         create_symmetric_key_kmip_object(
             "x-vendor",

@@ -96,10 +96,6 @@ fn normalize_rsa_secret_params(
 
 // The PGP crate requires an infallible rand 0.8 `CryptoRng` and offers no direct-seed entry point,
 // so its RNG stream is a ChaCha12 `StdRng` seeded with 256 bits taken from `KmsRng`.
-#[allow(
-    clippy::disallowed_types,
-    reason = "StdRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
-)]
 fn openssl_seeded_rng(rng: &KmsRng) -> Result<rand_08::rngs::StdRng, CryptoError> {
     let mut seed = Zeroizing::new([0_u8; 32]);
     rng.fill_bytes(&mut seed[..])

@@ -711,8 +711,6 @@ Crate path: `crate/server`
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
-| `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
-| `warn` | `{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth:                      {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
 | `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers              these operations on your behalf — configure a Crypto Officer identity backed by a              real credential (TLS certificate CN / OIDC subject matching `default_username`) so              XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
 | `error` | `AWS XKS: failed to spawn key access migration thread: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
@@ -757,6 +755,16 @@ Crate path: `crate/server`
 | `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
+| `warn` | `EST simpleenroll rejected: no valid client authentication` | `src/routes/est/enroll.rs` | - | - |
+| `warn` | `EST simplereenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
+| `warn` | `SCEP request {} rejected (failInfo={}): {}` | `src/routes/scep/pki_operation.rs` | - | - |
+| `warn` | `SCEP: unreadable pkiMessage: {e}` | `src/routes/scep/pki_operation.rs` | `e` | - |
+| `info` | `GET /.well-known/est/cacerts` | `src/routes/est/cacerts.rs` | - | - |
+| `info` | `GET /.well-known/est/csrattrs` | `src/routes/est/csrattrs.rs` | - | - |
+| `info` | `POST /.well-known/est/simpleenroll ({} bytes)` | `src/routes/est/enroll.rs` | - | - |
+| `info` | `POST /.well-known/est/simplereenroll ({} bytes)` | `src/routes/est/enroll.rs` | - | - |
+| `info` | `SCEP PKIOperation: messageType={} transactionID={}` | `src/routes/scep/pki_operation.rs` | - | - |
+| `debug` | `enrollment: issued certificate {uid} from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `ca_uid` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 | `debug` | `decrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
@@ -766,6 +774,11 @@ Crate path: `crate/server`
 | `debug` | `{log_prefix}: validated entity={} policies={:?}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), x5t: {:?}); the key is taken from the configured JWKS` | `src/middlewares/jwt/jwt_config.rs` | - | - |
 | `trace` | `valid_jwt headers: typ={:?} alg={:?} kid={:?}` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
+| `warn` | `Session: rejecting reserved service identity from stored session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
+| `warn` | `{log_prefix}: rejecting reserved service identity in SPIRE auth: {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
+| `warn` | `EST enabled without est_template: only the baseline policy applies (RSA >= 2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN and SAN)` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `SCEP enabled without scep_template: only the baseline policy applies (RSA >= 2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN and SAN)` | `src/config/params/server_params.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

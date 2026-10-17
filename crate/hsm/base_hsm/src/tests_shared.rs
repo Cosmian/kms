@@ -10,6 +10,7 @@ use std::{
     thread,
 };
 
+use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
     EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
 };
@@ -37,7 +38,6 @@ use pkcs11_sys::{
     CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS,
     CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
-use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 
 use crate::{
@@ -77,8 +77,8 @@ pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA256;
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    SysRng
-        .try_fill_bytes(&mut bytes)
+    KmsRng::new()
+        .fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random data: {e}")))?;
     Ok(bytes)
 }

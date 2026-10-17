@@ -1,5 +1,6 @@
 use std::ffi::{c_int, c_uint, c_void};
 
+use cosmian_crypto_core::{CsRng, reexport::rand_core::SeedableRng};
 use openssl::error::ErrorStack;
 use openssl_sys::RAND_add;
 use zeroize::Zeroizing;
@@ -77,9 +78,9 @@ unsafe extern "C" {
 ///
 /// # Why not `cosmian_crypto_core::CsRng`
 ///
-/// `CsRng` (`rand_chacha::ChaCha12Rng`, seeded via `getrandom`) is used elsewhere in this
-/// codebase for non-compliance-relevant randomness, but it bypasses OpenSSL entirely and is not
-/// an NIST SP 800-90A-approved DRBG construction. Do not substitute it here — see
+/// `CsRng` (`rand_chacha::ChaCha12Rng`) bypasses OpenSSL when seeded via `getrandom` and is not an
+/// NIST SP 800-90A-approved DRBG construction. It is only ever seeded from `KmsRng`
+/// ([`KmsRng::seeded_csrng`]). Do not substitute it here — see
 /// `documentation/adr/2026-10-10-keep-kmsrng-openssl-backed-over-csrng.md`.
 #[derive(Debug, Default)]
 pub struct KmsRng;
@@ -162,6 +163,21 @@ impl KmsRng {
         let mut buf = Zeroizing::new(vec![0_u8; len]);
         self.fill_bytes(&mut buf)?;
         Ok(buf)
+    }
+
+    /// A `cosmian_crypto_core::CsRng` (`ChaCha12`) seeded with 256 bits from the private DRBG.
+    ///
+    /// For third-party APIs that require an infallible `rand_core` 0.6 `CryptoRngCore` and offer no
+    /// way to inject entropy (ECIES `SalsaSealBox`), and for test fixtures. Everything the returned
+    /// generator produces is bounded by this single 256-bit draw from `KmsRng`.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`fill_bytes`](Self::fill_bytes).
+    pub fn seeded_csrng(&self) -> Result<CsRng, CryptoError> {
+        let mut seed = Zeroizing::new([0_u8; 32]);
+        self.fill_bytes(&mut seed[..])?;
+        Ok(CsRng::from_seed(*seed))
     }
 
     /// Mix caller-supplied data into the OpenSSL primary DRBG as **additional input**

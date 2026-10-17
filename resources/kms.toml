@@ -103,6 +103,37 @@ hostname = "0.0.0.0"
 # sharing a chain.
 # instance_id = "kms-primary"
 
+# ── EST / SCEP device enrollment ─────────────────────────────────────────────
+# Certificates are issued by the CA `*_ca_uid` as the reserved `[enrollment-service]`
+# identity: first run `ckms access-rights grant "[enrollment-service]" -i <ca uid> certify`
+# (and the same for the CA private key).
+#
+# With `clients_ca_cert_file` set, the CN of a client certificate is the KMS user name, so the
+# server refuses to start unless the template has a `subject_cn_regex` that excludes the names
+# of existing KMS users. EST HTTP Basic bootstrap and `est_require_client_cert = true` require
+# TLS (the latter also `clients_ca_cert_file`).
+#
+# [est]
+# est_enabled = true
+# est_ca_uid = "device-ca"
+# est_require_client_cert = true
+# est_template = "iot_device"
+#
+# [scep]
+# scep_enabled = true
+# scep_ca_uid = "device-ca"          # must be an RSA CA
+# scep_challenge_password = "change-me"
+# scep_template = "iot_device"
+#
+# [templates.iot_device]
+# min_rsa_key_bits = 2048
+# allowed_ec_curves = ["prime256v1"]   # default: prime256v1, secp384r1, secp521r1
+# allowed_ekus = ["clientAuth"]        # default: clientAuth
+# max_validity_days = 365
+# default_validity_days = 90
+# subject_cn_regex = "[a-z0-9-]+\\.iot\\.example"
+# san_dns_regex = "[a-z0-9-]+\\.iot\\.example"
+
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"

@@ -15,18 +15,23 @@ use actix_web::{
     rt::net::TcpStream,
 };
 use cosmian_logger::{debug, trace};
-use openssl::{nid::Nid, x509::X509};
+use openssl::{
+    nid::Nid,
+    x509::{X509, X509Ref},
+};
+use x509_parser::prelude::{FromDer, ParsedExtension, X509Certificate};
 
 use crate::{
+    core::operations::certify::template::ENROLLED_CERTIFICATE_POLICY_OID,
     error::KmsError,
     kms_bail,
-    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity},
     result::KResult,
 };
 
 /// Holds the peer certificate for the current connection.
 #[derive(Debug, Clone)]
-pub(super) struct PeerCertificate {
+pub(crate) struct PeerCertificate {
     /// The peer certificate.
     pub(crate) cert: X509,
 }
@@ -83,9 +88,44 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         ));
     };
 
-    // Extract the common name from the peer certificate.
+    Ok(AuthenticatedUser {
+        username: user_from_client_certificate(&certificate.cert)?,
+        auth_method: AuthMethod::Mtls,
+    })
+}
+
+/// `true` when `certificate` carries the [`ENROLLED_CERTIFICATE_POLICY_OID`] stamped on
+/// certificates issued through EST / SCEP. Fails closed when the certificate cannot be parsed.
+fn is_enrollment_issued(certificate: &X509Ref) -> KResult<bool> {
+    let der = certificate.to_der()?;
+    let (_, parsed) = X509Certificate::from_der(&der).map_err(|e| {
+        KmsError::InvalidRequest(format!("cannot inspect the client certificate: {e}"))
+    })?;
+    Ok(parsed
+        .iter_extensions()
+        .any(|ext| match ext.parsed_extension() {
+            ParsedExtension::CertificatePolicies(policies) => policies
+                .iter()
+                .any(|p| p.policy_id.to_id_string() == ENROLLED_CERTIFICATE_POLICY_OID),
+            _ => false,
+        }))
+}
+
+/// Map a verified client certificate to a KMS user: its first Common Name, trimmed.
+///
+/// Shared by the HTTPS mTLS middleware and the KMIP socket server so both apply the same
+/// rules: the CN must be present, UTF-8, non-empty, not the `*` wildcard, not a reserved
+/// internal service identity, and the certificate must not have been issued through EST / SCEP
+/// enrollment. A device chooses its own CN in its CSR, so an enrolled certificate is a device
+/// identity only: it can renew itself over EST but never authenticates as a KMS user.
+pub(crate) fn user_from_client_certificate(certificate: &X509Ref) -> KResult<UserId> {
+    if is_enrollment_issued(certificate)? {
+        kms_bail!(
+            "Client certificate was issued through EST/SCEP enrollment and cannot authenticate \
+             as a KMS user; access denied"
+        );
+    }
     match certificate
-        .cert
         .subject_name()
         .entries_by_nid(Nid::COMMONNAME)
         .next()
@@ -106,11 +146,8 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                 }
                 trace!("Client certificate common name: {}", username);
                 let username = UserId::from(trimmed);
-                reject_reserved_aws_xks_identity(&username)?;
-                Ok(AuthenticatedUser {
-                    username,
-                    auth_method: AuthMethod::Mtls,
-                })
+                reject_reserved_service_identity(&username)?;
+                Ok(username)
             }
             Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
         },

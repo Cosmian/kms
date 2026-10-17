@@ -1,0 +1,322 @@
+//! Helpers shared by the EST (RFC 7030) and SCEP (RFC 8894) enrollment endpoints.
+//!
+//! Both protocols issue certificates from a configured CA certificate (`est_ca_uid` /
+//! `scep_ca_uid`) through the regular KMIP `Certify` operation, constrained by a
+//! [`CertTemplate`]. Issuance runs as the reserved [`ENROLLMENT_SERVICE_USER`], which may only
+//! use a CA whose owner granted it the `certify` right on the CA certificate and private key;
+//! the issued certificate is stored under the CA owner.
+
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_operations::Certify,
+            kmip_types::{CertificateRequestType, LinkType, LinkedObjectIdentifier},
+        },
+    },
+    cosmian_kms_crypto::openssl::{kmip_certificate_to_openssl, kmip_private_key_to_openssl},
+    cosmian_kms_interfaces::ObjectHandle,
+};
+use cosmian_logger::{debug, warn};
+use openssl::{
+    asn1::Asn1Time,
+    pkey::{PKey, Private},
+    sha::sha256,
+    x509::{X509, X509Req},
+};
+use subtle::ConstantTimeEq;
+use x509_parser::{
+    asn1_rs::{Any, Tag},
+    cri_attributes::ParsedCriAttribute,
+    prelude::{FromDer, X509Certificate, X509CertificationRequest},
+};
+
+use crate::{
+    core::{
+        KMS,
+        certificate::retrieve_issuer_private_key_and_certificate,
+        operations::certify::{certify_for_owner, template::CertTemplate},
+    },
+    error::KmsError,
+    middlewares::UserId,
+    result::{KResult, KResultHelper},
+};
+
+/// Maximum number of certificates followed when walking up an issuer chain.
+const MAX_CHAIN_DEPTH: usize = 8;
+
+/// Reserved identity under which EST/SCEP use the CA key.
+///
+/// Like `AWS_XKS_SERVICE_USER`, it is wrapped in square brackets and rejected on every
+/// externally-derived authentication path (`reject_reserved_service_identity`), so no client
+/// can authenticate as it. It holds no right by default: a CA owner delegates a CA to
+/// enrollment by granting it `certify` on the CA certificate and its private key (plus
+/// `decrypt` on the wrapping key when the CA key is wrapped, and the `create` right when Crypto
+/// Officers are configured).
+pub(crate) const ENROLLMENT_SERVICE_USER: &str = "[enrollment-service]";
+
+/// Server-side hint logged when the CA cannot be used by the enrollment service identity.
+fn log_ca_use_failure(ca_uid: &str, error: &KmsError) {
+    warn!(
+        "enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. \
+         The CA owner must grant it `certify` on the CA certificate and private key (and \
+         `decrypt` on the wrapping key if the CA key is wrapped)."
+    );
+}
+
+/// Compare two secrets in constant time (both are hashed first so that the length is not leaked).
+pub(crate) fn secrets_equal(a: &str, b: &str) -> bool {
+    sha256(a.as_bytes()).ct_eq(&sha256(b.as_bytes())).into()
+}
+
+/// Load the CA certificate `ca_uid` followed by its issuers, up to the root.
+pub(crate) async fn load_ca_chain(kms: &KMS, ca_uid: &str) -> KResult<Vec<X509>> {
+    let mut chain = Vec::new();
+    let mut uid = ca_uid.to_owned();
+    while chain.len() < MAX_CHAIN_DEPTH {
+        let owm = kms
+            .database
+            .retrieve_object(&uid)
+            .await
+            .context("retrieve CA certificate")?
+            .ok_or_else(|| KmsError::ItemNotFound(format!("CA certificate not found: {uid}")))?;
+        chain.push(kmip_certificate_to_openssl(owm.object())?);
+        let Some(parent) = owm.attributes().get_link(LinkType::CertificateLink) else {
+            break;
+        };
+        let parent = parent.to_string();
+        if parent == uid {
+            break;
+        }
+        uid = parent;
+    }
+    Ok(chain)
+}
+
+/// Load the CA certificate and its (unwrapped) private key.
+pub(crate) async fn load_ca_signing_material(
+    kms: &KMS,
+    ca_uid: &str,
+) -> KResult<(X509, PKey<Private>)> {
+    let user = UserId::from(ENROLLMENT_SERVICE_USER);
+    let ca_uid = ca_uid.to_owned();
+    let (private_key, certificate) = Box::pin(retrieve_issuer_private_key_and_certificate(
+        None,
+        Some(ObjectHandle::from(&ca_uid)),
+        kms,
+        &user,
+    ))
+    .await
+    .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;
+    if private_key.state() != State::Active {
+        return Err(KmsError::InvalidRequest(format!(
+            "the CA private key '{}' is not Active",
+            private_key.id()
+        )));
+    }
+    let unwrapped = Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), &user))
+        .await
+        .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;
+    Ok((
+        kmip_certificate_to_openssl(certificate.object())?,
+        kmip_private_key_to_openssl(&unwrapped)?,
+    ))
+}
+
+/// Issue a certificate for `csr` from the CA `ca_uid` after enforcing `template`
+/// (a baseline template when `None`). The certificate is stored under the CA certificate owner.
+pub(crate) async fn issue_from_csr(
+    kms: &KMS,
+    ca_uid: &str,
+    csr: &X509Req,
+    template: Option<&CertTemplate>,
+    requested_validity_days: Option<u32>,
+) -> KResult<X509> {
+    let user = UserId::from(ENROLLMENT_SERVICE_USER);
+    let ca_owner = kms
+        .database
+        .retrieve_object(ca_uid)
+        .await
+        .context("retrieve CA certificate")?
+        .ok_or_else(|| KmsError::ItemNotFound(format!("CA certificate not found: {ca_uid}")))?
+        .owner_id()
+        .to_owned();
+    let mut attributes = Attributes::default();
+    attributes.set_link(
+        LinkType::CertificateLink,
+        LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
+    );
+    let baseline = CertTemplate::default();
+    template.unwrap_or(&baseline).apply(
+        csr,
+        kms.vendor_id(),
+        requested_validity_days,
+        &mut attributes,
+    )?;
+    let response = Box::pin(certify_for_owner(
+        kms,
+        Certify {
+            unique_identifier: None,
+            certificate_request_type: Some(CertificateRequestType::PKCS10),
+            certificate_request_value: Some(csr.to_der()?),
+            attributes: Some(attributes),
+            protection_storage_masks: None,
+        },
+        &user,
+        &ca_owner,
+    ))
+    .await
+    .inspect_err(|e| log_ca_use_failure(ca_uid, e))?;
+    let uid = response.unique_identifier.to_string();
+    debug!("enrollment: issued certificate {uid} from CA {ca_uid}");
+    let owm = kms
+        .database
+        .retrieve_object(&uid)
+        .await
+        .context("retrieve issued certificate")?
+        .ok_or_else(|| KmsError::ItemNotFound(format!("issued certificate not found: {uid}")))?;
+    Ok(kmip_certificate_to_openssl(owm.object())?)
+}
+
+/// `true` when `cert` names `ca_cert` as issuer and carries a valid signature from its key.
+pub(crate) fn is_issued_by(cert: &X509, ca_cert: &X509) -> KResult<bool> {
+    let ca_public_key = ca_cert.public_key()?;
+    Ok(
+        cert.issuer_name().to_der()? == ca_cert.subject_name().to_der()?
+            && cert.verify(&ca_public_key)?,
+    )
+}
+
+/// Check that `cert` was issued by the CA `ca_cert` (`ca_uid`), is within its validity period
+/// and is tracked by the KMS in the `Active` state (i.e. not revoked / deactivated / destroyed).
+pub(crate) async fn ensure_active_certificate_of_ca(
+    kms: &KMS,
+    ca_uid: &str,
+    ca_cert: &X509,
+    cert: &X509,
+) -> KResult<()> {
+    if !is_issued_by(cert, ca_cert)? {
+        return Err(KmsError::InvalidRequest(
+            "the certificate was not issued by the enrollment CA".to_owned(),
+        ));
+    }
+    let now = Asn1Time::days_from_now(0)?;
+    if cert.not_after() < now || cert.not_before() > now {
+        return Err(KmsError::InvalidRequest(
+            "the certificate is not within its validity period".to_owned(),
+        ));
+    }
+    let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
+    let found = Box::pin(kms.database.find_certificate_by_serial(
+        ca_uid,
+        &serial_hex,
+        kms.vendor_id(),
+    ))
+    .await
+    .context("find_certificate_by_serial")?;
+    match found {
+        Some((_, State::Active, _)) => Ok(()),
+        Some((uid, state, _)) => Err(KmsError::InvalidRequest(format!(
+            "the certificate {uid} is in state {state} and cannot be renewed"
+        ))),
+        None => Err(KmsError::InvalidRequest(
+            "the certificate is not known to the KMS".to_owned(),
+        )),
+    }
+}
+
+const OID_SUBJECT_ALT_NAME: &str = "2.5.29.17";
+
+/// Sorted raw DER of every `GeneralName` in a `SubjectAltName` extension value. Comparing the
+/// encoded names avoids any dependence on a parser's `Debug` rendering; a value that is not a
+/// well-formed `SEQUENCE OF` TLVs is an error, never an empty set.
+fn san_entries(value: &[u8]) -> KResult<Vec<Vec<u8>>> {
+    let bad = |what: &str| KmsError::InvalidRequest(format!("invalid SubjectAltName: {what}"));
+    let (rest, seq) = Any::from_der(value).map_err(|e| bad(&e.to_string()))?;
+    if !rest.is_empty() || seq.tag() != Tag::Sequence {
+        return Err(bad("not a single SEQUENCE"));
+    }
+    let mut data = seq.data;
+    let mut out = Vec::new();
+    while !data.is_empty() {
+        let (next, _) = Any::from_der(data).map_err(|e| bad(&e.to_string()))?;
+        let consumed = data
+            .len()
+            .checked_sub(next.len())
+            .and_then(|n| data.get(..n))
+            .ok_or_else(|| bad("inconsistent length"))?;
+        out.push(consumed.to_vec());
+        data = next;
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// `GeneralName`s of the `SubjectAltName` requested by a CSR.
+fn csr_san_set(csr: &X509Req) -> KResult<Vec<Vec<u8>>> {
+    let der = csr.to_der()?;
+    let (_, parsed) = X509CertificationRequest::from_der(&der)
+        .map_err(|e| KmsError::InvalidRequest(format!("invalid CSR: {e}")))?;
+    for attr in parsed.certification_request_info.iter_attributes() {
+        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute() {
+            if let Some(ext) = requested
+                .extensions
+                .iter()
+                .find(|e| e.oid.to_id_string() == OID_SUBJECT_ALT_NAME)
+            {
+                return san_entries(ext.value);
+            }
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// `GeneralName`s of the `SubjectAltName` carried by a certificate.
+fn cert_san_set(cert: &X509) -> KResult<Vec<Vec<u8>>> {
+    let der = cert.to_der()?;
+    let (_, parsed) = X509Certificate::from_der(&der)
+        .map_err(|e| KmsError::InvalidRequest(format!("invalid certificate: {e}")))?;
+    parsed
+        .extensions()
+        .iter()
+        .find(|e| e.oid.to_id_string() == OID_SUBJECT_ALT_NAME)
+        .map_or_else(|| Ok(Vec::new()), |ext| san_entries(ext.value))
+}
+
+/// `true` when the Subject and the `SubjectAltName` of `csr` are identical to those of `cert`
+/// (RFC 7030 §4.2.2; also required for SCEP renewals so that a certificate can only be
+/// renewed for the identity it already carries).
+pub(crate) fn csr_matches_certificate_identity(csr: &X509Req, cert: &X509) -> KResult<bool> {
+    if csr.subject_name().to_der()? != cert.subject_name().to_der()? {
+        return Ok(false);
+    }
+    let requested_sans = csr_san_set(csr)?;
+    let certified_sans = cert_san_set(cert)?;
+    Ok(requested_sans == certified_sans)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // test-only assertions on known-good fixtures
+mod tests {
+    use super::san_entries;
+
+    // SAN = SEQUENCE { dNSName "a", dNSName "b" } and the same names in the other order
+    const AB: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'a', 0x82, 0x01, b'b'];
+    const BA: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'b', 0x82, 0x01, b'a'];
+
+    #[test]
+    fn san_comparison_ignores_order_but_not_names() {
+        assert_eq!(san_entries(&AB).unwrap(), san_entries(&BA).unwrap());
+        let other: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'a', 0x82, 0x01, b'c'];
+        assert_ne!(san_entries(&AB).unwrap(), san_entries(&other).unwrap());
+    }
+
+    #[test]
+    fn malformed_san_is_an_error_not_an_empty_set() {
+        // truncated element, trailing bytes, and not a SEQUENCE
+        san_entries(&[0x30, 0x03, 0x82, 0x01]).unwrap_err();
+        san_entries(&[0x30, 0x00, 0x00]).unwrap_err();
+        san_entries(&[0x04, 0x00]).unwrap_err();
+    }
+}
