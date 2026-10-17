@@ -152,7 +152,7 @@ pub(crate) async fn export_get(
     // Notice `owm` returned by `retrieve_object_for_operation` may have already been
     // auto-unwrapped if `default_unwrap_types` is configured, so we fetch the raw DB form
     // (from database / cache, which is an Arc peek) to guarantee that any Fresh writeback
-    // never accidentally persists an unwrapped plaintext key to storage (COSMIAN-2026-015).
+    // never accidentally persists an unwrapped plaintext key to storage (COSMIAN-2026-031 / COSMIAN-2026-015).
     let mut original_object: Option<Arc<ObjectWithMetadata>> = if owm.attributes().fresh
         != Some(false)
         && matches!(
@@ -180,48 +180,7 @@ pub(crate) async fn export_get(
             if owm.attributes().fresh == Some(true) {
                 if let Ok(kb) = owm.object().key_block() {
                     if kb.key_wrapping_data.is_none() {
-                        let mut updated_attrs = owm.attributes().clone();
-                        updated_attrs.fresh = Some(false);
-                        let uid = owm.id().to_owned();
-                        // Also flip Fresh inside the embedded KeyBlock attributes if present.
-                        // Use the original DB-form object (not the post-processed response form)
-                        // to avoid persisting auto-unwrapped key material to the database.
-                        let mut obj = original_object
-                            .take()
-                            .map_or_else(|| owm.object().clone(), |o| o.object().clone());
-                        if let Ok(kb) = obj.key_block_mut() {
-                            if let Some(KeyValue::Structure { attributes, .. }) =
-                                kb.key_value.as_mut()
-                            {
-                                if let Some(inner) = attributes.as_mut() {
-                                    inner.fresh = Some(false);
-                                }
-                            }
-                        }
-                        // Persist update without modifying tags
-                        kms.database
-                            .atomic(
-                                user,
-                                &[AtomicOperation::UpdateObject((
-                                    uid,
-                                    obj,
-                                    updated_attrs,
-                                    None,
-                                ))],
-                            )
-                            .await?;
-                        // Mirror change in-memory for immediate consistency
-                        let attrs_mut = owm.attributes_mut();
-                        attrs_mut.fresh = Some(false);
-                        if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
-                            if let Some(KeyValue::Structure { attributes, .. }) =
-                                kb_mut.key_value.as_mut()
-                            {
-                                if let Some(inner) = attributes.as_mut() {
-                                    inner.fresh = Some(false);
-                                }
-                            }
-                        }
+                        persist_fresh_false(kms, user, &mut owm, original_object.take()).await?;
                     }
                 }
             }
@@ -283,48 +242,7 @@ pub(crate) async fn export_get(
                         .is_none_or(|kwt| kwt == KeyWrapType::NotWrapped)
                         && request.key_wrapping_specification.is_none();
                     if key_returned_unwrapped {
-                        let mut updated_attrs = owm.attributes().clone();
-                        updated_attrs.fresh = Some(false);
-                        let uid = owm.id().to_owned();
-                        // Also flip Fresh inside the embedded KeyBlock attributes if present.
-                        // Use the original DB-form object (not the post-processed response form)
-                        // to avoid persisting auto-unwrapped key material to the database.
-                        let mut obj = original_object
-                            .take()
-                            .map_or_else(|| owm.object().clone(), |o| o.object().clone());
-                        if let Ok(kb_mut) = obj.key_block_mut() {
-                            if let Some(KeyValue::Structure { attributes, .. }) =
-                                kb_mut.key_value.as_mut()
-                            {
-                                if let Some(inner) = attributes.as_mut() {
-                                    inner.fresh = Some(false);
-                                }
-                            }
-                        }
-                        // Persist update without modifying tags
-                        kms.database
-                            .atomic(
-                                user,
-                                &[AtomicOperation::UpdateObject((
-                                    uid,
-                                    obj,
-                                    updated_attrs,
-                                    None,
-                                ))],
-                            )
-                            .await?;
-                        // Mirror change in-memory for immediate consistency
-                        let attrs_mut = owm.attributes_mut();
-                        attrs_mut.fresh = Some(false);
-                        if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
-                            if let Some(KeyValue::Structure { attributes, .. }) =
-                                kb_mut.key_value.as_mut()
-                            {
-                                if let Some(inner) = attributes.as_mut() {
-                                    inner.fresh = Some(false);
-                                }
-                            }
-                        }
+                        persist_fresh_false(kms, user, &mut owm, original_object.take()).await?;
                     }
                 }
             }
@@ -1684,6 +1602,58 @@ async fn process_secret_data(
             "export: unsupported requested Key Format Type for a secret data: {:?}",
             key_format_type
         ),
+    }
+    Ok(())
+}
+
+/// Flip `Fresh = false` in storage and in-memory while preserving key wrapping (COSMIAN-2026-031).
+/// Fails closed if the original DB object snapshot is missing to prevent persisting auto-unwrapped keys.
+async fn persist_fresh_false(
+    kms: &KMS,
+    user: &UserId,
+    owm: &mut ObjectWithMetadata,
+    original_object: Option<Arc<ObjectWithMetadata>>,
+) -> KResult<()> {
+    let mut updated_attrs = owm.attributes().clone();
+    updated_attrs.fresh = Some(false);
+    let uid = owm.id().to_owned();
+
+    // Fail closed: require original stored DB snapshot so unwrapped keys are never persisted.
+    let original = original_object.ok_or_else(|| {
+        KmsError::ServerError(format!(
+            "Missing original DB snapshot for object {uid} during Fresh write-back"
+        ))
+    })?;
+    let mut obj = original.object().clone();
+
+    if let Ok(kb_mut) = obj.key_block_mut() {
+        if let Some(KeyValue::Structure { attributes, .. }) = kb_mut.key_value.as_mut() {
+            if let Some(inner) = attributes.as_mut() {
+                inner.fresh = Some(false);
+            }
+        }
+    }
+
+    kms.database
+        .atomic(
+            user,
+            &[AtomicOperation::UpdateObject((
+                uid,
+                obj,
+                updated_attrs,
+                None,
+            ))],
+        )
+        .await?;
+
+    let attrs_mut = owm.attributes_mut();
+    attrs_mut.fresh = Some(false);
+    if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
+        if let Some(KeyValue::Structure { attributes, .. }) = kb_mut.key_value.as_mut() {
+            if let Some(inner) = attributes.as_mut() {
+                inner.fresh = Some(false);
+            }
+        }
     }
 
     Ok(())

@@ -45,8 +45,9 @@ pub(crate) async fn locate(
             .min(server_cap)
     });
 
-    // HSM key visibility filtering: non-admin users only see HSM keys they
-    // have been explicitly granted at least one operation on.
+    let offset = request
+        .offset_items
+        .map_or(0_usize, |oi| usize::try_from(oi.max(0)).unwrap_or(0));
     let is_hsm_admin = kms
         .params
         .hsm_instances
@@ -57,10 +58,10 @@ pub(crate) async fn locate(
     // the query (HSM keys the user holds no grant on) would leave a store-level
     // cap under-filled, so it is only pushed down when no such filtering occurs.
     let find_options = FindOptions {
-        limit: (is_hsm_admin || kms.params.hsm_instances.is_empty()).then_some(effective_max),
+        limit: (is_hsm_admin || kms.params.hsm_instances.is_empty())
+            .then(|| effective_max.saturating_add(offset)),
         exclude_destroyed: true,
     };
-
     // Find all the objects that match the attributes.
     // CryptoOfficer ownership bypass: active COs call find_all (no user filter) and
     // receive *all* matching objects in the database, while non-COs call find which
@@ -99,8 +100,8 @@ pub(crate) async fn locate(
         access_policy_from_attributes(kms.vendor_id(), &request.attributes).is_err();
     #[cfg(not(feature = "non-fips"))]
     let access_policy_err = true;
-
     let mut uids = Vec::with_capacity(uids_attrs.len().min(effective_max));
+    let mut skipped = 0_usize;
     if access_policy_err {
         for (uid, state_found, attributes) in uids_attrs {
             trace!(
@@ -132,13 +133,17 @@ pub(crate) async fn locate(
                 }
             }
 
+            if skipped < offset {
+                skipped += 1;
+                continue;
+            }
+
             uids.push(UniqueIdentifier::TextString(uid));
             if uids.len() == effective_max {
                 break;
             }
         }
     }
-
     // The stores cap their own results; with several stores (e.g. the database
     // and an HSM), the concatenation must still be capped.
     if uids.len() > effective_max {

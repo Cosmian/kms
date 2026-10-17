@@ -972,4 +972,56 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn test_encoded_len_matches_actual_serialized_len_across_variants() {
+        use num_bigint_dig::BigInt;
+        use time::OffsetDateTime;
+
+        use super::encoded_len;
+        use crate::ttlv::{KmipEnumerationVariant, KmipFlavor, kmip_big_int::KmipBigInt};
+
+        let variants = vec![
+            TTLValue::Integer(42),
+            TTLValue::LongInteger(1_234_567_890_123_456_789),
+            TTLValue::BigInteger(KmipBigInt::from(BigInt::from(123_456_789_i128))),
+            TTLValue::BigInteger(KmipBigInt::from(-BigInt::from(123_456_789_i128))),
+            TTLValue::Enumeration(KmipEnumerationVariant {
+                value: 7,
+                name: "TestEnum".into(),
+            }),
+            TTLValue::Boolean(true),
+            TTLValue::Boolean(false),
+            TTLValue::TextString("hello world".into()),
+            TTLValue::ByteString(vec![0xAA; 13]),
+            TTLValue::DateTime(OffsetDateTime::UNIX_EPOCH),
+            TTLValue::Interval(3600),
+            TTLValue::DateTimeExtended(1_700_000_000_123_456),
+            TTLValue::Structure(vec![
+                TTLV {
+                    tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string().into(),
+                    value: TTLValue::Integer(1),
+                },
+                TTLV {
+                    tag: kmip_1_4::kmip_types::Tag::CompromiseDate.to_string().into(),
+                    value: TTLValue::DateTimeExtended(123_456_789),
+                },
+            ]),
+        ];
+
+        for val in variants {
+            let ttlv = TTLV {
+                tag: kmip_1_4::kmip_types::Tag::BatchCount.to_string().into(),
+                value: val,
+            };
+            let expected_len = encoded_len(&ttlv);
+            let bytes = ttlv.to_bytes(KmipFlavor::Kmip1).unwrap();
+            assert_eq!(
+                expected_len,
+                bytes.len(),
+                "encoded_len mismatch for value {:?}",
+                ttlv.value
+            );
+        }
+    }
 }

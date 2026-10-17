@@ -145,51 +145,10 @@ impl Role {
     /// complete permission boundary.
     #[must_use]
     pub fn allowed_operations(self) -> HashSet<KmipOperation> {
-        match self {
-            Self::Operator => [
-                // Use of approved security functions (ISO/IEC 19790 §7.4 "User" services)
-                KmipOperation::Encrypt,
-                KmipOperation::Decrypt,
-                KmipOperation::Sign,
-                KmipOperation::SignatureVerify,
-                KmipOperation::MAC,
-                KmipOperation::Hash,
-                // Status/observation output
-                KmipOperation::GetAttributes,
-                KmipOperation::Locate,
-                KmipOperation::Validate,
-            ]
-            .into(),
-            Self::CryptoOfficer => {
-                // Start with all Operator operations — a CO candidate is already an Operator,
-                // so active CO must retain those rights to avoid privilege regression.
-                // New Operator operations are automatically included here.
-                let mut ops = Self::Operator.allowed_operations();
-                // Add CO-only operations (ISO/IEC 19790 §7.4 "Crypto Officer" services)
-                ops.extend([
-                    // Key generation
-                    KmipOperation::Create,
-                    KmipOperation::Certify,
-                    KmipOperation::Import,
-                    // Key output (ISO/IEC 19790 §7.4 "key output")
-                    KmipOperation::Get,
-                    KmipOperation::Export,
-                    // Rotation / re-key
-                    KmipOperation::Rekey,
-                    KmipOperation::DeriveKey,
-                    // Lifecycle transitions
-                    KmipOperation::Activate,
-                    KmipOperation::Revoke,
-                    KmipOperation::Destroy,
-                    // Attribute management
-                    KmipOperation::SetAttribute,
-                    KmipOperation::ModifyAttribute,
-                    KmipOperation::AddAttribute,
-                    KmipOperation::DeleteAttribute,
-                ]);
-                ops
-            }
-        }
+        (0..=u8::MAX)
+            .filter_map(KmipOperation::from_repr)
+            .filter(|op| self.allows(*op))
+            .collect()
     }
 }
 
@@ -396,28 +355,4 @@ pub struct CreatePermissionResponse {
 #[derive(Serialize)]
 pub struct PrivilegedAccessResponse {
     pub has_privileged_access: bool,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{KmipOperation, Role};
-
-    /// `allows` is a hand-written `matches!` kept allocation-free for the dispatch hot path;
-    /// it must never drift from the reference set returned by `allowed_operations`.
-    #[test]
-    fn role_allows_matches_allowed_operations() {
-        for role in [Role::Operator, Role::CryptoOfficer] {
-            let allowed = role.allowed_operations();
-            for repr in 0..=u8::MAX {
-                let Some(op) = KmipOperation::from_repr(repr) else {
-                    continue;
-                };
-                assert_eq!(
-                    role.allows(op),
-                    allowed.contains(&op),
-                    "{role:?} / op #{repr}"
-                );
-            }
-        }
-    }
 }

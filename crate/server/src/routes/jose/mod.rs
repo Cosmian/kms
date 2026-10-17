@@ -226,8 +226,23 @@ where
     )
 }
 
+/// Reject protected headers that are not JSON objects (e.g. JSON arrays or primitives)
+/// before deserializing into typed structs whose fields would otherwise be mapped by position
+/// from a JSON array by serde.
+pub(super) fn ensure_json_object(json_bytes: &[u8]) -> Result<(), CryptoApiError> {
+    let first_non_ws = json_bytes
+        .iter()
+        .copied()
+        .find(|b| !b.is_ascii_whitespace());
+    if first_non_ws != Some(b'{') {
+        return Err(CryptoApiError::BadRequest(
+            "Protected header must be a JSON object".to_owned(),
+        ));
+    }
+    Ok(())
+}
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // test code: unwrap on fixed JSON literals
+#[allow(clippy::unwrap_used, clippy::assertions_on_result_states)]
 mod lenient_str_tests {
     use std::borrow::Cow;
 
@@ -247,5 +262,20 @@ mod lenient_str_tests {
         assert!(h.kid.is_none());
         let h: H = serde_json::from_str(r"{}").unwrap();
         assert!(h.kid.is_none());
+    }
+
+    #[test]
+    fn test_ensure_json_object_rejects_arrays_and_primitives() {
+        use super::ensure_json_object;
+
+        assert!(ensure_json_object(br#"{"kid":"k1"}"#).is_ok());
+        assert!(ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").is_ok());
+
+        assert!(ensure_json_object(b"[\"k1\",\"dir\",\"A256GCM\"]").is_err());
+        assert!(ensure_json_object(b"\"just a string\"").is_err());
+        assert!(ensure_json_object(b"12345").is_err());
+        assert!(ensure_json_object(b"true").is_err());
+        assert!(ensure_json_object(b"").is_err());
+        assert!(ensure_json_object(b"   ").is_err());
     }
 }

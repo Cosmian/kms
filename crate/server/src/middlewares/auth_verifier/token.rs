@@ -135,7 +135,7 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
         }
 
         let mut last_error: Option<String> = None;
-        let mut tried_keys = 0usize;
+        let mut tried_keys = 0_usize;
 
         let validate_with_jwk = |jwk: &Jwk| -> Result<String, String> {
             let decoding_key = DecodingKey::from_jwk(jwk)

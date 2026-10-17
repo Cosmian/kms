@@ -4,7 +4,8 @@
 
 ### KMIP
 
-- `cosmian_kmip`: `TTLV.tag` and `KmipEnumerationVariant.name` are now `Cow<'static, str>` instead of `String`. Serializers and the binary decoder borrow static tag names, and the JSON deserializer borrows known KMIP 2.1 tags. Replace `x.tag.as_str()` with `&*x.tag` or `x.tag.as_ref()`, and use `.into()` when building a `TTLV`.
+- `cosmian_kmip`: `TTLV.tag` and `KmipEnumerationVariant.name` are now `Cow<'static, str>` instead of `String`. Serializers and the binary decoder borrow static tag names; the JSON deserializer stores known KMIP 2.1 tags as borrowed values but still allocates each tag `String` while parsing, so the JSON request path saves nothing from this change. Replace `x.tag.as_str()` with `&*x.tag` or `x.tag.as_ref()`, and use `.into()` when building a `TTLV`.
+- `POST /kmip/2_1` now takes the body directly as `Bytes` instead of decoding as `String`. Invalid UTF-8 returns HTTP 422 (`InvalidRequest`) instead of HTTP 400, matching `/kmip`.
 
 ## Security
 

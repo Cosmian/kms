@@ -36,7 +36,7 @@ struct JweUnwrapProtectedHeader<'a> {
 }
 use super::{
     CryptoApiError, CryptoResult, JoseAlgorithm, JoseEncAlgorithm, KeyUnwrapRequest,
-    KeyUnwrapResponse, b64_decode, cek_size_bytes, jose_oaep_hashes,
+    KeyUnwrapResponse, b64_decode, cek_size_bytes, ensure_json_object, jose_oaep_hashes,
 };
 use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
@@ -62,6 +62,7 @@ pub(crate) async fn unwrap_key(
 
     // Parse the protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
+    ensure_json_object(&header_bytes)?;
     let header: JweUnwrapProtectedHeader<'_> =
         serde_json::from_slice(&header_bytes).map_err(|e| {
             CryptoApiError::BadRequest(format!(

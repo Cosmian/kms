@@ -249,6 +249,9 @@ impl AuditSink for FileSink {
                 } else {
                     enforce_size_cap(self.committed_len, &self.write_state, &self.path);
                 }
+                if self.row_buf.capacity() > 64 * 1024 {
+                    self.row_buf.shrink_to(64 * 1024);
+                }
                 Ok(WriteOutcome::Written)
             }
             Err(e) => {

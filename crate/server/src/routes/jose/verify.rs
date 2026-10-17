@@ -14,7 +14,7 @@ use serde::Deserialize;
 use super::{
     CryptoApiError, CryptoResult, JoseAlgorithm, VerifyRequest,
     VerifyResponse as CryptoVerifyResponse, b64_decode, ecdsa_coord_size, ecdsa_p1363_to_der,
-    jose_to_kmip_params,
+    ensure_json_object, jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -44,6 +44,7 @@ pub(crate) async fn verify(
     trace!(user = user.as_str(), "POST /v1/crypto/verify");
 
     let header_bytes = b64_decode("protected", &body.protected)?;
+    ensure_json_object(&header_bytes)?;
     let header: JwsProtectedHeader<'_> = serde_json::from_slice(&header_bytes).map_err(|e| {
         CryptoApiError::BadRequest(format!(
             "Field 'protected' is not valid JSON after base64url decode: {e}"

@@ -73,50 +73,50 @@ bit could persist an auto-unwrapped key (COSMIAN-2026-031, see Decision 10).
 Remove avoidable copies and allocations on request paths without changing the wire format. Changes are
 grouped by area; the first two groups carry most of the measured effect.
 
-**Codec**
+### Codec
 
-1. **Borrow the TTLV tree when deserializing.** `TtlvDeserializer<'a>` holds `&'a TTLV` and exposes the
-   constructor `TtlvDeserializer::from_ttlv(&'a TTLV)`. Walkers pass child references instead of cloning
-   subtrees. The free function `from_ttlv<'a, T>(s: TTLV)` keeps its **by-value** signature (about 160 call
-   sites, annotated `#[expect(clippy::needless_pass_by_value)]`) and borrows internally.
-2. **Decode `ByteString` directly**, without an intermediate `String` and without the per-byte tracing span.
-3. **Exact-size TTLV encoding.** `TTLV::to_bytes` computes every Structure length first and writes into one
-   buffer of the exact size. Padding is read into a stack buffer; at most 4 child slots are reserved per
-   Structure when decoding.
-4. **Direct `DateTime` encoding** of whole-second header time stamps through a `$KmipDateTime` newtype marker
-   (same technique as `Interval`), instead of a 9-integer tuple.
-5. **`TTLV.tag` and `KmipEnumerationVariant.name` become `Cow<'static, str>`.** Serializers and the binary
-   decoder borrow static names (`strum::IntoStaticStr`, via a bound on `KmipTag`); the JSON deserializer
-   stores known KMIP 2.1 tag names as borrowed values, but it still allocates the tag `String` while parsing
-   (it is dropped when the name is known), so the `/kmip/2_1` request decode saves no allocation from this. This is a **breaking change of the `cosmian_kmip` public API**
-   (`x.tag.as_str()` → `&*x.tag` / `x.tag.as_ref()`; build tags with `.into()`).
+- **1. Borrow the TTLV tree when deserializing.** `TtlvDeserializer<'a>` holds `&'a TTLV` and exposes the
+  constructor `TtlvDeserializer::from_ttlv(&'a TTLV)`. Walkers pass child references instead of cloning
+  subtrees. The free function `from_ttlv<'a, T>(s: TTLV)` keeps its **by-value** signature (about 160 call
+  sites, annotated `#[expect(clippy::needless_pass_by_value)]`) and borrows internally.
+- **2. Decode `ByteString` directly**, without an intermediate `String` and without the per-byte tracing span.
+- **3. Exact-size TTLV encoding.** `TTLV::to_bytes` computes every Structure length first and writes into one
+  buffer of the exact size. Padding is read into a stack buffer; at most 4 child slots are reserved per
+  Structure when decoding.
+- **4. Direct `DateTime` encoding** of whole-second header time stamps through a `$KmipDateTime` newtype marker
+  (same technique as `Interval`), instead of a 9-integer tuple.
+- **5. `TTLV.tag` and `KmipEnumerationVariant.name` become `Cow<'static, str>`.** Serializers and the binary
+  decoder borrow static names (`strum::IntoStaticStr`, via a bound on `KmipTag`); the JSON deserializer
+  stores known KMIP 2.1 tag names as borrowed values, but it still allocates the tag `String` while parsing
+  (it is dropped when the name is known), so the `/kmip/2_1` request decode saves no allocation from this. This is a **breaking change of the `cosmian_kmip` public API**
+  (`x.tag.as_str()` → `&*x.tag` / `x.tag.as_ref()`; build tags with `.into()`).
 
-**Handlers and server core**
+### Handlers and server core
 
-6. **Decode once in the handlers.** The binary handler decodes the request once and passes the TTLV on; the
-   audit hooks receive the response TTLV that dispatch already produced. `/kmip/2_1` takes `Bytes` and parses
-   a borrowed `&str`.
-7. **Share cached objects.** `Database::retrieve_objects` and `retrieve_object_for_operation` return
-   `Arc<ObjectWithMetadata>` and deep-clone only when an operation mutates (`Arc::make_mut` /
-   `Arc::unwrap_or_clone`). `ObjectWithMetadata::into_parts` moves `id`/`object`/`attributes` out of an owned
-   value.
-8. **Borrow and move.** Key material is borrowed with `KeyBlock::key_bytes_ref()` in symmetric Decrypt, FPE,
-   MAC, split/join and derive key; Activate, Revoke, Get/Export, key-pair creation and the attribute operations
-   move instead of cloning; audit `AuditResult::as_canonical_str` returns `Cow` and the row hash is streamed
-   (canonical bytes unchanged); middlewares, JOSE headers, AWS XKS SigV4 body, Google CSE and the
-   rotate-name cache drop per-request copies.
+- **6. Decode once in the handlers.** The binary handler decodes the request once and passes the TTLV on; the
+  audit hooks receive the response TTLV that dispatch already produced. `/kmip/2_1` takes `Bytes` and parses
+  a borrowed `&str`.
+- **7. Share cached objects.** `Database::retrieve_objects` and `retrieve_object_for_operation` return
+  `Arc<ObjectWithMetadata>` and deep-clone only when an operation mutates (`Arc::make_mut` /
+  `Arc::unwrap_or_clone`). `ObjectWithMetadata::into_parts` moves `id`/`object`/`attributes` out of an owned
+  value.
+- **8. Borrow and move.** Key material is borrowed with `KeyBlock::key_bytes_ref()` in symmetric Decrypt, FPE,
+  MAC, split/join and derive key; Activate, Revoke, Get/Export, key-pair creation and the attribute operations
+  move instead of cloning; audit `AuditResult::as_canonical_str` returns `Cow` and the row hash is streamed
+  (canonical bytes unchanged); middlewares, JOSE headers, AWS XKS SigV4 body, Google CSE and the
+  rotate-name cache drop per-request copies.
 
-**Persistence**
+### Persistence
 
-9. **SQL layers.** SQLite converts each query once and serializes objects/attributes before entering the
-   writer closure; PostgreSQL reads and writes `Json<T>`; MySQL drops the intermediate `Value`.
+- **9. SQL layers.** SQLite converts each query once and serializes objects/attributes before entering the
+  writer closure; PostgreSQL reads and writes `Json<T>`; MySQL drops the intermediate `Value`.
 
-**Security fix landed with the refactor**
+### Security fix landed with the refactor
 
-10. **COSMIAN-2026-031.** `export_get` snapshotted the *already unwrapped* object as "the DB form" and wrote it
-    back to flip the `Fresh` bit. It now reads the stored object (cache) for the write-back. See `SECURITY.md`
-    and the regression tests in `crate/server/src/tests/security_regression.rs`. It sits in this PR because
-    the clone-to-move refactor of `export_get` is where it was found and fixed; it is not a performance change.
+- **10. COSMIAN-2026-031.** `export_get` snapshotted the *already unwrapped* object as "the DB form" and wrote it
+  back to flip the `Fresh` bit. It now reads the stored object (cache) for the write-back. See `SECURITY.md`
+  and the regression tests in `crate/server/src/tests/security_regression.rs`. It sits in this PR because
+  the clone-to-move refactor of `export_get` is where it was found and fixed; it is not a performance change.
 
 ## Measured Effect
 
@@ -129,7 +129,7 @@ worktrees and run with `cargo test -p cosmian_kmip --release --test alloc_measur
 |---|---|
 | Base | `77beb3827` (merge-base with `develop`) |
 | C1 | `d70bf88b2` (commit 1: codec and handler changes, decisions 1–4 and 6) |
-| Head | `bc49681f1` (this PR) |
+| Head | `bc49681f1` (measured tree; code unchanged through HEAD `ccc23ffc3`) |
 
 It encodes and decodes a KMIP 2.1 `Encrypt` request and `EncryptResponse` (64 B and 4096 B payloads). The
 `/kmip` rows read `TTLV::from_bytes` + `from_ttlv`; the `/kmip/2_1` rows read `serde_json::from_slice` +
@@ -262,8 +262,8 @@ SQLite `atomic(UpdateObject)` 57 → 39 allocations (12 713 → 7 391 B).
 ## Implementation Notes
 
 - **IMP-001**: Commits: `d70bf88b2` (codec, handlers, `HttpClient`), `73697fd32` (`Cow` tags, `Arc` object
-  sharing, borrow/move, SQL layers, audit, middlewares, COSMIAN-2026-031), `bc49681f1` (this ADR and the
-  `HttpClient::send` fix). Changelog entries: `CHANGELOG/rust_cleanup.md`, `CHANGELOG/rust_reduce_allocs.md`.
+  sharing, borrow/move, SQL layers, audit, middlewares, COSMIAN-2026-031), `bc49681f1` (ADR and
+  `HttpClient::send` fix), `ccc23ffc3` (docs and security updates). Changelog entries: `CHANGELOG/rust_cleanup.md`, `CHANGELOG/rust_reduce_allocs.md`.
 - **IMP-002**: **Lesson learned**: the first allocation commit (`20274da5b`, rewritten as `d70bf88b2`) left
   `HttpClient::send` unable to compile: `retry_req` was referenced after the request had been moved into the
   client, and the client crate did not build at that revision (CI run 38884335018). The URI is now cloned

@@ -78,8 +78,8 @@ struct JweProtectedHeader<'a> {
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
     JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode, cek_cache,
-    cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
-    keys::nid_from_crv,
+    cek_size_bytes, encrypt::build_jwe_aad, ensure_json_object, jose_oaep_hashes,
+    jose_to_kmip_params, keys::nid_from_crv,
 };
 use crate::{
     core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
@@ -108,6 +108,7 @@ pub(crate) async fn decrypt(
 
     // Parse protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
+    ensure_json_object(&header_bytes)?;
     let header: JweProtectedHeader<'_> = serde_json::from_slice(&header_bytes).map_err(|e| {
         CryptoApiError::BadRequest(format!(
             "Field 'protected' is not valid JSON after base64url decode: {e}"

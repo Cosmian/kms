@@ -247,7 +247,7 @@ impl JwtConfig {
             KmsError::Unauthorized("Bad authorization header content (missing bearer)".to_owned())
         })?;
         kms_ensure!(
-            scheme == "Bearer",
+            scheme.eq_ignore_ascii_case("Bearer"),
             KmsError::Unauthorized("Bad authorization header content (bad bearer)".to_owned())
         );
 

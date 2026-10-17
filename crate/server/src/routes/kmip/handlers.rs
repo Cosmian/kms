@@ -371,10 +371,15 @@ async fn handle_ttlv_bytes_parsed(
                 error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
                 error_response_ttlv(major, minor, e.to_string().as_str())
             });
-            match TTLV::to_bytes(&response_ttlv, KmipFlavor::Kmip2) {
+            let flavor = if major == 1 {
+                KmipFlavor::Kmip1
+            } else {
+                KmipFlavor::Kmip2
+            };
+            match TTLV::to_bytes(&response_ttlv, flavor) {
                 Ok(response_bytes) => (response_bytes, Some(response_ttlv)),
                 Err(e) => {
-                    error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e,response_ttlv);
+                    error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e, response_ttlv);
                     (
                         TTLV_ERROR_RESPONSE.to_vec(),
                         TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1).ok(),

@@ -63,10 +63,10 @@ impl KMS {
         let mut eligible = Vec::new();
 
         for owm in objects.into_values() {
-            let owm = std::sync::Arc::unwrap_or_clone(owm);
             if owm.object().object_type() != object_type {
                 continue;
             }
+            let owm = std::sync::Arc::unwrap_or_clone(owm);
             let is_eligible = matches!(
                 owm.state(),
                 State::Active | State::Deactivated | State::Compromised

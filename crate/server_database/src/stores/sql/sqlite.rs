@@ -1063,14 +1063,9 @@ impl ObjectsStore for SqlitePool {
 #[async_trait(?Send)]
 impl Migrate for SqlitePool {
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
-        let upsert_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("upsert-parameter")
-                .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
-        );
+        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
         let state_json = serde_json::to_string(&state)?;
         retry_on_transient_lock(|| {
-            let upsert_param = upsert_param.clone();
             let state_json = state_json.clone();
             async move {
                 self.writer
@@ -1078,7 +1073,7 @@ impl Migrate for SqlitePool {
                         move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                             let tx = c.transaction()?;
                             tx.execute(
-                                &upsert_param,
+                                upsert_param,
                                 params_from_iter([&"db_state", &state_json.as_str()]),
                             )?;
                             tx.commit()?;
@@ -1094,14 +1089,9 @@ impl Migrate for SqlitePool {
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
-        let upsert_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("upsert-parameter")
-                .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
-        );
+        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
         let version_s = version.to_owned();
         retry_on_transient_lock(|| {
-            let upsert_param = upsert_param.clone();
             let version_s = version_s.clone();
             async move {
                 self.writer
@@ -1109,7 +1099,7 @@ impl Migrate for SqlitePool {
                         move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                             let tx = c.transaction()?;
                             tx.execute(
-                                &upsert_param,
+                                upsert_param,
                                 params_from_iter([&"db_version", &version_s.as_str()]),
                             )?;
                             tx.commit()?;

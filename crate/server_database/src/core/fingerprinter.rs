@@ -68,3 +68,30 @@ impl Default for Fingerprinter {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    #[test]
+    fn test_hasher_writer_chunked_vs_contiguous() {
+        use std::collections::hash_map::DefaultHasher;
+
+        let payload = b"Hello, world! This is a test of HasherWriter streaming.";
+        let mut h1 = DefaultHasher::new();
+        h1.write(payload);
+        let digest1 = h1.finish();
+
+        let mut h2 = DefaultHasher::new();
+        let mut writer = HasherWriter { hasher: &mut h2 };
+        for chunk in payload.chunks(7) {
+            writer.write_all(chunk).unwrap();
+        }
+        let digest2 = h2.finish();
+
+        assert_eq!(digest1, digest2);
+    }
+}
