@@ -57,7 +57,7 @@ trap cleanup EXIT
 ckms() { "${CKMS_BIN}" --conf-path "${KMS_CKMS_CONF}" "$@"; }
 
 print_header "Step 2: Install estclient"
-GOBIN="${WORKDIR}/bin" go install "${ESTCLIENT_MODULE}"
+GOBIN="${WORKDIR}/bin" retry go install "${ESTCLIENT_MODULE}"
 ESTCLIENT="${WORKDIR}/bin/estclient"
 
 print_header "Step 3: Create the EST CA on a plain-HTTP instance"
