@@ -7,7 +7,7 @@
 - `cosmian_kmip`: `TTLV.tag` and `KmipEnumerationVariant.name` are now `Cow<'static, str>` instead of `String`. Serializers and the binary decoder borrow static tag names; the JSON deserializer stores known KMIP 2.1 tags as borrowed values but still allocates each tag `String` while parsing, so the JSON request path saves nothing from this change. Replace `x.tag.as_str()` with `&*x.tag` or `x.tag.as_ref()`, and use `.into()` when building a `TTLV`.
 - `POST /kmip/2_1` now takes the body directly as `Bytes` instead of decoding as `String`. Invalid UTF-8 returns HTTP 422 (`InvalidRequest`) instead of HTTP 400, matching `/kmip`.
 - `POST /kmip/2_1` requires `Content-Type: application/json` (parameters such as `charset` allowed); other content types return HTTP 422 (COSMIAN-2026-039).
-- Crypto operations (`Encrypt`, `Decrypt`, `Sign`, `MAC`, ...) on a key the caller may not use now fail with `Item_Not_Found`, like a missing key, instead of `Permission_Denied` (COSMIAN-2026-037).
+- Crypto operations (`Encrypt`, `Decrypt`, `Sign`, `MAC`, ...) on a key the caller has no grant on now fail with `Item_Not_Found`, like a missing key, instead of `Permission_Denied`; callers holding a grant on the key still get the permission error (COSMIAN-2026-037).
 - KMIP requests above 10,000 batch items fail with `Invalid_Message`; `DeriveKey` PBKDF2 above 10,000,000 iterations and RSA key generation above 16,384 bits are rejected (COSMIAN-2026-036).
 
 ### KMIP socket server

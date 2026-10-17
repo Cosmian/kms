@@ -153,7 +153,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An authenticated user could test whether a UID or tag matches another user's key and learn its lifecycle state. Key material and attributes were not exposed.
 
-**Mitigation:** Upgrade to 5.29.0. The permission check now runs first and keys the caller may not use are reported exactly like missing keys. Regression test: `test_crypto_op_does_not_reveal_foreign_keys` in `crate/server/src/tests/security_regression.rs`.
+**Mitigation:** Upgrade to 5.29.0. The permission check now runs first and keys the caller has no grant on are reported exactly like missing keys. Regression test: `test_crypto_op_does_not_reveal_foreign_keys` in `crate/server/src/tests/security_regression.rs`.
 
 ---
 
