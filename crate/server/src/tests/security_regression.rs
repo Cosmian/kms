@@ -751,6 +751,40 @@ async fn test_crypto_op_does_not_reveal_foreign_keys() -> KResult<()> {
     Ok(())
 }
 
+/// Regression test: a caller holding a grant on a key but not the requested operation gets a
+/// permission error (AWS XKS maps it to `InvalidKeyUsageException`), not "not found".
+///
+/// Guards: COSMIAN-2026-037 (masking must not apply to callers that already know the key)
+#[tokio::test]
+async fn test_crypto_op_reports_permission_error_to_grantee() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
+
+    let kms = test_kms().await?;
+    let key = create_aes_key(&kms, "grant_owner@example.com").await?;
+    let grantee = UserId::from("grant_grantee@example.com");
+    kms.database
+        .grant_operations(
+            &key.to_string(),
+            &grantee,
+            HashSet::from([KmipOperation::Encrypt]),
+        )
+        .await?;
+
+    let decrypt = Decrypt {
+        unique_identifier: Some(key.clone()),
+        data: Some(vec![0_u8; 32]),
+        ..Default::default()
+    };
+    let err = kms
+        .decrypt(decrypt, &grantee)
+        .await
+        .expect_err("grantee has no Decrypt permission");
+    assert!(matches!(err, KmsError::Unauthorized(_)), "{err:?}");
+    Ok(())
+}
+
 /// Regression test: `/kmip/2_1` only accepts a JSON Content-Type, so a cross-origin page
 /// cannot send it a CORS "simple" (non-preflighted) request carrying the session cookie.
 ///
