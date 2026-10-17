@@ -173,11 +173,11 @@ impl TTLVXMLDeserializer {
             }
             // If this node looks like an Attributes aggregate (heuristic: contains many attribute-like tags)
             // perform dedup on known single-instance attribute tags (ProtectStopDate, ProcessStartDate, etc.)
-            let mut seen: HashSet<String> = HashSet::new();
+            let mut seen: HashSet<&'static str> = HashSet::new();
             // NOTE: Do NOT include "Attribute" here for KMIP 2.1. Under an Attributes aggregate,
             // multiple <Attribute> elements are used to carry Vendor-Defined Attributes and must
             // be preserved. Deduplicating them would drop all but the first vendor attribute.
-            let single_instance_tags: [&str; 6] = [
+            let single_instance_tags: [&'static str; 6] = [
                 "ProtectStopDate",
                 "ProcessStartDate",
                 "ActivationDate",
@@ -186,17 +186,11 @@ impl TTLVXMLDeserializer {
                 "CompromiseDate",
             ];
             children.retain(|c| {
-                if single_instance_tags.contains(&&*c.tag) {
-                    if seen.contains(&*c.tag) {
-                        // drop duplicate
-                        false
-                    } else {
-                        seen.insert(c.tag.to_string());
-                        true
-                    }
-                } else {
-                    true
-                }
+                // keep first occurrence of each single-instance tag, drop duplicates
+                single_instance_tags
+                    .iter()
+                    .find(|t| **t == &*c.tag)
+                    .is_none_or(|t| seen.insert(*t))
             });
         }
     }
@@ -227,13 +221,9 @@ impl TTLVXMLDeserializer {
                             node_type = Some(a.value.into_owned());
                         }
                     }
-                    let ttlv = TTLV {
-                        tag: tag.clone().into(),
-                        value: TTLValue::Structure(Vec::new()),
-                    };
-                    stack.push(match node_type.as_deref() {
-                        Some("Structure") => ttlv,
-                        None if ALLOW_IMPLICIT_STRUCTURE => ttlv,
+                    match node_type.as_deref() {
+                        Some("Structure") => {}
+                        None if ALLOW_IMPLICIT_STRUCTURE => {}
                         None => {
                             return Err(KmipError::Default(format!(
                                 "missing type=\"Structure\" for element '{tag}'"
@@ -244,6 +234,10 @@ impl TTLVXMLDeserializer {
                                 "expected Structure start for tag '{tag}', got {other:?}"
                             )));
                         }
+                    }
+                    stack.push(TTLV {
+                        tag: tag.into(),
+                        value: TTLValue::Structure(Vec::new()),
                     });
                 }
                 Ok(Event::Empty(e)) => {

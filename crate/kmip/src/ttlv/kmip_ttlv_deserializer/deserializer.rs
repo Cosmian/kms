@@ -574,7 +574,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                     "... coerced {} Enumeration(name={}) -> string",
                     element.tag, e.name
                 );
-                return visitor.visit_string(e.name.to_string());
+                return visitor.visit_str(&e.name);
             }
             let actual = if e.name.is_empty() {
                 "Enumeration(code)"

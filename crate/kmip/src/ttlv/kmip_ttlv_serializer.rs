@@ -384,9 +384,7 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
             value.serialize(&mut *self)?;
             let current = self.current_mut()?;
             let TTLValue::LongInteger(seconds) = current.value else {
-                return Err(TtlvError::custom(
-                    "DateTime must wrap a unix timestamp".to_owned(),
-                ));
+                return Err(TtlvError::new("DateTime must wrap a unix timestamp"));
             };
             current.value = TTLValue::DateTime(
                 time::OffsetDateTime::from_unix_timestamp(seconds)

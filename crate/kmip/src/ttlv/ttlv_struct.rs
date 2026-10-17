@@ -118,7 +118,7 @@ impl TTLV {
                     if let Some((code, canonical)) = lookup_enum_code_for_tag(&en.name, &self.tag) {
                         en.value = code;
                         if !canonical.is_empty() {
-                            en.name = canonical.to_owned().into();
+                            en.name = canonical.into();
                         }
                     }
                 }

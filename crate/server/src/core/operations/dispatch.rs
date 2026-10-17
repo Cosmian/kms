@@ -207,7 +207,7 @@ pub(crate) async fn check_role_permission(
 pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Operation> {
     if let Some(ref metrics) = kms.metrics {
         let start = std::time::Instant::now();
-        let operation_tag = ttlv.tag.to_string();
+        let operation_tag = ttlv.tag.clone();
         let result = Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await;
         let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(&operation_tag, user);
@@ -217,7 +217,7 @@ pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Op
         }
         result
     } else {
-        let operation_tag = ttlv.tag.to_string();
+        let operation_tag = ttlv.tag.clone();
         Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await
     }
 }

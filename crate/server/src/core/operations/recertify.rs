@@ -33,6 +33,7 @@ use super::rekey::{RekeyOperation, ReplacementObject, RotationCandidate, execute
 use crate::{
     core::{
         KMS,
+        certificate::linked_id_str,
         operations::certify::{build_and_sign_certificate, get_issuer, get_subject},
         retrieve_object_utils::retrieve_object_for_operation,
         uid_utils::{ObjectHandle, from_request},
@@ -347,9 +348,10 @@ async fn relink_keys_to_new_certificate(
 ) -> KResult<()> {
     for lt in [LinkType::PublicKeyLink, LinkType::PrivateKeyLink] {
         if let Some(key_uid) = old_cert_attrs.get_link(lt) {
-            let key_uid_str = key_uid.to_string();
+            let key_uid_str = linked_id_str(&key_uid);
             if let Some(op) =
-                relink_single_key(kms, ObjectHandle::from(&key_uid_str), old_cert, new_cert).await?
+                relink_single_key(kms, ObjectHandle::from(&*key_uid_str), old_cert, new_cert)
+                    .await?
             {
                 operations.push(op);
             }
