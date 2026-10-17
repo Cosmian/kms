@@ -250,6 +250,44 @@ fn test_cc_requests() {
     );
 }
 
+#[cfg(feature = "non-fips")]
+#[wasm_bindgen_test]
+fn test_cc_rekey_requests() {
+    let msk = || "msk".to_owned();
+    let pairs = |pairs: &[(&str, &str)]| serde_wasm_bindgen::to_value(pairs).unwrap();
+
+    assert!(w::rekey_cc_access_policy_ttlv_request(msk(), "D::a && E::x".to_owned()).is_ok());
+    assert!(w::prune_cc_access_policy_ttlv_request(msk(), "D::a".to_owned()).is_ok());
+    assert!(
+        w::add_cc_attribute_ttlv_request(msk(), "D::b", "Classic", Some("a".to_owned())).is_ok()
+    );
+    assert!(w::add_cc_attribute_ttlv_request(msk(), "D::b", "post-quantum", None).is_ok());
+    assert!(w::rename_cc_attribute_ttlv_request(msk(), "D::a", "z".to_owned()).is_ok());
+    assert!(w::disable_cc_attribute_ttlv_request(msk(), "D::a").is_ok());
+    assert!(w::remove_cc_attribute_ttlv_request(msk(), "D::a").is_ok());
+    assert!(
+        w::add_cc_dimension_ttlv_request(
+            msk(),
+            "E".to_owned(),
+            pairs(&[("x", "Classic"), ("y", "PostQuantum")]),
+            true
+        )
+        .is_ok()
+    );
+
+    assert!(w::rekey_cc_access_policy_ttlv_request(msk(), "D::a E::x".to_owned()).is_err());
+    assert!(w::add_cc_attribute_ttlv_request(msk(), "D::b", "quantum", None).is_err());
+    assert!(w::disable_cc_attribute_ttlv_request(msk(), "no-dimension").is_err());
+    assert!(
+        w::add_cc_dimension_ttlv_request(msk(), "E".to_owned(), pairs(&[("x", "quantum")]), false)
+            .is_err()
+    );
+    assert!(
+        w::add_cc_dimension_ttlv_request(msk(), "E".to_owned(), JsValue::from_str("x"), false)
+            .is_err()
+    );
+}
+
 #[wasm_bindgen_test]
 fn test_certificate_requests() {
     assert!(
