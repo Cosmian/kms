@@ -14,6 +14,7 @@ use openssl::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use x509_parser::{
+    cri_attributes::ParsedCriAttribute,
     extensions::GeneralName,
     prelude::{FromDer, ParsedExtension, X509CertificationRequest},
 };
@@ -22,6 +23,10 @@ use crate::{error::KmsError, result::KResult};
 
 /// OID of the Microsoft User Principal Name `otherName` SAN type.
 const OID_UPN: &str = "1.3.6.1.4.1.311.20.2.3";
+/// PKCS#9 `extensionRequest` attribute.
+const OID_PKCS9_EXTENSION_REQUEST: &str = "1.2.840.113549.1.9.14";
+/// Microsoft `msExtReq` attribute: an alternative extension request OpenSSL also honours.
+const OID_MS_EXT_REQ: &str = "1.3.6.1.4.1.311.2.1.14";
 
 /// Well-known EKU names and their dotted OIDs (RFC 5280 §4.2.1.12).
 const EKU_NAMES: &[(&str, &str)] = &[
@@ -35,6 +40,13 @@ const EKU_NAMES: &[(&str, &str)] = &[
     ("msSmartcardLogin", "1.3.6.1.4.1.311.20.2.2"),
 ];
 
+/// Extensions an enrollee may request: keyUsage, subjectAltName, basicConstraints (CA:FALSE
+/// only, checked separately) and extendedKeyUsage. `Certify` copies every CSR extension into
+/// the certificate, so anything else (nameConstraints, certificatePolicies,
+/// crlDistributionPoints, ...) would let the enrollee write policy into a certificate signed by
+/// the CA and is refused.
+const ALLOWED_CSR_EXTENSIONS: &[&str] = &["2.5.29.15", "2.5.29.17", "2.5.29.19", "2.5.29.37"];
+
 /// Issuance policy applied to CSRs received through one enrollment endpoint.
 ///
 /// Regular expressions are **anchored** (`^(?:pattern)$`) before use, so a pattern must
@@ -46,10 +58,12 @@ pub struct CertTemplate {
     pub name: String,
     /// Minimum accepted RSA modulus size in bits (RFC 8017).
     pub min_rsa_key_bits: u32,
-    /// Accepted EC curves (e.g. `prime256v1`, `secp384r1`); empty accepts any curve.
+    /// Accepted EC curves (e.g. `prime256v1`, `secp384r1`). Must not be empty; the default is
+    /// the NIST P-256/P-384/P-521 set.
     pub allowed_ec_curves: Vec<String>,
     /// Accepted / injected Extended Key Usages, dotted OIDs or names such as `clientAuth`.
-    /// When non-empty and the CSR requests none, these are injected in the certificate.
+    /// Must not be empty; the default is `clientAuth`. When the CSR requests none, these are
+    /// injected in the certificate.
     pub allowed_ekus: Vec<String>,
     /// Upper bound on the certificate validity, in days.
     pub max_validity_days: u32,
@@ -71,8 +85,10 @@ impl Default for CertTemplate {
         Self {
             name: String::new(),
             min_rsa_key_bits: 2048,
-            allowed_ec_curves: Vec::new(),
-            allowed_ekus: Vec::new(),
+            allowed_ec_curves: ["prime256v1", "secp384r1", "secp521r1"]
+                .map(str::to_owned)
+                .to_vec(),
+            allowed_ekus: vec!["clientAuth".to_owned()],
             max_validity_days: 365,
             default_validity_days: 90,
             subject_cn_regex: None,
@@ -219,6 +235,66 @@ fn parse_csr_requests(csr_der: &[u8]) -> KResult<CsrRequests> {
     Ok(out)
 }
 
+/// Refuse every CSR-requested extension that is not in [`ALLOWED_CSR_EXTENSIONS`], any
+/// keyUsage that lets the certificate sign certificates or CRLs, and any duplicated
+/// extensionRequest attribute or extension OID. `Certify` appends every extension while the
+/// checks of this module read the first match, so a duplicate (e.g. `CA:FALSE` followed by
+/// `CA:TRUE`) would evade them (RFC 5280 §4.2 forbids duplicate extensions anyway).
+fn check_requested_extensions(csr_der: &[u8]) -> KResult<()> {
+    let (_, csr) = X509CertificationRequest::from_der(csr_der)
+        .map_err(|e| invalid(format!("invalid CSR: {e}")))?;
+    let mut extension_requests = 0_usize;
+    let mut seen = std::collections::HashSet::new();
+    for attr in csr.certification_request_info.iter_attributes() {
+        let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute() else {
+            // OpenSSL (`X509_REQ_get_extensions`, used by Certify) copies the extensions of
+            // the Microsoft `msExtReq` attribute too, and of an `extensionRequest` this
+            // parser could not decode; neither can be vetted here, so refuse them.
+            let oid = attr.oid.to_id_string();
+            if oid == OID_MS_EXT_REQ || oid == OID_PKCS9_EXTENSION_REQUEST {
+                return Err(invalid(format!(
+                    "CSR attribute {oid} requests extensions in a form that cannot be validated"
+                )));
+            }
+            continue;
+        };
+        extension_requests += 1;
+        if extension_requests > 1 {
+            return Err(invalid(
+                "CSR carries more than one extensionRequest attribute",
+            ));
+        }
+        for ext in &requested.extensions {
+            let oid = ext.oid.to_id_string();
+            if !ALLOWED_CSR_EXTENSIONS.contains(&oid.as_str()) {
+                return Err(invalid(format!(
+                    "CSR extension {oid} is not allowed for enrollment"
+                )));
+            }
+            if !seen.insert(oid.clone()) {
+                return Err(invalid(format!("CSR requests extension {oid} twice")));
+            }
+            if let ParsedExtension::ParseError { .. } = ext.parsed_extension() {
+                return Err(invalid(format!("CSR extension {oid} is not valid DER")));
+            }
+            if let ParsedExtension::KeyUsage(ku) = ext.parsed_extension() {
+                if ku.key_cert_sign() || ku.crl_sign() {
+                    return Err(invalid(
+                        "CSR keyUsage must not include keyCertSign or cRLSign",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `certificatePolicies` OID (Cosmian arc) stamped on every certificate issued through EST or
+/// SCEP. It marks the certificate as a device identity: `user_from_client_certificate` refuses
+/// to turn such a certificate into a KMS user, whatever its CN, so a device cannot enroll the
+/// name of an existing user and then authenticate to the KMS API with it.
+pub(crate) const ENROLLED_CERTIFICATE_POLICY_OID: &str = "1.3.6.1.4.1.16376.9.2.1";
+
 impl CertTemplate {
     /// Check that the template itself is well formed (regular expressions compile, EKUs
     /// resolve, validity bounds are consistent). Called when the configuration is loaded.
@@ -236,6 +312,12 @@ impl CertTemplate {
         }
         for e in &self.allowed_ekus {
             eku_to_oid(e)?;
+        }
+        if self.allowed_ekus.is_empty() || self.allowed_ec_curves.is_empty() {
+            return Err(invalid(format!(
+                "template '{}': allowed_ekus and allowed_ec_curves must not be empty",
+                self.name
+            )));
         }
         if self.min_rsa_key_bits < 2048 {
             return Err(invalid(format!(
@@ -292,6 +374,7 @@ impl CertTemplate {
         if csr_basic_constraints(&csr_der)? == Some(true) {
             return Err(invalid("CSR must not request basicConstraints CA:TRUE"));
         }
+        check_requested_extensions(&csr_der)?;
         let requests = parse_csr_requests(&csr_der)?;
         self.check_ekus(requests.ekus.as_deref())?;
         self.check_subject(csr)?;
@@ -316,18 +399,16 @@ impl CertTemplate {
                     .group()
                     .curve_name()
                     .ok_or_else(|| invalid("EC key uses explicit (unnamed) curve parameters"))?;
-                if !self.allowed_ec_curves.is_empty() {
-                    let name = curve.short_name()?;
-                    let wanted = canonical_curve(name);
-                    if !self
-                        .allowed_ec_curves
-                        .iter()
-                        .any(|c| canonical_curve(c) == wanted)
-                    {
-                        return Err(invalid(format!(
-                            "EC curve '{name}' is not allowed by the template"
-                        )));
-                    }
+                let name = curve.short_name()?;
+                let wanted = canonical_curve(name);
+                if !self
+                    .allowed_ec_curves
+                    .iter()
+                    .any(|c| canonical_curve(c) == wanted)
+                {
+                    return Err(invalid(format!(
+                        "EC curve '{name}' is not allowed by the template"
+                    )));
                 }
             }
             other => {
@@ -343,9 +424,7 @@ impl CertTemplate {
         let Some(requested) = requested else {
             return Ok(());
         };
-        if self.allowed_ekus.is_empty() {
-            return Ok(());
-        }
+        // An empty allowlist refuses every requested EKU (fail closed).
         let allowed = self
             .allowed_ekus
             .iter()
@@ -439,6 +518,11 @@ impl CertTemplate {
             .map_err(|e| invalid(format!("validity out of range: {e}")))?;
         attributes.set_requested_validity_days(vendor_id, days);
 
+        // Every enrolled certificate carries the marker policy, so that the KMS can refuse to
+        // map it to a KMS user (see `user_from_client_certificate`). A CSR cannot request
+        // certificatePolicies (`ALLOWED_CSR_EXTENSIONS`), so only the server sets it.
+        let mut extensions =
+            format!("[v3_ca]\ncertificatePolicies={ENROLLED_CERTIFICATE_POLICY_OID}\n");
         if !self.allowed_ekus.is_empty() {
             let csr_has_eku = parse_csr_requests(&csr.to_der()?)?.ekus.is_some();
             if !csr_has_eku {
@@ -447,12 +531,10 @@ impl CertTemplate {
                     .iter()
                     .map(|e| eku_to_oid(e))
                     .collect::<KResult<Vec<_>>>()?;
-                attributes.set_x509_extension_file(
-                    vendor_id,
-                    format!("[v3_ca]\nextendedKeyUsage={}\n", oids.join(",")).into_bytes(),
-                );
+                extensions = format!("{extensions}extendedKeyUsage={}\n", oids.join(","));
             }
         }
+        attributes.set_x509_extension_file(vendor_id, extensions.into_bytes());
         Ok(())
     }
 }
@@ -672,5 +754,234 @@ mod tests {
             ..CertTemplate::default()
         };
         assert!(t.validate().is_err());
+    }
+
+    fn csr_with_extension(key: &PKey<Private>, ext: openssl::x509::X509Extension) -> X509Req {
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "dev").unwrap();
+        let mut b = X509Req::builder().unwrap();
+        b.set_version(0).unwrap();
+        b.set_pubkey(key).unwrap();
+        b.set_subject_name(&name.build()).unwrap();
+        let mut exts = Stack::new().unwrap();
+        exts.push(ext).unwrap();
+        b.add_extensions(&exts).unwrap();
+        b.sign(key, MessageDigest::sha256()).unwrap();
+        b.build()
+    }
+
+    #[test]
+    fn rejects_policy_bearing_csr_extensions() {
+        let t = CertTemplate::default();
+        let key = rsa(2048);
+        // certificatePolicies cannot be built by `X509Extension::new_nid` without a config
+        // database: encode `SEQUENCE { SEQUENCE { OID 1.2.3.4 } }` by hand.
+        let policies = openssl::x509::X509Extension::new_from_der(
+            openssl::asn1::Asn1Object::from_str("2.5.29.32")
+                .unwrap()
+                .as_ref(),
+            false,
+            openssl::asn1::Asn1OctetString::new_from_bytes(&[
+                0x30, 0x07, 0x30, 0x05, 0x06, 0x03, 0x2A, 0x03, 0x04,
+            ])
+            .unwrap()
+            .as_ref(),
+        )
+        .unwrap();
+        let err = t
+            .validate_csr(&csr_with_extension(&key, policies))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("2.5.29.32"), "{err}");
+    }
+
+    #[test]
+    fn rejects_certificate_signing_key_usage() {
+        let t = CertTemplate::default();
+        let key = rsa(2048);
+        let ku = openssl::x509::extension::KeyUsage::new()
+            .key_cert_sign()
+            .build()
+            .unwrap();
+        let err = t
+            .validate_csr(&csr_with_extension(&key, ku))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("keyCertSign"), "{err}");
+        let ku = openssl::x509::extension::KeyUsage::new()
+            .digital_signature()
+            .build()
+            .unwrap();
+        t.validate_csr(&csr_with_extension(&key, ku)).unwrap();
+    }
+
+    #[test]
+    fn default_template_refuses_unlisted_eku() {
+        let t = CertTemplate::default();
+        let mut e = ExtendedKeyUsage::new();
+        e.other("1.3.6.1.5.5.7.3.9");
+        assert!(
+            t.validate_csr(&csr_with_extension(&rsa(2048), e.build().unwrap()))
+                .is_err()
+        );
+    }
+
+    /// FIPS OpenSSL cannot generate a secp256k1 key.
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn default_template_refuses_non_nist_curve() {
+        let group = EcGroup::from_curve_name(Nid::SECP256K1).unwrap();
+        let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
+        assert!(
+            CertTemplate::default()
+                .validate_csr(&csr_with(&key, "dev", None, None))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn empty_allowlists_are_detected() {
+        for t in [
+            CertTemplate {
+                allowed_ekus: Vec::new(),
+                ..CertTemplate::default()
+            },
+            CertTemplate {
+                allowed_ec_curves: Vec::new(),
+                ..CertTemplate::default()
+            },
+        ] {
+            assert!(t.validate().is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_duplicate_basic_constraints() {
+        let key = rsa(2048);
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "dev").unwrap();
+        let mut b = X509Req::builder().unwrap();
+        b.set_version(0).unwrap();
+        b.set_pubkey(&key).unwrap();
+        b.set_subject_name(&name.build()).unwrap();
+        let mut exts = Stack::new().unwrap();
+        // CA:FALSE first (what a first-match parser sees), CA:TRUE second.
+        exts.push(
+            openssl::x509::extension::BasicConstraints::new()
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        exts.push(
+            openssl::x509::extension::BasicConstraints::new()
+                .ca()
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        b.add_extensions(&exts).unwrap();
+        b.sign(&key, MessageDigest::sha256()).unwrap();
+        let err = CertTemplate::default()
+            .validate_csr(&b.build())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("twice"), "{err}");
+    }
+
+    /// Minimal DER TLV encoder (lengths < 65536) for hand-built CSRs.
+    fn tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+        let mut out = vec![tag];
+        match content.len() {
+            n if n < 0x80 => out.push(u8::try_from(n).unwrap()),
+            n => out.extend([
+                0x82,
+                u8::try_from(n >> 8).unwrap(),
+                u8::try_from(n & 0xff).unwrap(),
+            ]),
+        }
+        out.extend_from_slice(content);
+        out
+    }
+
+    /// A validly signed CSR whose single attribute (OID `attr_oid`, content bytes of the OID)
+    /// requests `basicConstraints` with the given raw extension value.
+    fn csr_with_raw_basic_constraints(attr_oid: &[u8], bc_value: &[u8]) -> X509Req {
+        let key = rsa(2048);
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "dev").unwrap();
+        let ext = tlv(
+            0x30,
+            &[
+                tlv(0x06, &[0x55, 0x1D, 0x13]),
+                tlv(0x01, &[0xFF]),
+                tlv(0x04, bc_value),
+            ]
+            .concat(),
+        );
+        let attr = tlv(
+            0x30,
+            &[tlv(0x06, attr_oid), tlv(0x31, &tlv(0x30, &ext))].concat(),
+        );
+        let cri = tlv(
+            0x30,
+            &[
+                tlv(0x02, &[0]),
+                name.build().to_der().unwrap(),
+                key.public_key_to_der().unwrap(),
+                tlv(0xA0, &attr),
+            ]
+            .concat(),
+        );
+        let sig_alg = tlv(
+            0x30,
+            &[
+                tlv(
+                    0x06,
+                    &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B],
+                ),
+                tlv(0x05, &[]),
+            ]
+            .concat(),
+        );
+        let mut signer = openssl::sign::Signer::new(MessageDigest::sha256(), &key).unwrap();
+        let signature = signer.sign_oneshot_to_vec(&cri).unwrap();
+        let der = tlv(
+            0x30,
+            &[cri, sig_alg, tlv(0x03, &[&[0][..], &signature].concat())].concat(),
+        );
+        X509Req::from_der(&der).unwrap()
+    }
+
+    const PKCS9_EXT_REQ: [u8; 9] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x0E];
+    const MS_EXT_REQ: [u8; 10] = [0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x0E];
+
+    /// OpenSSL copies `msExtReq` extensions into the certificate (`X509_REQ_get_extensions`);
+    /// the validator must not let a `CA:TRUE` request through that way.
+    #[test]
+    fn rejects_ms_ext_req_attribute() {
+        // basicConstraints { cA TRUE }
+        let csr = csr_with_raw_basic_constraints(&MS_EXT_REQ, &[0x30, 0x03, 0x01, 0x01, 0xFF]);
+        // the premise of the attack: OpenSSL (used by Certify) does read this attribute
+        assert_eq!(csr.extensions().unwrap().len(), 1);
+        let err = CertTemplate::default()
+            .validate_csr(&csr)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot be validated"), "{err}");
+    }
+
+    /// Control: the hand-built CSR with a well-formed CA:TRUE is refused by the CA check, so
+    /// the msExtReq test fails for the reason it claims rather than a malformed fixture.
+    #[test]
+    fn hand_built_csr_fixture_is_parsed() {
+        let csr = csr_with_raw_basic_constraints(&PKCS9_EXT_REQ, &[0x30, 0x03, 0x01, 0x01, 0xFF]);
+        let err = CertTemplate::default()
+            .validate_csr(&csr)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("CA") || err.contains("basicConstraints"),
+            "{err}"
+        );
     }
 }

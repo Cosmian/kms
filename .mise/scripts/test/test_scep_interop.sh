@@ -19,6 +19,8 @@ init_build_env "$@"
 setup_test_logging
 
 SCEPCLIENT_VERSION="${SCEPCLIENT_VERSION:-v2.3.0}"
+# Commit the tag above must resolve to: a moved or re-tagged upstream is refused.
+SCEPCLIENT_COMMIT="${SCEPCLIENT_COMMIT:-8eb5412c850c98aaa83c3b96b2facae3710777d6}"
 CHALLENGE="SecretChallenge123"
 CA_UID="scep-ca"
 
@@ -47,10 +49,15 @@ print_header "Step 2: Build scepclient ${SCEPCLIENT_VERSION} (AES-128-CBC)"
 # supports AES-128-CBC through one package variable, so one line is injected before building.
 require_cmd git
 git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com/micromdm/scep.git "${WORKDIR}/scep-src"
+[ "$(git -C "${WORKDIR}/scep-src" rev-parse HEAD)" = "${SCEPCLIENT_COMMIT}" ] ||
+  print_error "scepclient ${SCEPCLIENT_VERSION} does not resolve to the pinned commit ${SCEPCLIENT_COMMIT}"
 (
   cd "${WORKDIR}/scep-src"
   perl -0pi -e 's|(\t"github.com/smallstep/scep"\n)|$1\t"github.com/smallstep/pkcs7"\n|; s|(\tflag.Parse\(\)\n)|\tpkcs7.ContentEncryptionAlgorithm = pkcs7.EncryptionAlgorithmAES128CBC\n$1|' \
     cmd/scepclient/scepclient.go
+  # a silently unapplied patch would leave the single-DES client and fail the test misleadingly
+  grep -q 'pkcs7.ContentEncryptionAlgorithm' cmd/scepclient/scepclient.go ||
+    print_error "AES-128-CBC patch did not apply to scepclient ${SCEPCLIENT_VERSION}"
   go get github.com/smallstep/pkcs7@v0.1.1
   mkdir -p "${WORKDIR}/bin"
   go build -o "${WORKDIR}/bin/scepclient" ./cmd/scepclient

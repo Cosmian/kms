@@ -1110,7 +1110,8 @@ Options:
           Name of the `[templates.<name>]` section whose issuance policy (key type and size,
           EKU, Subject/SAN patterns, validity) is enforced on EST enrollments.
 
-          When unset, a baseline policy applies: RSA keys of at least 2048 bits, no
+          When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
+          P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
           `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
 
       --scep-enabled
@@ -1144,7 +1145,8 @@ Options:
           Name of the `[templates.<name>]` section whose issuance policy (key type and size,
           EKU, Subject/SAN patterns, validity) is enforced on SCEP enrollments.
 
-          When unset, a baseline policy applies: RSA keys of at least 2048 bits, no
+          When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
+          P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
           `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
 
   -h, --help

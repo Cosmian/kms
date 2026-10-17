@@ -664,16 +664,23 @@ impl ServerParams {
                     ));
                 }
                 if !conf.tls.is_tls_enabled() {
-                    warn!(
-                        "EST HTTP Basic bootstrap is enabled but TLS is not: credentials would \
-                         travel in clear text (RFC 7030 requires TLS)"
-                    );
+                    return Err(KmsError::ServerError(
+                        "est_require_client_cert = false (HTTP Basic bootstrap) requires TLS: the \
+                         credentials would travel in clear text (RFC 7030 §3.3)"
+                            .to_owned(),
+                    ));
                 }
+            } else if !conf.tls.is_tls_enabled() || conf.tls.clients_ca_cert_file.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_require_client_cert = true requires TLS and clients_ca_cert_file"
+                        .to_owned(),
+                ));
             }
             if est_template.is_none() {
                 warn!(
                     "EST enabled without est_template: only the baseline policy applies (RSA >= \
-                     2048, no CA:TRUE, <= 365 days; any EKU, CN and SAN)"
+                     2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN \
+                     and SAN)"
                 );
             }
         }
@@ -688,7 +695,8 @@ impl ServerParams {
             if scep_template.is_none() {
                 warn!(
                     "SCEP enabled without scep_template: only the baseline policy applies (RSA >= \
-                     2048, no CA:TRUE, <= 365 days; any EKU, CN and SAN)"
+                     2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN \
+                     and SAN)"
                 );
             }
         }

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// est_require_client_cert = true
 /// est_template = "iot_device"
 /// ```
-#[derive(Args, Clone, Debug, Deserialize, Serialize)]
+#[derive(Args, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct EstConfig {
     /// Enable the EST endpoints under `/.well-known/est/`.
@@ -58,10 +58,28 @@ pub struct EstConfig {
     /// Name of the `[templates.<name>]` section whose issuance policy (key type and size,
     /// EKU, Subject/SAN patterns, validity) is enforced on EST enrollments.
     ///
-    /// When unset, a baseline policy applies: RSA keys of at least 2048 bits, no
+    /// When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
+    /// P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
     /// `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
     #[clap(long, verbatim_doc_comment)]
     pub est_template: Option<String>,
+}
+
+// Manual impl: `est_bootstrap_password` must never reach a log line.
+impl std::fmt::Debug for EstConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EstConfig")
+            .field("est_enabled", &self.est_enabled)
+            .field("est_ca_uid", &self.est_ca_uid)
+            .field("est_require_client_cert", &self.est_require_client_cert)
+            .field("est_bootstrap_username", &self.est_bootstrap_username)
+            .field(
+                "est_bootstrap_password",
+                &self.est_bootstrap_password.as_ref().map(|_| "[****]"),
+            )
+            .field("est_template", &self.est_template)
+            .finish()
+    }
 }
 
 impl Default for EstConfig {

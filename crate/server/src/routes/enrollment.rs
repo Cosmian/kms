@@ -26,7 +26,11 @@ use openssl::{
     x509::{X509, X509Req},
 };
 use subtle::ConstantTimeEq;
-use x509_parser::prelude::{FromDer, ParsedExtension, X509Certificate, X509CertificationRequest};
+use x509_parser::{
+    asn1_rs::{Any, Tag},
+    cri_attributes::ParsedCriAttribute,
+    prelude::{FromDer, X509Certificate, X509CertificationRequest},
+};
 
 use crate::{
     core::{
@@ -222,49 +226,62 @@ pub(crate) async fn ensure_active_certificate_of_ca(
     }
 }
 
-/// Sorted textual rendering of the `SubjectAlternativeName` entries of a CSR.
-fn csr_san_set(csr: &X509Req) -> KResult<Vec<String>> {
-    let der = csr.to_der()?;
-    let (_, parsed) = X509CertificationRequest::from_der(&der)
-        .map_err(|e| KmsError::InvalidRequest(format!("invalid CSR: {e}")))?;
-    let mut out: Vec<String> = parsed
-        .requested_extensions()
-        .into_iter()
-        .flatten()
-        .filter_map(|ext| match ext {
-            ParsedExtension::SubjectAlternativeName(san) => Some(
-                san.general_names
-                    .iter()
-                    .map(|g| format!("{g:?}"))
-                    .collect::<Vec<_>>(),
-            ),
-            _ => None,
-        })
-        .flatten()
-        .collect();
+const OID_SUBJECT_ALT_NAME: &str = "2.5.29.17";
+
+/// Sorted raw DER of every `GeneralName` in a `SubjectAltName` extension value. Comparing the
+/// encoded names avoids any dependence on a parser's `Debug` rendering; a value that is not a
+/// well-formed `SEQUENCE OF` TLVs is an error, never an empty set.
+fn san_entries(value: &[u8]) -> KResult<Vec<Vec<u8>>> {
+    let bad = |what: &str| KmsError::InvalidRequest(format!("invalid SubjectAltName: {what}"));
+    let (rest, seq) = Any::from_der(value).map_err(|e| bad(&e.to_string()))?;
+    if !rest.is_empty() || seq.tag() != Tag::Sequence {
+        return Err(bad("not a single SEQUENCE"));
+    }
+    let mut data = seq.data;
+    let mut out = Vec::new();
+    while !data.is_empty() {
+        let (next, _) = Any::from_der(data).map_err(|e| bad(&e.to_string()))?;
+        let consumed = data
+            .len()
+            .checked_sub(next.len())
+            .and_then(|n| data.get(..n))
+            .ok_or_else(|| bad("inconsistent length"))?;
+        out.push(consumed.to_vec());
+        data = next;
+    }
     out.sort();
     Ok(out)
 }
 
-/// Sorted textual rendering of the `SubjectAlternativeName` entries of a certificate.
-fn cert_san_set(cert: &X509) -> KResult<Vec<String>> {
+/// `GeneralName`s of the `SubjectAltName` requested by a CSR.
+fn csr_san_set(csr: &X509Req) -> KResult<Vec<Vec<u8>>> {
+    let der = csr.to_der()?;
+    let (_, parsed) = X509CertificationRequest::from_der(&der)
+        .map_err(|e| KmsError::InvalidRequest(format!("invalid CSR: {e}")))?;
+    for attr in parsed.certification_request_info.iter_attributes() {
+        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute() {
+            if let Some(ext) = requested
+                .extensions
+                .iter()
+                .find(|e| e.oid.to_id_string() == OID_SUBJECT_ALT_NAME)
+            {
+                return san_entries(ext.value);
+            }
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// `GeneralName`s of the `SubjectAltName` carried by a certificate.
+fn cert_san_set(cert: &X509) -> KResult<Vec<Vec<u8>>> {
     let der = cert.to_der()?;
     let (_, parsed) = X509Certificate::from_der(&der)
         .map_err(|e| KmsError::InvalidRequest(format!("invalid certificate: {e}")))?;
-    let mut out: Vec<String> = parsed
-        .subject_alternative_name()
-        .ok()
-        .flatten()
-        .map(|san| {
-            san.value
-                .general_names
-                .iter()
-                .map(|g| format!("{g:?}"))
-                .collect()
-        })
-        .unwrap_or_default();
-    out.sort();
-    Ok(out)
+    parsed
+        .extensions()
+        .iter()
+        .find(|e| e.oid.to_id_string() == OID_SUBJECT_ALT_NAME)
+        .map_or_else(|| Ok(Vec::new()), |ext| san_entries(ext.value))
 }
 
 /// `true` when the Subject and the `SubjectAltName` of `csr` are identical to those of `cert`
@@ -277,4 +294,29 @@ pub(crate) fn csr_matches_certificate_identity(csr: &X509Req, cert: &X509) -> KR
     let requested_sans = csr_san_set(csr)?;
     let certified_sans = cert_san_set(cert)?;
     Ok(requested_sans == certified_sans)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // test-only assertions on known-good fixtures
+mod tests {
+    use super::san_entries;
+
+    // SAN = SEQUENCE { dNSName "a", dNSName "b" } and the same names in the other order
+    const AB: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'a', 0x82, 0x01, b'b'];
+    const BA: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'b', 0x82, 0x01, b'a'];
+
+    #[test]
+    fn san_comparison_ignores_order_but_not_names() {
+        assert_eq!(san_entries(&AB).unwrap(), san_entries(&BA).unwrap());
+        let other: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'a', 0x82, 0x01, b'c'];
+        assert_ne!(san_entries(&AB).unwrap(), san_entries(&other).unwrap());
+    }
+
+    #[test]
+    fn malformed_san_is_an_error_not_an_empty_set() {
+        // truncated element, trailing bytes, and not a SEQUENCE
+        san_entries(&[0x30, 0x03, 0x82, 0x01]).unwrap_err();
+        san_entries(&[0x30, 0x00, 0x00]).unwrap_err();
+        san_entries(&[0x04, 0x00]).unwrap_err();
+    }
 }

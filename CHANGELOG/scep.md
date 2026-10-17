@@ -14,7 +14,10 @@
 - Added per-endpoint **certificate templates** (`[templates.<name>]`, selected with `est_template` /
   `scep_template`): minimum RSA size, allowed EC curves, allowed/injected EKUs, maximum and default
   validity, and anchored regular expressions for the subject CN and the DNS / e-mail / UPN SANs.
-  A baseline template (RSA ≥ 2048, no `CA:TRUE`, validity ≤ 365 days) applies when none is configured.
+  A baseline template (RSA ≥ 2048 or NIST P-256/384/521, `clientAuth` only, no `CA:TRUE`, validity
+  ≤ 365 days) applies when none is configured. Only the `keyUsage` (without `keyCertSign` /
+  `cRLSign`), `subjectAltName`, `extendedKeyUsage` and `basicConstraints` CSR extensions are
+  accepted; any other requested extension and any duplicated extension is refused.
   The CSR proof of possession is always verified.
 - Extended-key-usage entries in X.509 extension files now accept dotted OIDs.
 - Added `cosmian_kms_crypto::openssl::{scep_cms, csr_attrs}` (CMS signed attributes through
@@ -26,7 +29,7 @@
   Note: the stock `scepclient` always encrypts with single DES-CBC, which the server refuses;
   the test builds it with AES-128-CBC selected.
 - `GetCert`, `GetCRL`, `CertPoll` and `GetNextCACert` are not implemented; issuance is synchronous.
-  EST over plain HTTP is not refused (a startup warning is logged when Basic bootstrap runs without TLS).
+  Consequently `GetCACaps` does not advertise `SCEPStandard`.
 - No EST/SCEP client is provided in `ckms` or the Web UI: devices and MDM use their own clients
   (e.g. `estclient`, `scepclient`, Apple/Windows MDM payloads).
 
@@ -49,3 +52,15 @@
   mTLS (`user_from_client_certificate`): the CN must be non-empty, not `*`, and not a reserved service identity.
   Previously a client certificate from the trusted client CA with `CN=[enrollment-service]` or
   `CN=[aws-xks-service]` acted as that identity over KMIP, bypassing the enrollment templates and AWS SigV4.
+- Startup now refuses EST HTTP Basic bootstrap without TLS and `est_require_client_cert = true` without TLS
+  and `clients_ca_cert_file`. Empty `allowed_ekus` / `allowed_ec_curves` are rejected.
+- Every certificate issued through EST or SCEP carries a marker `certificatePolicies` entry
+  (`1.3.6.1.4.1.16376.9.2.1`); `user_from_client_certificate` (HTTPS mTLS and the KMIP socket) refuses such a
+  certificate, so a device that chooses `CN=admin` in its CSR can never authenticate to the KMS as that user.
+  It remains usable for EST re-enrollment. The marker cannot be requested through a CSR.
+- CSR validation is fail-closed: a CSR using the Microsoft `msExtReq` attribute (which OpenSSL honours when
+  building the certificate but the validator did not inspect), an undecodable extension request, or more than one
+  `extensionRequest` is refused, so a CSR cannot smuggle `CA:TRUE` past the template checks.
+- The EST/SCEP renewal identity check compares the raw DER of each `SubjectAltName` entry and treats a malformed
+  SAN as an error.
+- `est_bootstrap_password` and `scep_challenge_password` are masked in the `Debug` output of the configuration.

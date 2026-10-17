@@ -59,6 +59,7 @@ disallowed-methods = [
 disallowed-types = [
     { path = "rand::rngs::ThreadRng", reason = "OS-seeded thread-local RNG; use KmsRng", allow-invalid = true },
     { path = "rand_core::OsRng", reason = "OS entropy, bypasses OpenSSL; use KmsRng", allow-invalid = true },
+    { path = "rand::rngs::OsRng", reason = "OS entropy, bypasses OpenSSL; use KmsRng", allow-invalid = true },
     { path = "getrandom::SysRng", reason = "OS entropy, bypasses OpenSSL; use KmsRng", allow-invalid = true },
     { path = "std::random::DefaultRandomSource", reason = "OS entropy; use KmsRng", allow-invalid = true },
     { path = "rand::rngs::SmallRng", reason = "not a CSPRNG", allow-invalid = true },

@@ -147,7 +147,7 @@ pub fn run_configure_wizard() -> KResult<()> {
     // ── [9/9] Advanced ────────────────────────────────────────────────────────
     println!("[9/9] Advanced / miscellaneous configuration");
     println!("─────────────────────────────────────────────");
-    let advanced = advanced_wizard::configure_advanced(ui_config)?;
+    let advanced = advanced_wizard::configure_advanced(ui_config, &tls)?;
     println!();
 
     // Prepend kms_public_url to CORS origins if it was set and is not already present.
@@ -188,6 +188,9 @@ pub fn run_configure_wizard() -> KResult<()> {
         google_cse_config: advanced.google_cse_config,
         azure_ekm_config: advanced.azure_ekm_config,
         aws_xks_config: advanced.aws_xks_config,
+        est: advanced.est,
+        scep: advanced.scep,
+        templates: advanced.templates,
         default_username: auth_result.default_username,
         force_default_username: auth_result.force_default_username,
         ..ClapConfig::default()
