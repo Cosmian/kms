@@ -155,6 +155,19 @@ pub(crate) async fn kmip_2_1_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> KResult<HttpResponse> {
+    // Only a JSON Content-Type is accepted: it makes cross-origin browser requests subject
+    // to a CORS preflight, so another origin cannot submit KMIP with the user's session cookie.
+    let is_json = req_http
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"));
+    if !is_json {
+        return Err(KmsError::InvalidRequest(
+            "POST /kmip/2_1 requires `Content-Type: application/json`".to_owned(),
+        ));
+    }
     let body_str =
         std::str::from_utf8(&body).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     let ttlv = serde_json::from_str::<TTLV>(body_str)?;

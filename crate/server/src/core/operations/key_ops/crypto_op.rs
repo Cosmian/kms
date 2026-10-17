@@ -335,24 +335,14 @@ impl KMS {
         Candidate: Borrow<ObjectWithMetadata>,
     {
         let mut eligible: Vec<Candidate> = Vec::new();
-        let mut found_but_no_permission = false;
         // Track state mismatches so we can surface a useful error instead of "not found".
         let mut wrong_state: Option<(String, State)> = None;
 
         for candidate in candidates {
             let owm = candidate.borrow();
-            // 1. State filter
-            let effective = owm.effective_state();
-            if !Spec::accepted_states().contains(&effective) {
-                // Track live-but-wrong-state for a useful error message.
-                // Skip Destroyed/DestroyedCompromised: those behave as "not found".
-                if effective != State::Destroyed && effective != State::Destroyed_Compromised {
-                    wrong_state.get_or_insert_with(|| (owm.id().to_owned(), effective));
-                }
-                continue;
-            }
-
-            // 2. Permission check
+            // 1. Permission check first: keys the caller may not use are reported as
+            //    "not found", like a missing key, so neither their existence nor their
+            //    state leaks to unauthorized callers.
             let authorized = if Spec::strict_permission_check() {
                 // Strict: only exact operation grant (no Get wildcard)
                 self.user_can_perform_operation(owm, user, &Spec::KMIP_OP)
@@ -365,7 +355,17 @@ impl KMS {
                     .await?
             };
             if !authorized {
-                found_but_no_permission = true;
+                continue;
+            }
+
+            // 2. State filter
+            let effective = owm.effective_state();
+            if !Spec::accepted_states().contains(&effective) {
+                // Track live-but-wrong-state for a useful error message.
+                // Skip Destroyed/DestroyedCompromised: those behave as "not found".
+                if effective != State::Destroyed && effective != State::Destroyed_Compromised {
+                    wrong_state.get_or_insert_with(|| (owm.id().to_owned(), effective));
+                }
                 continue;
             }
 
@@ -385,12 +385,7 @@ impl KMS {
                 .into_iter()
                 .next()
                 .ok_or_else(|| KmsError::ItemNotFound("unreachable: len == 1".to_owned())),
-            0 => Err(if found_but_no_permission {
-                KmsError::Unauthorized(format!(
-                    "{}: user {user} does not have permission to use key: {uid_display}",
-                    Spec::OP_NAME,
-                ))
-            } else if let Some((uid, state)) = wrong_state {
+            0 => Err(if let Some((uid, state)) = wrong_state {
                 KmsError::Kmip21Error(
                     ErrorReason::Permission_Denied,
                     format!(

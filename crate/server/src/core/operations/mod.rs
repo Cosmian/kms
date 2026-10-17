@@ -63,6 +63,8 @@ pub(crate) use import::import;
 pub(crate) use join_split_key::{join_split_key, perform_crypto_officer_ceremony_activation};
 pub(crate) use locate::locate;
 pub(crate) use mac::{mac, mac_verify};
+#[cfg(test)]
+pub(crate) use message::MAX_BATCH_ITEMS;
 pub(crate) use message::message;
 pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;

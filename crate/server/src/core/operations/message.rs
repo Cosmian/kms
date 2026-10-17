@@ -27,6 +27,10 @@ use strum::IntoEnumIterator;
 use super::modify_attribute;
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
+/// Maximum number of batch items processed from one `RequestMessage`: items run
+/// sequentially, so an unbounded batch would monopolise a worker and DB connections.
+pub(crate) const MAX_BATCH_ITEMS: usize = 10_000;
+
 /// Lazily formats the operations of the first batch items as a list (same output as a
 /// `Vec<OperationEnumeration>` debug print, without allocating the `Vec`).
 struct BatchOperations<'a>(&'a [RequestMessageBatchItemVersioned]);
@@ -65,6 +69,15 @@ pub(crate) async fn message(
                 .unwrap_or(&[])
         ),
     );
+    if request.batch_item.len() > MAX_BATCH_ITEMS {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Message,
+            format!(
+                "KMIP request message has {} batch items; the maximum is {MAX_BATCH_ITEMS}",
+                request.batch_item.len()
+            ),
+        ));
+    }
     trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::with_capacity(request.batch_item.len());

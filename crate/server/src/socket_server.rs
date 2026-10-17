@@ -1,7 +1,11 @@
 use std::{
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
-    sync::{Arc, RwLock, mpsc},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
     thread,
     time::Duration,
 };
@@ -15,9 +19,28 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
+    middlewares::{UserId, client_cert_username},
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
+
+/// Timeout for the (unauthenticated) TLS handshake, so pre-auth clients release their slot quickly.
+const SOCKET_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Idle/read/write timeout of an authenticated client socket (same as the HTTP keep-alive).
+const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(120);
+/// Maximum number of concurrent client connections (one OS thread each).
+const MAX_SOCKET_CONNECTIONS: usize = 1024;
+/// Maximum TTLV request body size, same as the HTTP payload limit.
+const MAX_SOCKET_REQUEST_BODY: usize = 64 * 1024 * 1024;
+
+/// Releases a connection slot when the client thread ends, even on panic.
+struct ConnectionSlot(Arc<AtomicUsize>);
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Configuration for the `py_kmip` socket server
 #[derive(Clone)]
@@ -278,6 +301,7 @@ impl SocketServer {
             }
         });
 
+        let active_connections = Arc::new(AtomicUsize::new(0));
         // Accept incoming connections
         for stream in listener.incoming() {
             if *stop_requested
@@ -297,12 +321,32 @@ impl SocketServer {
                     {
                         break;
                     }
-                    // Accept incoming connections
+                    if active_connections.fetch_add(1, Ordering::AcqRel) >= MAX_SOCKET_CONNECTIONS {
+                        active_connections.fetch_sub(1, Ordering::AcqRel);
+                        warn!(
+                            "Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, \
+                             dropping new connection"
+                        );
+                        continue;
+                    }
+                    let slot = ConnectionSlot(active_connections.clone());
+                    // Bound the TLS handshake so unauthenticated or slow clients cannot hold a
+                    // thread forever; `handle_client` switches to the idle timeout afterwards.
+                    if let Err(e) = stream
+                        .set_read_timeout(Some(SOCKET_HANDSHAKE_TIMEOUT))
+                        .and_then(|()| stream.set_write_timeout(Some(SOCKET_HANDSHAKE_TIMEOUT)))
+                    {
+                        warn!(
+                            "Socket server: cannot set socket timeouts, dropping connection: {e}"
+                        );
+                        continue;
+                    }
                     let server_config = server_config.clone();
                     let handler = handler.clone();
                     // Spawn a new thread to handle the client connection
                     let kms_server = kms_server.clone();
                     thread::spawn(move || {
+                        let _slot = slot;
                         if let Err(e) =
                             handle_client(&kms_server, &server_config, &handler, &mut stream)
                         {
@@ -334,86 +378,93 @@ fn handle_client(
     let mut tls_stream = server_config
         .accept(stream)
         .context("socket server: failed to create OpenSSL TLS connection")?;
+    tls_stream
+        .get_ref()
+        .set_read_timeout(Some(SOCKET_IO_TIMEOUT))
+        .and_then(|()| {
+            tls_stream
+                .get_ref()
+                .set_write_timeout(Some(SOCKET_IO_TIMEOUT))
+        })
+        .context("socket server: failed to set socket timeouts")?;
 
-    loop {
-        // Read 8 bytes of the TTLV header
-        let mut header = [0_u8; 8];
-        match tls_stream.read_exact(&mut header) {
-            Ok(()) => {
-                let username = client_username(&tls_stream)?;
+    while let Some(request) = read_request(&mut tls_stream)? {
+        let username = client_username(&tls_stream)?;
+        debug!("socket server: received request: {}", hex::encode(&request));
 
-                // Parse length from header
-                let length = usize::try_from(u32::from_be_bytes([
-                    header[4], header[5], header[6], header[7],
-                ]))
-                .context("socket server: failed to parse request length")?;
+        // Process the request
+        let response = handler(username.as_str(), &request, kms_server.clone());
 
-                // Read the rest of the request directly into a single contiguous buffer
-                let mut request = vec![0_u8; 8 + length];
-                request
-                    .get_mut(..8)
-                    .context("socket server: failed to get header slice")?
-                    .copy_from_slice(&header);
-                let body_slice = request
-                    .get_mut(8..)
-                    .context("socket server: failed to get body slice")?;
-                tls_stream
-                    .read_exact(body_slice)
-                    .context("socket server: failed to read request body")?;
-                debug!("socket server: received request: {}", hex::encode(&request));
+        // Send the response
+        tls_stream
+            .write_all(&response)
+            .context("socket server: failed to send response")?;
 
-                // Process the request
-                let response = handler(&username, &request, kms_server.clone());
+        tls_stream
+            .flush()
+            .context("socket server: failed to flush TLS stream")?;
 
-                // Send the response
-                tls_stream
-                    .write_all(&response)
-                    .context("socket server: failed to send response")?;
-
-                tls_stream
-                    .flush()
-                    .context("socket server: failed to flush TLS stream")?;
-
-                trace!("Response sent to {}", peer_addr);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                // Client disconnected
-                debug!("socket server: client {} disconnected", peer_addr);
-                break;
-            }
-            Err(e) => {
-                return Err(e).context("socket server: failed to read request header");
-            }
-        }
+        trace!("Response sent to {}", peer_addr);
     }
+    debug!("socket server: client {} disconnected", peer_addr);
 
     Ok(())
 }
 
-/// Extract the common name from the client certificate which is used as the username
-fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> Result<String, KmsError> {
+/// Read one TTLV message (8-byte header followed by its body).
+///
+/// Returns `Ok(None)` when the client closed the connection or stayed idle past
+/// [`SOCKET_IO_TIMEOUT`]. The declared length is checked before allocating the body.
+fn read_request(stream: &mut impl Read) -> KResult<Option<Vec<u8>>> {
+    let mut header = [0_u8; 8];
+    match stream.read_exact(&mut header) {
+        Ok(()) => {}
+        Err(e)
+            if matches!(
+                e.kind(),
+                ErrorKind::UnexpectedEof | ErrorKind::TimedOut | ErrorKind::WouldBlock
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(e) => return Err(e).context("socket server: failed to read request header"),
+    }
+    let length = usize::try_from(u32::from_be_bytes([
+        header[4], header[5], header[6], header[7],
+    ]))
+    .context("socket server: failed to parse request length")?;
+    if length > MAX_SOCKET_REQUEST_BODY {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "socket server: request body of {length} bytes exceeds the \
+             {MAX_SOCKET_REQUEST_BODY} bytes limit"
+        )));
+    }
+
+    // Read the rest of the request directly into a single contiguous buffer
+    let mut request = vec![0_u8; 8 + length];
+    request
+        .get_mut(..8)
+        .context("socket server: failed to get header slice")?
+        .copy_from_slice(&header);
+    stream
+        .read_exact(
+            request
+                .get_mut(8..)
+                .context("socket server: failed to get body slice")?,
+        )
+        .context("socket server: failed to read request body")?;
+    Ok(Some(request))
+}
+
+/// Extract the username from the client certificate, with the same checks as HTTP mTLS.
+fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> KResult<UserId> {
     let client_certificate = tls_stream.ssl().peer_certificate().ok_or_else(|| {
         // unreachable: the acceptor sets FAIL_IF_NO_PEER_CERT (see `create_openssl_acceptor`)
         KmsError::Certificate(
             "socket server: the client did not provide a peer certificate".to_owned(),
         )
     })?;
-
-    // The certificate is already an X509 object with OpenSSL
-    let x509 = client_certificate;
-    x509.subject_name()
-        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
-        .next()
-        .ok_or_else(|| {
-            KmsError::Certificate("socket server: failed to get common name".to_owned())
-        })?
-        .data()
-        .to_string()
-        .map_err(|_e| {
-            KmsError::Certificate(
-                "socket server: failed to convert common name to UTF-8".to_owned(),
-            )
-        })
+    client_cert_username(&client_certificate)
 }
 
 // Client Certificate Authentication
@@ -465,7 +516,9 @@ mod tests {
         x509::X509,
     };
 
-    use super::{SocketServerParams, create_openssl_acceptor};
+    use super::{
+        MAX_SOCKET_REQUEST_BODY, SocketServerParams, create_openssl_acceptor, read_request,
+    };
 
     type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
@@ -533,6 +586,39 @@ mod tests {
         })?;
         if !accepted {
             return Err("server rejected a valid client certificate".into());
+        }
+        Ok(())
+    }
+
+    fn ttlv_header(length: u32) -> Vec<u8> {
+        let mut header = vec![0x42, 0x00, 0x78, 0x01];
+        header.extend_from_slice(&length.to_be_bytes());
+        header
+    }
+
+    /// A declared length above the limit is refused before the body buffer is allocated.
+    #[test]
+    fn oversized_request_is_rejected_before_allocation() -> TestResult {
+        let too_big = u32::try_from(MAX_SOCKET_REQUEST_BODY + 1)?;
+        let Err(e) = read_request(&mut io::Cursor::new(ttlv_header(too_big))) else {
+            return Err("oversized request accepted".into());
+        };
+        if !e.to_string().contains("exceeds") {
+            return Err(format!("unexpected error: {e}").into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn request_is_read_whole_and_eof_ends_session() -> TestResult {
+        let mut message = ttlv_header(8);
+        message.extend_from_slice(&[7; 8]);
+        let mut stream = io::Cursor::new(message.clone());
+        if read_request(&mut stream)? != Some(message) {
+            return Err("request not read back verbatim".into());
+        }
+        if read_request(&mut stream)?.is_some() {
+            return Err("EOF must end the session".into());
         }
         Ok(())
     }

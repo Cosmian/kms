@@ -18,7 +18,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
     tests::test_utils::https_clap_config,
 };
 
@@ -690,5 +690,179 @@ async fn test_get_fresh_wrapped_key_explicit_not_wrapped_preserves_wrapping_in_d
         "SECURITY REGRESSION: key_wrapping_data was stripped from the stored object!"
     );
 
+    Ok(())
+}
+
+/// Regression test: a crypto operation on a key the caller may not use fails exactly
+/// like one on a missing key, so key UIDs cannot be enumerated.
+///
+/// Guards: COSMIAN-2026-037 (existence and state oracle in key selection)
+#[tokio::test]
+async fn test_crypto_op_does_not_reveal_foreign_keys() -> KResult<()> {
+    let kms = test_kms().await?;
+    let foreign_key = create_aes_key(&kms, "oracle_owner@example.com").await?;
+    let intruder = UserId::from("oracle_intruder@example.com");
+    let encrypt = |uid: &str| Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        }),
+        data: Some(Zeroizing::new(b"probe".to_vec())),
+        ..Default::default()
+    };
+
+    let foreign = kms
+        .encrypt(encrypt(&foreign_key.to_string()), &intruder)
+        .await
+        .expect_err("intruder must not use the owner's key");
+    let missing = kms
+        .encrypt(encrypt("oracle-no-such-key"), &intruder)
+        .await
+        .expect_err("missing key must fail");
+    assert!(matches!(foreign, KmsError::ItemNotFound(_)), "{foreign:?}");
+    assert!(matches!(missing, KmsError::ItemNotFound(_)), "{missing:?}");
+
+    // A non-active foreign key must not reveal its state either.
+    {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::{
+            kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+            kmip_2_1::kmip_operations::Revoke,
+        };
+        kms.revoke(
+            Revoke {
+                unique_identifier: Some(foreign_key.clone()),
+                revocation_reason: RevocationReason {
+                    revocation_reason_code: RevocationReasonCode::Unspecified,
+                    revocation_message: None,
+                },
+                compromise_occurrence_date: None,
+                cascade: true,
+            },
+            &UserId::from("oracle_owner@example.com"),
+        )
+        .await?;
+    }
+    let revoked = kms
+        .encrypt(encrypt(&foreign_key.to_string()), &intruder)
+        .await
+        .expect_err("intruder must not use the owner's revoked key");
+    assert!(matches!(revoked, KmsError::ItemNotFound(_)), "{revoked:?}");
+    Ok(())
+}
+
+/// Regression test: `/kmip/2_1` only accepts a JSON Content-Type, so a cross-origin page
+/// cannot send it a CORS "simple" (non-preflighted) request carrying the session cookie.
+///
+/// Guards: COSMIAN-2026-039 (session-cookie requests from other same-site origins)
+#[tokio::test]
+async fn test_kmip_json_endpoint_requires_json_content_type() -> KResult<()> {
+    use actix_web::{http::StatusCode, test};
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_2_1::kmip_operations::Query, ttlv::to_ttlv,
+    };
+
+    let app = crate::tests::test_utils::test_app(None).await;
+    let body = serde_json::to_vec(&to_ttlv(&Query::default())?)?;
+    for (content_type, accepted) in [
+        ("text/plain", false),
+        ("application/x-www-form-urlencoded", false),
+        ("application/json; charset=utf-8", true),
+    ] {
+        let req = test::TestRequest::post()
+            .uri("/kmip/2_1")
+            .insert_header(("Content-Type", content_type))
+            .set_payload(body.clone())
+            .to_request();
+        let status = test::call_service(&app, req).await.status();
+        assert_eq!(
+            status == StatusCode::OK,
+            accepted,
+            "{content_type}: {status}"
+        );
+    }
+    Ok(())
+}
+
+/// Regression test: oversized KMIP batches and PBKDF2 iteration counts are refused
+/// up front instead of tying up a worker.
+///
+/// Guards: COSMIAN-2026-036 (unbounded batch, PBKDF2 and RSA work per request)
+#[tokio::test]
+async fn test_request_work_limits() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+            },
+            kmip_types::ProtocolVersion,
+        },
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::DerivationParameters,
+            kmip_messages::RequestMessageBatchItem,
+            kmip_objects::ObjectType,
+            kmip_operations::{DeriveKey, Operation, Query},
+            kmip_types::DerivationMethod,
+            requests::create_derivation_object_request,
+        },
+    };
+
+    use crate::core::operations::MAX_BATCH_ITEMS;
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("limits_owner@example.com");
+
+    let message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: i32::try_from(MAX_BATCH_ITEMS + 1)?,
+            ..Default::default()
+        },
+        batch_item: (0..=MAX_BATCH_ITEMS)
+            .map(|_| {
+                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                    Operation::Query(Query::default()),
+                ))
+            })
+            .collect(),
+    };
+    let err = kms
+        .message(message, &owner)
+        .await
+        .expect_err("a batch above the limit must be refused");
+    assert!(err.to_string().contains("batch items"), "{err}");
+
+    let base_key = kms
+        .create(
+            create_derivation_object_request(ObjectType::SymmetricKey)?,
+            &owner,
+        )
+        .await?
+        .unique_identifier;
+    let derive = DeriveKey::new_single_base(
+        ObjectType::SymmetricKey,
+        base_key,
+        DerivationMethod::PBKDF2,
+        DerivationParameters {
+            salt: Some(b"limits salt".to_vec()),
+            iteration_count: Some(i32::MAX),
+            ..DerivationParameters::default()
+        },
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(128),
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        },
+    );
+    let err = kms
+        .derive_key(derive, &owner)
+        .await
+        .expect_err("an excessive iteration count must be refused");
+    assert!(err.to_string().contains("iteration count"), "{err}");
     Ok(())
 }

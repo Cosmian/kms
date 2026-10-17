@@ -356,7 +356,10 @@ impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
         let access_key_id = self.access_key_id.clone();
         let access_key = self.access_key.clone();
         Box::pin(async move {
-            if access_key_id != req.access_key() {
+            if !bool::from(subtle::ConstantTimeEq::ct_eq(
+                access_key_id.as_bytes(),
+                req.access_key().as_bytes(),
+            )) {
                 return Err(Box::<dyn std::error::Error + Send + Sync>::from(
                     std::io::Error::new(
                         std::io::ErrorKind::PermissionDenied,

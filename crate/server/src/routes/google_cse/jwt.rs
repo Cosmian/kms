@@ -5,6 +5,7 @@ use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 
 use super::operations::Role;
 use crate::{
+    config::ProxyParams,
     core::KMS,
     error::KmsError,
     kms_ensure,
@@ -61,24 +62,26 @@ pub fn list_jwks_uri(url_whitelist: Option<Vec<String>>) -> Vec<String> {
     uris
 }
 
-#[must_use]
-pub fn list_jwt_configurations(
+/// Build one `JwtConfig` per whitelisted external KACLS, each verified only
+/// against the keys published at its own `{url}/certs`.
+pub async fn list_jwt_configurations(
     url_whitelist: &[String],
-    jwks_manager: &Arc<JwksManager>,
-) -> Vec<JwtConfig> {
-    url_whitelist
-        .iter()
-        .map(|url| JwtConfig {
+    proxy_params: Option<&ProxyParams>,
+) -> KResult<Vec<JwtConfig>> {
+    let mut configurations = Vec::with_capacity(url_whitelist.len());
+    for url in url_whitelist {
+        configurations.push(JwtConfig {
             jwt_issuer_uri: url.clone(),
-            jwks: jwks_manager.clone(),
+            jwks: Arc::new(JwksManager::new(vec![format!("{url}/certs")], proxy_params).await?),
             // KACLS-to-KACLS migration tokens always carry `aud: "kacls-migration"`.
             // Setting the expected audience here ensures `validate_authentication_token`
             // calls `Validation::set_audience`, which makes jsonwebtoken 10.x accept
             // the token instead of rejecting it with InvalidAudience.
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             accept_spiffe_subject: false,
-        })
-        .collect::<Vec<_>>()
+        });
+    }
+    Ok(configurations)
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'

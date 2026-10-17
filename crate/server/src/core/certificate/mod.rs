@@ -12,6 +12,22 @@ const fn is_blocked_ipv4(v4: std::net::Ipv4Addr) -> bool {
     v4.is_private() || v4.is_link_local() || v4.is_loopback() || v4.is_unspecified()
 }
 
+/// Returns `true` if `ip` must never be reached by a server-side fetch: the IPv4 ranges of
+/// [`is_blocked_ipv4`], IPv6 loopback, unspecified, unique-local (`fc00::/7`) and
+/// link-local (`fe80::/10`), and IPv4-mapped IPv6 addresses of blocked IPv4 ranges.
+pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => is_blocked_ipv4(v4),
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local()
+                || v6.to_ipv4_mapped().is_some_and(is_blocked_ipv4)
+        }
+    }
+}
+
 /// Validates that a CRL Distribution Point URL is safe to fetch.
 ///
 /// Mitigations applied (COSMIAN-2026-021):
@@ -64,14 +80,8 @@ pub(crate) fn validate_crl_url(url_str: &str) -> crate::result::KResult<()> {
 
     // Reject IP-based hosts targeting private/loopback/link-local/unspecified ranges.
     let blocked = match host {
-        Host::Ipv4(v4) => is_blocked_ipv4(v4),
-        Host::Ipv6(v6) => {
-            v6.is_loopback()
-                || v6.is_unspecified()
-                || v6.is_unique_local()
-                || v6.is_unicast_link_local()
-                || v6.to_ipv4_mapped().is_some_and(is_blocked_ipv4)
-        }
+        Host::Ipv4(v4) => is_blocked_ip(v4.into()),
+        Host::Ipv6(v6) => is_blocked_ip(v6.into()),
         Host::Domain(_) => false,
     };
     if blocked {

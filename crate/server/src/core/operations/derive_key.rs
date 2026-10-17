@@ -54,6 +54,9 @@ use crate::{
 
 // Default constants for key derivation
 const DEFAULT_PBKDF2_ITERATIONS: i32 = 600_000; // OWASP recommendation for PBKDF2 with SHA-256
+/// Upper bound on the client-supplied PBKDF2 iteration count (a few seconds of CPU):
+/// the derivation runs synchronously, so larger values would pin a worker thread.
+const MAX_PBKDF2_ITERATIONS: u32 = 10_000_000;
 
 pub(crate) async fn derive_key(
     kms: &KMS,
@@ -210,9 +213,15 @@ async fn derive_key_symmetric(
                 .derivation_parameters
                 .iteration_count
                 .unwrap_or(DEFAULT_PBKDF2_ITERATIONS);
-            let iterations_u32 = u32::try_from(iterations).map_err(|_e| {
-                KmsError::InvalidRequest("Invalid iteration count value".to_owned())
-            })?;
+            let iterations_u32 = u32::try_from(iterations)
+                .ok()
+                .filter(|i| *i <= MAX_PBKDF2_ITERATIONS)
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest(format!(
+                        "Invalid iteration count {iterations}: must be a non-negative value of \
+                         at most {MAX_PBKDF2_ITERATIONS}"
+                    ))
+                })?;
 
             derive_pbkdf2(
                 base_key_bytes,
