@@ -28,7 +28,7 @@ source "${SCRIPT_DIR}/../../lib/kms_server.sh"
 init_build_env "$@"
 setup_test_logging
 
-ESTCLIENT_MODULE="${ESTCLIENT_MODULE:-github.com/globalsign/est/cmd/estclient@latest}"
+ESTCLIENT_MODULE="${ESTCLIENT_MODULE:-github.com/globalsign/est/cmd/estclient@v1.0.7}"
 CA_UID="est-ca"
 BOOT_USER="bootstrap"
 BOOT_PASS="bootstrap-secret"

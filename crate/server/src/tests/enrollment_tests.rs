@@ -58,12 +58,12 @@ use openssl::{
 use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::{
-    config::{EstConfig, ScepConfig, ServerParams},
+    config::{EstConfig, ScepConfig, ServerParams, TlsConfig},
     core::{
         KMS, certificate::retrieve_issuer_private_key_and_certificate,
         operations::certify::template::CertTemplate,
     },
-    middlewares::UserId,
+    middlewares::{UserId, user_from_client_certificate},
     openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
     routes::{enrollment::ENROLLMENT_SERVICE_USER, est, scep},
@@ -82,6 +82,14 @@ keyUsage=critical,keyCertSign,crlSign,digitalSignature,keyEncipherment
 
 fn config(est_enabled: bool, scep_enabled: bool, allow_renewal: bool) -> crate::config::ClapConfig {
     let mut c = https_clap_config();
+    // The in-process app does not terminate TLS; only the startup checks read these (EST needs
+    // TLS, and mutual TLS a client CA).
+    c.tls.tls_cert_file =
+        Some("../../test_data/certificates/client_server/server/kmserver.acme.com.crt".into());
+    c.tls.tls_key_file =
+        Some("../../test_data/certificates/client_server/server/kmserver.acme.com.key".into());
+    c.tls.clients_ca_cert_file =
+        Some("../../test_data/certificates/client_server/ca/ca.crt".into());
     c.est = EstConfig {
         est_enabled,
         est_ca_uid: Some(CA_UID.to_owned()),
@@ -433,6 +441,31 @@ async fn est_simpleenroll_issues_certificate_under_template() -> KResult<()> {
     Ok(())
 }
 
+/// A device picks its own CN: an enrolled certificate must never authenticate as the KMS user
+/// of that name, even when the TLS layer trusts the enrollment CA.
+#[tokio::test]
+async fn enrolled_certificates_never_authenticate_as_kms_users() -> KResult<()> {
+    let (kms, _ca) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let (status, body, _) = est_enroll(
+        &app,
+        &csr(&rsa_key(2048), "admin.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let enrolled = certs_of(&STANDARD.decode(&body).unwrap()).remove(0);
+    let err = user_from_client_certificate(&enrolled)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("EST/SCEP"), "{err}");
+
+    // a certificate that was not enrolled still maps to its CN
+    let plain = self_signed(&rsa_key(2048), "alice");
+    assert_eq!(user_from_client_certificate(&plain)?.into_string(), "alice");
+    Ok(())
+}
+
 #[tokio::test]
 async fn est_simpleenroll_rejects_missing_or_wrong_credentials() -> KResult<()> {
     let (kms, _) = make_kms(true, false, true).await?;
@@ -720,7 +753,11 @@ async fn scep_pkcsreq_with_challenge_issues_certificate() -> KResult<()> {
 async fn apple_scep_fixtures_parse() {
     init_openssl_providers_for_tests();
     let mut captures = 0;
-    for entry in std::fs::read_dir("../../test_data/scep/apple").unwrap() {
+    let fixtures = std::fs::read_dir("../../test_data/scep/apple").expect(
+        "test_data/scep/apple missing: initialise the test_data submodule \
+         (`git submodule update --init test_data`)",
+    );
+    for entry in fixtures {
         let dir = entry.unwrap().path();
         let read = |name: &str| std::fs::read(dir.join(name)).unwrap();
         let ca = X509::from_pem(&read("ca.crt")).unwrap();
@@ -1013,7 +1050,7 @@ async fn scep_renewal_challenge_does_not_replace_a_ca_issued_signer() -> KResult
 async fn startup_rejects_unsafe_enrollment_configuration() {
     type Tweak = fn(&mut crate::config::ClapConfig);
     init_openssl_providers_for_tests();
-    let cases: [(&str, Tweak); 6] = [
+    let cases: [(&str, Tweak); 8] = [
         ("est without CA", |c| c.est.est_ca_uid = None),
         ("scep without CA", |c| c.scep.scep_ca_uid = None),
         ("scep blank challenge", |c| {
@@ -1021,6 +1058,13 @@ async fn startup_rejects_unsafe_enrollment_configuration() {
         }),
         ("est basic without credentials", |c| {
             c.est.est_bootstrap_password = None;
+        }),
+        ("est basic bootstrap without TLS", |c| {
+            c.tls = TlsConfig::default();
+        }),
+        ("est mutual TLS without a client CA", |c| {
+            c.est.est_require_client_cert = true;
+            c.tls.clients_ca_cert_file = None;
         }),
         ("unknown template", |c| {
             c.scep.scep_template = Some("missing".to_owned());

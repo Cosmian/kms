@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 /// scep_allow_renewal_without_challenge = true
 /// scep_template = "iot_device"
 /// ```
-#[derive(Args, Clone, Debug, Deserialize, Serialize)]
+#[derive(Args, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ScepConfig {
     /// Enable the SCEP endpoint at `/scep`.
@@ -54,10 +54,30 @@ pub struct ScepConfig {
     /// Name of the `[templates.<name>]` section whose issuance policy (key type and size,
     /// EKU, Subject/SAN patterns, validity) is enforced on SCEP enrollments.
     ///
-    /// When unset, a baseline policy applies: RSA keys of at least 2048 bits, no
+    /// When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
+    /// P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
     /// `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
     #[clap(long, verbatim_doc_comment)]
     pub scep_template: Option<String>,
+}
+
+// Manual impl: `scep_challenge_password` must never reach a log line.
+impl std::fmt::Debug for ScepConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScepConfig")
+            .field("scep_enabled", &self.scep_enabled)
+            .field("scep_ca_uid", &self.scep_ca_uid)
+            .field(
+                "scep_challenge_password",
+                &self.scep_challenge_password.as_ref().map(|_| "[****]"),
+            )
+            .field(
+                "scep_allow_renewal_without_challenge",
+                &self.scep_allow_renewal_without_challenge,
+            )
+            .field("scep_template", &self.scep_template)
+            .finish()
+    }
 }
 
 impl Default for ScepConfig {

@@ -2604,6 +2604,11 @@ paths:
       responses:
         '200':
           description: Base64-encoded certs-only PKCS#7 containing the issued certificate
+          headers:
+            Content-Transfer-Encoding:
+              schema:
+                type: string
+                enum: [base64]
           content:
             application/pkcs7-mime; smime-type=certs-only:
               schema:
@@ -2635,6 +2640,11 @@ paths:
       responses:
         '200':
           description: Base64-encoded certs-only PKCS#7 containing the renewed certificate
+          headers:
+            Content-Transfer-Encoding:
+              schema:
+                type: string
+                enum: [base64]
           content:
             application/pkcs7-mime; smime-type=certs-only:
               schema:

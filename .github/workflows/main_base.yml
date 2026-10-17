@@ -38,7 +38,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/install-mise
       - name: Check the randomness policy cannot be bypassed
         run: mise run audit:rng-policy
@@ -152,21 +152,21 @@ jobs:
         type: [scep-interop, est-interop]
 
     steps:
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: 1.97.0
+          toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - uses: ./.github/actions/install-mise
 
       # estclient / scepclient are Go programs built by the interop scripts
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: stable
+          go-version-file: .mise/scripts/kmip-go/go.mod
 
       - name: Interop test
         env:
