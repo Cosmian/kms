@@ -877,26 +877,32 @@ async fn test_request_work_limits() -> KResult<()> {
         )
         .await?
         .unique_identifier;
-    let derive = DeriveKey::new_single_base(
-        ObjectType::SymmetricKey,
-        base_key,
-        DerivationMethod::PBKDF2,
-        DerivationParameters {
-            salt: Some(b"limits salt".to_vec()),
-            iteration_count: Some(i32::MAX),
-            ..DerivationParameters::default()
-        },
-        Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(128),
-            object_type: Some(ObjectType::SymmetricKey),
-            ..Attributes::default()
-        },
-    );
-    let err = kms
-        .derive_key(derive, &owner)
-        .await
-        .expect_err("an excessive iteration count must be refused");
-    assert!(err.to_string().contains("iteration count"), "{err}");
+    for iteration_count in [i32::MAX, 0, -1] {
+        let derive = DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            base_key.clone(),
+            DerivationMethod::PBKDF2,
+            DerivationParameters {
+                salt: Some(b"limits salt".to_vec()),
+                iteration_count: Some(iteration_count),
+                ..DerivationParameters::default()
+            },
+            Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(128),
+                object_type: Some(ObjectType::SymmetricKey),
+                ..Attributes::default()
+            },
+        );
+        let err = kms
+            .derive_key(derive, &owner)
+            .await
+            .expect_err("an out-of-range iteration count must be refused");
+        assert!(
+            matches!(err, KmsError::InvalidRequest(_))
+                && err.to_string().contains("iteration count"),
+            "{iteration_count}: {err:?}"
+        );
+    }
     Ok(())
 }

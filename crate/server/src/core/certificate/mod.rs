@@ -33,7 +33,10 @@ pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
 ///
 /// `.local` and `.internal` are DNS suffixes, not file extensions; the comparison is done on
 /// ASCII-case-insensitive bytes, so it covers multi-label names such as `svc.cluster.local`.
+/// A single trailing dot (fully-qualified form, e.g. `localhost.`) resolves identically, so it
+/// is ignored.
 pub(crate) fn is_blocked_hostname(host: &str) -> bool {
+    let host = host.strip_suffix('.').unwrap_or(host);
     let ends_with = |suffix: &str| {
         host.len()
             .checked_sub(suffix.len())
@@ -123,8 +126,11 @@ mod tests {
         for host in [
             "localhost",
             "LocalHost",
+            "localhost.",
             "metadata.google.internal",
+            "metadata.google.internal.",
             "svc.cluster.LOCAL",
+            "foo.local.",
             "a.internal",
         ] {
             assert!(is_blocked_hostname(host), "{host}");

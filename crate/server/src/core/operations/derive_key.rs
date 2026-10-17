@@ -215,11 +215,11 @@ async fn derive_key_symmetric(
                 .unwrap_or(DEFAULT_PBKDF2_ITERATIONS);
             let iterations_u32 = u32::try_from(iterations)
                 .ok()
-                .filter(|i| *i <= MAX_PBKDF2_ITERATIONS)
+                .filter(|i| (1..=MAX_PBKDF2_ITERATIONS).contains(i))
                 .ok_or_else(|| {
                     KmsError::InvalidRequest(format!(
-                        "Invalid iteration count {iterations}: must be a non-negative value of \
-                         at most {MAX_PBKDF2_ITERATIONS}"
+                        "Invalid iteration count {iterations}: must be between 1 and \
+                         {MAX_PBKDF2_ITERATIONS}"
                     ))
                 })?;
 
