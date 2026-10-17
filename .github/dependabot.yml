@@ -70,7 +70,8 @@ updates:
   - package-ecosystem: docker
     directories:
       - /.mise/scripts/docker/ase
-      - /.mise/scripts/edb_tde
+      # /.mise/scripts/edb_tde is excluded: its base image is on the private docker.enterprisedb.com
+      # registry (no credentials for Dependabot -> private_source_authentication_failure).
     schedule:
       interval: weekly
     ignore:
