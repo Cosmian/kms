@@ -1248,21 +1248,23 @@ dependencies = [
 
 [[package]]
 name = "clap-config-fallback"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2f61a99d6c64d6325cde9a15be55c7674ad1cd6446e41a2b8e662ae5c328b10"
+checksum = "2192077c97f7f8ecae181a5228601bd5c9160e8090999406852279edbfb42b2b"
 dependencies = [
  "clap",
  "clap-config-fallback-derive",
  "figment",
  "serde",
+ "serde_json",
+ "toml 0.8.23",
 ]
 
 [[package]]
 name = "clap-config-fallback-derive"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4911ec65e11d77a914d9a0bfe0063e83fb33152b770f41442a0f5b303961be29"
+checksum = "b43f83bcf8b1823446a3adaebdf90522ddb035011b0a2c6c9cbbc48199d1a045"
 dependencies = [
  "darling 0.21.3",
  "derive_more 2.1.1",
@@ -3021,7 +3023,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3113,8 +3115,6 @@ checksum = "8cb01cd46b0cf372153850f4c6c272d9cbea2da513e07538405148f95bd789f3"
 dependencies = [
  "atomic",
  "serde",
- "serde_json",
- "toml 0.8.23",
  "uncased",
  "version_check",
 ]
@@ -4851,7 +4851,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5908,7 +5908,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6402,7 +6402,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6461,7 +6461,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7348,7 +7348,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8444,7 +8444,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
