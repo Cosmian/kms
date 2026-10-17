@@ -175,6 +175,20 @@ require_cmd() {
 # Usage: has_cmd <cmd>
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+# Run a command, retrying on failure (transient network errors on CI runners: DNS, 5xx).
+# Usage: retry <command> [args...]   (3 attempts, 10 s then 20 s backoff)
+retry() {
+  local attempt=1 max=3
+  until "$@"; do
+    if [ "$attempt" -ge "$max" ]; then
+      return 1
+    fi
+    print_warning "'$1' failed (attempt ${attempt}/${max}); retrying in $((attempt * 10))s"
+    sleep $((attempt * 10))
+    attempt=$((attempt + 1))
+  done
+}
+
 # Ensure pnpm >= 10 is available on PATH.
 #
 # The UI lockfile uses lockfileVersion 9.0 which requires pnpm 10+. Some

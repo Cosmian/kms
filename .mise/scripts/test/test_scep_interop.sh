@@ -48,7 +48,7 @@ print_header "Step 2: Build scepclient ${SCEPCLIENT_VERSION} (AES-128-CBC)"
 # refuse (RFC 8894 §3.5.2: only advertised capabilities may be used). The same client library
 # supports AES-128-CBC through one package variable, so one line is injected before building.
 require_cmd git
-git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com/micromdm/scep.git "${WORKDIR}/scep-src"
+retry git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com/micromdm/scep.git "${WORKDIR}/scep-src"
 [ "$(git -C "${WORKDIR}/scep-src" rev-parse HEAD)" = "${SCEPCLIENT_COMMIT}" ] ||
   print_error "scepclient ${SCEPCLIENT_VERSION} does not resolve to the pinned commit ${SCEPCLIENT_COMMIT}"
 (
@@ -58,9 +58,9 @@ git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com/micro
   # a silently unapplied patch would leave the single-DES client and fail the test misleadingly
   grep -q 'pkcs7.ContentEncryptionAlgorithm' cmd/scepclient/scepclient.go ||
     print_error "AES-128-CBC patch did not apply to scepclient ${SCEPCLIENT_VERSION}"
-  go get github.com/smallstep/pkcs7@v0.1.1
+  retry go get github.com/smallstep/pkcs7@v0.1.1
   mkdir -p "${WORKDIR}/bin"
-  go build -o "${WORKDIR}/bin/scepclient" ./cmd/scepclient
+  retry go build -o "${WORKDIR}/bin/scepclient" ./cmd/scepclient
 )
 SCEPCLIENT="${WORKDIR}/bin/scepclient"
 
