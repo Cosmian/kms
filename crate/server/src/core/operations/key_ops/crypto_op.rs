@@ -335,6 +335,7 @@ impl KMS {
         Candidate: Borrow<ObjectWithMetadata>,
     {
         let mut eligible: Vec<Candidate> = Vec::new();
+        let mut found_but_no_permission = false;
         // Track state mismatches so we can surface a useful error instead of "not found".
         let mut wrong_state: Option<(String, State)> = None;
 
@@ -355,6 +356,18 @@ impl KMS {
                     .await?
             };
             if !authorized {
+                // A caller that already holds an explicit grant on the key learns nothing
+                // new from a permission error (XKS needs InvalidKeyUsage for a revoked
+                // operation); any other caller gets "not found" (COSMIAN-2026-037).
+                if !found_but_no_permission
+                    && !self
+                        .database
+                        .list_user_operations_on_object(owm.id(), user, true)
+                        .await?
+                        .is_empty()
+                {
+                    found_but_no_permission = true;
+                }
                 continue;
             }
 
@@ -385,7 +398,12 @@ impl KMS {
                 .into_iter()
                 .next()
                 .ok_or_else(|| KmsError::ItemNotFound("unreachable: len == 1".to_owned())),
-            0 => Err(if let Some((uid, state)) = wrong_state {
+            0 => Err(if found_but_no_permission {
+                KmsError::Unauthorized(format!(
+                    "{}: user {user} does not have permission to use key: {uid_display}",
+                    Spec::OP_NAME,
+                ))
+            } else if let Some((uid, state)) = wrong_state {
                 KmsError::Kmip21Error(
                     ErrorReason::Permission_Denied,
                     format!(
