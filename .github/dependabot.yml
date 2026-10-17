@@ -77,6 +77,9 @@ updates:
       # Also keeps SAP ASE on Ubuntu 22.04: it needs libaio.so.1, renamed libaio.so.1t64 from 24.04 on.
       - dependency-name: '*'
         update-types: [version-update:semver-major]
+      # Ubuntu YY.MM tags: 22.04 -> 22.10 is a "minor" bump into an EOL non-LTS release (broke #1299).
+      - dependency-name: ubuntu
+        update-types: [version-update:semver-minor]
     groups:
       docker-minor-patch:
         applies-to: version-updates
