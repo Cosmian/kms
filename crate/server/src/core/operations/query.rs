@@ -122,6 +122,12 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
                         prediction_resistance: Some(false),
                     }]);
                 }
+                // KMIP 2.1 §6.1.40: nothing to return, so nothing is returned; no Protection
+                // Storage Mask is supported (requests carrying masks are rejected with
+                // Feature_Not_Supported).
+                QueryFunction::QueryStorageProtectionMasks => {
+                    response.protection_storage_masks = None;
+                }
                 QueryFunction::QueryApplicationNamespaces
                 | QueryFunction::QueryExtensionList
                 | QueryFunction::QueryExtensionMap
@@ -130,8 +136,7 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
                 | QueryFunction::QueryProfiles
                 | QueryFunction::QueryCapabilities
                 | QueryFunction::QueryClientRegistrationMethods
-                | QueryFunction::QueryDefaultsInformation
-                | QueryFunction::QueryStorageProtectionMasks => {}
+                | QueryFunction::QueryDefaultsInformation => {}
             }
         }
     }

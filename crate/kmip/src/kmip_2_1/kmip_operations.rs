@@ -860,8 +860,9 @@ impl_display!(RNGSeed, "RNGSeed", { req_b64 data });
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    /// Number of bytes of seed data accepted by the RNG.
-    #[serde(alias = "DataLength")]
+    /// KMIP 2.1 §6.1.50: the response field is `Data Length`.
+    /// `AmountOfSeedData` is still accepted from servers older than this fix.
+    #[serde(rename = "DataLength", alias = "AmountOfSeedData")]
     pub amount_of_seed_data: i32,
 }
 

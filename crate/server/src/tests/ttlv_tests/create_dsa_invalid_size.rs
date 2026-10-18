@@ -63,7 +63,7 @@ fn test_create_dsa_invalid_size() {
     );
     assert_eq!(
         batch_item.result_reason,
-        Some(ErrorReason::Operation_Not_Supported),
-        "Expected Not Supported reason"
+        Some(ErrorReason::Feature_Not_Supported),
+        "Expected Feature_Not_Supported reason"
     );
 }
