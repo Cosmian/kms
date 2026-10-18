@@ -135,9 +135,11 @@ gate_run "xks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")"
 gate_run "ui" "$(first_reason "$(reason_non_fips_only)")" \
   bash "${TASK_DIR}/ui" --variant "${VARIANT}" --link "${LINK}"
 
-# ── Groups requiring cloud/service credentials ──────────────────────────────────
-gate_run "google-cse" "$(first_reason "$(reason_needs_env TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)")" \
+# ── Google CSE: offline suites always run; the real-Google test self-skips without OAuth secrets ──
+gate_run "google-cse" "" \
   bash "${TASK_DIR}/google-cse" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Groups requiring cloud/service credentials ──────────────────────────────────
 gate_run "secret_aws" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_env AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION)")" \
   bash "${TASK_DIR}/secret_aws" --variant "${VARIANT}" --link "${LINK}"
 gate_run "secret_azure" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_env AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME)")" \

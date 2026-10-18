@@ -302,6 +302,33 @@ pub(crate) async fn test_app(
 pub(crate) async fn test_app_with_clap_config(
     clap_config: ClapConfig,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let google_cse_config = google_cse_auth(None)
+        .await
+        .expect("cannot setup Google CSE auth");
+    Box::pin(test_app_with_google_cse(
+        clap_config,
+        Some(google_cse_config),
+    ))
+    .await
+}
+
+/// Creates a test application instance using an explicit `ClapConfig` and an explicit
+/// Google CSE token-validation configuration.
+///
+/// Combined with `google_cse_disable_tokens_validation = false`, a locally built
+/// `GoogleCseConfig` lets the tests exercise the real validation code without any
+/// access to Google.
+pub(crate) async fn test_app_with_google_cse(
+    clap_config: ClapConfig,
+    google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let kms_server = Box::pin(test_kms_with_google_cse(clap_config)).await;
+    test_app_with_kms(kms_server, google_cse_config).await
+}
+
+/// Instantiate a KMS from `clap_config`, creating the Google CSE migration key pair when
+/// Google CSE is enabled.
+pub(crate) async fn test_kms_with_google_cse(clap_config: ClapConfig) -> Arc<KMS> {
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
 
@@ -316,7 +343,14 @@ pub(crate) async fn test_app_with_clap_config(
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
     }
+    kms_server
+}
 
+/// The in-process test application served by an already instantiated KMS.
+pub(crate) async fn test_app_with_kms(
+    kms_server: Arc<KMS>,
+    google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
@@ -333,12 +367,8 @@ pub(crate) async fn test_app_with_clap_config(
         .service(routes::access::get_create_access)
         .service(routes::access::get_privileged_access);
 
-    let google_cse_jwt_config = google_cse_auth(None)
-        .await
-        .expect("cannot setup Google CSE auth");
-
     let google_cse_scope = web::scope("/google_cse")
-        .app_data(Data::new(Some(google_cse_jwt_config)))
+        .app_data(Data::new(google_cse_config))
         .service(routes::google_cse::get_status)
         .service(routes::google_cse::wrap)
         .service(routes::google_cse::unwrap)
@@ -369,6 +399,31 @@ pub(crate) async fn test_app_with_clap_config(
     app = app.service(crypto_scope);
 
     test::init_service(app).await
+}
+
+/// Serve the `privilegedunwrap` endpoint of `kms` on a real loopback HTTP socket and return
+/// its KACLS URL (`http://127.0.0.1:<port>/google_cse`). `privilegedunwrap` is the only call
+/// an original KACLS receives during a migration. Must run inside an actix runtime
+/// (`#[actix_web::test]`).
+pub(crate) fn spawn_google_cse_http_server(
+    kms: Arc<KMS>,
+    google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+) -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("cannot bind loopback port");
+    let port = listener.local_addr().expect("no local address").port();
+    let server = actix_web::HttpServer::new(move || {
+        App::new().app_data(Data::new(kms.clone())).service(
+            web::scope("/google_cse")
+                .app_data(Data::new(google_cse_config.clone()))
+                .service(routes::google_cse::privileged_unwrap),
+        )
+    })
+    .workers(1)
+    .listen(listener)
+    .expect("cannot listen on loopback port")
+    .run();
+    actix_web::rt::spawn(server);
+    format!("http://127.0.0.1:{port}/google_cse")
 }
 
 /// Creates a test application that records every KMIP request to an audit file.
@@ -634,4 +689,46 @@ where
     }
     let body = read_body(res).await;
     Ok(serde_json::from_slice(&body)?)
+}
+
+/// Post `body` as JSON to `uri` and return the HTTP status together with the parsed JSON
+/// reply (`Value::Null` if the reply is empty or not JSON), whatever the status.
+pub(crate) async fn post_json_raw<B, O, S>(
+    app: &S,
+    body: O,
+    uri: &str,
+) -> (StatusCode, serde_json::Value)
+where
+    O: Serialize,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri(uri)
+        .set_json(&body)
+        .to_request();
+    let res = call_service(app, req).await;
+    let status = res.status();
+    let body = read_body(res).await;
+    (
+        status,
+        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+/// GET `uri` and return the HTTP status together with the parsed JSON reply
+/// (`Value::Null` if the reply is empty or not JSON), whatever the status.
+pub(crate) async fn get_json_raw<B, S>(app: &S, uri: &str) -> (StatusCode, serde_json::Value)
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get().uri(uri).to_request();
+    let res = call_service(app, req).await;
+    let status = res.status();
+    let body = read_body(res).await;
+    (
+        status,
+        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+    )
 }

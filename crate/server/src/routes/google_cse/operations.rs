@@ -264,6 +264,7 @@ pub struct WrapRequest {
     pub authentication: String,
     pub authorization: String,
     pub key: String,
+    #[serde(default)]
     pub reason: String,
 }
 
@@ -351,6 +352,7 @@ pub async fn wrap(
 pub struct UnwrapRequest {
     pub authentication: String,
     pub authorization: String,
+    #[serde(default)]
     pub reason: String,
     pub wrapped_key: String,
 }
@@ -431,6 +433,7 @@ pub struct PrivateKeySignRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rsa_pss_salt_length: Option<i32>,
     /// A passthrough JSON string providing additional context about the operation. The JSON provided should be sanitized before being displayed. Max size: 1 KB.
+    #[serde(default)]
     pub reason: String,
     /// The base64-encoded wrapped private key. Max size: 8 KB.
     pub wrapped_private_key: String,
@@ -518,6 +521,7 @@ pub struct PrivateKeyDecryptRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rsa_oaep_label: Option<String>,
     /// A passthrough JSON string providing additional context about the operation. The JSON provided should be sanitized before being displayed. Max size: 1 KB.
+    #[serde(default)]
     pub reason: String,
     /// The base64-encoded wrapped private key. Max size: 8 KB.
     pub wrapped_private_key: String,
@@ -605,7 +609,8 @@ pub async fn private_key_decrypt(
         ctx.set_rsa_padding(Padding::PKCS1)?;
     } else {
         if let Some(label) = request.rsa_oaep_label {
-            ctx.set_rsa_oaep_label(label.as_bytes())?;
+            // Google sends the OAEP label base64-encoded
+            ctx.set_rsa_oaep_label(&general_purpose::STANDARD.decode(label)?)?;
         }
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
         let md = match request.algorithm.as_str() {
@@ -641,6 +646,7 @@ pub async fn private_key_decrypt(
 pub struct DigestRequest {
     pub authorization: String,
     pub wrapped_key: String,
+    #[serde(default)]
     pub reason: String,
 }
 
@@ -699,8 +705,10 @@ pub async fn digest(
 pub struct PrivilegedWrapRequest {
     pub authentication: String,
     pub key: String,
+    #[serde(default)]
     pub perimeter_id: String,
     pub resource_name: String,
+    #[serde(default)]
     pub reason: String,
 }
 
@@ -747,6 +755,7 @@ pub async fn privileged_wrap(
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PrivilegedUnwrapRequest {
     pub authentication: String,
+    #[serde(default)]
     pub reason: String,
     pub resource_name: String,
     pub wrapped_key: String,
@@ -814,6 +823,7 @@ pub struct PrivilegedPrivateKeyDecryptRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rsa_oaep_label: Option<String>,
     /// A passthrough JSON string providing additional context about the operation. The JSON provided should be sanitized before being displayed. Max size: 1 KB.
+    #[serde(default)]
     pub reason: String,
     /// The base64-encoded wrapped private key. Max size: 8 KB.
     pub wrapped_private_key: String,
@@ -893,7 +903,8 @@ pub async fn privileged_private_key_decrypt(
         ctx.set_rsa_padding(Padding::PKCS1)?;
     } else {
         if let Some(label) = request.rsa_oaep_label {
-            ctx.set_rsa_oaep_label(label.as_bytes())?;
+            // Google sends the OAEP label base64-encoded
+            ctx.set_rsa_oaep_label(&general_purpose::STANDARD.decode(label)?)?;
         }
         ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
         let md = match request.algorithm.as_str() {
@@ -994,6 +1005,7 @@ pub fn create_jwt(
 pub struct RewrapRequest {
     pub authorization: String,
     pub original_kacls_url: String,
+    #[serde(default)]
     pub reason: String,
     pub wrapped_key: String,
 }
@@ -1021,6 +1033,25 @@ pub async fn rewrap(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<RewrapResponse> {
+    // SECURITY: the URL is validated (SSRF) and its resolved address pinned in the client.
+    rewrap_with_client(request, kacls_url, cse_config, kms, kacls_client).await
+}
+
+/// [`rewrap`], with the client used to reach the original KACLS produced by `connect`
+/// (production: `kacls_client`, which enforces the SSRF guard).
+///
+/// # Errors
+/// Same as [`rewrap`], plus any error returned by `connect`.
+pub(crate) async fn rewrap_with_client<F>(
+    request: RewrapRequest,
+    kacls_url: &str,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kms: &Arc<KMS>,
+    connect: F,
+) -> KResult<RewrapResponse>
+where
+    F: AsyncFnOnce(&str) -> KResult<Client>,
+{
     debug!("entering");
 
     // Authorization & identity
@@ -1083,11 +1114,12 @@ pub async fn rewrap(
         &request.original_kacls_url,
         &resource_name,
     )?;
-    debug!("Generated JWT for original KACLS: {jwt:?}");
+    debug!("Generated JWT for original KACLS");
 
     // Call privileged unwrap on original KACLS
-    // SECURITY: the URL is validated (SSRF) and its resolved address pinned in the client.
-    let client = kacls_client(&request.original_kacls_url).await?;
+    // Called after the token validation and the key fetch: unauthenticated callers must not
+    // trigger any DNS lookup.
+    let client = connect(&request.original_kacls_url).await?;
     let unwrap_request = PrivilegedUnwrapRequest {
         authentication: jwt,
         wrapped_key: request.wrapped_key.clone(),
@@ -1296,7 +1328,46 @@ pub fn compute_resource_key_hash(
 
 #[cfg(test)]
 mod tests {
-    use super::kacls_client;
+    use super::{Role, get_hash_algorithm, kacls_client};
+
+    #[test]
+    #[expect(clippy::unwrap_used)]
+    fn get_hash_algorithm_all_names() {
+        for (name, size) in [
+            ("sha-256", 32),
+            ("md-5", 16),
+            ("sha-1", 20),
+            ("sha-224", 28),
+            ("sha-384", 48),
+            ("sha-512", 64),
+            ("sha3-224", 28),
+            ("sha3-256", 32),
+            ("sha3-384", 48),
+            ("sha3-512", 64),
+        ] {
+            assert_eq!(get_hash_algorithm(name).unwrap().size(), size, "{name}");
+        }
+        let err = get_hash_algorithm("bogus").err().unwrap();
+        assert!(
+            err.to_string().contains("Invalid spki hash algorithm"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn role_strings() {
+        for (role, expected) in [
+            (Role::Reader, "reader"),
+            (Role::Signer, "signer"),
+            (Role::Writer, "writer"),
+            (Role::Upgrader, "upgrader"),
+            (Role::Migrator, "migrator"),
+            (Role::Verifier, "verifier"),
+            (Role::Decrypter, "decrypter"),
+        ] {
+            assert_eq!(Role::str(&role), expected);
+        }
+    }
 
     /// IPv6 literals (bracketed in URLs), IPv4-mapped addresses and internal names are
     /// refused before any network I/O (COSMIAN-2026-035).
