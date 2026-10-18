@@ -26,8 +26,6 @@ use crate::{
             key_ops::ObjectLifecycleExt,
         },
     },
-    error::KmsError,
-    kms_bail,
     middlewares::UserId,
     result::KResult,
 };
@@ -83,9 +81,7 @@ pub(crate) async fn certify_for_owner(
             .as_ref()
             .map_or(0, Vec::len)
     );
-    if request.protection_storage_masks.is_some() {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
     // To generate the certificate, we really want to compose the following functions
     // generate_x509(get_issuer(get_subject)))

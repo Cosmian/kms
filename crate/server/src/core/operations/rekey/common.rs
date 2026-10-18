@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_data_structures::KeyWrappingSpecification,
@@ -73,12 +73,15 @@ impl KMS {
             );
             if !is_eligible {
                 if !is_tag_query {
-                    return Err(KmsError::InvalidRequest(format!(
-                        "key '{}' is in state '{}' — only Active, Deactivated, or Compromised \
-                         keys can be rotated",
-                        owm.id(),
-                        owm.state()
-                    )));
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Wrong_Key_Lifecycle_State,
+                        format!(
+                            "key '{}' is in state '{}' — only Active, Deactivated, or Compromised \
+                             keys can be rotated",
+                            owm.id(),
+                            owm.state()
+                        ),
+                    ));
                 }
                 continue;
             }

@@ -177,9 +177,34 @@ pub(crate) async fn message(
                         Some(error_message),
                         None,
                     ),
+                    Err(KmsError::Kmip14Error(reason, error_message)) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(reason.into()),
+                        Some(error_message),
+                        None,
+                    ),
+                    Err(
+                        err @ (KmsError::InvalidRequest(_) | KmsError::InconsistentOperation(_)),
+                    ) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Invalid_Field),
+                        Some(err.to_string()),
+                        None,
+                    ),
+                    Err(
+                        err @ (KmsError::NotSupported(_)
+                        | KmsError::UnsupportedAlgorithm(_)
+                        | KmsError::UnsupportedPlaceholder
+                        | KmsError::UnsupportedProtectionMasks),
+                    ) => (
+                        ResultStatusEnumeration::OperationFailed,
+                        Some(ErrorReason::Feature_Not_Supported),
+                        Some(err.to_string()),
+                        None,
+                    ),
                     Err(err) => (
                         ResultStatusEnumeration::OperationFailed,
-                        Some(ErrorReason::Operation_Not_Supported),
+                        Some(ErrorReason::General_Failure),
                         Some(err.to_string()),
                         None,
                     ),
