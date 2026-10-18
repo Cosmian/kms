@@ -152,23 +152,36 @@ export const loginAuthVerifier = async (
     return (data as { next_step: AuthVerifierLoginNextStep }).next_step;
 };
 
-export const sendKmipRequest = async (request: object, serverUrl: string) => {
+interface KmipRequestOptions {
+    timeoutMs?: number;
+}
+
+export const sendKmipRequest = async (request: object, serverUrl: string, options?: KmipRequestOptions) => {
     const kmsUrl = serverUrl + "/kmip/2_1";
-    const response = await fetch(kmsUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-    });
+    const timeoutMs = options?.timeoutMs;
+    const controller = timeoutMs === undefined ? undefined : new AbortController();
+    const timeoutHandle = timeoutMs === undefined ? undefined : setTimeout(() => controller?.abort(), timeoutMs);
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+    try {
+        const response = await fetch(kmsUrl, {
+            method: "POST",
+            credentials: "include",
+            signal: controller?.signal,
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(request),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+        }
+
+        return JSON.stringify(await response.json());
+    } finally {
+        clearTimeout(timeoutHandle);
     }
-
-    return JSON.stringify(await response.json());
 };
 
 export const postNoTTLVRequest = async (path: string, request: object, serverUrl: string) => {

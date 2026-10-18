@@ -174,7 +174,6 @@ Crate path: `crate/server`
 | `debug` | `exporting private key with format: {:?}` | `src/core/operations/export_get.rs` | - | - |
 | `debug` | `fetching {jwks_uri}` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`: JWKS endpoint URL | - |
 | `debug` | `from_rsa` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `Generated JWT for original KACLS: {jwt:?}` | `src/routes/google_cse/operations.rs` | `jwt`: JWT token (debug display) | - |
 | `debug` | `Get Attributes: available vendor attributes: [{}]` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: fallback vendor attribute match {}:{} from object attributes` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: no vendor attributes present on object` | `src/core/operations/attributes/get.rs` | - | - |
@@ -696,7 +695,6 @@ Crate path: `crate/server`
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
-| `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
@@ -771,6 +769,7 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: rate_limit_per_second is not set: request rate limiting is disabled.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `Socket server: cannot set socket timeouts, dropping connection: {e}` | `src/socket_server.rs` | `e` | - |
 | `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
+| `debug` | `Generated JWT for original KACLS` | `src/routes/google_cse/operations.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1425,7 +1424,7 @@ Crate path: `ui/src/`
 | `error` | `Error creating FPE key:`                                | `actions/FPE/FpeKeysCreate.tsx`                   | —                                                             | —               |
 | `error` | `Error fetching create permission:`                      | `actions/Access/AccessObtained.tsx`               | —                                                             | —               |
 | `error` | `Error fetching CSE information:`                        | `actions/Keys/CseInfo.tsx`                        | —                                                             | —               |
-| `error` | `Error fetching Get for ${uid}:`                         | `components/common/Locate.tsx`                    | `uid`                                                         | ×4 in this file |
+| `error` | `Error fetching Get for ${uid}:`                         | `components/common/Locate.tsx`                    | `uid`                                                         | ×3 in this file |
 | `error` | `Error fetching HSM status:`                             | `actions/Objects/HsmStatus.tsx`                   | —                                                             | —               |
 | `error` | `Error fetching privileged access:`                      | `actions/Access/AccessGrant.tsx`                  | —                                                             | —               |
 | `error` | `Error fetching privileged access:`                      | `actions/Access/AccessRevoke.tsx`                 | —                                                             | —               |
