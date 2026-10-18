@@ -305,7 +305,6 @@ fn map_kmip_hash_to_openssl(kmip_hash: KmipHash) -> MessageDigest {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
 
     use super::*;

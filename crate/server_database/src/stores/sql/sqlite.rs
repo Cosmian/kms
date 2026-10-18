@@ -414,9 +414,13 @@ impl SqlitePool {
     /// Returns a reader connection using round-robin distribution.
     fn reader(&self) -> &Connection {
         let idx = self.reader_idx.fetch_add(1, Ordering::Relaxed) % self.readers.len();
-        #[allow(clippy::indexing_slicing)]
         // SAFETY: idx is computed modulo readers.len(), which is always >= 1.
-        &self.readers[idx]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "idx is taken modulo readers.len(), which is >= 1"
+        )]
+        let reader = &self.readers[idx];
+        reader
     }
 
     /// Read a value from the `parameters` table by name, or `None` if absent.
@@ -1837,3 +1841,7 @@ mod tests {
         expect_crl_issuers(&SqlitePool::instantiate(&file, true, None).await?, 0).await
     }
 }
+
+#[cfg(test)]
+#[path = "sqlite_characterization_tests.rs"]
+mod characterization_tests;

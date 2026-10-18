@@ -1241,7 +1241,6 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_used)]
 mod tests {
     use crate::{
         kmip_1_4::kmip_attributes::Attribute,

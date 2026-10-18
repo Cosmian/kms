@@ -243,7 +243,6 @@ impl Display for MainDBConfig {
                 }
                 "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
                 #[cfg(feature = "non-fips")]
-                #[allow(deprecated)]
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => write!(
                     f,
@@ -299,7 +298,6 @@ impl MainDBConfig {
                     MainDbParams::Sqlite(path, self.max_connections)
                 }
                 #[cfg(feature = "non-fips")]
-                #[allow(deprecated)]
                 // Label will still be accepted until all data is migrated
                 "redis-findex" => {
                     let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")
@@ -390,12 +388,6 @@ fn ensure_value(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::unwrap_in_result,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use super::*;
 
@@ -409,7 +401,7 @@ mod tests {
     #[test]
     fn test_ensure_url_string_valid_postgres_scheme() {
         let result = ensure_url_string(Some("postgres://host/db"), "UNUSED_ENV");
-        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "postgres://host/db");
     }
 
     #[test]

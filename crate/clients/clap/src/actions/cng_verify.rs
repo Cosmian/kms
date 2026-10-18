@@ -12,7 +12,8 @@
     clippy::doc_markdown,
     clippy::indexing_slicing,
     clippy::missing_asserts_for_indexing,
-    clippy::print_stdout
+    clippy::print_stdout,
+    reason = "Win32 CNG FFI verifier; cfg(windows)-only, not lintable on non-Windows hosts"
 )]
 pub(crate) mod win {
     use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
@@ -34,10 +35,8 @@ pub(crate) mod win {
     const KSP_RSAPUBLIC_MAGIC: u32 = 0x3141_5352;
 
     const ERROR_SUCCESS: i32 = 0;
-    #[allow(clippy::cast_possible_wrap)]
-    const NTE_BAD_KEYSET: i32 = 0x8009_0016_u32 as i32;
-    #[allow(clippy::cast_possible_wrap)]
-    const NTE_NOT_SUPPORTED: i32 = 0x8009_0029_u32 as i32;
+    const NTE_BAD_KEYSET: i32 = 0x8009_0016_u32.cast_signed();
+    const NTE_NOT_SUPPORTED: i32 = 0x8009_0029_u32.cast_signed();
 
     const BCRYPT_PAD_PKCS1: u32 = 0x0000_0002;
     const BCRYPT_PAD_OAEP: u32 = 0x0000_0004;

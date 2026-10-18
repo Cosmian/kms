@@ -74,7 +74,7 @@ async fn test_aad_binding() -> KResult<()> {
     // Wrong AAD → non-200
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":  enc_resp["protected"],
             "iv":         enc_resp["iv"],
             "ciphertext": enc_resp["ciphertext"],
@@ -268,7 +268,7 @@ async fn test_rsa_oaep_aad_binding() -> KResult<()> {
     // Tampered AAD → must fail (AES-GCM authentication tag covers the AAD)
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":    enc_resp["protected"],
             "encrypted_key": enc_resp["encrypted_key"],
             "iv":           enc_resp["iv"],

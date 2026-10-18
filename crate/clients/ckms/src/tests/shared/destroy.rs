@@ -57,9 +57,9 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str, _remove: bool) -> Cosmian
     // should not be able to Get....
     assert!(
         export_key(ExportKeyParams {
-            cli_conf_path: cli_conf_path.to_string(),
+            cli_conf_path: cli_conf_path.to_owned(),
             sub_command: "ec".to_owned(),
-            key_id: key_id.to_string(),
+            key_id: key_id.to_owned(),
             key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
             ..Default::default()
         })
@@ -69,9 +69,9 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str, _remove: bool) -> Cosmian
     // depending on whether the key is removed or not,
     // the key metadata should be exportable or not
     let export_res = export_key(ExportKeyParams {
-        cli_conf_path: cli_conf_path.to_string(),
+        cli_conf_path: cli_conf_path.to_owned(),
         sub_command: "ec".to_owned(),
-        key_id: key_id.to_string(),
+        key_id: key_id.to_owned(),
         key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
         allow_revoked: true,
         ..Default::default()
@@ -403,36 +403,30 @@ async fn test_destroy_cover_crypt() -> CosmianResult<()> {
         let tmp_dir = TempDir::new()?;
         let tmp_path = tmp_dir.path();
         // should able to Get the Master Keys and user key 2
-        assert!(
-            export_key(ExportKeyParams {
-                cli_conf_path: owner_client_conf_path.clone(),
-                sub_command: "cc".to_owned(),
-                key_id: master_private_key_id,
-                key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-                ..Default::default()
-            })
-            .is_ok()
-        );
-        assert!(
-            export_key(ExportKeyParams {
-                cli_conf_path: owner_client_conf_path.clone(),
-                sub_command: "cc".to_owned(),
-                key_id: master_public_key_id,
-                key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-                ..Default::default()
-            })
-            .is_ok()
-        );
-        assert!(
-            export_key(ExportKeyParams {
-                cli_conf_path: owner_client_conf_path,
-                sub_command: "cc".to_owned(),
-                key_id: user_key_id_2,
-                key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
-                ..Default::default()
-            })
-            .is_ok()
-        );
+        export_key(ExportKeyParams {
+            cli_conf_path: owner_client_conf_path.clone(),
+            sub_command: "cc".to_owned(),
+            key_id: master_private_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        export_key(ExportKeyParams {
+            cli_conf_path: owner_client_conf_path.clone(),
+            sub_command: "cc".to_owned(),
+            key_id: master_public_key_id,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        export_key(ExportKeyParams {
+            cli_conf_path: owner_client_conf_path,
+            sub_command: "cc".to_owned(),
+            key_id: user_key_id_2,
+            key_file: tmp_path.join("output.export").to_str().unwrap().to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
     }
 
     Ok(())

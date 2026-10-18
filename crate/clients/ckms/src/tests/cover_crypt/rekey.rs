@@ -136,7 +136,7 @@ async fn test_rekey_error() -> CosmianResult<()> {
         cli_conf_path: owner_client_conf_path.clone(),
         sub_command: SUB_COMMAND.to_owned(),
         key_id: master_secret_key_id,
-        key_file: exported_wrapped_key_file.to_str().unwrap().to_string(),
+        key_file: exported_wrapped_key_file.to_str().unwrap().to_owned(),
         wrap_key_id: Some(symmetric_key_id),
         ..Default::default()
     })?;
@@ -144,7 +144,7 @@ async fn test_rekey_error() -> CosmianResult<()> {
     // import it wrapped
     let wrapped_key_id = import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: SUB_COMMAND.to_string(),
+        sub_command: SUB_COMMAND.to_owned(),
         key_file: exported_wrapped_key_file.to_string_lossy().to_string(),
         replace_existing: true,
         ..Default::default()
@@ -173,7 +173,7 @@ fn test_cc() -> CosmianResult<()> {
     let (mut msk, _mpk) = cover_crypt.setup()?;
     msk.access_structure = access_structure;
     let mpk = cover_crypt.update_msk(&mut msk)?;
-    test_serialization(&msk).unwrap();
+    test_serialization(&msk).map_err(crate::error::CosmianError::Default)?;
 
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
     let access_policy = AccessPolicy::parse(access_policy)?;
@@ -262,7 +262,7 @@ async fn test_enc_dec_rekey() -> CosmianResult<()> {
         key_file: exported_user_decryption_key_file
             .to_str()
             .unwrap()
-            .to_string(),
+            .to_owned(),
         ..Default::default()
     })?;
 
@@ -332,7 +332,7 @@ async fn test_rekey_prune() -> CosmianResult<()> {
         key_file: exported_user_decryption_key_file
             .to_str()
             .unwrap()
-            .to_string(),
+            .to_owned(),
         ..Default::default()
     })?;
 

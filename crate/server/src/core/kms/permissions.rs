@@ -296,8 +296,7 @@ impl KMS {
     ///
     /// KMIP defines this field but the server does not implement storage-level
     /// masking.  Fail early rather than silently ignoring the field.
-    #[allow(clippy::missing_const_for_fn)] // kms_bail! is not const-compatible
-    pub(crate) fn reject_protection_storage_masks(has_masks: bool) -> KResult<()> {
+    pub(crate) const fn reject_protection_storage_masks(has_masks: bool) -> KResult<()> {
         if has_masks {
             kms_bail!(KmsError::UnsupportedPlaceholder)
         }

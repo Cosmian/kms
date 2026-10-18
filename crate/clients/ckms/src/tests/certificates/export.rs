@@ -91,7 +91,7 @@ async fn test_import_export_p12_25519() {
         cli_conf_path: owner_client_conf_path.clone(),
         sub_command: "ec".to_owned(),
         key_id: imported_p12_sk.clone(),
-        key_file: tmp_exported_sk.to_str().unwrap().to_string(),
+        key_file: tmp_exported_sk.to_str().unwrap().to_owned(),
         key_format: Some(JsonTtlv),
         ..Default::default()
     })
@@ -259,7 +259,7 @@ async fn test_import_p12_rsa() {
         cli_conf_path: owner_client_conf_path,
         sub_command: "ec".to_owned(),
         key_id: imported_p12_sk,
-        key_file: key_file.to_str().unwrap().to_string(),
+        key_file: key_file.to_str().unwrap().to_owned(),
         key_format: Some(JsonTtlv),
         ..Default::default()
     })
@@ -302,7 +302,7 @@ async fn test_export_pkcs7() -> Result<(), CosmianError> {
             generate_keypair: true,
             algorithm: Some(Algorithm::RSA4096),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             issuer_private_key_id: Some(issuer_private_key_id),
             tags: Some(vec!["certify_a_csr_test".to_owned()]),
@@ -486,7 +486,7 @@ async fn test_export_root_and_intermediate_pkcs12() -> CosmianResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test CA".to_owned(),
             ),
             ..Default::default()
         },
@@ -500,7 +500,7 @@ async fn test_export_root_and_intermediate_pkcs12() -> CosmianResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Intermediate".to_owned(),
             ),
             ..Default::default()
         },
@@ -546,7 +546,7 @@ async fn test_export_import_legacy_p12() -> CosmianResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Cert".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Cert".to_owned(),
             ),
             ..Default::default()
         },

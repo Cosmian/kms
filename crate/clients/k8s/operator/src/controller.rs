@@ -121,7 +121,10 @@ async fn do_reconcile(
     Ok(Action::requeue(refresh_duration(obj, ctx.default_refresh)))
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "kube Controller::run requires error_policy(Arc<K>, &E, Arc<Ctx>)"
+)]
 fn error_policy(obj: Arc<KMSSecret>, err: &OperatorError, _ctx: Arc<Context>) -> Action {
     error!(name = %obj.name_any(), error = %err, "reconcile error — retrying in 30s");
     Action::requeue(Duration::from_secs(30))
@@ -263,3 +266,7 @@ fn refresh_duration(obj: &KMSSecret, default: Duration) -> Duration {
 fn chrono_now() -> String {
     Utc::now().to_rfc3339()
 }
+
+#[cfg(test)]
+#[path = "controller_characterization_tests.rs"]
+mod characterization_tests;

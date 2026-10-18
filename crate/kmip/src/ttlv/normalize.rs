@@ -1056,7 +1056,6 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use time::{Date, Duration, Month, Time, UtcOffset};

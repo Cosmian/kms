@@ -104,7 +104,7 @@ pub(crate) fn validate_certificate(
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let validate_output = std::str::from_utf8(&output.stdout)?;
-        return Ok(validate_output.to_string());
+        return Ok(validate_output.to_owned());
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -162,7 +162,7 @@ async fn test_validate_cli() -> CosmianResult<()> {
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res:?}"
     );
-    assert!(test1_res.is_err());
+    test1_res.unwrap_err();
 
     let test2_res = validate_certificate(
         &owner_client_conf_path,
@@ -190,7 +190,7 @@ async fn test_validate_cli() -> CosmianResult<()> {
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
          leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    assert!(test3_res.is_err());
+    test3_res.unwrap_err();
 
     let test4_res = validate_certificate(
         &owner_client_conf_path,

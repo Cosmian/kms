@@ -447,7 +447,7 @@ pub(super) fn bench_jose_batch(c: &mut Criterion, client: &KmsClient, rt: &Runti
             format!("{n} requests")
         };
 
-        group.throughput(Throughput::Elements(n as u64));
+        group.throughput(Throughput::Elements(u64::try_from(n).unwrap_or(u64::MAX)));
         group.bench_with_input(
             BenchmarkId::new("encrypt", &parameter_name),
             &n,

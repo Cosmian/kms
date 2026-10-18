@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
 };
@@ -88,6 +89,10 @@ pub(crate) fn criterion_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("target/criterion"))
 }
 
+#[expect(
+    clippy::print_stdout,
+    reason = "this command writes its result to stdout"
+)]
 pub(crate) fn collect_json_output(
     version_label: Option<&str>,
     protocol_slug: &str,
@@ -103,7 +108,6 @@ pub(crate) fn collect_json_output(
     for entry in &entries {
         let line = serde_json::to_string(entry)
             .map_err(|e| KmsCliError::Default(format!("JSON serialization: {e}")))?;
-        #[allow(clippy::print_stdout)]
         {
             println!("{line}");
         }
@@ -382,12 +386,11 @@ fn group_description(group_id: &str) -> Option<&'static str> {
 /// Walk `target/criterion/` and collect all benchmark data points.
 fn collect_bench_points(home: &Path) -> KmsCliResult<BTreeMap<String, Vec<BenchPoint>>> {
     let mut groups: BTreeMap<String, Vec<BenchPoint>> = BTreeMap::new();
-    collect_bench_points_recursive(home, home, &mut groups)?;
+    collect_bench_points_recursive(home, &mut groups)?;
     Ok(groups)
 }
 
 fn collect_bench_points_recursive(
-    home: &Path,
     dir: &Path,
     groups: &mut BTreeMap<String, Vec<BenchPoint>>,
 ) -> KmsCliResult<()> {
@@ -426,7 +429,7 @@ fn collect_bench_points_recursive(
                 && name_str != "change"
                 && name_str != "report"
             {
-                collect_bench_points_recursive(home, &entry.path(), groups)?;
+                collect_bench_points_recursive(&entry.path(), groups)?;
             }
         }
     }
@@ -441,9 +444,9 @@ fn render_group_table(group_id: &str, points: &[BenchPoint]) -> String {
     let mut out = String::new();
 
     // Group heading
-    out.push_str(&format!("### {group_id}\n\n"));
+    let _ = write!(out, "### {group_id}\n\n");
     if let Some(desc) = group_description(group_id) {
-        out.push_str(&format!("{desc}\n\n"));
+        let _ = write!(out, "{desc}\n\n");
     }
 
     // Collect unique function_ids and value_strs preserving insertion order
@@ -474,51 +477,40 @@ fn render_group_table(group_id: &str, points: &[BenchPoint]) -> String {
         }
     });
 
+    // Header: one column per function_id.
+    out.push_str("| |");
+    for fid in &func_ids {
+        let _ = write!(out, " `{fid}` |");
+    }
+    out.push('\n');
+
+    out.push_str("| :--- |");
+    for _ in &func_ids {
+        out.push_str(" :--- |");
+    }
+    out.push('\n');
+
     if param_strs.is_empty() {
-        // Flat table: one column per function_id
-        out.push_str("| |");
-        for fid in &func_ids {
-            out.push_str(&format!(" `{fid}` |"));
-        }
-        out.push('\n');
-
-        out.push_str("| :--- |");
-        for _ in &func_ids {
-            out.push_str(" :--- |");
-        }
-        out.push('\n');
-
+        // Flat table: a single row of timings
         out.push_str("| |");
         for fid in &func_ids {
             let val = points
                 .iter()
                 .find(|p| p.function_id == *fid)
                 .map_or_else(|| "N/A".to_owned(), |p| format_time(p.time_ns));
-            out.push_str(&format!(" `{val}` |"));
+            let _ = write!(out, " `{val}` |");
         }
         out.push('\n');
     } else {
-        // Pivot table: columns = function_ids, rows = parameters
-        out.push_str("| |");
-        for fid in &func_ids {
-            out.push_str(&format!(" `{fid}` |"));
-        }
-        out.push('\n');
-
-        out.push_str("| :--- |");
-        for _ in &func_ids {
-            out.push_str(" :--- |");
-        }
-        out.push('\n');
-
+        // Pivot table: rows = parameters
         for param in &param_strs {
-            out.push_str(&format!("| **`{param}`** |"));
+            let _ = write!(out, "| **`{param}`** |");
             for fid in &func_ids {
                 let val = points
                     .iter()
                     .find(|p| p.function_id == *fid && p.value_str == *param)
                     .map_or_else(|| "N/A".to_owned(), |p| format_time(p.time_ns));
-                out.push_str(&format!(" `{val}` |"));
+                let _ = write!(out, " `{val}` |");
             }
             out.push('\n');
         }
@@ -580,6 +572,10 @@ fn group_updated_since(dir: &Path, since: std::time::SystemTime) -> bool {
     false
 }
 
+#[expect(
+    clippy::print_stdout,
+    reason = "this command writes its result to stdout"
+)]
 pub(super) fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCliResult<()> {
     let home = criterion_home();
     let mut results: BTreeMap<String, bool> = BTreeMap::new();
@@ -616,7 +612,6 @@ pub(super) fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCl
     let width = results.keys().map(String::len).max().unwrap_or(40) + 2;
     for (name, ok) in &results {
         let status = if *ok { "OK" } else { "KO" };
-        #[allow(clippy::print_stdout)]
         {
             println!("{name:<width$} {status}");
         }
@@ -717,3 +712,7 @@ mod tests {
         assert_eq!(point.map(|p| p.time_ns), Some(99.0));
     }
 }
+
+#[cfg(test)]
+#[path = "output_characterization_tests.rs"]
+mod characterization_tests;

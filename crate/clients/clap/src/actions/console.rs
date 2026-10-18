@@ -128,7 +128,10 @@ impl Stdout {
     /// # Errors
     ///
     /// Returns an error if there is an issue with writing to the console.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     pub fn write(&self) -> KmsCliResult<()> {
         // Check if the output format should be JSON
         let output_format = match std::env::var(COSMIAN_KMS_CLI_FORMAT) {

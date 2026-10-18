@@ -54,7 +54,7 @@ pub fn create_hybrid_kem_key_pair(
 ///
 /// `algorithm` identifies the hybrid KEM variant.
 /// `public_key_raw` should be raw public key bytes (from `EVP_PKEY_get_raw_public_key`).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn hybrid_kem_encapsulate(
     algorithm: CryptographicAlgorithm,
     public_key_raw: &[u8],
@@ -69,7 +69,7 @@ pub fn hybrid_kem_encapsulate(
 ///
 /// `algorithm` identifies the hybrid KEM variant.
 /// `private_key_raw` should be raw private key bytes (from `EVP_PKEY_get_raw_private_key`).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn hybrid_kem_decapsulate(
     algorithm: CryptographicAlgorithm,
     private_key_raw: &[u8],
@@ -89,7 +89,7 @@ pub fn hybrid_kem_decapsulate(
 }
 
 /// Inner encapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn encapsulate_raw(
     pkey: *mut openssl_sys::EVP_PKEY,
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
@@ -158,7 +158,7 @@ unsafe fn encapsulate_raw(
 }
 
 /// Inner decapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn decapsulate_raw(
     pkey: *mut openssl_sys::EVP_PKEY,
     ciphertext: &[u8],
@@ -219,7 +219,6 @@ unsafe fn decapsulate_raw(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 

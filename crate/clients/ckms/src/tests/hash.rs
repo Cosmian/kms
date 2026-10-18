@@ -16,7 +16,7 @@ pub(crate) fn create_hash(cli_conf_path: &str, extra_args: &[&str]) -> CosmianRe
     let uid = extract_uid(&stdout, "Hash output").ok_or_else(|| {
         crate::error::CosmianError::Default("failed extracting the unique identifier".to_owned())
     })?;
-    Ok(uid.to_string())
+    Ok(uid.to_owned())
 }
 
 #[tokio::test]

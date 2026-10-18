@@ -1,32 +1,32 @@
 use thiserror::Error;
 
-/// SECURITY_STATUS / HRESULT constants used by the NCrypt KSP interface.
+/// `SECURITY_STATUS` / `HRESULT` constants used by the `NCrypt` KSP interface.
 ///
 /// Windows defines these as `i32` (HRESULT) or on some surfaces `u32`.
 /// Here we use `i32` to match `windows_sys`'s `HRESULT`.
 pub type SecurityStatus = i32;
 
-pub const ERROR_SUCCESS: SecurityStatus = 0x0000_0000_u32 as i32;
-pub const NTE_BAD_UID: SecurityStatus = 0x8009_0001_u32 as i32;
-pub const NTE_BAD_HASH: SecurityStatus = 0x8009_0002_u32 as i32;
-pub const NTE_BAD_KEY: SecurityStatus = 0x8009_0003_u32 as i32;
-pub const NTE_BAD_LEN: SecurityStatus = 0x8009_0004_u32 as i32;
-pub const NTE_BAD_DATA: SecurityStatus = 0x8009_0005_u32 as i32;
-pub const NTE_BAD_ALGID: SecurityStatus = 0x8009_0008_u32 as i32;
-pub const NTE_BAD_FLAGS: SecurityStatus = 0x8009_0009_u32 as i32;
-pub const NTE_NO_KEY: SecurityStatus = 0x8009_000D_u32 as i32;
-pub const NTE_NO_MEMORY: SecurityStatus = 0x8009_000E_u32 as i32;
-pub const NTE_EXISTS: SecurityStatus = 0x8009_000F_u32 as i32;
-pub const NTE_PERM: SecurityStatus = 0x8009_0010_u32 as i32;
-pub const NTE_BAD_PROV_TYPE: SecurityStatus = 0x8009_0014_u32 as i32;
-pub const NTE_BAD_KEYSET: SecurityStatus = 0x8009_0016_u32 as i32;
-pub const NTE_FAIL: SecurityStatus = 0x8009_0020_u32 as i32;
-pub const NTE_SILENT_CONTEXT: SecurityStatus = 0x8009_0022_u32 as i32;
-pub const NTE_INVALID_HANDLE: SecurityStatus = 0x8009_0026_u32 as i32;
-pub const NTE_INVALID_PARAMETER: SecurityStatus = 0x8009_0027_u32 as i32;
-pub const NTE_BUFFER_TOO_SMALL: SecurityStatus = 0x8009_0028_u32 as i32;
-pub const NTE_NOT_SUPPORTED: SecurityStatus = 0x8009_0029_u32 as i32;
-pub const NTE_NO_MORE_ITEMS: SecurityStatus = 0x8009_002A_u32 as i32;
+pub const ERROR_SUCCESS: SecurityStatus = 0x0000_0000_u32.cast_signed();
+pub const NTE_BAD_UID: SecurityStatus = 0x8009_0001_u32.cast_signed();
+pub const NTE_BAD_HASH: SecurityStatus = 0x8009_0002_u32.cast_signed();
+pub const NTE_BAD_KEY: SecurityStatus = 0x8009_0003_u32.cast_signed();
+pub const NTE_BAD_LEN: SecurityStatus = 0x8009_0004_u32.cast_signed();
+pub const NTE_BAD_DATA: SecurityStatus = 0x8009_0005_u32.cast_signed();
+pub const NTE_BAD_ALGID: SecurityStatus = 0x8009_0008_u32.cast_signed();
+pub const NTE_BAD_FLAGS: SecurityStatus = 0x8009_0009_u32.cast_signed();
+pub const NTE_NO_KEY: SecurityStatus = 0x8009_000D_u32.cast_signed();
+pub const NTE_NO_MEMORY: SecurityStatus = 0x8009_000E_u32.cast_signed();
+pub const NTE_EXISTS: SecurityStatus = 0x8009_000F_u32.cast_signed();
+pub const NTE_PERM: SecurityStatus = 0x8009_0010_u32.cast_signed();
+pub const NTE_BAD_PROV_TYPE: SecurityStatus = 0x8009_0014_u32.cast_signed();
+pub const NTE_BAD_KEYSET: SecurityStatus = 0x8009_0016_u32.cast_signed();
+pub const NTE_FAIL: SecurityStatus = 0x8009_0020_u32.cast_signed();
+pub const NTE_SILENT_CONTEXT: SecurityStatus = 0x8009_0022_u32.cast_signed();
+pub const NTE_INVALID_HANDLE: SecurityStatus = 0x8009_0026_u32.cast_signed();
+pub const NTE_INVALID_PARAMETER: SecurityStatus = 0x8009_0027_u32.cast_signed();
+pub const NTE_BUFFER_TOO_SMALL: SecurityStatus = 0x8009_0028_u32.cast_signed();
+pub const NTE_NOT_SUPPORTED: SecurityStatus = 0x8009_0029_u32.cast_signed();
+pub const NTE_NO_MORE_ITEMS: SecurityStatus = 0x8009_002A_u32.cast_signed();
 pub const NTE_OP_OK: SecurityStatus = 0;
 
 // NTSTATUS success
@@ -70,7 +70,7 @@ pub enum KspError {
 }
 
 impl KspError {
-    /// Convert to the Windows `SECURITY_STATUS` code expected by NCrypt callers.
+    /// Convert to the Windows `SECURITY_STATUS` code expected by `NCrypt` callers.
     #[must_use]
     pub const fn to_security_status(&self) -> SecurityStatus {
         match self {

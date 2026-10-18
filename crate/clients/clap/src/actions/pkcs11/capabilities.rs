@@ -36,7 +36,11 @@
 //! see `crate/clients/pkcs11/module/src/core/object.rs`). Only the AES secret key
 //! is generated live via `C_GenerateKey`/`CKM_AES_KEY_GEN`.
 
-#![allow(unsafe_code, clippy::print_stdout)]
+#![expect(
+    unsafe_code,
+    clippy::print_stdout,
+    reason = "dlopen of a PKCS#11 module drives its C ABI; the capabilities command reports to stdout"
+)]
 
 use std::{env, ffi::c_void, mem::size_of, path::Path, ptr, sync::Mutex};
 
@@ -53,7 +57,10 @@ use libloading::Library;
 // the *entire* `CKM_*` mechanism universe (442 constants) and the full `CK_*`
 // function-pointer/struct surface for the exhaustive coverage report — see
 // `plan.md` (Decision 1) for why an itemized list is impractical here.
-#[allow(clippy::wildcard_imports)]
+#[allow(
+    clippy::wildcard_imports,
+    reason = "needs the whole CKM_*/CK_* PKCS#11 constant and struct surface; lint does not fire under cfg(test)"
+)]
 use pkcs11_sys::*;
 
 use super::verify::{

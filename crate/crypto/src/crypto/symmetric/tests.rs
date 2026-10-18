@@ -1,5 +1,4 @@
-#![allow(clippy::unwrap_used)]
-#![allow(
+#![expect(
     clippy::disallowed_methods,
     reason = "test fixtures: plaintext/AAD generation, not production secret material"
 )]

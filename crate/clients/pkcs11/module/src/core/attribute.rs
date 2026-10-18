@@ -17,8 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::as_conversions)]
-
 use core::ops::Deref;
 use std::slice;
 
@@ -303,11 +301,14 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
         trace!("Attribute::try_from: parsing attribute: {:?}", attribute);
         let attr_type = AttributeType::try_from(attribute.type_)?;
         trace!("Attribute::try_from: type: {attr_type:?}");
+        #[expect(unsafe_code, reason = "reads the C caller's attribute value buffer")]
         let val = if attribute.ulValueLen > 0 {
             not_null!(attribute.pValue, "Attribute::try_from: attribute.pValue");
+            // SAFETY: `pValue` was just checked non-null and PKCS#11 requires it to point to
+            // `ulValueLen` readable bytes.
             unsafe {
                 std::slice::from_raw_parts(
-                    attribute.pValue as *const u8,
+                    attribute.pValue.cast::<u8>(),
                     attribute.ulValueLen.try_into()?,
                 )
             }
@@ -431,6 +432,10 @@ impl Attributes {
     }
 
     /// Ensure that the attributes contain a `CKC_X_509` certificate request or None.
+    #[expect(
+        non_snake_case,
+        reason = "public API of published crate cosmian_pkcs11_module; frozen until next major"
+    )]
     pub fn ensure_X509_or_none(&self) -> ModuleResult<()> {
         match self.get(AttributeType::CertificateType) {
             Some(Attribute::CertificateType(cert_type)) => match *cert_type {
@@ -473,6 +478,9 @@ impl TryFrom<(CK_ATTRIBUTE_PTR, CK_ULONG)> for Attributes {
         }
         not_null!(attributes_ptr, "Attributes::try_from: attributes_ptr");
         let mut attributes = Vec::with_capacity(attributes_usize_len);
+        #[expect(unsafe_code, reason = "reads the C caller's attribute template array")]
+        // SAFETY: `attributes_ptr` was just checked non-null and PKCS#11 requires it to point
+        // to `attributes_usize_len` valid `CK_ATTRIBUTE`s.
         let slice = unsafe { slice::from_raw_parts(attributes_ptr, attributes_usize_len) };
         for attr in slice {
             trace!("Attributes::try_from: parsing single attribute: {attr:?}");
@@ -488,3 +496,6 @@ impl From<Vec<Attribute>> for Attributes {
         Self(value)
     }
 }
+#[cfg(test)]
+#[path = "attribute_characterization_tests.rs"]
+mod characterization_tests;

@@ -262,8 +262,11 @@ macro_rules! hsm_call {
         {
             let hsm_lib_ref = &$hsm_lib;
             let function_name = stringify!($fn_name);
-            #[expect(unsafe_code)]
-            #[expect(clippy::macro_metavars_in_unsafe)]
+            #[expect(unsafe_code, reason = "PKCS#11 C function-pointer call through the loaded HSM library")]
+            #[expect(
+                clippy::macro_metavars_in_unsafe,
+                reason = "caller-supplied argument expressions are evaluated inside the FFI call"
+            )]
             let rv = match hsm_lib_ref.$fn_name {
                 ::core::option::Option::Some(func) => unsafe { func($($args),*) },
                 ::core::option::Option::None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
@@ -281,3 +284,6 @@ macro_rules! hsm_call {
         }
     };
 }
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

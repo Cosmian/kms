@@ -105,7 +105,7 @@ pub(crate) fn import_certificate(
     if let Some(tags) = tags {
         for tag in tags {
             args.push("--tag".to_owned());
-            args.push((*tag).to_string());
+            args.push((*tag).to_owned());
         }
     }
     if let Some(key_id) = private_key_id {

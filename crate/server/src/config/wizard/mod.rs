@@ -16,8 +16,6 @@
 //! 9. Advanced (workspace, key management, MS DKE, KMIP policy, Google CSE,
 //!    Azure EKM, AWS XKS, UI)
 
-#![allow(clippy::print_stdout)]
-
 mod advanced_wizard;
 mod auth_wizard;
 mod cert_gen;
@@ -44,6 +42,10 @@ use crate::{
 /// # Errors
 /// Returns an error if any prompt fails, certificate generation fails, or the
 /// resulting TOML cannot be serialized / written to disk.
+#[expect(
+    clippy::print_stdout,
+    reason = "the configuration wizard prompts the user on stdout"
+)]
 pub fn run_configure_wizard() -> KResult<()> {
     let output_path = get_default_config_path();
 

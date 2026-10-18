@@ -1,7 +1,5 @@
 //! Database configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub)]
-
 use std::path::PathBuf;
 
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
@@ -12,7 +10,7 @@ use crate::{
     result::KResult,
 };
 
-pub fn configure_db() -> KResult<MainDBConfig> {
+pub(crate) fn configure_db() -> KResult<MainDBConfig> {
     let theme = ColorfulTheme::default();
 
     #[cfg(not(feature = "non-fips"))]

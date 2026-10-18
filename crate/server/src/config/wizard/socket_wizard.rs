@@ -1,12 +1,14 @@
 //! KMIP socket server configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub, clippy::print_stdout)]
-
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use crate::{config::SocketServerConfig, error::KmsError, result::KResult};
 
-pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConfig> {
+#[expect(
+    clippy::print_stdout,
+    reason = "the configuration wizard prompts the user on stdout"
+)]
+pub(crate) fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConfig> {
     let theme = ColorfulTheme::default();
 
     let enable: bool = Confirm::with_theme(&theme)

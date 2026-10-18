@@ -15,3 +15,11 @@ disallowed-types = [
     { path = "rand_08::rngs::StdRng", reason = "not OpenSSL-backed (rand 0.8 alias); use KmsRng" },
     { path = "rand::rngs::ThreadRng", reason = "not OpenSSL-backed; use KmsRng" },
 ]
+
+# Test code (#[test] fns and #[cfg(test)] modules) may unwrap/expect/panic/print/index.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true

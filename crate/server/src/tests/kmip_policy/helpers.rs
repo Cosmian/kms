@@ -104,6 +104,7 @@ where
         .to_owned())
 }
 
+#[cfg(feature = "non-fips")]
 pub(super) fn assert_constraint_violation(err: KmsError) {
     match err {
         KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _) => {}

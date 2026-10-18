@@ -175,7 +175,6 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use std::sync::Arc;
 

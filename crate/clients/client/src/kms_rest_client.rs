@@ -59,7 +59,6 @@ pub struct KmsClient {
     pub config: KmsClientConfig,
 }
 
-#[expect(clippy::missing_errors_doc)]
 impl KmsClient {
     /// Initialize a KMS REST client.
     ///
@@ -957,7 +956,10 @@ impl KmsClient {
     ///
     /// Serialises `request` to TTLV, POSTs it to `endpoint`, deserialises the TTLV
     /// response, and routes errors through [`process_error_response`].
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "`print_json` asks for the KMIP JSON exchange on stdout"
+    )]
     async fn send_ttlv_request<O, R>(
         &self,
         endpoint: &str,

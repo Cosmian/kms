@@ -37,11 +37,6 @@ const fn is_blocked_ipv4(v4: std::net::Ipv4Addr) -> bool {
 /// [`url::Url::host_str()`]: `host_str()` returns IPv6 hosts wrapped in
 /// brackets (e.g. `"[::1]"`), which fails to parse as `std::net::IpAddr` and
 /// would silently skip every IP-literal check below for IPv6 URLs.
-// allow: `.local` and `.internal` are DNS suffixes here, not file extensions;
-// the comparison is intentionally case-sensitive because the input is already
-// `.to_lowercase()`.  Using Path::extension() would give false negatives for
-// multi-label suffixes such as `svc.cluster.local`.
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub(crate) fn validate_crl_url(url_str: &str) -> crate::result::KResult<()> {
     use url::{Host, Url};
 
@@ -83,13 +78,14 @@ pub(crate) fn validate_crl_url(url_str: &str) -> crate::result::KResult<()> {
     }
 
     // Reject well-known internal hostnames.
-    // `.local` and `.internal` are DNS suffixes, not file extensions — see
-    // the function-level `#[allow]` above.
+    // `.local` and `.internal` are DNS suffixes, not file extensions: compare the last
+    // label of the already-lowercased host (also matches `svc.cluster.local`).
     let host_str = parsed.host_str().unwrap_or_default();
     let lower = host_str.to_lowercase();
     if lower == "localhost"
-        || lower.ends_with(".local")
-        || lower.ends_with(".internal")
+        || lower
+            .rsplit_once('.')
+            .is_some_and(|(_, tld)| tld == "local" || tld == "internal")
         || lower == "metadata.google.internal"
         // Cloud metadata endpoints expressed as raw IPs are already caught above,
         // but reject the hostname form explicitly as well.

@@ -48,7 +48,7 @@ pub fn create_ml_kem_key_pair(
 /// ML-KEM encapsulation: produces a (`shared_secret`, `ciphertext`) pair.
 ///
 /// The `public_key_der` should be SPKI (`SubjectPublicKeyInfo`) DER bytes.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn ml_kem_encapsulate(public_key_der: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     let pkey = PKey::public_key_from_der(public_key_der)?;
     // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
@@ -56,7 +56,7 @@ pub fn ml_kem_encapsulate(public_key_der: &[u8]) -> Result<(Vec<u8>, Vec<u8>), C
 }
 
 /// ML-KEM encapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn ml_kem_encapsulate_raw(
     pkey: *mut openssl_sys::EVP_PKEY,
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
@@ -125,7 +125,7 @@ unsafe fn ml_kem_encapsulate_raw(
 /// ML-KEM decapsulation: recovers the shared secret from a ciphertext.
 ///
 /// The `private_key_der` should be PKCS#8 DER bytes.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn ml_kem_decapsulate(
     private_key_der: &[u8],
     ciphertext: &[u8],
@@ -141,7 +141,7 @@ pub fn ml_kem_decapsulate(
 }
 
 /// ML-KEM decapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn ml_kem_decapsulate_raw(
     pkey: *mut openssl_sys::EVP_PKEY,
     ciphertext: &[u8],
@@ -203,7 +203,7 @@ unsafe fn ml_kem_decapsulate_raw(
 pub(crate) struct CtxGuard(pub(crate) *mut openssl_sys::EVP_PKEY_CTX);
 
 impl Drop for CtxGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         unsafe {
             openssl_sys::EVP_PKEY_CTX_free(self.0);
@@ -213,7 +213,6 @@ impl Drop for CtxGuard {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use cosmian_kmip::kmip_2_1::{kmip_attributes::Attributes, kmip_types::KeyFormatType};
 
@@ -389,3 +388,6 @@ mod tests {
         );
     }
 }
+#[cfg(test)]
+#[path = "ml_kem_characterization_tests.rs"]
+mod characterization_tests;

@@ -101,7 +101,7 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CosmianResu
             .to_possible_value()
             .expect("valid Algorithm")
             .get_name()
-            .to_string();
+            .to_owned();
         args.push(name);
     }
     if let Some(certificate_id) = certify_op.certificate_id {
@@ -137,8 +137,6 @@ pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CosmianResu
         std::str::from_utf8(&output.stderr)?.to_owned(),
     ))
 }
-
-#[allow(dead_code)]
 pub(crate) fn import_root_and_intermediate(
     owner_client_conf_path: &str,
 ) -> CosmianResult<(String, String, String)> {
@@ -161,8 +159,8 @@ pub(crate) fn import_root_and_intermediate(
         .map_err(|e| CosmianError::Default(e.to_string()))?;
 
     let intermediate_public_key_id = import_key(ImportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
-        sub_command: "rsa".to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
+        sub_command: "rsa".to_owned(),
         key_file: intermediate_public_key_file.to_string_lossy().to_string(),
         key_format: Some(ImportKeyFormat::Pem),
         replace_existing: true,
@@ -170,9 +168,9 @@ pub(crate) fn import_root_and_intermediate(
     })?;
 
     let intermediate_private_key_id = import_key(ImportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
-        sub_command: "rsa".to_string(),
-        key_file: "../../../test_data/certificates/csr/intermediate.key".to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
+        sub_command: "rsa".to_owned(),
+        key_file: "../../../test_data/certificates/csr/intermediate.key".to_owned(),
         key_format: Some(ImportKeyFormat::Pem),
         public_key_id: Some(intermediate_public_key_id.clone()),
         replace_existing: true,
@@ -471,10 +469,10 @@ fn check_certificate_and_public_key_linked(
     let tmp_path = tmp_dir.path();
     let tmp_exported_pubkey = tmp_path.join("exported_pubkey.json");
     export_key(ExportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
         sub_command: "rsa".to_owned(),
         key_id: public_key_link.to_string(),
-        key_file: tmp_exported_pubkey.to_str().unwrap().to_string(),
+        key_file: tmp_exported_pubkey.to_str().unwrap().to_owned(),
         ..Default::default()
     })
     .unwrap();
@@ -503,10 +501,10 @@ fn check_public_and_private_key_linked(
     let tmp_path = tmp_dir.path();
     let tmp_exported_privkey = tmp_path.join("exported_privkey.json");
     export_key(ExportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
         sub_command: "rsa".to_owned(),
         key_id: private_key_link.to_string(),
-        key_file: tmp_exported_privkey.to_str().unwrap().to_string(),
+        key_file: tmp_exported_privkey.to_str().unwrap().to_owned(),
         ..Default::default()
     })
     .unwrap();
@@ -1006,7 +1004,7 @@ async fn test_certify_twice() -> CosmianResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },
@@ -1024,7 +1022,7 @@ async fn test_certify_twice() -> CosmianResult<()> {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_string(),
+                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned(),
             ),
             ..Default::default()
         },

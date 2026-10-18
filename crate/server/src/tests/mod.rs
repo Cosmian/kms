@@ -33,6 +33,7 @@ mod security_regression;
 mod test_always_sensitive;
 mod test_modify_attribute;
 pub(crate) mod test_set_attribute;
+#[cfg(feature = "non-fips")]
 mod test_sign;
 pub(crate) mod test_utils;
 pub(crate) mod test_validate;

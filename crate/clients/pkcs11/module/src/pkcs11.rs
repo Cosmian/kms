@@ -17,8 +17,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::as_conversions)]
-#![allow(clippy::significant_drop_in_scrutinee)]
+#![expect(
+    unsafe_code,
+    non_snake_case,
+    reason = "PKCS#11 C ABI entry points with spec-mandated names"
+)]
 
 use std::{
     cmp,
@@ -29,7 +32,7 @@ use std::{
 
 use cosmian_logger::{debug, error, info, trace};
 use pkcs11_sys::{
-    CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS_PTR, CK_FLAGS,
+    CK_ATTRIBUTE_PTR, CK_BBOOL, CK_BYTE, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS, CK_FLAGS,
     CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INFO_PTR,
     CK_INTERFACE, CK_MECHANISM_INFO, CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE,
     CK_MECHANISM_TYPE_PTR, CK_NOTIFY, CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV,
@@ -89,6 +92,11 @@ macro_rules! cryptoki_fn {
         }
     };
     (unsafe fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
+        /// PKCS#11 entry point.
+        ///
+        /// # Safety
+        ///
+        /// Pointer arguments must satisfy the contract of the PKCS#11 function of the same name.
         #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $name($($arg: $type),*) -> pkcs11_sys::CK_RV {
@@ -420,7 +428,6 @@ pub unsafe fn interface_name_matches(ptr: CK_UTF8CHAR_PTR) -> bool {
             // compared equal to `PKCS11_INTERFACE_NAME`'s — all of which are non-NUL, the
             // terminator being the final element. The caller's first NUL is therefore at `index`
             // or later, so this byte is within the range the caller guarantees is readable.
-            #[expect(unsafe_code)]
             let actual = unsafe { *ptr.add(index) };
             actual == *expected
         })
@@ -449,7 +456,7 @@ pub static mut PKCS11_INTERFACE_V3_0: CK_INTERFACE = CK_INTERFACE {
 cryptoki_fn!(
     fn C_Initialize(pInitArgs: CK_VOID_PTR) {
         if !pInitArgs.is_null() {
-            let args = unsafe { *(pInitArgs as CK_C_INITIALIZE_ARGS_PTR) };
+            let args = unsafe { *pInitArgs.cast::<CK_C_INITIALIZE_ARGS>() };
             if !args.pReserved.is_null() {
                 return Err(ModuleError::BadArguments(
                     "C_Initialize: pReserved is not null".to_owned(),
@@ -599,16 +606,17 @@ cryptoki_fn!(
         initialized!();
         not_null!(pulCount, "C_GetMechanismList: pulCount");
         valid_slot!(slotID);
+        let mechanism_count = CK_ULONG::try_from(SUPPORTED_SIGNATURE_MECHANISMS.len())?;
         unsafe {
             if !pMechanismList.is_null() {
                 if (usize::try_from(*pulCount)?) < SUPPORTED_SIGNATURE_MECHANISMS.len() {
-                    *pulCount = SUPPORTED_SIGNATURE_MECHANISMS.len() as CK_ULONG;
+                    *pulCount = mechanism_count;
                     return Err(ModuleError::BufferTooSmall);
                 }
                 slice::from_raw_parts_mut(pMechanismList, SUPPORTED_SIGNATURE_MECHANISMS.len())
                     .copy_from_slice(SUPPORTED_SIGNATURE_MECHANISMS);
             }
-            *pulCount = SUPPORTED_SIGNATURE_MECHANISMS.len() as CK_ULONG;
+            *pulCount = mechanism_count;
         }
         Ok(())
     }
@@ -698,7 +706,7 @@ cryptoki_fn!(
         if flags & CKF_SERIAL_SESSION == 0 {
             return Err(ModuleError::SessionParallelNotSupported);
         }
-        let handle = sessions::create(flags);
+        let handle = sessions::create(flags)?;
         // phSession may be in a packed Oracle struct (misaligned) — use write_unaligned
         // to avoid Rust's debug-mode alignment panic in write_volatile/write.
         unsafe {
@@ -871,7 +879,6 @@ fn parse_utf8_argument(
         )));
     }
     // SAFETY: PKCS#11 requires callers to provide `len` readable bytes when `ptr` is non-null.
-    #[expect(unsafe_code)]
     let bytes = unsafe { slice::from_raw_parts(ptr, len) };
     std::str::from_utf8(bytes)
         .map(|value| Some(value.to_owned()))
@@ -1016,11 +1023,12 @@ cryptoki_fn!(
                     hObject,
                     type_.to_string(),
                 );
-                if let Some(value) = object.attribute(type_)? {
+                let attribute_value = object.attribute(type_)?;
+                if let Some(value) = attribute_value {
                     let value = value.as_raw_value();
                     if attribute.pValue.is_null() {
                         // Size query: report the required length only.
-                        attribute.ulValueLen = value.len() as CK_ULONG;
+                        attribute.ulValueLen = CK_ULONG::try_from(value.len())?;
                         continue;
                     }
                     // Compare against the caller's buffer size *before* overwriting
@@ -1036,7 +1044,7 @@ cryptoki_fn!(
                         slice::from_raw_parts_mut(attribute.pValue.cast::<u8>(), value.len())
                     }
                     .copy_from_slice(&value);
-                    attribute.ulValueLen = value.len() as CK_ULONG;
+                    attribute.ulValueLen = CK_ULONG::try_from(value.len())?;
                 } else {
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
@@ -1142,8 +1150,9 @@ cryptoki_fn!(
                     core::ptr::write_unaligned(phObject.add(i), handle);
                 }
             }
+            let object_count = CK_ULONG::try_from(max_objects)?;
             unsafe {
-                core::ptr::write_unaligned(pulObjectCount, max_objects as CK_ULONG);
+                core::ptr::write_unaligned(pulObjectCount, object_count);
             }
             Ok(())
         })
@@ -2266,7 +2275,6 @@ cryptoki_fn_not_supported!(
 cryptoki_fn_not_supported!(C_MessageVerifyFinal, hSession: CK_SESSION_HANDLE);
 
 #[cfg(test)]
-#[expect(unsafe_code)]
 mod tests {
     use super::{PKCS11_INTERFACE_NAME, interface_name_matches};
 

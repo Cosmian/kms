@@ -65,6 +65,10 @@ impl Default for KmsClientConfig {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use crate::{KmsClient, KmsClientConfig};
 
@@ -135,7 +139,6 @@ mod tests {
     /// Serialisation round-trip: `custom_headers` must survive TOML
     /// serialise → deserialise.
     #[test]
-    #[allow(clippy::panic_in_result_fn)]
     fn test_custom_headers_toml_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         let mut original = KmsClientConfig::default();
         original.http_config.custom_headers = Some(vec![

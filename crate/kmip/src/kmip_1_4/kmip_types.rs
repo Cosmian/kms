@@ -1,5 +1,3 @@
-#![allow(non_camel_case_types)]
-
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use serde::{Deserialize, Serialize};
 use strum::Display;
@@ -1721,7 +1719,6 @@ pub enum Tag {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

@@ -150,12 +150,12 @@ pub(crate) fn compare_key_block(
         (Some(e), Some(a)) => compare_key_value(e, a)?,
         (None, Some(_)) => {
             return Err(KmsCliError::Default(
-                "KeyBlock.key_value expected=None actual=Some".to_string(),
+                "KeyBlock.key_value expected=None actual=Some".to_owned(),
             ));
         }
         (Some(_), None) => {
             return Err(KmsCliError::Default(
-                "KeyBlock.key_value expected=Some actual=None".to_string(),
+                "KeyBlock.key_value expected=Some actual=None".to_owned(),
             ));
         }
     }
@@ -178,18 +178,18 @@ pub(crate) fn compare_key_block(
         (Some(e), Some(a)) => {
             if e != a && normalize_kwd(e) != normalize_kwd(a) {
                 return Err(KmsCliError::Default(
-                    "KeyBlock.key_wrapping_data mismatch".to_string(),
+                    "KeyBlock.key_wrapping_data mismatch".to_owned(),
                 ));
             }
         }
         (None, Some(_)) => {
             return Err(KmsCliError::Default(
-                "KeyBlock.key_wrapping_data expected=None actual=Some".to_string(),
+                "KeyBlock.key_wrapping_data expected=None actual=Some".to_owned(),
             ));
         }
         (Some(_), None) => {
             return Err(KmsCliError::Default(
-                "KeyBlock.key_wrapping_data expected=Some actual=None".to_string(),
+                "KeyBlock.key_wrapping_data expected=Some actual=None".to_owned(),
             ));
         }
     }
@@ -280,7 +280,7 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if em != am || ee != ae {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentRSAPublicKey mismatch".to_string(),
+                            "KeyMaterial::TransparentRSAPublicKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -316,7 +316,7 @@ pub(crate) fn compare_key_value(
                         || e_crt != a_crt
                     {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentRSAPrivateKey mismatch".to_string(),
+                            "KeyMaterial::TransparentRSAPrivateKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -336,7 +336,7 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if ep != ap || eq_ != aq || eg != ag || ex != ax {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentDSAPrivateKey mismatch".to_string(),
+                            "KeyMaterial::TransparentDSAPrivateKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -356,7 +356,7 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if ep != ap || eq_ != aq || eg != ag || ey != ay {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentDSAPublicKey mismatch".to_string(),
+                            "KeyMaterial::TransparentDSAPublicKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -378,7 +378,7 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if ep != ap || eq_ != aq || eg != ag || ej != aj || ex != ax {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentDHPrivateKey mismatch".to_string(),
+                            "KeyMaterial::TransparentDHPrivateKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -400,7 +400,7 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if ep != ap || eq_ != aq || eg != ag || ej != aj || ey != ay {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentDHPublicKey mismatch".to_string(),
+                            "KeyMaterial::TransparentDHPublicKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -416,7 +416,7 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if erc != arc || ed != ad {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentECPrivateKey mismatch".to_string(),
+                            "KeyMaterial::TransparentECPrivateKey mismatch".to_owned(),
                         ));
                     }
                 }
@@ -432,13 +432,13 @@ pub(crate) fn compare_key_value(
                 ) => {
                     if erc != arc || eqs != aqs {
                         return Err(KmsCliError::Default(
-                            "KeyMaterial::TransparentECPublicKey mismatch".to_string(),
+                            "KeyMaterial::TransparentECPublicKey mismatch".to_owned(),
                         ));
                     }
                 }
                 _ => {
                     if ekm != akm {
-                        return Err(KmsCliError::Default("KeyMaterial mismatch".to_string()));
+                        return Err(KmsCliError::Default("KeyMaterial mismatch".to_owned()));
                     }
                 }
             }
@@ -451,7 +451,7 @@ pub(crate) fn compare_key_value(
                 }
                 (Some(_), None) => {
                     return Err(KmsCliError::Default(
-                        "KeyValue.attributes expected=Some actual=None".to_string(),
+                        "KeyValue.attributes expected=Some actual=None".to_owned(),
                     ));
                 }
             }
@@ -459,9 +459,7 @@ pub(crate) fn compare_key_value(
         // Cross-variant mismatch should have been caught by the discriminant check above,
         // but include an explicit arm for exhaustiveness.
         _ => {
-            return Err(KmsCliError::Default(
-                "KeyValue variant mismatch".to_string(),
-            ));
+            return Err(KmsCliError::Default("KeyValue variant mismatch".to_owned()));
         }
     }
     Ok(())
@@ -522,9 +520,7 @@ pub(crate) fn compare_attributes(
         let actual = a.fresh;
         let tolerated = matches!(expected, Some(true)) && matches!(actual, None | Some(false));
         if !tolerated {
-            return Err(KmsCliError::Default(
-                "Attributes.fresh mismatch".to_string(),
-            ));
+            return Err(KmsCliError::Default("Attributes.fresh mismatch".to_owned()));
         }
     }
     // cmp_opt!(initial_date);
@@ -547,24 +543,24 @@ pub(crate) fn compare_attributes(
 
             if ed.hashing_algorithm != ad.hashing_algorithm {
                 return Err(KmsCliError::Default(
-                    "Attributes.hashing_algorithm mismatch".to_string(),
+                    "Attributes.hashing_algorithm mismatch".to_owned(),
                 ));
             }
 
             if ed.key_format_type != ad.key_format_type {
                 return Err(KmsCliError::Default(
-                    "Attributes.key_format_type mismatch".to_string(),
+                    "Attributes.key_format_type mismatch".to_owned(),
                 ));
             }
         }
         (None, Some(_)) => {
             return Err(KmsCliError::Default(
-                "Attributes.digest expected=None actual=Some".to_string(),
+                "Attributes.digest expected=None actual=Some".to_owned(),
             ));
         }
         (Some(_), None) => {
             return Err(KmsCliError::Default(
-                "Attributes.digest expected=Some actual=None".to_string(),
+                "Attributes.digest expected=Some actual=None".to_owned(),
             ));
         }
     }
@@ -598,12 +594,12 @@ pub(crate) fn compare_attributes(
         }
         (None, Some(_)) => {
             return Err(KmsCliError::Default(
-                "Attributes.link expected=None actual=Some".to_string(),
+                "Attributes.link expected=None actual=Some".to_owned(),
             ));
         }
         (Some(_), None) => {
             return Err(KmsCliError::Default(
-                "Attributes.link expected=Some actual=None".to_string(),
+                "Attributes.link expected=Some actual=None".to_owned(),
             ));
         }
     }
@@ -628,12 +624,12 @@ pub(crate) fn compare_attributes(
         }
         (None, Some(_)) => {
             return Err(KmsCliError::Default(
-                "Attributes.name expected=None actual=Some".to_string(),
+                "Attributes.name expected=None actual=Some".to_owned(),
             ));
         }
         (Some(_), None) => {
             return Err(KmsCliError::Default(
-                "Attributes.name expected=Some actual=None".to_string(),
+                "Attributes.name expected=Some actual=None".to_owned(),
             ));
         }
     }
@@ -673,9 +669,7 @@ pub(crate) fn compare_attributes(
         let tolerated =
             matches!(expected, Some(State::PreActive)) && matches!(actual, Some(State::Active));
         if !tolerated {
-            return Err(KmsCliError::Default(
-                "Attributes.state mismatch".to_string(),
-            ));
+            return Err(KmsCliError::Default("Attributes.state mismatch".to_owned()));
         }
     }
     cmp_opt!(unique_identifier);

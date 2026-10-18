@@ -3,7 +3,10 @@ use pkcs11_sys::CK_ULONG;
 #[derive(Debug, Clone)]
 /// HSM capability flags for vendor-specific PKCS#11 behavior.
 /// Multiple bool fields reflect real vendor PKCS#11 limitations requiring per-operation gating.
-#[allow(clippy::struct_excessive_bools)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each bool is an independent HSM capability flag"
+)]
 pub struct HsmCapabilities {
     /// Maximum data size before switching to AES CBC multi-round operations (in bytes)
     /// If `None`, there is no enforced limit.

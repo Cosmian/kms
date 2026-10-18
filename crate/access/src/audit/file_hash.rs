@@ -42,11 +42,6 @@ pub fn sha256_file(path: &Path) -> io::Result<(String, u64)> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use std::io::Write as _;
 
@@ -96,6 +91,10 @@ mod tests {
     fn missing_file_returns_err() {
         let path = std::env::temp_dir().join("kms_access_sha256_file_does_not_exist.bin");
         std::fs::remove_file(&path).ok();
-        assert!(sha256_file(&path).is_err());
+        sha256_file(&path).unwrap_err();
     }
 }
+
+#[cfg(test)]
+#[path = "file_hash_characterization_tests.rs"]
+mod characterization_tests;

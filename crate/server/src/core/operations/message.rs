@@ -318,8 +318,7 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
 }
 
 /// Helper function to get the operation name from an Operation enum variant
-#[allow(clippy::missing_const_for_fn)]
-fn get_operation_name(operation: &Operation) -> &'static str {
+const fn get_operation_name(operation: &Operation) -> &'static str {
     match operation {
         Operation::Activate(_) => "Activate",
         Operation::AddAttribute(_) => "AddAttribute",
@@ -825,3 +824,7 @@ fn mark_successes_undone(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "message_characterization_tests.rs"]
+mod characterization_tests;

@@ -43,8 +43,7 @@ impl KmsPluginService {
     /// KEK for all wrap/unwrap operations.
     // KmsClient wraps a reqwest::Client which is not const-constructible.
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn new(client: KmsClient, wrapping_key_uid: String) -> Self {
+    pub const fn new(client: KmsClient, wrapping_key_uid: String) -> Self {
         Self {
             client,
             wrapping_key_uid,
@@ -163,7 +162,6 @@ impl KeyManagementService for KmsPluginService {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use cosmian_kms_client::{KmsClient, KmsClientConfig, http_client::HttpClientConfig};
 
@@ -227,3 +225,7 @@ mod tests {
         assert_eq!(inner.key_id, uid);
     }
 }
+
+#[cfg(test)]
+#[path = "service_characterization_tests.rs"]
+mod characterization_tests;

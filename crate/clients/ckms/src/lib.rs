@@ -1,5 +1,6 @@
 // Test fixtures draw throw-away data from non-`KmsRng` generators; production code stays under
-// the `clippy.toml` bans (see ADR 2026-10-10).
+// the `clippy.toml` bans (see ADR 2026-10-10). `allow`, not `expect`: the lint fires only with
+// some feature combinations (e.g. `--all-features`).
 #![cfg_attr(
     test,
     allow(
@@ -22,5 +23,6 @@ pub mod reexport {
     pub use cosmian_kms_cli_actions;
 }
 
-#[cfg(all(test, feature = "non-fips"))]
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
 mod tests;

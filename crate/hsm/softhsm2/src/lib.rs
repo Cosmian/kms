@@ -17,18 +17,11 @@ pub const SOFTHSM2_PKCS11_LIB: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
 pub const SOFTHSM2_PKCS11_LIB: &str = "libsofthsm2.so";
 
 #[cfg(test)]
-// Allow test-specific lint patterns for C library integration
-#[allow(unsafe_code)]
-#[allow(clippy::panic_in_result_fn)]
-#[allow(clippy::panic)]
-#[allow(clippy::expect_used)]
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::assertions_on_result_states)]
-#[allow(clippy::as_conversions)]
-#[allow(clippy::map_err_ignore)]
-#[allow(clippy::redundant_clone)]
-#[allow(clippy::explicit_iter_loop)]
 #[cfg(feature = "softhsm2")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests;
 
 pub struct SofthsmCapabilityProvider;

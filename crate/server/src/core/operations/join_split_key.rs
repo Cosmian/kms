@@ -616,11 +616,6 @@ fn build_reconstructed_object(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},

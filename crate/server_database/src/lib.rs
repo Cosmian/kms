@@ -39,8 +39,7 @@
 // the `clippy.toml` bans (see ADR 2026-10-10).
 #![cfg_attr(
     test,
-    allow(
-        clippy::disallowed_methods,
+    expect(
         clippy::disallowed_types,
         reason = "test fixtures only; production code must use KmsRng"
     )

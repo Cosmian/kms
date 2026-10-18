@@ -4,8 +4,6 @@
 //! DKE, KMS public URL, KMIP policy, Google CSE, Azure EKM, AWS XKS, and UI
 //! settings.
 
-#![allow(unreachable_pub)]
-
 use std::path::PathBuf;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
@@ -23,23 +21,23 @@ use crate::{
     routes::aws_xks::AwsXksConfig,
 };
 
-pub struct AdvancedConfig {
-    pub workspace: WorkspaceConfig,
-    pub vendor_identification: String,
-    pub key_encryption_key: Option<String>,
-    pub default_unwrap_type: Option<Vec<String>>,
-    pub crypto_officer_users: Option<Vec<String>>,
-    pub crypto_officer_require_ceremony: bool,
-    pub ms_dke_service_url: Option<String>,
-    pub kms_public_url: Option<String>,
-    pub kmip_policy: KmipPolicyConfig,
-    pub google_cse_config: GoogleCseConfig,
-    pub azure_ekm_config: AzureEkmConfig,
-    pub aws_xks_config: AwsXksConfig,
-    pub ui_config: UiConfig,
+pub(crate) struct AdvancedConfig {
+    pub(crate) workspace: WorkspaceConfig,
+    pub(crate) vendor_identification: String,
+    pub(crate) key_encryption_key: Option<String>,
+    pub(crate) default_unwrap_type: Option<Vec<String>>,
+    pub(crate) crypto_officer_users: Option<Vec<String>>,
+    pub(crate) crypto_officer_require_ceremony: bool,
+    pub(crate) ms_dke_service_url: Option<String>,
+    pub(crate) kms_public_url: Option<String>,
+    pub(crate) kmip_policy: KmipPolicyConfig,
+    pub(crate) google_cse_config: GoogleCseConfig,
+    pub(crate) azure_ekm_config: AzureEkmConfig,
+    pub(crate) aws_xks_config: AwsXksConfig,
+    pub(crate) ui_config: UiConfig,
 }
 
-pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
+pub(crate) fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
     let theme = ColorfulTheme::default();
 
     // ── Workspace ─────────────────────────────────────────────────────────────
