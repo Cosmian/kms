@@ -1113,6 +1113,7 @@ mod tests {
         unsafe {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
+            std::env::set_var("KMS_GOOGLE_CSE_AUDIENCE", client_id);
             // the token has been issued by Google Accounts (post request)
         };
         let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
