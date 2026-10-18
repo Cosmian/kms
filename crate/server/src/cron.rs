@@ -8,6 +8,49 @@ use crate::core::{
     operations::{dispatch_renewal_warnings, run_auto_rotation},
 };
 
+/// Spawns the KV TTL-expiry cron thread: periodically destroys secret
+/// versions whose `options.ttl` (issue #863) has elapsed.
+///
+/// Returns a `oneshot::Sender<()>` that cleanly stops the thread when sent.
+/// Not spawned when `interval_secs == 0`.
+pub fn spawn_kv_ttl_cron(kms: Arc<KMS>, interval_secs: u64) -> oneshot::Sender<()> {
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                warn!("[kv-ttl-cron] Failed to build runtime: {e}");
+                return;
+            }
+        };
+
+        rt.block_on(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+            let mut shutdown_rx = shutdown_rx;
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let destroyed = Box::pin(crate::routes::kv::metadata::sweep_expired_versions(&kms)).await;
+                        if destroyed > 0 {
+                            info!("[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)");
+                        }
+                    }
+                    _ = &mut shutdown_rx => {
+                        debug!("[kv-ttl-cron] Shutdown signal received; stopping");
+                        break;
+                    }
+                }
+            }
+        });
+    });
+
+    shutdown_tx
+}
+
 /// Spawn a background thread that periodically runs the key auto-rotation check.
 /// The thread runs independently of the metrics cron and is spawned whenever
 /// `auto_rotation_check_interval_secs > 0` in the server configuration.

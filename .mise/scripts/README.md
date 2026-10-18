@@ -161,6 +161,7 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 | `test:iris` | non-fips | IRIS mTLS integration |
 | `test:spire` | non-fips | SPIRE + Mistral client full integration |
 | `test:spire-pki` | non-fips | KMS PKI capability validation |
+| `test:openbao` | fips | OpenBao `bao kv` CLI against the KMS KV v2-compatible store |
 
 ### PKCS#11 & disk encryption
 

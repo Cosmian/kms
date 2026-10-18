@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#MISE description="OpenBao CLI (bao kv) against the KMS Vault KV v2-compatible store"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+
+# Keep the original exit status: kms_stop succeeding must not mask a failed scenario.
+cleanup() {
+  local rc=$?
+  kms_stop
+  exit "${rc}"
+}
+trap cleanup EXIT
+
+require_cmd docker
+require_cmd cargo
+require_cmd curl
+require_cmd python3
+
+print_header "OpenBao + KMS KV v2 integration test (${VARIANT_NAME})"
+
+# Native authentication only (the default user): the scenario targets the KV wire protocol as
+# the real `bao` client speaks it. The X-Vault-Token path is the shared Vault middleware, covered
+# by the SPIRE tasks.
+KMS_PORT_FREE="$(kms_pick_free_port)"
+kms_write_config "${KMS_PORT_FREE}" "$(mktemp -d /tmp/kms-openbao-XXXXXX)" \
+  "[kv]" \
+  "kv_enabled = true" \
+  'kv_mount = "kv"' \
+  "kv_ttl_check_interval_secs = 1"
+
+print_status "Building KMS server..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_start_from_bin "$(get_kms_bin)"
+
+# On Linux the container shares the host network; elsewhere it reaches the host by name.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  BAO_ADDR_FOR_CONTAINER="http://127.0.0.1:${KMS_PORT}"
+else
+  BAO_ADDR_FOR_CONTAINER="http://host.docker.internal:${KMS_PORT}"
+fi
+
+# The default user authenticates every request; the token only has to be present.
+BAO_ADDR="${BAO_ADDR_FOR_CONTAINER}" \
+  BAO_TOKEN="ci-token" \
+  KV_MOUNT="kv" \
+  bash "${REPO_ROOT}/.mise/scripts/test/test_openbao_kv.sh"
+
+print_success "OpenBao integration tests completed"

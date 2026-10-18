@@ -837,6 +837,27 @@ Options:
           [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
           [default: 30]
 
+      --kv-enabled
+          Enable the Vault KV v2-compatible `/<kv_mount>/` scope.
+
+          Defaults to `false`.
+
+          [env: KMS_KV_ENABLED=]
+
+      --kv-mount <KV_MOUNT>
+          KV mount name used by the `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*` routes.
+
+          Mirrors `vault_transit_mount`/`vault_pki_mount`. Defaults to `"kv"`.
+
+          [env: KMS_KV_MOUNT=]
+          [default: kv]
+
+      --kv-ttl-check-interval-secs <KV_TTL_CHECK_INTERVAL_SECS>
+          Interval, in seconds, between KV TTL-expiry sweeps (destroys secret versions whose `options.ttl` has elapsed). `0` disables the sweep. Defaults to `30`
+
+          [env: KMS_KV_TTL_CHECK_INTERVAL_SECS=]
+          [default: 30]
+
       --audit-enable
           Enable the structured audit event pipeline.
 
