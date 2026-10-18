@@ -2181,9 +2181,9 @@ pub struct RNGSeed {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    /// Number of bytes of seed data accepted by the RNG.
-    /// KMIP 1.4 optional vectors use <DataLength>; accept it as an alias.
-    #[serde(alias = "DataLength")]
+    /// KMIP 1.4 §4.36: the response field is `Data Length`.
+    /// `AmountOfSeedData` is still accepted from servers older than this fix.
+    #[serde(rename = "DataLength", alias = "AmountOfSeedData")]
     pub amount_of_seed_data: i32,
 }
 
