@@ -80,6 +80,7 @@ type AlgoOption = { value: string; label: string };
 
 // Avoid issuing one Get request per Locate result at once.
 const LOCATE_ENRICH_CONCURRENCY = 8;
+const LOCATE_ENRICH_DEFAULT_PAGE_SIZE = 50;
 const LOCATE_REQUEST_TIMEOUT_MS = 30_000;
 
 export const mapWithLocateConcurrency = async <Input, Output>(items: Input[], map: (item: Input) => Promise<Output>): Promise<Output[]> => {
@@ -206,6 +207,34 @@ const LocateForm: React.FC = () => {
     const extractMeta = (parsed: unknown): Record<string, unknown> => {
         if (parsed instanceof Map) return Object.fromEntries(parsed as Map<string, unknown>);
         return (parsed || {}) as Record<string, unknown>;
+    };
+
+    const enrichVisibleRows = async (rows: LocatedRow[]): Promise<void> => {
+        const pending = rows.filter((row) => row.meta === undefined);
+        if (pending.length === 0) return;
+
+        const enriched = await mapWithLocateConcurrency(pending, async (row) => {
+            try {
+                const request = wasm.get_attributes_ttlv_request(row.object_id);
+                const response = await sendKmipRequest(request, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
+                if (response) {
+                    const meta = extractMeta(await wasm.parse_get_attributes_ttlv_response(response, getEnrichAttributeKeys()));
+                    return {
+                        ...row,
+                        attributes: { ObjectType: meta["object_type"] as string | undefined },
+                        state: stateEnumToName(meta["state"]) || row.state,
+                        meta,
+                    } as LocatedRow;
+                }
+            } catch (error) {
+                if (!(error instanceof DOMException && error.name === "AbortError")) {
+                    console.error(`Error fetching Get for ${row.object_id}:`, error);
+                }
+            }
+            return row;
+        });
+        const byId = new Map(enriched.map((row) => [row.object_id, row]));
+        setObjects((current) => current?.map((row) => byId.get(row.object_id) || row));
     };
 
     // Utility: build state lookup from /access/owned
@@ -417,21 +446,20 @@ const LocateForm: React.FC = () => {
 
                 setObjects(mapped);
 
-                // Locate already provides every matching identifier. Fetching attributes for
-                // every result turns a large search into hundreds of additional KMIP requests;
-                // state can be obtained in one request and details remain on demand.
+                // Resolve attributes only for the visible table page. A full Locate can
+                // return hundreds of objects, so fetching every object at once can stall KMS.
                 let merged = await supplementStateFromOwned(mapped, serverUrl);
                 if (stateVal) {
                     const target = normalizeState(stateVal);
                     merged = merged.filter((row) => normalizeState(row.state) === target);
                 }
-                setObjects(
-                    merged.map((row) => ({
-                        ...row,
-                        state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
-                    })),
-                );
-                setResult({ kind: "located", count: merged.length });
+                const displayed = merged.map((row) => ({
+                    ...row,
+                    state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
+                }));
+                setObjects(displayed);
+                void enrichVisibleRows(displayed.slice(0, LOCATE_ENRICH_DEFAULT_PAGE_SIZE));
+                setResult({ kind: "located", count: displayed.length });
                 return;
             } else {
                 // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
@@ -741,6 +769,12 @@ const LocateForm: React.FC = () => {
                                     showSizeChanger: true,
                                     pageSizeOptions: [50, 100, 500, 1000],
                                 }}
+                                onChange={(pagination) => {
+                                    const current = pagination.current || 1;
+                                    const pageSize = pagination.pageSize || LOCATE_ENRICH_DEFAULT_PAGE_SIZE;
+                                    const start = (current - 1) * pageSize;
+                                    void enrichVisibleRows((objects || []).slice(start, start + pageSize));
+                                }}
                                 scroll={{ x: "max-content" }}
                                 className="border rounded"
                                 columns={
@@ -838,7 +872,6 @@ const LocateForm: React.FC = () => {
                                                 const db = getDate(b) ?? 0;
                                                 return da - db;
                                             },
-                                            defaultSortOrder: "descend" as const,
                                             render: (row: LocateObjectRow) => {
                                                 const rotateDate = row.meta?.["rotate_date"] as number | undefined;
                                                 const initialDate = row.meta?.["initial_date"] as number | undefined;
