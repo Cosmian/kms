@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use cosmian_logger::warn;
 use ini::Ini;
 use openssl::{
-    asn1::{Asn1Object, Asn1OctetString},
+    asn1::Asn1OctetString,
     nid::Nid,
     x509::{
         X509Extension, X509v3Context,
@@ -14,6 +14,7 @@ use openssl::{
     },
 };
 
+use super::oid::{asn1_object, oid_string};
 use crate::{crypto_bail, error::CryptoError};
 
 /// X509 Extension section parser.
@@ -261,10 +262,10 @@ pub fn parse_v3_ca(
             }
             "noRevAvail" => {
                 // id-ce-noRevAvail (RFC 9608 §2), OID { id-ce 56 } = 2.5.29.56.
-                // OpenSSL does not register this OID in its extension table, so we build
-                // the extension directly using new_from_der().
+                // OpenSSL registers the NID but no extension method for this OID, so we
+                // build the extension directly using new_from_der().
                 // Criticality MUST be FALSE; DER encoding is '0500'H (NULL).
-                let oid = Asn1Object::from_str("2.5.29.56")?;
+                let oid = asn1_object(Nid::NO_REV_AVAIL)?;
                 let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
                 extensions.push(X509Extension::new_from_der(
                     oid.as_ref(),
@@ -342,8 +343,8 @@ fn build_certificate_policies_extension(value: &str) -> Result<X509Extension, Cr
 
     // Encode SEQUENCE OF PolicyInformation
     let mut policies_content = Vec::new();
-    // id-qt-cps OID bytes (1.3.6.1.5.5.7.2.1) – pre-encoded for efficiency
-    let cps_oid_der = der_encode_oid("1.3.6.1.5.5.7.2.1")?;
+    // id-qt-cps OID bytes – pre-encoded for efficiency
+    let cps_oid_der = der_encode_oid(&oid_string(Nid::ID_QT_CPS)?)?;
 
     for (oid_str, cps_urls) in &policies {
         let oid_der = der_encode_oid(oid_str)?;
@@ -370,7 +371,7 @@ fn build_certificate_policies_extension(value: &str) -> Result<X509Extension, Cr
 
     // extnValue OCTET STRING wraps the DER of SEQUENCE OF PolicyInformation
     let ext_value_der = der_encode_sequence(&policies_content);
-    let ext_oid = Asn1Object::from_str("2.5.29.32")?;
+    let ext_oid = asn1_object(Nid::CERTIFICATE_POLICIES)?;
     let octet_string = Asn1OctetString::new_from_bytes(&ext_value_der)?;
     X509Extension::new_from_der(ext_oid.as_ref(), critical, octet_string.as_ref())
         .map_err(CryptoError::from)

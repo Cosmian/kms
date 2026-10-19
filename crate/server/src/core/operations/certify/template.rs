@@ -5,7 +5,10 @@
 //! Usages, Subject / SAN patterns and validity. `certify()` itself forwards a CSR as-is,
 //! so these checks MUST run before the `Certify` request is built.
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
+    cosmian_kms_crypto::openssl::oid::{nid_of, oid_string},
+};
 use openssl::{
     nid::Nid,
     pkey::{Id, PKey, Public},
@@ -21,23 +24,16 @@ use x509_parser::{
 
 use crate::{error::KmsError, result::KResult};
 
-/// OID of the Microsoft User Principal Name `otherName` SAN type.
-const OID_UPN: &str = "1.3.6.1.4.1.311.20.2.3";
-/// PKCS#9 `extensionRequest` attribute.
-const OID_PKCS9_EXTENSION_REQUEST: &str = "1.2.840.113549.1.9.14";
-/// Microsoft `msExtReq` attribute: an alternative extension request OpenSSL also honours.
-const OID_MS_EXT_REQ: &str = "1.3.6.1.4.1.311.2.1.14";
-
-/// Well-known EKU names and their dotted OIDs (RFC 5280 §4.2.1.12).
-const EKU_NAMES: &[(&str, &str)] = &[
-    ("anyExtendedKeyUsage", "2.5.29.37.0"),
-    ("serverAuth", "1.3.6.1.5.5.7.3.1"),
-    ("clientAuth", "1.3.6.1.5.5.7.3.2"),
-    ("codeSigning", "1.3.6.1.5.5.7.3.3"),
-    ("emailProtection", "1.3.6.1.5.5.7.3.4"),
-    ("timeStamping", "1.3.6.1.5.5.7.3.8"),
-    ("OCSPSigning", "1.3.6.1.5.5.7.3.9"),
-    ("msSmartcardLogin", "1.3.6.1.4.1.311.20.2.2"),
+/// Well-known EKU names and their OIDs (RFC 5280 §4.2.1.12), as `OpenSSL` registers them.
+const EKU_NAMES: &[(&str, Nid)] = &[
+    ("anyExtendedKeyUsage", Nid::ANYEXTENDEDKEYUSAGE),
+    ("serverAuth", Nid::SERVER_AUTH),
+    ("clientAuth", Nid::CLIENT_AUTH),
+    ("codeSigning", Nid::CODE_SIGN),
+    ("emailProtection", Nid::EMAIL_PROTECT),
+    ("timeStamping", Nid::TIME_STAMP),
+    ("OCSPSigning", Nid::OCSP_SIGN),
+    ("msSmartcardLogin", Nid::MS_SMARTCARD_LOGIN),
 ];
 
 /// Extensions an enrollee may request: keyUsage, subjectAltName, basicConstraints (CA:FALSE
@@ -45,7 +41,12 @@ const EKU_NAMES: &[(&str, &str)] = &[
 /// the certificate, so anything else (nameConstraints, certificatePolicies,
 /// crlDistributionPoints, ...) would let the enrollee write policy into a certificate signed by
 /// the CA and is refused.
-const ALLOWED_CSR_EXTENSIONS: &[&str] = &["2.5.29.15", "2.5.29.17", "2.5.29.19", "2.5.29.37"];
+const ALLOWED_CSR_EXTENSIONS: &[Nid] = &[
+    Nid::KEY_USAGE,
+    Nid::SUBJECT_ALT_NAME,
+    Nid::BASIC_CONSTRAINTS,
+    Nid::EXT_KEY_USAGE,
+];
 
 /// Issuance policy applied to CSRs received through one enrollment endpoint.
 ///
@@ -110,11 +111,11 @@ fn anchored(pattern: &str) -> KResult<Regex> {
 
 /// Resolve an EKU name or dotted OID to a dotted OID.
 fn eku_to_oid(name: &str) -> KResult<String> {
-    if let Some((_, oid)) = EKU_NAMES
+    if let Some((_, nid)) = EKU_NAMES
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name.trim()))
     {
-        return Ok((*oid).to_owned());
+        return Ok(oid_string(*nid)?);
     }
     let trimmed = name.trim();
     let is_dotted = trimmed.contains('.')
@@ -219,7 +220,9 @@ fn parse_csr_requests(csr_der: &[u8]) -> KResult<CsrRequests> {
                     match gn {
                         GeneralName::DNSName(d) => out.dns.push((*d).to_owned()),
                         GeneralName::RFC822Name(e) => out.emails.push((*e).to_owned()),
-                        GeneralName::OtherName(oid, value) if oid.to_id_string() == OID_UPN => {
+                        GeneralName::OtherName(oid, value)
+                            if nid_of(&oid.to_id_string()) == Nid::MS_UPN =>
+                        {
                             out.upns.push(
                                 upn_from_other_name(value)
                                     .ok_or_else(|| invalid("malformed UPN SAN in CSR"))?,
@@ -251,7 +254,7 @@ fn check_requested_extensions(csr_der: &[u8]) -> KResult<()> {
             // the Microsoft `msExtReq` attribute too, and of an `extensionRequest` this
             // parser could not decode; neither can be vetted here, so refuse them.
             let oid = attr.oid.to_id_string();
-            if oid == OID_MS_EXT_REQ || oid == OID_PKCS9_EXTENSION_REQUEST {
+            if matches!(nid_of(&oid), Nid::MS_EXT_REQ | Nid::EXT_REQ) {
                 return Err(invalid(format!(
                     "CSR attribute {oid} requests extensions in a form that cannot be validated"
                 )));
@@ -266,7 +269,7 @@ fn check_requested_extensions(csr_der: &[u8]) -> KResult<()> {
         }
         for ext in &requested.extensions {
             let oid = ext.oid.to_id_string();
-            if !ALLOWED_CSR_EXTENSIONS.contains(&oid.as_str()) {
+            if !ALLOWED_CSR_EXTENSIONS.contains(&nid_of(&oid)) {
                 return Err(invalid(format!(
                     "CSR extension {oid} is not allowed for enrollment"
                 )));

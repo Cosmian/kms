@@ -15,12 +15,15 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::{CertificateRequestType, LinkType, LinkedObjectIdentifier},
         },
     },
-    cosmian_kms_crypto::openssl::{kmip_certificate_to_openssl, kmip_private_key_to_openssl},
+    cosmian_kms_crypto::openssl::{
+        kmip_certificate_to_openssl, kmip_private_key_to_openssl, oid::nid_of,
+    },
     cosmian_kms_interfaces::ObjectHandle,
 };
 use cosmian_logger::{debug, warn};
 use openssl::{
     asn1::Asn1Time,
+    nid::Nid,
     pkey::{PKey, Private},
     sha::sha256,
     x509::{X509, X509Req},
@@ -226,8 +229,6 @@ pub(crate) async fn ensure_active_certificate_of_ca(
     }
 }
 
-const OID_SUBJECT_ALT_NAME: &str = "2.5.29.17";
-
 /// Sorted raw DER of every `GeneralName` in a `SubjectAltName` extension value. Comparing the
 /// encoded names avoids any dependence on a parser's `Debug` rendering; a value that is not a
 /// well-formed `SEQUENCE OF` TLVs is an error, never an empty set.
@@ -263,7 +264,7 @@ fn csr_san_set(csr: &X509Req) -> KResult<Vec<Vec<u8>>> {
             if let Some(ext) = requested
                 .extensions
                 .iter()
-                .find(|e| e.oid.to_id_string() == OID_SUBJECT_ALT_NAME)
+                .find(|e| nid_of(&e.oid.to_id_string()) == Nid::SUBJECT_ALT_NAME)
             {
                 return san_entries(ext.value);
             }
@@ -280,7 +281,7 @@ fn cert_san_set(cert: &X509) -> KResult<Vec<Vec<u8>>> {
     parsed
         .extensions()
         .iter()
-        .find(|e| e.oid.to_id_string() == OID_SUBJECT_ALT_NAME)
+        .find(|e| nid_of(&e.oid.to_id_string()) == Nid::SUBJECT_ALT_NAME)
         .map_or_else(|| Ok(Vec::new()), |ext| san_entries(ext.value))
 }
 

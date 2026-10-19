@@ -16,7 +16,8 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::{
         crypto::KmsRng,
         openssl::{
-            openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes, x509_extensions,
+            oid::asn1_object, openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes,
+            x509_extensions,
         },
     },
 };
@@ -26,8 +27,9 @@ use cosmian_logger::warn;
 #[cfg(feature = "non-fips")]
 use openssl::x509::extension::KeyUsage;
 use openssl::{
-    asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
+    asn1::{Asn1Integer, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
+    nid::Nid,
     pkey::Id,
     x509::{X509, X509Extension},
 };
@@ -381,7 +383,7 @@ fn inject_server_crl_dp(
     let mut outer = vec![0x30_u8]; // SEQUENCE
     encode_der_length(&mut outer, dp_seq.len())?;
     outer.extend_from_slice(&dp_seq);
-    let oid = Asn1Object::from_str("2.5.29.31")?;
+    let oid = asn1_object(Nid::CRL_DISTRIBUTION_POINTS)?;
     let val = Asn1OctetString::new_from_bytes(&outer)?;
     x509_builder.append_extension(X509Extension::new_from_der(
         oid.as_ref(),
