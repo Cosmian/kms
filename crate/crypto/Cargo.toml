@@ -42,7 +42,6 @@ non-fips = [
   "dep:pgp",
   "dep:cosmian_kms_client_utils",
   "cosmian_kms_client_utils/openpgp-export",
-  "dep:rand_08",
 ]
 
 [dependencies]
@@ -72,7 +71,6 @@ openssl-sys = { workspace = true }
 p256 = { workspace = true, features = ["arithmetic", "ecdsa", "pem", "std"], optional = true }
 pgp = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
-rand_08 = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
 rand_distr = { workspace = true, optional = true }
 regex = { workspace = true, optional = true, features = ["unicode-perl"] }

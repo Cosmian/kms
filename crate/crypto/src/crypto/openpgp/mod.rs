@@ -11,10 +11,13 @@ use pgp::{
     ser::Serialize,
     types::{KeyDetails, Mpi, Password, PlainSecretParams, PublicParams, SecretParams},
 };
-use rand_08::SeedableRng;
 use zeroize::Zeroizing;
 
-use crate::{crypto::KmsRng, crypto_bail, crypto_error, error::CryptoError};
+use crate::{
+    crypto::{KmsRng, rng::SeededCsRng},
+    crypto_bail, crypto_error,
+    error::CryptoError,
+};
 
 /// `OpenPGP` key profile to generate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,14 +97,11 @@ fn normalize_rsa_secret_params(
     Ok(Some(normalized))
 }
 
-// The PGP crate requires an infallible rand 0.8 `CryptoRng` and offers no direct-seed entry point,
-// so its RNG stream is a ChaCha12 `StdRng` seeded with 256 bits taken from `KmsRng`.
-fn openssl_seeded_rng(rng: &KmsRng) -> Result<rand_08::rngs::StdRng, CryptoError> {
-    let mut seed = Zeroizing::new([0_u8; 32]);
-    rng.fill_bytes(&mut seed[..])
-        .map_err(|e| crypto_error!("failed to seed OpenPGP RNG with KmsRng: {e}"))?;
-
-    Ok(rand_08::rngs::StdRng::from_seed(std::mem::take(&mut *seed)))
+// The PGP crate requires an infallible rand 0.8 `CryptoRng` (rand_core 0.6) and offers no
+// direct-seed entry point, so its RNG stream is `KmsRng::seeded_csrng`, overwritten when dropped.
+fn openssl_seeded_rng(rng: &KmsRng) -> Result<SeededCsRng, CryptoError> {
+    rng.seeded_csrng()
+        .map_err(|e| crypto_error!("failed to seed OpenPGP RNG with KmsRng: {e}"))
 }
 
 /// Armored Transferable Secret Key, RFC 9580 v4.

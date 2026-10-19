@@ -14,8 +14,8 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_crypto::{
-    crypto::KmsRng,
-    reexport::cosmian_crypto_core::{CsRng, reexport::rand_core::RngCore},
+    crypto::{KmsRng, rng::SeededCsRng},
+    reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, ObjectsStore, PermissionsStore, UserId,
@@ -532,7 +532,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
     let now = time::OffsetDateTime::now_utc();
 
     // Helper: create a minimal AES symmetric key object
-    let make_key = |rng: &mut CsRng| -> DbResult<Object> {
+    let make_key = |rng: &mut SeededCsRng| -> DbResult<Object> {
         let mut bytes = vec![0_u8; 32];
         rng.fill_bytes(&mut bytes);
         create_symmetric_key_kmip_object(

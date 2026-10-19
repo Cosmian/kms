@@ -1780,7 +1780,6 @@ dependencies = [
  "p256",
  "pgp",
  "rand 0.10.3",
- "rand 0.8.7",
  "rand_chacha 0.10.0",
  "rand_distr",
  "regex",

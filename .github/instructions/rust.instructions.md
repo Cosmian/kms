@@ -213,8 +213,8 @@ Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justifica
 
 ## Randomness — KmsRng only (mechanically enforced)
 
-- Every random byte comes from `cosmian_kms_crypto::crypto::KmsRng`: keys, seeds, nonces/IVs, salts, serials, tokens, test fixtures. Use `fill_bytes` / `random_vec` for secrets and `fill_public_bytes` for values sent to clients. Use `kms.rng` when a `KMS` is in scope, else `KmsRng::new()` (zero-sized).
-- An API that needs an infallible `rand_core` RNG gets `KmsRng::seeded_csrng()`, or `<Prg>::from_seed` with a seed filled by `KmsRng::fill_bytes`.
+- Every random byte comes from `cosmian_kms_crypto::crypto::KmsRng`: keys, seeds, nonces/IVs, salts, serials, tokens, test fixtures. Use `fill_bytes` / `random_vec` for values that stay secret and `fill_public_bytes` for values that leave the server in clear (nonces, IVs, serials, `RNGRetrieve`, `C_GenerateRandom`). Use `kms.rng` when a `KMS` is in scope, else `KmsRng::new()` (zero-sized).
+- An API that needs an infallible `rand_core` RNG gets `KmsRng::seeded_csrng()` (its state is overwritten on drop); `<Prg>::from_seed` with a seed filled by `KmsRng::fill_bytes` only for non-secret output such as test fixtures or anonymization noise.
 - The root `clippy.toml` bans every other entropy source: OpenSSL `rand` / `BigNum` rand / raw `RAND_*` / `BN_*rand*`, rand's `rng` / `thread_rng` / `random*` / `fill` / `make_rng`, `ThreadRng`, `OsRng`, `SysRng`, `SeedableRng::{from_entropy, from_os_rng, try_from_os_rng, seed_from_u64}`, `getrandom::*`, `cookie::Key::generate`, and non-CSPRNGs.
 - Never suppress those lints (nor `clippy::style` / `clippy::all`), never override their level, and never add another `clippy.toml`. CI job "KmsRng Policy" (`mise run audit:rng-policy`) fails on any of these.
 - A dependency adds a new entropy API: add it to `clippy.toml` with `allow-invalid = true`.

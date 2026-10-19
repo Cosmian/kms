@@ -453,7 +453,7 @@ fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> Messa
 /// 20 octets) also satisfy the CA/Browser Forum ≥ 64-bit entropy requirement.
 pub(crate) fn generate_serial_number(rng: &KmsRng) -> KResult<Asn1Integer> {
     let mut serial_number_bytes = [0_u8; 20];
-    rng.fill_bytes(&mut serial_number_bytes)
+    rng.fill_public_bytes(&mut serial_number_bytes)
         .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
     // Clear the high bit (positive INTEGER) and set the lowest one so the encoding
     // keeps the full 20 octets and the serial can never be zero.

@@ -40,6 +40,8 @@
 - Anonymization word tokens and noise generators are drawn from, or seeded by, `KmsRng`; the unused PKCS#11 `random_label` helper is removed.
 - The root `clippy.toml` now bans every ambient entropy source (OpenSSL `rand` / `BigNum` rand, `rand::rng`, `thread_rng`, `OsRng`, `getrandom`, `from_entropy`, `cookie::Key::generate`, non-cryptographic PRGs) with no suppression allowed, test fixtures included. Seeded PRGs are allowed only through `KmsRng::seeded_csrng` or `from_seed` with `KmsRng` bytes.
 - New CI job "KmsRng Policy" (`mise run audit:rng-policy`) rejects lint suppressions, lint-level overrides in Cargo manifests and any additional `clippy.toml`.
+- Nonces, IVs and certificate serials (symmetric `random_nonce`, JOSE, AWS XKS, Redis objects, ceremony records, HSM sessions, X.509 serials) and PKCS#11 `C_GenerateRandom` output come from the public DRBG (`fill_public_bytes`), so private-DRBG output never leaves the server.
+- `KmsRng::seeded_csrng` returns `SeededCsRng`, whose ChaCha12 state (equal to the seed) is overwritten on drop; OpenPGP key generation, encryption and signing now use it instead of an unzeroized `StdRng`. Drops the `rand` 0.8 (`rand_08`) dependency.
 - EST/SCEP issue certificates as the reserved identity `[enrollment-service]` instead of `default_username`.
   It is rejected on every externally authenticated path (JWT, mTLS CN, SPIRE, UI session; the guard is now
   `reject_reserved_service_identity`, shared with `[aws-xks-service]`). It may only use a CA whose owner

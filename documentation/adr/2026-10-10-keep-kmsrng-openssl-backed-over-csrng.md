@@ -18,8 +18,9 @@ Proposed | **Accepted** | Rejected | Superseded | Deprecated
 
 `KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) is a zero-sized, stateless, `Send + Sync` wrapper around
 OpenSSL's DRBG hierarchy (AES-256 CTR-DRBG, SP 800-90A r1). It calls `RAND_priv_bytes_ex` (secret values) and
-`RAND_bytes_ex` (values handed to clients) and requests 256 bits of security strength on every call, so that
-OpenSSL fails closed when the serving DRBG is weaker (NIST SP 800-133r2 §4).
+`RAND_bytes_ex` (values that leave the server in clear: nonces, IVs, serials, `RNGRetrieve`) and requests 256
+bits of security strength on every call, so that OpenSSL fails closed when the serving DRBG is weaker (NIST
+SP 800-133r2 §4).
 
 Before this decision, many production call sites generated key material, nonces/IVs or secret tokens without
 going through `KmsRng`:
@@ -48,7 +49,8 @@ used for consistency.
    `KmsRng::seeded_csrng` or `from_seed` with bytes from `KmsRng::fill_bytes`. Typical uses: a *seed-stretching
    PRG* when a third-party API demands an infallible `CryptoRngCore` and exposes no way to inject entropy
    (OpenPGP via the `pgp` crate, ECIES SalsaSealBox via `cosmian_crypto_core`), anonymization noise, and test
-   fixtures. A PRG seeded from the OS or from a thread-local RNG is banned.
+   fixtures. A PRG seeded from the OS or from a thread-local RNG is banned. A PRG whose output becomes key
+   material must be `KmsRng::seeded_csrng`, whose `ChaCha12` state (equal to the seed) is overwritten when dropped.
 4. **Documented exceptions with no injection point**: RSA/EC/EdDSA key generation, SLH-DSA and hybrid-KEM
    composite keygen (OpenSSL generates these atomically from its own DRBG); Covercrypt
    (`Covercrypt::setup()` locks an internal `rng` field and has no constructor parameter or setter that accepts
@@ -114,5 +116,5 @@ used for consistency.
 - **REF-001**: GitHub Issue #1266
 - **REF-002**: NIST SP 800-133r2 §4; NIST SP 800-90A r1 §9.3.1
 - **REF-003**: `crate/crypto/src/crypto/rng/mod.rs`
-- **REF-004**: `documentation/docs/certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md`
+- **REF-004**: `documentation/docs/certifications_and_compliance/cryptographic_algorithms/random_number_generation.md`
 - **REF-005**: `documentation/adr/2026-10-09-pqc-kmsrng-seeding-and-safe-openssl-migration.md`
