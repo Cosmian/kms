@@ -194,7 +194,12 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, test_cfg.threads)?;
-    shared::concurrent_sign_does_not_degrade(&slot)?;
+    // Kryoptic 1.5.2 serializes signing: every `C_SignInit` takes the slot's `Token` write lock
+    // and re-reads the key from SQLite, so 8 threads cannot beat 1 and lose some to lock
+    // contention (measured 70-84% of the 1-thread rate on 16-32 cores, ~100% on <= 8). Require
+    // half, which still catches a regression that costs real throughput (e.g. a session opened
+    // per operation).
+    shared::concurrent_sign_does_not_degrade_above(&slot, 0.5)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &test_cfg)?;
