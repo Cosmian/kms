@@ -89,7 +89,7 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
     };
 
     Ok(AuthenticatedUser {
-        username: client_cert_username(&certificate.cert)?,
+        username: user_from_client_certificate(&certificate.cert)?,
         auth_method: AuthMethod::Mtls,
     })
 }

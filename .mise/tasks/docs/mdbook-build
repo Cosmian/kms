@@ -7,9 +7,11 @@ print_header "Building KMS documentation"
 
 REPO_ROOT="$(get_repo_root)"
 
-# Ensure mdbook toolchain is available
-if ! command -v mdbook &>/dev/null; then
-  print_info "Installing mdBook toolchain..."
+# Keep these versions synchronized with documentation/theme/scripts/setup-mdbook.sh:6-8.
+if [[ "$(mdbook --version 2>/dev/null || true)" != "mdbook v0.4.52" ]] ||
+  [[ "$(mdbook-admonish --version 2>/dev/null || true)" != "mdbook-admonish 1.20.0" ]] ||
+  [[ "$(mdbook-mermaid --version 2>/dev/null || true)" != "mdbook-mermaid 0.16.0" ]]; then
+  print_info "Installing pinned mdBook toolchain..."
   bash "${REPO_ROOT}/documentation/theme/scripts/setup-mdbook.sh"
 fi
 

@@ -5,7 +5,7 @@
       - [Severity Rating](#severity-rating)
       - [Known Vulnerabilities](#known-vulnerabilities)
             - [2026](#2026)
-                  - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-031--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
+                  - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
                   - [COSMIAN-2026-039 — Session-cookie requests accepted from other same-site origins](#cosmian-2026-039--session-cookie-requests-accepted-from-other-same-site-origins)
                   - [COSMIAN-2026-038 — AWS XKS SigV4 secret access key written to the startup log](#cosmian-2026-038--aws-xks-sigv4-secret-access-key-written-to-the-startup-log)
                   - [COSMIAN-2026-037 — Crypto operations reveal the existence and state of other users' keys](#cosmian-2026-037--crypto-operations-reveal-the-existence-and-state-of-other-users-keys)

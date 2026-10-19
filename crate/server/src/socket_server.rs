@@ -19,8 +19,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::user_from_client_certificate,
-    middlewares::{UserId, client_cert_username},
+    middlewares::{UserId, user_from_client_certificate},
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
@@ -470,7 +469,7 @@ fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> KResult<UserId> {
             "socket server: the client did not provide a peer certificate".to_owned(),
         )
     })?;
-    client_cert_username(&client_certificate)
+    user_from_client_certificate(&client_certificate)
 }
 
 // Client Certificate Authentication
@@ -534,7 +533,8 @@ mod tests {
     };
 
     use super::{
-        MAX_SOCKET_REQUEST_BODY, SocketServerParams, client_username, create_openssl_acceptor, read_request,
+        MAX_SOCKET_REQUEST_BODY, SocketServerParams, client_username, create_openssl_acceptor,
+        read_request,
     };
     use crate::routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER};
 
@@ -621,7 +621,11 @@ mod tests {
                 b.set_private_key(&key)?;
                 Ok(())
             },
-            |tls| client_username(tls).map_err(|e| e.to_string()),
+            |tls| {
+                client_username(tls)
+                    .map(|user| user.to_string())
+                    .map_err(|e| e.to_string())
+            },
         )?
         .ok_or("the TLS handshake must succeed: the certificate is CA-issued")?)
     }
