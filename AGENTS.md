@@ -105,7 +105,6 @@ Start backends with `docker compose up -d`, then set:
 
 > MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
-> `postgres-mtls` and `mysql-mtls` (profile `mtls`), and `jaeger` and `otel-collector` (profile `otel-test`), are not started by a bare `docker compose up -d`. Use `--profile <name>` or name the service, for example `docker compose up -d postgres-mtls`.
 
 ### Pre-commit hooks
 

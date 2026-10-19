@@ -296,5 +296,5 @@ docker compose --profile otel-test logs -f otel-collector
 - [OTLP specification](https://opentelemetry.io/docs/specs/otlp/)
 - [Jaeger documentation](https://www.jaegertracing.io/docs/)
 - [Grafana documentation](https://grafana.com/docs/)
-- [Cosmian KMS metrics reference](https://docs.cosmian.com/key_management_system/configuration/otlp-metrics/)
-- [Cosmian KMS monitoring documentation](https://docs.cosmian.com/key_management_system/configuration/monitoring-setup/)
+- [Cosmian KMS metrics reference](https://docs.cosmian.com/key_management_system/configuration/otlp-telemetry.html)
+- [Cosmian KMS monitoring documentation](https://docs.cosmian.com/key_management_system/configuration/monitoring-setup.html)
