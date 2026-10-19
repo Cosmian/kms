@@ -168,11 +168,8 @@ impl ObjectsDB {
                 .map_err(|e| DbError::CryptographicError(format!("RNG failure: {e}")))?;
             Nonce::from(nonce_bytes)
         };
-        let ct: Vec<u8> = self.dem.encrypt(
-            &nonce,
-            &serde_json::to_vec(redis_db_object)?,
-            Some(uid.as_bytes()),
-        )?;
+        let plaintext = serde_json::to_vec(redis_db_object)?;
+        let ct: Vec<u8> = self.dem.encrypt(&nonce, &plaintext, Some(uid.as_bytes()))?;
         let mut ciphertext = Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + ct.len());
         ciphertext.extend_from_slice(nonce.as_bytes());
         ciphertext.extend(ct);
@@ -250,6 +247,10 @@ impl ObjectsDB {
         &self,
         uids: &HashSet<String>,
     ) -> DbResult<HashMap<String, RedisDbObject>> {
+        // redis >= 1.0 rejects an empty pipeline with "empty command".
+        if uids.is_empty() {
+            return Ok(HashMap::new());
+        }
         let mut pipeline = pipe();
         for uid in uids {
             pipeline.get(Self::object_key(uid));

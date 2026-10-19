@@ -96,13 +96,10 @@ criteria = "safe-to-deploy"
 version = "0.6.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.actix-files]]
-version = "0.6.10"
-criteria = "safe-to-deploy"
-
 [[exemptions.actix-http]]
-version = "3.13.6"
+version = "3.19.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 3.19.0) — unaudited, pending review"
 
 [[exemptions.actix-identity]]
 version = "0.6.0"
@@ -113,17 +110,15 @@ version = "0.2.4"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.actix-router]]
-version = "0.5.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.actix-rt]]
-version = "2.11.0"
+version = "2.15.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 2.15.0) — unaudited, pending review"
 
 [[exemptions.actix-server]]
-version = "2.6.0"
+version = "2.10.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 2.10.0) — unaudited, pending review"
 
 [[exemptions.actix-service]]
 version = "2.0.3"
@@ -134,19 +129,21 @@ version = "0.8.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.actix-tls]]
-version = "3.5.0"
+version = "3.6.1"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 3.6.1) — unaudited, pending review"
 
 [[exemptions.actix-utils]]
 version = "3.0.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.actix-web]]
-version = "4.14.0"
+version = "4.17.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 4.17.0) — unaudited, pending review"
 
 [[exemptions.actix-web-codegen]]
-version = "4.3.0"
+version = "4.4.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
@@ -183,42 +180,18 @@ version = "0.8.12"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.aho-corasick]]
-version = "1.1.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.annotate-snippets]]
 version = "0.12.16"
 criteria = "safe-to-deploy"
 
-[[exemptions.anstream]]
-version = "1.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.anstyle]]
-version = "1.0.14"
-criteria = "safe-to-deploy"
-
-[[exemptions.anstyle-parse]]
-version = "1.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.anstyle-query]]
-version = "1.1.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.anstyle-wincon]]
-version = "3.0.11"
-criteria = "safe-to-deploy"
-
-[[exemptions.anyhow]]
-version = "1.0.104"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.arc-swap]]
 version = "1.9.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.arcstr]]
+version = "1.2.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.2.0) — unaudited, pending review"
 
 [[exemptions.argon2]]
 version = "0.5.3"
@@ -238,11 +211,6 @@ version = "0.2.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.assert_cmd]]
-version = "2.2.2"
-criteria = "safe-to-run"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.async-broadcast]]
 version = "0.7.2"
 criteria = "safe-to-deploy"
@@ -252,7 +220,7 @@ version = "3.4.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.async-recursion]]
-version = "1.1.1"
+version = "1.2.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
@@ -264,19 +232,6 @@ criteria = "safe-to-deploy"
 version = "0.3.6"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.async-trait]]
-version = "0.1.91"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.atomic]]
-version = "0.6.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.autocfg]]
-version = "1.5.1"
-criteria = "safe-to-deploy"
 
 [[exemptions.aws-lc-rs]]
 version = "1.18.1"
@@ -290,10 +245,6 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 
 [[exemptions.axum]]
 version = "0.7.9"
-criteria = "safe-to-deploy"
-
-[[exemptions.axum]]
-version = "0.8.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.axum-core]]
@@ -316,6 +267,11 @@ criteria = "safe-to-deploy"
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.base16ct]]
+version = "1.0.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.0.0) — unaudited, pending review"
+
 [[exemptions.base64]]
 version = "0.20.0"
 criteria = "safe-to-deploy"
@@ -323,6 +279,11 @@ criteria = "safe-to-deploy"
 [[exemptions.base64]]
 version = "0.21.7"
 criteria = "safe-to-deploy"
+
+[[exemptions.base64]]
+version = "0.23.1"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.23.1) — unaudited, pending review"
 
 [[exemptions.base64ct]]
 version = "1.8.3"
@@ -338,8 +299,9 @@ criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.bitflags]]
-version = "2.13.1"
+version = "2.13.2"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 2.13.2) — unaudited, pending review"
 
 [[exemptions.bitvec]]
 version = "1.1.1"
@@ -365,9 +327,15 @@ criteria = "safe-to-deploy"
 version = "0.9.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.bstr]]
-version = "1.13.0"
+[[exemptions.borsh]]
+version = "1.8.1"
 criteria = "safe-to-run"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+
+[[exemptions.borsh-derive]]
+version = "1.8.1"
+criteria = "safe-to-run"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.btoi]]
 version = "0.5.0"
@@ -379,14 +347,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.bytemuck]]
 version = "1.25.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.bytes]]
-version = "1.12.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.bytestring]]
-version = "1.5.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.camellia]]
@@ -402,15 +362,12 @@ version = "0.11.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.cc]]
-version = "1.4.0"
+version = "1.8.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.8.0) — unaudited, pending review"
 
 [[exemptions.cfb-mode]]
 version = "0.8.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.cfg-if]]
-version = "1.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.cfg_aliases]]
@@ -449,58 +406,29 @@ criteria = "safe-to-deploy"
 version = "0.5.2"
 criteria = "safe-to-run"
 
-[[exemptions.clap]]
-version = "4.6.5"
-criteria = "safe-to-deploy"
-
 [[exemptions.clap-config-fallback]]
-version = "0.1.12"
+version = "0.1.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.clap-config-fallback-derive]]
-version = "0.1.12"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.clap_builder]]
-version = "4.6.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.clap_derive]]
-version = "4.6.4"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.clap_lex]]
-version = "1.1.0"
+version = "0.1.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.cmac]]
 version = "0.7.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.cmake]]
-version = "0.1.58"
-criteria = "safe-to-deploy"
-
 [[exemptions.cmov]]
 version = "0.5.4"
 criteria = "safe-to-deploy"
 
-[[exemptions.colorchoice]]
-version = "1.0.5"
-criteria = "safe-to-deploy"
-
 [[exemptions.combine]]
-version = "4.6.7"
+version = "4.6.9"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 4.6.9) — unaudited, pending review"
 
 [[exemptions.console]]
 version = "0.15.11"
-criteria = "safe-to-deploy"
-
-[[exemptions.console_error_panic_hook]]
-version = "0.1.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.const-oid]]
@@ -548,7 +476,8 @@ criteria = "safe-to-deploy"
 
 [[exemptions.cpubits]]
 version = "0.1.1"
-criteria = "safe-to-run"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.1.1) — unaudited, pending review"
 
 [[exemptions.cpufeatures]]
 version = "0.2.17"
@@ -603,6 +532,11 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 version = "0.5.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.crypto-bigint]]
+version = "0.7.5"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.7.5) — unaudited, pending review"
+
 [[exemptions.crypto-common]]
 version = "0.1.7"
 criteria = "safe-to-deploy"
@@ -617,14 +551,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.crypto_secretbox]]
 version = "0.1.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.csv]]
-version = "1.4.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.csv-core]]
-version = "0.1.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.ctr]]
@@ -701,16 +627,19 @@ version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.deadpool]]
-version = "0.12.3"
+version = "0.13.1"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.13.1) — unaudited, pending review"
 
 [[exemptions.deadpool-postgres]]
-version = "0.14.1"
+version = "0.14.2"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.2) — unaudited, pending review"
 
 [[exemptions.deadpool-runtime]]
-version = "0.1.4"
+version = "0.3.1"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.1) — unaudited, pending review"
 
 [[exemptions.defmt]]
 version = "1.1.1"
@@ -725,6 +654,11 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 [[exemptions.defmt-parser]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.der]]
+version = "0.8.2"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.8.2) — unaudited, pending review"
 
 [[exemptions.der-parser]]
 version = "10.0.0"
@@ -748,21 +682,6 @@ version = "0.20.2"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.derive_more]]
-version = "0.99.20"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.derive_more]]
-version = "2.1.1"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.derive_more-impl]]
-version = "2.1.1"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.des]]
 version = "0.8.1"
 criteria = "safe-to-deploy"
@@ -778,11 +697,6 @@ criteria = "safe-to-deploy"
 [[exemptions.digest]]
 version = "0.11.3"
 criteria = "safe-to-deploy"
-
-[[exemptions.displaydoc]]
-version = "0.2.7"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.dlv-list]]
 version = "0.5.2"
@@ -805,10 +719,6 @@ criteria = "safe-to-deploy"
 version = "1.0.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.dyn-clone]]
-version = "1.0.20"
-criteria = "safe-to-deploy"
-
 [[exemptions.eax]]
 version = "0.5.0"
 criteria = "safe-to-deploy"
@@ -816,6 +726,11 @@ criteria = "safe-to-deploy"
 [[exemptions.ecdsa]]
 version = "0.16.9"
 criteria = "safe-to-deploy"
+
+[[exemptions.ecdsa]]
+version = "0.17.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.17.0) — unaudited, pending review"
 
 [[exemptions.ed25519]]
 version = "2.2.3"
@@ -830,20 +745,17 @@ version = "0.6.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.either]]
-version = "1.17.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.elliptic-curve]]
 version = "0.13.8"
 criteria = "safe-to-deploy"
 
+[[exemptions.elliptic-curve]]
+version = "0.14.1"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.1) — unaudited, pending review"
+
 [[exemptions.encode_unicode]]
 version = "1.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.encoding_rs_io]]
-version = "0.1.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.enum-ordinalize]]
@@ -855,13 +767,10 @@ version = "4.4.2"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.errno]]
-version = "0.3.14"
-criteria = "safe-to-deploy"
-
 [[exemptions.etcetera]]
-version = "0.8.0"
+version = "0.11.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.11.0) — unaudited, pending review"
 
 [[exemptions.event-listener]]
 version = "5.4.2"
@@ -879,6 +788,11 @@ criteria = "safe-to-deploy"
 version = "0.13.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.ff]]
+version = "0.14.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.0) — unaudited, pending review"
+
 [[exemptions.fiat-crypto]]
 version = "0.2.9"
 criteria = "safe-to-deploy"
@@ -889,15 +803,12 @@ criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.find-msvc-tools]]
-version = "0.1.9"
+version = "0.1.14"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.1.14) — unaudited, pending review"
 
 [[exemptions.flagset]]
 version = "0.4.7"
-criteria = "safe-to-deploy"
-
-[[exemptions.flate2]]
-version = "1.1.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.float-cmp]]
@@ -926,45 +837,48 @@ version = "2.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.futures]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.futures-channel]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
-
-[[exemptions.futures-core]]
-version = "0.3.33"
-criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.futures-executor]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.futures-io]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.futures-macro]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.futures-sink]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.futures-task]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.futures-timer]]
 version = "3.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.futures-util]]
-version = "0.3.33"
+version = "0.3.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.34) — unaudited, pending review"
 
 [[exemptions.fuzzy-matcher]]
 version = "0.3.7"
@@ -1019,28 +933,17 @@ criteria = "safe-to-deploy"
 version = "0.13.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.h2]]
-version = "0.3.27"
+[[exemptions.group]]
+version = "0.14.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.h2]]
-version = "0.4.16"
-criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.0) — unaudited, pending review"
 
 [[exemptions.half]]
 version = "2.7.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.hashbrown]]
-version = "0.14.5"
-criteria = "safe-to-deploy"
-
 [[exemptions.hashlink]]
 version = "0.10.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.hermit-abi]]
-version = "0.5.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.hkdf]]
@@ -1055,41 +958,12 @@ criteria = "safe-to-deploy"
 version = "0.13.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.home]]
-version = "0.5.12"
-criteria = "safe-to-deploy"
-
 [[exemptions.hostname]]
 version = "0.4.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.http]]
-version = "0.2.12"
-criteria = "safe-to-deploy"
-
-[[exemptions.http]]
-version = "1.5.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.http-body]]
-version = "1.1.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.http-body-util]]
-version = "0.1.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.http-range]]
 version = "0.1.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.httparse]]
-version = "1.10.1"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.humantime]]
-version = "2.4.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.hybrid-array]]
@@ -1098,10 +972,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.hybrid-array]]
 version = "0.4.14"
-criteria = "safe-to-deploy"
-
-[[exemptions.hyper]]
-version = "1.11.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.hyper-openssl]]
@@ -1117,46 +987,8 @@ criteria = "safe-to-deploy"
 version = "0.5.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.hyper-tls]]
-version = "0.6.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.hyper-util]]
-version = "0.1.20"
-criteria = "safe-to-deploy"
-
 [[exemptions.iana-time-zone]]
 version = "0.1.65"
-criteria = "safe-to-deploy"
-
-[[exemptions.icu_collections]]
-version = "2.2.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.icu_locale_core]]
-version = "2.2.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.icu_normalizer]]
-version = "2.2.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.icu_normalizer_data]]
-version = "2.2.0"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.icu_properties]]
-version = "2.2.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.icu_properties_data]]
-version = "2.2.0"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.icu_provider]]
-version = "2.2.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.idea]]
@@ -1167,26 +999,13 @@ criteria = "safe-to-deploy"
 version = "1.0.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.idna]]
-version = "1.1.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.idna_adapter]]
 version = "1.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.impl-more]]
-version = "0.1.9"
-criteria = "safe-to-deploy"
-
-[[exemptions.impl-more]]
 version = "0.3.5"
 criteria = "safe-to-deploy"
-
-[[exemptions.indexmap]]
-version = "1.9.3"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.inout]]
 version = "0.1.4"
@@ -1197,12 +1016,9 @@ version = "0.2.2"
 criteria = "safe-to-run"
 
 [[exemptions.ipnet]]
-version = "2.12.0"
+version = "2.12.2"
 criteria = "safe-to-deploy"
-
-[[exemptions.is_terminal_polyfill]]
-version = "1.70.2"
-criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 2.12.2) — unaudited, pending review"
 
 [[exemptions.itertools]]
 version = "0.10.5"
@@ -1211,23 +1027,6 @@ criteria = "safe-to-deploy"
 [[exemptions.itertools]]
 version = "0.13.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.itoa]]
-version = "1.0.18"
-criteria = "safe-to-deploy"
-
-[[exemptions.jiff]]
-version = "0.2.38"
-criteria = "safe-to-deploy"
-
-[[exemptions.jiff-core]]
-version = "0.1.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.jiff-static]]
-version = "0.2.38"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.jni]]
 version = "0.22.4"
@@ -1248,10 +1047,6 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 version = "0.4.1"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.jobserver]]
-version = "0.1.35"
-criteria = "safe-to-deploy"
 
 [[exemptions.js-sys]]
 version = "0.3.85"
@@ -1277,6 +1072,11 @@ criteria = "safe-to-deploy"
 [[exemptions.k256]]
 version = "0.13.4"
 criteria = "safe-to-deploy"
+
+[[exemptions.k256]]
+version = "0.14.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.0) — unaudited, pending review"
 
 [[exemptions.k8s-openapi]]
 version = "0.28.0"
@@ -1320,23 +1120,9 @@ criteria = "safe-to-deploy"
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.leb128]]
-version = "0.2.7"
-criteria = "safe-to-deploy"
-
-[[exemptions.libc]]
-version = "0.2.189"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.libloading]]
 version = "0.8.9"
 criteria = "safe-to-deploy"
-
-[[exemptions.libm]]
-version = "0.2.16"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.libredox]]
 version = "0.1.18"
@@ -1347,22 +1133,8 @@ version = "0.35.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.libz-sys]]
-version = "1.1.29"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.linked_hash_set]]
 version = "0.1.6"
-criteria = "safe-to-deploy"
-
-[[exemptions.linux-raw-sys]]
-version = "0.12.1"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.litemap]]
-version = "0.8.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.litrs]]
@@ -1373,17 +1145,15 @@ criteria = "safe-to-deploy"
 version = "0.1.4"
 criteria = "safe-to-deploy"
 
-[[exemptions.lock_api]]
-version = "0.4.14"
-criteria = "safe-to-deploy"
-
 [[exemptions.log]]
-version = "0.4.33"
+version = "0.4.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.4.34) — unaudited, pending review"
 
 [[exemptions.lru]]
-version = "0.18.2"
+version = "0.18.5"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.18.5) — unaudited, pending review"
 
 [[exemptions.lru-slab]]
 version = "0.1.2"
@@ -1405,30 +1175,13 @@ criteria = "safe-to-deploy"
 version = "0.11.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.memchr]]
-version = "2.8.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.mime]]
-version = "0.3.17"
-criteria = "safe-to-deploy"
-
 [[exemptions.mime_guess]]
 version = "2.0.5"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.minicov]]
-version = "0.3.8"
-criteria = "safe-to-run"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.minimal-lexical]]
 version = "0.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.mio]]
-version = "1.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.ml-kem]]
@@ -1445,8 +1198,9 @@ criteria = "safe-to-run"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.moka]]
-version = "0.12.15"
+version = "0.12.16"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.12.16) — unaudited, pending review"
 
 [[exemptions.mysql_async]]
 version = "0.37.1"
@@ -1474,25 +1228,18 @@ criteria = "safe-to-deploy"
 version = "0.3.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.num-bigint]]
-version = "0.4.8"
-criteria = "safe-to-deploy"
-
 [[exemptions.num-bigint-dig]]
 version = "0.8.6"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
+[[exemptions.num-bigint-dig]]
+version = "0.9.1"
+criteria = "safe-to-deploy"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+
 [[exemptions.num-conv]]
 version = "0.2.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.num-iter]]
-version = "0.1.46"
-criteria = "safe-to-deploy"
-
-[[exemptions.num_cpus]]
-version = "1.17.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.num_enum]]
@@ -1527,10 +1274,6 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 
 [[exemptions.once_cell]]
 version = "1.21.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.once_cell_polyfill]]
-version = "1.70.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.oorandom]]
@@ -1583,10 +1326,6 @@ criteria = "safe-to-deploy"
 version = "0.32.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.ordered-float]]
-version = "2.10.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.ordered-multimap]]
 version = "0.7.3"
 criteria = "safe-to-deploy"
@@ -1603,15 +1342,6 @@ criteria = "safe-to-deploy"
 version = "0.13.3"
 criteria = "safe-to-deploy"
 
-[[exemptions.parking_lot]]
-version = "0.12.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.parking_lot_core]]
-version = "0.9.12"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.password-hash]]
 version = "0.5.0"
 criteria = "safe-to-deploy"
@@ -1619,6 +1349,11 @@ criteria = "safe-to-deploy"
 [[exemptions.pem]]
 version = "3.0.6"
 criteria = "safe-to-deploy"
+
+[[exemptions.pem]]
+version = "4.0.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 4.0.0) — unaudited, pending review"
 
 [[exemptions.pest]]
 version = "2.8.8"
@@ -1639,14 +1374,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.pgp]]
 version = "0.21.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.phf]]
-version = "0.13.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.phf_shared]]
-version = "0.13.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.pin-project]]
@@ -1674,6 +1401,11 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 [[exemptions.pkcs8]]
 version = "0.10.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.pkcs8]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.11.0) — unaudited, pending review"
 
 [[exemptions.pkg-config]]
 version = "0.3.33"
@@ -1709,26 +1441,33 @@ criteria = "safe-to-deploy"
 version = "0.2.14"
 criteria = "safe-to-deploy"
 
-[[exemptions.potential_utf]]
-version = "0.1.5"
-criteria = "safe-to-deploy"
-
 [[exemptions.ppv-lite86]]
 version = "0.2.21"
 criteria = "safe-to-deploy"
+
+[[exemptions.primefield]]
+version = "0.14.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.0) — unaudited, pending review"
 
 [[exemptions.primeorder]]
 version = "0.13.6"
 criteria = "safe-to-deploy"
 
-[[exemptions.proc-macro2]]
-version = "1.0.107"
+[[exemptions.primeorder]]
+version = "0.14.0"
 criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.0) — unaudited, pending review"
+
+[[exemptions.proc-macro-crate]]
+version = "3.5.0"
+criteria = "safe-to-run"
+notes = "transitive or direct dependency of the workspace (dependency bump to 3.5.0) — unaudited, pending review"
 
 [[exemptions.proptest]]
-version = "1.11.0"
+version = "1.12.0"
 criteria = "safe-to-run"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.12.0) — unaudited, pending review"
 
 [[exemptions.prost]]
 version = "0.13.5"
@@ -1770,8 +1509,9 @@ version = "0.12.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.quick-xml]]
-version = "0.41.0"
+version = "0.42.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.42.0) — unaudited, pending review"
 
 [[exemptions.quinn]]
 version = "0.11.11"
@@ -1809,8 +1549,9 @@ version = "0.9.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.rand]]
-version = "0.10.2"
+version = "0.10.3"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.10.3) — unaudited, pending review"
 
 [[exemptions.rand_chacha]]
 version = "0.9.0"
@@ -1837,8 +1578,9 @@ version = "0.10.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.rand_xorshift]]
-version = "0.4.0"
+version = "0.5.0"
 criteria = "safe-to-run"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.5.0) — unaudited, pending review"
 
 [[exemptions.raw-cpuid]]
 version = "11.6.0"
@@ -1849,58 +1591,35 @@ version = "0.1.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rcgen]]
-version = "0.13.2"
+version = "0.14.10"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.10) — unaudited, pending review"
 
 [[exemptions.redis]]
 version = "0.32.7"
 criteria = "safe-to-deploy"
 
+[[exemptions.redis]]
+version = "1.7.1"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.7.1) — unaudited, pending review"
+
 [[exemptions.redox_syscall]]
 version = "0.5.18"
-criteria = "safe-to-deploy"
-
-[[exemptions.ref-cast]]
-version = "1.0.27"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.ref-cast-impl]]
-version = "1.0.27"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.regex]]
-version = "1.13.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.regex-automata]]
-version = "0.4.16"
-criteria = "safe-to-deploy"
-
-[[exemptions.regex-lite]]
-version = "0.1.9"
-criteria = "safe-to-deploy"
-
-[[exemptions.regex-syntax]]
-version = "0.8.11"
 criteria = "safe-to-deploy"
 
 [[exemptions.replace_with]]
 version = "0.1.8"
 criteria = "safe-to-deploy"
 
-[[exemptions.reqwest]]
-version = "0.12.28"
-criteria = "safe-to-deploy"
-
-[[exemptions.reqwest]]
-version = "0.13.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.rfc6979]]
 version = "0.4.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.rfc6979]]
+version = "0.6.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.6.0) — unaudited, pending review"
 
 [[exemptions.ring]]
 version = "0.17.14"
@@ -1931,11 +1650,6 @@ criteria = "safe-to-deploy"
 version = "4.1.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.rustix]]
-version = "1.1.4"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.rustls]]
 version = "0.23.46"
 criteria = "safe-to-deploy"
@@ -1961,25 +1675,12 @@ criteria = "safe-to-deploy"
 version = "0.103.15"
 criteria = "safe-to-deploy"
 
-[[exemptions.rustversion]]
-version = "1.0.23"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.rusty-fork]]
 version = "0.3.1"
 criteria = "safe-to-run"
 
-[[exemptions.ryu]]
-version = "1.0.23"
-criteria = "safe-to-deploy"
-
 [[exemptions.salsa20]]
 version = "0.10.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.same-file]]
-version = "1.0.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.saturating]]
@@ -1998,10 +1699,6 @@ criteria = "safe-to-deploy"
 version = "1.2.3"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.scopeguard]]
-version = "1.2.0"
-criteria = "safe-to-deploy"
 
 [[exemptions.scratchstack-arn]]
 version = "0.4.9"
@@ -2023,6 +1720,11 @@ criteria = "safe-to-deploy"
 version = "0.7.3"
 criteria = "safe-to-deploy"
 
+[[exemptions.sec1]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.8.1) — unaudited, pending review"
+
 [[exemptions.secrecy]]
 version = "0.10.3"
 criteria = "safe-to-deploy"
@@ -2033,11 +1735,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.security-framework-sys]]
 version = "2.17.0"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.serde]]
-version = "1.0.229"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
@@ -2053,37 +1750,6 @@ criteria = "safe-to-deploy"
 version = "0.6.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.serde_core]]
-version = "1.0.229"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.serde_derive]]
-version = "1.0.229"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.serde_derive_internals]]
-version = "0.30.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.serde_ignored]]
-version = "0.1.14"
-criteria = "safe-to-deploy"
-
-[[exemptions.serde_json]]
-version = "1.0.151"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.serde_path_to_error]]
-version = "0.1.20"
-criteria = "safe-to-deploy"
-
-[[exemptions.serde_spanned]]
-version = "0.6.9"
-criteria = "safe-to-deploy"
-
 [[exemptions.serde_urlencoded]]
 version = "0.7.1"
 criteria = "safe-to-deploy"
@@ -2095,6 +1761,11 @@ criteria = "safe-to-deploy"
 [[exemptions.serdect]]
 version = "0.3.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.serdect]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.4.3) — unaudited, pending review"
 
 [[exemptions.serial_test]]
 version = "3.5.0"
@@ -2137,6 +1808,11 @@ criteria = "safe-to-deploy"
 version = "2.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.signature]]
+version = "3.0.0"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 3.0.0) — unaudited, pending review"
+
 [[exemptions.simd-adler32]]
 version = "0.3.10"
 criteria = "safe-to-deploy"
@@ -2153,10 +1829,6 @@ criteria = "safe-to-deploy"
 version = "1.0.3"
 criteria = "safe-to-deploy"
 
-[[exemptions.slab]]
-version = "0.4.12"
-criteria = "safe-to-deploy"
-
 [[exemptions.snafu]]
 version = "0.9.2"
 criteria = "safe-to-deploy"
@@ -2165,14 +1837,6 @@ criteria = "safe-to-deploy"
 version = "0.9.2"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.socket2]]
-version = "0.5.10"
-criteria = "safe-to-deploy"
-
-[[exemptions.socket2]]
-version = "0.6.5"
-criteria = "safe-to-deploy"
 
 [[exemptions.spiffe]]
 version = "0.16.1"
@@ -2189,6 +1853,11 @@ criteria = "safe-to-deploy"
 [[exemptions.spki]]
 version = "0.7.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.spki]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.8.1) — unaudited, pending review"
 
 [[exemptions.stable_deref_trait]]
 version = "1.2.1"
@@ -2224,14 +1893,6 @@ criteria = "safe-to-deploy"
 version = "0.1.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.syn]]
-version = "2.0.119"
-criteria = "safe-to-deploy"
-
-[[exemptions.syn]]
-version = "3.0.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.sync_wrapper]]
 version = "1.0.2"
 criteria = "safe-to-deploy"
@@ -2252,33 +1913,10 @@ criteria = "safe-to-deploy"
 version = "3.27.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.thiserror]]
-version = "1.0.69"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.thiserror]]
-version = "2.0.19"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.thiserror-impl]]
-version = "1.0.69"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.thiserror-impl]]
-version = "2.0.19"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.thread_local]]
-version = "1.1.10"
-criteria = "safe-to-deploy"
-
 [[exemptions.time]]
-version = "0.3.54"
+version = "0.3.55"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.3.55) — unaudited, pending review"
 
 [[exemptions.time-core]]
 version = "0.1.9"
@@ -2294,10 +1932,6 @@ version = "2.0.2"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.tinystr]]
-version = "0.8.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.tinytemplate]]
 version = "1.2.1"
 criteria = "safe-to-deploy"
@@ -2305,15 +1939,6 @@ criteria = "safe-to-deploy"
 [[exemptions.tinyvec]]
 version = "1.12.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.tokio]]
-version = "1.53.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.tokio-macros]]
-version = "2.7.2"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.tokio-postgres]]
 version = "0.7.18"
@@ -2327,48 +1952,8 @@ criteria = "safe-to-deploy"
 version = "0.26.4"
 criteria = "safe-to-deploy"
 
-[[exemptions.tokio-stream]]
-version = "0.1.19"
-criteria = "safe-to-deploy"
-
 [[exemptions.tokio-tungstenite]]
 version = "0.29.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.tokio-util]]
-version = "0.7.19"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml]]
-version = "0.8.23"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml]]
-version = "0.9.12+spec-1.1.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml]]
-version = "1.1.6+spec-1.1.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_datetime]]
-version = "0.6.11"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_edit]]
-version = "0.22.27"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_parser]]
-version = "1.1.3+spec-1.1.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_write]]
-version = "0.1.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_writer]]
-version = "1.1.2+spec-1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tonic]]
@@ -2389,14 +1974,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tower]]
 version = "0.4.13"
-criteria = "safe-to-deploy"
-
-[[exemptions.tower]]
-version = "0.5.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.tower-http]]
-version = "0.6.11"
 criteria = "safe-to-deploy"
 
 [[exemptions.tower-layer]]
@@ -2432,10 +2009,6 @@ criteria = "safe-to-deploy"
 version = "0.3.23"
 criteria = "safe-to-deploy"
 
-[[exemptions.try-lock]]
-version = "0.2.5"
-criteria = "safe-to-deploy"
-
 [[exemptions.tungstenite]]
 version = "0.29.0"
 criteria = "safe-to-deploy"
@@ -2452,26 +2025,10 @@ criteria = "safe-to-deploy"
 version = "1.20.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.ucd-trie]]
-version = "0.1.7"
-criteria = "safe-to-deploy"
-
 [[exemptions.uncased]]
 version = "0.9.10"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.unicase]]
-version = "2.9.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.unicode-ident]]
-version = "1.0.24"
-criteria = "safe-to-deploy"
-
-[[exemptions.unicode-properties]]
-version = "0.1.4"
-criteria = "safe-to-deploy"
 
 [[exemptions.universal-hash]]
 version = "0.5.1"
@@ -2481,13 +2038,10 @@ criteria = "safe-to-deploy"
 version = "0.9.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.url]]
-version = "2.5.8"
-criteria = "safe-to-deploy"
-
 [[exemptions.uuid]]
-version = "1.11.1"
+version = "1.28.0"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.28.0) — unaudited, pending review"
 
 [[exemptions.v_htmlescape]]
 version = "0.15.8"
@@ -2501,18 +2055,6 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 
 [[exemptions.version_check]]
 version = "0.9.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.walkdir]]
-version = "2.5.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.want]]
-version = "0.3.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasi]]
-version = "0.11.1+wasi-snapshot-preview1"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasite]]
@@ -2590,163 +2132,24 @@ version = "0.4.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.winapi-util]]
-version = "0.1.11"
-criteria = "safe-to-deploy"
-
 [[exemptions.winapi-x86_64-pc-windows-gnu]]
 version = "0.4.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.windows-core]]
-version = "0.62.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.windows-implement]]
-version = "0.60.2"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows-interface]]
-version = "0.59.3"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows-link]]
-version = "0.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.windows-result]]
-version = "0.4.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.windows-service]]
 version = "0.8.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.windows-strings]]
-version = "0.5.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.windows-sys]]
-version = "0.48.0"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows-sys]]
-version = "0.52.0"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows-sys]]
-version = "0.59.0"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows-sys]]
-version = "0.61.2"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows-targets]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.windows-targets]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-
-[[exemptions.windows_aarch64_gnullvm]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_aarch64_gnullvm]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_aarch64_msvc]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_aarch64_msvc]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_i686_gnu]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_i686_gnu]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_i686_gnullvm]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_i686_msvc]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_i686_msvc]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_x86_64_gnu]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_x86_64_gnu]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_x86_64_gnullvm]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_x86_64_gnullvm]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_x86_64_msvc]]
-version = "0.48.5"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.windows_x86_64_msvc]]
-version = "0.52.6"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.winnow]]
-version = "0.7.15"
-criteria = "safe-to-deploy"
-
-[[exemptions.winnow]]
-version = "1.0.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.winresource]]
-version = "0.1.31"
+version = "0.1.34"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.1.34) — unaudited, pending review"
 
-[[exemptions.writeable]]
-version = "0.6.3"
+[[exemptions.wnaf]]
+version = "0.14.1"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.1) — unaudited, pending review"
 
 [[exemptions.wyz]]
 version = "0.5.1"
@@ -2772,18 +2175,15 @@ criteria = "safe-to-deploy"
 version = "0.5.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.xxhash-rust]]
+version = "0.8.19"
+criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.8.19) — unaudited, pending review"
+
 [[exemptions.yasna]]
-version = "0.5.2"
+version = "0.6.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.yoke]]
-version = "0.8.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.yoke-derive]]
-version = "0.8.2"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+notes = "transitive or direct dependency of the workspace (dependency bump to 0.6.0) — unaudited, pending review"
 
 [[exemptions.zerocopy]]
 version = "0.8.55"
@@ -2799,38 +2199,16 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 version = "0.1.8"
 criteria = "safe-to-deploy"
 
-[[exemptions.zerofrom-derive]]
-version = "0.1.7"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.zeroize]]
-version = "1.9.0"
+version = "1.9.1"
 criteria = "safe-to-deploy"
+notes = "transitive or direct dependency of the workspace (dependency bump to 1.9.1) — unaudited, pending review"
 
 [[exemptions.zeroize_derive]]
 version = "1.5.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.zerotrie]]
-version = "0.2.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.zerovec]]
-version = "0.11.6"
-criteria = "safe-to-deploy"
-
-[[exemptions.zerovec-derive]]
-version = "0.11.3"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.zlib-rs]]
 version = "0.6.8"
 criteria = "safe-to-deploy"
-
-[[exemptions.zmij]]
-version = "1.0.23"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"

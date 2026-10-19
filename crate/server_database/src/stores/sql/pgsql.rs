@@ -20,7 +20,6 @@ use openssl::{
 };
 use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
-use serde_json::Value;
 use tokio_postgres::types::{Json, ToSql};
 use uuid::Uuid;
 
@@ -585,8 +584,8 @@ impl PgPool {
                 let state_str: String = row.get(1);
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
+                let Json(attrs): Json<Attributes> = row
+                    .try_get(2)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 out.push((uid, state, attrs));
             }
@@ -620,14 +619,13 @@ impl ObjectsStore for PgPool {
             tags: &HashSet<String>,
         ) -> DbResult<String> {
             let object_json = serde_json::to_string(object).map_err(DbError::from)?;
-            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let attrs_param = Json(attributes);
             let state = attributes.state.unwrap_or(State::PreActive).to_string();
             let wrapping_key_id = object.wrapping_key_uid();
             let stmt = tx
                 .prepare_cached(get_pgsql_query!("insert-objects"))
                 .await
                 .map_err(DbError::from)?;
-            let attrs_param = Json(&attributes_json);
             tx.execute(
                 &stmt,
                 &[
@@ -677,8 +675,8 @@ impl ObjectsStore for PgPool {
                 let object: Object = serde_json::from_str(&object_json)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 let object = migrate_block_cipher_mode_if_needed(object);
-                let attributes_val: Value = row.get(2);
-                let attributes: Attributes = serde_json::from_value(attributes_val)
+                let Json(attributes): Json<Attributes> = row
+                    .try_get(2)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 let owner: String = row.get(3);
                 let state_str: String = row.get(4);
@@ -707,8 +705,8 @@ impl ObjectsStore for PgPool {
                 let state_str: String = row.get(0);
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(1);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
+                let Json(attrs): Json<Attributes> = row
+                    .try_get(1)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 Ok(Some((state, attrs)))
             } else {
@@ -746,13 +744,12 @@ impl ObjectsStore for PgPool {
             tags: Option<&HashSet<String>>,
         ) -> DbResult<()> {
             let object_json = serde_json::to_string(object).map_err(DbError::from)?;
-            let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let attrs_param = Json(attributes);
             let wrapping_key_id = object.wrapping_key_uid();
             let stmt = tx
                 .prepare_cached(get_pgsql_query!("update-object-with-object"))
                 .await
                 .map_err(DbError::from)?;
-            let attrs_param = Json(&attributes_json);
             tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
                 .await
                 .map_err(DbError::from)?;
@@ -835,15 +832,13 @@ impl ObjectsStore for PgPool {
                     AtomicOperation::Create((uid, owner, object, attributes, tags)) => {
                         // inline create within same transaction
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
-                        let attributes_json =
-                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let attrs_param = Json(attributes);
                         let state = attributes.state.unwrap_or(State::PreActive).to_string();
                         let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("insert-objects"))
                             .await
                             .map_err(DbError::from)?;
-                        let attrs_param = Json(&attributes_json);
                         let owner_s: &str = owner;
                         tx.execute(
                             &stmt,
@@ -873,14 +868,12 @@ impl ObjectsStore for PgPool {
                     }
                     AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
-                        let attributes_json =
-                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("update-object-with-object"))
                             .await
                             .map_err(DbError::from)?;
-                        let attrs_param = Json(&attributes_json);
                         tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
                             .await
                             .map_err(DbError::from)?;
@@ -917,15 +910,13 @@ impl ObjectsStore for PgPool {
                     }
                     AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
-                        let attributes_json =
-                            serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("upsert-object"))
                             .await
                             .map_err(DbError::from)?;
                         let st = state.to_string();
-                        let attrs_param = Json(&attributes_json);
                         let rows_affected = tx
                             .execute(
                                 &stmt,
@@ -1081,14 +1072,14 @@ impl ObjectsStore for PgPool {
                 .query(sql, &[&wrapping_key_uid, &user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut out = Vec::new();
+            let mut out = Vec::with_capacity(rows.len());
             for row in rows {
                 let uid: String = row.get(0);
                 let state_str: String = row.get(1);
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val)
+                let Json(attrs): Json<Attributes> = row
+                    .try_get(2)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 out.push((uid, state, attrs));
             }
@@ -1108,12 +1099,14 @@ impl ObjectsStore for PgPool {
                 .query(&sql, &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut due = Vec::new();
+            let mut due = Vec::with_capacity(rows.len());
             for row in rows {
                 let uid: String = row.get(0);
                 let owner: String = row.get(1);
-                let attrs_val: Value = row.get(2);
-                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                let attrs: Attributes = match row.try_get::<_, Json<Attributes>>(2) {
+                    Ok(Json(a)) => a,
+                    Err(_) => Attributes::default(),
+                };
                 if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
                     due.push((uid, owner));
                 }
@@ -1155,11 +1148,13 @@ impl ObjectsStore for PgPool {
                 .query(&stmt, &params)
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut results = Vec::new();
+            let mut results = Vec::with_capacity(rows.len());
             for row in rows {
                 let uid: String = row.get(0);
-                let attrs_val: Value = row.get(1);
-                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                let attrs: Attributes = match row.try_get::<_, Json<Attributes>>(1) {
+                    Ok(Json(a)) => a,
+                    Err(_) => Attributes::default(),
+                };
                 results.push((uid, attrs));
             }
             Ok(results)
@@ -1269,9 +1264,9 @@ impl PermissionsStore for PgPool {
                 let state_str: String = row.get(2);
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::Db(e.to_string()))?;
-                let perms_val: Value = row.get(3);
-                let perms: HashSet<KmipOperation> = serde_json::from_value(perms_val)
-                    .map_err(|e| InterfaceError::Db(e.to_string()))?;
+                let Json(perms): Json<HashSet<KmipOperation>> = row
+                    .try_get(3)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 // The same object may be returned twice: once for the direct
                 // grant and once for the wildcard `*` grant. Union the
                 // permission sets instead of overwriting the entry.
@@ -1303,9 +1298,9 @@ impl PermissionsStore for PgPool {
             let mut map = HashMap::with_capacity(rows.len());
             for row in rows {
                 let userid: String = row.get(0);
-                let v: Value = row.get(1);
-                let ops: HashSet<KmipOperation> =
-                    serde_json::from_value(v).map_err(|e| InterfaceError::Db(e.to_string()))?;
+                let Json(ops): Json<HashSet<KmipOperation>> = row
+                    .try_get(1)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 map.insert(userid, ops);
             }
             Ok(map)
@@ -1324,8 +1319,7 @@ impl PermissionsStore for PgPool {
         let mut combined = existing;
         combined.extend(operations);
         pg_retry!(self.pool, |client| {
-            let json = serde_json::to_value(&combined)
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let json = Json(&combined);
             let stmt = client
                 .prepare_cached(get_pgsql_query!("upsert-row-read_access"))
                 .await
@@ -1359,8 +1353,7 @@ impl PermissionsStore for PgPool {
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 return Ok(());
             }
-            let json = serde_json::to_value(&remaining)
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let json = Json(&remaining);
             let u = client
                 .prepare_cached(get_pgsql_query!("update-rows-read_access-with-permission"))
                 .await
@@ -1385,25 +1378,25 @@ impl PermissionsStore for PgPool {
                 .prepare_cached(get_pgsql_query!("select-user-accesses-for-object"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut perms: HashSet<KmipOperation> = match client
+            let mut perms: HashSet<KmipOperation> = client
                 .query_opt(&stmt, &[&uid, &user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?
-            {
-                Some(row) => {
-                    let v: Value = row.get(0);
-                    serde_json::from_value(v).map_err(|e| InterfaceError::from(DbError::from(e)))?
-                }
-                None => HashSet::new(),
-            };
+                .map(|row| {
+                    row.try_get::<_, Json<HashSet<KmipOperation>>>(0)
+                        .map(|Json(p)| p)
+                })
+                .transpose()
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?
+                .unwrap_or_default();
             if !no_inherited_access && user != "*" {
                 if let Some(row) = client
                     .query_opt(&stmt, &[&uid, &"*"])
                     .await
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?
                 {
-                    let v: Value = row.get(0);
-                    let all: HashSet<KmipOperation> = serde_json::from_value(v)
+                    let Json(all): Json<HashSet<KmipOperation>> = row
+                        .try_get(0)
                         .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                     perms.extend(all);
                 }

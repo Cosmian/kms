@@ -78,6 +78,20 @@ interface LocateFormData {
 
 type AlgoOption = { value: string; label: string };
 
+// Avoid issuing one Get request per Locate result at once.
+const LOCATE_ENRICH_CONCURRENCY = 8;
+const LOCATE_ENRICH_DEFAULT_PAGE_SIZE = 50;
+const LOCATE_REQUEST_TIMEOUT_MS = 30_000;
+
+export const mapWithLocateConcurrency = async <Input, Output>(items: Input[], map: (item: Input) => Promise<Output>): Promise<Output[]> => {
+    const results: Output[] = [];
+    for (let index = 0; index < items.length; index += LOCATE_ENRICH_CONCURRENCY) {
+        const batch = await Promise.all(items.slice(index, index + LOCATE_ENRICH_CONCURRENCY).map(map));
+        results.push(...batch);
+    }
+    return results;
+};
+
 const LocateForm: React.FC = () => {
     const { t } = useTranslation(["locate", "common"]);
     const NO_FILTER: AlgoOption = { value: "", label: t("noFilter") };
@@ -195,46 +209,32 @@ const LocateForm: React.FC = () => {
         return (parsed || {}) as Record<string, unknown>;
     };
 
-    // Fetch and parse Get-attributes for one UID, retrying once on failure.
-    // HSM-backed keys go through PKCS#11 and can occasionally reject a Get under
-    // concurrent load (session contention); a single retry absorbs that without
-    // masking a persistently unreachable object (which still falls back to undefined).
-    const getAttributesRetrying = async (uid: string, serverUrl: string): Promise<Record<string, unknown> | undefined> => {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                const getReq = wasm.get_attributes_ttlv_request(uid);
-                const getRespStr = await sendKmipRequest(getReq, serverUrl);
-                if (getRespStr) {
-                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                    return extractMeta(parsed);
-                }
-            } catch (e) {
-                if (attempt === 2) console.error(`Error fetching Get for ${uid}:`, e);
-            }
-        }
-        return undefined;
-    };
+    const enrichVisibleRows = async (rows: LocatedRow[]): Promise<void> => {
+        const pending = rows.filter((row) => row.meta === undefined);
+        if (pending.length === 0) return;
 
-    // Utility: enrich a list of UIDs via KMIP Get
-    const enrichUids = async (uids: string[], serverUrl: string): Promise<LocatedRow[]> => {
-        const rows = await Promise.all(
-            uids.map(async (uid) => {
-                const m = await getAttributesRetrying(uid, serverUrl);
-                // HSM keys are always Active; use that as default when state is missing
-                const isHsm = /^hsm[0-9]*::/.test(uid);
-                if (m) {
+        const enriched = await mapWithLocateConcurrency(pending, async (row) => {
+            try {
+                const request = wasm.get_attributes_ttlv_request(row.object_id);
+                const response = await sendKmipRequest(request, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
+                if (response) {
+                    const meta = extractMeta(await wasm.parse_get_attributes_ttlv_response(response, getEnrichAttributeKeys()));
                     return {
-                        object_id: uid,
-                        attributes: { ObjectType: m["object_type"] as string | undefined },
-                        state: stateEnumToName(m["state"]) || (isHsm ? "Active" : undefined),
-                        meta: m,
+                        ...row,
+                        attributes: { ObjectType: meta["object_type"] as string | undefined },
+                        state: stateEnumToName(meta["state"]) || row.state,
+                        meta,
                     } as LocatedRow;
                 }
-                // Fallback: HSM keys default to Active
-                return { object_id: uid, state: isHsm ? "Active" : undefined } as LocatedRow;
-            }),
-        );
-        return rows;
+            } catch (error) {
+                if (!(error instanceof DOMException && error.name === "AbortError")) {
+                    console.error(`Error fetching Get for ${row.object_id}:`, error);
+                }
+            }
+            return row;
+        });
+        const byId = new Map(enriched.map((row) => [row.object_id, row]));
+        setObjects((current) => current?.map((row) => byId.get(row.object_id) || row));
     };
 
     // Utility: build state lookup from /access/owned
@@ -283,7 +283,7 @@ const LocateForm: React.FC = () => {
             values.privateKeyId,
             values.certificateId,
         );
-        const respStr = await sendKmipRequest(req, serverUrl);
+        const respStr = await sendKmipRequest(req, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
         if (!respStr) return [];
         const resp = await wasm.parse_locate_ttlv_response(respStr);
         return Array.isArray(resp.UniqueIdentifier) ? (resp.UniqueIdentifier as string[]) : [];
@@ -292,9 +292,10 @@ const LocateForm: React.FC = () => {
     // Owned-fallback without criteria
     const ownedFallbackNoCriteria = async (serverUrl: string): Promise<LocatedRow[]> => {
         const owned = await getNoTTLVRequest("/access/owned", serverUrl);
-        const ids: string[] = Array.isArray(owned) ? (owned as Array<{ object_id: string }>).map((o) => o.object_id).filter(Boolean) : [];
-        const enriched = await enrichUids(ids, serverUrl);
-        return supplementStateFromOwned(enriched, serverUrl);
+        if (!Array.isArray(owned)) return [];
+        return (owned as Array<{ object_id?: string; state?: unknown }>)
+            .filter((object): object is { object_id: string; state?: unknown } => Boolean(object.object_id))
+            .map((object) => ({ object_id: object.object_id, state: stateEnumToName(object.state) }));
     };
 
     const onFinish = async (values: LocateFormData) => {
@@ -343,28 +344,27 @@ const LocateForm: React.FC = () => {
 
                     if (!hasOtherCriteria) {
                         // Enrich state-only results so Type and Key Format Type are available
-                        const enriched = await Promise.all(
-                            ownedFiltered.map(async (o) => {
-                                const uid = o.id;
-                                try {
-                                    const getReq = wasm.get_attributes_ttlv_request(uid);
-                                    const getRespStr = await sendKmipRequest(getReq, serverUrl);
-                                    if (getRespStr) {
-                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                                        const m = extractMeta(parsed);
-                                        return {
-                                            object_id: uid,
-                                            attributes: { ObjectType: m["object_type"] as string | undefined },
-                                            state: o.state || stateEnumToName(m["state"]),
-                                            meta: m,
-                                        } as LocatedRow;
-                                    }
-                                } catch (e) {
-                                    console.error(`Error fetching Get for ${uid}:`, e);
+                        const enriched = await mapWithLocateConcurrency(ownedFiltered, async (o) => {
+                            const uid = o.id;
+                            try {
+                                const getReq = wasm.get_attributes_ttlv_request(uid);
+                                const getRespStr = await sendKmipRequest(getReq, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
+                                if (getRespStr) {
+                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
+                                    const m = extractMeta(parsed);
+                                    return {
+                                        object_id: uid,
+                                        attributes: { ObjectType: m["object_type"] as string | undefined },
+                                        state: o.state || stateEnumToName(m["state"]),
+                                        meta: m,
+                                    } as LocatedRow;
                                 }
-                                return { object_id: uid, state: o.state } as LocatedRow;
-                            }),
-                        );
+                            } catch (e) {
+                                if (e instanceof DOMException && e.name === "AbortError") throw e;
+                                console.error(`Error fetching Get for ${uid}:`, e);
+                            }
+                            return { object_id: uid, state: o.state } as LocatedRow;
+                        });
                         // Merge owned-by-state entries with HSM keys from Locate
                         // (HSM keys are always Active, so they match if target is Active)
                         const isActiveTarget = target === normalizeState("Active");
@@ -400,27 +400,26 @@ const LocateForm: React.FC = () => {
                     }
 
                     // Enrich only intersection
-                    let enriched = await Promise.all(
-                        intersection.map(async (uid: string) => {
-                            try {
-                                const getReq = wasm.get_attributes_ttlv_request(uid);
-                                const getRespStr = await sendKmipRequest(getReq, serverUrl);
-                                if (getRespStr) {
-                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                                    const m = extractMeta(parsed);
-                                    return {
-                                        object_id: uid,
-                                        attributes: { ObjectType: m["object_type"] as string | undefined },
-                                        state: stateEnumToName(m["state"]) || stateVal,
-                                        meta: m,
-                                    } as LocatedRow;
-                                }
-                            } catch (e) {
-                                console.error(`Error fetching Get for ${uid}:`, e);
+                    let enriched = await mapWithLocateConcurrency(intersection, async (uid: string) => {
+                        try {
+                            const getReq = wasm.get_attributes_ttlv_request(uid);
+                            const getRespStr = await sendKmipRequest(getReq, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
+                            if (getRespStr) {
+                                const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
+                                const m = extractMeta(parsed);
+                                return {
+                                    object_id: uid,
+                                    attributes: { ObjectType: m["object_type"] as string | undefined },
+                                    state: stateEnumToName(m["state"]) || stateVal,
+                                    meta: m,
+                                } as LocatedRow;
                             }
-                            return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : stateVal } as LocatedRow;
-                        }),
-                    );
+                        } catch (e) {
+                            if (e instanceof DOMException && e.name === "AbortError") throw e;
+                            console.error(`Error fetching Get for ${uid}:`, e);
+                        }
+                        return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : stateVal } as LocatedRow;
+                    });
                     // Enforce KFT filter client-side if provided
                     if (keyFormatType) {
                         const target = normalizeKeyFormatType(keyFormatType);
@@ -447,78 +446,21 @@ const LocateForm: React.FC = () => {
 
                 setObjects(mapped);
 
-                // Enrich each object with Type and State using KMIP Get
-                try {
-                    const enriched = await enrichUids(
-                        mapped.map((r) => r.object_id),
-                        serverUrl,
-                    );
-
-                    // If no additional criteria and state is 'All', display enriched results directly
-                    const hasOtherCriteria = Boolean(
-                        (values.tags && values.tags.length) ||
-                        values.cryptographicAlgorithm ||
-                        values.cryptographicLength != null ||
-                        values.keyFormatType ||
-                        values.objectType ||
-                        values.publicKeyId ||
-                        values.privateKeyId ||
-                        values.certificateId,
-                    );
-                    if (!hasOtherCriteria && !stateVal) {
-                        // Merge state labels from owned list for display, without filtering
-                        const merged = await supplementStateFromOwned(enriched, serverUrl);
-                        setObjects(
-                            merged.map((row) => ({
-                                ...row,
-                                state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
-                            })),
-                        );
-                        setResult({ kind: "located", count: merged.length });
-                        return;
-                    }
-                    // Try to supplement state from non-TTLV owned list when available
-                    try {
-                        let merged = await supplementStateFromOwned(enriched, serverUrl);
-                        // State filter if requested
-                        if (stateVal) {
-                            const target = normalizeState(stateVal);
-                            merged = merged.filter((r) => normalizeState(r.state) === target);
-                        }
-                        // Enforce KFT filter if provided
-                        if (keyFormatType) {
-                            const targetKft = normalizeKeyFormatType(keyFormatType);
-                            merged = merged.filter((r) => {
-                                const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? normalizeKeyFormatType(v) === targetKft : false;
-                            });
-                        }
-                        // Do not re-filter by tags/criteria; Locate already applied them
-
-                        setObjects(merged);
-                        setResult({ kind: "located", count: merged.length });
-                    } catch {
-                        // If owned endpoint not available, keep KMIP-only enrichment
-                        let filtered = enriched;
-                        if (stateVal) {
-                            const target = normalizeState(stateVal);
-                            filtered = filtered.filter((r) => normalizeState(r.state) === target);
-                        }
-                        if (keyFormatType) {
-                            const targetKft = normalizeKeyFormatType(keyFormatType);
-                            filtered = filtered.filter((r) => {
-                                const v = r.meta?.["key_format_type"] as string | undefined;
-                                return v ? normalizeKeyFormatType(v) === targetKft : false;
-                            });
-                        }
-                        // Do not re-filter by tags/criteria; Locate already applied them
-
-                        setObjects(filtered);
-                        setResult({ kind: "located", count: filtered.length });
-                    }
-                } catch {
-                    /* ignore */
+                // Resolve attributes only for the visible table page. A full Locate can
+                // return hundreds of objects, so fetching every object at once can stall KMS.
+                let merged = await supplementStateFromOwned(mapped, serverUrl);
+                if (stateVal) {
+                    const target = normalizeState(stateVal);
+                    merged = merged.filter((row) => normalizeState(row.state) === target);
                 }
+                const displayed = merged.map((row) => ({
+                    ...row,
+                    state: row.state || (row.object_id.startsWith("hsm::") ? "Active" : undefined),
+                }));
+                setObjects(displayed);
+                void enrichVisibleRows(displayed.slice(0, LOCATE_ENRICH_DEFAULT_PAGE_SIZE));
+                setResult({ kind: "located", count: displayed.length });
+                return;
             } else {
                 // No KMIP Locate results with no filters: fallback to /access/owned for a basic listing
                 const noCriteria = !(
@@ -555,35 +497,33 @@ const LocateForm: React.FC = () => {
                             values.privateKeyId,
                             values.certificateId,
                         );
-                        const fallbackStr = await sendKmipRequest(fallbackReq, serverUrl);
+                        const fallbackStr = await sendKmipRequest(fallbackReq, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
                         if (fallbackStr) {
                             const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
                             const ids: string[] = Array.isArray(fb.UniqueIdentifier) ? fb.UniqueIdentifier : [];
                             const target = normalizeKeyFormatType(keyFormatType);
-                            const enriched = await Promise.all(
-                                ids.map(async (uid: string) => {
-                                    try {
-                                        const getReq = wasm.get_attributes_ttlv_request(uid);
-                                        const getRespStr = await sendKmipRequest(getReq, serverUrl);
-                                        if (getRespStr) {
-                                            const parsed = await wasm.parse_get_attributes_ttlv_response(
-                                                getRespStr,
-                                                getEnrichAttributeKeys(),
-                                            );
-                                            const m = extractMeta(parsed);
-                                            return {
-                                                object_id: uid,
-                                                attributes: { ObjectType: m["object_type"] as string | undefined },
-                                                state: stateEnumToName(m["state"]),
-                                                meta: m,
-                                            } as LocatedRow;
-                                        }
-                                    } catch (e) {
-                                        console.error(`Error fetching Get for ${uid}:`, e);
+                            const enriched = await mapWithLocateConcurrency(ids, async (uid: string) => {
+                                try {
+                                    const getReq = wasm.get_attributes_ttlv_request(uid);
+                                    const getRespStr = await sendKmipRequest(getReq, serverUrl, {
+                                        timeoutMs: LOCATE_REQUEST_TIMEOUT_MS,
+                                    });
+                                    if (getRespStr) {
+                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
+                                        const m = extractMeta(parsed);
+                                        return {
+                                            object_id: uid,
+                                            attributes: { ObjectType: m["object_type"] as string | undefined },
+                                            state: stateEnumToName(m["state"]),
+                                            meta: m,
+                                        } as LocatedRow;
                                     }
-                                    return { object_id: uid } as LocatedRow;
-                                }),
-                            );
+                                } catch (e) {
+                                    if (e instanceof DOMException && e.name === "AbortError") throw e;
+                                    console.error(`Error fetching Get for ${uid}:`, e);
+                                }
+                                return { object_id: uid } as LocatedRow;
+                            });
                             let filtered = enriched.filter((row) => {
                                 const v = row.meta?.["key_format_type"] as string | undefined;
                                 return v ? normalizeKeyFormatType(v) === target : false;
@@ -641,7 +581,7 @@ const LocateForm: React.FC = () => {
         setActionLoadingId(uid);
         try {
             const getReq = wasm.get_attributes_ttlv_request(uid);
-            const getRespStr = await sendKmipRequest(getReq, serverUrl);
+            const getRespStr = await sendKmipRequest(getReq, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
                 if (parsed instanceof Map) {
@@ -701,7 +641,7 @@ const LocateForm: React.FC = () => {
     const handleRefreshRow = async (uid: string) => {
         try {
             const getReq = wasm.get_attributes_ttlv_request(uid);
-            const getRespStr = await sendKmipRequest(getReq, serverUrl);
+            const getRespStr = await sendKmipRequest(getReq, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ["object_type", "state", "key_format_type"]);
                 const meta =
@@ -829,6 +769,12 @@ const LocateForm: React.FC = () => {
                                     showSizeChanger: true,
                                     pageSizeOptions: [50, 100, 500, 1000],
                                 }}
+                                onChange={(pagination) => {
+                                    const current = pagination.current || 1;
+                                    const pageSize = pagination.pageSize || LOCATE_ENRICH_DEFAULT_PAGE_SIZE;
+                                    const start = (current - 1) * pageSize;
+                                    void enrichVisibleRows((objects || []).slice(start, start + pageSize));
+                                }}
                                 scroll={{ x: "max-content" }}
                                 className="border rounded"
                                 columns={
@@ -926,7 +872,6 @@ const LocateForm: React.FC = () => {
                                                 const db = getDate(b) ?? 0;
                                                 return da - db;
                                             },
-                                            defaultSortOrder: "descend" as const,
                                             render: (row: LocateObjectRow) => {
                                                 const rotateDate = row.meta?.["rotate_date"] as number | undefined;
                                                 const initialDate = row.meta?.["initial_date"] as number | undefined;

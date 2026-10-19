@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::EncryptionSystem;
 #[cfg(feature = "non-fips")]
@@ -121,7 +123,7 @@ impl CryptoOpSpec for EncryptOp {
         })?;
         BulkData::deserialize(data).map_or_else(
             |_| encrypt_single(owm, &kms.params, request, &kms.rng),
-            |bulk_data| encrypt_bulk(owm, &kms.params, request.clone(), bulk_data, &kms.rng),
+            |bulk_data| encrypt_bulk(owm, &kms.params, request, bulk_data, &kms.rng),
         )
     }
 
@@ -158,7 +160,7 @@ impl CryptoOpSpec for EncryptOp {
         );
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            data: Some(encrypted_content.ciphertext.clone()),
+            data: Some(encrypted_content.ciphertext),
             i_v_counter_nonce: encrypted_content.iv,
             correlation_value: request.correlation_value.clone(),
             authenticated_encryption_tag: encrypted_content.tag,
@@ -223,7 +225,7 @@ fn encrypt_single(
 pub(super) fn encrypt_bulk(
     owm: &ObjectWithMetadata,
     server_params: &ServerParams,
-    mut request: Encrypt,
+    request: &Encrypt,
     bulk_data: BulkData,
     rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
@@ -237,12 +239,11 @@ pub(super) fn encrypt_bulk(
                 .as_deref()
                 .unwrap_or(EMPTY_SLICE);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(plaintext.clone());
-                let (key_bytes, cipher) = get_key_and_cipher(&request, owm)?;
-                let nonce = request
-                    .i_v_counter_nonce
-                    .clone()
-                    .unwrap_or(random_nonce(rng, cipher)?);
+                let (key_bytes, cipher) = get_key_and_cipher(request, owm)?;
+                let nonce = match request.i_v_counter_nonce.as_deref() {
+                    Some(n) => Cow::Borrowed(n),
+                    None => Cow::Owned(random_nonce(rng, cipher)?),
+                };
                 if cipher.nonce_size() > 0
                     && nonce.len() != cipher.nonce_size()
                     && !cipher.allows_variable_nonce()
@@ -261,31 +262,36 @@ pub(super) fn encrypt_bulk(
                     .unwrap_or(PaddingMethod::PKCS5);
                 let (ciphertext, tag) = sym_encrypt(
                     cipher,
-                    &key_bytes,
+                    key_bytes,
                     &nonce,
                     aad,
                     &plaintext,
                     Some(padding_method),
                 )?;
                 // concatenate nonce || ciphertext || tag
-                let nct = [nonce.as_slice(), ciphertext.as_slice(), tag.as_slice()].concat();
+                let mut nct = Vec::with_capacity(nonce.len() + ciphertext.len() + tag.len());
+                nct.extend_from_slice(&nonce);
+                nct.extend_from_slice(&ciphertext);
+                nct.extend_from_slice(&tag);
                 ciphertexts.push(Zeroizing::new(nct));
             }
         }
         Object::PublicKey { .. } => {
+            let mut item_request = request_without_data(request);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(plaintext);
-                let response = encrypt_with_public_key(&request, server_params, owm, rng)?;
+                item_request.data = Some(plaintext);
+                let response = encrypt_with_public_key(&item_request, server_params, owm, rng)?;
                 ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
             }
         }
         Object::Certificate(Certificate {
             certificate_value, ..
         }) => {
+            let mut item_request = request_without_data(request);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                request.data = Some(plaintext);
+                item_request.data = Some(plaintext);
                 let response = encrypt_with_certificate(
-                    &request,
+                    &item_request,
                     server_params,
                     owm.id(),
                     certificate_value,
@@ -301,13 +307,31 @@ pub(super) fn encrypt_bulk(
     }
 
     debug!("<== encrypted {} ciphertexts", ciphertexts.len());
+    let mut serialized = BulkData::new(ciphertexts).serialize()?;
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(BulkData::new(ciphertexts).serialize()?.to_vec()),
+        // ciphertexts are not secret: move the buffer out instead of copying it
+        data: Some(std::mem::take(&mut *serialized)),
         i_v_counter_nonce: None,
-        correlation_value: request.correlation_value,
+        correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,
     })
+}
+
+/// Copy of `request` without its (bulk) `data`, to be filled per item.
+fn request_without_data(request: &Encrypt) -> Encrypt {
+    Encrypt {
+        unique_identifier: request.unique_identifier.clone(),
+        cryptographic_parameters: request.cryptographic_parameters.clone(),
+        data: None,
+        i_v_counter_nonce: request.i_v_counter_nonce.clone(),
+        correlation_value: request.correlation_value.clone(),
+        init_indicator: request.init_indicator,
+        final_indicator: request.final_indicator,
+        authenticated_encryption_additional_data: request
+            .authenticated_encryption_additional_data
+            .clone(),
+    }
 }
 
 fn encrypt_with_symmetric_key(
@@ -339,7 +363,7 @@ fn encrypt_with_symmetric_key(
             KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
         })?;
         let ciphertext = encrypt_fpe(
-            &key_block.key_bytes()?,
+            key_block.key_bytes_ref()?,
             plaintext,
             request.authenticated_encryption_additional_data.as_deref(),
             request.i_v_counter_nonce.as_deref(),
@@ -359,12 +383,12 @@ fn encrypt_with_symmetric_key(
     })?;
     // ECB (nonce_size == 0) MUST NOT output or require a nonce; do not generate one.
     let nonce = if aead.nonce_size() == 0 {
-        Vec::new()
+        Cow::Borrowed(EMPTY_SLICE)
     } else {
-        let n = request
-            .i_v_counter_nonce
-            .clone()
-            .unwrap_or(random_nonce(rng, aead)?);
+        let n = match request.i_v_counter_nonce.as_deref() {
+            Some(n) => Cow::Borrowed(n),
+            None => Cow::Owned(random_nonce(rng, aead)?),
+        };
         let expected = aead.nonce_size();
         if n.len() != expected && !aead.allows_variable_nonce() {
             return Err(KmsError::InvalidRequest(format!(
@@ -408,7 +432,7 @@ fn encrypt_with_symmetric_key(
     }
     let (ciphertext, tag) = sym_encrypt(
         aead,
-        &key_bytes,
+        key_bytes,
         &nonce,
         aad,
         plaintext,
@@ -491,7 +515,7 @@ fn encrypt_with_symmetric_key(
                 .map_or(0, std::vec::Vec::len)
                 == 0
         {
-            Some(nonce)
+            Some(nonce.into_owned())
         } else {
             None
         },
@@ -500,10 +524,10 @@ fn encrypt_with_symmetric_key(
     })
 }
 
-fn get_key_and_cipher(
+fn get_key_and_cipher<'a>(
     request: &Encrypt,
-    owm: &ObjectWithMetadata,
-) -> KResult<(Zeroizing<Vec<u8>>, SymCipher)> {
+    owm: &'a ObjectWithMetadata,
+) -> KResult<(&'a [u8], SymCipher)> {
     trace!("Entering get_key_and_cipher");
     // Make sure that the key used to encrypt can be used to encrypt.
     if !owm
@@ -527,7 +551,7 @@ fn get_key_and_cipher(
             "an FPE_FF1 key may only be used for FPE_FF1 encrypt operations".to_owned(),
         ));
     }
-    let key_bytes = key_block.key_bytes()?;
+    let key_bytes = key_block.key_bytes_ref()?;
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES

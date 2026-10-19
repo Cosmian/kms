@@ -11,7 +11,7 @@
 //! - HTTP request metrics
 //! - Server uptime and health metrics
 
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
 use dashmap::DashMap;
@@ -356,14 +356,16 @@ impl OtelMetrics {
     /// and, hashed, as the `kms.kmip.operations.per_user.total` label — see
     /// [`Self::bounded_user_label`].
     pub fn record_kmip_operation(&self, operation: &str, user: &str) {
+        // One shared allocation for both label sets.
+        let operation: Arc<str> = Arc::from(operation);
         self.kmip_operations_total
-            .add(1, &[KeyValue::new("operation", operation.to_owned())]);
+            .add(1, &[KeyValue::new("operation", Arc::clone(&operation))]);
         let effective_user = self.bounded_user_label(user);
         self.kmip_operations_per_user.add(
             1,
             &[
                 KeyValue::new("user", effective_user),
-                KeyValue::new("operation", operation.to_owned()),
+                KeyValue::new("operation", operation),
             ],
         );
         self.update_active_user(user);
@@ -479,38 +481,35 @@ impl OtelMetrics {
     /// * `duration_seconds` – wall-clock duration of the operation
     pub fn record_database_operation(
         &self,
-        operation: &str,
+        operation: &'static str,
         backend: MainDbKind,
-        outcome: &str,
+        outcome: &'static str,
         duration_seconds: f64,
     ) {
         let backend_str = backend.as_str();
-        self.database_operations_total.add(
-            1,
-            &[
-                KeyValue::new("operation", operation.to_owned()),
-                KeyValue::new("backend", backend_str),
-                KeyValue::new("outcome", outcome.to_owned()),
-            ],
-        );
-        self.database_operation_duration.record(
-            duration_seconds,
-            &[
-                KeyValue::new("operation", operation.to_owned()),
-                KeyValue::new("backend", backend_str),
-                KeyValue::new("outcome", outcome.to_owned()),
-            ],
-        );
+        let attributes = [
+            KeyValue::new("operation", operation),
+            KeyValue::new("backend", backend_str),
+            KeyValue::new("outcome", outcome),
+        ];
+        self.database_operations_total.add(1, &attributes);
+        self.database_operation_duration
+            .record(duration_seconds, &attributes);
     }
 
     /// Record an HTTP request
-    pub fn record_http_request(&self, method: &str, path: &str, status: &str) {
+    pub fn record_http_request(
+        &self,
+        method: Cow<'static, str>,
+        path: &'static str,
+        status: Cow<'static, str>,
+    ) {
         self.http_requests_total.add(
             1,
             &[
-                KeyValue::new("method", method.to_owned()),
-                KeyValue::new("path", path.to_owned()),
-                KeyValue::new("status", status.to_owned()),
+                KeyValue::new("method", method),
+                KeyValue::new("path", path),
+                KeyValue::new("status", status),
             ],
         );
     }
@@ -518,17 +517,17 @@ impl OtelMetrics {
     /// Record HTTP request duration
     pub fn record_http_request_duration(
         &self,
-        method: &str,
-        path: &str,
-        status: &str,
+        method: Cow<'static, str>,
+        path: &'static str,
+        status: Cow<'static, str>,
         duration_seconds: f64,
     ) {
         self.http_request_duration.record(
             duration_seconds,
             &[
-                KeyValue::new("method", method.to_owned()),
-                KeyValue::new("path", path.to_owned()),
-                KeyValue::new("status", status.to_owned()),
+                KeyValue::new("method", method),
+                KeyValue::new("path", path),
+                KeyValue::new("status", status),
             ],
         );
     }
@@ -638,9 +637,9 @@ impl OtelMetrics {
 impl DbMetricsRecorder for OtelMetrics {
     fn record_operation(
         &self,
-        operation: &str,
+        operation: &'static str,
         backend: MainDbKind,
-        outcome: &str,
+        outcome: &'static str,
         duration_seconds: f64,
     ) {
         self.record_database_operation(operation, backend, outcome, duration_seconds);
@@ -917,9 +916,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_record_http_request_increments_counter() {
         let (metrics, provider, exporter) = setup_observing_metrics();
-        metrics.record_http_request("POST", "/kmip/2_1", "200");
-        metrics.record_http_request("GET", "/health", "200");
-        metrics.record_http_request("POST", "/kmip/2_1", "422");
+        metrics.record_http_request(Cow::Borrowed("POST"), "/kmip/2_1", Cow::Borrowed("200"));
+        metrics.record_http_request(Cow::Borrowed("GET"), "/health", Cow::Borrowed("200"));
+        metrics.record_http_request(Cow::Borrowed("POST"), "/kmip/2_1", Cow::Borrowed("422"));
         provider.force_flush().expect("flush");
         assert_eq!(last_counter_u64(&exporter, "kms.http.requests.total"), 3);
     }

@@ -1,3 +1,4 @@
+pub use bytes::Bytes;
 pub use client::{HttpClient, HttpClientConfig, HttpResponse};
 pub use error::HttpClientError;
 pub use login::{

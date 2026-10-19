@@ -100,7 +100,7 @@ impl ImportKekAction {
             ..Default::default()
         };
 
-        let res = import_action.run(kms_client).await;
+        let res = Box::pin(import_action.run(kms_client)).await;
 
         // Ensure temporary file cleanup if we used base64 input
         if self.kek_file.is_none() && self.kek_base64.is_some() {

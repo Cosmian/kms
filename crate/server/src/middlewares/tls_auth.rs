@@ -83,36 +83,36 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         ));
     };
 
-    // Extract the common name from the peer certificate.
-    match certificate
-        .cert
-        .subject_name()
-        .entries_by_nid(Nid::COMMONNAME)
-        .next()
-    {
-        None => kms_bail!("Client certificate has no common name"),
-        Some(cn) => match cn.data().to_string() {
-            Ok(username) => {
-                let trimmed = username.trim();
-                if trimmed.is_empty() {
-                    kms_bail!("Client certificate CN is empty; access denied");
-                }
-                if trimmed == "*" {
-                    kms_bail!(
-                        "Client certificate CN '{}' is a wildcard and not a valid username; \
-                         access denied",
-                        username
-                    );
-                }
-                trace!("Client certificate common name: {}", username);
-                let username = UserId::from(trimmed);
-                reject_reserved_aws_xks_identity(&username)?;
-                Ok(AuthenticatedUser {
-                    username,
-                    auth_method: AuthMethod::Mtls,
-                })
-            }
-            Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
-        },
+    Ok(AuthenticatedUser {
+        username: client_cert_username(&certificate.cert)?,
+        auth_method: AuthMethod::Mtls,
+    })
+}
+
+/// Derive the KMS username from a client certificate's Common Name.
+///
+/// Shared by the HTTP mTLS middleware and the KMIP socket server so both reject the
+/// same identities: missing, empty or wildcard (`*`) CNs and the reserved AWS XKS user.
+pub(crate) fn client_cert_username(cert: &X509) -> KResult<UserId> {
+    let Some(cn) = cert.subject_name().entries_by_nid(Nid::COMMONNAME).next() else {
+        kms_bail!("Client certificate has no common name")
+    };
+    let username = match cn.data().to_string() {
+        Ok(username) => username,
+        Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
+    };
+    let trimmed = username.trim();
+    if trimmed.is_empty() {
+        kms_bail!("Client certificate CN is empty; access denied");
     }
+    if trimmed == "*" {
+        kms_bail!(
+            "Client certificate CN '{}' is a wildcard and not a valid username; access denied",
+            username
+        );
+    }
+    trace!("Client certificate common name: {}", username);
+    let username = UserId::from(trimmed);
+    reject_reserved_aws_xks_identity(&username)?;
+    Ok(username)
 }

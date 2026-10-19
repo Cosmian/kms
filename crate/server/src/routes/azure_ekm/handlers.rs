@@ -185,7 +185,7 @@ async fn get_and_validate_kek_algorithm(
     // now check that the key is in a state where it can be used.
     let state = kms
         .database
-        .retrieve_object(key_name)
+        .retrieve_object_arc(key_name)
         .await
         .map_err(KmsError::from)?
         .ok_or_else(|| AzureEkmErrorReply::key_not_found(key_name))?

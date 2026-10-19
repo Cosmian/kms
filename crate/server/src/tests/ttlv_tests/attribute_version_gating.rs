@@ -89,48 +89,48 @@ fn kmip1_get_response_bytes(
 // ---------------------------------------------------------------------------
 fn kmip1_get_attribute_list_names(client: &SocketClient, key_id: &str, minor: i32) -> Vec<String> {
     let request_ttlv = TTLV {
-        tag: "RequestMessage".to_owned(),
+        tag: "RequestMessage".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "RequestHeader".to_owned(),
+                tag: "RequestHeader".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "ProtocolVersion".to_owned(),
+                        tag: "ProtocolVersion".into(),
                         value: TTLValue::Structure(vec![
                             TTLV {
-                                tag: "ProtocolVersionMajor".to_owned(),
+                                tag: "ProtocolVersionMajor".into(),
                                 value: TTLValue::Integer(1),
                             },
                             TTLV {
-                                tag: "ProtocolVersionMinor".to_owned(),
+                                tag: "ProtocolVersionMinor".into(),
                                 value: TTLValue::Integer(minor),
                             },
                         ]),
                     },
                     TTLV {
-                        tag: "MaximumResponseSize".to_owned(),
+                        tag: "MaximumResponseSize".into(),
                         value: TTLValue::Integer(8192),
                     },
                     TTLV {
-                        tag: "BatchCount".to_owned(),
+                        tag: "BatchCount".into(),
                         value: TTLValue::Integer(1),
                     },
                 ]),
             },
             TTLV {
-                tag: "BatchItem".to_owned(),
+                tag: "BatchItem".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "Operation".to_owned(),
+                        tag: "Operation".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             value: 0x0000_000C, // GetAttributeList
-                            name: String::new(),
+                            name: "".into(),
                         }),
                     },
                     TTLV {
-                        tag: "RequestPayload".to_owned(),
+                        tag: "RequestPayload".into(),
                         value: TTLValue::Structure(vec![TTLV {
-                            tag: "UniqueIdentifier".to_owned(),
+                            tag: "UniqueIdentifier".into(),
                             value: TTLValue::TextString(key_id.to_owned()),
                         }]),
                     },

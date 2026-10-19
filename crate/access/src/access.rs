@@ -86,6 +86,52 @@ pub enum Role {
 }
 
 impl Role {
+    /// Checks whether this role is permitted to invoke the given [`KmipOperation`] at dispatch level.
+    ///
+    /// Zero heap allocations. See [`Self::allowed_operations`] for semantic details.
+    #[must_use]
+    pub const fn allows(self, op: KmipOperation) -> bool {
+        match self {
+            Self::Operator => Self::is_operator_operation(op),
+            Self::CryptoOfficer => {
+                Self::is_operator_operation(op)
+                    || matches!(
+                        op,
+                        KmipOperation::Create
+                            | KmipOperation::Certify
+                            | KmipOperation::Import
+                            | KmipOperation::Get
+                            | KmipOperation::Export
+                            | KmipOperation::Rekey
+                            | KmipOperation::DeriveKey
+                            | KmipOperation::Activate
+                            | KmipOperation::Revoke
+                            | KmipOperation::Destroy
+                            | KmipOperation::SetAttribute
+                            | KmipOperation::ModifyAttribute
+                            | KmipOperation::AddAttribute
+                            | KmipOperation::DeleteAttribute
+                    )
+            }
+        }
+    }
+
+    /// Operations every role may invoke; the Crypto Officer adds its own on top.
+    const fn is_operator_operation(op: KmipOperation) -> bool {
+        matches!(
+            op,
+            KmipOperation::Encrypt
+                | KmipOperation::Decrypt
+                | KmipOperation::Sign
+                | KmipOperation::SignatureVerify
+                | KmipOperation::MAC
+                | KmipOperation::Hash
+                | KmipOperation::GetAttributes
+                | KmipOperation::Locate
+                | KmipOperation::Validate
+        )
+    }
+
     /// Returns the set of [`KmipOperation`]s this role is permitted to invoke at dispatch level.
     ///
     /// **Important**: this set is NOT exhaustive of all operations the role may perform.
@@ -96,51 +142,10 @@ impl Role {
     /// complete permission boundary.
     #[must_use]
     pub fn allowed_operations(self) -> HashSet<KmipOperation> {
-        match self {
-            Self::Operator => [
-                // Use of approved security functions (ISO/IEC 19790 §7.4 "User" services)
-                KmipOperation::Encrypt,
-                KmipOperation::Decrypt,
-                KmipOperation::Sign,
-                KmipOperation::SignatureVerify,
-                KmipOperation::MAC,
-                KmipOperation::Hash,
-                // Status/observation output
-                KmipOperation::GetAttributes,
-                KmipOperation::Locate,
-                KmipOperation::Validate,
-            ]
-            .into(),
-            Self::CryptoOfficer => {
-                // Start with all Operator operations — a CO candidate is already an Operator,
-                // so active CO must retain those rights to avoid privilege regression.
-                // New Operator operations are automatically included here.
-                let mut ops = Self::Operator.allowed_operations();
-                // Add CO-only operations (ISO/IEC 19790 §7.4 "Crypto Officer" services)
-                ops.extend([
-                    // Key generation
-                    KmipOperation::Create,
-                    KmipOperation::Certify,
-                    KmipOperation::Import,
-                    // Key output (ISO/IEC 19790 §7.4 "key output")
-                    KmipOperation::Get,
-                    KmipOperation::Export,
-                    // Rotation / re-key
-                    KmipOperation::Rekey,
-                    KmipOperation::DeriveKey,
-                    // Lifecycle transitions
-                    KmipOperation::Activate,
-                    KmipOperation::Revoke,
-                    KmipOperation::Destroy,
-                    // Attribute management
-                    KmipOperation::SetAttribute,
-                    KmipOperation::ModifyAttribute,
-                    KmipOperation::AddAttribute,
-                    KmipOperation::DeleteAttribute,
-                ]);
-                ops
-            }
-        }
+        (0..=u8::MAX)
+            .filter_map(KmipOperation::from_repr)
+            .filter(|op| self.allows(*op))
+            .collect()
     }
 }
 

@@ -46,6 +46,6 @@ impl ImportKekAction {
             wrapping_key_id: None,
         };
 
-        import_action.run(kms_client).await
+        Box::pin(import_action.run(kms_client)).await
     }
 }

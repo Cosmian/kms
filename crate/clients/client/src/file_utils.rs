@@ -97,7 +97,7 @@ pub fn write_kmip_object_to_file(
     object_file: &impl AsRef<Path>,
 ) -> Result<(), KmsClientError> {
     let mut ttlv = to_ttlv(kmip_object)?;
-    ttlv.tag = tag_from_object(kmip_object);
+    ttlv.tag = tag_from_object(kmip_object).into();
     write_json_object_to_file(&ttlv, object_file)
 }
 
