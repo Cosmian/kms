@@ -10,7 +10,10 @@ nav:
       - Introduction: use_cases/pki.md
       - Revocation & CRL Distribution: use_cases/pki-revocation.md
       - OCSP Responder: use_cases/pki-ocsp.md
-      - 'Device enrollment: EST and SCEP': use_cases/pki-enrollment.md
+      - Device enrollment:
+          - Overview: use_cases/pki-enrollment.md
+          - EST (RFC 7030): use_cases/pki-enrollment-est.md
+          - SCEP (RFC 8894): use_cases/pki-enrollment-scep.md
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
