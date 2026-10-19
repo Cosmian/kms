@@ -570,6 +570,56 @@ async fn est_simplereenroll_requires_matching_identity_and_ca_issued_certificate
     Ok(())
 }
 
+#[tokio::test]
+async fn est_simpleenroll_rejects_revoked_ca_issued_client_certificate() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let (_, body, _) = est_enroll(
+        &app,
+        &csr(&key, "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    let current = certs_of(&STANDARD.decode(&body).unwrap()).remove(0);
+    let same = csr(&rsa_key(2048), "dev1.iot.example");
+
+    let resp = est::enroll_for_peer(&kms, Some(&current), &same).await?;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let serial_hex = current
+        .serial_number()
+        .to_bn()
+        .unwrap()
+        .to_hex_str()
+        .unwrap()
+        .to_string();
+    let (uid, _, _) = Box::pin(kms.database.find_certificate_by_serial(
+        CA_UID,
+        &serial_hex,
+        kms.vendor_id(),
+    ))
+    .await?
+    .expect("issued certificate is tracked");
+    let owner: UserId = kms.params.default_username.clone().into();
+    kms.revoke(
+        Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid)),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        },
+        &owner,
+    )
+    .await?;
+    let resp = est::enroll_for_peer(&kms, Some(&current), &same).await?;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    Ok(())
+}
+
 // ── SCEP ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]

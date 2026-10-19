@@ -132,27 +132,41 @@ pub(crate) async fn post_simpleenroll(
     }
 
     let csr = decode_csr(&body)?;
-    // A certificate already issued by the EST CA must not be used to obtain a certificate for
-    // another identity: such a client has to renew with the same Subject/SubjectAltName.
-    if let Some(peer) = req.conn_data::<PeerCertificate>() {
+    let peer = req.conn_data::<PeerCertificate>().map(|p| p.cert.clone());
+    enroll_for_peer(&kms, peer.as_ref(), &csr).await
+}
+
+/// Issue for an authenticated request. A client certificate issued by the EST CA must still be
+/// active (TLS verification does not check revocation) and may only be re-enrolled for the
+/// same Subject/SubjectAltName, so it cannot be used to obtain another identity.
+pub(crate) async fn enroll_for_peer(
+    kms: &KMS,
+    peer: Option<&X509>,
+    csr: &X509Req,
+) -> KResult<HttpResponse> {
+    if let Some(peer) = peer {
         let ca_uid =
             kms.params.est_ca_uid.as_deref().ok_or_else(|| {
                 KmsError::ServerError("EST enabled without est_ca_uid".to_owned())
             })?;
-        let chain = load_ca_chain(&kms, ca_uid).await?;
+        let chain = load_ca_chain(kms, ca_uid).await?;
         if let Some(ca_cert) = chain.first() {
-            if is_issued_by(&peer.cert, ca_cert)?
-                && !csr_matches_certificate_identity(&csr, &peer.cert)?
-            {
-                return Ok(plain_response(
-                    StatusCode::BAD_REQUEST,
-                    "a certificate issued by this CA can only be re-enrolled with the same \
-                     Subject and SubjectAltName",
-                ));
+            if is_issued_by(peer, ca_cert)? {
+                if let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await {
+                    warn!("EST simpleenroll rejected: {e}");
+                    return Ok(plain_response(StatusCode::FORBIDDEN, &e.to_string()));
+                }
+                if !csr_matches_certificate_identity(csr, peer)? {
+                    return Ok(plain_response(
+                        StatusCode::BAD_REQUEST,
+                        "a certificate issued by this CA can only be re-enrolled with the \
+                         same Subject and SubjectAltName",
+                    ));
+                }
             }
         }
     }
-    issue_and_respond(&kms, &csr).await
+    issue_and_respond(kms, csr).await
 }
 
 /// Re-enrollment core (RFC 7030 §4.2.2): `peer` is the TLS client certificate being renewed,

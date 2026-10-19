@@ -20,6 +20,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 pub(crate) use cacerts::get_cacerts;
 pub(crate) use csrattrs::get_csrattrs;
 #[cfg(test)]
+pub(crate) use enroll::enroll_for_peer;
+#[cfg(test)]
 pub(crate) use enroll::simple_reenroll;
 pub(crate) use enroll::{post_simpleenroll, post_simplereenroll};
 
