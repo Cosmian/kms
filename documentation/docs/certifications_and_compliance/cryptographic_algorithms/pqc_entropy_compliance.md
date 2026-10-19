@@ -25,7 +25,7 @@
 ## Background
 
 NIST's most specific and current entropy-compliance reference for PQC key establishment is
-**[NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms](https://doi.org/10.6028/NIST.SP.800-227)**
+**[NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms](https://csrc.nist.gov/pubs/sp/800/227/final)**
 (September 2025), which applies to ML-KEM and any KEM, including the hybrid KEMs used here. Its Section 1.3
 lists five CMVP-testable **shall** requirements (RS1–RS5); three bear directly on entropy and FIPS compliance:
 
@@ -250,7 +250,7 @@ cargo test -p cosmian_kms_crypto --lib --features non-fips pqc
 
 ### The governing standard for KEM entropy: NIST SP 800-227
 
-[NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms](https://doi.org/10.6028/NIST.SP.800-227)
+[NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms](https://csrc.nist.gov/pubs/sp/800/227/final)
 (final, September 2025; PDF: <https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-227.pdf>) is
 the NIST publication written specifically to fill the compliance gap FIPS 203 itself flagged at publication:
 "NIST will specify both the particulars of the ML-KEM scheme and the general properties of KEMs in FIPS 203
@@ -481,4 +481,4 @@ unmodified source, integrity check), which this page does not assert.
 - OpenSSL `README-FIPS.md`: <https://github.com/openssl/openssl/blob/master/README-FIPS.md>
 - NIST CMVP Certificate #4985 — OpenSSL FIPS Provider 3.1.2, FIPS 140-3 Non-Proprietary Security Policy (July 2025): <https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp4985.pdf>
 - `OSSL_PROVIDER-FIPS` (OpenSSL 3.5 manual page): <https://docs.openssl.org/3.5/man7/OSSL_PROVIDER-FIPS>
-- NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms (September 2025): <https://doi.org/10.6028/NIST.SP.800-227>
+- NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms (September 2025): <https://csrc.nist.gov/pubs/sp/800/227/final>
