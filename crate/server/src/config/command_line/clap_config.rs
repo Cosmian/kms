@@ -780,7 +780,6 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("privileged_users (deprecated)", &self.privileged_users);
         let x = x.field("roles", &self.roles);
 
-        let x = x.field("aws_xks_config", &self.aws_xks_config);
         let x = if self.aws_xks_config.aws_xks_enable {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
                 .field("aws_xks_region", &self.aws_xks_config.aws_xks_region)
@@ -791,7 +790,11 @@ impl fmt::Debug for ClapConfig {
                 )
                 .field(
                     "aws_xks_sigv4_secret_access_key",
-                    &self.aws_xks_config.aws_xks_sigv4_secret_access_key,
+                    &self
+                        .aws_xks_config
+                        .aws_xks_sigv4_secret_access_key
+                        .as_ref()
+                        .map(|_| "********"),
                 )
         } else {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
@@ -1241,5 +1244,17 @@ mod tests {
             );
             cleanup_temp(&good_file);
         });
+    }
+
+    /// `main.rs` (at `info`) and `ServerParams::try_from` (at `debug`) log `ClapConfig` with
+    /// `{:#?}`: the XKS secret must not appear.
+    #[test]
+    fn debug_masks_aws_xks_secret_access_key() {
+        let mut conf = ClapConfig::default();
+        conf.aws_xks_config.aws_xks_enable = true;
+        conf.aws_xks_config.aws_xks_sigv4_secret_access_key = Some("xks-secret-value".to_owned());
+        let debug = format!("{conf:#?}");
+        assert!(!debug.contains("xks-secret-value"), "{debug}");
+        assert!(debug.contains("aws_xks_sigv4_secret_access_key"), "{debug}");
     }
 }

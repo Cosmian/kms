@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use cosmian_kms_server_database::reexport::{
@@ -111,7 +113,7 @@ async fn fetch_object_from_attributes(
     kms: &KMS,
     attributes: &Attributes,
     user: &UserId,
-) -> KResult<Option<ObjectWithMetadata>> {
+) -> KResult<Option<Arc<ObjectWithMetadata>>> {
     if let Some(object_id) = attributes.get_link(link_type) {
         let object = Box::pin(retrieve_object_for_operation(
             ObjectHandle::from(&object_id.to_string()),

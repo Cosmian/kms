@@ -35,17 +35,17 @@ use crate::{
 
 pub(crate) async fn revoke_operation(
     kms: &KMS,
-    request: Revoke,
+    mut request: Revoke,
     user: &UserId,
 ) -> KResult<RevokeResponse> {
     trace!("{request}");
     // there must be an identifier
     let unique_identifier = request
         .unique_identifier
-        .as_ref()
+        .take()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    let revocation_reason = request.revocation_reason.clone();
+    let revocation_reason = request.revocation_reason;
     let compromise_occurrence_date = request.compromise_occurrence_date;
 
     // For demo purposes, make some keys non-revocable (like Google CSE and MS DKE keys)
@@ -59,7 +59,7 @@ pub(crate) async fn revoke_operation(
     }
 
     recursively_revoke_key(
-        unique_identifier,
+        &unique_identifier,
         revocation_reason,
         compromise_occurrence_date,
         request.cascade,
@@ -69,9 +69,7 @@ pub(crate) async fn revoke_operation(
     )
     .await?;
 
-    Ok(RevokeResponse {
-        unique_identifier: unique_identifier.clone(),
-    })
+    Ok(RevokeResponse { unique_identifier })
 }
 
 /// Recursively revoke keys
@@ -356,22 +354,18 @@ async fn revoke_key_core(
     // Persist the revocation reason in the "external" attributes
     owm.attributes_mut().revocation_reason = Some(revocation_reason);
 
+    let (id, object, attributes) = owm.into_parts();
     kms.database
         .atomic(
             &UserId::from(kms.params.default_username.as_str()),
             &[
-                AtomicOperation::UpdateObject((
-                    owm.id().to_owned(),
-                    owm.object().clone(),
-                    owm.attributes().clone(),
-                    None,
-                )),
-                AtomicOperation::UpdateState((owm.id().to_owned(), state)),
+                AtomicOperation::UpdateObject((id.clone(), object, attributes, None)),
+                AtomicOperation::UpdateState((id.clone(), state)),
             ],
         )
         .await?;
 
-    debug!("Object with unique identifier: {} revoked", owm.id());
+    debug!("Object with unique identifier: {id} revoked");
 
     Ok(())
 }

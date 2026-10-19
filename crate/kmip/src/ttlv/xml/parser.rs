@@ -229,7 +229,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     // Process immediately
                     let normalized = normalize_fragment(&current, &mut uid_state);
                     let ttlv = xml_fragment_to_ttlv(&normalized)?;
-                    match ttlv.tag.as_str() {
+                    match &*ttlv.tag {
                         "RequestMessage" => requests
                             .push(from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?),
                         "ResponseMessage" => {
@@ -266,7 +266,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                         // Completed one fragment
                         let normalized = normalize_fragment(&current, &mut uid_state);
                         let ttlv = xml_fragment_to_ttlv(&normalized)?;
-                        match ttlv.tag.as_str() {
+                        match &*ttlv.tag {
                             "RequestMessage" => requests.push(
                                 from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?,
                             ),

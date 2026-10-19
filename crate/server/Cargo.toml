@@ -157,6 +157,7 @@ cosmian_kms_interfaces = { workspace = true }
 native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }
+serial_test = { workspace = true }
 tempfile = { workspace = true }
 tokio-postgres = { workspace = true }
 

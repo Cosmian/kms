@@ -407,13 +407,12 @@ version = "0.5.2"
 criteria = "safe-to-run"
 
 [[exemptions.clap-config-fallback]]
-version = "0.1.12"
+version = "0.1.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.clap-config-fallback-derive]]
-version = "0.1.12"
+version = "0.1.13"
 criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.cmac]]
 version = "0.7.2"

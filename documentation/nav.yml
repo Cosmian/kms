@@ -92,6 +92,7 @@ nav:
               - Generating Gmail keys: integrations/cloud_providers/google_workspace_client_side_encryption_cse/configuring_gmail_cse.md
               - Migrating existing Drive CSE elements: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_drive.md
               - Migrating existing email to Gmail CSE: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_gmail.md
+              - Test coverage: integrations/cloud_providers/google_workspace_client_side_encryption_cse/test_coverage.md
       - Databases:
           - MongoDB: integrations/databases/mongodb.md
           - MySQL Enterprise Edition: integrations/databases/mysql.md

@@ -1,16 +1,15 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
-        kmip_2_1::{
-            KmipOperation,
-            kmip_attributes::Attribute,
-            kmip_objects::ObjectType,
-            kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use std::sync::Arc;
+
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_objects::ObjectType,
+        kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    time_normalize,
 };
 use cosmian_logger::{debug, trace};
 
@@ -48,13 +47,14 @@ pub(crate) async fn modify_attribute(
     check_read_only(request.new_attribute.tag(), KmipOperation::ModifyAttribute)?;
     check_rotate_name(&request.new_attribute, "ModifyAttribute")?;
 
-    let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
         KmipOperation::ModifyAttribute,
         kms,
         user,
     ))
     .await?;
+    let current_state = owm.state();
     trace!("ModifyAttribute: retrieved target object {}", owm.id());
 
     // For ActivationDate, KMIP spec §3.22 requires the object to be in Pre-Active state.
@@ -62,7 +62,6 @@ pub(crate) async fn modify_attribute(
     // in the past or equals the current time.
     let mut activate = false;
     if let Attribute::ActivationDate(_) = &request.new_attribute {
-        let current_state = owm.state();
         if current_state != State::PreActive {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
@@ -74,8 +73,6 @@ pub(crate) async fn modify_attribute(
         }
     }
 
-    let mut attributes = owm.attributes_mut().clone();
-
     check_grant(
         kms,
         &owm,
@@ -85,6 +82,7 @@ pub(crate) async fn modify_attribute(
     )
     .await?;
 
+    let (id, mut object, mut attributes) = Arc::unwrap_or_clone(owm).into_parts();
     match_set_attribute! {
         "ModifyAttribute", request.new_attribute, attributes,
         simple {
@@ -204,39 +202,37 @@ pub(crate) async fn modify_attribute(
             }
         }
     }
-
-    let tags = kms.database.retrieve_tags(owm.id()).await?;
+    let tags = kms.database.retrieve_tags(&id).await?;
 
     // Write modified attributes back into the embedded key-block attributes for key objects.
     // For objects whose key value is a raw ByteString (e.g. opaque SecretData), the key
     // block has no Structure variant and cannot store embedded attributes.  In that case we
     // skip the embedding — the attributes are persisted independently via update_object below.
-    match owm.object().object_type() {
+    match object.object_type() {
         ObjectType::PublicKey
         | ObjectType::PrivateKey
         | ObjectType::SplitKey
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
-                *object_attributes = attributes.clone();
+            if let Ok(object_attributes) = object.attributes_mut() {
+                object_attributes.clone_from(&attributes);
             }
         }
         _ => {}
     }
 
-    debug!("ModifyAttribute: persisting attributes for {}", owm.id());
+    debug!("ModifyAttribute: persisting attributes for {id}");
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
+        .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
-
     // Persist the state transition separately (dedicated DB column).
     if activate {
-        kms.database.update_state(owm.id(), State::Active).await?;
+        kms.database.update_state(&id, State::Active).await?;
     }
 
     Ok(ModifyAttributeResponse {
-        unique_identifier: Some(UniqueIdentifier::TextString(owm.id().to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString(id)),
         echoed_attribute: None,
     })
 }
