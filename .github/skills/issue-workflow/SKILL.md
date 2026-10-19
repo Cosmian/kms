@@ -1,6 +1,6 @@
 ---
 name: issue-workflow
-description: 'Deterministic end-to-end procedure for resolving a GitHub issue: scope, reproduce (bugs), plan, branch (stacked when required), test-first implementation, variant/backend/UI testing, documentation, the mandatory AGENTS.md §5 execution workflow (including auto-fixing /kms-pr-review), Conventional Commits, PR creation, a one-shot CI status report, and review-feedback handling. Never waits for CI to finish and never merges. Use whenever given a GitHub issue number or URL to resolve.'
+description: 'Deterministic end-to-end procedure for resolving a GitHub issue: scope, reproduce (bugs), plan, branch, test-first implementation, variant/backend/UI testing, documentation, the mandatory AGENTS.md §5 execution workflow (including auto-fixing /kms-pr-review), Conventional Commits, PR creation, a one-shot CI status report, and review-feedback handling. Never waits for CI to finish and never merges. Use whenever given a GitHub issue number or URL to resolve.'
 ---
 
 # Issue → PR workflow
@@ -29,7 +29,7 @@ This skill is a router: post-implementation checks point to `AGENTS.md` §5 inst
 Write the plan in the session before you edit code. It must contain:
 
 - **Files**: every file to change, located with `AGENTS.md` §3 "Key file map" and "KMIP request flow".
-- **Layers**: which of `crate/server/` / `crate/kmip/`, `crate/clients/`, and `ui/` are touched. If both server or KMIP and clients or UI are touched, list the PR split (step 4).
+- **Layers**: which of `crate/server/` / `crate/kmip/`, `crate/clients/`, and `ui/` are touched. If both server or KMIP and clients or UI are touched, list the ordered commit split (step 4).
 - **Feature flags**: whether the code is FIPS, non-FIPS-only (`AGENTS.md` §3 "Feature flags"), or both.
 - **Test plan**: one test per acceptance criterion, with its layer (unit, integration, test vector, `ckms` test, Playwright, Vitest).
 - **Docs impact**: the pages from step 7 that change.
@@ -43,12 +43,12 @@ Route by plan content:
 - New trust boundary or external integration → run `/threat-model` in incremental mode.
 - Two or more viable designs whose difference changes user-visible behavior, the API, or the storage format → stop (step 13) and present the options with a recommendation. Otherwise pick the conservative option, record it in the plan, and continue.
 
-## 4. Rollout split and branch
+## 4. Rollout and branch
 
 - Run `git status --porcelain`. If it shows uncommitted changes to files related to this issue, stop (step 13). Unrelated pre-existing changes (for example a `test_data` submodule pointer) may stay; never stage them. Stage files by explicit path only. Then run `git fetch origin`.
 - `<slug>`: lowercase kebab-case of the issue title, at most 5 words, followed by `-<N>`. Prefix: `fix/` for a bug, `feat/` for an enhancement.
-- Single layer: `git switch -c <prefix>/<slug> origin/develop`.
-- Multiple layers: follow `AGENTS.md` "Feature rollout order & PR cascade". Create the server branch `<prefix>/<slug>` from `origin/develop` and run steps 5–12 on it. Only then create the CLI branch `<prefix>/<slug>-cli` from the server branch's latest commit, so it contains the server code, and run steps 5–12 on it. Create the UI branch `<prefix>/<slug>-ui` from the CLI branch the same way. If the upstream branch gains commits later, run `git merge <upstream>` on the downstream branch before continuing (step 12).
+- Create one branch for the issue: `git switch -c <prefix>/<slug> origin/develop`.
+- Multiple layers: follow `AGENTS.md` "Feature rollout order & commit layering" in this branch. Commit the complete server layer first, then CLI, then Web UI; each commit must build, pass hooks, and contain only its layer.
 
 ## 5. Implement (test-first)
 
@@ -92,6 +92,8 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 ## 9. Commit
 
 - Hooks: `pre-commit install --install-hooks -t pre-commit -t commit-msg -t pre-push` (once per clone). Never use `--no-verify`.
+- For a multi-layer feature, commit in the layer order defined in `AGENTS.md` "Feature rollout order & commit layering".
+- Each commit must remain independently buildable and limited to its layer.
 - Message: Conventional Commits (the `conventional-pre-commit` hook enforces this; `cliff.toml` groups by type). Use `fix:` for bugs, `feat:` for enhancements, and `test:`, `docs:`, `refactor:`, `ci:`, `build:`, or `chore:` for commits limited to that kind of change. Add the footer `Refs #<N>`.
 - If a hook rewrites files, re-stage and commit again. Once a commit is pushed, never amend or rebase it.
 
@@ -100,8 +102,9 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 - Pre-push gate: the step 8 checklist is complete, `review/final.md` exists with a GO verdict, and the PR body lists each review that ran. If any item is missing, run it now; never push first and review afterwards.
 - `git push -u origin <branch>`. Never force-push (`AGENTS.md` "Force-push prohibition").
 - Confirm that `CHANGELOG/<branch with / replaced by _>.md` exists and is committed.
-- `gh pr create --repo Cosmian/kms --base <base> --head <branch> --title "<conventional subject>" --body-file <file>`. `<base>` is `develop`, or the upstream branch for a stacked CLI or UI PR. The title uses the step 9 Conventional Commits format.
-- The body (`CONTRIBUTING.md` "Pull Requests") contains: `Fixes #<N>` (on the last PR of a stack; earlier PRs use `Part of #<N>`); **What / How / Why**; **Tests**, listing the step 6 commands and smoke output; **Docs**, listing the pages changed; the `/kms-pr-review` verdict from `review/final.md` (the file is gitignored, so do not commit it); and for stacked PRs, `Depends on #<upstream PR>`.
+- `gh pr create --repo Cosmian/kms --base develop --head <branch> --title "<conventional subject>" --body-file <file>`. The title uses the step 9 Conventional Commits format.
+- The body (`CONTRIBUTING.md` "Pull Requests") contains: `Fixes #<N>`; **What / How / Why**; **Tests**, listing the step 6 commands and smoke output; and **Docs**, listing the pages changed.
+- It also contains the `/kms-pr-review` verdict from `review/final.md` (the file is gitignored, so do not commit it).
 - External contributors: sign the CLA when the CLA Assistant bot asks.
 
 ## 11. CI status
@@ -115,8 +118,7 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 - Fetch `GH_PAGER=cat gh pr view <PR> --repo Cosmian/kms --comments` and `GH_PAGER=cat gh api repos/Cosmian/kms/pulls/<PR>/comments --paginate`.
 - For each unresolved comment: apply the change, or reply with the reason it was not applied. Comments that raise security concerns trigger the step 8 targeted review for the affected path.
 - After changes: re-run `AGENTS.md` §5 steps 1, 3, and 4, plus step 6 if the new diff exceeds 200 lines. Commit per step 9 and push per step 10 (no force). Reply inside each review thread, never as a new top-level PR comment: `GH_PAGER=cat gh api -X POST repos/Cosmian/kms/pulls/<PR>/comments/<comment-id>/replies -f body='<reply with commit SHA>'`. Do not resolve threads on the reviewer's behalf.
-- Stacked PRs: when an upstream PR gains commits or merges, run `git switch <downstream> && git merge origin/<upstream>` and push normally. Never rebase.
-- The workflow ends once every comment has a change or a reply. CI is reported at step 11, never awaited. Never merge the PR and never close the issue. Report the PR URL(s), the CI counts, and any open threads.
+- The workflow ends once every comment has a change or a reply. CI is reported at step 11, never awaited. Never merge the PR and never close the issue. Report the PR URL, the CI counts, and any open threads.
 
 ## 13. Stop conditions
 
