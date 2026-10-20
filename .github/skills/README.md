@@ -64,8 +64,8 @@ Team-wide GitHub Copilot skills for the KMS repository.
 |-------|---------|-------------|
 | **Code Quality** | `/code-quality [path]` | Starts with KMS Caveman, then runs applicable Rust, Clippy, MISE, and CI-efficiency checks. Deduplicates ranked findings. |
 | KMS Caveman | `/kms-caveman [path]` | Read-only Rust triage for panic hazards, lint suppressions, observed compiler diagnostics, and structural candidates. Not a security review. |
-| **Rust Review All** | `/rust-review-all [path]` | KMS Caveman first, then applicable Rust review phases and Clippy; writes `./review/SUMMARY.md` with a go/no-go verdict. |
-| **Rust Panic Audit** | `/rust-panic-audit [path]` | Standalone panic/brutal-exit scan for production Rust; writes `./review/rust-panic-audit.md`. |
+| **Rust Review All** | `/rust-review-all [path]` | KMS Caveman first, then applicable Rust review phases and Clippy; writes `./review-YYYY-MM-DD/SUMMARY.md` with a go/no-go verdict. |
+| **Rust Panic Audit** | `/rust-panic-audit [path]` | Standalone panic/brutal-exit scan for production Rust; writes `./review-YYYY-MM-DD/rust-panic-audit.md`. |
 | Refactor Plan | `/refactor-plan` | Investigate a refactor, produce a phased plan with cargo verification steps. Wait for confirmation before implementing. |
 | Rust Refactor | `/rust-refactor` | Find duplication in Rust code and consolidate with Traits, Generics, macros. Ranked impact/risk plan before touching code. |
 | Rust Simplify | `/rust-simplify [path]` | Find simplification opportunities: nested control flow, long functions, dead code, bool param traps, iterator anti-patterns, and Clippy-flagged complexity. Ranked list before touching code. |
@@ -73,7 +73,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Rust Signature Design | `/rust-signature-design` | Classify function parameters, flag omitted/swapped/drifting-argument defects, and pick the narrowest struct/enum fix before `clippy::too_many_arguments` forces an `#[allow]`. |
 | Rust Clone Audit | `/rust-clone-audit` | Classify `.clone()`/`.to_owned()`/`.to_vec()` call sites (handle, thread-move, Copy-type, borrow-checker-dodge, API-forced); pick borrow vs. `Arc`/`Rc` vs. `Cow` vs. keep before accepting a clone. |
 | Rust Error Propagation | `/rust-error-propagation [path]` | Review fallible Rust paths for missed `?` propagation, error conversion, and lost context. |
-| Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review/rust-async-refactor.md`. |
+| Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review-YYYY-MM-DD/rust-async-refactor.md`. |
 | CI Efficiency | `/ci-efficiency` | Audit GitHub Actions workflows for waste (missing caches, over-broad triggers, no concurrency cancellation). |
 | CI Dedupe | `/ci-dedupe` | Audit GitHub Actions workflows for duplicated step blocks; recommend/extract local composite actions under `.github/actions/` to simplify workflow YAML. |
 | Simplify Code | `/simplify-code` | Behavior-preserving tidy pass over recently changed code. |
@@ -82,7 +82,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| **KMS PR Review** | `/kms-pr-review [PR#]` | Two-pass diff review; self-review mode auto-applies confirmed fixes (≤ 2 cycles); writes `review/final.md`. |
+| **KMS PR Review** | `/kms-pr-review [PR#]` | Two-pass diff review; self-review mode auto-applies confirmed fixes (≤ 2 cycles); writes `review-YYYY-MM-DD/final.md`. |
 | KMS Adversarial Test | `/kms-adversarial-test` | Live adversarial quality gate against a running KMS; once for significant PRs. |
 
 ### Documentation
@@ -123,7 +123,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 # 3. /kms-sync-rules                    ← check what else needs updating
 # 4. /kms-changelog                     ← write the changelog entry
 
-# Full Rust quality gate before any significant PR (writes all reports to ./review/):
+# Full Rust quality gate before any significant PR (writes all reports to ./review-YYYY-MM-DD/):
 # /rust-review-all
 
 # Quick mechanical Rust triage:

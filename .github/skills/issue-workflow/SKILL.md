@@ -86,7 +86,7 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 2. `AGENTS.md` §5 step 4: run `/kms-sync-rules` and apply the rows it emits.
 3. `AGENTS.md` §5 step 5: decide whether SECURITY.md needs an entry (only when a vulnerability shipped in a tagged release) and record the decision.
 4. Targeted reviews, when the step 3 security impact is yes, each once and scoped to the changed paths: `/security-review` for auth, access control, TLS, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run item 1. Out-of-scope exploitable findings go to the maintainers through a private GitHub security advisory or directly, never a public issue or the PR body; the PR body may only say that out-of-scope findings were reported.
-5. `AGENTS.md` §5 step 6: `/kms-pr-review` in self-review mode (auto-fixes, at most 2 cycles). It must leave `review/final.md` with a GO verdict. For significant work (new feature, algorithm, auth change, or diff > 200 lines), also run `/kms-adversarial-test` once (`AGENTS.md` §5 step 6.3).
+5. `AGENTS.md` §5 step 6: `/kms-pr-review` in self-review mode (auto-fixes, at most 2 cycles). It must leave `review-YYYY-MM-DD/final.md` with a GO verdict. For significant work (new feature, algorithm, auth change, or diff > 200 lines), also run `/kms-adversarial-test` once (`AGENTS.md` §5 step 6.3).
 6. `AGENTS.md` §5 step 7: write `CHANGELOG/<branch with / replaced by _>.md` (`/kms-changelog`).
 
 ## 9. Commit
@@ -99,12 +99,12 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 
 ## 10. Push and open the PR
 
-- Pre-push gate: the step 8 checklist is complete, `review/final.md` exists with a GO verdict, and the PR body lists each review that ran. If any item is missing, run it now; never push first and review afterwards.
+- Pre-push gate: the step 8 checklist is complete, `review-YYYY-MM-DD/final.md` exists with a GO verdict, and the PR body lists each review that ran. If any item is missing, run it now; never push first and review afterwards.
 - `git push -u origin <branch>`. Never force-push (`AGENTS.md` "Force-push prohibition").
 - Confirm that `CHANGELOG/<branch with / replaced by _>.md` exists and is committed.
 - `gh pr create --repo Cosmian/kms --base develop --head <branch> --title "<conventional subject>" --body-file <file>`. The title uses the step 9 Conventional Commits format.
 - The body (`CONTRIBUTING.md` "Pull Requests") contains: `Fixes #<N>`; **What / How / Why**; **Tests**, listing the step 6 commands and smoke output; and **Docs**, listing the pages changed.
-- It also contains the `/kms-pr-review` verdict from `review/final.md` (the file is gitignored, so do not commit it).
+- It also contains the `/kms-pr-review` verdict from `review-YYYY-MM-DD/final.md` (the file is gitignored, so do not commit it).
 - External contributors: sign the CLA when the CLA Assistant bot asks.
 
 ## 11. CI status

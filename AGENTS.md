@@ -374,7 +374,7 @@ shipped in a tagged KMS release (vX.Y.Z)**. The key question is: _were real user
 
 Run after each task, when diff > 200 lines, or before marking the last todo "completed". Skip only for trivial fixes and one-liners.
 
-1. Run **`/kms-pr-review`** (self-review mode, no argument). It reviews the branch diff in two passes, **applies confirmed fixes automatically**, re-tests, and re-reviews — at most 2 fix cycles — then writes `review/final.md`. Scope, security-posture, feature-flag, and diff checks are part of its two passes; do not repeat them by hand.
+1. Run **`/kms-pr-review`** (self-review mode, no argument). It reviews the branch diff in two passes, **applies confirmed fixes automatically**, re-tests, and re-reviews — at most 2 fix cycles — then writes `review-YYYY-MM-DD/final.md`. Scope, security-posture, feature-flag, and diff checks are part of its two passes; do not repeat them by hand.
 2. If `/kms-pr-review` stops with NO-GO or `needs-human` findings after its 2 fix cycles, stop and report those findings to the user; do not keep iterating.
 3. **PR quality gate** — for significant work (new feature, algorithm, auth change, or diff > 200 lines) also run **`/kms-adversarial-test`** once before the PR is submitted. Skip for trivial fixes and one-liners.
 
@@ -429,7 +429,7 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |
-| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 10 review phases, reports in `./review/`, go/no-go verdict |
+| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 10 review phases, reports in `./review-YYYY-MM-DD/`, go/no-go verdict |
 | `/rust-panic-audit [path]` | Scan for panics, `.unwrap()`, `.expect()`, `process::exit`, unchecked indexing |
 | `/refactor-plan` | Before any multi-file refactor |
 | `/rust-refactor` | To find and consolidate Rust code duplication |

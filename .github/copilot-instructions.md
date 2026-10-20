@@ -115,7 +115,7 @@ branch again; never rewrite shared history. Applies to every branch.
 |---------|-------------|
 | `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
-| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review/` |
+| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` |
 | `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
 | `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
