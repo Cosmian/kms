@@ -16,7 +16,16 @@ use super::{
     resolve_subject::get_subject, subject::Subject,
 };
 use crate::{
-    core::{KMS, operations::key_ops::ObjectLifecycleExt},
+    config::ServerParams,
+    core::{
+        KMS,
+        operations::{
+            algorithm_policy::{
+                enforce_kmip_algorithm_policy_for_csr, enforce_kmip_algorithm_policy_for_public_key,
+            },
+            key_ops::ObjectLifecycleExt,
+        },
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -32,6 +41,24 @@ pub(crate) async fn certify(
     user: &UserId,
 ) -> KResult<CertifyResponse> {
     Box::pin(certify_for_owner(kms, request, user, user)).await
+}
+
+/// Certify: the certified key (and a PKCS#10 request's signature) must satisfy the active
+/// algorithm policy; the issuer key is checked when it is resolved.
+fn enforce_subject_algorithm_policy(params: &ServerParams, subject: &Subject) -> KResult<()> {
+    if params.kmip_policy.policy_id.is_none() {
+        return Ok(());
+    }
+    let hint = match subject {
+        Subject::X509Req(_, req) => return enforce_kmip_algorithm_policy_for_csr(params, req),
+        Subject::PublicKeyAndSubjectName(_, owm, _) => owm.object().attributes().ok(),
+        Subject::KeypairAndSubjectName(_, keypair, _) => {
+            keypair.public_key_object.attributes().ok()
+        }
+        Subject::Certificate(..) => None,
+    };
+    let key = subject.public_key()?;
+    enforce_kmip_algorithm_policy_for_public_key(params, "Certify", &key, hint)
 }
 
 /// [`certify`] with the authorization checks (issuer `Certify` grant, `Create` right) evaluated
@@ -65,6 +92,7 @@ pub(crate) async fn certify_for_owner(
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
     let subject = Box::pin(get_subject(kms, &request, user)).await?;
+    enforce_subject_algorithm_policy(&kms.params, &subject)?;
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());

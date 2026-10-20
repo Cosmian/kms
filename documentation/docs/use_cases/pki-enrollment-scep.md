@@ -172,6 +172,10 @@ The shared [security model](pki-enrollment.md#security-model) applies. Specific 
   transaction ID must be at most 128 characters from the ASN.1 `PrintableString` set (letters,
   digits, space and `'()+,-./:=?`).
 - **Enrolled certificates cannot log in to the KMS.** They can only sign their own `RenewalReq`.
+- **KMIP algorithm policy.** When `kmip_policy.policy_id` is set, device keys, CSR signatures and
+  the CA key must satisfy the policy (for example RSA 3072 or 4096 bits under `DEFAULT`); a
+  non-compliant request is refused with `badRequest`. The SCEP envelope (AES-CBC, RSA key
+  transport) is protocol transport and is exempt.
 
 ## Troubleshooting
 

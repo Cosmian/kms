@@ -169,7 +169,7 @@ async fn make_kms_inner(
     let attrs = Attributes {
         unique_identifier: Some(UniqueIdentifier::TextString(CA_UID.to_owned())),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-        cryptographic_length: Some(2048),
+        cryptographic_length: Some(3072),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(
             "C=FR, O=KMS Test, CN=Enrollment Test CA",
         )?),
@@ -980,6 +980,59 @@ async fn scep_pkcsreq_with_challenge_issues_certificate() -> KResult<()> {
         let cert = outcome.certificate.unwrap();
         assert_issued_by(&cert, &ca);
         assert!(cert.public_key().unwrap().public_eq(&key));
+    }
+    Ok(())
+}
+
+fn default_policy(conf: &mut crate::config::ClapConfig) {
+    conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
+}
+
+#[tokio::test]
+async fn est_simpleenroll_under_default_kmip_policy_requires_compliant_keys() -> KResult<()> {
+    let (kms, ca) = make_kms_with(true, false, true, default_policy).await?;
+    let app = app!(kms);
+    let (status, body, _) = est_enroll(
+        &app,
+        &csr(&rsa_key(2048), "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        String::from_utf8_lossy(&body).contains("RSA key size not in allowed set: 2048"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+
+    let (status, body, _) = est_enroll(
+        &app,
+        &csr(&rsa_key(3072), "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert_issued_by(&certs_of(&STANDARD.decode(&body).unwrap())[0], &ca);
+    Ok(())
+}
+
+#[tokio::test]
+async fn scep_pkcsreq_under_default_kmip_policy_requires_compliant_keys() -> KResult<()> {
+    let (kms, ca) = make_kms_with(false, true, true, default_policy).await?;
+    let app = app!(kms);
+    for (bits, expected) in [(3072, PKI_STATUS_SUCCESS), (2048, PKI_STATUS_FAILURE)] {
+        let key = rsa_key(bits);
+        let outcome = scep_roundtrip(
+            &app,
+            &ca,
+            (&self_signed(&key, "dev1.iot.example"), &key),
+            &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
+            MESSAGE_TYPE_PKCS_REQ,
+            &format!("TX-POLICY-{bits}"),
+            false,
+        )
+        .await;
+        assert_eq!(outcome.attrs.pki_status, Some(expected), "RSA-{bits}");
     }
     Ok(())
 }

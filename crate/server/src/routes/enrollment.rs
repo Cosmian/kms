@@ -22,7 +22,7 @@ use cosmian_kms_access::audit::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
@@ -56,7 +56,13 @@ use crate::{
     core::{
         KMS,
         certificate::retrieve_issuer_private_key_and_certificate,
-        operations::certify::{certify_for_owner, template::CertTemplate},
+        operations::{
+            algorithm_policy::{
+                enforce_kmip_algorithm_policy_for_public_key,
+                enforce_kmip_algorithm_policy_for_retrieved_key,
+            },
+            certify::{certify_for_owner, template::CertTemplate},
+        },
     },
     error::KmsError,
     middlewares::{UserId, forwarded_for, is_enrollment_issued, resolve_client_ip},
@@ -291,10 +297,31 @@ pub(crate) async fn load_ca_signing_material(
     let unwrapped = Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), &user))
         .await
         .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;
-    Ok((
-        kmip_certificate_to_openssl(certificate.object())?,
-        kmip_private_key_to_openssl(&unwrapped)?,
-    ))
+    let ca_key = kmip_private_key_to_openssl(&unwrapped)?;
+    // The retrieved-key check trusts KMIP attributes, which may be absent: also check the key.
+    if let Err(e) = enforce_kmip_algorithm_policy_for_retrieved_key(
+        &kms.params,
+        "Certify",
+        private_key.id(),
+        &private_key,
+    )
+    .and_then(|()| {
+        enforce_kmip_algorithm_policy_for_public_key(
+            &kms.params,
+            "Certify",
+            &ca_key,
+            private_key.object().attributes().ok(),
+        )
+    }) {
+        warn!(
+            "enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}",
+            private_key.id()
+        );
+        return Err(KmsError::InvalidRequest(
+            "the enrollment CA key is not available".to_owned(),
+        ));
+    }
+    Ok((kmip_certificate_to_openssl(certificate.object())?, ca_key))
 }
 
 /// A certificate issued by [`issue_from_csr`].
@@ -380,7 +407,17 @@ pub(crate) async fn issue_from_csr(
         &ca_owner,
     ))
     .await
-    .inspect_err(|e| log_ca_use_failure(ca_uid, e))?;
+    .inspect_err(|e| {
+        if matches!(
+            e,
+            KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _)
+        ) {
+            // Not a missing `certify` grant, which is what `log_ca_use_failure` tells operators.
+            warn!("enrollment: refused by the KMIP algorithm policy: {e}");
+        } else {
+            log_ca_use_failure(ca_uid, e);
+        }
+    })?;
     let uid = response.unique_identifier.to_string();
     let owm = kms
         .database

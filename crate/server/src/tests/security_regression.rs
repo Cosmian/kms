@@ -1043,3 +1043,73 @@ async fn test_mac_tag_spelling_cannot_bypass_algorithm_policy() -> KResult<()> {
     }
     Ok(())
 }
+
+/// The batched `RequestMessage` path applies the request-time algorithm policy like the TTLV one.
+#[tokio::test]
+async fn test_default_kmip_policy_applies_to_batched_request_messages() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+                ResponseMessageBatchItemVersioned,
+            },
+            kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
+        },
+        kmip_2_1::{
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_messages::RequestMessageBatchItem,
+            kmip_operations::Operation,
+            requests::create_rsa_key_pair_request,
+        },
+    };
+
+    use crate::{
+        config::{ClapConfig, MainDBConfig},
+        middlewares::UserId,
+        tests::test_utils::get_tmp_sqlite_path,
+    };
+
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
+    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?;
+
+    let message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem::new(Operation::CreateKeyPair(Box::new(
+                create_rsa_key_pair_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    EMPTY_TAGS,
+                    2048,
+                    false,
+                    None,
+                )?,
+            ))),
+        )],
+    };
+    let response = kms
+        .message(message, &UserId::from("alice@example.com"))
+        .await?;
+    let ResponseMessageBatchItemVersioned::V21(item) = &response.batch_item[0] else {
+        panic!("not a V21 response");
+    };
+    assert_eq!(item.result_status, ResultStatusEnumeration::OperationFailed);
+    assert_eq!(item.result_reason, Some(ErrorReason::Constraint_Violation));
+    Ok(())
+}

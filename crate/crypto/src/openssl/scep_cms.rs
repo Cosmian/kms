@@ -34,6 +34,8 @@ use crate::{crypto_bail, crypto_error, error::result::CryptoResult};
 
 /// Content-encryption algorithms accepted in a `pkcsPKIEnvelope`: the `AES` capability of
 /// RFC 8894 §3.5.2. DES, 3DES and RC2 are refused even when a loaded provider implements them.
+/// Protocol transport, outside the KMIP algorithm policy (like TLS): RFC 8894 defines only CBC
+/// content encryption.
 const ENVELOPE_CIPHERS: [Nid; 3] = [Nid::AES_128_CBC, Nid::AES_192_CBC, Nid::AES_256_CBC];
 /// Key-transport algorithms accepted for the (RSA) CA recipient: PKCS#1 v1.5 and RSAES-OAEP.
 const ENVELOPE_KEY_TRANSPORTS: [Nid; 2] = [Nid::RSAENCRYPTION, Nid::RSAESOAEP];

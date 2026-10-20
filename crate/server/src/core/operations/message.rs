@@ -362,6 +362,11 @@ async fn process_operation(
     // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
     super::dispatch::check_role_permission(kms, user, operation, &kms.params.crypto_officer)
         .await?;
+    // Request-time algorithm policy, as on the single-operation TTLV path.
+    super::algorithm_policy::enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &request_operation,
+    )?;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = Box::pin(async {
