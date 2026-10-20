@@ -24,6 +24,7 @@ nav:
       - AWS CloudHSM: hsm_support/aws_cloudhsm.md
       - GCP Cloud HSM: hsm_support/gcp_cloud_hsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
+      - Kryoptic: hsm_support/kryoptic.md
       - Other HSMs: hsm_support/other_hsms.md
   - KMIP Support:
       - Introduction: kmip_support/introduction/index.md
@@ -139,7 +140,6 @@ nav:
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
-      - Kubernetes (Helm): installation/kubernetes_helm.md
       - High-availability: installation/high_availability_mode.md
   - Configuration:
       - Configuration file: configuration/server_configuration_file.md
