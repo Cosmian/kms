@@ -11,6 +11,9 @@
   update log/SIEM correlation rules.
 - `RNGSeed` is restricted to Crypto Officers once roles are configured, and its seed bytes are no longer
   traced. Add the callers that seed the server DRBG to `crypto_officer_users`.
+- With roles configured, KMIP operations this server does not implement (`Archive`, `Ping`, …) now answer
+  `Unauthorized` instead of `RouteNotFound`. In batched messages, metrics label operations by their real name
+  instead of `Unknown`.
 - Server-wide: error responses (EST, SCEP and every other route) are now `text/plain; charset=utf-8` with
   `X-Content-Type-Options: nosniff` instead of `text/html`. Clients that check the error `Content-Type` see the change.
 - EST/SCEP certificate templates refuse SANs by default: a CSR SAN of a type without a matching
@@ -66,6 +69,11 @@
 
 ## Security
 
+- Role checks now cover every operation of a batched KMIP `RequestMessage`: `RNGSeed`, `CreateSplitKey`, `JoinSplitKey`,
+  `RNGRetrieve` and other operations that the batch path labelled `Unknown` skipped the role check, so an Operator could
+  seed the server DRBG or call `CreateSplitKey` without the Create right through a batch.
+- A TTLV request whose root tag is `Mac` (accepted as an alias of `MAC`) is subject to the KMIP algorithm policy; it
+  previously skipped the MAC hash allow-list.
 - Reserved service identities (`[enrollment-service]`, `[aws-xks-service]`) are refused regardless of ASCII case or
   trailing spaces, in authentication and in config checks, so case-insensitive MySQL/MariaDB user ID columns cannot
   map an external user onto them. Visually similar non-ASCII characters still need a binary collation on the user ID column.
