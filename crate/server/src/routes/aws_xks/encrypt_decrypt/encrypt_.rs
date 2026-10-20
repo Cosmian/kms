@@ -280,7 +280,7 @@ pub(crate) async fn encrypt_inner(
     // Supplied Nonce or new one.
     let nonce: [u8; AES_256_GCM_IV_LENGTH] = {
         let mut iv = [0; AES_256_GCM_IV_LENGTH];
-        kms.rng.fill_bytes(&mut iv)?;
+        kms.rng.fill_public_bytes(&mut iv)?;
         iv
     };
     let aead = match request.additionalAuthenticatedData {

@@ -37,6 +37,7 @@ use actix_web::{
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
 use client_ip::{extract_client_ip, extract_operation};
+pub(crate) use client_ip::{forwarded_for, resolve_client_ip};
 use cosmian_kms_access::audit::{
     AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
 };

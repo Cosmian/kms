@@ -207,9 +207,6 @@ unsafe extern "C" {
         crit: c_int,
         flags: c_ulong,
     ) -> c_int;
-
-    /// `OBJ_txt2nid` — look up an NID by OID text string or short name.
-    pub(crate) fn OBJ_txt2nid(s: *const std::ffi::c_char) -> c_int;
 }
 
 /// Status constants for `OCSP_basic_add1_status`.
@@ -228,16 +225,6 @@ pub(crate) const CRL_REASON_CERTIFICATE_HOLD: c_int = 6;
 pub(crate) const CRL_REASON_REMOVE_FROM_CRL: c_int = 8;
 pub(crate) const CRL_REASON_PRIVILEGE_WITHDRAWN: c_int = 9;
 pub(crate) const CRL_REASON_AA_COMPROMISE: c_int = 10;
-
-/// OID string for the `id-pkix-ocsp-nonce` extension (RFC 6960 §4.4.1).
-pub(crate) const OID_OCSP_NONCE: &[u8] = b"1.3.6.1.5.5.7.48.1.2\0";
-
-/// OID string for `id-pkix-ocsp-archive-cutoff` extension (RFC 6960 §4.4.4).
-pub(crate) const OID_OCSP_ARCHIVE_CUTOFF: &[u8] = b"1.3.6.1.5.5.7.48.1.6\0";
-
-/// NID for `id-pkix-ocsp-nonce` (registered in OpenSSL 3.x).
-/// Fall back to `OBJ_txt2nid(OID_OCSP_NONCE)` at runtime if this value is -1.
-pub(crate) const NID_OCSP_NONCE: c_int = 365; // NID_id_pkix_OCSP_Nonce
 
 /// Minimum and maximum nonce lengths per RFC 9654.
 pub(crate) const OCSP_NONCE_MIN_LEN: usize = 16;

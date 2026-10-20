@@ -3,7 +3,10 @@ use cosmian_logger::trace;
 use openssl::pkcs12::ParsedPkcs12_2;
 use openssl::{
     pkey::PKey,
-    ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode, SslVersion},
+    ssl::{
+        SslAcceptor, SslAcceptorBuilder, SslMethod, SslOptions, SslSessionCacheMode, SslVerifyMode,
+        SslVersion,
+    },
     x509::{X509, store::X509StoreBuilder},
 };
 
@@ -214,5 +217,37 @@ pub(crate) fn configure_client_cert_verification(
     builder.set_verify_cert_store(ca_store)?;
     builder.set_verify(SslVerifyMode::PEER);
 
+    // A client certificate is mapped to a KMS user using the chain OpenSSL verified during the
+    // handshake (the enrolled-certificate check looks at every issuer in it), and a resumed
+    // session does not keep that chain: every connection must do a full handshake.
+    builder.set_session_cache_mode(SslSessionCacheMode::OFF);
+    builder.set_options(SslOptions::NO_TICKET);
+    builder.set_num_tickets(0)?;
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Whether an acceptor configured for client certificates has session resumption off:
+    /// no session cache and no tickets.
+    fn resumption_is_off() -> KResult<bool> {
+        let ca = std::fs::read("../../test_data/certificates/client_server/ca/ca.crt")
+            .map_err(|e| KmsError::ServerError(e.to_string()))?;
+        let mut builder = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
+        configure_client_cert_verification(&mut builder, &ca, "test")?;
+        // `set_session_cache_mode` returns the mode that was in force
+        let cache_off =
+            builder.set_session_cache_mode(SslSessionCacheMode::SERVER) == SslSessionCacheMode::OFF;
+        Ok(cache_off && builder.options().contains(SslOptions::NO_TICKET))
+    }
+
+    /// The user mapping needs the chain verified in the handshake, which a resumed session does
+    /// not keep: acceptors that verify client certificates must not resume sessions.
+    #[test]
+    fn client_certificate_acceptors_do_not_resume_sessions() {
+        assert!(matches!(resumption_is_off(), Ok(true)));
+    }
 }

@@ -1,11 +1,7 @@
 #![allow(clippy::unwrap_used)]
-#![allow(
-    clippy::disallowed_methods,
-    reason = "test fixtures: plaintext/AAD generation, not production secret material"
-)]
 
 use cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
-use openssl::{provider::Provider, rand::rand_bytes};
+use openssl::provider::Provider;
 
 #[cfg(feature = "non-fips")]
 use crate::crypto::symmetric::symmetric_ciphers::AES_128_GCM_SIV_MAC_LENGTH;
@@ -24,14 +20,14 @@ fn test_encrypt_decrypt_aes_gcm_128() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes128Gcm).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes128Gcm).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     let (ciphertext, tag) =
         encrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &message, None).unwrap();
@@ -59,14 +55,14 @@ fn test_encrypt_decrypt_aes_gcm_256() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     let (ciphertext, tag) =
         encrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &message, None).unwrap();
@@ -94,7 +90,7 @@ fn test_encrypt_decrypt_aes_xts_128() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes128Xts).unwrap();
 
@@ -126,7 +122,7 @@ fn test_encrypt_decrypt_aes_xts_256() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256Xts).unwrap();
 
@@ -158,7 +154,7 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_padding() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let cipher = SymCipher::Aes256Cbc;
     let key = random_key(&KmsRng::new(), cipher).unwrap();
@@ -190,7 +186,7 @@ fn test_encrypt_decrypt_aes_cbc_256_no_padding() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 32];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let cipher = SymCipher::Aes256Cbc;
     let key = random_key(&KmsRng::new(), cipher).unwrap();
@@ -221,7 +217,7 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_invalid_padding() {
     Provider::load(None, "fips").unwrap();
 
     let mut message = vec![0_u8; 32];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let cipher = SymCipher::Aes256Cbc;
     let key = random_key(&KmsRng::new(), cipher).unwrap();
@@ -245,14 +241,14 @@ fn test_encrypt_decrypt_aes_cbc_256_pkcs5_invalid_padding() {
 #[test]
 fn test_encrypt_decrypt_chacha20_poly1305() {
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Chacha20Poly1305).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Chacha20Poly1305).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     let (ciphertext, tag) = encrypt(
         SymCipher::Chacha20Poly1305,
@@ -285,14 +281,14 @@ fn test_encrypt_decrypt_aes_gcm_siv_128() {
     let _provider = Provider::load(None, "default").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes128GcmSiv).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes128GcmSiv).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     let (ciphertext, tag) =
         encrypt(SymCipher::Aes128GcmSiv, &key, &nonce, &aad, &message, None).unwrap();
@@ -320,14 +316,14 @@ fn test_encrypt_decrypt_aes_gcm_siv_256() {
     let _provider = Provider::load(None, "default").unwrap();
 
     let mut message = vec![0_u8; 42];
-    rand_bytes(&mut message).unwrap();
+    KmsRng::new().fill_bytes(&mut message).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256GcmSiv).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes256GcmSiv).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     let (ciphertext, tag) =
         encrypt(SymCipher::Aes256GcmSiv, &key, &nonce, &aad, &message, None).unwrap();
@@ -355,18 +351,18 @@ fn aes_gcm_streaming_test() {
     Provider::load(None, "fips").unwrap();
 
     let mut message1 = vec![0_u8; 42];
-    rand_bytes(&mut message1).unwrap();
+    KmsRng::new().fill_bytes(&mut message1).unwrap();
     let mut message2 = vec![0_u8; 29];
-    rand_bytes(&mut message2).unwrap();
+    KmsRng::new().fill_bytes(&mut message2).unwrap();
     let mut message3 = vec![0_u8; 17];
-    rand_bytes(&mut message3).unwrap();
+    KmsRng::new().fill_bytes(&mut message3).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     // encrypt
     let mut encryption_cipher = SymCipher::Aes256Gcm
@@ -403,18 +399,18 @@ fn aes_gcm_streaming_test() {
 #[test]
 fn chacha_streaming_test() {
     let mut message1 = vec![0_u8; 42];
-    rand_bytes(&mut message1).unwrap();
+    KmsRng::new().fill_bytes(&mut message1).unwrap();
     let mut message2 = vec![0_u8; 29];
-    rand_bytes(&mut message2).unwrap();
+    KmsRng::new().fill_bytes(&mut message2).unwrap();
     let mut message3 = vec![0_u8; 17];
-    rand_bytes(&mut message3).unwrap();
+    KmsRng::new().fill_bytes(&mut message3).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Chacha20Poly1305).unwrap();
 
     let nonce = random_nonce(&KmsRng::new(), SymCipher::Chacha20Poly1305).unwrap();
 
     let mut aad = vec![0_u8; 24];
-    rand_bytes(&mut aad).unwrap();
+    KmsRng::new().fill_bytes(&mut aad).unwrap();
 
     // encrypt
     let mut encryption_cipher = SymCipher::Chacha20Poly1305
@@ -454,11 +450,11 @@ fn aes_xts_streaming_test() {
     Provider::load(None, "fips").unwrap();
 
     let mut message1 = vec![0_u8; 42];
-    rand_bytes(&mut message1).unwrap();
+    KmsRng::new().fill_bytes(&mut message1).unwrap();
     let mut message2 = vec![0_u8; 27];
-    rand_bytes(&mut message2).unwrap();
+    KmsRng::new().fill_bytes(&mut message2).unwrap();
     let mut message3 = vec![0_u8; 17];
-    rand_bytes(&mut message3).unwrap();
+    KmsRng::new().fill_bytes(&mut message3).unwrap();
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256Xts).unwrap();
 

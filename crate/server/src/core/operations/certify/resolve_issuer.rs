@@ -22,8 +22,14 @@ use super::rfc9935;
 use super::{issuer::Issuer, subject::Subject};
 use crate::{
     core::{
-        KMS, certificate::retrieve_issuer_private_key_and_certificate,
-        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+        KMS,
+        certificate::retrieve_issuer_private_key_and_certificate,
+        operations::algorithm_policy::{
+            enforce_kmip_algorithm_policy_for_public_key,
+            enforce_kmip_algorithm_policy_for_retrieved_key,
+        },
+        retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::ObjectHandle,
     },
     error::KmsError,
     kms_bail,
@@ -96,14 +102,29 @@ pub(crate) async fn get_issuer<'a>(
     .await?;
     // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
     ensure_issuer_key_active(&issuer_private_key)?;
+    enforce_kmip_algorithm_policy_for_retrieved_key(
+        &kms.params,
+        "Certify",
+        issuer_private_key.id(),
+        &issuer_private_key,
+    )?;
     // The private key may be stored in wrapped form (e.g. when using an HSM with a KEK).
     // Unwrap it before converting to OpenSSL format for signing.
     let unwrapped_pk =
         Box::pin(kms.get_unwrapped(issuer_private_key.id(), issuer_private_key.object(), user))
             .await?;
+    let issuer_key = kmip_private_key_to_openssl(&unwrapped_pk)?;
+    // The retrieved-key check trusts KMIP attributes, which may be absent (PKCS#8 import): also
+    // check the real key material.
+    enforce_kmip_algorithm_policy_for_public_key(
+        &kms.params,
+        "Certify",
+        &issuer_key,
+        issuer_private_key.object().attributes().ok(),
+    )?;
     Ok(Issuer::PrivateKeyAndCertificate(
         UniqueIdentifier::TextString(issuer_certificate.id().to_owned()),
-        kmip_private_key_to_openssl(&unwrapped_pk)?,
+        issuer_key,
         kmip_certificate_to_openssl(issuer_certificate.object())?,
     ))
 }

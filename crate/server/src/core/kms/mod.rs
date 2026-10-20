@@ -63,6 +63,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
+    routes::enrollment_guard::EnrollmentGuard,
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
@@ -125,6 +126,9 @@ pub struct KMS {
 
     /// Unified cryptographic RNG for all KMS operations.
     pub(crate) rng: Arc<KmsRng>,
+
+    /// Abuse controls (lockout, replay cache, concurrency cap) of the EST / SCEP endpoints.
+    pub(crate) enrollment_guard: EnrollmentGuard,
 }
 
 impl KMS {
@@ -322,6 +326,7 @@ impl KMS {
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,
             rng,
+            enrollment_guard: EnrollmentGuard::default(),
         })
     }
 

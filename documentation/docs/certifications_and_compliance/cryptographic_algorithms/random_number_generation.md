@@ -1,4 +1,11 @@
-# PQC Entropy Sourcing: Status and Limits
+# Random Number Generation and PQC Entropy: Status and Limits
+
+This page covers every random byte the server produces, then post-quantum (PQC) entropy specifically:
+
+- [What `KmsRng` is](#what-kmsrng-is) and [What uses `KmsRng`](#what-uses-kmsrng): the single random number
+  generator behind keys, nonces/IVs, serials and secret tokens, for all algorithms.
+- From [How PQC key generation uses `KmsRng`](#how-pqc-key-generation-uses-kmsrng) onwards: how ML-KEM, ML-DSA,
+  SLH-DSA and hybrid KEM key generation draw entropy, and what NIST Entropy Source Validation (ESV) would require.
 
 !!! warning "Not an ESV or CMVP compliance statement"
     This page describes how Eviden KMS sources randomness today. It does **not** claim that Eviden KMS holds
@@ -11,8 +18,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (non-secret anonymization values, OpenSSL-internal keygen, Covercrypt) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans the other generators |
-| What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (keys, seeds) and `RAND_bytes_ex` (`RNGRetrieve` output), each requesting 256-bit security strength; no lock, no state of its own |
+| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (OpenSSL-internal keygen, the SCEP CMS content key/IV drawn inside OpenSSL, Covercrypt, `uuid::Uuid::new_v4` identifiers, the `oauth2` PKCE/CSRF helpers of `cosmian_kms_client`) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans every other entropy source |
+| What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (values that stay secret) and `RAND_bytes_ex` (values that leave the server in clear), each requesting 256-bit security strength; no lock, no state of its own |
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
 | Is the entropy source ESV-validated? | Not claimed. Entropy comes from the operating system through OpenSSL, and no ESV certificate is referenced |
@@ -60,30 +67,34 @@ X25519-ML-KEM-768 and X448-ML-KEM-1024.
 
 ## What `KmsRng` is
 
-`KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) is a stateless, thread-safe wrapper around OpenSSL's DRBG
-hierarchy (AES-256 CTR-DRBG: a primary DRBG seeded by the operating system, plus per-thread public and
-private DRBGs). It offers:
+`KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) is a zero-sized, stateless, thread-safe wrapper around
+OpenSSL's DRBG hierarchy (AES-256 CTR-DRBG). The server shares one `Arc<KmsRng>` (`KMS.rng`); other
+crates construct `KmsRng::new()` locally at no cost.
 
-- `fill_bytes` / `random_vec`: secret values (keys, seeds, split-key material, serial numbers), drawn from
-  OpenSSL's **private** DRBG with `RAND_priv_bytes_ex`. `random_vec` returns a `Zeroizing<Vec<u8>>`.
-- `fill_public_bytes`: values handed to clients (KMIP `RNGRetrieve`), drawn from OpenSSL's **public** DRBG with
-  `RAND_bytes_ex`, so output visible to a client never comes from the generator that produces keys.
-- `reseed`: passes caller-supplied data to `RAND_add`. In OpenSSL 3.6 built with an entropy source this is
-  downgraded to **additional input** of an immediate reseed of the primary DRBG (`crypto/rand/rand_lib.c`);
-  per SP 800-90A r1 §8.7.2 additional input cannot lower the DRBG's security strength, and it is credited with
-  zero bits of entropy. Each `RNGSeed` therefore forces a reseed from the operating system; the operation is
-  not rate-limited.
+| Method | OpenSSL call | DRBG | Use for | Notes |
+|--------|--------------|------|---------|-------|
+| `fill_bytes`, `random_vec` | `RAND_priv_bytes_ex(…, 256)` | Private | Values that stay secret: keys, seeds, KEKs, split-key shares, tokens | `random_vec` returns a `Zeroizing<Vec<u8>>` |
+| `fill_public_bytes` | `RAND_bytes_ex(…, 256)` | Public | Values that leave the server in clear: nonces, IVs, certificate serials, KMIP `RNGRetrieve`, PKCS#11 `C_GenerateRandom` | Private-DRBG output is never observable. OpenSSL keeps the two instances apart so that a compromise of the public one does not affect the secrecy of private values (`RAND_bytes(3)`); defence in depth, since CTR-DRBG output does not reveal its state |
+| `seeded_csrng` | `RAND_priv_bytes_ex(…, 256)` for a 32-byte seed | Private (seed only) | Third-party APIs that need an infallible `rand_core` RNG: OpenPGP (`pgp` crate), ECIES `SalsaSealBox`, test fixtures | ChaCha12 stream bounded by the 256-bit seed. Its state equals the seed, so it is overwritten when dropped |
+| `reseed` | `RAND_add(seed, len, 0.0)` | Primary | KMIP `RNGSeed` | Additional input of an immediate reseed from the operating system (`crypto/rand/rand_meth.c`); per SP 800-90A r1 §8.7.2 it cannot lower the DRBG's security strength and is credited with zero bits of entropy. `RAND_add` returns `void`: a failed reseed is not reported to the caller, but a DRBG whose entropy source fails refuses later generate calls. Cost about 0.6 µs, plus about 3 µs on the next generate call (FIPS build, Apple M-series), so `RNGSeed` has no rate limit of its own |
+
+```mermaid
+flowchart LR
+    OS["Operating system<br/>entropy source"] --> P
+    subgraph OpenSSL["OpenSSL DRBG hierarchy (AES-256 CTR-DRBG)"]
+        P["Primary DRBG"] --> PRIV["Private DRBG<br/>(per thread)"]
+        P --> PUB["Public DRBG<br/>(per thread)"]
+    end
+    PRIV -- "256-bit request" --> FB["fill_bytes / random_vec<br/>keys, seeds, KEKs, tokens"]
+    PRIV -- "32-byte seed" --> CS["seeded_csrng<br/>ChaCha12, wiped on drop"]
+    CS --> TP["OpenPGP<br/>ECIES SalsaSealBox"]
+    PUB -- "256-bit request" --> FP["fill_public_bytes<br/>nonces, IVs, serials,<br/>RNGRetrieve, C_GenerateRandom"]
+    RS["reseed<br/>KMIP RNGSeed"] -- "additional input" --> P
+```
 
 Every generate call requests 256 bits of security strength (SP 800-133r2 §4; SP 800-90A r1 §9.3.1 makes
 the DRBG return an error if it cannot provide it), so a weaker DRBG fails closed instead of silently
 serving lower-strength bits.
-
-The server creates one `Arc<KmsRng>` at startup (`KMS.rng`).
-
-!!! note
-    Earlier versions serialised every call behind a `Mutex<()>`. OpenSSL's RAND API is already thread-safe, so
-    the lock only added contention and a permanent-failure mode if a thread panicked while holding it. It was
-    removed. `KmsRng` is not an entropy or compliance mechanism.
 
 ### Which provider serves the DRBG
 
@@ -97,22 +108,31 @@ was not re-verified at run time here.
 
 ### Random generators outside `KmsRng`
 
-`KmsRng` is the sole production path for key material, nonces/IVs and secret tokens. Third-party APIs that
+`KmsRng` is the sole production path for key material, nonces/IVs and secret tokens, except for the
+documented exceptions below. Third-party APIs that
 demand an infallible `rand_core` generator (OpenPGP through the `pgp` crate, ECIES `SalsaSealBox` through
-`cosmian_crypto_core`) are fed by a ChaCha12 stream **seeded with 256 bits drawn from `KmsRng`**; the
-workspace `clippy.toml` bans `openssl::rand::rand_bytes`, `cosmian_crypto_core::CsRng` and `rand` `StdRng` /
-`ThreadRng`, with explicit inline exceptions for those seed-stretching uses and for test fixtures.
+`cosmian_crypto_core`) are fed by a ChaCha12 stream **seeded with 256 bits drawn from `KmsRng`**
+(`KmsRng::seeded_csrng`); the workspace `clippy.toml` bans every other entropy source that workspace code can
+call directly (OpenSSL `rand_bytes`, `BigNum` random generation, `rand::rng`, `thread_rng`, `OsRng`, `getrandom`,
+`from_entropy`, ...) without any inline exception, test fixtures included. Clippy cannot see the draws a
+dependency makes internally; those are the exceptions below.
 
-Documented exceptions where no `KmsRng` injection point exists:
+Documented exceptions:
 
-- **Non-secret values**: anonymization noise (`NoiseGenerator`, differential-privacy noise) and word-token
-  labels (`anonymization/word.rs`), and the label of the unused `random_label` helper of the PKCS#11 module.
 - **RSA / EC / EdDSA key generation, SLH-DSA and hybrid KEM composite keygen**: OpenSSL generates these
   atomically from its own default DRBG (the same hierarchy `KmsRng` calls into, served by the FIPS provider
   in FIPS builds; asserted by `crate/crypto/tests/fips_rng_provider.rs`).
 - **Covercrypt**: `Covercrypt::setup()` in `cosmian_cover_crypt` 16.0.0 locks an internal `rng` field and has no
   constructor parameter or setter that accepts an external RNG (verified in the vendored source,
   `src/abe/api.rs`). It is the same category as hybrid-KEM composite keygen.
+- **SCEP CMS envelope content key and IV**: `CmsContentInfo::encrypt` (`crypto/src/openssl/scep_cms.rs`) lets
+  OpenSSL draw the AES content-encryption key (`RAND_priv_bytes_ex`) and IV (`RAND_bytes_ex`) itself, from the
+  same DRBG hierarchy but at requested strength 0, so it does not fail closed on a DRBG weaker than 256 bits.
+  `CMS_encrypt` exposes no way to supply the key or IV.
+- **`uuid::Uuid::new_v4` identifiers** (object unique identifiers, enrollment request IDs): `uuid` draws from
+  the operating system through `getrandom`, bypassing OpenSSL. They are identifiers, not secrets.
+- **`oauth2` PKCE verifier and CSRF state** in `cosmian_kms_client`, which does not depend on
+  `cosmian_kms_crypto`.
 - **PKCS#11 `C_GenerateRandom` on the server** (KMIP `PKCS11` operation passthrough) is not implemented and
   returns `CKR_FUNCTION_NOT_SUPPORTED`: it fails closed.
 

@@ -1643,9 +1643,7 @@ pub(crate) mod tests {
         extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
-    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng, Secret, reexport::rand_core::SeedableRng,
-    };
+    use cosmian_kms_crypto::{crypto::KmsRng, reexport::cosmian_crypto_core::Secret};
     use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
     use uuid::Uuid;
 
@@ -1664,7 +1662,7 @@ pub(crate) mod tests {
     /// object does not carry must not be returned by `find`.
     pub(crate) async fn test_db_redis_stale_attribute_hit_is_filtered_out()
     -> crate::error::DbResult<()> {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
         let uid = Uuid::new_v4().to_string();
@@ -1718,7 +1716,7 @@ pub(crate) mod tests {
     /// e.g. from out-of-order post-commit index updates) must not be returned.
     pub(crate) async fn test_db_redis_stale_findex_hit_is_filtered_out()
     -> crate::error::DbResult<()> {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
         let uid = Uuid::new_v4().to_string();
@@ -1773,7 +1771,7 @@ pub(crate) mod tests {
     /// (tagged `old`) unfindable.
     pub(crate) async fn test_db_redis_interleaved_index_updates_keep_object_findable()
     -> crate::error::DbResult<()> {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
         let uid = Uuid::new_v4().to_string();

@@ -343,42 +343,6 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
     Ok(())
 }
 
-/// Helper function to get the operation name from an Operation enum variant
-#[allow(clippy::missing_const_for_fn)]
-fn get_operation_name(operation: &Operation) -> &'static str {
-    match operation {
-        Operation::Activate(_) => "Activate",
-        Operation::AddAttribute(_) => "AddAttribute",
-        Operation::Certify(_) => "Certify",
-        Operation::Create(_) => "Create",
-        Operation::CreateKeyPair(_) => "CreateKeyPair",
-        Operation::Decrypt(_) => "Decrypt",
-        Operation::DeleteAttribute(_) => "DeleteAttribute",
-        Operation::DeriveKey(_) => "DeriveKey",
-        Operation::Destroy(_) => "Destroy",
-        Operation::DiscoverVersions(_) => "DiscoverVersions",
-        Operation::Encrypt(_) => "Encrypt",
-        Operation::Export(_) => "Export",
-        Operation::Get(_) => "Get",
-        Operation::GetAttributes(_) => "GetAttributes",
-        Operation::Hash(_) => "Hash",
-        Operation::Import(_) => "Import",
-        Operation::Locate(_) => "Locate",
-        Operation::MAC(_) => "MAC",
-        Operation::Query(_) => "Query",
-        Operation::Register(_) => "Register",
-        Operation::ReCertify(_) => "ReCertify",
-        Operation::ReKey(_) => "ReKey",
-        Operation::ReKeyKeyPair(_) => "ReKeyKeyPair",
-        Operation::Revoke(_) => "Revoke",
-        Operation::SetAttribute(_) => "SetAttribute",
-        Operation::Sign(_) => "Sign",
-        Operation::SignatureVerify(_) => "SignatureVerify",
-        Operation::Validate(_) => "Validate",
-        _ => "Unknown",
-    }
-}
-
 async fn process_operation(
     kms: &KMS,
     user: &UserId,
@@ -386,8 +350,9 @@ async fn process_operation(
     request_operation: Operation,
     protocol_version: Option<ProtocolVersion>,
 ) -> Result<Operation, KmsError> {
-    // Get operation name for metrics
-    let operation_name = get_operation_name(&request_operation);
+    // The KMIP operation enumeration drives both the role check and the metrics label
+    let operation = request_operation.operation_enum();
+    let operation_name: &'static str = operation.into();
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
     // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
@@ -395,8 +360,13 @@ async fn process_operation(
 
     // Enforce role-based access control for the RequestMessage path.
     // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
-    super::dispatch::check_role_permission(kms, user, operation_name, &kms.params.crypto_officer)
+    super::dispatch::check_role_permission(kms, user, operation, &kms.params.crypto_officer)
         .await?;
+    // Request-time algorithm policy, as on the single-operation TTLV path.
+    super::algorithm_policy::enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &request_operation,
+    )?;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = Box::pin(async {

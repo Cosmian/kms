@@ -10,6 +10,10 @@ nav:
       - Introduction: use_cases/pki.md
       - Revocation & CRL Distribution: use_cases/pki-revocation.md
       - OCSP Responder: use_cases/pki-ocsp.md
+      - Device enrollment:
+          - Overview: use_cases/pki-enrollment.md
+          - EST (RFC 7030): use_cases/pki-enrollment-est.md
+          - SCEP (RFC 8894): use_cases/pki-enrollment-scep.md
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
@@ -177,7 +181,7 @@ nav:
       - FIPS 140-3: certifications_and_compliance/fips.md
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
-          - PQC Entropy Source Validation (ESV) Compliance: certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md
+          - Random Number Generation and PQC Entropy: certifications_and_compliance/cryptographic_algorithms/random_number_generation.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:

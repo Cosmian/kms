@@ -15,20 +15,43 @@ use actix_web::{
     rt::net::TcpStream,
 };
 use cosmian_logger::{debug, trace};
-use openssl::{nid::Nid, x509::X509};
+use openssl::{
+    nid::Nid,
+    ssl::SslRef,
+    x509::{X509, X509Ref},
+};
+use x509_parser::prelude::{FromDer, ParsedExtension, X509Certificate};
 
 use crate::{
+    core::operations::certify::template::ENROLLED_CERTIFICATE_POLICY_OID,
     error::KmsError,
     kms_bail,
-    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_aws_xks_identity},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity},
     result::KResult,
 };
 
 /// Holds the peer certificate for the current connection.
 #[derive(Debug, Clone)]
-pub(super) struct PeerCertificate {
+pub(crate) struct PeerCertificate {
     /// The peer certificate.
     pub(crate) cert: X509,
+    /// The KMS user `cert` maps to, resolved once per connection by
+    /// [`user_from_client_certificate`]; the refusal reason when it maps to none.
+    pub(crate) user: Result<UserId, String>,
+}
+
+/// The certificates above the leaf of a TLS connection's client certificate chain.
+///
+/// This is the chain OpenSSL verified. Session resumption is off on every client-certificate
+/// acceptor (`tls_config.rs`), so it is always present; the peer-sent chain fallback is defence
+/// in depth. `None` when OpenSSL kept no chain at all; callers must then refuse to map the
+/// certificate to a user.
+pub(crate) fn verified_issuers(ssl: &SslRef) -> Option<Vec<X509>> {
+    if let Some(chain) = ssl.verified_chain() {
+        return Some(chain.iter().skip(1).map(ToOwned::to_owned).collect());
+    }
+    ssl.peer_cert_chain()
+        .map(|chain| chain.iter().map(ToOwned::to_owned).collect())
 }
 
 /// Extract the peer certificate from the TLS stream and store it in request extensions.
@@ -37,8 +60,10 @@ pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extension
     if let Some(cnx) = cnx.downcast_ref::<TlsStream<TcpStream>>() {
         // Get the peer certificate from the OpenSSL TLS connection.
         if let Some(cert) = cnx.ssl().peer_certificate() {
-            // The certificate is already an openssl::X509 object
-            extensions.insert(PeerCertificate { cert });
+            // The certificate and its chain are fixed for the connection: map them to a user once.
+            let user = user_from_client_certificate(&cert, verified_issuers(cnx.ssl()).as_deref())
+                .map_err(|e| e.to_string());
+            extensions.insert(PeerCertificate { cert, user });
         }
     }
 }
@@ -84,35 +109,81 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
     };
 
     Ok(AuthenticatedUser {
-        username: client_cert_username(&certificate.cert)?,
+        username: certificate.user.clone().map_err(KmsError::InvalidRequest)?,
         auth_method: AuthMethod::Mtls,
     })
 }
 
+/// `true` when `certificate` carries the [`ENROLLED_CERTIFICATE_POLICY_OID`] stamped on
+/// certificates issued through EST / SCEP. Fails closed when the certificate cannot be parsed.
+pub(crate) fn is_enrollment_issued(certificate: &X509Ref) -> KResult<bool> {
+    let der = certificate.to_der()?;
+    let (_, parsed) = X509Certificate::from_der(&der).map_err(|e| {
+        KmsError::InvalidRequest(format!("cannot inspect the client certificate: {e}"))
+    })?;
+    Ok(parsed
+        .iter_extensions()
+        .any(|ext| match ext.parsed_extension() {
+            ParsedExtension::CertificatePolicies(policies) => policies
+                .iter()
+                .any(|p| p.policy_id.to_id_string() == ENROLLED_CERTIFICATE_POLICY_OID),
+            _ => false,
+        }))
+}
+
 /// Derive the KMS username from a client certificate's Common Name.
 ///
-/// Shared by the HTTP mTLS middleware and the KMIP socket server so both reject the
-/// same identities: missing, empty or wildcard (`*`) CNs and the reserved AWS XKS user.
-pub(crate) fn client_cert_username(cert: &X509) -> KResult<UserId> {
-    let Some(cn) = cert.subject_name().entries_by_nid(Nid::COMMONNAME).next() else {
-        kms_bail!("Client certificate has no common name")
-    };
-    let username = match cn.data().to_string() {
-        Ok(username) => username,
-        Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
-    };
-    let trimmed = username.trim();
-    if trimmed.is_empty() {
-        kms_bail!("Client certificate CN is empty; access denied");
-    }
-    if trimmed == "*" {
+/// Shared by the HTTPS mTLS middleware and the KMIP socket server so both apply the same
+/// rules: the CN must be present, UTF-8, non-empty, not the `*` wildcard, not a reserved
+/// internal service identity, and neither the certificate nor any issuer in its verified chain
+/// may have been issued through EST / SCEP enrollment. A device chooses its own CN in its CSR,
+/// so an enrolled certificate is a device identity only: it can renew itself over EST but never
+/// authenticates as a KMS user, and neither can anything signed by a certificate it obtained.
+pub(crate) fn user_from_client_certificate(
+    certificate: &X509Ref,
+    issuers: Option<&[X509]>,
+) -> KResult<UserId> {
+    let Some(issuers) = issuers else {
         kms_bail!(
-            "Client certificate CN '{}' is a wildcard and not a valid username; access denied",
-            username
+            "Client certificate chain is not available (resumed TLS session?); refusing to \
+             map the certificate to a user"
+        );
+    };
+    if is_enrollment_issued(certificate)?
+        || issuers.iter().try_fold(false, |found, issuer| {
+            is_enrollment_issued(issuer).map(|marked| found || marked)
+        })?
+    {
+        kms_bail!(
+            "Client certificate was issued through EST/SCEP enrollment and cannot authenticate \
+             as a KMS user; access denied"
         );
     }
-    trace!("Client certificate common name: {}", username);
-    let username = UserId::from(trimmed);
-    reject_reserved_aws_xks_identity(&username)?;
-    Ok(username)
+    match certificate
+        .subject_name()
+        .entries_by_nid(Nid::COMMONNAME)
+        .next()
+    {
+        None => kms_bail!("Client certificate has no common name"),
+        Some(cn) => match cn.data().to_string() {
+            Ok(username) => {
+                let trimmed = username.trim();
+                if trimmed.is_empty() {
+                    kms_bail!("Client certificate CN is empty; access denied");
+                }
+                if trimmed == "*" {
+                    kms_bail!(
+                        "Client certificate CN '{}' is a wildcard and not a valid username; \
+                         access denied",
+                        username
+                    );
+                }
+                trace!("Client certificate common name: {}", username);
+                let username = UserId::from(trimmed);
+                reject_reserved_service_identity(&username)?;
+                Ok(username)
+            }
+            Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
+        },
+    }
 }

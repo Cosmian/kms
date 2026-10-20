@@ -45,7 +45,7 @@ We chose to:
    - Direct OpenSSL 3.x FFI calls (`EVP_PKEY_CTX_new_from_name`, `EVP_PKEY_keygen_init`, `EVP_PKEY_CTX_set_params`, `EVP_PKEY_generate`) remain in `pqc/mod.rs` until upstream `rust-openssl` exposes safe parameter-setting keygen abstractions.
 
 4. **Clarify Hybrid KEM Architectural Limits in Documentation**:
-   - Document in `documentation/docs/certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md` why hybrid KEMs cannot accept an external seed from `KmsRng`:
+   - Document in `documentation/docs/certifications_and_compliance/cryptographic_algorithms/random_number_generation.md` why hybrid KEMs cannot accept an external seed from `KmsRng`:
      OpenSSL 3.6.2 implements composite key management in `providers/implementations/keymgmt/mlx_kmgmt.c`. Its parameter list `mlx_gen_set_params_list` only supports `OSSL_PKEY_PARAM_PROPERTIES` and does not provide a `"seed"` parameter. OpenSSL generates both classical and post-quantum key components atomically inside `mlx_kem_gen`.
    - Clarify that hybrid KEMs must draw entropy from OpenSSL's default DRBG and cannot inherit ESV properties from `KmsRng`.
 
@@ -86,4 +86,4 @@ We chose to:
 - **REF-002**: NIST FIPS 204: *Module-Lattice-Based Digital Signature Standard (ML-DSA)*
 - **REF-003**: NIST FIPS 205: *Stateless Hash-Based Digital Signature Standard (SLH-DSA)*
 - **REF-004**: OpenSSL 3.6.2 implementation files: `providers/implementations/keymgmt/ml_kem_kmgmt.c`, `ml_dsa_kmgmt.c`, `mlx_kmgmt.c`
-- **REF-005**: Codebase files: `crate/crypto/src/crypto/pqc/mod.rs`, `crate/crypto/src/crypto/pqc/ml_kem.rs`, `crate/crypto/src/crypto/pqc/ml_dsa.rs`, `crate/crypto/src/crypto/rng/mod.rs`, `documentation/docs/certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md`
+- **REF-005**: Codebase files: `crate/crypto/src/crypto/pqc/mod.rs`, `crate/crypto/src/crypto/pqc/ml_kem.rs`, `crate/crypto/src/crypto/pqc/ml_dsa.rs`, `crate/crypto/src/crypto/rng/mod.rs`, `documentation/docs/certifications_and_compliance/cryptographic_algorithms/random_number_generation.md`

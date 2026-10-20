@@ -13,14 +13,22 @@ use cosmian_kms_server_database::reexport::{
             },
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-                KeyFormatType, RecommendedCurve,
+                KeyFormatType, OperationEnumeration, RecommendedCurve,
             },
         },
         ttlv::{TTLV, TtlvDeserializer},
     },
+    cosmian_kms_crypto::openssl::oid::nid_of,
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use openssl::{
+    asn1::Asn1Object,
+    nid::Nid,
+    pkey::{HasPublic, Id, PKeyRef},
+    x509::X509ReqRef,
+};
 use serde::Deserialize;
+use x509_parser::prelude::{FromDer, SubjectPublicKeyInfo, X509CertificationRequest};
 
 use crate::{config::ServerParams, error::KmsError, result::KResult};
 
@@ -41,9 +49,11 @@ struct KmipWhitelists {
 
 pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     params: &ServerParams,
-    operation_tag: &str,
+    operation: OperationEnumeration,
     ttlv: &TTLV,
 ) -> KResult<()> {
+    use OperationEnumeration as Op;
+
     if params.kmip_policy.policy_id.is_none() {
         return Ok(());
     }
@@ -63,48 +73,59 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
             })
         }};
     }
-    // The root TTLV tag is the operation name (e.g. "Create").
     // Deserialize the *operation payload* (the struct), then wrap it into the `Operation` enum.
-    let op = match operation_tag {
-        "Create" => Operation::Create(deserialize_op!(Create, "Create")?),
-        "CreateKeyPair" => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
-        "Encrypt" => Operation::Encrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Encrypt, "Encrypt")?)),
-        "Decrypt" => Operation::Decrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Decrypt, "Decrypt")?)),
-        "Hash" => Operation::Hash(deserialize_op!(Hash, "Hash")?),
-        "MAC" => Operation::MAC(deserialize_op!(MAC, "MAC")?),
-        "MACVerify" => Operation::MACVerify(deserialize_op!(MACVerify, "MACVerify")?),
-        "Sign" => Operation::Sign(deserialize_op!(Sign, "Sign")?),
-        "SignatureVerify" => Operation::SignatureVerify(deserialize_op!(SignatureVerify, "SignatureVerify")?),
-        "DeriveKey" => Operation::DeriveKey(deserialize_op!(DeriveKey, "DeriveKey")?),
-        "Import" => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
-        "Register" => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
-        "Export" => Operation::Export(deserialize_op!(Export, "Export")?),
+    let op = match operation {
+        Op::Create => Operation::Create(deserialize_op!(Create, "Create")?),
+        Op::CreateKeyPair => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
+        Op::Encrypt => Operation::Encrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Encrypt, "Encrypt")?)),
+        Op::Decrypt => Operation::Decrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Decrypt, "Decrypt")?)),
+        Op::Hash => Operation::Hash(deserialize_op!(Hash, "Hash")?),
+        Op::MAC => Operation::MAC(deserialize_op!(MAC, "MAC")?),
+        Op::MACVerify => Operation::MACVerify(deserialize_op!(MACVerify, "MACVerify")?),
+        Op::Sign => Operation::Sign(deserialize_op!(Sign, "Sign")?),
+        Op::SignatureVerify => Operation::SignatureVerify(deserialize_op!(SignatureVerify, "SignatureVerify")?),
+        Op::DeriveKey => Operation::DeriveKey(deserialize_op!(DeriveKey, "DeriveKey")?),
+        Op::Import => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
+        Op::Register => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
+        Op::Export => Operation::Export(deserialize_op!(Export, "Export")?),
         // For other operations, request-time algorithm policy doesn't apply.
         _ => return Ok(()),
     };
 
+    enforce_kmip_algorithm_policy_for_request(params, &op)
+}
+
+/// Request-time algorithm policy for an already-deserialized request (batched
+/// `RequestMessage` items and the TTLV path after deserialization).
+pub(crate) fn enforce_kmip_algorithm_policy_for_request(
+    params: &ServerParams,
+    op: &Operation,
+) -> KResult<()> {
+    if params.kmip_policy.policy_id.is_none() {
+        return Ok(());
+    }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
 
     #[allow(clippy::match_same_arms)]
-    // arms bind distinct request types; merging with `|` would lose the typed `ref req` binding
+    // arms bind distinct request types; merging with `|` would lose the typed `req` binding
     match op {
-        Operation::Create(ref req) => validate_create(req, &wl),
-        Operation::CreateKeyPair(ref req) => validate_create_key_pair(req.as_ref(), &wl),
-        Operation::Encrypt(ref req) => {
+        Operation::Create(req) => validate_create(req, &wl),
+        Operation::CreateKeyPair(req) => validate_create_key_pair(req.as_ref(), &wl),
+        Operation::Encrypt(req) => {
             validate_cryptographic_parameters(&req.cryptographic_parameters, &wl)
         }
-        Operation::Decrypt(ref req) => {
+        Operation::Decrypt(req) => {
             validate_cryptographic_parameters(&req.cryptographic_parameters, &wl)
         }
-        Operation::Hash(ref req) => validate_hash(req, &wl),
-        Operation::MAC(ref req) => validate_mac(req, &wl),
-        Operation::MACVerify(ref req) => validate_mac_verify(req, &wl),
-        Operation::Sign(ref req) => validate_sign(req, &wl),
-        Operation::SignatureVerify(ref req) => validate_signature_verify(req, &wl),
-        Operation::DeriveKey(ref req) => validate_derive_key(req, &wl),
-        Operation::Import(ref req) => validate_attributes(&req.attributes, &wl),
-        Operation::Register(ref req) => validate_attributes(&req.attributes, &wl),
-        Operation::Export(ref req) => validate_export(req, &wl),
+        Operation::Hash(req) => validate_hash(req, &wl),
+        Operation::MAC(req) => validate_mac(req, &wl),
+        Operation::MACVerify(req) => validate_mac_verify(req, &wl),
+        Operation::Sign(req) => validate_sign(req, &wl),
+        Operation::SignatureVerify(req) => validate_signature_verify(req, &wl),
+        Operation::DeriveKey(req) => validate_derive_key(req, &wl),
+        Operation::Import(req) => validate_attributes(&req.attributes, &wl),
+        Operation::Register(req) => validate_attributes(&req.attributes, &wl),
+        Operation::Export(req) => validate_export(req, &wl),
 
         // Rekey operations operate on existing objects; enforcement is done on retrieved keys and
         // on the Create/Import paths they invoke.
@@ -118,19 +139,199 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
         _ => Ok(()),
     }
     .map_err(|e| {
-        match e {
-            KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
-            other => {
-                // Keep a stable KMIP error envelope.
+        wrap_policy_error(
+            e,
+            &op.operation_enum().to_string(),
+            "denied by algorithm policy",
+        )
+    })
+}
+
+/// Keep the KMIP error envelope: KMIP/invalid-request errors pass through, others become
+/// `Cryptographic_Failure`. No object UIDs in the message (EST returns it to the device).
+fn wrap_policy_error(e: KmsError, operation_tag: &str, what: &str) -> KmsError {
+    match e {
+        KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
+        other => KmsError::Kmip21Error(
+            ErrorReason::Cryptographic_Failure,
+            format!("{operation_tag} {what}: {other}"),
+        ),
+    }
+}
+
+/// ML-DSA parameter sets (FIPS 204), by `OpenSSL` short name (`rust-openssl` has no constants).
+const ML_DSA_ALGORITHMS: [(&str, CryptographicAlgorithm); 3] = [
+    ("id-ml-dsa-44", CryptographicAlgorithm::MLDSA_44),
+    ("id-ml-dsa-65", CryptographicAlgorithm::MLDSA_65),
+    ("id-ml-dsa-87", CryptographicAlgorithm::MLDSA_87),
+];
+
+/// RSA PKCS#1 v1.5 with SHA-3 signatures (RFC 9688), by `OpenSSL` short name.
+const SHA3_RSA_SIGNATURES: [(&str, DigitalSignatureAlgorithm); 3] = [
+    (
+        "id-rsassa-pkcs1-v1_5-with-sha3-256",
+        DigitalSignatureAlgorithm::SHA3256WithRSAEncryption,
+    ),
+    (
+        "id-rsassa-pkcs1-v1_5-with-sha3-384",
+        DigitalSignatureAlgorithm::SHA3384WithRSAEncryption,
+    ),
+    (
+        "id-rsassa-pkcs1-v1_5-with-sha3-512",
+        DigitalSignatureAlgorithm::SHA3512WithRSAEncryption,
+    ),
+];
+
+/// The NID of an `OpenSSL` object name, or [`Nid::UNDEF`] when this build does not know it.
+fn nid_by_name(name: &str) -> Nid {
+    Asn1Object::from_str(name).map_or(Nid::UNDEF, |obj| obj.nid())
+}
+
+/// ML-DSA algorithm of a key OpenSSL reports under no known `Id`, from its SPKI algorithm.
+fn algorithm_from_spki_oid<T: HasPublic>(key: &PKeyRef<T>) -> Option<CryptographicAlgorithm> {
+    let der = key.public_key_to_der().ok()?;
+    let (_, spki) = SubjectPublicKeyInfo::from_der(&der).ok()?;
+    let nid = nid_of(&spki.algorithm.algorithm.to_id_string());
+    ML_DSA_ALGORITHMS
+        .iter()
+        .find(|(name, _)| nid != Nid::UNDEF && nid_by_name(name) == nid)
+        .map(|(_, alg)| *alg)
+}
+
+/// Certify: the certified public key must satisfy the active algorithm policy.
+/// `attributes_hint` (the KMIP attributes of the key, when it is a KMS object) names the
+/// algorithm of key types OpenSSL does not identify (e.g. ML-DSA).
+pub(crate) fn enforce_kmip_algorithm_policy_for_public_key<T: HasPublic>(
+    params: &ServerParams,
+    operation_tag: &str,
+    public_key: &PKeyRef<T>,
+    attributes_hint: Option<&Attributes>,
+) -> KResult<()> {
+    if params.kmip_policy.policy_id.is_none() {
+        return Ok(());
+    }
+    let wl = KmipWhitelists::from_params(&params.kmip_policy);
+    (|| -> KResult<()> {
+        let (alg, curve) = match public_key.id() {
+            Id::RSA => {
+                validate_algorithm(CryptographicAlgorithm::RSA, wl.algorithms.as_ref())?;
+                let bits = i32::try_from(public_key.bits()).map_err(|e| {
+                    KmsError::InvalidRequest(format!("{operation_tag}: invalid RSA key size: {e}"))
+                })?;
+                return validate_key_size_bits(CryptographicAlgorithm::RSA, bits, &wl);
+            }
+            Id::EC => {
+                let ec_key = public_key.ec_key()?;
+                let nid = ec_key.group().curve_name();
+                let curve = match nid {
+                    #[cfg(feature = "non-fips")]
+                    Some(Nid::X9_62_PRIME192V1) => Some(RecommendedCurve::P192),
+                    Some(Nid::SECP224R1) => Some(RecommendedCurve::P224),
+                    Some(Nid::X9_62_PRIME256V1) => Some(RecommendedCurve::P256),
+                    Some(Nid::SECP384R1) => Some(RecommendedCurve::P384),
+                    Some(Nid::SECP521R1) => Some(RecommendedCurve::P521),
+                    #[cfg(feature = "non-fips")]
+                    Some(Nid::SECP256K1) => Some(RecommendedCurve::SECP256K1),
+                    #[cfg(feature = "non-fips")]
+                    Some(Nid::SECP224K1) => Some(RecommendedCurve::SECP224K1),
+                    #[cfg(feature = "non-fips")]
+                    Some(Nid::SECP192K1) => Some(RecommendedCurve::SECP192K1),
+                    _ => None,
+                };
+                let Some(curve) = curve else {
+                    let name = nid
+                        .and_then(|n| n.short_name().ok())
+                        .unwrap_or("explicit parameters");
+                    return deny(
+                        ErrorReason::Constraint_Violation,
+                        format!(
+                            "{operation_tag}: EC curve {name} is not covered by the algorithm policy"
+                        ),
+                    );
+                };
+                (CryptographicAlgorithm::EC, curve)
+            }
+            Id::ED25519 => (
+                CryptographicAlgorithm::Ed25519,
+                RecommendedCurve::CURVEED25519,
+            ),
+            Id::ED448 => (CryptographicAlgorithm::Ed448, RecommendedCurve::CURVEED448),
+            Id::X25519 => (CryptographicAlgorithm::ECDH, RecommendedCurve::CURVE25519),
+            Id::X448 => (CryptographicAlgorithm::ECDH, RecommendedCurve::CURVE448),
+            _ => {
+                let Some(alg) = algorithm_from_spki_oid(public_key)
+                    .or_else(|| attributes_hint.and_then(|a| a.cryptographic_algorithm))
+                else {
+                    return deny(
+                        ErrorReason::Constraint_Violation,
+                        format!(
+                            "{operation_tag}: the public key type is not covered by the algorithm policy"
+                        ),
+                    );
+                };
+                validate_algorithm(alg, wl.algorithms.as_ref())?;
+                if let Some(bits) = attributes_hint.and_then(|a| a.cryptographic_length) {
+                    validate_key_size_bits(alg, bits, &wl)?;
+                }
+                return Ok(());
+            }
+        };
+        validate_algorithm(alg, wl.algorithms.as_ref())?;
+        validate_curve(curve, wl.curves.as_ref())
+    })()
+    .map_err(|e| wrap_policy_error(e, operation_tag, "denied by algorithm policy"))
+}
+
+/// Certify from a PKCS#10 request: its public key and, for RSA and EC keys (whose signature
+/// names a hash), its signature algorithm must satisfy the active algorithm policy.
+pub(crate) fn enforce_kmip_algorithm_policy_for_csr(
+    params: &ServerParams,
+    csr: &X509ReqRef,
+) -> KResult<()> {
+    if params.kmip_policy.policy_id.is_none() {
+        return Ok(());
+    }
+    let key = csr.public_key()?;
+    enforce_kmip_algorithm_policy_for_public_key(params, "Certify", &key, None)?;
+    if !matches!(key.id(), Id::RSA | Id::EC) {
+        return Ok(());
+    }
+    let der = csr.to_der()?;
+    let (_, req) = X509CertificationRequest::from_der(&der)
+        .map_err(|e| KmsError::InvalidRequest(format!("CSR cannot be parsed: {e}")))?;
+    let oid = req.signature_algorithm.algorithm.to_id_string();
+    let nid = nid_of(&oid);
+    let sig = match nid {
+        Nid::MD5WITHRSAENCRYPTION => DigitalSignatureAlgorithm::MD5WithRSAEncryption,
+        Nid::SHA1WITHRSAENCRYPTION => DigitalSignatureAlgorithm::SHA1WithRSAEncryption,
+        Nid::SHA224WITHRSAENCRYPTION => DigitalSignatureAlgorithm::SHA224WithRSAEncryption,
+        Nid::SHA256WITHRSAENCRYPTION => DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+        Nid::SHA384WITHRSAENCRYPTION => DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+        Nid::SHA512WITHRSAENCRYPTION => DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+        Nid::RSASSAPSS => DigitalSignatureAlgorithm::RSASSAPSS,
+        Nid::ECDSA_WITH_SHA1 => DigitalSignatureAlgorithm::ECDSAWithSHA1,
+        Nid::ECDSA_WITH_SHA224 => DigitalSignatureAlgorithm::ECDSAWithSHA224,
+        Nid::ECDSA_WITH_SHA256 => DigitalSignatureAlgorithm::ECDSAWithSHA256,
+        Nid::ECDSA_WITH_SHA384 => DigitalSignatureAlgorithm::ECDSAWithSHA384,
+        Nid::ECDSA_WITH_SHA512 => DigitalSignatureAlgorithm::ECDSAWithSHA512,
+        // `rust-openssl` has no constants for the RSA-with-SHA-3 NIDs: resolve them by name.
+        _ => SHA3_RSA_SIGNATURES
+            .iter()
+            .find(|(name, _)| nid != Nid::UNDEF && nid_by_name(name) == nid)
+            .map(|(_, sig)| *sig)
+            .ok_or_else(|| {
                 KmsError::Kmip21Error(
-                    ErrorReason::Cryptographic_Failure,
+                    ErrorReason::Constraint_Violation,
                     format!(
-                        "{operation_tag} denied by algorithm policy ({ttlv_tag_for_error}): {other}"
+                        "Certify: CSR signature algorithm {oid} is not covered by the algorithm \
+                         policy"
                     ),
                 )
-            }
-        }
-    })
+            })?,
+    };
+    let wl = KmipWhitelists::from_params(&params.kmip_policy);
+    validate_signature_algorithm(sig, wl.signature_algorithms.as_ref())
+        .map_err(|e| wrap_policy_error(e, "Certify", "denied by algorithm policy"))
 }
 
 fn validate_export(req: &Export, wl: &KmipWhitelists) -> KResult<()> {
