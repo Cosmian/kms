@@ -211,7 +211,7 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 | Task | Description |
 |------|-------------|
 | `docs` | Run all documentation sync tasks (mdbook-build, sync-all, sync-logs check) |
-| `docs:mdbook-build` | Build the KMS documentation site with mdBook (`--combined`: build the public combined docs with this checkout and the other products' staging branches) |
+| `docs:mdbook-build` | Build the KMS documentation site with mdBook (`--combined`, or `PUBLIC_DOCS_TOKEN` in CI: also build the public combined docs with this checkout and the other products' staging branches) |
 | `docs:sync-all` | Sync all generated documentation (server help, ckms markdown, KMIP tables, CBOM, logs) |
 | `docs:sync-server-help` | Sync server `--help` documentation from source |
 | `docs:sync-ckms-help` | Sync `ckms` CLI markdown documentation from source |
