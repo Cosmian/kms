@@ -91,6 +91,10 @@
     certificate of the CA.
   - Every EST/SCEP attempt is logged (`info` / `warn`, client address, authentication method) and recorded in
     the audit trail with the issued certificate UID when auditing is enabled.
+  - **Behaviour change (audit):** behind a trusted proxy the client address (audit `client_ip` and the
+    enrollment lockout key) is now the rightmost `X-Forwarded-For` entry that is not a trusted proxy, read
+    across all header lines, instead of the leftmost entry, which the client controls. Audit logs behind
+    proxies may show different addresses than before.
   - The Certify trace log no longer contains the CSR (which carries the SCEP challenge);
     `KMS_EST_BOOTSTRAP_PASSWORD` / `KMS_SCEP_CHALLENGE_PASSWORD` environment variables are supported; the
     configuration wizard writes its file with mode 0600, validates the Basic user name and secret length and

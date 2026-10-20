@@ -142,6 +142,18 @@ mod tests {
         assert_eq!(ip.as_deref(), Some("203.0.113.5"), "trusted hop skipped");
     }
 
+    /// A proxy may add its own `X-Forwarded-For` line instead of extending the client's: the
+    /// client's line must not be the one that is read.
+    #[test]
+    fn xff_lines_are_read_as_one_list() {
+        let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
+        let req = make_request("10.0.0.2:9000", Some("198.51.100.99"))
+            .append_header(("x-forwarded-for", "203.0.113.5"))
+            .to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(ip.as_deref(), Some("203.0.113.5"), "last line, last entry");
+    }
+
     /// The client controls the left of the header: it can neither pick its own address nor
     /// aim the enrollment lockout at someone else's.
     #[test]

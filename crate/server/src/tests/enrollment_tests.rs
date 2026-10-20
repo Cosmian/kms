@@ -654,6 +654,88 @@ async fn est_simpleenroll_rejects_revoked_ca_issued_client_certificate() -> KRes
     Ok(())
 }
 
+/// The serial tag only locates candidates: another object carrying a revoked device's tag must
+/// not bring that device back (the stored certificate has to be the presented one).
+#[tokio::test]
+async fn serial_tag_planted_on_another_object_does_not_revive_a_revoked_certificate() -> KResult<()>
+{
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let mut enrolled = Vec::new();
+    for cn in ["dev1.iot.example", "dev2.iot.example"] {
+        let (_, body, _) = est_enroll(
+            &app,
+            &csr(&rsa_key(2048), cn),
+            Some(basic_auth("testuser", "testpass")),
+        )
+        .await;
+        enrolled.push(certs_of(&STANDARD.decode(&body).unwrap()).remove(0));
+    }
+    let tag_of = |cert: &X509| {
+        let serial_hex = cert
+            .serial_number()
+            .to_bn()
+            .unwrap()
+            .to_hex_str()
+            .unwrap()
+            .to_string();
+        crate::routes::enrollment::serial_tag(CA_UID, &serial_hex)
+    };
+    let uid_of = |tag: String| {
+        let kms = kms.clone();
+        async move {
+            kms.database
+                .list_uids_for_tags(&HashSet::from([tag]))
+                .await
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap()
+        }
+    };
+    let revoked_uid = uid_of(tag_of(&enrolled[0])).await;
+    let other_uid = uid_of(tag_of(&enrolled[1])).await;
+
+    // plant the first certificate's tag on the second, Active, object
+    let other = kms.database.retrieve_object(&other_uid).await?.unwrap();
+    let mut tags = kms.database.retrieve_tags(&other_uid).await?;
+    tags.insert(tag_of(&enrolled[0]));
+    kms.database
+        .update_object(&other_uid, other.object(), other.attributes(), Some(&tags))
+        .await?;
+
+    let owner: UserId = kms.params.default_username.clone().into();
+    kms.revoke(
+        Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(revoked_uid)),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        },
+        &owner,
+    )
+    .await?;
+    let resp = est::enroll_for_peer(
+        &kms,
+        Some(&enrolled[0]),
+        &csr(&rsa_key(2048), "dev1.iot.example"),
+    )
+    .await?;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    // the second device is unaffected
+    let resp = est::enroll_for_peer(
+        &kms,
+        Some(&enrolled[1]),
+        &csr(&rsa_key(2048), "dev2.iot.example"),
+    )
+    .await?;
+    assert_eq!(resp.status(), StatusCode::OK);
+    Ok(())
+}
+
 // ── SCEP ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
