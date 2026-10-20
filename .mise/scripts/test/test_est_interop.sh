@@ -179,7 +179,7 @@ print_success "PASS: /cacerts returned the KMS CA certificate"
 
 print_header "Scenario 2: /csrattrs"
 OUT=$(est csrattrs 2>&1)
-assert_contains "${OUT}" "." "/csrattrs answered"
+assert_contains "${OUT}" "^OID +: 1\.2\.840\.113549\.1\.9\.14$" "/csrattrs advertises extensionRequest"
 
 print_header "Scenario 3: /simpleenroll with HTTP Basic bootstrap credentials"
 new_csr device1.iot.example "${WORKDIR}/dev1.key" "${WORKDIR}/dev1.csr"

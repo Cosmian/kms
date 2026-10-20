@@ -211,12 +211,18 @@ git diff origin/develop...HEAD -- '*.rs' \
 
 Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justification. Report every match to the reviewer.
 
+## OIDs — reuse rust-openssl, never hardcode
+
+- Use `openssl::nid::Nid` constants (`Nid::SERVER_AUTH`, `Nid::SUBJECT_ALT_NAME`, `Nid::SECP256K1`, `Nid::ID_PKIX_OCSP_NOCHECK`, …) instead of dotted-string literals (`"2.5.29.17"`) or hand-written DER bytes. Get an `Asn1Object` or a dotted string from a `Nid` only through the helpers in `cosmian_kms_crypto::openssl::oid`: `asn1_object(Nid)`, `oid_string(Nid)`, `nid_of(&str)`. `rust-openssl` has no `Asn1Object::from_nid`; do not write it.
+- Check `openssl::nid::Nid` before adding any OID. Dotted literals are allowed only (a) for OIDs OpenSSL has no `Nid` for, e.g. SCEP `2.16.840.1.113733.1.9.*` or private arcs such as `1.3.6.1.4.1.16376.*` — as a named `const` with a one-line doc citing the spec, never repeated inline; and (b) in tests/vectors that assert OID values (e.g. the round-trip test in `oid.rs`).
+- Never duplicate an OID that already exists as a `const` in the workspace; import it.
+
 ## Randomness — KmsRng only (mechanically enforced)
 
 - Every random byte comes from `cosmian_kms_crypto::crypto::KmsRng`: keys, seeds, nonces/IVs, salts, serials, tokens, test fixtures. Use `fill_bytes` / `random_vec` for values that stay secret and `fill_public_bytes` for values that leave the server in clear (nonces, IVs, serials, `RNGRetrieve`, `C_GenerateRandom`). Use `kms.rng` when a `KMS` is in scope, else `KmsRng::new()` (zero-sized).
 - An API that needs an infallible `rand_core` RNG gets `KmsRng::seeded_csrng()` (its state is overwritten on drop); `<Prg>::from_seed` with a seed filled by `KmsRng::fill_bytes` only for non-secret output such as test fixtures or anonymization noise.
 - The root `clippy.toml` bans every other entropy source: OpenSSL `rand` / `BigNum` rand / raw `RAND_*` / `BN_*rand*`, rand's `rng` / `thread_rng` / `random*` / `fill` / `make_rng`, `ThreadRng`, `OsRng`, `SysRng`, `SeedableRng::{from_entropy, from_os_rng, try_from_os_rng, seed_from_u64}`, `getrandom::*`, `cookie::Key::generate`, and non-CSPRNGs.
-- Never suppress those lints (nor `clippy::style` / `clippy::all`), never override their level, and never add another `clippy.toml`. CI job "KmsRng Policy" (`mise run audit:rng-policy`) fails on any of these.
+- Never suppress those lints (nor `clippy::style` / `clippy::all`), never override their level, and never add another `clippy.toml`; review must reject any of these.
 - A dependency adds a new entropy API: add it to `clippy.toml` with `allow-invalid = true`.
 - The lint cannot see the following, so review must reject them: FFI declarations of OpenSSL `RAND_*` / `BN_*rand*` outside `crypto/src/crypto/rng/mod.rs`, reads of `/dev/urandom`, and shelling out to `openssl rand`.
 - Accepted exceptions: OpenSSL key generation (RSA / EC / EdDSA / SLH-DSA / hybrid KEM) and Covercrypt, which have no injection point; `uuid::Uuid::new_v4` identifiers; the `oauth2` PKCE/CSRF helpers in `cosmian_kms_client`, which does not depend on `cosmian_kms_crypto`.

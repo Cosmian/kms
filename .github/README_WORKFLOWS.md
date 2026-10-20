@@ -107,9 +107,10 @@ flowchart TB
         hsm_steps["1. Install Nix · 2. Checkout · 3. nix.sh test hsm <type>"]
         hsm_bench["non-fips: mise run bench --sanity --hsm-model <type><br/>(softhsm2: full suite · others: pkcs11 --delegated)"]
     end
+    interop["interop-macos (Matrix) — macos-15<br/>scep-interop · est-interop (fips)"]
     win["windows-2022<br/>Calls: test_windows.yml"]
     clean["cleanup<br/>Calls: cleanup_cache.yml (reusable)"]
-    test_all --> nix_matrix & nonix & hsm_matrix & win & clean
+    test_all --> nix_matrix & nonix & hsm_matrix & interop & win & clean
 ```
 
 ### Test Matrix Visualization

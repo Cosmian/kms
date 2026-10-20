@@ -102,7 +102,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 - Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
 - Enterprise integrations: Google Workspace CSE, Microsoft DKE, Microsoft SQL Server External (EKM), AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
-- PKI operations: issue, sign, validate, and automate certificate lifecycles.
+- PKI operations: issue, sign, validate, and automate certificate lifecycles, including device enrollment over EST (RFC 7030) and SCEP (RFC 8894) ([docs](./documentation/docs/use_cases/pki-enrollment.md)).
 
 ## 🔒 Security & Compliance
 

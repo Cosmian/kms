@@ -1,13 +1,15 @@
 # Randomness policy: every random byte (keys, seeds, nonces/IVs, salts, serials, tokens, test fixtures)
-# comes from `KmsRng` (crate/crypto/src/crypto/rng/mod.rs). See
+# comes from `KmsRng` (crate/crypto/src/crypto/rng/mod.rs), except draws a dependency makes internally:
+# OpenSSL key generation, the SCEP CMS content key/IV (CmsContentInfo::encrypt), Covercrypt, and
+# `uuid::Uuid::new_v4` identifiers (OS entropy via getrandom). See
 # documentation/adr/2026-10-10-keep-kmsrng-openssl-backed-over-csrng.md.
 #
-# Banned: every ambient entropy source reachable from workspace code (OpenSSL, OS, thread-local and
+# Banned: every ambient entropy source that workspace code calls directly (OpenSSL, OS, thread-local and
 # getrandom RNGs, and the constructors that seed from them) plus non-cryptographic PRGs. Cryptographic
 # PRGs seeded explicitly (`from_seed` with bytes from `KmsRng`, e.g. `KmsRng::seeded_csrng`) are allowed.
 #
 # These lints are never suppressed and this is the only clippy.toml (a nested one replaces this file
-# instead of extending it): `mise run audit:rng-policy` enforces both in CI.
+# instead of extending it).
 #
 # `allow-invalid = true`: rand / rand_core / getrandom exist in several versions with different APIs and
 # not every crate depends on every banned crate, so some paths do not resolve everywhere. Clippy matches

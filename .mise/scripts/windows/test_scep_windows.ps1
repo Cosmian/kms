@@ -8,7 +8,7 @@
 #      SHA-256, AES, RSA-2048, challenge) and the issued certificate in LocalMachine\My.
 #   3. Enroll with a wrong challenge: rejected, nothing installed.
 #   4. Optionally (-SaveFixture) store the captured request under
-#      test_data\scep\windows\win-<build>\ for the CI replay test.
+#      test_data\scep\windows\win-<build>\ (no CI test replays them yet).
 #
 # Prerequisites: elevated PowerShell, Windows 10/11 (any edition), Python 3, built or
 # buildable cosmian_kms + ckms (Rust MSVC toolchain), optional openssl.exe for the
