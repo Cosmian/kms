@@ -5,7 +5,8 @@ pub mod service;
 #[cfg(all(test, unix))]
 pub mod integration_tests;
 
-// tonic::Status (176 bytes) is the error type of every generated gRPC method.
+// result_large_err is a false positive here: tonic::Status (176 bytes) is the fixed error type
+// of every generated gRPC method, and generated code cannot box it.
 #[allow(
     unreachable_pub,
     clippy::derive_partial_eq_without_eq,

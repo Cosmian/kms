@@ -75,11 +75,14 @@ fn test_to_ck_key_type_reports_distinct_types_per_curve_family() {
 /// secp256k1 public key's SPKI (OpenSSL always exports the standard
 /// `1.3.132.0.10` OID) with "EC curve OID not supported".
 #[test]
-#[allow(clippy::unwrap_used)]
 fn test_secp256k1_oid_is_the_sec2_registered_value() {
     assert_eq!(
-        KeyAlgorithm::Secp256k1.to_oid().unwrap().to_string(),
-        "1.3.132.0.10"
+        KeyAlgorithm::Secp256k1
+            .to_oid()
+            .ok()
+            .map(|oid| oid.to_string())
+            .as_deref(),
+        Some("1.3.132.0.10")
     );
     assert_eq!(
         KeyAlgorithm::from_oid_str("1.3.132.0.10"),
@@ -94,7 +97,6 @@ fn test_secp256k1_oid_is_the_sec2_registered_value() {
 /// Every `KeyAlgorithm` maps to, and from, its registered OID. The `OpenSSL` NIDs behind
 /// `KeyAlgorithm::nid` must stay equivalent to these literal values.
 #[test]
-#[allow(clippy::unwrap_used)]
 fn test_key_algorithm_oids_are_the_registered_values() {
     for (algorithm, oid) in [
         (KeyAlgorithm::Aes256, "2.16.840.1.101.3.4.1.41"),
@@ -109,7 +111,10 @@ fn test_key_algorithm_oids_are_the_registered_values() {
         (KeyAlgorithm::Secp224k1, "1.3.132.0.32"),
         (KeyAlgorithm::Secp256k1, "1.3.132.0.10"),
     ] {
-        assert_eq!(algorithm.to_oid().unwrap().to_string(), oid);
+        assert_eq!(
+            algorithm.to_oid().ok().map(|o| o.to_string()).as_deref(),
+            Some(oid)
+        );
         assert_eq!(KeyAlgorithm::from_oid_str(oid), Some(algorithm));
     }
 }
