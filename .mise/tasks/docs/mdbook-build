@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build the KMS documentation site with mdBook"
+#USAGE flag "--combined" help="Build the public combined docs instead, with this checkout and the other products' staging branches"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
@@ -13,7 +14,25 @@ if ! command -v mdbook &>/dev/null; then
   bash "${REPO_ROOT}/documentation/theme/scripts/setup-mdbook.sh"
 fi
 
-cd "${REPO_ROOT}/documentation"
-mdbook build
+if [ "${usage_combined:-false}" = "true" ]; then
+  # Disposable checkout: build-staging.sh resets the other products in it to their staging branches.
+  PUBLIC_DOCS_DIR="${PUBLIC_DOCS_DIR:-$(mktemp -d)/public_documentation}"
+  if [ ! -d "${PUBLIC_DOCS_DIR}" ]; then
+    git clone --depth 1 --recurse-submodules --shallow-submodules \
+      git@github.com:Cosmian/public_documentation.git "${PUBLIC_DOCS_DIR}"
+  fi
+  if [ -e "${PUBLIC_DOCS_DIR}/kms" ] && [ ! -L "${PUBLIC_DOCS_DIR}/kms" ]; then
+    print_error "${PUBLIC_DOCS_DIR}/kms exists and is not a symlink"
+  fi
+  ln -sfn "${REPO_ROOT}" "${PUBLIC_DOCS_DIR}/kms"
 
-print_success "Documentation built → documentation/book/html/"
+  cd "${PUBLIC_DOCS_DIR}"
+  bash .github/scripts/build-staging.sh kms
+
+  print_success "Combined documentation built → ${PUBLIC_DOCS_DIR}/book/"
+else
+  cd "${REPO_ROOT}/documentation"
+  mdbook build
+
+  print_success "Documentation built → documentation/book/html/"
+fi

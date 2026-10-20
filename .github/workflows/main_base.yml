@@ -145,13 +145,31 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install mdBook toolchain
-        run: bash documentation/theme/scripts/setup-mdbook.sh
+      - uses: ./.github/actions/install-mise
 
       - name: Build documentation
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
-          cd documentation && mdbook build
+          mise run docs:mdbook-build
+
+      # Secrets are unavailable to fork and dependabot PRs
+      - name: Checkout public_documentation
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: Cosmian/public_documentation
+          ref: develop
+          path: public_documentation
+          submodules: true
+          token: ${{ secrets.PAT_TOKEN }}
+          persist-credentials: false
+
+      - name: Build combined documentation
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml; }
+          PUBLIC_DOCS_DIR="$GITHUB_WORKSPACE/public_documentation" mise run docs:mdbook-build --combined
 
   linkcheck:
     name: Check documentation links
