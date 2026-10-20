@@ -2177,3 +2177,46 @@ async fn repro_issue_909_get_on_star_bypasses_import_gate() -> KResult<()> {
 
     Ok(())
 }
+
+/// Multi-region regression: a Crypto Officer activation record written on one node
+/// (simulating the "leader" region) that lands — via replication in a real multi-region
+/// deployment, simulated here by pointing a second `KMS` instance at the same `SQLite` file —
+/// on a node configured with a **different** `ceremony_secret` (simulating a misconfigured
+/// "follower" region) must NOT hard-fail `is_crypto_officer()`. It must fail secure and report
+/// the user as not-currently-active, per
+/// `database_permissions.rs::verify_ceremony_record`.
+#[tokio::test]
+async fn test_ceremony_verification_fails_secure_on_ceremony_keys_mismatch() -> KResult<()> {
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let co_users = vec![alice.to_owned(), bob.to_owned(), carol.to_owned()];
+    let shared_db_path = get_tmp_sqlite_path();
+
+    // "Leader": activates alice's ceremony with the default TEST_CEREMONY_SECRET.
+    let mut conf_a = base_ceremony_conf(co_users.clone(), true, None);
+    conf_a.db.sqlite_path = shared_db_path.clone();
+    let kms_a = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf_a)?)).await?);
+    kms_a
+        .database
+        .activate_crypto_officer_ceremony(alice, &["p1".to_owned(), "p2".to_owned()], "somehash")
+        .await?;
+    assert!(
+        kms_a.is_crypto_officer(&UserId::from(alice)).await?,
+        "alice must be CO on the node that sealed the record"
+    );
+
+    // "Follower": same DB file (simulating a replicated row), but configured with a
+    // *different* ceremony_secret — as if the operator misconfigured the two regions.
+    let mut conf_b = base_ceremony_conf(co_users, true, None);
+    conf_b.db.sqlite_path = shared_db_path;
+    conf_b.roles.ceremony_secret = Some("0".repeat(64));
+    let kms_b = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf_b)?)).await?);
+
+    // Must fail secure: Ok(false), never Err.
+    assert!(
+        !kms_b.is_crypto_officer(&UserId::from(alice)).await?,
+        "a ceremony_keys mismatch must be treated as 'not an active CO', not a hard error"
+    );
+    Ok(())
+}

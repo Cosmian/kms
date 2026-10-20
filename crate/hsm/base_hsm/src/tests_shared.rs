@@ -1483,8 +1483,21 @@ pub fn multi_threaded_rsa(
 /// Number of throughput measurements attempted by [`concurrent_sign_does_not_degrade`].
 const MAX_ATTEMPTS: usize = 3;
 
+/// Minimum 8-thread / 1-thread throughput ratio expected from an HSM that scales with concurrency.
+const DEFAULT_MIN_RATE_RATIO: f64 = 0.8;
+
 /// Assert that concurrent HSM signing does not experience throughput collapse under concurrency (8 threads vs 1 thread).
 pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> {
+    concurrent_sign_does_not_degrade_above(slot, DEFAULT_MIN_RATE_RATIO)
+}
+
+/// Like [`concurrent_sign_does_not_degrade`], with an explicit minimum 8-thread / 1-thread
+/// throughput ratio, for tokens that serialize signing internally and so cannot scale: their
+/// 8-thread rate is at best the 1-thread rate minus lock contention.
+pub fn concurrent_sign_does_not_degrade_above(
+    slot: &Arc<SlotManager>,
+    min_rate_ratio: f64,
+) -> HResult<()> {
     use std::{
         sync::atomic::{AtomicBool, AtomicU64, Ordering},
         time::{Duration, Instant},
@@ -1596,13 +1609,14 @@ pub fn concurrent_sign_does_not_degrade(slot: &Arc<SlotManager>) -> HResult<()> 
             "Concurrent sign attempt {attempt}/{MAX_ATTEMPTS}: 1 thread = {rate_1:.1} ops/s, 8 threads \
          = {rate_8:.1} ops/s"
         );
-        if rate_8 >= rate_1 * 0.8 {
+        if rate_8 >= rate_1 * min_rate_ratio {
             return Ok(());
         }
     }
     Err(HError::Default(format!(
-        "Concurrent sign degraded at 8 threads (below 80% of the 1-thread rate) in all \
-         {MAX_ATTEMPTS} attempts"
+        "Concurrent sign degraded at 8 threads (below {:.0}% of the 1-thread rate) in all \
+         {MAX_ATTEMPTS} attempts",
+        min_rate_ratio * 100.0
     )))
 }
 

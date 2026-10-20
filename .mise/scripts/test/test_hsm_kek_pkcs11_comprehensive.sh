@@ -245,11 +245,14 @@ verify_rejects_tampered_signature() {
     return 1
   fi
 
-  # Flip a bit in the middle of the signature
+  # Invert a byte in the middle of the signature (writing a fixed 0x00 is a no-op 1/256 of the time)
   local sig_size
   sig_size=$(stat -f%z "${sig_file}" 2>/dev/null || stat -c%s "${sig_file}")
   local tamper_offset=$((sig_size / 2))
-  printf '\x00' | dd of="${sig_file}" bs=1 seek="${tamper_offset}" count=1 conv=notrunc 2>/dev/null || true
+  local orig_byte
+  orig_byte=$(od -An -tu1 -j "${tamper_offset}" -N1 "${sig_file}" | tr -d ' ')
+  # shellcheck disable=SC2059
+  printf "$(printf '\\x%02x' $((orig_byte ^ 0xFF)))" | dd of="${sig_file}" bs=1 seek="${tamper_offset}" count=1 conv=notrunc 2>/dev/null
 
   # Verification must fail
   if pkcs11-tool --module "${PKCS11_LIB}" --login --login-type so --verify \

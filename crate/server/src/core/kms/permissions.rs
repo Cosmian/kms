@@ -421,6 +421,7 @@ impl KMS {
         caller: &UserId,
         target_user: Option<&UserId>,
     ) -> KResult<()> {
+        crate::core::require_leader_region(self, "Crypto Officer ceremony revocation")?;
         let cfg = &self.params.crypto_officer;
 
         if cfg.users.is_empty() {
