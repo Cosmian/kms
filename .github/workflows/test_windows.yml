@@ -43,8 +43,8 @@ jobs:
               return
             }
           }
-          # Fallback: install via chocolatey (fast, <5 MB binary)
-          choco install ninja -y --no-progress
+          # Fallback: pinned, SHA-256-verified release of Ninja
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
         shell: pwsh
@@ -107,7 +107,7 @@ jobs:
               return
             }
           }
-          choco install ninja -y --no-progress
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
         shell: pwsh
@@ -168,7 +168,7 @@ jobs:
               return
             }
           }
-          choco install ninja -y --no-progress
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
         shell: pwsh
@@ -211,7 +211,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.27.2'
+          go-version: 1.27.2
 
       - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
         shell: pwsh
@@ -228,7 +228,7 @@ jobs:
               return
             }
           }
-          choco install ninja -y --no-progress
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
         shell: pwsh

@@ -59,6 +59,13 @@ retry git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com
   grep -q 'pkcs7.ContentEncryptionAlgorithm' cmd/scepclient/scepclient.go ||
     print_error "AES-128-CBC patch did not apply to scepclient ${SCEPCLIENT_VERSION}"
   retry go get github.com/smallstep/pkcs7@v0.1.1
+  # Pin the fetched module: go.sum must hold exactly these hashes (also published at
+  # https://sum.golang.org/lookup/github.com/smallstep/pkcs7@v0.1.1).
+  for pinned in \
+    "github.com/smallstep/pkcs7 v0.1.1 h1:x+rPdt2W088V9Vkjho4KtoggyktZJlMduZAtRHm68LU=" \
+    "github.com/smallstep/pkcs7 v0.1.1/go.mod h1:dL6j5AIz9GHjVEBTXtW+QliALcgM19RtXaTeyxI+AfA="; do
+    grep -qxF "${pinned}" go.sum || print_error "smallstep/pkcs7 v0.1.1 checksum differs from the pinned value: ${pinned}"
+  done
   mkdir -p "${WORKDIR}/bin"
   retry go build -o "${WORKDIR}/bin/scepclient" ./cmd/scepclient
 )
