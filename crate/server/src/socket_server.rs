@@ -503,10 +503,9 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
     // when the client sends no certificate (the shared helper only sets PEER).
     builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
 
-    // OpenSSL requires a session ID context when both client certificate verification
-    // and TLS session caching are enabled (the default). Without it, session
-    // resumption attempts fail with ssl_get_prev_session:session id context
-    // uninitialized (error:0A000115).
+    // Session resumption is off for client-certificate acceptors
+    // (tls_config::configure_client_cert_verification); the ID context only keeps OpenSSL
+    // from failing with error:0A000115 if it is re-enabled.
     builder
         .set_session_id_context(b"cosmian_kms_socket")
         .context("socket server: failed to set TLS session ID context")?;

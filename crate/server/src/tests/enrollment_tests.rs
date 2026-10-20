@@ -20,7 +20,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode, State},
         kmip_2_1::{
             KmipOperation,
             extra::{
@@ -540,7 +540,7 @@ async fn est_simpleenroll_enforces_template() -> KResult<()> {
     let (kms, _) = make_kms(true, false, true).await?;
     let app = app!(kms);
     // CN outside the allowed pattern
-    let (status, body, _) = est_enroll(
+    let (status, body, headers) = est_enroll(
         &app,
         &csr(&rsa_key(2048), "evil.example.com"),
         Some(basic_auth("testuser", "testpass")),
@@ -548,6 +548,39 @@ async fn est_simpleenroll_enforces_template() -> KResult<()> {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(String::from_utf8_lossy(&body).contains("does not match"));
+    // The reason can quote the CSR: never let a browser render it as HTML (S100).
+    assert_eq!(h(&headers, "content-type"), "text/plain; charset=utf-8");
+    assert_eq!(h(&headers, "x-content-type-options"), "nosniff");
+    Ok(())
+}
+
+/// The `iot_device` template constrains only the CN: a CSR whose CN matches but which also
+/// asks for a DNS SAN must be refused (SANs are default-deny), without echoing the SAN.
+#[tokio::test]
+async fn est_simpleenroll_refuses_san_not_allowed_by_template() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let mut name = X509NameBuilder::new().unwrap();
+    name.append_entry_by_text("CN", "dev1.iot.example").unwrap();
+    let mut b = X509Req::builder().unwrap();
+    b.set_version(0).unwrap();
+    b.set_pubkey(&key).unwrap();
+    b.set_subject_name(&name.build()).unwrap();
+    let san = openssl::x509::extension::SubjectAlternativeName::new()
+        .dns("victim.bank.example")
+        .build(&b.x509v3_context(None))
+        .unwrap();
+    let mut exts = openssl::stack::Stack::new().unwrap();
+    exts.push(san).unwrap();
+    b.add_extensions(&exts).unwrap();
+    b.sign(&key, MessageDigest::sha256()).unwrap();
+    let (status, body, _) =
+        est_enroll(&app, &b.build(), Some(basic_auth("testuser", "testpass"))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let body = String::from_utf8_lossy(&body);
+    assert!(body.contains("DNS SAN is not allowed"), "{body}");
+    assert!(!body.contains("victim"), "{body}");
     Ok(())
 }
 
@@ -740,19 +773,25 @@ async fn serial_tag_planted_on_another_object_does_not_revive_a_revoked_certific
 
 #[tokio::test]
 async fn scep_get_ca_caps_is_fips_conformant() -> KResult<()> {
-    let (kms, _) = make_kms(false, true, true).await?;
-    let app = app!(kms);
-    let resp = test::call_service(
-        &app,
-        test::TestRequest::get()
-            .uri("/scep?operation=GetCACaps")
-            .to_request(),
-    )
-    .await;
-    let (status, body, headers) = body_of(resp).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(h(&headers, "content-type"), "text/plain");
-    assert_eq!(body, b"POSTPKIOperation\nSHA-256\nAES\nRenewal");
+    for (allow_renewal, expected) in [
+        (true, &b"POSTPKIOperation\nSHA-256\nAES\nRenewal"[..]),
+        // `Renewal` is advertised only when `RenewalReq` is accepted
+        (false, &b"POSTPKIOperation\nSHA-256\nAES"[..]),
+    ] {
+        let (kms, _) = make_kms(false, true, allow_renewal).await?;
+        let app = app!(kms);
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/scep?operation=GetCACaps")
+                .to_request(),
+        )
+        .await;
+        let (status, body, headers) = body_of(resp).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(h(&headers, "content-type"), "text/plain");
+        assert_eq!(body, expected);
+    }
     Ok(())
 }
 
@@ -857,12 +896,10 @@ fn scep_pkcs_req_message(ca: &X509, key: &PKey<Private>, cn: &str) -> Vec<u8> {
 }
 
 /// Send one `PKIOperation` the way a SCEP client does and decode the `CertRep`.
-#[allow(clippy::too_many_arguments)]
 async fn scep_roundtrip<S, B>(
     app: &S,
     ca: &X509,
-    signer_cert: &X509,
-    signer_key: &PKey<Private>,
+    (signer_cert, signer_key): (&X509, &PKey<Private>),
     csr: &X509Req,
     message_type: u8,
     transaction_id: &str,
@@ -932,8 +969,7 @@ async fn scep_pkcsreq_with_challenge_issues_certificate() -> KResult<()> {
         let outcome = scep_roundtrip(
             &app,
             &ca,
-            &bootstrap,
-            &key,
+            (&bootstrap, &key),
             &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
             MESSAGE_TYPE_PKCS_REQ,
             tx,
@@ -1019,8 +1055,7 @@ async fn scep_pkcsreq_rejects_wrong_or_missing_challenge_and_template_violations
         let outcome = scep_roundtrip(
             &app,
             &ca,
-            &bootstrap,
-            &key,
+            (&bootstrap, &key),
             case,
             MESSAGE_TYPE_PKCS_REQ,
             &format!("TX-BAD-{i}"),
@@ -1053,8 +1088,7 @@ where
     let outcome = scep_roundtrip(
         app,
         ca,
-        &bootstrap,
-        &key,
+        (&bootstrap, &key),
         &pkcs_req_csr(&key, cn, CHALLENGE),
         MESSAGE_TYPE_PKCS_REQ,
         "TX-ENROLL",
@@ -1076,8 +1110,7 @@ async fn scep_renewal_without_challenge_succeeds_for_active_certificate() -> KRe
     let outcome = scep_roundtrip(
         &app,
         &ca,
-        &cert,
-        &key,
+        (&cert, &key),
         &csr(&new_key, "dev1.iot.example"),
         MESSAGE_TYPE_RENEWAL_REQ,
         "TX-RENEW",
@@ -1093,8 +1126,7 @@ async fn scep_renewal_without_challenge_succeeds_for_active_certificate() -> KRe
     let outcome = scep_roundtrip(
         &app,
         &ca,
-        &cert,
-        &key,
+        (&cert, &key),
         &csr(&new_key, "dev2.iot.example"),
         MESSAGE_TYPE_RENEWAL_REQ,
         "TX-RENEW-ID",
@@ -1118,8 +1150,7 @@ async fn scep_renewal_rejects_foreign_and_revoked_signers() -> KResult<()> {
     let outcome = scep_roundtrip(
         &app,
         &ca,
-        &foreign,
-        &foreign_key,
+        (&foreign, &foreign_key),
         &csr(&foreign_key, "dev1.iot.example"),
         MESSAGE_TYPE_RENEWAL_REQ,
         "TX-FOREIGN",
@@ -1161,8 +1192,7 @@ async fn scep_renewal_rejects_foreign_and_revoked_signers() -> KResult<()> {
     let outcome = scep_roundtrip(
         &app,
         &ca,
-        &cert,
-        &key,
+        (&cert, &key),
         &csr(&key, "dev1.iot.example"),
         MESSAGE_TYPE_RENEWAL_REQ,
         "TX-REVOKED",
@@ -1179,19 +1209,22 @@ async fn scep_renewal_can_be_disabled() -> KResult<()> {
     let (kms, ca) = make_kms(false, true, false).await?;
     let app = app!(kms);
     let (key, cert) = enroll_device(&app, &ca, "dev1.iot.example").await;
-    let outcome = scep_roundtrip(
-        &app,
+    let message = pki_message(
         &ca,
         &cert,
         &key,
         &csr(&key, "dev1.iot.example"),
         MESSAGE_TYPE_RENEWAL_REQ,
         "TX-OFF",
-        false,
-    )
-    .await;
-    assert_eq!(outcome.attrs.pki_status, Some(PKI_STATUS_FAILURE));
-    assert_eq!(outcome.attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
+    );
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .set_payload(message)
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        StatusCode::BAD_REQUEST
+    );
     Ok(())
 }
 
@@ -1235,8 +1268,7 @@ async fn scep_renewal_challenge_does_not_replace_a_ca_issued_signer() -> KResult
     let outcome = scep_roundtrip(
         &app,
         &ca,
-        &foreign,
-        &key,
+        (&foreign, &key),
         &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
         MESSAGE_TYPE_RENEWAL_REQ,
         "TX-CHALLENGE-RENEWAL",
@@ -1359,11 +1391,10 @@ async fn enrollment_without_certify_grant_fails_closed() -> KResult<()> {
         .insert_header(("Content-Type", "application/x-pki-message"))
         .set_payload(scep_pkcs_req_message(&ca, &key, "dev1.iot.example"))
         .to_request();
-    let (status, _, _) = body_of(test::call_service(&app, req).await).await;
-    assert!(
-        !status.is_success(),
-        "SCEP must not issue without the grant: {status}"
-    );
+    let (status, body, _) = body_of(test::call_service(&app, req).await).await;
+    // unauthenticated caller: a fixed message, no CA / key UID or permission detail (S105)
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body, b"the enrollment CA is not available");
 
     assert_eq!(
         certificate_uids(&kms).await?,
@@ -1450,8 +1481,7 @@ async fn scep_replayed_message_is_refused() -> KResult<()> {
             scep_roundtrip(
                 &app,
                 &ca,
-                &bootstrap,
-                &key,
+                (&bootstrap, &key),
                 &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
                 MESSAGE_TYPE_PKCS_REQ,
                 "TX-REPLAY",
@@ -1464,6 +1494,49 @@ async fn scep_replayed_message_is_refused() -> KResult<()> {
     assert_eq!(outcomes[1].attrs.pki_status, Some(PKI_STATUS_FAILURE));
     assert_eq!(outcomes[1].attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
     assert!(outcomes[1].certificate.is_none());
+    Ok(())
+}
+
+/// A captured `PKCSReq` envelope re-signed by another certificate, with a fresh transactionID
+/// and sender nonce, is still a replay: it must not make the CA issue again (nor reset the
+/// lockout) without knowledge of the challenge.
+#[tokio::test]
+async fn scep_resigned_envelope_is_refused() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let post = |message: Vec<u8>| {
+        test::TestRequest::post()
+            .uri("/scep?operation=PKIOperation")
+            .set_payload(message)
+            .to_request()
+    };
+    let captured = scep_pkcs_req_message(&ca, &rsa_key(2048), "dev1.iot.example");
+    let (status, body, _) = body_of(test::call_service(&app, post(captured.clone())).await).await;
+    assert_eq!(status, StatusCode::OK);
+    let first = parse_signed_pkimessage(&body).unwrap();
+    assert_eq!(first.attrs.pki_status, Some(PKI_STATUS_SUCCESS));
+
+    let attacker_key = rsa_key(2048);
+    let resigned = build_signed_pkimessage(
+        &self_signed(&attacker_key, "attacker"),
+        &attacker_key,
+        &parse_signed_pkimessage(&captured).unwrap().content,
+        &ScepAttrs {
+            transaction_id: "TX-RESIGNED".to_owned(),
+            message_type: MESSAGE_TYPE_PKCS_REQ,
+            pki_status: None,
+            fail_info: None,
+            sender_nonce: [0xA5_u8; NONCE_LEN],
+            recipient_nonce: None,
+        },
+    )
+    .unwrap();
+    let (status, body, _) = body_of(test::call_service(&app, post(resigned)).await).await;
+    assert_eq!(status, StatusCode::OK);
+    let replay = parse_signed_pkimessage(&body).unwrap();
+    assert_eq!(replay.attrs.pki_status, Some(PKI_STATUS_FAILURE));
+    assert_eq!(replay.attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
+    assert!(replay.content.is_empty());
     Ok(())
 }
 
@@ -1497,8 +1570,7 @@ async fn scep_failure_reporting_does_not_depend_on_the_envelope_outcome() -> KRe
     let wrong_challenge = scep_roundtrip(
         &app,
         &ca,
-        &bootstrap,
-        &key,
+        (&bootstrap, &key),
         &pkcs_req_csr(&key, "dev1.iot.example", "WrongSecret"),
         MESSAGE_TYPE_PKCS_REQ,
         "TX-WRONG-CHALLENGE",
@@ -1613,5 +1685,170 @@ async fn enrolled_certificates_are_indexed_by_serial() -> KResult<()> {
         )]))
         .await?;
     assert_eq!(uids.len(), 1);
+    Ok(())
+}
+
+/// The serial fallback (certificates without the serial tag) checks every candidate: a copy of
+/// the certificate stored under another owner and met first must not hide the genuine one (F2).
+#[tokio::test]
+async fn serial_fallback_is_not_blocked_by_a_planted_copy() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let (_, body, _) = est_enroll(
+        &app,
+        &csr(&rsa_key(2048), "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    let cert = certs_of(&STANDARD.decode(&body).unwrap()).remove(0);
+    let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
+    let tag = crate::routes::enrollment::serial_tag(CA_UID, &serial_hex);
+    let uid = kms
+        .database
+        .list_uids_for_tags(&HashSet::from([tag.clone()]))
+        .await?
+        .into_iter()
+        .next()
+        .unwrap();
+    let genuine = kms.database.retrieve_object(&uid).await?.unwrap();
+    let mut tags = kms.database.retrieve_tags(&uid).await?;
+    tags.remove(&tag);
+    let mut attributes = genuine.attributes().clone();
+    attributes.state = Some(State::Active);
+    // Store the genuine certificate again without the tag (as before the serial index), after
+    // a copy owned by another user, so that the scan meets the copy first.
+    kms.database.delete(&uid).await?;
+    kms.database
+        .create(
+            Some("planted-copy".to_owned()),
+            &UserId::from("mallory@example.com"),
+            genuine.object(),
+            &attributes,
+            &tags,
+        )
+        .await?;
+    kms.database
+        .create(
+            Some(uid),
+            genuine.owner_id(),
+            genuine.object(),
+            &attributes,
+            &tags,
+        )
+        .await?;
+    let resp =
+        est::enroll_for_peer(&kms, Some(&cert), &csr(&rsa_key(2048), "dev1.iot.example")).await?;
+    assert_eq!(resp.status(), StatusCode::OK);
+    Ok(())
+}
+
+/// A `PKCSReq` signed by a key other than the CSR key is accepted: RFC 8894 §2.3 only says
+/// SHOULD, and the native macOS client signs with a separate "MDM SCEP SIGNER" key (see the
+/// `test_data/scep/apple` capture). Re-signed captures are stopped by the envelope replay key.
+#[tokio::test]
+async fn scep_pkcsreq_signer_key_may_differ_from_the_csr_key() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let other = rsa_key(2048);
+    let outcome = scep_roundtrip(
+        &app,
+        &ca,
+        (&self_signed(&other, "dev1.iot.example"), &other),
+        &pkcs_req_csr(&rsa_key(2048), "dev1.iot.example", CHALLENGE),
+        MESSAGE_TYPE_PKCS_REQ,
+        "TX-OTHER-KEY",
+        false,
+    )
+    .await;
+    assert_eq!(outcome.attrs.pki_status, Some(PKI_STATUS_SUCCESS));
+    Ok(())
+}
+
+/// Message types the CA does not process get a plain `400` before any CA work and count
+/// towards the lockout (S102).
+#[tokio::test]
+async fn scep_unprocessed_message_types_are_refused_early_and_counted() -> KResult<()> {
+    /// `GetCert` (RFC 8894 §3.2.1.2), not implemented.
+    const GET_CERT: u8 = 21;
+    // renewal disabled
+    let (kms, ca) = make_kms(false, true, false).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let bootstrap = self_signed(&key, "dev1.iot.example");
+    let post = |message: Vec<u8>| {
+        test::TestRequest::post()
+            .uri("/scep?operation=PKIOperation")
+            .set_payload(message)
+            .to_request()
+    };
+    for (i, message_type) in [GET_CERT, MESSAGE_TYPE_RENEWAL_REQ]
+        .into_iter()
+        .cycle()
+        .take(10)
+        .enumerate()
+    {
+        let message = pki_message(
+            &ca,
+            &bootstrap,
+            &key,
+            &csr(&key, "dev1.iot.example"),
+            message_type,
+            &format!("TX-UNPROCESSED-{i}"),
+        );
+        let (status, _, headers) = body_of(test::call_service(&app, post(message)).await).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "message {i}");
+        assert_ne!(h(&headers, "content-type"), "application/x-pki-message");
+    }
+    let message = scep_pkcs_req_message(&ca, &key, "dev1.iot.example");
+    assert_eq!(
+        test::call_service(&app, post(message)).await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    Ok(())
+}
+
+/// Only a challenge-authenticated enrollment clears the failure counter: a successful renewal
+/// does not (S103).
+#[tokio::test]
+async fn scep_renewal_does_not_clear_the_lockout() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let (key, cert) = enroll_device(&app, &ca, "dev1.iot.example").await;
+    let bootstrap = self_signed(&key, "dev1.iot.example");
+    let wrong_challenge = pkcs_req_csr(&key, "dev1.iot.example", "WrongSecret");
+    for i in 0..10 {
+        if i == 9 {
+            let renewal = scep_roundtrip(
+                &app,
+                &ca,
+                (&cert, &key),
+                &csr(&rsa_key(2048), "dev1.iot.example"),
+                MESSAGE_TYPE_RENEWAL_REQ,
+                "TX-RENEW-BETWEEN",
+                false,
+            )
+            .await;
+            assert_eq!(renewal.attrs.pki_status, Some(PKI_STATUS_SUCCESS));
+        }
+        let outcome = scep_roundtrip(
+            &app,
+            &ca,
+            (&bootstrap, &key),
+            &wrong_challenge,
+            MESSAGE_TYPE_PKCS_REQ,
+            &format!("TX-WRONG-{i}"),
+            false,
+        )
+        .await;
+        assert_eq!(outcome.attrs.pki_status, Some(PKI_STATUS_FAILURE));
+    }
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .set_payload(scep_pkcs_req_message(&ca, &key, "dev1.iot.example"))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
     Ok(())
 }

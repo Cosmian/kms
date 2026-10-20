@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::AlternativeName;
 #[cfg(feature = "non-fips")]
@@ -11,7 +13,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operatio
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason, kmip_2_1::kmip_operations::Operation, ttlv::to_ttlv,
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{kmip_operations::Operation, kmip_types::OperationEnumeration},
+    ttlv::to_ttlv,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -62,8 +66,10 @@ pub(super) fn enforce(
     operation_tag: &str,
     op: &Operation,
 ) -> Result<(), KmsError> {
+    let operation = OperationEnumeration::from_str(operation_tag)
+        .map_err(|e| KmsError::InvalidRequest(format!("{operation_tag}: {e}")))?;
     let ttlv = to_ttlv(op)?;
-    enforce_kmip_algorithm_policy_for_operation(params, operation_tag, &ttlv)
+    enforce_kmip_algorithm_policy_for_operation(params, operation, &ttlv)
 }
 
 #[cfg(feature = "non-fips")]

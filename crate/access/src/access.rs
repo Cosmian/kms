@@ -5,7 +5,11 @@ use std::{
 
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_types::UniqueIdentifier},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_types::{OperationEnumeration, UniqueIdentifier},
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,9 +64,9 @@ pub enum Role {
     ///
     /// May use approved security functions server-side (encrypt, decrypt, sign, verify, MAC,
     /// hash) and observe KMS state (`GetAttributes`, `Locate`, `Validate`).
-    /// **Cannot** access raw key material (`Get`, `Export`) — "key output" is a Crypto Officer
-    /// service per ISO/IEC 19790 §7.4.
-    /// Cannot perform key lifecycle operations (create, import, certify, revoke, destroy, etc.).
+    /// Reaches per-object services (`Get`, `Export`, lifecycle, attribute changes) only through
+    /// handler ownership/grant checks; object creation additionally requires the Create right,
+    /// and `RNGSeed` is refused (see [`Role::decide`]).
     Operator,
     /// ISO/IEC 19790 §7.4 "Crypto Officer" / PKCS#11 `CKU_SO`.
     ///
@@ -85,67 +89,99 @@ pub enum Role {
     CryptoOfficer,
 }
 
+/// Outcome of the dispatch-level role check for one KMIP operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RoleDecision {
+    /// Dispatched; the handler still enforces object ownership or an explicit grant.
+    Allow,
+    /// Dispatched only if the caller also holds the Create right
+    /// (Crypto Officer listed, `default_username`, or an explicit `Create` grant).
+    RequireCreatePermission,
+    /// Refused before dispatch.
+    Deny,
+}
+
 impl Role {
-    /// Checks whether this role is permitted to invoke the given [`KmipOperation`] at dispatch level.
+    /// Dispatch-level decision for `operation` once roles are configured.
     ///
-    /// Zero heap allocations. See [`Self::allowed_operations`] for semantic details.
+    /// Exhaustive over every KMIP operation: a new variant cannot be allowed by omission.
     #[must_use]
-    pub const fn allows(self, op: KmipOperation) -> bool {
-        match self {
-            Self::Operator => Self::is_operator_operation(op),
-            Self::CryptoOfficer => {
-                Self::is_operator_operation(op)
-                    || matches!(
-                        op,
-                        KmipOperation::Create
-                            | KmipOperation::Certify
-                            | KmipOperation::Import
-                            | KmipOperation::Get
-                            | KmipOperation::Export
-                            | KmipOperation::Rekey
-                            | KmipOperation::DeriveKey
-                            | KmipOperation::Activate
-                            | KmipOperation::Revoke
-                            | KmipOperation::Destroy
-                            | KmipOperation::SetAttribute
-                            | KmipOperation::ModifyAttribute
-                            | KmipOperation::AddAttribute
-                            | KmipOperation::DeleteAttribute
-                    )
-            }
+    pub const fn decide(self, operation: OperationEnumeration) -> RoleDecision {
+        use OperationEnumeration as Op;
+        match operation {
+            // Cryptographic use, attribute reads, discovery, random output, server services.
+            Op::Encrypt
+            | Op::Decrypt
+            | Op::Sign
+            | Op::SignatureVerify
+            | Op::MAC
+            | Op::MACVerify
+            | Op::Hash
+            | Op::GetAttributes
+            | Op::GetAttributeList
+            | Op::Locate
+            | Op::Check
+            | Op::Validate
+            | Op::Query
+            | Op::DiscoverVersions
+            | Op::RNGRetrieve
+            | Op::Log
+            | Op::PKCS11
+            | Op::Interop
+            // Per-object lifecycle, key output and attribute management: the handler requires
+            // ownership or a grant; an active Crypto Officer bypasses ownership there.
+            | Op::Get
+            | Op::Export
+            | Op::Certify
+            | Op::ReCertify
+            | Op::ReKey
+            | Op::DeriveKey
+            | Op::Activate
+            | Op::Revoke
+            | Op::Destroy
+            | Op::SetAttribute
+            | Op::ModifyAttribute
+            | Op::AddAttribute
+            | Op::DeleteAttribute
+            // Share reassembly: the handler checks share ownership.
+            | Op::JoinSplitKey => RoleDecision::Allow,
+            // Operations that create Managed Objects.
+            Op::Create
+            | Op::Import
+            | Op::CreateKeyPair
+            | Op::Register
+            | Op::ReKeyKeyPair
+            | Op::CreateSplitKey => match self {
+                Self::Operator => RoleDecision::RequireCreatePermission,
+                Self::CryptoOfficer => RoleDecision::Allow,
+            },
+            // Additional input to the server DRBG.
+            Op::RNGSeed => match self {
+                Self::Operator => RoleDecision::Deny,
+                Self::CryptoOfficer => RoleDecision::Allow,
+            },
+            // Not served by this KMS: refused until their implementation decides a policy.
+            Op::ObtainLease
+            | Op::GetUsageAllocation
+            | Op::Archive
+            | Op::Recover
+            | Op::Cancel
+            | Op::Poll
+            | Op::Notify
+            | Op::Put
+            | Op::Login
+            | Op::Logout
+            | Op::DelegatedLogin
+            | Op::AdjustAttribute
+            | Op::SetEndpointRole
+            | Op::ReProvision
+            | Op::SetDefaults
+            | Op::SetConstraints
+            | Op::GetConstraints
+            | Op::QueryAsynchronousRequests
+            | Op::Process
+            | Op::Ping => RoleDecision::Deny,
         }
-    }
-
-    /// Operations every role may invoke; the Crypto Officer adds its own on top.
-    const fn is_operator_operation(op: KmipOperation) -> bool {
-        matches!(
-            op,
-            KmipOperation::Encrypt
-                | KmipOperation::Decrypt
-                | KmipOperation::Sign
-                | KmipOperation::SignatureVerify
-                | KmipOperation::MAC
-                | KmipOperation::Hash
-                | KmipOperation::GetAttributes
-                | KmipOperation::Locate
-                | KmipOperation::Validate
-        )
-    }
-
-    /// Returns the set of [`KmipOperation`]s this role is permitted to invoke at dispatch level.
-    ///
-    /// **Important**: this set is NOT exhaustive of all operations the role may perform.
-    /// Operations without a [`KmipOperation`] variant in the dispatch mapping — specifically
-    /// `CreateKeyPair`, `Register`, `ReKeyKeyPair`, `CreateSplitKey`, and `JoinSplitKey` —
-    /// are gated via [`LIFECYCLE_OPERATION_TAGS`] in the dispatch layer instead, and are
-    /// therefore absent from this set by design. Callers must not assume this set is the
-    /// complete permission boundary.
-    #[must_use]
-    pub fn allowed_operations(self) -> HashSet<KmipOperation> {
-        (0..=u8::MAX)
-            .filter_map(KmipOperation::from_repr)
-            .filter(|op| self.allows(*op))
-            .collect()
     }
 }
 
@@ -256,6 +292,19 @@ impl CryptoOfficerConfig {
         !self.users.is_empty()
     }
 
+    /// Operations a Crypto Officer *candidate* may call before the ceremony activates them:
+    /// create or import the ceremony key, then split and re-join it.
+    #[must_use]
+    pub const fn is_ceremony_prerequisite(operation: OperationEnumeration) -> bool {
+        matches!(
+            operation,
+            OperationEnumeration::Create
+                | OperationEnumeration::Import
+                | OperationEnumeration::CreateSplitKey
+                | OperationEnumeration::JoinSplitKey
+        )
+    }
+
     /// Validate role configuration.
     ///
     /// Enforces NIST SP 800-57 Part 2 Rev 1 §4.6 split-knowledge minimum:
@@ -352,4 +401,39 @@ pub struct CreatePermissionResponse {
 #[derive(Serialize)]
 pub struct PrivilegedAccessResponse {
     pub has_privileged_access: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use OperationEnumeration as Op;
+    use RoleDecision::{Allow, Deny, RequireCreatePermission};
+
+    use super::*;
+
+    #[test]
+    fn role_decisions() {
+        for (role, op, expected) in [
+            (Role::Operator, Op::RNGSeed, Deny),
+            (Role::CryptoOfficer, Op::RNGSeed, Allow),
+            (Role::Operator, Op::Ping, Deny),
+            (Role::CryptoOfficer, Op::Ping, Deny),
+            (Role::Operator, Op::Get, Allow),
+            (Role::Operator, Op::Export, Allow),
+            (Role::Operator, Op::JoinSplitKey, Allow),
+            (Role::Operator, Op::RNGRetrieve, Allow),
+        ] {
+            assert_eq!(role.decide(op), expected, "{role:?} / {op}");
+        }
+        for op in [
+            Op::Create,
+            Op::Import,
+            Op::CreateKeyPair,
+            Op::Register,
+            Op::ReKeyKeyPair,
+            Op::CreateSplitKey,
+        ] {
+            assert_eq!(Role::Operator.decide(op), RequireCreatePermission, "{op}");
+            assert_eq!(Role::CryptoOfficer.decide(op), Allow, "{op}");
+        }
+    }
 }

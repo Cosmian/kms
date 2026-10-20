@@ -18,8 +18,6 @@
 //! This module is intentionally allowed to use `unsafe` code: it is the FFI
 //! boundary layer and cannot be expressed without `unsafe extern` blocks.
 #![allow(unsafe_code)]
-// FFI declarations: not every binding is called at compile time; dead_code is expected.
-#![allow(dead_code)]
 
 use std::ffi::{c_int, c_uint, c_void};
 
@@ -95,8 +93,6 @@ unsafe extern "C" {
     pub(crate) fn CMS_get0_content(cms: *mut CMS_ContentInfo) -> *mut *mut ASN1_OCTET_STRING;
 }
 
-/// `CMS_NOCERTS` — do not include the signer certificate in the message.
-pub(crate) const CMS_NOCERTS: c_uint = 0x2;
 /// `CMS_NO_SIGNER_CERT_VERIFY` — do not validate the signer certificate chain.
 pub(crate) const CMS_NO_SIGNER_CERT_VERIFY: c_uint = 0x20;
 /// `CMS_DETACHED` — omit the encapsulated content.
@@ -107,9 +103,6 @@ pub(crate) const CMS_BINARY: c_uint = 0x80;
 pub(crate) const CMS_NOSMIMECAP: c_uint = 0x200;
 /// `CMS_PARTIAL` — return a partial structure to be finalised with `CMS_final`.
 pub(crate) const CMS_PARTIAL: c_uint = 0x4000;
-
-/// `V_ASN1_IA5STRING` (not exported by every `openssl-sys` version).
-pub(crate) const V_ASN1_IA5STRING: c_int = 22;
 
 /// Read the first value of an `X509_ATTRIBUTE` that holds a string-like ASN.1 type
 /// (`PrintableString`, `UTF8String`, `IA5String` or `OCTET STRING`).
@@ -130,7 +123,7 @@ pub(crate) unsafe fn attribute_string_bytes(attr: *mut X509_ATTRIBUTE) -> Option
     for ty in [
         openssl_sys::V_ASN1_PRINTABLESTRING,
         openssl_sys::V_ASN1_UTF8STRING,
-        V_ASN1_IA5STRING,
+        openssl_sys::V_ASN1_IA5STRING,
         openssl_sys::V_ASN1_OCTET_STRING,
     ] {
         // SAFETY: `attr` is valid; index 0 exists (count == 1); `data` may be null.

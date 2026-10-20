@@ -35,17 +35,17 @@ use crate::{
 pub(crate) struct PeerCertificate {
     /// The peer certificate.
     pub(crate) cert: X509,
-    /// The certificates above the peer certificate in the chain of this connection (see
-    /// [`verified_issuers`]); `None` when OpenSSL kept no chain.
-    pub(crate) issuers: Option<Vec<X509>>,
+    /// The KMS user `cert` maps to, resolved once per connection by
+    /// [`user_from_client_certificate`]; the refusal reason when it maps to none.
+    pub(crate) user: Result<UserId, String>,
 }
 
 /// The certificates above the leaf of a TLS connection's client certificate chain.
 ///
-/// This is the chain OpenSSL verified. A resumed session keeps no verified chain, so the chain
-/// the peer sent in the original handshake is used instead: the verification succeeded with it,
-/// and an issuer that is not a trust anchor has to be in it. `None` when OpenSSL kept no chain
-/// at all; callers must then refuse to map the certificate to a user.
+/// This is the chain OpenSSL verified. Session resumption is off on every client-certificate
+/// acceptor (`tls_config.rs`), so it is always present; the peer-sent chain fallback is defence
+/// in depth. `None` when OpenSSL kept no chain at all; callers must then refuse to map the
+/// certificate to a user.
 pub(crate) fn verified_issuers(ssl: &SslRef) -> Option<Vec<X509>> {
     if let Some(chain) = ssl.verified_chain() {
         return Some(chain.iter().skip(1).map(ToOwned::to_owned).collect());
@@ -60,11 +60,10 @@ pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extension
     if let Some(cnx) = cnx.downcast_ref::<TlsStream<TcpStream>>() {
         // Get the peer certificate from the OpenSSL TLS connection.
         if let Some(cert) = cnx.ssl().peer_certificate() {
-            // The certificate is already an openssl::X509 object
-            extensions.insert(PeerCertificate {
-                cert,
-                issuers: verified_issuers(cnx.ssl()),
-            });
+            // The certificate and its chain are fixed for the connection: map them to a user once.
+            let user = user_from_client_certificate(&cert, verified_issuers(cnx.ssl()).as_deref())
+                .map_err(|e| e.to_string());
+            extensions.insert(PeerCertificate { cert, user });
         }
     }
 }
@@ -110,7 +109,7 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
     };
 
     Ok(AuthenticatedUser {
-        username: user_from_client_certificate(&certificate.cert, certificate.issuers.as_deref())?,
+        username: certificate.user.clone().map_err(KmsError::InvalidRequest)?,
         auth_method: AuthMethod::Mtls,
     })
 }

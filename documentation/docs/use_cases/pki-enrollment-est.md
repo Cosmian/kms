@@ -45,7 +45,7 @@ All routes answer `404` unless `est_enabled = true`.
 | Route | Authentication | Request | Response | Description |
 | --- | --- | --- | --- | --- |
 | `GET /.well-known/est/cacerts` | None | None | `application/pkcs7-mime`, base64 | The CA chain, as a certs-only PKCS#7. Devices use it to trust the issuing CA. |
-| `GET /.well-known/est/csrattrs` | None | None | `application/csrattrs`, base64; `204` without a template | What the CSR should contain. |
+| `GET /.well-known/est/csrattrs` | None | None | `application/csrattrs`, base64 | What the CSR should contain. |
 | `POST /.well-known/est/simpleenroll` | TLS client certificate, or HTTP Basic bootstrap credentials when `est_require_client_cert = false` | PKCS#10 CSR, base64 | `application/pkcs7-mime; smime-type=certs-only`, base64 | First enrollment: the CSR is checked against the template, then signed by the CA. |
 | `POST /.well-known/est/simplereenroll` | The TLS client certificate being renewed | PKCS#10 CSR, base64, same Subject and SubjectAltName | `application/pkcs7-mime; smime-type=certs-only`, base64 | Renewal or key change. No shared secret is needed. |
 
@@ -135,6 +135,8 @@ max_validity_days = 365
 default_validity_days = 90
 # Only names such as device1.iot.example are accepted ("\\." is a literal dot in TOML).
 subject_cn_regex = "[a-z0-9-]+\\.iot\\.example"
+# SANs are refused unless a pattern allows them; uncomment to accept DNS SANs.
+# san_dns_regex = "[a-z0-9-]+\\.iot\\.example"
 ```
 
 !!! warning "Pick a real password"

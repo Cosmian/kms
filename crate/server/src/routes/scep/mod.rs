@@ -43,6 +43,7 @@ pub(crate) struct ScepQuery {
 fn bad_request(message: &str) -> HttpResponse {
     HttpResponse::BadRequest()
         .content_type("text/plain; charset=utf-8")
+        .insert_header((actix_web::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
         .body(message.to_owned())
 }
 
@@ -59,7 +60,9 @@ pub(crate) async fn scep_get(
         return Ok(HttpResponse::NotFound().finish());
     }
     match query.operation.as_deref() {
-        Some("GetCACaps") => Ok(ca_caps::get_ca_caps()),
+        Some("GetCACaps") => Ok(ca_caps::get_ca_caps(
+            kms.params.scep_allow_renewal_without_challenge,
+        )),
         Some("GetCACert") => ca_cert::get_ca_cert(&kms).await,
         Some("PKIOperation") => match query.message.as_deref() {
             Some(message) => match pki_operation::decode_get_message(message) {

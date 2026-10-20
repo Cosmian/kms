@@ -39,5 +39,6 @@ fn base64_response(content_type: &str, der: &[u8]) -> HttpResponse {
 fn plain_response(status: actix_web::http::StatusCode, message: &str) -> HttpResponse {
     HttpResponse::build(status)
         .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
+        .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
         .body(message.to_owned())
 }

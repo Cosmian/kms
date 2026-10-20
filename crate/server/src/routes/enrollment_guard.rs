@@ -35,9 +35,10 @@ const MAX_LOCKOUT: Duration = Duration::from_secs(3600);
 const MAX_TRACKED_CLIENTS: usize = 10_000;
 /// How long an authenticated SCEP message is remembered.
 const REPLAY_TTL: Duration = Duration::from_secs(3600);
-/// Remembered messages. Only authenticated messages are stored, so the table grows with the
-/// legitimate issuance rate; when it is full the oldest message is forgotten, which only
-/// matters to a replay of a message older than every one of the last 100 000.
+/// Remembered replay keys, two per authenticated message (message and envelope). Only
+/// authenticated messages are stored, so the table grows with the legitimate issuance rate;
+/// when it is full the oldest key is forgotten, which only matters to a replay of a message
+/// older than every one of the last 50 000.
 const MAX_REPLAY_ENTRIES: usize = 100_000;
 /// Enrollments processed at the same time.
 const MAX_CONCURRENT_ENROLLMENTS: usize = 16;

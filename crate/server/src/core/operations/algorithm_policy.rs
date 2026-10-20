@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
             },
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-                KeyFormatType, RecommendedCurve,
+                KeyFormatType, OperationEnumeration, RecommendedCurve,
             },
         },
         ttlv::{TTLV, TtlvDeserializer},
@@ -41,9 +41,11 @@ struct KmipWhitelists {
 
 pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     params: &ServerParams,
-    operation_tag: &str,
+    operation: OperationEnumeration,
     ttlv: &TTLV,
 ) -> KResult<()> {
+    use OperationEnumeration as Op;
+
     if params.kmip_policy.policy_id.is_none() {
         return Ok(());
     }
@@ -63,22 +65,21 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
             })
         }};
     }
-    // The root TTLV tag is the operation name (e.g. "Create").
     // Deserialize the *operation payload* (the struct), then wrap it into the `Operation` enum.
-    let op = match operation_tag {
-        "Create" => Operation::Create(deserialize_op!(Create, "Create")?),
-        "CreateKeyPair" => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
-        "Encrypt" => Operation::Encrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Encrypt, "Encrypt")?)),
-        "Decrypt" => Operation::Decrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Decrypt, "Decrypt")?)),
-        "Hash" => Operation::Hash(deserialize_op!(Hash, "Hash")?),
-        "MAC" => Operation::MAC(deserialize_op!(MAC, "MAC")?),
-        "MACVerify" => Operation::MACVerify(deserialize_op!(MACVerify, "MACVerify")?),
-        "Sign" => Operation::Sign(deserialize_op!(Sign, "Sign")?),
-        "SignatureVerify" => Operation::SignatureVerify(deserialize_op!(SignatureVerify, "SignatureVerify")?),
-        "DeriveKey" => Operation::DeriveKey(deserialize_op!(DeriveKey, "DeriveKey")?),
-        "Import" => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
-        "Register" => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
-        "Export" => Operation::Export(deserialize_op!(Export, "Export")?),
+    let op = match operation {
+        Op::Create => Operation::Create(deserialize_op!(Create, "Create")?),
+        Op::CreateKeyPair => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
+        Op::Encrypt => Operation::Encrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Encrypt, "Encrypt")?)),
+        Op::Decrypt => Operation::Decrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Decrypt, "Decrypt")?)),
+        Op::Hash => Operation::Hash(deserialize_op!(Hash, "Hash")?),
+        Op::MAC => Operation::MAC(deserialize_op!(MAC, "MAC")?),
+        Op::MACVerify => Operation::MACVerify(deserialize_op!(MACVerify, "MACVerify")?),
+        Op::Sign => Operation::Sign(deserialize_op!(Sign, "Sign")?),
+        Op::SignatureVerify => Operation::SignatureVerify(deserialize_op!(SignatureVerify, "SignatureVerify")?),
+        Op::DeriveKey => Operation::DeriveKey(deserialize_op!(DeriveKey, "DeriveKey")?),
+        Op::Import => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
+        Op::Register => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
+        Op::Export => Operation::Export(deserialize_op!(Export, "Export")?),
         // For other operations, request-time algorithm policy doesn't apply.
         _ => return Ok(()),
     };
@@ -125,7 +126,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
                 KmsError::Kmip21Error(
                     ErrorReason::Cryptographic_Failure,
                     format!(
-                        "{operation_tag} denied by algorithm policy ({ttlv_tag_for_error}): {other}"
+                        "{operation} denied by algorithm policy ({ttlv_tag_for_error}): {other}"
                     ),
                 )
             }

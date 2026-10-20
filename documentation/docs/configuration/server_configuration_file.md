@@ -680,7 +680,8 @@ est_enabled = false
 # The CA private key must be linked to this certificate. Must be set when
 # `est_enabled = true`. Certificates are issued as the reserved `[enrollment-service]`
 # identity: the CA owner must grant it `certify` on this certificate and on its private
-# key. Issued certificates are owned by the CA owner.
+# key (plus `create` when `crypto_officer_users` is set). Issued certificates are owned by
+# the CA owner.
 # est_ca_uid = "..."
 # Require TLS client-certificate authentication for `/simpleenroll` (RFC 7030 §3.3.2).
 #
@@ -715,8 +716,8 @@ scep_enabled = false
 # SCEP encrypts requests to the CA public key, so this MUST be an RSA CA whose private
 # key is linked to the certificate. Must be set when `scep_enabled = true`.
 # Certificates are issued as the reserved `[enrollment-service]` identity: the CA owner
-# must grant it `certify` on this certificate and on its private key. Issued certificates
-# are owned by the CA owner.
+# must grant it `certify` on this certificate and on its private key (plus `create` when
+# `crypto_officer_users` is set). Issued certificates are owned by the CA owner.
 # scep_ca_uid = "..."
 # Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
 # initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.
@@ -746,11 +747,14 @@ scep_allow_renewal_without_challenge = true
 # max_validity_days = 365
 # default_validity_days = 90
 # subject_cn_regex = "[a-z0-9-]+\\.iot\\.example\\.com"
+# SANs are default-deny: a CSR carrying a SAN type without a pattern below is refused, and
+# iPAddress / URI SANs (no pattern) need `allow_any_identity = true` with no `san_*_regex`.
 # san_dns_regex = "[a-z0-9-]+\\.iot\\.example\\.com"
 # san_email_regex = ".*@example\\.com"
 # san_upn_regex = ".*@example\\.com"
 # A template must set `subject_cn_regex`, or opt in to any subject name explicitly (this also
-# accepts the `serialNumber`, `UID` and `emailAddress` subject attributes).
+# accepts the `serialNumber`, `UID` and `emailAddress` subject attributes, and any SAN when no
+# `san_*_regex` is set).
 # allow_any_identity = false
 
 [audit]

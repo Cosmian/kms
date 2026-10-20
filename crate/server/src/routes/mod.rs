@@ -102,8 +102,11 @@ impl actix_web::error::ResponseError for KmsError {
 
         // Return the actual error message for visibility, even for 5xx errors.
         // The error is already logged server-side; clients need to see the real issue.
+        // Plain text + nosniff: messages can quote request data (e.g. an EST CSR Subject), and
+        // this origin also serves the Web UI, so they must never be rendered as HTML.
         HttpResponseBuilder::new(status_code)
-            .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
+            .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
+            .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
             .body(message)
     }
 }

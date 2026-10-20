@@ -51,9 +51,10 @@ unsafe extern "C" {
 ///   `SalsaSealBox`)
 /// - Session/OIDC tokens and AES-GCM/JOSE content keys and IVs
 ///
-/// SLH-DSA, hybrid KEM, RSA/EC/EdDSA key generation and Covercrypt do not draw from `KmsRng`:
-/// OpenSSL (or the Covercrypt library, which exposes no way to inject an RNG) generates their
-/// key material internally.
+/// SLH-DSA, hybrid KEM, RSA/EC/EdDSA key generation, the SCEP CMS envelope content key and IV
+/// (`CmsContentInfo::encrypt`, drawn by OpenSSL at requested strength 0) and Covercrypt do not draw
+/// from `KmsRng`: OpenSSL (or the Covercrypt library, which exposes no way to inject an RNG)
+/// generates them internally. `uuid::Uuid::new_v4` identifiers come from the OS via `getrandom`.
 ///
 /// # Design
 ///
@@ -213,7 +214,7 @@ impl KmsRng {
 pub struct SeededCsRng(CsRng);
 
 impl Drop for SeededCsRng {
-    #[expect(
+    #[expect( // false positive: CsRng is plain data and this volatile write is the zeroization itself
         unsafe_code,
         clippy::volatile_composites,
         reason = "the store only has to survive dead-store elimination; tearing is irrelevant"

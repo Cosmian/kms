@@ -113,9 +113,19 @@ pub(crate) struct AuthenticatedUser {
 /// authentication path (OIDC/SVID/Auth Verifier JWT, mTLS CN, SPIRE token, UI session).
 const RESERVED_SERVICE_IDENTITIES: [&str; 2] = [AWS_XKS_SERVICE_USER, ENROLLMENT_SERVICE_USER];
 
+/// Whether `name` would resolve to the `reserved` identity in the database: `MySQL` / `MariaDB`
+/// compare the `userid` / `owner` columns with their default `_ci` collation (case-insensitive),
+/// and the default `MariaDB` `PAD SPACE` collation also ignores trailing spaces.
+pub(crate) fn names_reserved_identity(name: &str, reserved: &str) -> bool {
+    name.trim_end_matches(' ').eq_ignore_ascii_case(reserved)
+}
+
 /// Reject a reserved service identity on externally-derived auth paths.
 pub(crate) fn reject_reserved_service_identity(username: &UserId) -> KResult<()> {
-    if RESERVED_SERVICE_IDENTITIES.contains(&username.as_str()) {
+    if RESERVED_SERVICE_IDENTITIES
+        .iter()
+        .any(|reserved| names_reserved_identity(username.as_str(), reserved))
+    {
         return Err(KmsError::Unauthorized(format!(
             "reserved service identity `{username}` cannot be used as an externally \
              authenticated username"
@@ -135,6 +145,35 @@ mod tests {
                 reject_reserved_service_identity(&UserId::from(reserved)),
                 Err(KmsError::Unauthorized(_))
             ));
+        }
+    }
+
+    #[test]
+    fn reject_reserved_service_identity_rejects_case_and_padding_variants() {
+        for reserved in RESERVED_SERVICE_IDENTITIES {
+            for variant in [
+                reserved.to_ascii_uppercase(),
+                reserved
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if i % 2 == 0 {
+                            c.to_ascii_uppercase()
+                        } else {
+                            c
+                        }
+                    })
+                    .collect(),
+                format!("{reserved}  "),
+            ] {
+                assert!(
+                    matches!(
+                        reject_reserved_service_identity(&UserId::from(variant.as_str())),
+                        Err(KmsError::Unauthorized(_))
+                    ),
+                    "{variant}"
+                );
+            }
         }
     }
 

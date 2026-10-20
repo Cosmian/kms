@@ -7,7 +7,10 @@
 //! Failure reporting is deliberately uniform: every failure of an authenticated-looking
 //! message (undecryptable envelope, unreadable request, wrong challenge, policy violation)
 //! returns `badRequest`, so that the `failInfo` of a signed `CertRep` cannot be used as a
-//! decryption or padding oracle. The detailed reason is logged only.
+//! decryption or padding oracle. The detailed reason is logged only. The one exception is
+//! `badCertId` for a `RenewalReq` whose signer is not an active, valid certificate of this CA,
+//! which is checked before decryption. A message type this CA does not process (unsupported,
+//! or `RenewalReq` while renewal is disabled) gets a plain HTTP `400` before any CA operation.
 
 use std::{net::IpAddr, time::Instant};
 
@@ -25,9 +28,9 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
         },
     },
 };
-use cosmian_logger::{info, warn};
+use cosmian_logger::{error, info, warn};
 use openssl::{
-    pkey::{PKey, Private},
+    pkey::{Id, PKey, Private},
     sha::sha256,
     x509::{X509, X509Req},
 };
@@ -65,9 +68,14 @@ pub(super) fn decode_get_message(message: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("invalid base64 `message` parameter: {e}"))
 }
 
-/// The `transactionID` is echoed and logged: refuse anything that is not short printable ASCII.
+/// The `transactionID` is echoed as a `PrintableString` and logged: refuse anything that is not
+/// short and within the `PrintableString` character set (X.680 §41.4).
 fn valid_transaction_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= MAX_TRANSACTION_ID_LEN && id.bytes().all(|b| b.is_ascii_graphic())
+    !id.is_empty()
+        && id.len() <= MAX_TRANSACTION_ID_LEN
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b" '()+,-./:=?".contains(&b))
 }
 
 /// A failed enrollment: the `failInfo` to report and a log message.
@@ -140,12 +148,51 @@ pub(super) async fn pki_operation(
         );
         return Ok(super::bad_request("invalid SCEP transactionID"));
     }
+    // Refused before any CA work and counted: a loop of messages that cannot succeed must
+    // neither cost a CA signature each nor escape the lockout.
+    let message_type = parsed.attrs.message_type;
+    let refusal =
+        if message_type != MESSAGE_TYPE_PKCS_REQ && message_type != MESSAGE_TYPE_RENEWAL_REQ {
+            Some("unsupported SCEP messageType")
+        } else if message_type == MESSAGE_TYPE_RENEWAL_REQ
+            && !kms.params.scep_allow_renewal_without_challenge
+        {
+            Some("RenewalReq is not accepted by this CA")
+        } else {
+            None
+        };
+    if let Some(reason) = refusal {
+        kms.enrollment_guard.record_failure(client);
+        warn!(
+            "SCEP request {} from {client} rejected: {reason} (messageType={message_type})",
+            parsed.attrs.transaction_id
+        );
+        audit_enrollment(
+            kms,
+            OP_PKI_OPERATION,
+            "unauthenticated",
+            client,
+            started,
+            &Err(reason.to_owned()),
+        );
+        return Ok(super::bad_request(reason));
+    }
+
     let ca_uid = kms
         .params
         .scep_ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("SCEP enabled without scep_ca_uid".to_owned()))?;
-    let (ca_cert, ca_key) = load_ca_signing_material(kms, ca_uid).await?;
+    let (ca_cert, ca_key) = match load_ca_signing_material(kms, ca_uid).await {
+        Ok(material) => material,
+        Err(e) => {
+            // The caller is not authenticated: CA / key UIDs and permission details stay in the log.
+            error!("SCEP: the enrollment CA `{ca_uid}` cannot be used: {e}");
+            return Ok(HttpResponse::InternalServerError()
+                .content_type("text/plain; charset=utf-8")
+                .body("the enrollment CA is not available"));
+        }
+    };
 
     let attrs = &parsed.attrs;
     info!(
@@ -157,7 +204,11 @@ pub(super) async fn pki_operation(
     let outcome = enroll(kms, ca_uid, &ca_cert, &ca_key, &parsed, &mut principal).await;
     let cert_rep = match outcome {
         Ok(issued) => {
-            kms.enrollment_guard.record_success(client);
+            // Only the challenge proves knowledge of the shared secret: a renewal (signed by any
+            // active certificate) must not wipe the failures counted against this address.
+            if attrs.message_type == MESSAGE_TYPE_PKCS_REQ {
+                kms.enrollment_guard.record_success(client);
+            }
             audit_enrollment(
                 kms,
                 OP_PKI_OPERATION,
@@ -220,9 +271,10 @@ fn cert_rep_attrs(
     })
 }
 
-/// Identity of an authenticated message, for the replay cache: the signer certificate, the
-/// transactionID and the sender nonce.
-fn message_fingerprint(request: &ParsedPkiMessage) -> Result<[u8; 32], Rejection> {
+/// Replay-cache keys of an authenticated message: the signer certificate, transactionID and
+/// sender nonce; and the `pkcsPKIEnvelope` alone, so that a captured envelope re-signed by
+/// another certificate (with a fresh transactionID and nonce) is still a replay.
+fn message_fingerprints(request: &ParsedPkiMessage) -> Result<[[u8; 32]; 2], Rejection> {
     let mut bytes = request
         .signer_cert
         .to_der()
@@ -230,7 +282,7 @@ fn message_fingerprint(request: &ParsedPkiMessage) -> Result<[u8; 32], Rejection
     bytes.extend_from_slice(request.attrs.transaction_id.as_bytes());
     bytes.push(0);
     bytes.extend_from_slice(&request.attrs.sender_nonce);
-    Ok(sha256(&bytes))
+    Ok([sha256(&bytes), sha256(&request.content)])
 }
 
 /// Authenticate, authorise and execute one `PKCSReq` / `RenewalReq`. `principal` is set once
@@ -244,19 +296,6 @@ async fn enroll(
     principal: &mut String,
 ) -> Result<IssuedCertificate, Rejection> {
     let message_type = request.attrs.message_type;
-    if message_type != MESSAGE_TYPE_PKCS_REQ && message_type != MESSAGE_TYPE_RENEWAL_REQ {
-        return Err(Rejection::new(
-            FAIL_INFO_BAD_REQUEST,
-            format!("unsupported SCEP messageType {message_type}"),
-        ));
-    }
-    if message_type == MESSAGE_TYPE_RENEWAL_REQ && !kms.params.scep_allow_renewal_without_challenge
-    {
-        return Err(Rejection::new(
-            FAIL_INFO_BAD_REQUEST,
-            "RenewalReq is disabled (scep_allow_renewal_without_challenge = false)",
-        ));
-    }
     if message_type == MESSAGE_TYPE_RENEWAL_REQ {
         // RFC 8894 §2.3: a renewal is authenticated by the signature of a still-valid
         // certificate of this CA. Checked before the envelope is decrypted so that a signer
@@ -265,6 +304,13 @@ async fn enroll(
         ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, &request.signer_cert)
             .await
             .map_err(|e| Rejection::new(FAIL_INFO_BAD_CERT_ID, e.to_string()).counted())?;
+    }
+
+    if !can_receive_envelope(&request.signer_cert) {
+        return Err(Rejection::new(
+            FAIL_INFO_BAD_REQUEST,
+            "signer key cannot receive the encrypted response (RSA or EC only)",
+        ));
     }
 
     let csr_der = decrypt_envelope(&request.content, ca_key, ca_cert).map_err(|e| {
@@ -283,6 +329,9 @@ async fn enroll(
     })?;
 
     if message_type == MESSAGE_TYPE_PKCS_REQ {
+        // The signer key is not required to be the CSR key (RFC 8894 §2.3 says SHOULD): the
+        // native macOS client signs with a separate "MDM SCEP SIGNER" key. A re-signed
+        // captured envelope is caught by the envelope replay key instead.
         let expected = kms.params.scep_challenge_password.as_deref();
         let supplied = csr_challenge_password(&csr);
         let authorised = matches!((expected, supplied.as_deref()),
@@ -308,22 +357,94 @@ async fn enroll(
     }
 
     // Authenticated: remember the message so that a captured copy cannot be replayed to make
-    // the CA issue again.
-    if !kms
-        .enrollment_guard
-        .register_message(message_fingerprint(request)?)
+    // the CA issue again. The envelope key is registered first: a replay stops there and adds
+    // nothing, so rejected replays do not grow the table.
+    let [message, envelope] = message_fingerprints(request)?;
+    if !kms.enrollment_guard.register_message(envelope)
+        || !kms.enrollment_guard.register_message(message)
     {
-        return Err(Rejection::new(
-            FAIL_INFO_BAD_REQUEST,
-            "replayed SCEP message (or replay cache full)",
-        )
-        .counted());
+        return Err(Rejection::new(FAIL_INFO_BAD_REQUEST, "replayed SCEP message").counted());
     }
 
-    issue_from_csr(kms, ca_uid, &csr, kms.params.scep_template.as_ref(), None)
+    let template = kms.params.scep_template.as_ref().ok_or_else(|| {
+        Rejection::new(FAIL_INFO_BAD_REQUEST, "SCEP enabled without scep_template")
+    })?;
+    issue_from_csr(kms, ca_uid, &csr, template)
         .await
         .map_err(|e| match e {
             KmsError::InvalidRequest(_) => Rejection::new(FAIL_INFO_BAD_REQUEST, e.to_string()),
             other => Rejection::new(FAIL_INFO_BAD_REQUEST, format!("issuance failed: {other}")),
         })
+}
+
+/// The certificate is returned encrypted to the signer: only RSA and EC keys can be CMS
+/// recipients, so any other key is refused before anything is issued.
+fn can_receive_envelope(signer_cert: &X509) -> bool {
+    signer_cert
+        .public_key()
+        .is_ok_and(|key| matches!(key.id(), Id::RSA | Id::EC))
+}
+
+#[cfg(test)]
+mod tests {
+    use openssl::{asn1::Asn1Time, hash::MessageDigest, rsa::Rsa, x509::X509NameBuilder};
+
+    use super::*;
+
+    fn self_signed(key: &PKey<Private>, digest: MessageDigest) -> KResult<X509> {
+        let mut name = X509NameBuilder::new()?;
+        name.append_entry_by_text("CN", "dev1")?;
+        let name = name.build();
+        let mut b = X509::builder()?;
+        b.set_version(2)?;
+        b.set_subject_name(&name)?;
+        b.set_issuer_name(&name)?;
+        b.set_pubkey(key)?;
+        let (not_before, not_after) = (Asn1Time::days_from_now(0)?, Asn1Time::days_from_now(1)?);
+        b.set_not_before(&not_before)?;
+        b.set_not_after(&not_after)?;
+        b.sign(key, digest)?;
+        Ok(b.build())
+    }
+
+    #[test]
+    fn transaction_id_is_a_printable_string() {
+        assert!(valid_transaction_id("0123ABCDEF"));
+        assert!(valid_transaction_id("TX-1 (a'b+c,d./:=?)"));
+        for bad in ["", "dev@example", "tx!", "tx#1", "tx_1", "tx*", "é"] {
+            assert!(!valid_transaction_id(bad), "{bad}");
+        }
+        assert!(!valid_transaction_id(
+            &"T".repeat(MAX_TRANSACTION_ID_LEN + 1)
+        ));
+    }
+
+    fn rsa_signer_can_receive() -> KResult<bool> {
+        let key = PKey::from_rsa(Rsa::generate(2048)?)?;
+        Ok(can_receive_envelope(&self_signed(
+            &key,
+            MessageDigest::sha256(),
+        )?))
+    }
+
+    #[test]
+    fn rsa_signer_can_receive_the_response() {
+        assert_eq!(rsa_signer_can_receive().ok(), Some(true));
+    }
+
+    /// Ed25519 is not in the FIPS provider.
+    #[cfg(feature = "non-fips")]
+    fn eddsa_signer_can_receive() -> KResult<bool> {
+        let key = PKey::generate_ed25519()?;
+        Ok(can_receive_envelope(&self_signed(
+            &key,
+            MessageDigest::null(),
+        )?))
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn eddsa_signer_cannot_receive_the_response() {
+        assert_eq!(eddsa_signer_can_receive().ok(), Some(false));
+    }
 }

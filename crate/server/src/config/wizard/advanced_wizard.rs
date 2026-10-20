@@ -442,16 +442,28 @@ fn configure_enrollment(
 
     // The enrollment secret authenticates a class of devices, not the name a device asks for:
     // the template must constrain the subject CN (`.*` explicitly accepts any CN).
+    let valid_regex = |r: &String| -> Result<(), String> {
+        regex::Regex::new(r.trim())
+            .and_then(|_| regex::Regex::new(&format!("^(?:{})$", r.trim())))
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    };
     let cn_regex: String = Input::with_theme(theme)
         .with_prompt(
             "Regular expression every enrolled subject CN must match, anchored \
              (required; `.*` accepts any CN)",
         )
-        .validate_with(|r: &String| -> Result<(), String> {
-            regex::Regex::new(&format!("^(?:{})$", r.trim()))
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        })
+        .validate_with(valid_regex)
+        .interact_text()
+        .map_err(prompt_err)?;
+    // SANs are default-deny: without a pattern, CSRs carrying DNS SANs are refused.
+    let san_dns_regex: String = Input::with_theme(theme)
+        .with_prompt(
+            "Regular expression every DNS subject alternative name must match, anchored \
+             (leave blank to refuse CSRs with DNS SANs)",
+        )
+        .allow_empty(true)
+        .validate_with(valid_regex)
         .interact_text()
         .map_err(prompt_err)?;
     templates.insert(
@@ -459,6 +471,7 @@ fn configure_enrollment(
         CertTemplate {
             name: ENROLLMENT_TEMPLATE.to_owned(),
             subject_cn_regex: Some(cn_regex.trim().to_owned()),
+            san_dns_regex: Some(san_dns_regex.trim().to_owned()).filter(|r| !r.is_empty()),
             ..CertTemplate::default()
         },
     );
@@ -476,7 +489,8 @@ fn configure_enrollment(
     println!(
         "  Next: grant the CA to the enrollment service identity:\n    \
          ckms access-rights grant \"[enrollment-service]\" -i <ca uid> certify\n  \
-         (and the same for the CA private key)."
+         (and the same for the CA private key; plus `create` when Crypto Officers are \
+         configured)."
     );
     Ok((est, scep, templates))
 }

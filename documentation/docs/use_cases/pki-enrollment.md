@@ -169,12 +169,16 @@ san_upn_regex = "[a-z0-9.]+@iot\\.example"
 | `max_validity_days` | `365` | Upper bound on a certificate's lifetime. |
 | `default_validity_days` | `90` | Lifetime given to certificates, because neither protocol lets the device request one. |
 | `subject_cn_regex` | none | Pattern the subject common name must match. **Required** unless `allow_any_identity = true`. |
-| `san_dns_regex` | none | Pattern every DNS name in the subject alternative names must match. |
+| `san_dns_regex` | none | Pattern every DNS name in the subject alternative names must match. Without it, a CSR carrying a DNS SAN is refused. |
 | `san_email_regex` | none | Same, for e-mail addresses. |
 | `san_upn_regex` | none | Same, for Microsoft user principal names. |
-| `allow_any_identity` | `false` | Accept any subject name. Without it the template must set `subject_cn_regex`, and the `serialNumber`, `UID` and `emailAddress` subject attributes (which other systems may use to identify a person) are refused. |
+| `allow_any_identity` | `false` | Accept any subject name. Without it the template must set `subject_cn_regex`, and the `serialNumber`, `UID` and `emailAddress` subject attributes (which other systems may use to identify a person) are refused. When no `san_*_regex` is set, it also accepts any SAN. |
 
-When any SAN pattern is set, SAN types without a pattern are refused. Unknown keys, inconsistent
+**SANs are refused by default.** A CSR may carry a SAN type only when the template has a pattern
+for it: a template that sets only `subject_cn_regex` accepts CSRs **without** SANs. To let devices
+ask for a DNS name, add `san_dns_regex` (likewise `san_email_regex`, `san_upn_regex`). IP address
+and URI SANs have no pattern: they are accepted only with `allow_any_identity = true` and no
+`san_*_regex`, which accepts any SAN. Unknown keys, inconsistent
 validity limits and the invalid values above are rejected **at startup**, so a typo cannot silently
 weaken a template.
 
@@ -221,17 +225,21 @@ process list (the configuration wizard writes its file readable by its owner onl
 
 **Abuse controls.** A client address that sends 10 wrong credentials is refused with `429` and a
 `Retry-After` delay that doubles with every further failure (30 seconds up to 1 hour); a correct
-authentication clears the count. At most 16 enrollments run at the same time (`503` otherwise)
-and a request body is limited to 64 KiB. The lockout is per client address (`X-Forwarded-For` is
-honoured only from `audit_trusted_proxy_cidrs`), so devices behind one NAT share it. These
+EST bootstrap password or SCEP challenge clears the count (a SCEP renewal does not). The EST
+lockout only applies to HTTP Basic: a request with a TLS client certificate is not locked out. At
+most 16 enrollments run at the same time (`503` otherwise) and a request body is limited to
+64 KiB. The lockout is per client address (`X-Forwarded-For` is honoured only from
+`audit_trusted_proxy_cidrs`), so devices behind one NAT share it. These
 controls come on top of the optional `rate_limit_per_second`, which you should set when the
 endpoints are reachable from untrusted networks; the server logs a warning when it is not set.
 
 **Audit.** Every enrollment attempt is logged (`info` on success, `warn` on refusal) with the client
 address and how it authenticated, and recorded in the tamper-evident audit trail when
 [auditing](../configuration/server_configuration_file.md) is enabled, with the identifier of the
-issued certificate. Error replies to devices carry fixed messages; the reasons (certificate
-identifiers, states) are only in the server log.
+issued certificate. Error replies to devices are plain text (`text/plain; charset=utf-8`,
+`X-Content-Type-Options: nosniff`). Authentication refusals carry fixed messages, whose reasons
+(certificate identifiers, states) are only in the server log; a CSR refused by the certificate
+template is answered with the rule it breaks.
 
 ## Troubleshooting
 

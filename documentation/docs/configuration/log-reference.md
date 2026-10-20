@@ -440,13 +440,11 @@ Crate path: `crate/server`
 | `trace` | `{request}` | `src/core/operations/query.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/register.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/revoke.rs` | `request` — … | — |
-| `trace` | `{request}` | `src/core/operations/rng_seed.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/sign.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/signature_verify.rs` | `request` — … | — |
 | `trace` | `{}` | `src/core/operations/activate.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/attributes/delete.rs` | — | — |
-| `trace` | `{}` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/locate.rs` | — | — |
 | `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
 | `error` | `Failed to find KMIP version` | `src/routes/kmip/handlers.rs` | — | — |
@@ -744,16 +742,10 @@ Crate path: `crate/server`
 | `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
-| `warn` | `EST simpleenroll rejected: no valid client authentication` | `src/routes/est/enroll.rs` | - | - |
 | `warn` | `EST simplereenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
 | `warn` | `SCEP request {} rejected (failInfo={}): {}` | `src/routes/scep/pki_operation.rs` | - | - |
-| `warn` | `SCEP: unreadable pkiMessage: {e}` | `src/routes/scep/pki_operation.rs` | `e` | - |
 | `info` | `GET /.well-known/est/cacerts` | `src/routes/est/cacerts.rs` | - | - |
 | `info` | `GET /.well-known/est/csrattrs` | `src/routes/est/csrattrs.rs` | - | - |
-| `info` | `POST /.well-known/est/simpleenroll ({} bytes)` | `src/routes/est/enroll.rs` | - | - |
-| `info` | `POST /.well-known/est/simplereenroll ({} bytes)` | `src/routes/est/enroll.rs` | - | - |
-| `info` | `SCEP PKIOperation: messageType={} transactionID={}` | `src/routes/scep/pki_operation.rs` | - | - |
-| `debug` | `enrollment: issued certificate {uid} from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `ca_uid` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 | `debug` | `decrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
@@ -778,11 +770,32 @@ Crate path: `crate/server`
 | `warn` | `Socket server: cannot set socket timeouts, dropping connection: {e}` | `src/socket_server.rs` | `e` | - |
 | `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
 | `debug` | `Generated JWT for original KACLS` | `src/routes/google_cse/operations.rs` | - | - |
-| `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
 | `warn` | `Session: rejecting reserved service identity from stored session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
 | `warn` | `{log_prefix}: rejecting reserved service identity in SPIRE auth: {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
-| `warn` | `EST enabled without est_template: only the baseline policy applies (RSA >= 2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN and SAN)` | `src/config/params/server_params.rs` | - | - |
-| `warn` | `SCEP enabled without scep_template: only the baseline policy applies (RSA >= 2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN and SAN)` | `src/config/params/server_params.rs` | - | - |
+| `error` | `enrollment audit: {operation} event could not be queued` | `src/routes/enrollment.rs` | `operation` | Audit event lost; check the audit backend. |
+| `error` | `enrollment: deactivating non-conforming certificate {uid}: {e}` | `src/routes/enrollment.rs` | `uid`, `e` | Issued certificate failed the end-entity check and was deactivated; investigate the CA/template. |
+| `warn` | `` enrollment audit: {operation} refused for `{principal}` from {client}: {} `` | `src/routes/enrollment.rs` | `operation`, `principal`, `client` | - |
+| `warn` | `enrollment: CA certificate not found: {uid}` | `src/routes/enrollment.rs` | `uid` | - |
+| `warn` | `EST simpleenroll refused: {client} is locked out` | `src/routes/est/enroll.rs` | `client` | 10 failures lock the address out, 30 s doubling up to 1 h. |
+| `warn` | `EST simpleenroll rejected: the client certificate was enrolled elsewhere` | `src/routes/est/enroll.rs` | - | - |
+| `warn` | `EST simpleenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
+| `warn` | `SCEP PKIOperation refused: {client} is locked out` | `src/routes/scep/pki_operation.rs` | `client` | 10 failures lock the address out, 30 s doubling up to 1 h. |
+| `warn` | `SCEP: refusing a pkiMessage from {client} with an invalid transactionID ({})` | `src/routes/scep/pki_operation.rs` | `client` | - |
+| `warn` | `SCEP: unreadable pkiMessage from {client}: {e}` | `src/routes/scep/pki_operation.rs` | `client`, `e` | - |
+| `warn` | `SECURITY: EST/SCEP is enabled but rate_limit_per_second is not set. The enrollment endpoints are reachable before authentication; set rate_limit_per_second in the server configuration for production deployments (failed authentications are also locked out per client address).` | `src/config/params/server_params.rs` | - | Set `rate_limit_per_second` in production. |
+| `warn` | `SECURITY: SCEP is enabled without TLS. A network attacker can substitute the CA certificate returned by GetCACert and observe or replay requests. Enable TLS, or have devices verify the CA fingerprint out of band.` | `src/config/params/server_params.rs` | - | Enable TLS or have devices pin the CA fingerprint. |
+| `info` | `` enrollment audit: {operation} succeeded for `{principal}` from {client}: certificate {uid} `` | `src/routes/enrollment.rs` | `operation`, `principal`, `client`, `uid` | - |
+| `info` | `POST /.well-known/est/simpleenroll from {client}` | `src/routes/est/enroll.rs` | `client` | - |
+| `info` | `POST /.well-known/est/simplereenroll from {client}` | `src/routes/est/enroll.rs` | `client` | - |
+| `info` | `SCEP PKIOperation from {client}: messageType={} transactionID={}` | `src/routes/scep/pki_operation.rs` | `client` | - |
+| `debug` | `enrollment: issued certificate {uid} (serial {serial_hex}) from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `serial_hex`, `ca_uid` | - |
+| `trace` | `Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes` | `src/core/operations/certify/certify_op.rs` | - | - |
+| `trace` | `RNGSeed: {} bytes` | `src/core/operations/rng_seed.rs` | - | - |
+| `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped, and `create` when Crypto Officers are configured). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
+| `error` | `` SCEP: the enrollment CA `{ca_uid}` cannot be used: {e} `` | `src/routes/scep/pki_operation.rs` | `ca_uid`, `e` | Server-side detail only: the client gets a fixed HTTP 500 without CA identifiers. |
+| `warn` | `enrollment: CA certificate not found: {ca_uid}` | `src/routes/enrollment.rs` | `ca_uid` | - |
+| `warn` | `enrollment: the CA private key {} is not Active` | `src/routes/enrollment.rs` | key uid | Logged only; the enrollment error carries no UID. |
+| `warn` | `SCEP request {} from {client} rejected: {reason} (messageType={message_type})` | `src/routes/scep/pki_operation.rs` | `client`, `reason`, `message_type` | Counts toward the enrollment lockout. |
 
 ### `cosmian_kms_server_database`
 

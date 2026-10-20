@@ -25,6 +25,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_attributes::Attributes,
+            kmip_objects::{Object, ObjectType},
             kmip_operations::Certify,
             kmip_types::{CertificateRequestType, LinkType, LinkedObjectIdentifier},
         },
@@ -80,7 +81,8 @@ fn log_ca_use_failure(ca_uid: &str, error: &KmsError) {
     warn!(
         "enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. \
          The CA owner must grant it `certify` on the CA certificate and private key (and \
-         `decrypt` on the wrapping key if the CA key is wrapped)."
+         `decrypt` on the wrapping key if the CA key is wrapped, and `create` when Crypto \
+         Officers are configured)."
     );
 }
 
@@ -94,7 +96,7 @@ pub(crate) fn secrets_equal(a: &str, b: &str) -> bool {
 pub(crate) fn client_ip(kms: &KMS, req: &HttpRequest) -> IpAddr {
     resolve_client_ip(
         req.peer_addr().map(|a| a.ip()),
-        forwarded_for(req.headers()).as_deref(),
+        || forwarded_for(req.headers()),
         &kms.params.audit_trusted_proxy_cidrs,
     )
     .unwrap_or(UNKNOWN_CLIENT)
@@ -277,10 +279,14 @@ pub(crate) async fn load_ca_signing_material(
     .await
     .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;
     if private_key.state() != State::Active {
-        return Err(KmsError::InvalidRequest(format!(
-            "the CA private key '{}' is not Active",
+        // The UID is operator configuration: log it, do not echo it to clients.
+        warn!(
+            "enrollment: the CA private key {} is not Active",
             private_key.id()
-        )));
+        );
+        return Err(KmsError::InvalidRequest(
+            "the enrollment CA key is not available".to_owned(),
+        ));
     }
     let unwrapped = Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), &user))
         .await
@@ -334,14 +340,13 @@ fn assert_enrolled_leaf(certificate: &X509) -> KResult<()> {
     Ok(())
 }
 
-/// Issue a certificate for `csr` from the CA `ca_uid` after enforcing `template`
-/// (a baseline template when `None`). The certificate is stored under the CA certificate owner.
+/// Issue a certificate for `csr` from the CA `ca_uid` after enforcing `template`. The
+/// certificate is stored under the CA certificate owner.
 pub(crate) async fn issue_from_csr(
     kms: &KMS,
     ca_uid: &str,
     csr: &X509Req,
-    template: Option<&CertTemplate>,
-    requested_validity_days: Option<u32>,
+    template: &CertTemplate,
 ) -> KResult<IssuedCertificate> {
     let user = UserId::from(ENROLLMENT_SERVICE_USER);
     let ca_owner = kms
@@ -349,7 +354,11 @@ pub(crate) async fn issue_from_csr(
         .retrieve_object(ca_uid)
         .await
         .context("retrieve CA certificate")?
-        .ok_or_else(|| KmsError::ItemNotFound(format!("CA certificate not found: {ca_uid}")))?
+        .ok_or_else(|| {
+            // The UID is operator configuration: log it, do not echo it to clients.
+            warn!("enrollment: CA certificate not found: {ca_uid}");
+            KmsError::ItemNotFound("the enrollment CA certificate is not available".to_owned())
+        })?
         .owner_id()
         .to_owned();
     let mut attributes = Attributes::default();
@@ -357,13 +366,7 @@ pub(crate) async fn issue_from_csr(
         LinkType::CertificateLink,
         LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
     );
-    let baseline = CertTemplate::default();
-    template.unwrap_or(&baseline).apply(
-        csr,
-        kms.vendor_id(),
-        requested_validity_days,
-        &mut attributes,
-    )?;
+    template.apply(csr, kms.vendor_id(), &mut attributes)?;
     let response = Box::pin(certify_for_owner(
         kms,
         Certify {
@@ -473,15 +476,50 @@ pub(crate) async fn ensure_active_certificate_of_ca(
     }
     if found.is_none() {
         // Certificates issued before the serial index existed (or in the short window between
-        // issuance and indexing): fall back to the scan.
-        found = Box::pin(kms.database.find_certificate_by_serial(
-            ca_uid,
-            &serial_hex,
-            kms.vendor_id(),
-        ))
-        .await
-        .context("find_certificate_by_serial")?
-        .map(|(uid, state, _)| (uid, state));
+        // issuance and indexing): fall back to the certificates linked to the CA. Any user
+        // allowed to `Import` can store a copy (or a same-serial certificate) linked to the CA,
+        // so every candidate is checked: only the presented certificate stored under the CA
+        // owner counts.
+        let ca_owner = kms
+            .database
+            .retrieve_object(ca_uid)
+            .await
+            .context("retrieve CA certificate")?
+            .map(|ca_certificate| ca_certificate.owner_id().to_owned());
+        if let Some(ca_owner) = ca_owner {
+            let mut linked = Attributes {
+                object_type: Some(ObjectType::Certificate),
+                ..Attributes::default()
+            };
+            linked.set_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
+            );
+            for (uid, state, _) in kms
+                .database
+                .find_all(Some(&linked), None, kms.vendor_id())
+                .await
+                .context("find certificates of the CA")?
+            {
+                let Some(stored) = kms
+                    .database
+                    .retrieve_object_arc(&uid)
+                    .await
+                    .context("retrieve enrolled certificate")?
+                else {
+                    continue;
+                };
+                let Object::Certificate(stored_certificate) = stored.object() else {
+                    continue;
+                };
+                if stored.owner_id() == &ca_owner
+                    && stored_certificate.certificate_value == presented_der
+                {
+                    found = Some((uid, state));
+                    break;
+                }
+            }
+        }
     }
     match found {
         Some((_, State::Active)) => Ok(()),
@@ -563,7 +601,6 @@ pub(crate) fn csr_matches_certificate_identity(csr: &X509Req, cert: &X509) -> KR
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // test-only assertions on known-good fixtures
 mod tests {
     use super::san_entries;
 
@@ -573,16 +610,20 @@ mod tests {
 
     #[test]
     fn san_comparison_ignores_order_but_not_names() {
-        assert_eq!(san_entries(&AB).unwrap(), san_entries(&BA).unwrap());
+        let ab = san_entries(&AB).ok();
+        assert!(ab.is_some());
+        assert_eq!(ab, san_entries(&BA).ok());
         let other: [u8; 8] = [0x30, 0x06, 0x82, 0x01, b'a', 0x82, 0x01, b'c'];
-        assert_ne!(san_entries(&AB).unwrap(), san_entries(&other).unwrap());
+        let other = san_entries(&other).ok();
+        assert!(other.is_some());
+        assert_ne!(ab, other);
     }
 
     #[test]
     fn malformed_san_is_an_error_not_an_empty_set() {
         // truncated element, trailing bytes, and not a SEQUENCE
-        san_entries(&[0x30, 0x03, 0x82, 0x01]).unwrap_err();
-        san_entries(&[0x30, 0x00, 0x00]).unwrap_err();
-        san_entries(&[0x04, 0x00]).unwrap_err();
+        assert_eq!(san_entries(&[0x30, 0x03, 0x82, 0x01]).ok(), None);
+        assert_eq!(san_entries(&[0x30, 0x00, 0x00]).ok(), None);
+        assert_eq!(san_entries(&[0x04, 0x00]).ok(), None);
     }
 }

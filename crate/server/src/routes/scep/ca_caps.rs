@@ -6,11 +6,15 @@ use actix_web::HttpResponse;
 ///
 /// Fixed on purpose: `DES3` and `SHA-1` are never offered (RFC 8894 §2.9 marks them
 /// optional/historical and they are not approved by FIPS 140-3 / SP 800-131A).
-const CA_CAPABILITIES: &str = "POSTPKIOperation\nSHA-256\nAES\nRenewal";
+const CA_CAPABILITIES: &str = "POSTPKIOperation\nSHA-256\nAES";
 
-/// Answer a `GetCACaps` request as `text/plain`.
-pub(super) fn get_ca_caps() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/plain")
-        .body(CA_CAPABILITIES)
+/// Answer a `GetCACaps` request as `text/plain`. `Renewal` is advertised only when `RenewalReq`
+/// is accepted (`scep_allow_renewal_without_challenge`).
+pub(super) fn get_ca_caps(renewal: bool) -> HttpResponse {
+    let caps = if renewal {
+        format!("{CA_CAPABILITIES}\nRenewal")
+    } else {
+        CA_CAPABILITIES.to_owned()
+    };
+    HttpResponse::Ok().content_type("text/plain").body(caps)
 }

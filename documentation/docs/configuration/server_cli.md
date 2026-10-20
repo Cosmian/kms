@@ -908,11 +908,11 @@ Options:
       --audit-trusted-proxy-cidrs <AUDIT_TRUSTED_PROXY_CIDRS>
           Only set this if the KMS sits behind a reverse proxy or load balancer.
 
-          When set, the audit middleware trusts the `X-Forwarded-For` header only if
-          the direct TCP peer is one of the proxy addresses listed here, and records
-          the header's value as `client_ip` instead. This must be scoped to your
-          proxy's own address(es) — trusting it from any peer lets a remote attacker
-          forge `client_ip` in the audit trail.
+          When set, `X-Forwarded-For` is trusted only if the direct TCP peer is one of the
+          proxy addresses listed here; the client address is then the rightmost entry that is
+          not itself a listed proxy. It is recorded as the audit `client_ip` and keys the EST/SCEP
+          failed-authentication lockout. This must be scoped to your proxy's own address(es) —
+          trusting it from any peer lets a remote attacker forge `client_ip` in the audit trail.
 
           Format: comma-separated IP addresses or CIDR blocks, e.g.
           `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)
@@ -1086,7 +1086,8 @@ Options:
           The CA private key must be linked to this certificate. Must be set when
           `est_enabled = true`. Certificates are issued as the reserved `[enrollment-service]`
           identity: the CA owner must grant it `certify` on this certificate and on its private
-          key. Issued certificates are owned by the CA owner.
+          key (plus `create` when `crypto_officer_users` is set). Issued certificates are owned by
+          the CA owner.
 
       --est-require-client-cert <EST_REQUIRE_CLIENT_CERT>
           Require TLS client-certificate authentication for `/simpleenroll` (RFC 7030 §3.3.2).
@@ -1130,8 +1131,8 @@ Options:
           SCEP encrypts requests to the CA public key, so this MUST be an RSA CA whose private
           key is linked to the certificate. Must be set when `scep_enabled = true`.
           Certificates are issued as the reserved `[enrollment-service]` identity: the CA owner
-          must grant it `certify` on this certificate and on its private key. Issued certificates
-          are owned by the CA owner.
+          must grant it `certify` on this certificate and on its private key (plus `create` when
+          `crypto_officer_users` is set). Issued certificates are owned by the CA owner.
 
       --scep-challenge-password <SCEP_CHALLENGE_PASSWORD>
           Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an

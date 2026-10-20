@@ -5,27 +5,41 @@
 //! outer `pkiMessage` is built with the partial CMS API from [`super::cms_ffi`].
 //!
 //! Every `unsafe` block carries a `// SAFETY:` comment.
-#![allow(unsafe_code)]
 
 use std::{
     ffi::{CString, c_int, c_void},
+    marker::PhantomData,
     ptr,
 };
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
     cms::{CMSOptions, CmsContentInfo},
+    nid::Nid,
     pkey::{PKeyRef, Private},
     stack::Stack,
     symm::Cipher,
     x509::{X509, X509Ref},
 };
+use x509_parser::asn1_rs::{Any, Class, FromDer};
 
-use super::cms_ffi::{
-    CMS_BINARY, CMS_DETACHED, CMS_NO_SIGNER_CERT_VERIFY, CMS_NOSMIMECAP, CMS_PARTIAL,
-    CMS_SignerInfo, attribute_string_bytes,
+use super::{
+    cms_ffi::{
+        CMS_BINARY, CMS_DETACHED, CMS_NO_SIGNER_CERT_VERIFY, CMS_NOSMIMECAP, CMS_PARTIAL,
+        CMS_SignerInfo, attribute_string_bytes,
+    },
+    oid::nid_of,
 };
 use crate::{crypto_bail, crypto_error, error::result::CryptoResult};
+
+/// Content-encryption algorithms accepted in a `pkcsPKIEnvelope`: the `AES` capability of
+/// RFC 8894 §3.5.2. DES, 3DES and RC2 are refused even when a loaded provider implements them.
+const ENVELOPE_CIPHERS: [Nid; 3] = [Nid::AES_128_CBC, Nid::AES_192_CBC, Nid::AES_256_CBC];
+/// Key-transport algorithms accepted for the (RSA) CA recipient: PKCS#1 v1.5 and RSAES-OAEP.
+const ENVELOPE_KEY_TRANSPORTS: [Nid; 2] = [Nid::RSAENCRYPTION, Nid::RSAESOAEP];
+/// Signer digest algorithms accepted on a `pkiMessage` (RFC 8894 §3.5.2 `SHA-256`/`SHA-512`,
+/// plus SHA-384); SHA-1 and MD5 are refused even when a loaded provider still verifies them.
+const SIGNER_DIGESTS: [Nid; 3] = [Nid::SHA256, Nid::SHA384, Nid::SHA512];
 
 /// OID of the SCEP `transactionID` signed attribute (RFC 8894 §3.2.1.1).
 pub const OID_TRANSACTION_ID: &str = "2.16.840.1.113733.1.9.7";
@@ -100,6 +114,7 @@ pub struct ParsedPkiMessage {
 ///
 /// # Errors
 /// Fails when OpenSSL cannot build the structure.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn certs_only_der(certs: &[X509]) -> CryptoResult<Vec<u8>> {
     let mut stack = Stack::<X509>::new()?;
     for c in certs {
@@ -141,21 +156,92 @@ pub fn envelope_for_recipient(recipient: &X509Ref, plaintext: &[u8]) -> CryptoRe
 
 /// Decrypt a CMS `EnvelopedData` addressed to `cert` with its private key.
 ///
+/// Only AES-CBC content encryption and RSA key transport are accepted, checked before any
+/// decryption.
+///
 /// # Errors
-/// Fails on malformed input or when the key does not match any recipient.
+/// Fails on malformed input, an algorithm outside the allow-list, or when the key does not
+/// match any recipient.
 pub fn decrypt_envelope(
     envelope_der: &[u8],
     key: &PKeyRef<Private>,
     cert: &X509,
 ) -> CryptoResult<Vec<u8>> {
     let cms = CmsContentInfo::from_der(envelope_der)?;
+    // Walk OpenSSL's DER re-encoding: clients may send BER (indefinite lengths).
+    check_envelope_algorithms(&cms.to_der()?)?;
     Ok(cms.decrypt(key, cert)?)
+}
+
+/// Refuse a `pkcsPKIEnvelope` whose algorithms are outside the SCEP allow-lists.
+///
+/// OpenSSL has no getter for `contentEncryptionAlgorithm`, so the DER is walked (RFC 5652 §6.1):
+/// `ContentInfo { contentType, [0] EnvelopedData { version, [0] originatorInfo OPTIONAL,
+/// recipientInfos SET, encryptedContentInfo { contentType, contentEncryptionAlgorithm, … } } }`.
+fn check_envelope_algorithms(der: &[u8]) -> CryptoResult<()> {
+    let (_, content_info) = der_element(der)?;
+    let (rest, content_type) = der_element(content_info.data)?;
+    if oid_nid(&content_type)? != Nid::PKCS7_ENVELOPED {
+        crypto_bail!("SCEP pkcsPKIEnvelope is not a CMS EnvelopedData");
+    }
+    let (_, explicit) = der_element(rest)?;
+    let (_, enveloped) = der_element(explicit.data)?;
+    let (rest, _version) = der_element(enveloped.data)?;
+    let (mut rest, mut recipient_infos) = der_element(rest)?;
+    if recipient_infos.class() == Class::ContextSpecific {
+        // Skip `[0] originatorInfo`.
+        (rest, recipient_infos) = der_element(rest)?;
+    }
+    let mut remaining = recipient_infos.data;
+    while !remaining.is_empty() {
+        let (next, recipient) = der_element(remaining)?;
+        // KeyTransRecipientInfo is the only untagged choice; kari/kekri/pwri/ori are [1]..[4].
+        if recipient.class() != Class::Universal {
+            crypto_bail!("SCEP pkcsPKIEnvelope recipients must use RSA key transport");
+        }
+        let (r, _version) = der_element(recipient.data)?;
+        let (r, _rid) = der_element(r)?;
+        let (_, key_alg) = der_element(r)?;
+        ensure_allowed("key-transport", &key_alg, &ENVELOPE_KEY_TRANSPORTS)?;
+        remaining = next;
+    }
+    let (_, encrypted_content_info) = der_element(rest)?;
+    let (r, _content_type) = der_element(encrypted_content_info.data)?;
+    let (_, content_alg) = der_element(r)?;
+    ensure_allowed("content-encryption", &content_alg, &ENVELOPE_CIPHERS)
+}
+
+/// The next DER element of `input` and the bytes after it.
+fn der_element(input: &[u8]) -> CryptoResult<(&[u8], Any<'_>)> {
+    Any::from_der(input).map_err(|e| crypto_error!("malformed SCEP pkcsPKIEnvelope: {e}"))
+}
+
+/// The NID of an `OBJECT IDENTIFIER` element.
+fn oid_nid(element: &Any<'_>) -> CryptoResult<Nid> {
+    let oid = element
+        .as_oid()
+        .map_err(|e| crypto_error!("malformed SCEP pkcsPKIEnvelope: {e}"))?;
+    Ok(nid_of(&oid.to_id_string()))
+}
+
+/// Fail unless the `AlgorithmIdentifier` `alg` names one of `allowed`.
+fn ensure_allowed(kind: &str, alg: &Any<'_>, allowed: &[Nid]) -> CryptoResult<()> {
+    let (_, oid) = der_element(alg.data)?;
+    let nid = oid_nid(&oid)?;
+    if !allowed.contains(&nid) {
+        crypto_bail!(
+            "SCEP {kind} algorithm {} is not allowed",
+            nid.short_name().unwrap_or("unknown")
+        );
+    }
+    Ok(())
 }
 
 /// Owned `ASN1_OBJECT` created from a dotted OID.
 struct Asn1Obj(*mut openssl_sys::ASN1_OBJECT);
 
 impl Asn1Obj {
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn new(oid: &str) -> CryptoResult<Self> {
         let c = CString::new(oid).map_err(|e| crypto_error!("invalid OID {oid}: {e}"))?;
         // SAFETY: `c` is a valid NUL-terminated string; `no_name = 1` restricts to dotted form.
@@ -168,36 +254,42 @@ impl Asn1Obj {
 }
 
 impl Drop for Asn1Obj {
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn drop(&mut self) {
         // SAFETY: pointer was returned by `OBJ_txt2obj` and is freed exactly once.
         unsafe { openssl_sys::ASN1_OBJECT_free(self.0) }
     }
 }
 
-/// Owned memory BIO.
-struct MemBio(*mut openssl_sys::BIO);
+/// Owned memory BIO; `'a` is the lifetime of the buffer a read-only BIO reads from.
+struct MemBio<'a>(*mut openssl_sys::BIO, PhantomData<&'a [u8]>);
 
-impl MemBio {
+impl MemBio<'static> {
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn new() -> CryptoResult<Self> {
         // SAFETY: `BIO_s_mem` returns a static method table; `BIO_new` takes it by pointer.
         let p = unsafe { openssl_sys::BIO_new(openssl_sys::BIO_s_mem()) };
         if p.is_null() {
             crypto_bail!("BIO_new failed");
         }
-        Ok(Self(p))
+        Ok(Self(p, PhantomData))
     }
+}
 
-    /// A read-only BIO over `data`; `data` MUST outlive the returned BIO.
-    fn over(data: &[u8]) -> CryptoResult<Self> {
+impl<'a> MemBio<'a> {
+    /// A read-only BIO over `data`.
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    fn over(data: &'a [u8]) -> CryptoResult<Self> {
         let len = c_int::try_from(data.len())?;
-        // SAFETY: the BIO only reads `len` bytes from `data`, which outlives it (caller contract).
+        // SAFETY: the BIO only reads `len` bytes from `data`, which outlives it (enforced by `'a`).
         let p = unsafe { openssl_sys::BIO_new_mem_buf(data.as_ptr().cast::<c_void>(), len) };
         if p.is_null() {
             crypto_bail!("BIO_new_mem_buf failed");
         }
-        Ok(Self(p))
+        Ok(Self(p, PhantomData))
     }
 
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn read_all(&self) -> Vec<u8> {
         let mut out = Vec::new();
         let mut buf = [0_u8; 4096];
@@ -217,7 +309,8 @@ impl MemBio {
     }
 }
 
-impl Drop for MemBio {
+impl Drop for MemBio<'_> {
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn drop(&mut self) {
         // SAFETY: pointer came from `BIO_new`/`BIO_new_mem_buf` and is freed exactly once.
         unsafe { openssl_sys::BIO_free_all(self.0) };
@@ -225,6 +318,7 @@ impl Drop for MemBio {
 }
 
 /// Add a string-typed signed attribute.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 fn add_attr(
     si: *mut CMS_SignerInfo,
     oid: &str,
@@ -258,6 +352,7 @@ fn add_attr(
 ///
 /// # Errors
 /// Fails when OpenSSL cannot build or sign the structure.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn build_signed_pkimessage(
     signer_cert: &X509Ref,
     signer_key: &PKeyRef<Private>,
@@ -349,6 +444,7 @@ pub fn build_signed_pkimessage(
 }
 
 /// Read one string-typed signed attribute from a `SignerInfo`.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 fn get_attr(si: *mut CMS_SignerInfo, oid: &str) -> CryptoResult<Option<Vec<u8>>> {
     let obj = Asn1Obj::new(oid)?;
     // SAFETY: `si` is a live SignerInfo and `obj` a valid object.
@@ -376,13 +472,15 @@ fn parse_nonce(name: &str, v: &[u8]) -> CryptoResult<[u8; NONCE_LEN]> {
 
 /// Parse and verify a signed SCEP `pkiMessage`.
 ///
-/// Checks that exactly one `SignerInfo` is present, verifies the CMS signature against the
-/// certificate embedded in the message (no chain validation: trust is evaluated by the
-/// caller), and extracts the SCEP signed attributes.
+/// Checks that exactly one `SignerInfo` is present and that its digest algorithm is SHA-256,
+/// SHA-384 or SHA-512, verifies the CMS signature against the certificate embedded in the
+/// message (no chain validation: trust is evaluated by the caller), and extracts the SCEP signed
+/// attributes.
 ///
 /// # Errors
-/// Fails on malformed messages, a signer count different from one, a missing mandatory
-/// attribute, or an invalid signature.
+/// Fails on malformed messages, a signer count different from one, a refused digest algorithm,
+/// a missing mandatory attribute, or an invalid signature.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn parse_signed_pkimessage(der: &[u8]) -> CryptoResult<ParsedPkiMessage> {
     let cms = CmsContentInfo::from_der(der)?;
 
@@ -398,6 +496,39 @@ pub fn parse_signed_pkimessage(der: &[u8]) -> CryptoResult<ParsedPkiMessage> {
     }
     // SAFETY: index 0 < count.
     let si = unsafe { openssl_sys::OPENSSL_sk_value(stack, 0) }.cast::<CMS_SignerInfo>();
+
+    let mut digest_alg: *mut c_void = ptr::null_mut();
+    // SAFETY: `si` is live; only the digest out-parameter is requested (owned by `si`).
+    unsafe {
+        super::cms_ffi::CMS_SignerInfo_get0_algs(
+            si,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &raw mut digest_alg,
+            ptr::null_mut(),
+        );
+    }
+    let mut digest_oid: *const openssl_sys::ASN1_OBJECT = ptr::null();
+    if !digest_alg.is_null() {
+        // SAFETY: `digest_alg` is the live `X509_ALGOR` of `si`; only the OID is requested.
+        unsafe {
+            openssl_sys::X509_ALGOR_get0(
+                &raw mut digest_oid,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                digest_alg.cast(),
+            );
+        }
+    }
+    // SAFETY: `OBJ_obj2nid` accepts null (returns `NID_undef`); `digest_oid` is owned by `si`.
+    let digest = Nid::from_raw(unsafe { openssl_sys::OBJ_obj2nid(digest_oid) });
+    if !SIGNER_DIGESTS.contains(&digest) {
+        crypto_bail!(
+            "SCEP pkiMessage digest algorithm {} is not allowed (SHA-256, SHA-384 or SHA-512 \
+             required)",
+            digest.short_name().unwrap_or("unknown")
+        );
+    }
 
     // Signature verification (also resolves the signer certificate inside `si`).
     // SAFETY: `cms` is live; `CMS_get0_content` returns a pointer into it.
@@ -476,11 +607,15 @@ pub fn parse_signed_pkimessage(der: &[u8]) -> CryptoResult<ParsedPkiMessage> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
+    use std::ffi::{c_char, c_uint};
+
     use openssl::{
         asn1::Asn1Time,
         bn::BigNum,
         hash::MessageDigest,
+        lib_ctx::LibCtx,
         pkey::PKey,
+        provider::Provider,
         rsa::Rsa,
         x509::{X509NameBuilder, X509Req},
     };
@@ -582,32 +717,80 @@ mod tests {
         parse_signed_pkimessage(&msg).unwrap_err();
     }
 
-    #[test]
-    fn multiple_signers_are_rejected() {
-        let (c1, k1) = self_signed("one");
-        let (c2, k2) = self_signed("two");
-        // Plain CMS signed data with two signers built through the partial API.
-        // SAFETY: null pointers are valid for a partial structure with no data.
+    // Test-only `_ex` variants (absent from openssl-sys) to build fixtures in a chosen context.
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI declarations matching `cms.h`
+    unsafe extern "C" {
+        fn CMS_sign_ex(
+            signcert: *mut openssl_sys::X509,
+            pkey: *mut openssl_sys::EVP_PKEY,
+            certs: *mut openssl_sys::stack_st_X509,
+            data: *mut openssl_sys::BIO,
+            flags: c_uint,
+            libctx: *mut openssl_sys::OSSL_LIB_CTX,
+            propq: *const c_char,
+        ) -> *mut openssl_sys::CMS_ContentInfo;
+        fn CMS_encrypt_ex(
+            certs: *mut openssl_sys::stack_st_X509,
+            data: *mut openssl_sys::BIO,
+            cipher: *const openssl_sys::EVP_CIPHER,
+            flags: c_uint,
+            libctx: *mut openssl_sys::OSSL_LIB_CTX,
+            propq: *const c_char,
+        ) -> *mut openssl_sys::CMS_ContentInfo;
+    }
+
+    /// A library context with providers the build may not load by default (`default`, and
+    /// `legacy` in non-FIPS builds), so that fixtures using refused algorithms can be built.
+    struct FixtureCtx {
+        _providers: Vec<Provider>,
+        ctx: LibCtx,
+    }
+
+    impl FixtureCtx {
+        fn new(providers: &[&str]) -> Self {
+            let ctx = LibCtx::new().unwrap();
+            let providers = providers
+                .iter()
+                .map(|name| Provider::load(Some(&ctx), name).unwrap())
+                .collect();
+            Self {
+                _providers: providers,
+                ctx,
+            }
+        }
+    }
+
+    /// A `pkiMessage` signed by every entry of `signers` with digest `md`, built in `ctx`
+    /// (null: the default library context).
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    fn signed_by(
+        ctx: *mut openssl_sys::OSSL_LIB_CTX,
+        signers: &[(&X509, &PKey<Private>)],
+        md: *const openssl_sys::EVP_MD,
+    ) -> Vec<u8> {
+        // SAFETY: null signer/data are valid for a partial structure; `ctx` is null or live.
         let raw = unsafe {
-            openssl_sys::CMS_sign(
+            CMS_sign_ex(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 CMS_PARTIAL | CMS_BINARY,
+                ctx,
+                ptr::null(),
             )
         };
         assert!(!raw.is_null());
         // SAFETY: `raw` is an owned structure.
         let cms = unsafe { CmsContentInfo::from_ptr(raw) };
-        for (c, k) in [(&c1, &k1), (&c2, &k2)] {
+        for (c, k) in signers {
             // SAFETY: all handles are live.
             let si = unsafe {
                 super::super::cms_ffi::CMS_add1_signer(
                     cms.as_ptr(),
                     c.as_ptr(),
                     k.as_ptr(),
-                    openssl_sys::EVP_sha256(),
+                    md,
                     CMS_NOSMIMECAP | CMS_BINARY,
                 )
             };
@@ -643,9 +826,119 @@ mod tests {
             },
             1
         );
-        let der = cms.to_der().unwrap();
+        cms.to_der().unwrap()
+    }
+
+    /// An `EnvelopedData` of `b"csr"` addressed to `recipient` with `cipher`, built in `ctx`.
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    fn envelope_with(ctx: &FixtureCtx, recipient: &X509, cipher: Cipher) -> Vec<u8> {
+        let mut certs = Stack::<X509>::new().unwrap();
+        certs.push(recipient.clone()).unwrap();
+        let data = MemBio::over(b"csr").unwrap();
+        // SAFETY: all handles are live for the call; the result is owned.
+        let raw = unsafe {
+            CMS_encrypt_ex(
+                certs.as_ptr(),
+                data.0,
+                cipher.as_ptr(),
+                CMS_BINARY,
+                ctx.ctx.as_ptr(),
+                ptr::null(),
+            )
+        };
+        assert!(!raw.is_null(), "{}", openssl::error::ErrorStack::get());
+        // SAFETY: `raw` is an owned structure.
+        unsafe { CmsContentInfo::from_ptr(raw) }.to_der().unwrap()
+    }
+
+    #[test]
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    fn multiple_signers_are_rejected() {
+        let (c1, k1) = self_signed("one");
+        let (c2, k2) = self_signed("two");
+        // SAFETY: `EVP_sha256` returns a static method.
+        let der = signed_by(ptr::null_mut(), &[(&c1, &k1), (&c2, &k2)], unsafe {
+            openssl_sys::EVP_sha256()
+        });
         let err = parse_signed_pkimessage(&der).unwrap_err().to_string();
         assert!(err.contains("exactly one SignerInfo"), "{err}");
+    }
+
+    #[test]
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    fn signer_digest_allow_list() {
+        let ctx = FixtureCtx::new(&["default"]);
+        let (cert, key) = self_signed("client");
+        // SAFETY: the `EVP_*` digest getters return static methods.
+        let (sha1, md5, sha384, sha512) = unsafe {
+            (
+                openssl_sys::EVP_sha1(),
+                openssl_sys::EVP_md5(),
+                openssl_sys::EVP_sha384(),
+                openssl_sys::EVP_sha512(),
+            )
+        };
+        for md in [sha1, md5] {
+            let der = signed_by(ctx.ctx.as_ptr(), &[(&cert, &key)], md);
+            let err = parse_signed_pkimessage(&der).unwrap_err().to_string();
+            assert!(err.contains("digest algorithm"), "{err}");
+        }
+        for md in [sha384, sha512] {
+            let der = signed_by(ctx.ctx.as_ptr(), &[(&cert, &key)], md);
+            assert_eq!(
+                parse_signed_pkimessage(&der).unwrap().attrs,
+                request_attrs()
+            );
+        }
+    }
+
+    #[test]
+    fn aes_cbc_envelopes_are_accepted() {
+        let (ca_cert, ca_key) = self_signed("ca");
+        let mut certs = Stack::<X509>::new().unwrap();
+        certs.push(ca_cert.clone()).unwrap();
+        for cipher in [
+            Cipher::aes_128_cbc(),
+            Cipher::aes_192_cbc(),
+            Cipher::aes_256_cbc(),
+        ] {
+            let envelope = CmsContentInfo::encrypt(&certs, b"csr", cipher, CMSOptions::BINARY)
+                .unwrap()
+                .to_der()
+                .unwrap();
+            assert_eq!(
+                decrypt_envelope(&envelope, &ca_key, &ca_cert).unwrap(),
+                b"csr"
+            );
+        }
+    }
+
+    #[test]
+    fn des3_envelope_is_refused() {
+        let ctx = FixtureCtx::new(&["default"]);
+        let (ca_cert, ca_key) = self_signed("ca");
+        let envelope = envelope_with(&ctx, &ca_cert, Cipher::des_ede3_cbc());
+        let err = decrypt_envelope(&envelope, &ca_key, &ca_cert)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("content-encryption algorithm DES-EDE3-CBC is not allowed"),
+            "{err}"
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn des_and_rc2_envelopes_are_refused() {
+        let ctx = FixtureCtx::new(&["default", "legacy"]);
+        let (ca_cert, ca_key) = self_signed("ca");
+        for cipher in [Cipher::des_cbc(), Cipher::rc2_cbc()] {
+            let envelope = envelope_with(&ctx, &ca_cert, cipher);
+            let err = decrypt_envelope(&envelope, &ca_key, &ca_cert)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("is not allowed"), "{err}");
+        }
     }
 
     #[test]

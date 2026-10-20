@@ -25,7 +25,8 @@ impl WordTokenizer {
 
         for word in target_words {
             let mut uuid = [0; 16];
-            rng.fill_bytes(&mut uuid).map_err(|e| {
+            // tokens are returned to clients: public DRBG (rng/mod.rs)
+            rng.fill_public_bytes(&mut uuid).map_err(|e| {
                 AnoError::AnonymizationError(format!("token generation failed: {e}"))
             })?;
             mapping.insert(word.to_lowercase(), hex::encode_upper(uuid));

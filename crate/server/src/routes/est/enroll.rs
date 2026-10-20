@@ -86,6 +86,7 @@ fn unauthorized(basic_allowed: bool) -> HttpResponse {
     }
     response
         .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
+        .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
         .body("EST client authentication required")
 }
 
@@ -126,7 +127,12 @@ async fn issue_and_respond(kms: &KMS, csr: &X509Req) -> KResult<HttpResponse> {
         .est_ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("EST enabled without est_ca_uid".to_owned()))?;
-    let issued = issue_from_csr(kms, ca_uid, csr, kms.params.est_template.as_ref(), None).await?;
+    let template = kms
+        .params
+        .est_template
+        .as_ref()
+        .ok_or_else(|| KmsError::ServerError("EST enabled without est_template".to_owned()))?;
+    let issued = issue_from_csr(kms, ca_uid, csr, template).await?;
     let der = certs_only_der(&[issued.certificate])?;
     let mut response = base64_response(CT_CERTS_ONLY, &der);
     response
@@ -151,16 +157,18 @@ pub(crate) async fn post_simpleenroll(
     }
     let started = Instant::now();
     let client = client_ip(&kms, &req);
-    if let Some(wait) = kms.enrollment_guard.locked_for(client) {
-        warn!("EST simpleenroll refused: {client} is locked out");
-        return Ok(locked_response(wait));
-    }
     info!("POST /.well-known/est/simpleenroll from {client}");
 
     let peer = req.conn_data::<PeerCertificate>().map(|p| p.cert.clone());
     let principal = if let Some(peer) = &peer {
         format!("est-mtls:{}", subject_cn(peer))
     } else {
+        // The lockout only guards the guessable Basic password: a client certificate cannot
+        // be guessed, so failures from a shared address must not block mutual-TLS clients.
+        if let Some(wait) = kms.enrollment_guard.locked_for(client) {
+            warn!("EST simpleenroll refused: {client} is locked out");
+            return Ok(locked_response(wait));
+        }
         match check_basic(&kms, &req) {
             BasicLogin::Valid => {
                 kms.enrollment_guard.record_success(client);

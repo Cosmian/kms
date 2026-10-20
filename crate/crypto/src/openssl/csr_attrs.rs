@@ -1,5 +1,4 @@
 //! Access to PKCS#10 request attributes not exposed by the safe `openssl` API.
-#![allow(unsafe_code)]
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
@@ -18,6 +17,7 @@ use crate::error::CryptoError;
 ///
 /// # Errors
 /// Fails when the request cannot be copied, extended or re-signed.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn csr_with_challenge_password(
     req: &X509ReqRef,
     key: &PKeyRef<Private>,
@@ -52,6 +52,7 @@ pub fn csr_with_challenge_password(
 /// Return the PKCS#9 `challengePassword` attribute of a certification request, if present
 /// and string-typed (RFC 2985 §5.4.1).
 #[must_use]
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn csr_challenge_password(req: &X509ReqRef) -> Option<String> {
     // SAFETY: `req` is a live X509_REQ; the attribute pointer returned by `X509_REQ_get_attr`
     // is owned by the request and only used while `req` is borrowed.

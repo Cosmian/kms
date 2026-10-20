@@ -72,18 +72,21 @@ pub struct CertTemplate {
     pub default_validity_days: u32,
     /// Regular expression every subject `CN` must match.
     pub subject_cn_regex: Option<String>,
-    /// Regular expression every DNS SAN must match.
+    /// Regular expression every DNS SAN must match. SANs are default-deny: without this
+    /// pattern, a CSR carrying a DNS SAN is refused (see `allow_any_identity`).
     pub san_dns_regex: Option<String>,
-    /// Regular expression every rfc822Name SAN must match.
+    /// Regular expression every rfc822Name SAN must match; without it, email SANs are refused.
     pub san_email_regex: Option<String>,
     /// Regular expression every Microsoft UPN `otherName` SAN must match (RFC 5280 does
-    /// not define the UPN; it is used by Windows MDM client certificates).
+    /// not define the UPN; it is used by Windows MDM client certificates); without it, UPN SANs
+    /// are refused.
     pub san_upn_regex: Option<String>,
     /// Accept any subject CN. A template must either set `subject_cn_regex` or opt in
     /// explicitly with `allow_any_identity = true`: the enrollment secret authenticates the
     /// device class, not the name it asks for. When `true`, the `serialNumber`, `UID` and
     /// `emailAddress` subject attributes (which relying parties may use to identify a user) are
-    /// accepted too.
+    /// accepted too, and, if no `san_*_regex` is set, any SAN (including iPAddress and URI,
+    /// which have no pattern and are otherwise always refused).
     pub allow_any_identity: bool,
 }
 
@@ -148,9 +151,28 @@ fn canonical_curve(name: &str) -> String {
 
 /// Return the `basicConstraints` `cA` flag requested by a DER PKCS#10 CSR, or `None` when
 /// the CSR carries no `basicConstraints` extension request.
+///
+/// # Errors
+///
+/// Refuses an unparsable CSR, and a CSR whose extensions OpenSSL would copy from an attribute
+/// this parser cannot read: `X509_REQ_get_extensions` (used by Certify) also reads the
+/// Microsoft `msExtReq` attribute and an `extensionRequest` x509-parser could not decode.
 pub(crate) fn csr_basic_constraints(csr_der: &[u8]) -> KResult<Option<bool>> {
     let (_, csr) = X509CertificationRequest::from_der(csr_der)
         .map_err(|e| invalid(format!("invalid CSR: {e}")))?;
+    for attr in csr.certification_request_info.iter_attributes() {
+        let oid = attr.oid.to_id_string();
+        if matches!(nid_of(&oid), Nid::MS_EXT_REQ | Nid::EXT_REQ)
+            && !matches!(
+                attr.parsed_attribute(),
+                ParsedCriAttribute::ExtensionRequest(_)
+            )
+        {
+            return Err(invalid(format!(
+                "CSR attribute {oid} requests extensions in a form that cannot be validated"
+            )));
+        }
+    }
     Ok(csr.requested_extensions().and_then(|mut exts| {
         exts.find_map(|ext| match ext {
             ParsedExtension::BasicConstraints(bc) => Some(bc.ca),
@@ -160,7 +182,7 @@ pub(crate) fn csr_basic_constraints(csr_der: &[u8]) -> KResult<Option<bool>> {
 }
 
 /// Result of parsing the interesting extension requests of a CSR.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CsrRequests {
     ekus: Option<Vec<String>>,
     dns: Vec<String>,
@@ -318,6 +340,8 @@ impl CertTemplate {
         .into_iter()
         .flatten()
         {
+            // Compile the raw pattern too: wrapped only, `a)|(.*` would compile and match anything.
+            Regex::new(p).map_err(|e| invalid(format!("invalid template regex '{p}': {e}")))?;
             anchored(p)?;
         }
         for e in &self.allowed_ekus {
@@ -355,15 +379,6 @@ impl CertTemplate {
         Ok(())
     }
 
-    /// Validity (days) to issue: the requested value or the template default, clamped to
-    /// `max_validity_days`.
-    #[must_use]
-    pub(crate) fn effective_validity_days(&self, requested: Option<u32>) -> u32 {
-        requested
-            .unwrap_or(self.default_validity_days)
-            .min(self.max_validity_days)
-    }
-
     const fn any_san_regex(&self) -> bool {
         self.san_dns_regex.is_some()
             || self.san_email_regex.is_some()
@@ -371,8 +386,8 @@ impl CertTemplate {
     }
 
     /// Validate `csr` against this template. Returns `KmsError::InvalidRequest` (HTTP 422)
-    /// describing the first violation.
-    pub(crate) fn validate_csr(&self, csr: &X509Req) -> KResult<()> {
+    /// describing the first violation, or the requests parsed from the CSR.
+    fn validate_csr(&self, csr: &X509Req) -> KResult<CsrRequests> {
         // Proof of possession of the private key (RFC 2986 §3, RFC 7030 §3.4).
         let public_key = csr
             .public_key()
@@ -396,7 +411,7 @@ impl CertTemplate {
         self.check_ekus(requests.ekus.as_deref())?;
         self.check_subject(csr)?;
         self.check_sans(&requests)?;
-        Ok(())
+        Ok(requests)
     }
 
     fn check_public_key(&self, public_key: &PKey<Public>) -> KResult<()> {
@@ -441,7 +456,6 @@ impl CertTemplate {
         let Some(requested) = requested else {
             return Ok(());
         };
-        // An empty allowlist refuses every requested EKU (fail closed).
         let allowed = self
             .allowed_ekus
             .iter()
@@ -493,11 +507,20 @@ impl CertTemplate {
         Ok(())
     }
 
+    /// SANs are default-deny: a SAN type is accepted only when the template has a pattern for
+    /// it, or when the template sets `allow_any_identity = true` and no `san_*_regex` at all.
+    /// iPAddress, URI and other SAN types have no pattern, so only that opt-in accepts them.
     fn check_sans(&self, requests: &CsrRequests) -> KResult<()> {
-        for (patt, values, what) in [
-            (&self.san_dns_regex, &requests.dns, "DNS"),
-            (&self.san_email_regex, &requests.emails, "email"),
-            (&self.san_upn_regex, &requests.upns, "UPN"),
+        let any_san = self.allow_any_identity && !self.any_san_regex();
+        for (patt, values, what, key) in [
+            (&self.san_dns_regex, &requests.dns, "DNS", "san_dns_regex"),
+            (
+                &self.san_email_regex,
+                &requests.emails,
+                "email",
+                "san_email_regex",
+            ),
+            (&self.san_upn_regex, &requests.upns, "UPN", "san_upn_regex"),
         ] {
             if let Some(p) = patt {
                 let re = anchored(p)?;
@@ -506,44 +529,33 @@ impl CertTemplate {
                         "{what} SAN '{bad}' does not match the template pattern"
                     )));
                 }
-            }
-        }
-        // Whitelist semantics once SAN patterns are configured: SAN types without a pattern
-        // (URI, IP, …) cannot be vetted and are refused.
-        if self.any_san_regex() {
-            if let Some(kind) = requests.other_san_types.first() {
+            } else if !any_san && !values.is_empty() {
                 return Err(invalid(format!(
-                    "SAN type {kind} is not allowed when the template restricts SAN values"
+                    "{what} SAN is not allowed by the template (no {key})"
                 )));
             }
-            for (patt, values, what) in [
-                (&self.san_dns_regex, &requests.dns, "DNS"),
-                (&self.san_email_regex, &requests.emails, "email"),
-                (&self.san_upn_regex, &requests.upns, "UPN"),
-            ] {
-                if patt.is_none() && !values.is_empty() {
-                    return Err(invalid(format!(
-                        "{what} SAN is not allowed by the template"
-                    )));
-                }
+        }
+        if !any_san {
+            if let Some(kind) = requests.other_san_types.first() {
+                return Err(invalid(format!(
+                    "SAN type {kind} is not allowed by the template (requires allow_any_identity \
+                     = true and no san_*_regex)"
+                )));
             }
         }
         Ok(())
     }
 
     /// Validate `csr` and write the template-driven issuance controls into the `Certify`
-    /// attributes: the clamped validity and, when the CSR requests no EKU, the template EKUs.
-    ///
-    /// `requested_validity_days` is the validity asked for by the protocol, if any.
+    /// attributes: the template validity and, when the CSR requests no EKU, the template EKUs.
     pub(crate) fn apply(
         &self,
         csr: &X509Req,
         vendor_id: &str,
-        requested_validity_days: Option<u32>,
         attributes: &mut Attributes,
     ) -> KResult<()> {
-        self.validate_csr(csr)?;
-        let days = i32::try_from(self.effective_validity_days(requested_validity_days))
+        let requests = self.validate_csr(csr)?;
+        let days = i32::try_from(self.default_validity_days.min(self.max_validity_days))
             .map_err(|e| invalid(format!("validity out of range: {e}")))?;
         attributes.set_requested_validity_days(vendor_id, days);
 
@@ -552,16 +564,13 @@ impl CertTemplate {
         // certificatePolicies (`ALLOWED_CSR_EXTENSIONS`), so only the server sets it.
         let mut extensions =
             format!("[v3_ca]\ncertificatePolicies={ENROLLED_CERTIFICATE_POLICY_OID}\n");
-        if !self.allowed_ekus.is_empty() {
-            let csr_has_eku = parse_csr_requests(&csr.to_der()?)?.ekus.is_some();
-            if !csr_has_eku {
-                let oids = self
-                    .allowed_ekus
-                    .iter()
-                    .map(|e| eku_to_oid(e))
-                    .collect::<KResult<Vec<_>>>()?;
-                extensions = format!("{extensions}extendedKeyUsage={}\n", oids.join(","));
-            }
+        if requests.ekus.is_none() {
+            let oids = self
+                .allowed_ekus
+                .iter()
+                .map(|e| eku_to_oid(e))
+                .collect::<KResult<Vec<_>>>()?;
+            extensions = format!("{extensions}extendedKeyUsage={}\n", oids.join(","));
         }
         attributes.set_x509_extension_file(vendor_id, extensions.into_bytes());
         Ok(())
@@ -696,7 +705,7 @@ mod tests {
         let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
         let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
         let csr = csr_with(&key, "dev1.iot.example", None, None);
-        assert!(t.validate_csr(&csr).is_err());
+        assert!(t.validate_csr(&csr).err().is_some());
         let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
         let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
         t.validate_csr(&csr_with(&key, "dev1.iot.example", None, None))
@@ -728,15 +737,13 @@ mod tests {
     }
 
     #[test]
-    fn validity_is_clamped_to_maximum() {
+    fn raw_pattern_must_compile_on_its_own() {
+        // `^(?:[a-z]+)|(.*)$` compiles and matches anything once wrapped.
         let t = CertTemplate {
-            max_validity_days: 30,
-            default_validity_days: 10,
+            subject_cn_regex: Some(r"[a-z]+)|(.*".to_owned()),
             ..CertTemplate::default()
         };
-        assert_eq!(t.effective_validity_days(None), 10);
-        assert_eq!(t.effective_validity_days(Some(20)), 20);
-        assert_eq!(t.effective_validity_days(Some(9999)), 30);
+        assert!(t.validate().is_err());
     }
 
     #[test]
@@ -906,7 +913,8 @@ mod tests {
         e.other("1.3.6.1.5.5.7.3.9");
         assert!(
             t.validate_csr(&csr_with_extension(&rsa(2048), e.build().unwrap()))
-                .is_err()
+                .err()
+                .is_some()
         );
     }
 
@@ -919,7 +927,8 @@ mod tests {
         assert!(
             CertTemplate::default()
                 .validate_csr(&csr_with(&key, "dev", None, None))
-                .is_err()
+                .err()
+                .is_some()
         );
     }
 
@@ -1067,5 +1076,102 @@ mod tests {
             err.contains("CA") || err.contains("basicConstraints"),
             "{err}"
         );
+    }
+
+    /// SPIRE `sign_intermediate` relies on `csr_basic_constraints` alone, so it must refuse an
+    /// `msExtReq` attribute whatever it requests; the standard attribute is still read.
+    #[test]
+    fn csr_basic_constraints_refuses_ms_ext_req() {
+        let ca_true: &[u8] = &[0x30, 0x03, 0x01, 0x01, 0xFF];
+        for bc in [ca_true, &[0x30, 0x00]] {
+            let der = csr_with_raw_basic_constraints(&MS_EXT_REQ, bc)
+                .to_der()
+                .unwrap();
+            assert_eq!(csr_basic_constraints(&der).ok(), None);
+        }
+        let der = csr_with_raw_basic_constraints(&PKCS9_EXT_REQ, ca_true)
+            .to_der()
+            .unwrap();
+        assert_eq!(csr_basic_constraints(&der).ok(), Some(Some(true)));
+    }
+
+    /// A CSR with CN `dev` and one SAN extension built by `add`.
+    fn csr_with_san(
+        key: &PKey<Private>,
+        add: impl FnOnce(
+            &mut openssl::x509::extension::SubjectAlternativeName,
+        ) -> &mut openssl::x509::extension::SubjectAlternativeName,
+    ) -> X509Req {
+        let b = X509Req::builder().unwrap();
+        let mut san = openssl::x509::extension::SubjectAlternativeName::new();
+        add(&mut san);
+        let ext = san.build(&b.x509v3_context(None)).unwrap();
+        csr_with_extension(key, ext)
+    }
+
+    /// SANs are default-deny: a template without `san_*_regex` (e.g. CN-only, as the wizard
+    /// writes) refuses every SAN, without echoing the CSR value, and still accepts a CSR
+    /// without SANs.
+    #[test]
+    fn cn_only_template_refuses_every_san() {
+        let key = rsa(2048);
+        let cn_only = CertTemplate {
+            subject_cn_regex: Some("dev".to_owned()),
+            ..CertTemplate::default()
+        };
+        cn_only.validate().unwrap();
+        cn_only
+            .validate_csr(&csr_with(&key, "dev", None, None))
+            .unwrap();
+        for (csr, expected) in [
+            (
+                csr_with_san(&key, |s| s.dns("victim.bank.example")),
+                "DNS SAN",
+            ),
+            (
+                csr_with_san(&key, |s| s.email("ceo@bank.example")),
+                "email SAN",
+            ),
+            (csr_with_san(&key, |s| s.ip("10.0.0.1")), "iPAddress"),
+            (
+                csr_with_san(&key, |s| s.uri("spiffe://bank.example/admin")),
+                "uniformResourceIdentifier",
+            ),
+        ] {
+            let err = cn_only.validate_csr(&csr).unwrap_err().to_string();
+            assert!(err.contains(expected), "{err}");
+            assert!(
+                !err.contains("bank.example") && !err.contains("10.0.0.1"),
+                "{err}"
+            );
+        }
+    }
+
+    /// `allow_any_identity` alone accepts any SAN type; once a `san_*_regex` is set, SAN types
+    /// without a pattern are refused again.
+    #[test]
+    fn any_identity_accepts_sans_only_without_san_patterns() {
+        let key = rsa(2048);
+        let open = CertTemplate {
+            allow_any_identity: true,
+            ..CertTemplate::default()
+        };
+        let dns_only = CertTemplate {
+            san_dns_regex: Some("dev".to_owned()),
+            ..open.clone()
+        };
+        open.validate_csr(&csr_with_san(&key, |s| s.dns("dev")))
+            .unwrap();
+        dns_only
+            .validate_csr(&csr_with_san(&key, |s| s.dns("dev")))
+            .unwrap();
+        for csr in [
+            csr_with_san(&key, |s| s.ip("10.0.0.1")),
+            csr_with_san(&key, |s| s.uri("urn:dev")),
+            csr_with_san(&key, |s| s.email("dev@example.com")),
+        ] {
+            open.validate_csr(&csr).unwrap();
+            assert!(dns_only.validate_csr(&csr).err().is_some());
+        }
     }
 }

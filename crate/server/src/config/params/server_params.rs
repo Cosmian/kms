@@ -1028,8 +1028,10 @@ impl ServerParams {
         // configured principal may share its name.
         if res.est_enabled || res.scep_enabled {
             let reserved = crate::routes::enrollment::ENROLLMENT_SERVICE_USER;
-            if res.default_username == reserved
-                || res.crypto_officer.users.iter().any(|u| u == reserved)
+            let is_reserved =
+                |name: &str| crate::middlewares::names_reserved_identity(name, reserved);
+            if is_reserved(&res.default_username)
+                || res.crypto_officer.users.iter().any(|u| is_reserved(u))
             {
                 return Err(KmsError::ServerError(format!(
                     "EST/SCEP is enabled: `default_username` and `crypto_officer_users` must not \

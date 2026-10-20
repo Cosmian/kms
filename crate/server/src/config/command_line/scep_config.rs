@@ -34,8 +34,8 @@ pub struct ScepConfig {
     /// SCEP encrypts requests to the CA public key, so this MUST be an RSA CA whose private
     /// key is linked to the certificate. Must be set when `scep_enabled = true`.
     /// Certificates are issued as the reserved `[enrollment-service]` identity: the CA owner
-    /// must grant it `certify` on this certificate and on its private key. Issued certificates
-    /// are owned by the CA owner.
+    /// must grant it `certify` on this certificate and on its private key (plus `create` when
+    /// `crypto_officer_users` is set). Issued certificates are owned by the CA owner.
     #[clap(long, verbatim_doc_comment)]
     pub scep_ca_uid: Option<String>,
 

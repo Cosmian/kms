@@ -906,3 +906,140 @@ async fn test_request_work_limits() -> KResult<()> {
     }
     Ok(())
 }
+
+/// Once roles are configured only a Crypto Officer may add input to the server DRBG, on both
+/// the TTLV-tag and `RequestMessage` paths.
+#[tokio::test]
+async fn test_rng_seed_is_restricted_to_crypto_officers() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+                ResponseMessageBatchItemVersioned,
+            },
+            kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
+        },
+        kmip_2_1::{
+            kmip_messages::RequestMessageBatchItem,
+            kmip_operations::{Operation, RNGSeed},
+            kmip_types::OperationEnumeration,
+        },
+    };
+
+    use crate::{
+        config::{ClapConfig, MainDBConfig},
+        core::operations::check_role_permission,
+        middlewares::UserId,
+        tests::test_utils::get_tmp_sqlite_path,
+    };
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(vec![alice.to_owned()]);
+    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?;
+    let roles = &kms.params.crypto_officer;
+
+    check_role_permission(&kms, alice, OperationEnumeration::RNGSeed, roles).await?;
+    assert!(matches!(
+        check_role_permission(&kms, bob, OperationEnumeration::RNGSeed, roles).await,
+        Err(KmsError::Unauthorized(_))
+    ));
+    // reading random bytes stays open to every authenticated user
+    check_role_permission(&kms, bob, OperationEnumeration::RNGRetrieve, roles).await?;
+
+    // The batched `RequestMessage` path must apply the same policy.
+    let seed_message = || RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem::new(Operation::RNGSeed(RNGSeed { data: vec![0; 32] })),
+        )],
+    };
+    let response = kms.message(seed_message(), &UserId::from(bob)).await?;
+    let ResponseMessageBatchItemVersioned::V21(item) = &response.batch_item[0] else {
+        panic!("not a V21 response");
+    };
+    assert_eq!(item.result_status, ResultStatusEnumeration::OperationFailed);
+    assert_eq!(item.result_reason, Some(ErrorReason::Permission_Denied));
+    let response = kms.message(seed_message(), &UserId::from(alice)).await?;
+    let ResponseMessageBatchItemVersioned::V21(item) = &response.batch_item[0] else {
+        panic!("not a V21 response");
+    };
+    assert_eq!(item.result_status, ResultStatusEnumeration::Success);
+    Ok(())
+}
+
+/// A `MAC` request is subject to the hash allow-list whichever spelling its TTLV root tag uses
+/// (`dispatch` accepts both `MAC` and `Mac`).
+#[tokio::test]
+async fn test_mac_tag_spelling_cannot_bypass_algorithm_policy() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
+        kmip_2_1::{
+            kmip_operations::MAC,
+            kmip_types::{CryptographicParameters, UniqueIdentifier},
+        },
+        ttlv::to_ttlv,
+    };
+
+    use crate::{
+        config::{ClapConfig, MainDBConfig},
+        core::operations::dispatch,
+        middlewares::UserId,
+        tests::test_utils::get_tmp_sqlite_path,
+    };
+
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
+    conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
+    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?;
+
+    let mac = MAC {
+        unique_identifier: Some(UniqueIdentifier::TextString("no-such-key".to_owned())),
+        cryptographic_parameters: Some(CryptographicParameters {
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        }),
+        data: Some(vec![0; 16]),
+        ..Default::default()
+    };
+    for tag in ["MAC", "Mac"] {
+        let mut ttlv = to_ttlv(&mac)?;
+        ttlv.tag = tag.into();
+        // The policy refuses before any key lookup: a missing key would be `ItemNotFound`.
+        let err = dispatch(&kms, ttlv, &UserId::from("alice@example.com"))
+            .await
+            .expect_err("a SHA-256 MAC must be refused by the SHA-512-only policy");
+        assert!(
+            matches!(
+                err,
+                KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _)
+            ),
+            "{tag}: {err:?}"
+        );
+    }
+    Ok(())
+}
