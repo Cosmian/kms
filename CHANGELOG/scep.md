@@ -14,8 +14,11 @@
 - Added per-endpoint **certificate templates** (`[templates.<name>]`, selected with `est_template` /
   `scep_template`): minimum RSA size, allowed EC curves, allowed/injected EKUs, maximum and default
   validity, and anchored regular expressions for the subject CN and the DNS / e-mail / UPN SANs.
-  A baseline template (RSA ≥ 2048 or NIST P-256/384/521, `clientAuth` only, no `CA:TRUE`, validity
-  ≤ 365 days) applies when none is configured. Only the `keyUsage` (without `keyCertSign` /
+  `est_template` / `scep_template` is required when EST / SCEP is enabled and the template must set
+  `subject_cn_regex` (or `allow_any_identity = true`); the baseline limits (RSA ≥ 2048 or NIST
+  P-256/384/521, `clientAuth` only, no `CA:TRUE`, validity ≤ 365 days) apply to every template.
+  Without `allow_any_identity` the `serialNumber`, `UID` and `emailAddress` subject attributes are
+  refused. Only the `keyUsage` (without `keyCertSign` /
   `cRLSign`), `subjectAltName`, `extendedKeyUsage` and `basicConstraints` CSR extensions are
   accepted; any other requested extension and any duplicated extension is refused.
   The CSR proof of possession is always verified.
@@ -66,3 +69,36 @@
 - The EST/SCEP renewal identity check compares the raw DER of each `SubjectAltName` entry and treats a malformed
   SAN as an error.
 - `est_bootstrap_password` and `scep_challenge_password` are masked in the `Debug` output of the configuration.
+- **Enrollment hardening** (threat-model findings of 2026-10-20):
+  - Wrong EST Basic credentials or SCEP challenges lock the client address out (`429` + `Retry-After`,
+    10 failures, 30 s doubling up to 1 h); at most 16 enrollments run concurrently (`503`); EST/SCEP bodies
+    are limited to 64 KiB (`413`) instead of the server-wide 64 MiB; a warning is logged when
+    `rate_limit_per_second` is not set. Secrets must have at least 8 characters.
+  - SCEP: an authenticated message (signer, transactionID, senderNonce) cannot be replayed (1 h);
+    every failure after parsing reports `badRequest` (no decryption oracle); a renewal signer is checked
+    before the envelope is decrypted; `transactionID` must be printable ASCII of at most 128 characters; the
+    `operation` query value is no longer echoed; a startup warning is logged when SCEP runs without TLS.
+  - EST `simpleenroll` refuses a client certificate that carries the enrollment marker but was not issued
+    by the EST CA (SCEP-enrolled, earlier CA key); `403` bodies are fixed messages (no certificate UID or
+    state) and the CA UID is no longer echoed by `cacerts` / `GetCACert`.
+  - The enrolled-certificate marker is checked on the whole verified chain (HTTPS mTLS and KMIP socket);
+    when OpenSSL keeps no chain the certificate is not mapped to a user. The HTTPS and KMIP socket
+    acceptors that verify client certificates therefore no longer resume TLS sessions (session cache and
+    tickets off): every connection does a full handshake.
+  - Every issued certificate is checked to be a plain end-entity certificate (no CA, no `keyCertSign`,
+    marker present) before it is returned; a non-conforming certificate is deactivated.
+  - Enrolled certificates are indexed by issuer and serial (system tag), so renewal no longer scans every
+    certificate of the CA.
+  - Every EST/SCEP attempt is logged (`info` / `warn`, client address, authentication method) and recorded in
+    the audit trail with the issued certificate UID when auditing is enabled.
+  - The Certify trace log no longer contains the CSR (which carries the SCEP challenge);
+    `KMS_EST_BOOTSTRAP_PASSWORD` / `KMS_SCEP_CHALLENGE_PASSWORD` environment variables are supported; the
+    configuration wizard writes its file with mode 0600, validates the Basic user name and secret length and
+    requires a subject CN pattern.
+  - `RNGSeed` is restricted to Crypto Officers once roles are configured, and its seed bytes are no longer
+    traced.
+  - OpenAPI: EST `simpleenroll` / `simplereenroll` declare their mTLS / Basic security schemes and the new
+    `403` / `413` / `429` / `503` replies.
+  - CI: the Windows EST job installs Ninja from a pinned, SHA-256-verified release instead of Chocolatey; the
+    SCEP interop script verifies the pinned `smallstep/pkcs7` `go.sum` hashes; the documentation build no
+    longer reaches the `curl | sh` rustup bootstrap.

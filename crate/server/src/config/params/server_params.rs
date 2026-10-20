@@ -23,6 +23,9 @@ use crate::{
     routes::aws_xks::AwsXksParams,
 };
 
+/// Shortest accepted EST bootstrap password / SCEP challenge, in characters.
+const MIN_ENROLLMENT_SECRET_LEN: usize = 8;
+
 /// Resolved parameters for a single HSM instance, derived from either
 /// the CLI `--hsm-*` flags (single instance) or a TOML `[[hsm]]` entry.
 #[derive(Clone, Debug)]
@@ -635,23 +638,48 @@ impl ServerParams {
             };
         let est_template = resolve_template("est_template", conf.est.est_template.as_deref())?;
         let scep_template = resolve_template("scep_template", conf.scep.scep_template.as_deref())?;
+        // A shared enrollment secret is an online-guessable credential: refuse empty or very
+        // short ones (lockout and the optional rate limiter slow guessing down, they do not
+        // make a weak secret safe).
+        let is_weak = |secret: &Option<String>| {
+            secret
+                .as_deref()
+                .is_none_or(|s| s.trim().chars().count() < MIN_ENROLLMENT_SECRET_LEN)
+        };
         let is_blank =
             |secret: &Option<String>| secret.as_deref().is_none_or(|s| s.trim().is_empty());
+        if (conf.est.est_enabled || conf.scep.scep_enabled)
+            && conf.http.rate_limit_per_second.is_none()
+        {
+            warn!(
+                "SECURITY: EST/SCEP is enabled but rate_limit_per_second is not set. The \
+                 enrollment endpoints are reachable before authentication; set \
+                 rate_limit_per_second in the server configuration for production deployments \
+                 (failed authentications are also locked out per client address)."
+            );
+        }
         if conf.est.est_enabled {
             if conf.est.est_ca_uid.is_none() {
                 return Err(KmsError::ServerError(
                     "est_enabled = true requires est_ca_uid".to_owned(),
                 ));
             }
+            if est_template.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_enabled = true requires est_template: a [templates.<name>] section that \
+                     sets subject_cn_regex (or allow_any_identity = true)"
+                        .to_owned(),
+                ));
+            }
             if !conf.est.est_require_client_cert {
                 if is_blank(&conf.est.est_bootstrap_username)
-                    || is_blank(&conf.est.est_bootstrap_password)
+                    || is_weak(&conf.est.est_bootstrap_password)
                 {
-                    return Err(KmsError::ServerError(
-                        "est_require_client_cert = false requires non-empty est_bootstrap_username \
-                         and est_bootstrap_password"
-                            .to_owned(),
-                    ));
+                    return Err(KmsError::ServerError(format!(
+                        "est_require_client_cert = false requires a non-empty \
+                         est_bootstrap_username and an est_bootstrap_password of at least \
+                         {MIN_ENROLLMENT_SECRET_LEN} characters"
+                    )));
                 }
                 if conf
                     .est
@@ -676,27 +704,29 @@ impl ServerParams {
                         .to_owned(),
                 ));
             }
-            if est_template.is_none() {
-                warn!(
-                    "EST enabled without est_template: only the baseline policy applies (RSA >= \
-                     2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN \
-                     and SAN)"
-                );
-            }
         }
         if conf.scep.scep_enabled {
-            if conf.scep.scep_ca_uid.is_none() || is_blank(&conf.scep.scep_challenge_password) {
+            if conf.scep.scep_ca_uid.is_none() || is_weak(&conf.scep.scep_challenge_password) {
+                return Err(KmsError::ServerError(format!(
+                    "scep_enabled = true requires scep_ca_uid and a scep_challenge_password of \
+                     at least {MIN_ENROLLMENT_SECRET_LEN} characters"
+                )));
+            }
+            if scep_template.is_none() {
                 return Err(KmsError::ServerError(
-                    "scep_enabled = true requires scep_ca_uid and a non-empty \
-                     scep_challenge_password"
+                    "scep_enabled = true requires scep_template: a [templates.<name>] section \
+                     that sets subject_cn_regex (or allow_any_identity = true)"
                         .to_owned(),
                 ));
             }
-            if scep_template.is_none() {
+            if !conf.tls.is_tls_enabled() {
+                // RFC 8894 does not require TLS (the CMS envelope protects the request) but
+                // GetCACert is then served without integrity protection, so a network attacker
+                // can substitute the CA, and the envelope is only AES-CBC without a MAC.
                 warn!(
-                    "SCEP enabled without scep_template: only the baseline policy applies (RSA >= \
-                     2048 or NIST P-256/384/521, clientAuth only, no CA:TRUE, <= 365 days; any CN \
-                     and SAN)"
+                    "SECURITY: SCEP is enabled without TLS. A network attacker can substitute \
+                     the CA certificate returned by GetCACert and observe or replay requests. \
+                     Enable TLS, or have devices verify the CA fingerprint out of band."
                 );
             }
         }

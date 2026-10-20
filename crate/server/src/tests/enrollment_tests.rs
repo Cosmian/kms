@@ -447,22 +447,56 @@ async fn est_simpleenroll_issues_certificate_under_template() -> KResult<()> {
 async fn enrolled_certificates_never_authenticate_as_kms_users() -> KResult<()> {
     let (kms, _ca) = make_kms(true, false, true).await?;
     let app = app!(kms);
+    let device_key = rsa_key(2048);
     let (status, body, _) = est_enroll(
         &app,
-        &csr(&rsa_key(2048), "admin.iot.example"),
+        &csr(&device_key, "admin.iot.example"),
         Some(basic_auth("testuser", "testpass")),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     let enrolled = certs_of(&STANDARD.decode(&body).unwrap()).remove(0);
-    let err = user_from_client_certificate(&enrolled)
+    let err = user_from_client_certificate(&enrolled, Some(&[]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("EST/SCEP"), "{err}");
 
     // a certificate that was not enrolled still maps to its CN
     let plain = self_signed(&rsa_key(2048), "alice");
-    assert_eq!(user_from_client_certificate(&plain)?.into_string(), "alice");
+    assert_eq!(
+        user_from_client_certificate(&plain, Some(&[]))?.into_string(),
+        "alice"
+    );
+    // without a chain the issuers cannot be checked: refuse rather than assume there are none
+    user_from_client_certificate(&plain, None).unwrap_err();
+
+    // ... unless something in its verified chain was enrolled: the device holds the key of its
+    // certificate and can sign an unmarked "alice" itself.
+    let mut name = X509NameBuilder::new().unwrap();
+    name.append_entry_by_text("CN", "alice").unwrap();
+    let name = name.build();
+    let alice_key = rsa_key(2048);
+    let mut b = X509::builder().unwrap();
+    b.set_version(2).unwrap();
+    b.set_serial_number(&BigNum::from_u32(8).unwrap().to_asn1_integer().unwrap())
+        .unwrap();
+    b.set_subject_name(&name).unwrap();
+    b.set_issuer_name(enrolled.subject_name()).unwrap();
+    b.set_pubkey(&alice_key).unwrap();
+    b.set_not_before(&Asn1Time::days_from_now(0).unwrap())
+        .unwrap();
+    b.set_not_after(&Asn1Time::days_from_now(30).unwrap())
+        .unwrap();
+    b.sign(&device_key, MessageDigest::sha256()).unwrap();
+    let forged = b.build();
+    assert_eq!(
+        user_from_client_certificate(&forged, Some(&[]))?.into_string(),
+        "alice"
+    );
+    let err = user_from_client_certificate(&forged, Some(&[enrolled]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("EST/SCEP"), "{err}");
     Ok(())
 }
 
@@ -1254,5 +1288,248 @@ async fn enrollment_without_certify_grant_fails_closed() -> KResult<()> {
         before,
         "a refused enrollment must not create any certificate object"
     );
+    Ok(())
+}
+
+// ── abuse controls and hardening ─────────────────────────────────────────────
+
+/// Ten wrong Basic credentials lock the client out; even the right ones are then refused until
+/// the delay has passed.
+#[tokio::test]
+async fn est_repeated_wrong_credentials_lock_the_client_out() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let csr = csr(&rsa_key(2048), "dev1.iot.example");
+    for _ in 0..10 {
+        let (status, _, _) = est_enroll(&app, &csr, Some(basic_auth("testuser", "wrong"))).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+    let (status, _, headers) =
+        est_enroll(&app, &csr, Some(basic_auth("testuser", "testpass"))).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(headers.contains_key("retry-after"));
+    Ok(())
+}
+
+/// A request without credentials is the first leg of the RFC 7030 challenge, not a guess: it
+/// never counts towards the lockout.
+#[tokio::test]
+async fn est_requests_without_credentials_do_not_lock_the_client_out() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let csr = csr(&rsa_key(2048), "dev1.iot.example");
+    for _ in 0..25 {
+        let (status, _, _) = est_enroll(&app, &csr, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+    let (status, _, _) = est_enroll(&app, &csr, Some(basic_auth("testuser", "testpass"))).await;
+    assert_eq!(status, StatusCode::OK);
+    Ok(())
+}
+
+#[tokio::test]
+async fn enrollment_bodies_over_the_limit_are_refused() -> KResult<()> {
+    let (kms, _) = make_kms(true, true, true).await?;
+    let app = app!(kms);
+    let big = vec![b'A'; crate::routes::enrollment::MAX_ENROLLMENT_BODY + 1];
+
+    let req = test::TestRequest::post()
+        .uri("/.well-known/est/simpleenroll")
+        .insert_header(basic_auth("testuser", "testpass"))
+        .set_payload(big.clone())
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .set_payload(big)
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    Ok(())
+}
+
+/// A captured, authenticated `PKCSReq` cannot be replayed to make the CA issue again.
+#[tokio::test]
+async fn scep_replayed_message_is_refused() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let bootstrap = self_signed(&key, "dev1.iot.example");
+    let mut outcomes = Vec::new();
+    // Same signer, transactionID and sender nonce: the second message is a replay.
+    for _ in 0..2 {
+        outcomes.push(
+            scep_roundtrip(
+                &app,
+                &ca,
+                &bootstrap,
+                &key,
+                &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
+                MESSAGE_TYPE_PKCS_REQ,
+                "TX-REPLAY",
+                false,
+            )
+            .await,
+        );
+    }
+    assert_eq!(outcomes[0].attrs.pki_status, Some(PKI_STATUS_SUCCESS));
+    assert_eq!(outcomes[1].attrs.pki_status, Some(PKI_STATUS_FAILURE));
+    assert_eq!(outcomes[1].attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
+    assert!(outcomes[1].certificate.is_none());
+    Ok(())
+}
+
+/// Every failure after the envelope is parsed reports `badRequest`, so the `failInfo` does not
+/// tell an undecryptable envelope from a wrong challenge.
+#[tokio::test]
+async fn scep_failure_reporting_does_not_depend_on_the_envelope_outcome() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let bootstrap = self_signed(&key, "dev1.iot.example");
+
+    // an envelope that is encrypted to another recipient cannot be decrypted by the CA
+    let other_ca = self_signed(&rsa_key(2048), "other-ca");
+    let undecryptable = pki_message(
+        &other_ca,
+        &bootstrap,
+        &key,
+        &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
+        MESSAGE_TYPE_PKCS_REQ,
+        "TX-UNDECRYPTABLE",
+    );
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .set_payload(undecryptable)
+        .to_request();
+    let (status, body, _) = body_of(test::call_service(&app, req).await).await;
+    assert_eq!(status, StatusCode::OK);
+    let undecryptable = parse_signed_pkimessage(&body).unwrap();
+
+    let wrong_challenge = scep_roundtrip(
+        &app,
+        &ca,
+        &bootstrap,
+        &key,
+        &pkcs_req_csr(&key, "dev1.iot.example", "WrongSecret"),
+        MESSAGE_TYPE_PKCS_REQ,
+        "TX-WRONG-CHALLENGE",
+        false,
+    )
+    .await;
+    assert_eq!(undecryptable.attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
+    assert_eq!(
+        undecryptable.attrs.fail_info,
+        wrong_challenge.attrs.fail_info
+    );
+    Ok(())
+}
+
+/// The `transactionID` is echoed and logged: an overlong one is refused before any work.
+#[tokio::test]
+async fn scep_overlong_transaction_id_is_refused() -> KResult<()> {
+    let (kms, ca) = make_kms(false, true, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let message = pki_message(
+        &ca,
+        &self_signed(&key, "dev1.iot.example"),
+        &key,
+        &pkcs_req_csr(&key, "dev1.iot.example", CHALLENGE),
+        MESSAGE_TYPE_PKCS_REQ,
+        &"T".repeat(200),
+    );
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .set_payload(message)
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        StatusCode::BAD_REQUEST
+    );
+    Ok(())
+}
+
+/// A certificate that carries the enrollment marker but was not issued by the EST CA (SCEP CA,
+/// previous CA key) cannot bootstrap an EST enrollment: its state cannot be checked here.
+#[tokio::test]
+async fn est_simpleenroll_refuses_an_enrolled_certificate_issued_elsewhere() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let foreign_key = rsa_key(2048);
+    let build = |marked: bool| {
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "dev9.iot.example").unwrap();
+        let name = name.build();
+        let mut b = X509::builder().unwrap();
+        b.set_version(2).unwrap();
+        b.set_serial_number(&BigNum::from_u32(9).unwrap().to_asn1_integer().unwrap())
+            .unwrap();
+        b.set_subject_name(&name).unwrap();
+        b.set_issuer_name(&name).unwrap();
+        b.set_pubkey(&foreign_key).unwrap();
+        b.set_not_before(&Asn1Time::days_from_now(0).unwrap())
+            .unwrap();
+        b.set_not_after(&Asn1Time::days_from_now(30).unwrap())
+            .unwrap();
+        if marked {
+            // The same extension-file mechanism the enrollment template uses to stamp it.
+            let extensions = {
+                let context = b.x509v3_context(None, None);
+                cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::x509_extensions::parse_v3_ca_from_str(
+                    &format!(
+                        "[v3_ca]\ncertificatePolicies={}\n",
+                        crate::core::operations::certify::template::ENROLLED_CERTIFICATE_POLICY_OID
+                    ),
+                    &context,
+                )
+                .unwrap()
+            };
+            for extension in extensions {
+                b.append_extension(extension).unwrap();
+            }
+        }
+        b.sign(&foreign_key, MessageDigest::sha256()).unwrap();
+        b.build()
+    };
+    let request = csr(&rsa_key(2048), "dev9.iot.example");
+
+    let resp = est::enroll_for_peer(&kms, Some(&build(true)), &request).await?;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // the same certificate without the marker is an ordinary bootstrap certificate
+    let resp = est::enroll_for_peer(&kms, Some(&build(false)), &request).await?;
+    assert_eq!(resp.status(), StatusCode::OK);
+    Ok(())
+}
+
+/// An enrolled certificate is indexed by issuer and serial, so that renewal does not scan every
+/// certificate of the CA.
+#[tokio::test]
+async fn enrolled_certificates_are_indexed_by_serial() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let (status, body, _) = est_enroll(
+        &app,
+        &csr(&rsa_key(2048), "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let cert = certs_of(&STANDARD.decode(&body).unwrap()).remove(0);
+    let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
+    let uids = kms
+        .database
+        .list_uids_for_tags(&HashSet::from([crate::routes::enrollment::serial_tag(
+            CA_UID,
+            &serial_hex,
+        )]))
+        .await?;
+    assert_eq!(uids.len(), 1);
     Ok(())
 }

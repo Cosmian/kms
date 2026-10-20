@@ -168,10 +168,11 @@ san_upn_regex = "[a-z0-9.]+@iot\\.example"
 | `allowed_ekus` | `clientAuth` | Allowed **extended key usages** (what the certificate may be used for), as names or dotted OIDs. Added automatically when the CSR asks for none. Must not be empty. |
 | `max_validity_days` | `365` | Upper bound on a certificate's lifetime. |
 | `default_validity_days` | `90` | Lifetime given to certificates, because neither protocol lets the device request one. |
-| `subject_cn_regex` | none (any name) | Pattern the subject common name must match. |
+| `subject_cn_regex` | none | Pattern the subject common name must match. **Required** unless `allow_any_identity = true`. |
 | `san_dns_regex` | none | Pattern every DNS name in the subject alternative names must match. |
 | `san_email_regex` | none | Same, for e-mail addresses. |
 | `san_upn_regex` | none | Same, for Microsoft user principal names. |
+| `allow_any_identity` | `false` | Accept any subject name. Without it the template must set `subject_cn_regex`, and the `serialNumber`, `UID` and `emailAddress` subject attributes (which other systems may use to identify a person) are refused. |
 
 When any SAN pattern is set, SAN types without a pattern are refused. Unknown keys, inconsistent
 validity limits and the invalid values above are rejected **at startup**, so a typo cannot silently
@@ -189,9 +190,9 @@ Every CSR goes through these checks:
 
 A violation is answered with HTTP `422` (EST) or a `badRequest` reply (SCEP).
 
-**Without a template**, a baseline applies: RSA 2048 bits or more, or NIST P-256/P-384/P-521;
-`clientAuth` only; no `CA:TRUE`; validity of at most 365 days; **any name is accepted**. Always
-configure a template with `subject_cn_regex` for production.
+**A template is required.** `est_template` / `scep_template` must name a template that sets
+`subject_cn_regex` (or `allow_any_identity = true`); the server refuses to start otherwise. The
+enrollment secret authenticates a class of devices, not the name a device asks for.
 
 ## Security model
 
@@ -207,11 +208,30 @@ the KMS accepted such a certificate for API access, a device could enroll the na
 then act as `admin`. To prevent this, every certificate issued through EST or SCEP carries a
 marker (a certificate policy with the OID `1.3.6.1.4.1.16376.9.2.1`), and the KMS refuses to treat
 a marked certificate as a user identity on every login path, including the HTTPS and KMIP socket
-client-certificate checks. It can still be used for the one thing it is for: renewing itself.
+client-certificate checks. The check covers the whole verified chain, so a certificate signed by an
+enrolled one is refused too. Before a certificate is handed to the device the KMS also checks that
+it is a plain end-entity certificate (not a CA, no `keyCertSign`, marker present) and takes it out
+of service if it is not. It can still be used for the one thing it is for: renewing itself.
 
 **Shared secrets.** The EST bootstrap password and the SCEP challenge password are shared by all
-devices and do not expire. Make them long and random, keep them out of version control, and note
-that the server has no lockout for wrong guesses: rate-limit the listener if it is exposed.
+devices and do not expire. They must have at least 8 characters, and should be long and random. Keep
+them out of version control and prefer the `KMS_EST_BOOTSTRAP_PASSWORD` /
+`KMS_SCEP_CHALLENGE_PASSWORD` environment variables to the command line, where they show in the
+process list (the configuration wizard writes its file readable by its owner only).
+
+**Abuse controls.** A client address that sends 10 wrong credentials is refused with `429` and a
+`Retry-After` delay that doubles with every further failure (30 seconds up to 1 hour); a correct
+authentication clears the count. At most 16 enrollments run at the same time (`503` otherwise)
+and a request body is limited to 64 KiB. The lockout is per client address (`X-Forwarded-For` is
+honoured only from `audit_trusted_proxy_cidrs`), so devices behind one NAT share it. These
+controls come on top of the optional `rate_limit_per_second`, which you should set when the
+endpoints are reachable from untrusted networks; the server logs a warning when it is not set.
+
+**Audit.** Every enrollment attempt is logged (`info` on success, `warn` on refusal) with the client
+address and how it authenticated, and recorded in the tamper-evident audit trail when
+[auditing](../configuration/server_configuration_file.md) is enabled, with the identifier of the
+issued certificate. Error replies to devices carry fixed messages; the reasons (certificate
+identifiers, states) are only in the server log.
 
 ## Troubleshooting
 
@@ -220,7 +240,10 @@ Protocol-specific errors are listed on the [EST](pki-enrollment-est.md#troublesh
 
 | Symptom | Likely cause and fix |
 | --- | --- |
-| The server refuses to start, mentioning a template | A template key is unknown, a limit is inconsistent, `min_rsa_key_bits` is below 2048, or a list is empty; or `est_template` / `scep_template` names a section that does not exist. |
+| The server refuses to start, mentioning a template | A template key is unknown, a limit is inconsistent, `min_rsa_key_bits` is below 2048, a list is empty, it sets neither `subject_cn_regex` nor `allow_any_identity`, or `est_template` / `scep_template` is missing or names a section that does not exist. |
+| The server refuses to start, mentioning a password or challenge | The EST bootstrap password or SCEP challenge is shorter than 8 characters. |
+| HTTP `429` | Too many wrong credentials from this address; wait for `Retry-After`. |
+| HTTP `503` | Too many enrollments in progress; retry after `Retry-After`. |
 | The server refuses to start, mentioning `[enrollment-service]` | `default_username` or `crypto_officer_users` uses that reserved name. Rename it. |
 | Enrollment fails and the server log names the CA and the grants it needs | The [delegation step](#delegate-the-ca-to-the-enrollment-service) is missing: grant `certify` on the CA certificate and on its private key. |
 | An enrolled certificate is refused when used against the KMS API | By design: see [Security model](#security-model). |

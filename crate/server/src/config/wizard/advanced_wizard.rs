@@ -394,11 +394,25 @@ fn configure_enrollment(
         if !est.est_require_client_cert {
             let user: String = Input::with_theme(theme)
                 .with_prompt("EST: bootstrap username (must not contain ':')")
+                .validate_with(|u: &String| -> Result<(), &str> {
+                    if u.trim().is_empty() || u.contains(':') {
+                        Err("must be non-empty and must not contain ':'")
+                    } else {
+                        Ok(())
+                    }
+                })
                 .interact_text()
                 .map_err(prompt_err)?;
             let password: String = dialoguer::Password::with_theme(theme)
-                .with_prompt("EST: bootstrap password")
+                .with_prompt("EST: bootstrap password (at least 8 characters)")
                 .with_confirmation("Confirm password", "Passwords do not match")
+                .validate_with(|p: &String| -> Result<(), &str> {
+                    if p.trim().chars().count() < 8 {
+                        Err("at least 8 characters are required")
+                    } else {
+                        Ok(())
+                    }
+                })
                 .interact()
                 .map_err(prompt_err)?;
             est.est_bootstrap_username = Some(user.trim().to_owned());
@@ -412,37 +426,53 @@ fn configure_enrollment(
             .map_err(prompt_err)?;
         scep.scep_ca_uid = Some(ca.trim().to_owned());
         let challenge: String = dialoguer::Password::with_theme(theme)
-            .with_prompt("SCEP: challenge password devices must present")
+            .with_prompt("SCEP: challenge password devices must present (at least 8 characters)")
             .with_confirmation("Confirm password", "Passwords do not match")
+            .validate_with(|p: &String| -> Result<(), &str> {
+                if p.trim().chars().count() < 8 {
+                    Err("at least 8 characters are required")
+                } else {
+                    Ok(())
+                }
+            })
             .interact()
             .map_err(prompt_err)?;
         scep.scep_challenge_password = Some(challenge);
     }
 
+    // The enrollment secret authenticates a class of devices, not the name a device asks for:
+    // the template must constrain the subject CN (`.*` explicitly accepts any CN).
     let cn_regex: String = Input::with_theme(theme)
         .with_prompt(
             "Regular expression every enrolled subject CN must match, anchored \
-             (leave blank for the baseline template: any CN)",
+             (required; `.*` accepts any CN)",
         )
-        .allow_empty(true)
+        .validate_with(|r: &String| -> Result<(), String> {
+            regex::Regex::new(&format!("^(?:{})$", r.trim()))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
         .interact_text()
         .map_err(prompt_err)?;
-    if !cn_regex.trim().is_empty() {
-        templates.insert(
-            ENROLLMENT_TEMPLATE.to_owned(),
-            CertTemplate {
-                name: ENROLLMENT_TEMPLATE.to_owned(),
-                subject_cn_regex: Some(cn_regex.trim().to_owned()),
-                ..CertTemplate::default()
-            },
-        );
-        if est.est_enabled {
-            est.est_template = Some(ENROLLMENT_TEMPLATE.to_owned());
-        }
-        if scep.scep_enabled {
-            scep.scep_template = Some(ENROLLMENT_TEMPLATE.to_owned());
-        }
+    templates.insert(
+        ENROLLMENT_TEMPLATE.to_owned(),
+        CertTemplate {
+            name: ENROLLMENT_TEMPLATE.to_owned(),
+            subject_cn_regex: Some(cn_regex.trim().to_owned()),
+            ..CertTemplate::default()
+        },
+    );
+    if est.est_enabled {
+        est.est_template = Some(ENROLLMENT_TEMPLATE.to_owned());
     }
+    if scep.scep_enabled {
+        scep.scep_template = Some(ENROLLMENT_TEMPLATE.to_owned());
+    }
+    println!(
+        "  ℹ  The enrollment endpoints are reachable before authentication: set \
+         rate_limit_per_second in the configuration file for production. The file is written \
+         readable by its owner only because it contains the enrollment secrets."
+    );
     println!(
         "  Next: grant the CA to the enrollment service identity:\n    \
          ckms access-rights grant \"[enrollment-service]\" -i <ca uid> certify\n  \

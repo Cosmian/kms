@@ -79,6 +79,12 @@ pub struct CertTemplate {
     /// Regular expression every Microsoft UPN `otherName` SAN must match (RFC 5280 does
     /// not define the UPN; it is used by Windows MDM client certificates).
     pub san_upn_regex: Option<String>,
+    /// Accept any subject CN. A template must either set `subject_cn_regex` or opt in
+    /// explicitly with `allow_any_identity = true`: the enrollment secret authenticates the
+    /// device class, not the name it asks for. When `true`, the `serialNumber`, `UID` and
+    /// `emailAddress` subject attributes (which relying parties may use to identify a user) are
+    /// accepted too.
+    pub allow_any_identity: bool,
 }
 
 impl Default for CertTemplate {
@@ -96,6 +102,7 @@ impl Default for CertTemplate {
             san_dns_regex: None,
             san_email_regex: None,
             san_upn_regex: None,
+            allow_any_identity: false,
         }
     }
 }
@@ -338,6 +345,13 @@ impl CertTemplate {
                 i32::MAX
             )));
         }
+        if self.subject_cn_regex.is_none() && !self.allow_any_identity {
+            return Err(invalid(format!(
+                "template '{}': set subject_cn_regex, or allow_any_identity = true to accept any \
+                 subject name",
+                self.name
+            )));
+        }
         Ok(())
     }
 
@@ -444,6 +458,18 @@ impl CertTemplate {
     }
 
     fn check_subject(&self, csr: &X509Req) -> KResult<()> {
+        if !self.allow_any_identity {
+            // Attributes that relying parties map to a person or an account are not a device
+            // identity: refuse them unless the template opts in.
+            for nid in [Nid::SERIALNUMBER, Nid::USERID, Nid::PKCS9_EMAILADDRESS] {
+                if csr.subject_name().entries_by_nid(nid).next().is_some() {
+                    return Err(invalid(format!(
+                        "subject attribute {} is not allowed by the template",
+                        nid.short_name()?
+                    )));
+                }
+            }
+        }
         let Some(pattern) = &self.subject_cn_regex else {
             return Ok(());
         };
@@ -725,24 +751,73 @@ mod tests {
 
     #[test]
     fn weak_or_inconsistent_limits_are_detected() {
+        let open = CertTemplate {
+            allow_any_identity: true,
+            ..CertTemplate::default()
+        };
         for t in [
             CertTemplate {
                 min_rsa_key_bits: 1024,
-                ..CertTemplate::default()
+                ..open.clone()
             },
             CertTemplate {
                 default_validity_days: 0,
-                ..CertTemplate::default()
+                ..open.clone()
             },
             CertTemplate {
                 default_validity_days: 400,
                 max_validity_days: 365,
-                ..CertTemplate::default()
+                ..open.clone()
             },
         ] {
             assert!(t.validate().is_err());
         }
-        CertTemplate::default().validate().unwrap();
+        open.validate().unwrap();
+    }
+
+    /// A template must say which names it accepts: a CN pattern, or an explicit opt-in.
+    #[test]
+    fn template_without_cn_pattern_requires_explicit_opt_in() {
+        assert!(CertTemplate::default().validate().is_err());
+        CertTemplate {
+            subject_cn_regex: Some("[a-z]+".to_owned()),
+            ..CertTemplate::default()
+        }
+        .validate()
+        .unwrap();
+    }
+
+    /// `serialNumber`, `UID` and `emailAddress` subject attributes are refused unless the
+    /// template accepts any identity.
+    #[test]
+    fn person_identifying_subject_attributes_are_refused_by_default() {
+        let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+        let csr_with_attribute = |attribute: &str| {
+            let mut name = X509NameBuilder::new().unwrap();
+            name.append_entry_by_text("CN", "dev1").unwrap();
+            name.append_entry_by_text(attribute, "someone").unwrap();
+            let mut b = X509Req::builder().unwrap();
+            b.set_version(0).unwrap();
+            b.set_pubkey(&key).unwrap();
+            b.set_subject_name(&name.build()).unwrap();
+            b.sign(&key, MessageDigest::sha256()).unwrap();
+            b.build()
+        };
+        let strict = CertTemplate {
+            subject_cn_regex: Some("dev[0-9]".to_owned()),
+            ..CertTemplate::default()
+        };
+        let open = CertTemplate {
+            allow_any_identity: true,
+            ..CertTemplate::default()
+        };
+        for attribute in ["serialNumber", "UID", "emailAddress"] {
+            let csr = csr_with_attribute(attribute);
+            assert!(strict.validate_csr(&csr).is_err(), "{attribute}");
+            open.validate_csr(&csr).unwrap();
+        }
+        // organisation attributes stay accepted
+        strict.validate_csr(&csr_with_attribute("O")).unwrap();
     }
 
     #[test]
@@ -752,9 +827,15 @@ mod tests {
             ..CertTemplate::default()
         };
         assert!(t.validate().is_err());
+        // Otherwise valid (identity opted in), so only the EKU can make it fail.
+        let valid = CertTemplate {
+            allow_any_identity: true,
+            ..CertTemplate::default()
+        };
+        valid.validate().unwrap();
         let t = CertTemplate {
             allowed_ekus: vec!["notAnEku".to_owned()],
-            ..CertTemplate::default()
+            ..valid
         };
         assert!(t.validate().is_err());
     }

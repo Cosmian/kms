@@ -6,6 +6,20 @@
 //! use a CA whose owner granted it the `certify` right on the CA certificate and private key;
 //! the issued certificate is stored under the CA owner.
 
+use std::{
+    collections::HashSet,
+    net::IpAddr,
+    time::{Duration, Instant},
+};
+
+use actix_web::{
+    HttpRequest, HttpResponse,
+    http::header,
+    web::{Bytes, Payload},
+};
+use cosmian_kms_access::audit::{
+    AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
+};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -20,7 +34,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectHandle,
 };
-use cosmian_logger::{debug, warn};
+use cosmian_logger::{debug, error, info, warn};
 use openssl::{
     asn1::Asn1Time,
     nid::Nid,
@@ -29,12 +43,14 @@ use openssl::{
     x509::{X509, X509Req},
 };
 use subtle::ConstantTimeEq;
+use uuid::Uuid;
 use x509_parser::{
     asn1_rs::{Any, Tag},
     cri_attributes::ParsedCriAttribute,
     prelude::{FromDer, X509Certificate, X509CertificationRequest},
 };
 
+use super::enrollment_guard::UNKNOWN_CLIENT;
 use crate::{
     core::{
         KMS,
@@ -42,7 +58,7 @@ use crate::{
         operations::certify::{certify_for_owner, template::CertTemplate},
     },
     error::KmsError,
-    middlewares::UserId,
+    middlewares::{UserId, forwarded_for, is_enrollment_issued, resolve_client_ip},
     result::{KResult, KResultHelper},
 };
 
@@ -73,6 +89,150 @@ pub(crate) fn secrets_equal(a: &str, b: &str) -> bool {
     sha256(a.as_bytes()).ct_eq(&sha256(b.as_bytes())).into()
 }
 
+/// Address of the client of `req`, honouring `X-Forwarded-For` only from the configured
+/// trusted proxies (the same rule as the audit middleware).
+pub(crate) fn client_ip(kms: &KMS, req: &HttpRequest) -> IpAddr {
+    resolve_client_ip(
+        req.peer_addr().map(|a| a.ip()),
+        forwarded_for(req.headers()).as_deref(),
+        &kms.params.audit_trusted_proxy_cidrs,
+    )
+    .unwrap_or(UNKNOWN_CLIENT)
+}
+
+/// Make an attacker-controlled string safe to log: control characters (log forging) are
+/// replaced and the length is bounded.
+pub(crate) fn log_safe(value: &str) -> String {
+    const MAX_LEN: usize = 128;
+    value
+        .chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .take(MAX_LEN)
+        .collect()
+}
+
+/// Record one enrollment attempt in the tamper-evident audit store (when enabled) and in the
+/// log: `info` for a success, `warn` for a failure. `principal` is how the caller
+/// authenticated (`est-basic:<user>`, `est-mtls:<CN>`, `scep-challenge`, ...), or
+/// `unauthenticated`.
+pub(crate) fn audit_enrollment(
+    kms: &KMS,
+    operation: &str,
+    principal: &str,
+    client: IpAddr,
+    started: Instant,
+    outcome: &Result<String, String>,
+) {
+    let (object_uid, result) = match outcome {
+        Ok(uid) => (Some(uid.clone()), AuditResult::Success),
+        Err(reason) => (None, AuditResult::Failure(log_safe(reason))),
+    };
+    let principal = log_safe(principal);
+    match outcome {
+        Ok(uid) => info!(
+            "enrollment audit: {operation} succeeded for `{principal}` from {client}: \
+             certificate {uid}"
+        ),
+        Err(reason) => warn!(
+            "enrollment audit: {operation} refused for `{principal}` from {client}: {}",
+            log_safe(reason)
+        ),
+    }
+    let Some(store) = &kms.audit_store else {
+        return;
+    };
+    let draft = AuditEventDraft::build(
+        &RequestAuditContext {
+            timestamp: audit_now(),
+            user: principal,
+            client_ip: Some(client.to_string()),
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            request_id: Some(Uuid::new_v4()),
+        },
+        OperationAuditContext {
+            operation: operation.to_owned(),
+            object_uid,
+            algorithm: None,
+        },
+        result,
+    );
+    if !store.enqueue(std::iter::once(draft)) {
+        // The certificate may already be issued, so a refusal would not undo anything.
+        error!("enrollment audit: {operation} event could not be queued");
+    }
+}
+
+/// What an enrollment handler tells its caller about the outcome, carried in the response
+/// extensions so that the audit trail can record the issued certificate without changing the
+/// handler signatures: `Ok(uid)` of the issued certificate, `Err(reason)` of a refusal.
+#[derive(Clone)]
+pub(crate) struct EnrollmentOutcome(pub(crate) Result<String, String>);
+
+/// Audit the result of an enrollment handler (see [`audit_enrollment`]).
+pub(crate) fn audit_enrollment_result(
+    kms: &KMS,
+    operation: &str,
+    principal: &str,
+    client: IpAddr,
+    started: Instant,
+    result: &KResult<HttpResponse>,
+) {
+    let outcome = match result {
+        Err(e) => Err(e.to_string()),
+        Ok(response) => response
+            .extensions()
+            .get::<EnrollmentOutcome>()
+            .map_or_else(
+                || {
+                    if response.status().is_success() {
+                        Ok("-".to_owned())
+                    } else {
+                        Err(format!("HTTP {}", response.status().as_u16()))
+                    }
+                },
+                |outcome| outcome.0.clone(),
+            ),
+    };
+    audit_enrollment(kms, operation, principal, client, started, &outcome);
+}
+
+/// Largest EST / SCEP request body: a PKCS#10 request or a CMS message is a few KiB, while the
+/// server-wide payload limit is sized for KMIP objects.
+pub(crate) const MAX_ENROLLMENT_BODY: usize = 64 * 1024;
+
+/// Read a request body of at most [`MAX_ENROLLMENT_BODY`] bytes; the error is the response to
+/// send back.
+pub(crate) async fn read_limited_body(payload: Payload) -> Result<Bytes, HttpResponse> {
+    match payload.to_bytes_limited(MAX_ENROLLMENT_BODY).await {
+        Ok(Ok(body)) => Ok(body),
+        Ok(Err(_)) => Err(HttpResponse::BadRequest().finish()),
+        Err(_) => Err(HttpResponse::PayloadTooLarge().finish()),
+    }
+}
+
+/// `429` for a client that is locked out after repeated failed authentications.
+pub(crate) fn locked_response(wait: Duration) -> HttpResponse {
+    HttpResponse::TooManyRequests()
+        .insert_header((header::RETRY_AFTER, wait.as_secs().max(1).to_string()))
+        .finish()
+}
+
+/// `503` when the concurrent enrollment limit is reached.
+pub(crate) fn busy_response() -> HttpResponse {
+    HttpResponse::ServiceUnavailable()
+        .insert_header((header::RETRY_AFTER, "5"))
+        .finish()
+}
+
+/// Common Name of `cert`'s subject, `?` when it has none.
+pub(crate) fn subject_cn(cert: &X509) -> String {
+    cert.subject_name()
+        .entries_by_nid(Nid::COMMONNAME)
+        .next()
+        .and_then(|entry| entry.data().to_string().ok())
+        .unwrap_or_else(|| "?".to_owned())
+}
+
 /// Load the CA certificate `ca_uid` followed by its issuers, up to the root.
 pub(crate) async fn load_ca_chain(kms: &KMS, ca_uid: &str) -> KResult<Vec<X509>> {
     let mut chain = Vec::new();
@@ -83,7 +243,11 @@ pub(crate) async fn load_ca_chain(kms: &KMS, ca_uid: &str) -> KResult<Vec<X509>>
             .retrieve_object(&uid)
             .await
             .context("retrieve CA certificate")?
-            .ok_or_else(|| KmsError::ItemNotFound(format!("CA certificate not found: {uid}")))?;
+            .ok_or_else(|| {
+                // The UID is operator configuration: log it, do not echo it to clients.
+                warn!("enrollment: CA certificate not found: {uid}");
+                KmsError::ItemNotFound("the enrollment CA certificate is not available".to_owned())
+            })?;
         chain.push(kmip_certificate_to_openssl(owm.object())?);
         let Some(parent) = owm.attributes().get_link(LinkType::CertificateLink) else {
             break;
@@ -127,6 +291,49 @@ pub(crate) async fn load_ca_signing_material(
     ))
 }
 
+/// A certificate issued by [`issue_from_csr`].
+pub(crate) struct IssuedCertificate {
+    /// KMS unique identifier of the stored certificate.
+    pub(crate) uid: String,
+    pub(crate) certificate: X509,
+}
+
+/// System tag under which an enrolled certificate is indexed by issuer and serial, so that the
+/// state of a certificate presented for renewal is found without scanning every certificate
+/// of the CA.
+pub(crate) fn serial_tag(ca_uid: &str, serial_hex: &str) -> String {
+    format!(
+        "_enrolled_serial:{ca_uid}:{}",
+        serial_hex.to_ascii_uppercase()
+    )
+}
+
+/// Refuse a built certificate that is not a plain end-entity enrollment certificate:
+/// `basicConstraints` `CA:TRUE`, `keyCertSign` or a missing marker policy means the CSR policy
+/// was bypassed somewhere between validation and issuance.
+fn assert_enrolled_leaf(certificate: &X509) -> KResult<()> {
+    let der = certificate.to_der()?;
+    let (_, parsed) = X509Certificate::from_der(&der).map_err(|e| {
+        KmsError::ServerError(format!("cannot inspect the issued certificate: {e}"))
+    })?;
+    let is_ca = parsed
+        .basic_constraints()
+        .map_err(|e| KmsError::ServerError(format!("issued certificate basicConstraints: {e}")))?
+        .is_some_and(|bc| bc.value.ca);
+    let key_cert_sign = parsed
+        .key_usage()
+        .map_err(|e| KmsError::ServerError(format!("issued certificate keyUsage: {e}")))?
+        .is_some_and(|ku| ku.value.key_cert_sign());
+    if is_ca || key_cert_sign || !is_enrollment_issued(certificate)? {
+        return Err(KmsError::ServerError(
+            "the issued certificate does not conform to the enrollment policy (CA capability or \
+             missing enrolled-certificate marker)"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 /// Issue a certificate for `csr` from the CA `ca_uid` after enforcing `template`
 /// (a baseline template when `None`). The certificate is stored under the CA certificate owner.
 pub(crate) async fn issue_from_csr(
@@ -135,7 +342,7 @@ pub(crate) async fn issue_from_csr(
     csr: &X509Req,
     template: Option<&CertTemplate>,
     requested_validity_days: Option<u32>,
-) -> KResult<X509> {
+) -> KResult<IssuedCertificate> {
     let user = UserId::from(ENROLLMENT_SERVICE_USER);
     let ca_owner = kms
         .database
@@ -172,14 +379,42 @@ pub(crate) async fn issue_from_csr(
     .await
     .inspect_err(|e| log_ca_use_failure(ca_uid, e))?;
     let uid = response.unique_identifier.to_string();
-    debug!("enrollment: issued certificate {uid} from CA {ca_uid}");
     let owm = kms
         .database
         .retrieve_object(&uid)
         .await
         .context("retrieve issued certificate")?
         .ok_or_else(|| KmsError::ItemNotFound(format!("issued certificate not found: {uid}")))?;
-    Ok(kmip_certificate_to_openssl(owm.object())?)
+    let certificate = kmip_certificate_to_openssl(owm.object())?;
+
+    // Last line of defence, after the builder and before the certificate is handed out: a
+    // certificate that is not a plain leaf is taken out of service.
+    if let Err(e) = assert_enrolled_leaf(&certificate) {
+        error!("enrollment: deactivating non-conforming certificate {uid}: {e}");
+        kms.database
+            .update_state(&uid, State::Deactivated)
+            .await
+            .context("deactivate non-conforming certificate")?;
+        return Err(e);
+    }
+
+    let serial_hex = certificate
+        .serial_number()
+        .to_bn()?
+        .to_hex_str()?
+        .to_string();
+    let mut tags = kms
+        .database
+        .retrieve_tags(&uid)
+        .await
+        .context("retrieve issued certificate tags")?;
+    tags.insert(serial_tag(ca_uid, &serial_hex));
+    kms.database
+        .update_object(&uid, owm.object(), owm.attributes(), Some(&tags))
+        .await
+        .context("index issued certificate by serial")?;
+    debug!("enrollment: issued certificate {uid} (serial {serial_hex}) from CA {ca_uid}");
+    Ok(IssuedCertificate { uid, certificate })
 }
 
 /// `true` when `cert` names `ca_cert` as issuer and carries a valid signature from its key.
@@ -193,6 +428,8 @@ pub(crate) fn is_issued_by(cert: &X509, ca_cert: &X509) -> KResult<bool> {
 
 /// Check that `cert` was issued by the CA `ca_cert` (`ca_uid`), is within its validity period
 /// and is tracked by the KMS in the `Active` state (i.e. not revoked / deactivated / destroyed).
+///
+/// The errors describe the reason for the log; callers must not forward them to the client.
 pub(crate) async fn ensure_active_certificate_of_ca(
     kms: &KMS,
     ca_uid: &str,
@@ -211,16 +448,44 @@ pub(crate) async fn ensure_active_certificate_of_ca(
         ));
     }
     let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
-    let found = Box::pin(kms.database.find_certificate_by_serial(
-        ca_uid,
-        &serial_hex,
-        kms.vendor_id(),
-    ))
-    .await
-    .context("find_certificate_by_serial")?;
+    let tag = HashSet::from([serial_tag(ca_uid, &serial_hex)]);
+    let presented_der = cert.to_der()?;
+    let mut found = None;
+    for uid in kms
+        .database
+        .list_uids_for_tags(&tag)
+        .await
+        .context("list_uids_for_tags")?
+    {
+        let Some(owm) = kms
+            .database
+            .retrieve_object_arc(&uid)
+            .await
+            .context("retrieve enrolled certificate")?
+        else {
+            continue;
+        };
+        // The tag only locates candidates: the stored certificate must be the presented one.
+        if kmip_certificate_to_openssl(owm.object())?.to_der()? == presented_der {
+            found = Some((uid, owm.state()));
+            break;
+        }
+    }
+    if found.is_none() {
+        // Certificates issued before the serial index existed (or in the short window between
+        // issuance and indexing): fall back to the scan.
+        found = Box::pin(kms.database.find_certificate_by_serial(
+            ca_uid,
+            &serial_hex,
+            kms.vendor_id(),
+        ))
+        .await
+        .context("find_certificate_by_serial")?
+        .map(|(uid, state, _)| (uid, state));
+    }
     match found {
-        Some((_, State::Active, _)) => Ok(()),
-        Some((uid, state, _)) => Err(KmsError::InvalidRequest(format!(
+        Some((_, State::Active)) => Ok(()),
+        Some((uid, state)) => Err(KmsError::InvalidRequest(format!(
             "the certificate {uid} is in state {state} and cannot be renewed"
         ))),
         None => Err(KmsError::InvalidRequest(

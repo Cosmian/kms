@@ -216,6 +216,28 @@ async fn test_config_only_non_co_user_is_operator() -> KResult<()> {
     Ok(())
 }
 
+/// `RNGSeed` has no `KmipOperation` variant, so the role tables do not see it: once roles are
+/// configured, only a Crypto Officer may add input to the server DRBG.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rng_seed_is_restricted_to_crypto_officers() -> KResult<()> {
+    use crate::core::operations::check_role_permission;
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
+    let roles = &kms.params.crypto_officer;
+
+    check_role_permission(&kms, alice, "RNGSeed", roles).await?;
+    assert!(matches!(
+        check_role_permission(&kms, bob, "RNGSeed", roles).await,
+        Err(KmsError::Unauthorized(_))
+    ));
+    // reading random bytes stays open to every authenticated user
+    check_role_permission(&kms, bob, "RNGRetrieve", roles).await?;
+    Ok(())
+}
+
 // ─── Test 2: ceremony mode — candidate is Operator before ceremony ────────────
 
 /// Ceremony mode: user in `crypto_officer.users` but ceremony not yet completed

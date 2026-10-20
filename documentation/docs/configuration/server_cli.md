@@ -1106,13 +1106,18 @@ Options:
       --est-bootstrap-password <EST_BOOTSTRAP_PASSWORD>
           Password accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
 
+          At least 8 characters. Prefer the `KMS_EST_BOOTSTRAP_PASSWORD` environment variable (or
+          the configuration file) to the command line, where it is visible in the process list.
+
+          [env: KMS_EST_BOOTSTRAP_PASSWORD]
+
       --est-template <EST_TEMPLATE>
           Name of the `[templates.<name>]` section whose issuance policy (key type and size,
           EKU, Subject/SAN patterns, validity) is enforced on EST enrollments.
 
-          When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
-          P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
-          `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
+          Required when `est_enabled = true`. The template must set `subject_cn_regex` (or
+          `allow_any_identity = true`): the enrollment secret authenticates a class of devices,
+          not the name a device asks for.
 
       --scep-enabled
           Enable the SCEP endpoint at `/scep`.
@@ -1132,6 +1137,11 @@ Options:
           Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
           initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.
 
+          At least 8 characters. Prefer the `KMS_SCEP_CHALLENGE_PASSWORD` environment variable (or
+          the configuration file) to the command line, where it is visible in the process list.
+
+          [env: KMS_SCEP_CHALLENGE_PASSWORD]
+
       --scep-allow-renewal-without-challenge <SCEP_ALLOW_RENEWAL_WITHOUT_CHALLENGE>
           Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
           CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
@@ -1145,9 +1155,9 @@ Options:
           Name of the `[templates.<name>]` section whose issuance policy (key type and size,
           EKU, Subject/SAN patterns, validity) is enforced on SCEP enrollments.
 
-          When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
-          P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
-          `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
+          Required when `scep_enabled = true`. The template must set `subject_cn_regex` (or
+          `allow_any_identity = true`): the enrollment secret authenticates a class of devices,
+          not the name a device asks for.
 
   -h, --help
           Print help (see a summary with '-h')

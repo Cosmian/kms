@@ -24,29 +24,55 @@ pub(super) fn extract_operation(path: &str) -> &str {
 /// The `X-Forwarded-For` header is only trusted when the direct TCP peer address
 /// falls within one of the `trusted_proxies` CIDR ranges.  If the peer is not a
 /// trusted proxy, or if `trusted_proxies` is empty, the peer address is used
-/// directly — preventing clients from spoofing their apparent IP.
+/// directly — preventing clients from spoofing their apparent IP.  Behind a trusted proxy
+/// the address is the rightmost `X-Forwarded-For` entry that is not itself a trusted proxy:
+/// each proxy appends the address it received the request from, so the leftmost entries are
+/// whatever the client chose to send.
 pub(super) fn extract_client_ip(req: &ServiceRequest, trusted_proxies: &[IpNet]) -> Option<String> {
-    let peer_ip = req.peer_addr().map(|a| a.ip());
+    resolve_client_ip(
+        req.peer_addr().map(|a| a.ip()),
+        forwarded_for(req.headers()).as_deref(),
+        trusted_proxies,
+    )
+    .map(|ip| ip.to_string())
+}
 
+/// Every `X-Forwarded-For` line of a request as one comma-separated list. A proxy may append
+/// its own line instead of extending the client's, so reading only the first line would read
+/// what the client sent.
+pub(crate) fn forwarded_for(headers: &actix_web::http::header::HeaderMap) -> Option<String> {
+    let lines: Vec<&str> = headers
+        .get_all("x-forwarded-for")
+        .filter_map(|v| v.to_str().ok())
+        .collect();
+    (!lines.is_empty()).then(|| lines.join(","))
+}
+
+/// Same rule as [`extract_client_ip`] on already extracted values, for handlers that sit
+/// outside the audit middleware (EST / SCEP).
+pub(crate) fn resolve_client_ip(
+    peer_ip: Option<IpAddr>,
+    x_forwarded_for: Option<&str>,
+    trusted_proxies: &[IpNet],
+) -> Option<IpAddr> {
     let peer_is_trusted = peer_ip
         .as_ref()
         .is_some_and(|ip| trusted_proxies.iter().any(|cidr| cidr.contains(ip)));
 
     if peer_is_trusted {
-        if let Some(xff) = req.headers().get("x-forwarded-for") {
-            if let Ok(val) = xff.to_str() {
-                if let Some(ip) = val.split(',').next() {
-                    // Only trust a syntactically valid IP; otherwise fall back to the
-                    // peer address so garbage headers never reach the audit log.
-                    if let Ok(parsed) = ip.trim().parse::<IpAddr>() {
-                        return Some(parsed.to_string());
-                    }
-                }
+        for entry in x_forwarded_for.into_iter().flat_map(|v| v.rsplit(',')) {
+            // Only trust syntactically valid IPs; on garbage fall back to the peer address
+            // so a forged header never reaches the audit log or the enrollment lockout.
+            let Ok(parsed) = entry.trim().parse::<IpAddr>() else {
+                break;
+            };
+            if !trusted_proxies.iter().any(|cidr| cidr.contains(&parsed)) {
+                return Some(parsed);
             }
         }
     }
 
-    peer_ip.map(|ip| ip.to_string())
+    peer_ip
 }
 
 #[cfg(test)]
@@ -109,11 +135,33 @@ mod tests {
     }
 
     #[test]
-    fn xff_first_ip_taken_from_comma_list() {
+    fn xff_rightmost_untrusted_entry_is_taken_from_comma_list() {
         let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
         let req = make_request("10.0.0.2:9000", Some("203.0.113.5, 10.0.0.1")).to_srv_request();
         let ip = extract_client_ip(&req, &cidrs);
-        assert_eq!(ip.as_deref(), Some("203.0.113.5"), "first XFF entry used");
+        assert_eq!(ip.as_deref(), Some("203.0.113.5"), "trusted hop skipped");
+    }
+
+    /// The client controls the left of the header: it can neither pick its own address nor
+    /// aim the enrollment lockout at someone else's.
+    #[test]
+    fn xff_entries_forged_by_the_client_are_ignored() {
+        let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
+        let req =
+            make_request("10.0.0.2:9000", Some("198.51.100.99, 203.0.113.5")).to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(
+            ip.as_deref(),
+            Some("203.0.113.5"),
+            "added by the trusted proxy"
+        );
+        let req = make_request("10.0.0.2:9000", Some("203.0.113.5, not-an-ip")).to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(
+            ip.as_deref(),
+            Some("10.0.0.2"),
+            "garbage falls back to the peer"
+        );
     }
 
     #[test]

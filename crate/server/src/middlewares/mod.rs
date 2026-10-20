@@ -1,13 +1,14 @@
 mod audit;
 pub(crate) use audit::{
     AuditMiddleware, BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid,
-    KmipOperationName,
+    KmipOperationName, forwarded_for, resolve_client_ip,
 };
 
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
 pub(crate) use tls_auth::{
-    PeerCertificate, extract_peer_certificate, tls_auth_fn, user_from_client_certificate,
+    PeerCertificate, extract_peer_certificate, is_enrollment_issued, tls_auth_fn,
+    user_from_client_certificate, verified_issuers,
 };
 
 mod api_token;

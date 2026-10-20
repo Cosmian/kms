@@ -61,8 +61,8 @@ with a warning when no TLS certificate is configured).
 | `est_enabled` | `false` | Serve the EST routes. When `false`, they answer `404`. |
 | `est_ca_uid` | none | UID of the CA certificate. Required when EST is enabled. |
 | `est_require_client_cert` | `true` | `true`: first enrollment only over mutual TLS. `false`: HTTP Basic bootstrap is also accepted. |
-| `est_bootstrap_username`, `est_bootstrap_password` | none | Basic credentials; required when `est_require_client_cert = false`. The user name must not contain `:`. |
-| `est_template` | none (baseline) | Name of the `[templates.<name>]` section; see [Certificate templates](pki-enrollment.md#certificate-templates). |
+| `est_bootstrap_username`, `est_bootstrap_password` | none | Basic credentials; required when `est_require_client_cert = false`. The user name must not contain `:`; the password needs at least 8 characters (environment variable `KMS_EST_BOOTSTRAP_PASSWORD`). |
+| `est_template` | none | Name of the `[templates.<name>]` section. **Required** when EST is enabled; see [Certificate templates](pki-enrollment.md#certificate-templates). |
 
 Startup rules: with `est_require_client_cert = false` the server needs TLS; with
 `est_require_client_cert = true` it needs TLS **and** `clients_ca_cert_file`. For renewals the
@@ -236,7 +236,13 @@ The shared [security model](pki-enrollment.md#security-model) applies. Specific 
 - **TLS is mandatory.** Bootstrap credentials and certificates travel over the HTTPS channel; the
   server refuses to start EST without TLS.
 - **Enrolled certificates only renew themselves.** The KMS refuses them as a user identity on every
-  login path, but accepts them on `simplereenroll` for their own renewal.
+  login path (including a certificate signed by an enrolled one), but accepts them on
+  `simplereenroll` for their own renewal.
+- **`simpleenroll` with a client certificate.** A certificate issued by this CA must be active
+  (not revoked or deactivated) and can only be enrolled again for the same Subject and
+  SubjectAltName. A certificate that carries the enrollment marker but was issued elsewhere (the SCEP
+  CA, an earlier key of this CA) is refused with `403`. The TLS layer does not check revocation of
+  other client certificates (for example corporate ones accepted through `clients_ca_cert_file`).
 - **Do not mix trust roles.** Setting `clients_ca_cert_file` to the enrollment CA is needed for
   renewal, but it also makes the TLS layer accept that CA's certificates for all clients of the
   listener. Prefer a dedicated listener or trust anchor for KMIP and API users where you can.
@@ -253,7 +259,8 @@ Errors common to EST and SCEP are listed on the
 | HTTP `401` on `simpleenroll` | Wrong or missing bootstrap credentials, and no accepted client certificate. |
 | HTTP `422` | The CSR breaks the template: name, SAN, key size, EKU or extension. The reply says which. |
 | HTTP `400` on `simplereenroll` | The CSR's Subject or SubjectAltName differs from the current certificate. |
-| HTTP `403` on `simplereenroll` | The certificate being renewed was not issued by this CA, is expired, or is not `Active` (for example revoked). |
+| HTTP `403` on `simplereenroll` or `simpleenroll` | The client certificate cannot be used for enrollment: not issued by this CA, expired, not `Active` (for example revoked), or enrolled elsewhere. The reply is a fixed message; the reason is in the server log. |
+| HTTP `429` / `503` | Too many wrong credentials from this address, or too many enrollments in progress; wait for `Retry-After`. |
 
 ## Verifying the setup
 

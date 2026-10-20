@@ -46,7 +46,16 @@ pub(crate) async fn certify_for_owner(
     user: &UserId,
     owner: &UserId,
 ) -> KResult<CertifyResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    // The CSR is not logged: a SCEP PKCSReq carries the enrollment challengePassword in it.
+    trace!(
+        "Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes",
+        request.unique_identifier,
+        request.certificate_request_type,
+        request
+            .certificate_request_value
+            .as_ref()
+            .map_or(0, Vec::len)
+    );
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }

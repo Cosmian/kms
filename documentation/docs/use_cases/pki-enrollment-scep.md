@@ -67,9 +67,9 @@ interactive `cosmian_kms configure` wizard also asks about SCEP at the last step
 | --- | --- | --- |
 | `scep_enabled` | `false` | Serve `/scep`. |
 | `scep_ca_uid` | none | UID of the **RSA** CA certificate. Required when SCEP is enabled. |
-| `scep_challenge_password` | none | Shared secret for first enrollment. Must not be blank. |
+| `scep_challenge_password` | none | Shared secret for first enrollment, at least 8 characters (environment variable `KMS_SCEP_CHALLENGE_PASSWORD`). |
 | `scep_allow_renewal_without_challenge` | `true` | Accept renewals signed by a current certificate without the challenge. |
-| `scep_template` | none (baseline) | Name of the `[templates.<name>]` section; see [Certificate templates](pki-enrollment.md#certificate-templates). |
+| `scep_template` | none | Name of the `[templates.<name>]` section. **Required** when SCEP is enabled; see [Certificate templates](pki-enrollment.md#certificate-templates). |
 
 ## How-to: enable SCEP
 
@@ -148,12 +148,16 @@ sequenceDiagram
 
 The shared [security model](pki-enrollment.md#security-model) applies. Specific to SCEP:
 
-- **Pin the CA over plain HTTP.** SCEP also works over HTTP, but then `GetCACert` is not
-  authenticated: a device must pin the CA certificate or its fingerprint out of band (for example in
-  the MDM profile), otherwise an attacker on the network could substitute their own CA. Prefer
-  HTTPS.
-- **The challenge password is shared.** It is the same for all devices, does not expire and has no
-  lockout: make it long and random, and rate-limit the listener if it is exposed.
+- **Use HTTPS, or pin the CA.** SCEP also works over HTTP (the server logs a warning at startup),
+  but then `GetCACert` is not authenticated: a device must pin the CA certificate or its
+  fingerprint out of band (for example in the MDM profile), otherwise an attacker on the network
+  could substitute their own CA, and the AES-CBC envelope has no integrity protection.
+- **The challenge password is shared.** It is the same for all devices and does not expire: make it
+  long and random. Wrong challenges lock the client address out (`429`).
+- **Replays and error replies.** A captured request cannot be replayed: a message that already
+  authenticated (same signer, transaction ID and nonce) is refused for an hour. Every failure after
+  the message is parsed is a `badRequest`, so the reply does not tell an undecryptable envelope from
+  a wrong challenge. The transaction ID must be printable ASCII of at most 128 characters.
 - **Enrolled certificates cannot log in to the KMS.** They can only sign their own `RenewalReq`.
 
 ## Troubleshooting
@@ -164,8 +168,10 @@ Errors common to EST and SCEP are listed on the
 | Symptom | Likely cause and fix |
 | --- | --- |
 | `404` on `/scep` | SCEP is disabled. Set `scep_enabled = true` and restart. |
-| `badRequest` reply | The CSR breaks the template: name, SAN, key size, EKU or extension. The reply says which. |
+| `badRequest` reply | The request was refused: the CSR breaks the template (name, SAN, key size, EKU, extension), the challenge is wrong, or the message was replayed. The reply never says which (it would be an oracle); the server log does. |
 | A client fails with a decryption or algorithm error | It uses single DES or SHA-1. Use a client that honours `GetCACaps` and negotiates `AES` and `SHA-256`. |
+| A renewal or enrollment is refused right after a successful identical one | The message was replayed (same signer, transaction ID and sender nonce): generate a fresh nonce for every message. |
+| HTTP `429` / `503` | Too many failed attempts from this address, or too many enrollments in progress; wait for `Retry-After`. |
 
 ## Verifying the setup
 

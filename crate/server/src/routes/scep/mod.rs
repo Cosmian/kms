@@ -23,11 +23,15 @@ use std::sync::Arc;
 
 use actix_web::{
     HttpRequest, HttpResponse, routes,
-    web::{Bytes, Data, Query},
+    web::{Data, Payload, Query},
 };
 use serde::Deserialize;
 
-use crate::{core::KMS, result::KResult};
+use crate::{
+    core::KMS,
+    result::KResult,
+    routes::enrollment::{client_ip, read_limited_body},
+};
 
 /// Query string of a SCEP request (RFC 8894 §4.1).
 #[derive(Deserialize)]
@@ -47,7 +51,7 @@ fn bad_request(message: &str) -> HttpResponse {
 #[get("/scep")]
 #[get("/scep/pkiclient.exe")]
 pub(crate) async fn scep_get(
-    _req: HttpRequest,
+    req: HttpRequest,
     kms: Data<Arc<KMS>>,
     query: Query<ScepQuery>,
 ) -> KResult<HttpResponse> {
@@ -59,12 +63,13 @@ pub(crate) async fn scep_get(
         Some("GetCACert") => ca_cert::get_ca_cert(&kms).await,
         Some("PKIOperation") => match query.message.as_deref() {
             Some(message) => match pki_operation::decode_get_message(message) {
-                Ok(der) => pki_operation::pki_operation(&kms, &der).await,
+                Ok(der) => pki_operation::pki_operation(&kms, client_ip(&kms, &req), &der).await,
                 Err(e) => Ok(bad_request(&e)),
             },
             None => Ok(bad_request("missing `message` parameter")),
         },
-        Some(other) => Ok(bad_request(&format!("unsupported SCEP operation: {other}"))),
+        // The value is attacker controlled: never echoed.
+        Some(_) => Ok(bad_request("unsupported SCEP operation")),
         None => Ok(bad_request("missing `operation` parameter")),
     }
 }
@@ -74,19 +79,23 @@ pub(crate) async fn scep_get(
 #[post("/scep")]
 #[post("/scep/pkiclient.exe")]
 pub(crate) async fn scep_post(
-    _req: HttpRequest,
+    req: HttpRequest,
     kms: Data<Arc<KMS>>,
     query: Query<ScepQuery>,
-    body: Bytes,
+    payload: Payload,
 ) -> KResult<HttpResponse> {
     if !kms.params.scep_enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     match query.operation.as_deref() {
-        Some("PKIOperation") => pki_operation::pki_operation(&kms, &body).await,
-        Some(other) => Ok(bad_request(&format!(
-            "operation {other} is not supported over POST"
-        ))),
+        Some("PKIOperation") => {
+            let body = match read_limited_body(payload).await {
+                Ok(body) => body,
+                Err(response) => return Ok(response),
+            };
+            pki_operation::pki_operation(&kms, client_ip(&kms, &req), &body).await
+        }
+        Some(_) => Ok(bad_request("operation not supported over POST")),
         None => Ok(bad_request("missing `operation` parameter")),
     }
 }

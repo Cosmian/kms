@@ -31,6 +31,24 @@ mod socket_wizard;
 mod tests;
 mod tls_wizard;
 
+/// Write `content` to `path`, readable by the owner only: the file can hold the EST bootstrap
+/// password, the SCEP challenge and other secrets.
+fn write_owner_only(path: &std::path::Path, content: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+        options.mode(0o600);
+        // `mode` only applies to a file that is created: tighten an existing one as well.
+        if path.exists() {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+    }
+    options.open(path)?.write_all(content)
+}
+
 use dialoguer::{Input, theme::ColorfulTheme};
 
 use crate::{
@@ -207,7 +225,7 @@ pub fn run_configure_wizard() -> KResult<()> {
             KmsError::ServerError(format!("Cannot create directory {}: {e}", parent.display()))
         })?;
     }
-    std::fs::write(output_file, &toml_content)
+    write_owner_only(output_file, toml_content.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Cannot write {output_path}: {e}")))?;
 
     println!("╔══════════════════════════════════════════════════════════════╗");

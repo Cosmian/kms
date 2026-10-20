@@ -150,6 +150,14 @@ pub(crate) async fn check_role_permission(
         }
     }
 
+    // `RNGSeed` has no `KmipOperation` variant, so the per-role tables below do not see it:
+    // once roles are configured, only a Crypto Officer may add input to the server DRBG.
+    if operation_tag == "RNGSeed" && effective_role != Role::CryptoOfficer {
+        kms_bail!(KmsError::Unauthorized(format!(
+            "User `{user}` is not authorized to perform operation `RNGSeed` (Crypto Officer only)"
+        )))
+    }
+
     match effective_role {
         Role::CryptoOfficer => {
             // CryptoOfficer: enforce allowed_operations(). Ownership bypass is handled

@@ -52,15 +52,23 @@ pub struct EstConfig {
     pub est_bootstrap_username: Option<String>,
 
     /// Password accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
-    #[clap(long, verbatim_doc_comment)]
+    ///
+    /// At least 8 characters. Prefer the `KMS_EST_BOOTSTRAP_PASSWORD` environment variable (or
+    /// the configuration file) to the command line, where it is visible in the process list.
+    #[clap(
+        long,
+        env = "KMS_EST_BOOTSTRAP_PASSWORD",
+        hide_env_values = true,
+        verbatim_doc_comment
+    )]
     pub est_bootstrap_password: Option<String>,
 
     /// Name of the `[templates.<name>]` section whose issuance policy (key type and size,
     /// EKU, Subject/SAN patterns, validity) is enforced on EST enrollments.
     ///
-    /// When unset, a baseline policy applies: RSA keys of at least 2048 bits or NIST
-    /// P-256/P-384/P-521 EC keys, the `clientAuth` Extended Key Usage only, no
-    /// `basicConstraints` `CA:TRUE`, and a validity of at most 365 days.
+    /// Required when `est_enabled = true`. The template must set `subject_cn_regex` (or
+    /// `allow_any_identity = true`): the enrollment secret authenticates a class of devices,
+    /// not the name a device asks for.
     #[clap(long, verbatim_doc_comment)]
     pub est_template: Option<String>,
 }

@@ -19,7 +19,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{UserId, user_from_client_certificate},
+    middlewares::{UserId, user_from_client_certificate, verified_issuers},
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
@@ -469,7 +469,10 @@ fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> KResult<UserId> {
             "socket server: the client did not provide a peer certificate".to_owned(),
         )
     })?;
-    user_from_client_certificate(&client_certificate)
+    user_from_client_certificate(
+        &client_certificate,
+        verified_issuers(tls_stream.ssl()).as_deref(),
+    )
 }
 
 // Client Certificate Authentication

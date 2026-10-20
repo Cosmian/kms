@@ -92,7 +92,10 @@ where
     }
 }
 
-/// Noise is not secret, but its generator is still seeded from `KmsRng`: no other entropy source is allowed.
+/// The noise only protects the anonymized data while it cannot be predicted, so its generator
+/// is seeded from the *private* DRBG (`fill_bytes`) like every other seed: the public DRBG is
+/// observable (`RNGRetrieve`) and would make the seed guessable. `KmsRng` is the only entropy
+/// source the workspace allows.
 fn kms_seeded_rng() -> Result<StdRng, AnoError> {
     let mut seed = [0_u8; 32];
     KmsRng::new().fill_bytes(&mut seed).map_err(|e| {

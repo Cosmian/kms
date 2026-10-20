@@ -73,6 +73,10 @@ components:
     mtls:
       type: mutualTLS
       description: Client certificate presented during TLS handshake
+    basicAuth:
+      type: http
+      scheme: basic
+      description: HTTP Basic bootstrap credentials of EST `simpleenroll` (`est_require_client_cert = false`, TLS required)
     vaultToken:
       type: apiKey
       in: header
@@ -2594,7 +2598,9 @@ paths:
         validity) before the certificate is issued by the CA `est_ca_uid`.
         The response contains only the issued certificate.
       operationId: estSimpleEnroll
-      security: []
+      security:
+        - mtls: []
+        - basicAuth: []
       requestBody:
         required: true
         content:
@@ -2617,8 +2623,16 @@ paths:
           description: 'Client authentication required (`WWW-Authenticate: Basic` when Basic bootstrap is enabled)'
         '404':
           description: EST disabled (`est_enabled = false`, the default)
+        '403':
+          description: The client certificate cannot be used for enrollment (a fixed message; the reason is only logged)
+        '413':
+          description: Request body larger than 64 KiB
         '422':
           description: The CSR violates the certificate template or is malformed (plain-text reason)
+        '429':
+          description: Too many failed authentications from this client address; `Retry-After` gives the delay in seconds
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
 
   /.well-known/est/simplereenroll:
     post:
@@ -2630,7 +2644,8 @@ paths:
         and SubjectAltName must be identical to those of that certificate. No challenge or
         bootstrap credential is needed.
       operationId: estSimpleReenroll
-      security: []
+      security:
+        - mtls: []
       requestBody:
         required: true
         content:
@@ -2654,11 +2669,16 @@ paths:
         '401':
           description: No TLS client certificate presented
         '403':
-          description: The client certificate was not issued by the EST CA, is expired, or is not active
+          description: The client certificate cannot be used for enrollment (not issued by the EST CA, expired or not active; a fixed message, the reason
+            is only logged)
         '404':
           description: EST disabled (`est_enabled = false`, the default)
+        '413':
+          description: Request body larger than 64 KiB
         '422':
           description: The CSR violates the certificate template or is malformed
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
 
   /scep:
     get:
@@ -2713,6 +2733,12 @@ paths:
           description: Missing or unsupported `operation`, or unreadable `pkiMessage`
         '404':
           description: SCEP disabled (`scep_enabled = false`, the default)
+        '413':
+          description: The `pkiMessage` is larger than 64 KiB
+        '429':
+          description: Too many failed authentications from this client address; `Retry-After` gives the delay in seconds
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
     post:
       tags: [Enrollment]
       summary: SCEP PKIOperation over POST (RFC 8894 §4.3)
@@ -2721,9 +2747,12 @@ paths:
         `PKCSReq` (initial enrollment, `challengePassword` required) or a `RenewalReq`
         (signed by a still-valid certificate of the SCEP CA, no challenge required unless
         `scep_allow_renewal_without_challenge = false`). The CSR is validated against the
-        `scep_template` certificate template. The answer is always a signed `CertRep`;
-        failures are reported as `pkiStatus = FAILURE` with a `failInfo`
-        (`badRequest`, `badMessageCheck`, `badCertId`).
+        `scep_template` certificate template. The answer is a signed `CertRep`; failures are
+        reported as `pkiStatus = FAILURE` with `failInfo = badRequest` for every problem found
+        after the request is parsed (undecryptable envelope, wrong challenge, policy violation,
+        replayed message), so that the `failInfo` is not a decryption oracle, or `badCertId`
+        when a renewal is signed by a certificate that is not valid. A client that repeatedly
+        fails to authenticate is locked out (`429`).
       operationId: scepPost
       security: []
       parameters:
@@ -2749,9 +2778,15 @@ paths:
                 type: string
                 format: binary
         '400':
-          description: Unsupported operation or unreadable `pkiMessage`
+          description: Unsupported operation, unreadable `pkiMessage` or invalid `transactionID`
         '404':
           description: SCEP disabled (`scep_enabled = false`, the default)
+        '413':
+          description: The `pkiMessage` is larger than 64 KiB
+        '429':
+          description: Too many failed authentications from this client address; `Retry-After` gives the delay in seconds
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
 
   /scep/pkiclient.exe:
     get:
