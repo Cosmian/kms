@@ -337,10 +337,9 @@ async fn enroll(
         let authorised = matches!((expected, supplied.as_deref()),
             (Some(expected), Some(supplied)) if secrets_equal(expected, supplied));
         if !authorised {
-            return Err(
-                Rejection::new(FAIL_INFO_BAD_REQUEST, "missing or wrong challengePassword")
-                    .counted(),
-            );
+            let rejection =
+                Rejection::new(FAIL_INFO_BAD_REQUEST, "missing or wrong challengePassword");
+            return Err(rejection.counted());
         }
         "scep-challenge".clone_into(principal);
     } else {
