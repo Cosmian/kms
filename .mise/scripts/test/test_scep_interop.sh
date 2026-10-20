@@ -42,7 +42,7 @@ trap cleanup EXIT
 
 ckms() { "${CKMS_BIN}" --conf-path "${KMS_CKMS_CONF}" "$@"; }
 
-print_header "Step 2: Build scepclient ${SCEPCLIENT_VERSION} (AES-128-CBC)"
+print_header "Step 2: Build scepclient ${SCEPCLIENT_VERSION} (AES-128-CBC, SHA-256)"
 # The stock scepclient never reads GetCACaps and always encrypts the pkcsPKIEnvelope with
 # single-DES-CBC (the default of the smallstep/pkcs7 library), which a FIPS 140-3 server must
 # refuse (RFC 8894 §3.5.2: only advertised capabilities may be used). The same client library
@@ -66,6 +66,16 @@ retry git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com
     "github.com/smallstep/pkcs7 v0.1.1/go.mod h1:dL6j5AIz9GHjVEBTXtW+QliALcgM19RtXaTeyxI+AfA="; do
     grep -qxF "${pinned}" go.sum || print_error "smallstep/pkcs7 v0.1.1 checksum differs from the pinned value: ${pinned}"
   done
+  # The library signs every pkiMessage with SHA-1 (NewSignedData's hard-coded default) and the
+  # scepclient never calls SetDigestAlgorithm, but the CA refuses SHA-1 signers and advertises
+  # SHA-256 only. Build against a copy of the pinned module whose default digest is SHA-256.
+  pkcs7_dir="$(go list -m -f '{{.Dir}}' github.com/smallstep/pkcs7)"
+  cp -R "${pkcs7_dir}" "${WORKDIR}/pkcs7-src"
+  chmod -R u+w "${WORKDIR}/pkcs7-src"
+  perl -pi -e 's/digestOid: OIDDigestAlgorithmSHA1\}/digestOid: OIDDigestAlgorithmSHA256}/' "${WORKDIR}/pkcs7-src/sign.go"
+  grep -q 'digestOid: OIDDigestAlgorithmSHA256}' "${WORKDIR}/pkcs7-src/sign.go" ||
+    print_error "SHA-256 digest patch did not apply to smallstep/pkcs7 v0.1.1"
+  go mod edit -replace "github.com/smallstep/pkcs7=${WORKDIR}/pkcs7-src"
   mkdir -p "${WORKDIR}/bin"
   retry go build -o "${WORKDIR}/bin/scepclient" ./cmd/scepclient
 )
