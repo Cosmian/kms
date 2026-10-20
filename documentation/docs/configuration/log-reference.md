@@ -796,6 +796,8 @@ Crate path: `crate/server`
 | `warn` | `enrollment: CA certificate not found: {ca_uid}` | `src/routes/enrollment.rs` | `ca_uid` | - |
 | `warn` | `enrollment: the CA private key {} is not Active` | `src/routes/enrollment.rs` | key uid | Logged only; the enrollment error carries no UID. |
 | `warn` | `SCEP request {} from {client} rejected: {reason} (messageType={message_type})` | `src/routes/scep/pki_operation.rs` | `client`, `reason`, `message_type` | Counts toward the enrollment lockout. |
+| `warn` | `enrollment: refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
+| `warn` | `enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
