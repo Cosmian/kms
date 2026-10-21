@@ -127,6 +127,7 @@ flowchart TB
 | HSM Type  | FIPS | Non-FIPS | Notes     |
 |-----------|:----:|:--------:|-----------|
 | utimaco   | ✓    | ✓        |           |
+| crypt2pay-simulator | ✓ | ✓    | Local `bnt` simulator, tests only (no bench) |
 | proteccio | ✓    | ✗        | FIPS only |
 | softhsm2  | ✓    | ✓        |           |
 

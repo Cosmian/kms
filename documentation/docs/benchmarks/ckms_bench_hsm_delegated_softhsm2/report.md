@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-09
+**Generated**: 2026-10-21
 
 ---
 
@@ -9,17 +9,17 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-10-07 23:46:16 UTC |
+| Date | 2026-10-20 23:07:31 UTC |
 | HSM backend | SoftHSM2 |
 | Command | `mise run bench:hsm --delegated --hsm-model softhsm2` |
 | Build | release / non-fips |
 | HTTP workers (Actix-web) | 32 |
 | Database | SQLite (temporary, single benchmark run) |
-| CPU | Intel(R) Core(TM) i9-14900T @ 5,100 MHz |
+| CPU | Intel(R) Core(TM) i9-14900T @ 801 MHz |
 | CPU cores | 24 physical / 32 logical (HT) |
 | RAM | 31.1 GB |
 | OS | Ubuntu 24.04.5 LTS |
-| Kernel | 6.8.0-146-generic |
+| Kernel | 6.8.0-147-generic |
 
 ### Load test parameters
 
@@ -49,7 +49,7 @@ Thread(s) per core:                      2
 Core(s) per socket:                      24
 Socket(s):                               1
 Stepping:                                1
-CPU(s) scaling MHz:                      29%
+CPU(s) scaling MHz:                      20%
 CPU max MHz:                             5500,0000
 CPU min MHz:                             800,0000
 BogoMIPS:                                2227,20
@@ -191,8 +191,8 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 52 |
-| 2 | 39 |
+| 1 | 53 |
+| 2 | 40 |
 | 4 | 27 |
 
 ![Throughput — hsm/key-creation/aes-256](load/hsm_key-creation_aes-256.svg)
@@ -215,11 +215,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 2,884 |
-| 2 | 5,027 |
-| 4 | 8,090 |
-| 8 | 11,183 |
-| 16 | 15,367 |
+| 1 | 6,736 |
+| 2 | 11,642 |
+| 4 | 17,819 |
+| 8 | 23,052 |
+| 16 | 14,630 |
 
 ![Throughput — hsm/encrypt/aes-gcm](load/hsm_encrypt_aes-gcm.svg)
 
@@ -229,11 +229,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 11,700 |
-| 2 | 18,975 |
-| 4 | 27,420 |
-| 8 | 35,552 |
-| 16 | 41,365 |
+| 1 | 15,027 |
+| 2 | 23,110 |
+| 4 | 32,554 |
+| 8 | 43,060 |
+| 16 | 49,988 |
 
 ![Throughput — hsm/encrypt/rsa-oaep](load/hsm_encrypt_rsa-oaep.svg)
 
@@ -243,11 +243,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 9,567 |
-| 2 | 15,680 |
-| 4 | 23,744 |
-| 8 | 33,058 |
-| 16 | 39,172 |
+| 1 | 13,285 |
+| 2 | 22,307 |
+| 4 | 32,653 |
+| 8 | 42,886 |
+| 16 | 50,458 |
 
 ![Throughput — hsm/encrypt/rsa-oaep-sha1](load/hsm_encrypt_rsa-oaep-sha1.svg)
 
@@ -257,11 +257,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 7,157 |
-| 2 | 12,633 |
-| 4 | 18,195 |
-| 8 | 23,990 |
-| 16 | 24,487 |
+| 1 | 10,507 |
+| 2 | 17,114 |
+| 4 | 25,860 |
+| 8 | 30,103 |
+| 16 | 14,019 |
 
 ![Throughput — hsm/encrypt/rsa-pkcs1v15](load/hsm_encrypt_rsa-pkcs1v15.svg)
 
@@ -271,11 +271,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 2,267 |
-| 2 | 4,266 |
-| 4 | 6,689 |
-| 8 | 9,376 |
-| 16 | 13,995 |
+| 1 | 6,848 |
+| 2 | 11,640 |
+| 4 | 17,901 |
+| 8 | 23,407 |
+| 16 | 19,947 |
 
 ![Throughput — hsm/encrypt/aes-cbc](load/hsm_encrypt_aes-cbc.svg)
 
@@ -285,11 +285,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,179 |
-| 2 | 2,516 |
-| 4 | 3,862 |
-| 8 | 5,825 |
-| 16 | 7,167 |
+| 1 | 1,465 |
+| 2 | 2,564 |
+| 4 | 3,963 |
+| 8 | 5,881 |
+| 16 | 7,062 |
 
 ![Throughput — hsm/sign-verify/rsa-pss](load/hsm_sign-verify_rsa-pss.svg)
 
@@ -299,11 +299,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,466 |
-| 2 | 2,570 |
-| 4 | 4,092 |
-| 8 | 5,934 |
-| 16 | 7,137 |
+| 1 | 1,460 |
+| 2 | 2,594 |
+| 4 | 4,009 |
+| 8 | 5,915 |
+| 16 | 7,225 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha1](load/hsm_sign-verify_rsa-pkcs1v15-sha1.svg)
 
@@ -313,11 +313,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,447 |
-| 2 | 2,560 |
-| 4 | 3,938 |
-| 8 | 5,647 |
-| 16 | 7,189 |
+| 1 | 1,483 |
+| 2 | 2,599 |
+| 4 | 4,119 |
+| 8 | 5,906 |
+| 16 | 7,229 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha256](load/hsm_sign-verify_rsa-pkcs1v15-sha256.svg)
 
@@ -327,11 +327,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,435 |
-| 2 | 2,357 |
-| 4 | 4,099 |
-| 8 | 5,814 |
-| 16 | 7,150 |
+| 1 | 1,484 |
+| 2 | 2,567 |
+| 4 | 4,122 |
+| 8 | 5,887 |
+| 16 | 7,253 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha384](load/hsm_sign-verify_rsa-pkcs1v15-sha384.svg)
 
@@ -341,11 +341,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,451 |
-| 2 | 2,548 |
-| 4 | 3,986 |
-| 8 | 5,834 |
-| 16 | 7,182 |
+| 1 | 1,426 |
+| 2 | 2,564 |
+| 4 | 3,994 |
+| 8 | 5,868 |
+| 16 | 7,226 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha512](load/hsm_sign-verify_rsa-pkcs1v15-sha512.svg)
 
@@ -355,11 +355,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 9,675 |
-| 2 | 15,183 |
-| 4 | 24,738 |
-| 8 | 27,712 |
-| 16 | 26,177 |
+| 1 | 10,303 |
+| 2 | 17,587 |
+| 4 | 27,002 |
+| 8 | 29,413 |
+| 16 | 28,020 |
 
 ![Throughput — hsm/sign-verify/ecdsa-p256](load/hsm_sign-verify_ecdsa-p256.svg)
 
@@ -369,11 +369,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 7,907 |
-| 2 | 11,608 |
-| 4 | 20,267 |
-| 8 | 25,155 |
-| 16 | 17,193 |
+| 1 | 8,794 |
+| 2 | 14,028 |
+| 4 | 22,163 |
+| 8 | 26,343 |
+| 16 | 25,509 |
 
 ![Throughput — hsm/sign-verify/eddsa-ed25519](load/hsm_sign-verify_eddsa-ed25519.svg)
 
@@ -383,11 +383,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 3,100 |
-| 2 | 5,191 |
-| 4 | 8,925 |
-| 8 | 12,208 |
-| 16 | 16,277 |
+| 1 | 3,468 |
+| 2 | 5,874 |
+| 4 | 9,428 |
+| 8 | 12,811 |
+| 16 | 16,962 |
 
 ![Throughput — hsm/sign-verify/eddsa-ed448](load/hsm_sign-verify_eddsa-ed448.svg)
 
@@ -399,8 +399,8 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-aes-cbc/encrypt/256 | 126.9 µs |
-| hsm-aes-gcm/encrypt/256 | 101.9 µs |
+| hsm-aes-cbc/encrypt/256 | 290.3 µs |
+| hsm-aes-gcm/encrypt/256 | 127.5 µs |
 
 ---
 
@@ -408,9 +408,9 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-rsa-oaep-sha1/encrypt/2048 | 173.6 µs |
-| hsm-rsa-oaep/encrypt/2048 | 98.3 µs |
-| hsm-rsa-pkcs1v15/encrypt/2048 | 189.0 µs |
+| hsm-rsa-oaep-sha1/encrypt/2048 | 94.1 µs |
+| hsm-rsa-oaep/encrypt/2048 | 68.5 µs |
+| hsm-rsa-pkcs1v15/encrypt/2048 | 94.4 µs |
 
 ---
 
@@ -418,11 +418,11 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-aes-256/create | 71.22 ms |
-| hsm-ec-p256/create | 207.55 ms |
-| hsm-ed25519/create | 208.09 ms |
-| hsm-ed448/create | 207.59 ms |
-| hsm-rsa-2048/create | 273.44 ms |
+| hsm-aes-256/create | 74.02 ms |
+| hsm-ec-p256/create | 215.89 ms |
+| hsm-ed25519/create | 209.82 ms |
+| hsm-ed448/create | 216.12 ms |
+| hsm-rsa-2048/create | 284.53 ms |
 
 ---
 
@@ -430,14 +430,14 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-ecdsa-p256/sign | 183.9 µs |
-| hsm-ecdsa-p384/sign | 750.1 µs |
-| hsm-eddsa-ed25519/sign | 142.9 µs |
-| hsm-eddsa-ed448/sign | 377.2 µs |
-| hsm-rsa-pkcs1v15-sha1/sign/2048 | 805.4 µs |
-| hsm-rsa-pkcs1v15-sha256/sign/2048 | 797.5 µs |
-| hsm-rsa-pkcs1v15-sha384/sign/2048 | 768.5 µs |
-| hsm-rsa-pkcs1v15-sha512/sign/2048 | 735.7 µs |
-| hsm-rsa-pss/sign/2048 | 800.4 µs |
+| hsm-ecdsa-p256/sign | 165.5 µs |
+| hsm-ecdsa-p384/sign | 558.2 µs |
+| hsm-eddsa-ed25519/sign | 139.4 µs |
+| hsm-eddsa-ed448/sign | 306.1 µs |
+| hsm-rsa-pkcs1v15-sha1/sign/2048 | 768.8 µs |
+| hsm-rsa-pkcs1v15-sha256/sign/2048 | 704.5 µs |
+| hsm-rsa-pkcs1v15-sha384/sign/2048 | 691.4 µs |
+| hsm-rsa-pkcs1v15-sha512/sign/2048 | 724.3 µs |
+| hsm-rsa-pss/sign/2048 | 707.7 µs |
 
 ---

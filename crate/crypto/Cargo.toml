@@ -34,7 +34,6 @@ non-fips = [
   "dep:rand_chacha",
   "dep:rand_distr",
   "dep:sha2",
-  "dep:p256",
   "dep:k256",
   "dep:itertools",
   "dep:num-bigint",
@@ -68,7 +67,6 @@ num-bigint-dig = { workspace = true, features = [
 num-traits = { workspace = true, optional = true }
 openssl = { workspace = true }
 openssl-sys = { workspace = true }
-p256 = { workspace = true, features = ["arithmetic", "ecdsa", "pem", "std"], optional = true }
 pgp = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
