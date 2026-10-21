@@ -63,9 +63,9 @@ repos:
       - id: remove-crlf
       - id: forbid-crlf
       - id: remove-tabs
-        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca|(^|/)go\.mod$
       - id: forbid-tabs
-        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca|(^|/)go\.mod$
 
   # ── Text hygiene ──────────────────────────────────────────────────────
   - repo: https://github.com/sirosen/texthooks
