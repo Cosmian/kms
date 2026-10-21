@@ -200,14 +200,14 @@ fn get_cert_path(relative_path: &str) -> PathBuf {
 ///
 /// This test requires the postgres-mtls service from docker-compose.yml to be running:
 /// ```bash
-/// docker compose --profile mtls up -d postgres-mtls
+/// docker compose up -d postgres-mtls
 /// ```
 ///
 /// To run this test:
 /// ```bash
-/// cargo test --package cosmian_kms_server --lib test_postgresql_mtls_connection -- --ignored --nocapture
+/// cargo test --package cosmian_kms_server --lib test_db_postgresql_mtls_connection -- --ignored --nocapture
 /// ```
-#[ignore = "Requires postgres-mtls service running (docker compose --profile mtls up -d postgres-mtls)"]
+#[ignore = "Requires postgres-mtls service running (docker compose up -d postgres-mtls)"]
 #[tokio::test]
 async fn test_db_postgresql_mtls_connection() -> KResult<()> {
     // Build PostgreSQL URL with properly encoded query parameters
@@ -253,14 +253,14 @@ async fn test_db_postgresql_mtls_connection() -> KResult<()> {
 ///
 /// This test requires the mysql-mtls service from docker-compose.yml to be running:
 /// ```bash
-/// docker compose --profile mtls up -d mysql-mtls
+/// docker compose up -d mysql-mtls
 /// ```
 ///
 /// To run this test:
 /// ```bash
-/// cargo test --package cosmian_kms_server --lib test_mysql_mtls_connection -- --ignored --nocapture
+/// cargo test --package cosmian_kms_server --lib test_db_mysql_mtls_connection -- --ignored --nocapture
 /// ```
-#[ignore = "Requires mysql-mtls service running (docker compose --profile mtls up -d mysql-mtls)"]
+#[ignore = "Requires mysql-mtls service running (docker compose up -d mysql-mtls)"]
 #[tokio::test]
 #[cfg(feature = "non-fips")]
 async fn test_db_mysql_mtls_connection() -> KResult<()> {
