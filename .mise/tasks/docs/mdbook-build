@@ -27,7 +27,7 @@ if [ "${usage_combined:-false}" = "true" ] || [ -n "${TOKEN}" ]; then
   # Disposable checkout outside the repo: build-staging.sh resets the other products in it
   PUBLIC_DOCS_DIR="${PUBLIC_DOCS_DIR:-$(mktemp -d)/public_documentation}"
   if [ ! -d "${PUBLIC_DOCS_DIR}" ]; then
-    clone=(clone --depth 1 --recurse-submodules --shallow-submodules
+    clone=(clone --branch develop --depth 1 --recurse-submodules --shallow-submodules
       git@github.com:Cosmian/public_documentation.git "${PUBLIC_DOCS_DIR}")
     if [ -n "${TOKEN}" ]; then
       # CI has no SSH key: HTTPS with the token, theme submodule included
