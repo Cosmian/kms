@@ -1719,6 +1719,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cosmian_config_utils",
+ "cosmian_cover_crypt",
  "cosmian_kmip",
  "cosmian_kms_access",
  "cosmian_logger",
