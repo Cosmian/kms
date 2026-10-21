@@ -307,6 +307,7 @@ jobs:
       matrix:
         hsm-type:
           - utimaco
+          - crypt2pay-simulator
           - softhsm2
           - kryoptic
         features: [fips, non-fips]
@@ -328,13 +329,11 @@ jobs:
 
       - name: Bench (PKCS#11 load, HSM-delegated)
         run: |
-          HSM_MODEL="${{ matrix.hsm-type }}"
-          mise run bench:pkcs11 --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
+          mise run bench:pkcs11 --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
 
       - name: Bench (HSM-delegated)
         run: |
-          HSM_MODEL="${{ matrix.hsm-type }}"
-          mise run bench:hsm --delegated --hsm-model "$HSM_MODEL" --variant ${{ matrix.features }} -s
+          mise run bench:hsm --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
 
       # The comprehensive provider suite and pkcs11-check require non-FIPS.
       - name: Test (PKCS#11 v3 conformance via pkcs11-tool and pkcs11-check)

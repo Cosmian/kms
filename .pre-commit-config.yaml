@@ -63,9 +63,9 @@ repos:
       - id: remove-crlf
       - id: forbid-crlf
       - id: remove-tabs
-        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca|(^|/)go\.mod$
       - id: forbid-tabs
-        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca|(^|/)go\.mod$
 
   # ── Text hygiene ──────────────────────────────────────────────────────
   - repo: https://github.com/sirosen/texthooks
@@ -161,7 +161,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs|crate/crypto/src/crypto/openpgp/mod.rs|crate/clients/client_utils/src/openpgp_format.rs|crate/test_kms_server/src/pgp_tests.rs|crate/clients/ckms/src/tests/pgp/
+        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs|crate/crypto/src/crypto/openpgp/mod.rs|crate/clients/client_utils/src/openpgp_format.rs|crate/test_kms_server/src/pgp_tests.rs|crate/clients/ckms/src/tests/pgp/|crate/crypto/src/crypto/elliptic_curves/sign.rs
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs

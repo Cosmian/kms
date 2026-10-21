@@ -20,7 +20,7 @@
 #USAGE flag "-s --sanity"           env="BENCH_SANITY"                                  help="Quick sanity: 2 s/level, concurrency=1,2, no warmup/cooldown, mode=encrypt"
 #USAGE flag "--shared-session"      env="BENCH_SHARED_SESSION"                          help="Force every worker thread to share one Cryptoki session (pre-fix behavior), instead of one dedicated session per thread (default) — for before/after comparison only"
 #USAGE flag "-d --delegated"        env="BENCH_DELEGATED"                               help="Benchmark crypto operations executed DIRECTLY on the HSM (CryptoOracle) via HSM-resident keys"
-#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for delegated benchmarking"      { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "utimaco" "smartcardhsm" "aws_cloudhsm" "other" }
+#USAGE flag "--hsm-model <m>"        env="BENCH_HSM_MODEL"     default="softhsm2"        help="HSM model for delegated benchmarking (crypt2pay-simulator = crypt2pay against the local simulator)"      { choices "softhsm2" "kryoptic" "proteccio" "crypt2pay" "crypt2pay-simulator" "utimaco" "smartcardhsm" "aws_cloudhsm" "other" }
 #USAGE flag "--hsm-slot <s>"          env="BENCH_HSM_SLOT"                                 help="HSM slot ID for HSM-resident keys (used with --delegated and remote --server-url)"
 #USAGE flag "--criterion"           env="BENCH_CRITERION"                               help="Also run real criterion-crate single-operation micro-benchmarks, on top of the concurrency sweep that always runs — writes criterion.json alongside load_pkcs11.json, so the report gets both a Load Tests and a Criterion Benchmarks section"
 #USAGE flag "--speed <speed>"         env="BENCH_SPEED"         default="quick"           help="Criterion speed preset (with --criterion)" { choices "sanity" "quick" "normal" }
@@ -52,6 +52,10 @@ BENCH_SANITY="${usage_sanity:-}"
 BENCH_SHARED_SESSION="${usage_shared_session:-}"
 BENCH_DELEGATED="${usage_delegated:-}"
 BENCH_HSM_MODEL="${usage_hsm_model:-softhsm2}"
+if [ "${BENCH_HSM_MODEL}" = "crypt2pay-simulator" ]; then
+  export CRYPT2PAY_SIMULATOR=1
+  BENCH_HSM_MODEL=crypt2pay
+fi
 BENCH_HSM_SLOT="${usage_hsm_slot:-}"
 BENCH_CRITERION="${usage_criterion:-}"
 BENCH_SPEED="${usage_speed:-quick}"
@@ -122,8 +126,12 @@ if [ "${#BUILD_FEATURES[@]}" -gt 0 ]; then
   BUILD_FEATURE_ARGS=(--features "${BUILD_FEATURE_LIST}")
 fi
 echo "Building cosmian_kms server, cosmian_pkcs11 provider, and the PKCS#11 benchmark (${BUILD_MODE})..."
-cargo build "${BUILD_ARGS[@]}" ${BUILD_PROFILE_ARGS[@]+"${BUILD_PROFILE_ARGS[@]}"} \
-  ${BUILD_FEATURE_ARGS[@]+"${BUILD_FEATURE_ARGS[@]}"}
+# One package at a time: fat-LTO release links use ~9 GB each and get rustc OOM-killed in parallel.
+for build_pkg in "${BUILD_ARGS[@]}"; do
+  case "${build_pkg}" in -p) continue ;; esac
+  cargo build -p "${build_pkg}" ${BUILD_PROFILE_ARGS[@]+"${BUILD_PROFILE_ARGS[@]}"} \
+    ${BUILD_FEATURE_ARGS[@]+"${BUILD_FEATURE_ARGS[@]}"}
+done
 
 # shellcheck disable=SC2119
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(get_repo_root)/target}"
@@ -269,7 +277,7 @@ fi
 if [ "${BENCH_DELEGATED}" = "true" ]; then
   export BENCH_HSM_BACKEND="${BENCH_HSM_MODEL}"
   export BENCH_COMMAND_USED="mise run bench:pkcs11 --delegated --hsm-model ${BENCH_HSM_MODEL}${usage_args:+ $usage_args}"
-  bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11_hsm_delegated_${BENCH_HSM_MODEL}" "true" "false" "true" "${KMS_BASE_URL}"
+  bench_generate_report "${BENCH_PORT}" "ckms_bench_pkcs11_hsm_delegated_${BENCH_HSM_MODEL}${CRYPT2PAY_SIMULATOR:+_simulator}" "true" "false" "true" "${KMS_BASE_URL}"
   print_success "HSM-delegated PKCS#11 load benchmark completed"
 else
   export BENCH_HSM_BACKEND="none"

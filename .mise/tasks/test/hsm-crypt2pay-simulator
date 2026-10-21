@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#MISE description="Run Crypt2Pay HSM tests against the local Crypt2Pay simulator (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+export WITH_HSM=1
+ensure_nix_shell
+
+CRYPT2PAY_SIM_PID_FILE="${CRYPT2PAY_SIM_PID_FILE:-/tmp/crypt2pay-sim.pid}"
+export CRYPT2PAY_SIM_PID_FILE
+
+cleanup() {
+  # bnt runs as root; the pid file holds the pid of the `sudo` wrapper, so kill by name.
+  sudo killall -9 bnt 2>/dev/null || true
+  rm -f "$CRYPT2PAY_SIM_PID_FILE"
+}
+
+trap cleanup EXIT
+
+print_header "Running Crypt2Pay simulator HSM tests (${VARIANT_NAME})"
+
+# Never use the real-HSM VPN/credentials here: the simulator listens on localhost.
+unset OVPN_CONF CRYPT2PAY_HOST CRYPT2PAY_PORT CRYPT2PAY_EXTRA_CA_DER CRYPT2PAY_CLIENT_P12 CRYPT2PAY_CLIENT_P12_PASSWORD
+
+# Start the simulator (downloaded into a scratch dir) and configure /etc/c2p for it.
+SIM_WORKDIR="$(mktemp -d)"
+(cd "$SIM_WORKDIR" && bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_crypt2pay_simulator.sh")
+rm -rf "$SIM_WORKDIR"
+
+require_cmd cargo
+
+# CRYPT2PAY_SIM_PASSWORD: PKCS#11 user PIN of the simulator slot.
+# libpkcs11c2p.so intermittently (~10%) SIGSEGVs in one of its own worker threads (strcmp,
+# reproduced under gdb, independent of the test). Retry only that signal, never test failures.
+CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
+  C2P_CONF=/etc/c2p/c2p.xml \
+  HSM_USER_PASSWORD="${CRYPT2PAY_SIM_PASSWORD:-}" \
+  cargo test \
+  -p crypt2pay_pkcs11_loader \
+  --features crypt2pay \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact 2>&1
+
+print_success "Crypt2Pay simulator HSM tests completed"

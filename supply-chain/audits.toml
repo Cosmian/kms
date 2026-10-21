@@ -1,7 +1,35 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.rustls-webpki]]
+who = "Manuthor <emmanuel.coste@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "0.101.4 -> 0.103.10"
+
+[[audits.rustls-webpki]]
+who = "Manuthor <emmanuel.coste@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "0.103.15 -> 0.103.16"
+
+[[audits.webpki-root-certs]]
+who = "Manuthor <emmanuel.coste@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.4 -> 1.0.9"
+
+[[audits.webpki-root-certs]]
+who = "Manuthor <emmanuel.coste@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.9 -> 1.0.10"
+
+[[audits.webpki-roots]]
+who = "Manuthor <emmanuel.coste@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "0.26.8 -> 1.0.9"
+
+[[audits.webpki-roots]]
+who = "Manuthor <emmanuel.coste@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.9 -> 1.0.10"
 
 [[trusted.actix-codec]]
 criteria = "safe-to-deploy"
@@ -401,6 +429,12 @@ user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2023-08-29"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ff]]
+criteria = "safe-to-deploy"
+user-id = 6289 # Jack Grigg (str4d)
+start = "2021-08-11"
+end = "2027-10-21"
 
 [[trusted.find-msvc-tools]]
 criteria = "safe-to-deploy"
