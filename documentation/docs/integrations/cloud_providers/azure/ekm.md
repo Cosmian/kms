@@ -112,13 +112,38 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 
 ## Getting started
 
+### Certificates overview
+
+mTLS between Azure Managed HSM and Eviden KMS involves two independent trust directions, each with its own CA file. The two files are not interchangeable.
+
+| Direction | Verified by | File | Obtained from | Configured in |
+| --------- | ----------- | ---- | ------------- | ------------- |
+| Managed HSM → KMS (client authentication) | Eviden KMS | `mhsm-root-ca.pem` | Azure, with `az keyvault ekm-connection certificate show` | `clients_ca_cert_file` in the KMS `[tls]` section |
+| KMS → Managed HSM (server authentication) | Azure Managed HSM | `kms-root-ca.pem` | The root CA of the TLS certificate served by the KMS | `--server-ca-certificate` of `az keyvault ekm-connection create` |
+
+No client certificate has to be generated: Microsoft issues the Managed HSM client certificate and rotates it automatically.
+
 ### Azure Managed HSM Setup
 
 You must have an Azure Managed HSM Pool already created and activated in your Azure subscription. Refer to the [Azure Managed HSM documentation](https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/) for setup instructions.
 
 Once the configuration is done, you will need the root CA certificate that the Azure Managed HSM uses for client authentication. This certificate will be configured in Eviden KMS to validate incoming mTLS connections.
 
-Let's save the root CA as **`mhsm-root-ca.pem`** - We will need it in the next step.
+Retrieve it with [`az keyvault ekm-connection certificate show`](https://learn.microsoft.com/en-us/cli/azure/keyvault/ekm-connection/certificate):
+
+```bash
+az keyvault ekm-connection certificate show --hsm-name <hsm-name> -o json > mhsm-client-cert.json
+```
+
+The JSON contains `caCertificates`, an array of root CA certificates encoded as Base64 DER, and `subjectCommonName`, the identity of the Managed HSM (used in [Grant the Managed HSM identity access rights](#grant-the-managed-hsm-identity-access-rights-on-the-kms)).
+
+Convert every root CA to PEM and save them as **`mhsm-root-ca.pem`** - We will need it in the next step:
+
+```bash
+jq -r '.caCertificates[]' mhsm-client-cert.json | while read -r der_b64; do
+  printf '%s' "$der_b64" | base64 -d | openssl x509 -inform DER -outform PEM
+done > mhsm-root-ca.pem
+```
 
 ### Eviden KMS setup
 
@@ -191,7 +216,7 @@ azure_ekm_disable_client_auth = false
 
 ### Grant the Managed HSM identity access rights on the KMS
 
-When Azure Managed HSM connects to the EKM proxy over mTLS, Eviden KMS authenticates it as a regular KMIP user, using the **Subject CN of the client certificate** as the username (see [TLS Client Certificate configuration](../../../configuration/configurations.md#tls-client-cert) and the [Authentication guide](../../../configuration/authentication.md)). This identity is generally of the form `<hsm-name>.managedhsmclient.azure.net` — check your own Managed HSM client certificate to confirm its exact Subject CN.
+When Azure Managed HSM connects to the EKM proxy over mTLS, Eviden KMS authenticates it as a regular KMIP user, using the **Subject CN of the client certificate** as the username (see [TLS Client Certificate configuration](../../../configuration/configurations.md#tls-client-cert) and the [Authentication guide](../../../configuration/authentication.md)). This identity is the `subjectCommonName` returned by `az keyvault ekm-connection certificate show` (see [Azure Managed HSM Setup](#azure-managed-hsm-setup)), generally of the form `<hsm-name>.managedhsmclient.azure.net`.
 
 Because the external key is owned by whichever KMS user created it, you must explicitly grant this Managed HSM identity the rights to read and use that key, using [`ckms access-rights grant`](../../../configuration/authorization.md):
 
@@ -212,8 +237,18 @@ az keyvault ekm-connection create \
   --hsm-name <hsm-name> \
   --host <kms-fqdn>:443 \
   --path-prefix /azureekm/<azure_ekm_path_prefix> \
-  --server-ca-certificate <path-to-kms-tls-ca-or-server-cert.pem>
+  --server-ca-certificate <path-to-kms-root-ca.pem>
 ```
+
+> **⚠️ `--server-ca-certificate` takes the root CA of the TLS certificate served by Eviden KMS** (`kms-root-ca.pem`), **not** `mhsm-root-ca.pem`. Azure uses it to verify the KMS server certificate; `mhsm-root-ca.pem` only belongs in `clients_ca_cert_file`.
+
+If the KMS certificate is the PKCS#12 file configured in `tls_p12_file`, export its certificates with:
+
+```bash
+openssl pkcs12 -in server-cert.p12 -out kms-root-ca.pem -nokeys
+```
+
+The output holds every certificate of the PKCS#12 file (server certificate and its chain). If your chain does not include the root CA (typical of the `fullchain.pem` files issued by Let's Encrypt), download the root CA from your certificate authority.
 
 > **⚠️ Port 443 is required.** The `--host` argument's own help text states: *"EKM proxy host (FQDN or FQDN:port). If port is omitted, 443 is assumed."* In practice, the Managed HSM EKM proxy calls have been observed to require port 443 — make sure your Eviden KMS is reachable on port 443 (in addition to any other port you use for KMIP/administrative access), even if `[http] port` in your KMS configuration is set to a different value.
 >
@@ -299,6 +334,7 @@ Expected response (if you used the config above):
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
 | `az keyvault ekm-connection create` succeeds, but Azure later fails to reach the proxy | KMS not reachable on port 443 | Expose the KMS on port 443, in addition to any other configured port — see the [port 443 note above](#connect-azure-managed-hsm-to-the-ekm-proxy). |
+| `az keyvault ekm-connection check` fails with a TLS or certificate error | `--server-ca-certificate` is not the root CA of the KMS TLS certificate (for example `mhsm-root-ca.pem` was passed by mistake) | Update the connection with `az keyvault ekm-connection update --hsm-name <hsm-name> --server-ca-certificate kms-root-ca.pem` — see [above](#connect-azure-managed-hsm-to-the-ekm-proxy). |
 | Requests never reach the KMS logs, or Azure reports a connectivity/routing error | `--path-prefix` used in `az keyvault ekm-connection create` does not match `azure_ekm_path_prefix` in the KMS configuration | Make both values match exactly, including the `/azureekm/` prefix. |
 | `az keyvault key create --external-key-id ...` fails with a `KeyNotFound`-type error | The Managed HSM's mTLS identity has not been granted access rights on the KMS key | Grant `get`, `get_attributes`, `encrypt`, `decrypt` to the Managed HSM identity with `ckms access-rights grant` — see [above](#grant-the-managed-hsm-identity-access-rights-on-the-kms). |
 | Wrap/unwrap fails during a CMK-enabling operation (for example Azure Storage CMK) with a generic error on the Azure side | The client sent a wrapping algorithm not currently listed under [Supported algorithms](#supported-algorithms) | Check the KMS server logs for the exact `alg` value received, and confirm it is one of the algorithms in the table above. |
