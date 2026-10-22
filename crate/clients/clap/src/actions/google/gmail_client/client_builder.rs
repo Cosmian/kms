@@ -35,14 +35,15 @@ impl GmailClientBuilder {
     pub(crate) async fn build(self) -> KmsCliResult<GmailClient> {
         let token = retrieve_token(&self.service_account, &self.user_id).await?;
 
+        let base = self
+            .service_account
+            .gmail_api_base_url
+            .as_deref()
+            .unwrap_or("https://gmail.googleapis.com/gmail/v1/users/");
         Ok(GmailClient {
             client: Client::new(),
             token,
-            base_url: [
-                "https://gmail.googleapis.com/gmail/v1/users/".to_owned(),
-                self.user_id,
-            ]
-            .concat(),
+            base_url: [base, self.user_id.as_str()].concat(),
         })
     }
 }

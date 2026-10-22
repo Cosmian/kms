@@ -10,9 +10,8 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
@@ -24,7 +23,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     verify_attributes: bool,
 ) -> DbResult<()> {
     cosmian_logger::log_init(None);
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
     let uid = Uuid::new_v4().to_string();

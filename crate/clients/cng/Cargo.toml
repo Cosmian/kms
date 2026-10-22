@@ -17,7 +17,7 @@ workspace = true
 ignored = ["winresource"]
 
 [target.'cfg(windows)'.build-dependencies]
-winresource = "0.1"
+winresource = { workspace = true }
 
 # Build a DLL that Windows CNG can load as a Key Storage Provider
 [lib]
@@ -32,15 +32,15 @@ non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 [dependencies]
 base64 = { workspace = true }
 bitflags = { workspace = true }
-ckms = { path = "../ckms", version = "5.28.0" }
+ckms = { workspace = true }
 cosmian_logger = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-uuid = { version = "=1.11.1", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = [
+windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Security_Cryptography",
@@ -49,5 +49,5 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [dev-dependencies]
-serial_test = { version = "3.2.0", default-features = true }
-test_kms_server = { path = "../../test_kms_server" }
+serial_test = { workspace = true }
+test_kms_server = { workspace = true }

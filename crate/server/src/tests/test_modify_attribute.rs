@@ -25,9 +25,8 @@ use cosmian_kms_server_database::reexport::{
             requests::create_symmetric_key_kmip_object,
         },
     },
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::log_init;
@@ -45,7 +44,7 @@ const USER: &str = "eyJhbGciOiJSUzI1Ni";
 
 /// Create and store a fresh 256-bit AES symmetric key in the given `state`.
 async fn create_key_with_state(kms: &Arc<KMS>, state: State) -> KResult<String> {
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut key_bytes = vec![0_u8; 32];
     rng.fill_bytes(&mut key_bytes);
 

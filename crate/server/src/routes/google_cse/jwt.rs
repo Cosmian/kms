@@ -5,6 +5,7 @@ use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 
 use super::operations::Role;
 use crate::{
+    config::ProxyParams,
     core::KMS,
     error::KmsError,
     kms_ensure,
@@ -61,24 +62,26 @@ pub fn list_jwks_uri(url_whitelist: Option<Vec<String>>) -> Vec<String> {
     uris
 }
 
-#[must_use]
-pub fn list_jwt_configurations(
+/// Build one `JwtConfig` per whitelisted external KACLS, each verified only
+/// against the keys published at its own `{url}/certs`.
+pub async fn list_jwt_configurations(
     url_whitelist: &[String],
-    jwks_manager: &Arc<JwksManager>,
-) -> Vec<JwtConfig> {
-    url_whitelist
-        .iter()
-        .map(|url| JwtConfig {
+    proxy_params: Option<&ProxyParams>,
+) -> KResult<Vec<JwtConfig>> {
+    let mut configurations = Vec::with_capacity(url_whitelist.len());
+    for url in url_whitelist {
+        configurations.push(JwtConfig {
             jwt_issuer_uri: url.clone(),
-            jwks: jwks_manager.clone(),
+            jwks: Arc::new(JwksManager::new(vec![format!("{url}/certs")], proxy_params).await?),
             // KACLS-to-KACLS migration tokens always carry `aud: "kacls-migration"`.
             // Setting the expected audience here ensures `validate_authentication_token`
             // calls `Validation::set_audience`, which makes jsonwebtoken 10.x accept
             // the token instead of rejecting it with InvalidAudience.
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             accept_spiffe_subject: false,
-        })
-        .collect::<Vec<_>>()
+        });
+    }
+    Ok(configurations)
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
@@ -146,6 +149,9 @@ pub(super) fn decode_jwt_authorization_token(
         .kid
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_owned()))?;
 
+    let jwt_headers = JwtTokenHeaders::from_token(token)?;
+    jwt_headers.validate()?;
+
     let issuer_uri = jwt_config.jwt_issuer_uri.clone();
 
     trace!("Try to validate token from issuer: {issuer_uri:?}");
@@ -164,7 +170,6 @@ pub(super) fn decode_jwt_authorization_token(
         .map_err(|e| KmsError::Unauthorized(format!("Failed to build decoding key: {e}")))?;
 
     let mut validation = Validation::new(header.alg);
-    validation.algorithms = vec![header.alg];
     // Allow tokens to omit some standard claims (e.g., iat, nbf), but handle exp explicitly.
     validation.required_spec_claims.clear();
     validation.set_issuer(&[&jwt_config.jwt_issuer_uri]);
@@ -200,43 +205,11 @@ pub(super) fn decode_jwt_authorization_token(
 
     let user_claims = token_data.claims;
 
-    let jwt_headers = serde_json::to_value(token_data.header)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}")))
-        .and_then(|v| {
-            serde_json::from_value(v).map_err(|err| {
-                KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}"))
-            })
-        })?;
     trace!("valid_jwt user claims: {:?}", user_claims);
-    trace!("valid_jwt headers: {:?}", jwt_headers);
 
     // Audience post-check in non-test, non-insecure builds
     #[cfg(all(not(test), not(feature = "insecure")))]
-    {
-        let configured = jwt_config.jwt_audience.as_ref().ok_or_else(|| {
-            KmsError::ServerError(
-                "JWT audience should be configured with Google Workspace client-side encryption"
-                    .to_owned(),
-            )
-        })?;
-        if !configured.is_empty() {
-            let token_audiences = user_claims.aud.clone().unwrap_or_default();
-            let matches_any = token_audiences
-                .iter()
-                .any(|aud| configured.iter().any(|allowed| allowed == aud));
-            if !matches_any {
-                let expected = format!("{configured:?}");
-                let got = if token_audiences.is_empty() {
-                    "<empty>".to_owned()
-                } else {
-                    format!("{token_audiences:?}")
-                };
-                return Err(KmsError::Unauthorized(format!(
-                    "Authorization token audience not allowed. expected one of: {expected}, got: {got}"
-                )));
-            }
-        }
-    }
+    check_authorization_audience(jwt_config.jwt_audience.as_ref(), user_claims.aud.as_ref())?;
 
     Ok((user_claims, jwt_headers))
 }
@@ -304,14 +277,10 @@ pub async fn validate_cse_authentication_token(
         )
     })?;
     #[cfg(all(not(test), not(feature = "insecure")))]
-    if let Some(kacls_url) = authentication_token.kacls_url {
-        kms_ensure!(
-            kacls_url == google_cse_kacls_url,
-            KmsError::Unauthorized(format!(
-                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
-            ))
-        );
-    }
+    check_authentication_kacls_url(
+        authentication_token.kacls_url.as_deref(),
+        google_cse_kacls_url,
+    )?;
 
     // When the authentication token contains the optional `google_email` claim, it must be compared against the email claim in the authorization token using a case-insensitive approach.
     // Don't use the email claim within the authentication token for this comparison.
@@ -404,35 +373,7 @@ pub(super) async fn validate_cse_authorization_token(
     trace!("authorization token validated successfully");
 
     #[cfg(all(not(test), not(feature = "insecure")))]
-    if let Some(roles) = roles {
-        let role = authorization_token.role.as_ref().ok_or_else(|| {
-            KmsError::Unauthorized("Authorization token should contain a role".to_owned())
-        })?;
-        let roles_str: Vec<&str> = roles.iter().map(Role::str).collect();
-        kms_ensure!(
-            roles_str.contains(&role.as_str()),
-            KmsError::Unauthorized(format!(
-                "Authorization token should contain a role of {}",
-                roles_str.join(" ")
-            ))
-        );
-    }
-
-    #[cfg(all(not(test), not(feature = "insecure")))]
-    if authorization_token.resource_name.is_none() {
-        return Err(KmsError::Unauthorized(
-            "Authorization token should contain an resource_name".to_owned(),
-        ));
-    }
-    #[cfg(all(not(test), not(feature = "insecure")))]
-    if let Some(kacls_url) = authorization_token.kacls_url.clone() {
-        kms_ensure!(
-            kacls_url == google_cse_kacls_url,
-            KmsError::Unauthorized(format!(
-                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
-            ))
-        );
-    }
+    check_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
 
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(
@@ -498,6 +439,98 @@ pub(super) async fn validate_tokens(
     })
 }
 
+/// Check the audience of a decoded authorization token against the configured audiences.
+///
+/// Compiled out of `insecure` builds, but kept in test builds so it can be unit-tested.
+#[cfg(any(test, not(feature = "insecure")))]
+fn check_authorization_audience(
+    configured: Option<&Vec<String>>,
+    token_aud: Option<&Vec<String>>,
+) -> KResult<()> {
+    let configured = configured.ok_or_else(|| {
+        KmsError::ServerError(
+            "JWT audience should be configured with Google Workspace client-side encryption"
+                .to_owned(),
+        )
+    })?;
+    if !configured.is_empty() {
+        let token_audiences = token_aud.cloned().unwrap_or_default();
+        let matches_any = token_audiences
+            .iter()
+            .any(|aud| configured.iter().any(|allowed| allowed == aud));
+        if !matches_any {
+            let expected = format!("{configured:?}");
+            let got = if token_audiences.is_empty() {
+                "<empty>".to_owned()
+            } else {
+                format!("{token_audiences:?}")
+            };
+            return Err(KmsError::Unauthorized(format!(
+                "Authorization token audience not allowed. expected one of: {expected}, got: {got}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Check that the KACLS URL of an authentication token, when present, is this server's one.
+///
+/// Compiled out of `insecure` builds, but kept in test builds so it can be unit-tested.
+#[cfg(any(test, not(feature = "insecure")))]
+fn check_authentication_kacls_url(
+    kacls_url: Option<&str>,
+    google_cse_kacls_url: &str,
+) -> KResult<()> {
+    if let Some(kacls_url) = kacls_url {
+        kms_ensure!(
+            kacls_url == google_cse_kacls_url,
+            KmsError::Unauthorized(format!(
+                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
+            ))
+        );
+    }
+    Ok(())
+}
+
+/// Check the role, resource name and KACLS URL claims of an authorization token.
+///
+/// Compiled out of `insecure` builds, but kept in test builds so it can be unit-tested.
+#[cfg(any(test, not(feature = "insecure")))]
+fn check_authorization_claims(
+    token: &UserClaim,
+    google_cse_kacls_url: &str,
+    roles: Option<&[Role]>,
+) -> KResult<()> {
+    if let Some(roles) = roles {
+        let role = token.role.as_ref().ok_or_else(|| {
+            KmsError::Unauthorized("Authorization token should contain a role".to_owned())
+        })?;
+        let roles_str: Vec<&str> = roles.iter().map(Role::str).collect();
+        kms_ensure!(
+            roles_str.contains(&role.as_str()),
+            KmsError::Unauthorized(format!(
+                "Authorization token should contain a role of {}",
+                roles_str.join(" ")
+            ))
+        );
+    }
+
+    if token.resource_name.is_none() {
+        return Err(KmsError::Unauthorized(
+            "Authorization token should contain an resource_name".to_owned(),
+        ));
+    }
+    if let Some(kacls_url) = token.kacls_url.as_deref() {
+        kms_ensure!(
+            kacls_url == google_cse_kacls_url,
+            KmsError::Unauthorized(format!(
+                "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
+            ))
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
@@ -505,27 +538,26 @@ mod tests {
 
     use base64::{Engine, engine::general_purpose};
     use cosmian_logger::{debug, info, log_init, trace};
-    use jsonwebtoken::{
-        Algorithm, EncodingKey, Header, encode,
-        jwk::{
-            CommonParameters, Jwk, JwkSet, KeyAlgorithm, PublicKeyUse, RSAKeyParameters, RSAKeyType,
-        },
-    };
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use openssl::rsa::Rsa;
     use serde::Serialize;
 
     use crate::{
         config::IdpAuthConfig,
-        middlewares::{JwksManager, JwtConfig},
+        middlewares::{JwksManager, JwtConfig, UserClaim},
         routes::google_cse::{
             self,
             jwt::{
-                JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
-                validate_cse_authentication_token,
+                JWKS_URI, JWT_ISSUER_URI, check_authentication_kacls_url,
+                check_authorization_audience, check_authorization_claims,
+                decode_jwt_authorization_token, jwt_authorization_config,
+                validate_cse_authentication_token, validate_cse_authorization_token,
             },
-            operations::WrapRequest,
+            operations::{Role, WrapRequest},
         },
-        tests::google_cse::utils::generate_google_jwt,
+        tests::google_cse::utils::{
+            build_jwks_manager_with_key, generate_google_jwt, sign_test_jwt,
+        },
     };
 
     /// Claims structure matching a real Google CSE authorization token (Gmail).
@@ -560,60 +592,6 @@ mod tests {
 
     fn now_usize() -> usize {
         usize::try_from(chrono::Utc::now().timestamp()).unwrap()
-    }
-
-    /// Build a `JwksManager` pre-loaded with a single RSA public key (no HTTP fetch).
-    fn build_jwks_manager_with_key(
-        kid: &str,
-        rsa: &Rsa<openssl::pkey::Private>,
-    ) -> Arc<JwksManager> {
-        let n = rsa.n().to_vec();
-        let e = rsa.e().to_vec();
-
-        let jwk = Jwk {
-            common: CommonParameters {
-                public_key_use: Some(PublicKeyUse::Signature),
-                key_algorithm: Some(KeyAlgorithm::RS256),
-                key_id: Some(kid.to_owned()),
-                ..Default::default()
-            },
-            algorithm: jsonwebtoken::jwk::AlgorithmParameters::RSA(RSAKeyParameters {
-                key_type: RSAKeyType::RSA,
-                n: general_purpose::URL_SAFE_NO_PAD.encode(n),
-                e: general_purpose::URL_SAFE_NO_PAD.encode(e),
-            }),
-        };
-
-        let jwk_set = JwkSet { keys: vec![jwk] };
-
-        let mut map = HashMap::new();
-        map.insert("test".to_owned(), jwk_set);
-
-        let manager = JwksManager {
-            uris: vec![],
-            jwks: std::sync::RwLock::new(map),
-            last_update: std::sync::RwLock::new(Some(chrono::Utc::now())),
-            last_force_refresh: std::sync::RwLock::new(None),
-            proxy_params: None,
-            accept_invalid_certs: false,
-        };
-
-        Arc::new(manager)
-    }
-
-    /// Helper: build a signed JWT with the given claims, kid, and RSA private key.
-    fn sign_test_jwt<T: Serialize>(
-        kid: &str,
-        claims: &T,
-        rsa: &Rsa<openssl::pkey::Private>,
-    ) -> String {
-        let der = rsa.private_key_to_der().unwrap();
-        let encoding_key = EncodingKey::from_rsa_der(&der);
-
-        let mut header = Header::new(Algorithm::RS256);
-        header.kid = Some(kid.to_owned());
-
-        encode(&header, claims, &encoding_key).unwrap()
     }
 
     /// Non-regression test for the Google CSE authorization token audience
@@ -795,6 +773,147 @@ mod tests {
 
         let result = decode_jwt_authorization_token(&jwt_config, &token);
         assert!(result.is_err(), "should reject a token with a wrong issuer");
+    }
+
+    /// Build a `JwtConfig` + RSA key pair + valid claims for the decode-path tests below.
+    fn header_test_setup(
+        kid: &str,
+    ) -> (Arc<JwtConfig>, Rsa<openssl::pkey::Private>, MinimalClaims) {
+        let issuer = "gsuitecse-tokenissuer-gmail@system.gserviceaccount.com";
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwt_config = Arc::new(JwtConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks: build_jwks_manager_with_key(kid, &rsa),
+            jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+            accept_spiffe_subject: false,
+        });
+        let now = now_usize();
+        let claims = MinimalClaims {
+            iss: issuer.to_owned(),
+            aud: "cse-authorization".to_owned(),
+            email: "user@example.com".to_owned(),
+            role: Some("reader".to_owned()),
+            iat: now,
+            exp: now + 3600,
+        };
+        (jwt_config, rsa, claims)
+    }
+
+    /// Sign `claims` with the given, fully caller-controlled JOSE header.
+    fn sign_with_header(
+        header: &Header,
+        claims: &MinimalClaims,
+        rsa: &Rsa<openssl::pkey::Private>,
+    ) -> String {
+        let encoding_key = EncodingKey::from_rsa_der(&rsa.private_key_to_der().unwrap());
+        encode(header, claims, &encoding_key).unwrap()
+    }
+
+    /// A valid token yields both the claims and the parsed JOSE headers.
+    #[test]
+    fn test_decode_returns_headers_for_valid_token() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-001");
+        let token = sign_test_jwt("hdr-kid-001", &claims, &rsa);
+
+        let (user_claim, headers) = decode_jwt_authorization_token(&jwt_config, &token).unwrap();
+        assert_eq!(user_claim.email.as_deref(), Some("user@example.com"));
+        let dbg = format!("{headers:?}");
+        assert!(dbg.contains("alg: Some(\"RS256\")"), "{dbg}");
+        assert!(dbg.contains("kid: Some(\"hdr-kid-001\")"), "{dbg}");
+        assert!(dbg.contains("typ: Some(\"JWT\")"), "{dbg}");
+    }
+
+    /// A token without `kid` is rejected before any key lookup.
+    #[test]
+    fn test_decode_rejects_missing_kid() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-002");
+        let token = sign_with_header(&Header::new(Algorithm::RS256), &claims, &rsa);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(err.to_string().contains("kid"), "unexpected error: {err}");
+    }
+
+    /// A token signed by a key that is not the JWKS one is rejected.
+    #[test]
+    fn test_decode_rejects_bad_signature() {
+        let (jwt_config, _rsa, claims) = header_test_setup("hdr-kid-003");
+        let other_key = Rsa::generate(2048).unwrap();
+        let token = sign_test_jwt("hdr-kid-003", &claims, &other_key);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(
+            err.to_string().contains("Cannot validate token"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// A `kid` absent from the JWKS is rejected.
+    #[test]
+    fn test_decode_rejects_unknown_kid() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-004");
+        let token = sign_test_jwt("some-other-kid", &claims, &rsa);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(
+            err.to_string().contains("some-other-kid"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// A token carrying `crit` (RFC 7515 §4.1.11) is rejected: no critical extension is
+    /// implemented. `jsonwebtoken::Header` parses `crit` but never enforces it, and the
+    /// test builds the header segment by hand so it can be forged; the rejection
+    /// happens before the signature is checked.
+    #[test]
+    fn test_decode_rejects_crit_header() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-005");
+        let token = sign_test_jwt("hdr-kid-005", &claims, &rsa);
+        let forged_header = general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"alg":"RS256","typ":"JWT","kid":"hdr-kid-005","crit":["b64"]}"#);
+        let forged = format!(
+            "{forged_header}.{}",
+            token.split_once('.').map(|(_, rest)| rest).unwrap()
+        );
+
+        let result = decode_jwt_authorization_token(&jwt_config, &forged);
+        assert!(result.is_err(), "a token with `crit` must be rejected");
+    }
+
+    /// Nested JWTs (`cty: JWT`) are rejected.
+    #[test]
+    fn test_decode_rejects_nested_jwt() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-006");
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("hdr-kid-006".to_owned());
+        header.cty = Some("JWT".to_owned());
+        let token = sign_with_header(&header, &claims, &rsa);
+
+        let err = decode_jwt_authorization_token(&jwt_config, &token).unwrap_err();
+        assert!(
+            err.to_string().contains("Nested"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Embedded key material (`x5u`, `x5c`, `x5t`) is ignored: the token still
+    /// validates against the JWKS key, and is not validated against the embedded one.
+    #[test]
+    fn test_decode_ignores_embedded_key_material() {
+        let (jwt_config, rsa, claims) = header_test_setup("hdr-kid-007");
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("hdr-kid-007".to_owned());
+        header.x5u = Some("https://attacker.example.com/cert.pem".to_owned());
+        header.x5c = Some(vec!["QUJD".to_owned()]);
+        header.x5t = Some("thumbprint".to_owned());
+        let token = sign_with_header(&header, &claims, &rsa);
+        let (user_claim, _headers) = decode_jwt_authorization_token(&jwt_config, &token).unwrap();
+        assert_eq!(user_claim.email.as_deref(), Some("user@example.com"));
+
+        // same header, signed by an attacker key: rejected despite the embedded material
+        let attacker = Rsa::generate(2048).unwrap();
+        let forged = sign_with_header(&header, &claims, &attacker);
+        let result = decode_jwt_authorization_token(&jwt_config, &forged);
+        assert!(result.is_err(), "a forged signature must be rejected");
     }
 
     /// Claims matching a KACLS-to-KACLS migration JWT created by `create_jwt`.
@@ -994,6 +1113,7 @@ mod tests {
         unsafe {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
+            std::env::set_var("KMS_GOOGLE_CSE_AUDIENCE", client_id);
             // the token has been issued by Google Accounts (post request)
         };
         let jwt_authorization_config = jwt_authorization_config(&jwks_manager);
@@ -1018,6 +1138,185 @@ mod tests {
                 "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
                     .to_owned()
             ])
+        );
+    }
+
+    fn claim(extra: serde_json::Value) -> UserClaim {
+        let extra: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_value(extra).unwrap();
+        // `aud` has no serde default: it must be present in the JSON
+        let mut base = serde_json::json!({ "aud": null });
+        base.as_object_mut().unwrap().extend(extra);
+        serde_json::from_value(base).unwrap()
+    }
+
+    #[test]
+    fn authorization_claims_checks() {
+        let url = "https://kms.test/google_cse";
+        let valid = serde_json::json!({
+            "role": "writer", "resource_name": "r", "kacls_url": url
+        });
+
+        // role not in the allowed list
+        let err = check_authorization_claims(
+            &claim(serde_json::json!({"role": "reader", "resource_name": "r"})),
+            url,
+            Some(&[Role::Writer, Role::Upgrader]),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Authorization token should contain a role of writer upgrader"),
+            "{err}"
+        );
+
+        // no role while roles are required
+        let err = check_authorization_claims(
+            &claim(serde_json::json!({"resource_name": "r"})),
+            url,
+            Some(&[Role::Writer]),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Authorization token should contain a role"),
+            "{err}"
+        );
+
+        // roles `None`: role not checked
+        check_authorization_claims(&claim(serde_json::json!({"resource_name": "r"})), url, None)
+            .unwrap();
+
+        // no resource_name
+        let err = check_authorization_claims(&claim(serde_json::json!({})), url, None).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Authorization token should contain an resource_name"),
+            "{err}"
+        );
+
+        // kacls_url mismatch
+        let err = check_authorization_claims(
+            &claim(serde_json::json!({
+                "resource_name": "r", "kacls_url": "https://other/google_cse"
+            })),
+            url,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("KACLS URLs should match"), "{err}");
+
+        // no kacls_url: accepted
+        check_authorization_claims(&claim(serde_json::json!({"resource_name": "r"})), url, None)
+            .unwrap();
+
+        // everything valid
+        check_authorization_claims(&claim(valid), url, Some(&[Role::Writer])).unwrap();
+    }
+
+    #[test]
+    fn authentication_kacls_url_checks() {
+        let err =
+            check_authentication_kacls_url(Some("https://other"), "https://mine").unwrap_err();
+        assert!(err.to_string().contains("KACLS URLs should match"), "{err}");
+        check_authentication_kacls_url(None, "https://mine").unwrap();
+        check_authentication_kacls_url(Some("https://mine"), "https://mine").unwrap();
+    }
+
+    #[test]
+    fn authorization_audience_checks() {
+        let err = check_authorization_audience(None, None).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("JWT audience should be configured"),
+            "{err}"
+        );
+
+        check_authorization_audience(Some(&vec![]), None).unwrap();
+
+        let configured = vec!["a".to_owned(), "b".to_owned()];
+        check_authorization_audience(Some(&configured), Some(&vec!["b".to_owned()])).unwrap();
+
+        let err = check_authorization_audience(Some(&vec!["a".to_owned()]), None).unwrap_err();
+        assert!(err.to_string().contains("got: <empty>"), "{err}");
+
+        let err =
+            check_authorization_audience(Some(&vec!["a".to_owned()]), Some(&vec!["z".to_owned()]))
+                .unwrap_err();
+        assert!(err.to_string().contains(r#"got: ["z"]"#), "{err}");
+    }
+
+    #[test]
+    fn decode_rejects_empty_token() {
+        let (jwt_config, _rsa, _claims) = header_test_setup("empty-kid");
+        let err = decode_jwt_authorization_token(&jwt_config, "").unwrap_err();
+        assert!(
+            err.to_string().contains("authorization token is empty"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_malformed_header() {
+        let (jwt_config, _rsa, _claims) = header_test_setup("malformed-kid");
+        let err = decode_jwt_authorization_token(&jwt_config, "not-a-jwt").unwrap_err();
+        assert!(
+            err.to_string().contains("Failed to decode token header"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cse_config_none() {
+        let err = validate_cse_authentication_token("x", &None, "https://k", "user", None)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("configurations for Google CSE are not set"),
+            "{err}"
+        );
+        let err = validate_cse_authorization_token("x", "https://k", &None, None)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("configurations for Google CSE are not set"),
+            "{err}"
+        );
+    }
+
+    /// The JWKS refresh-and-retry path: with no URI to refresh from, the retry
+    /// cannot succeed and the authentication still fails cleanly.
+    #[tokio::test]
+    async fn authentication_refresh_retry_still_fails() {
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks = build_jwks_manager_with_key("retry-kid", &rsa);
+        assert!(jwks.uris.is_empty());
+        jwks.refresh().await.unwrap();
+        let cse_config = super::GoogleCseConfig {
+            authentication: vec![JwtConfig {
+                jwt_issuer_uri: "https://idp".to_owned(),
+                jwks,
+                jwt_audience: None,
+                accept_spiffe_subject: false,
+            }]
+            .into(),
+            authorization: HashMap::new(),
+        };
+        let err = validate_cse_authentication_token(
+            "garbage",
+            &Some(cse_config),
+            "https://k",
+            "user",
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Fail to decode authentication token with the given config"),
+            "{err}"
         );
     }
 }

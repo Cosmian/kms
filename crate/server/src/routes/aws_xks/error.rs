@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::fmt::{Display, Formatter};
 
 use actix_web::{

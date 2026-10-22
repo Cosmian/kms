@@ -44,7 +44,6 @@ use pkcs11_sys::{
     CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
     CRYPTOKI_VERSION_MINOR,
 };
-use rand::Rng;
 
 use crate::{
     MResultHelper, ModuleError, ModuleResult,
@@ -1784,12 +1783,12 @@ cryptoki_fn!(
         initialized!();
         valid_session!(hSession);
         not_null!(pRandomData, "C_GenerateRandom: pRandomData");
-        let mut bytes = vec![0; usize::try_from(ulRandomLen)?];
-        let mut rng = rand::rng();
-        rng.fill_bytes(&mut bytes);
-        unsafe { slice::from_raw_parts_mut(pRandomData, usize::try_from(ulRandomLen)?) }
-            .copy_from_slice(&bytes);
-        trace!("Generated random: {}", hex::encode(&bytes));
+        let len = usize::try_from(ulRandomLen)?;
+        // SAFETY: `pRandomData` is non-null (checked above) and, per the PKCS#11 contract,
+        // points to a caller-owned buffer of `ulRandomLen` bytes.
+        let out = unsafe { slice::from_raw_parts_mut(pRandomData, len) };
+        backend()?.generate_random(out)?;
+        trace!("Generated {len} random bytes");
         Ok(())
     }
 );

@@ -20,6 +20,8 @@ database's append-only grants.
 
 `--audit-postgres-url` supports the same `sslmode`/`sslrootcert`/`sslcert`/`sslkey` query
 parameters as `--database-url`; see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls-mtls).
+The server logs a warning at startup when the URL does not verify the server certificate (the default
+`sslmode=prefer` does not); use `sslmode=verify-full` with `sslrootcert`.
 
 The KMS creates its table on first connection, with triggers that reject `UPDATE`, `DELETE`, and
 `TRUNCATE` on it. The table owner and any superuser can still disable these triggers with

@@ -1,8 +1,11 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::ServerInformation,
-    kmip_objects::ObjectType,
-    kmip_operations::{Query, QueryResponse},
-    kmip_types::{OperationEnumeration, QueryFunction},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{DRBGAlgorithm, RNGAlgorithm},
+    kmip_2_1::{
+        kmip_data_structures::{RNGParameters, ServerInformation},
+        kmip_objects::ObjectType,
+        kmip_operations::{Query, QueryResponse},
+        kmip_types::{CryptographicAlgorithm, OperationEnumeration, QueryFunction},
+    },
 };
 use cosmian_logger::trace;
 
@@ -105,11 +108,24 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
                         ..Default::default()
                     });
                 }
+                QueryFunction::QueryRNGs => {
+                    // `KmsRng`: OpenSSL AES-256 CTR-DRBG (SP 800-90A r1). OpenSSL does not
+                    // request prediction resistance on ordinary generate calls.
+                    response.rng_parameters = Some(vec![RNGParameters {
+                        rng_algorithm: RNGAlgorithm::DRBG,
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        cryptographic_length: Some(256),
+                        hashing_algorithm: None,
+                        drbg_algorithm: Some(DRBGAlgorithm::CTR),
+                        recommended_curve: None,
+                        fips186_variation: None,
+                        prediction_resistance: Some(false),
+                    }]);
+                }
                 QueryFunction::QueryApplicationNamespaces
                 | QueryFunction::QueryExtensionList
                 | QueryFunction::QueryExtensionMap
                 | QueryFunction::QueryAttestationTypes
-                | QueryFunction::QueryRNGs
                 | QueryFunction::QueryValidations
                 | QueryFunction::QueryProfiles
                 | QueryFunction::QueryCapabilities
@@ -120,4 +136,47 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
         }
     }
     Ok(response)
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{DRBGAlgorithm, RNGAlgorithm},
+        kmip_2_1::{kmip_operations::Query, kmip_types::QueryFunction},
+    };
+
+    use super::query;
+
+    #[tokio::test]
+    async fn query_rngs_describes_the_ctr_drbg() {
+        let response = query(
+            Query {
+                query_function: Some(vec![QueryFunction::QueryRNGs]),
+            },
+            "Cosmian",
+        )
+        .await
+        .expect("query");
+        let rngs = response.rng_parameters.expect("rng_parameters");
+        let [rng] = rngs.as_slice() else {
+            panic!("expected exactly one RNG, got {}", rngs.len());
+        };
+        assert_eq!(rng.rng_algorithm, RNGAlgorithm::DRBG);
+        assert_eq!(rng.drbg_algorithm, Some(DRBGAlgorithm::CTR));
+        assert_eq!(rng.cryptographic_length, Some(256));
+    }
+
+    #[tokio::test]
+    async fn rng_parameters_are_only_returned_when_requested() {
+        let response = query(
+            Query {
+                query_function: Some(vec![QueryFunction::QueryObjects]),
+            },
+            "Cosmian",
+        )
+        .await
+        .expect("query");
+        assert!(response.rng_parameters.is_none());
+    }
 }

@@ -71,10 +71,12 @@ The most common flags (accepted by most tasks):
 | `test:hsm:utimaco` | fips | Utimaco simulator (Linux only) |
 | `test:hsm:proteccio` | fips | Proteccio (Linux only) |
 | `test:hsm:crypt2pay` | fips | Crypt2Pay (Linux only) |
+| `test:hsm:luna` | fips | Thales Luna (Linux only; `LUNA_PASSWORD`, `LUNA_SLOT`) |
 | `test:hsm-softhsm2` | fips | Same as `test:hsm:softhsm2` (flat alias) |
 | `test:hsm-utimaco` | fips | Same as `test:hsm:utimaco` |
 | `test:hsm-proteccio` | fips | Same as `test:hsm:proteccio` |
 | `test:hsm-crypt2pay` | fips | Same as `test:hsm:crypt2pay` |
+| `test:hsm-luna` | fips | Same as `test:hsm:luna` |
 
 ### Kubernetes
 

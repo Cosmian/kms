@@ -8,6 +8,17 @@ This operation requests the server to delete an attribute associated with a Mana
 
 This operation can be applied to all [supported objects](../objects.md). One or more attributes can be set at once.
 
+### Read-only attributes
+
+The following attributes are **read-only** for `DeleteAttribute`. Any attempt returns an `Attribute_Read_Only` error
+before the object is touched:
+
+- `UniqueIdentifier`, `ObjectType`, `CryptographicLength`, `CertificateLength`, `Digest`
+- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `Fresh`
+- `State`
+- `Sensitive`, `Extractable`, `AlwaysSensitive`, `NeverExtractable`
+- `RotateAutomatic`, `RotateGeneration`, `RotateDate`, `RotateLatest`
+
 ## Example - Delete links on Certificate
 
 First, for the demo purpose create a certificate:

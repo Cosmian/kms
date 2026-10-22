@@ -100,7 +100,7 @@ async fn unwrap_using_kms(
     // fetch the wrapping key
     let unwrapping_key = kms
         .database
-        .retrieve_object(unwrapping_key_uid)
+        .retrieve_object_arc(unwrapping_key_uid)
         .await
         .context("wrap using KMS")?;
     let unwrapping_key = unwrapping_key.ok_or_else(|| {
@@ -131,7 +131,7 @@ async fn unwrap_using_kms(
             };
             let unwrapping_key = kms
                 .database
-                .retrieve_object(&sk_id)
+                .retrieve_object_arc(&sk_id)
                 .await
                 .context("wrap using KMS")?;
             unwrapping_key.ok_or_else(|| {

@@ -95,18 +95,18 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     // 1) Vendor Attribute references first: include only vendor "x" attributes, sorted by name.
     //    This avoids hardcoding a fixed list while keeping deterministic order for tests.
     if let Some(vendor_attrs) = &attrs.vendor_attributes {
-        let mut x_vendor_names: Vec<String> = vendor_attrs
+        let mut x_vendor_names: Vec<&str> = vendor_attrs
             .iter()
             .filter(|va| va.vendor_identification == "x")
-            .map(|va| va.attribute_name.clone())
+            .map(|va| va.attribute_name.as_str())
             .collect();
-        x_vendor_names.sort();
-        for name in x_vendor_names {
-            refs.push(AttributeReference::Vendor(VendorAttributeReference {
+        x_vendor_names.sort_unstable();
+        refs.extend(x_vendor_names.into_iter().map(|name| {
+            AttributeReference::Vendor(VendorAttributeReference {
                 vendor_identification: "x".to_owned(),
-                attribute_name: name,
-            }));
-        }
+                attribute_name: name.to_owned(),
+            })
+        }));
     }
 
     // 2) Standard Attribute tag references for the TL profile, in the exact expected

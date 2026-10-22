@@ -13,8 +13,12 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_crypto::openssl::{
-        openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes, x509_extensions,
+    cosmian_kms_crypto::{
+        crypto::KmsRng,
+        openssl::{
+            oid::asn1_object, openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes,
+            x509_extensions,
+        },
     },
 };
 use cosmian_logger::debug;
@@ -23,8 +27,9 @@ use cosmian_logger::warn;
 #[cfg(feature = "non-fips")]
 use openssl::x509::extension::KeyUsage;
 use openssl::{
-    asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
+    asn1::{Asn1Integer, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
+    nid::Nid,
     pkey::Id,
     x509::{X509, X509Extension},
 };
@@ -132,7 +137,7 @@ pub(crate) fn build_and_sign_certificate(
 
     // Set the issuer name and private key
     x509_builder.set_issuer_name(issuer.subject_name())?;
-    x509_builder.set_serial_number(generate_serial_number(kms)?.as_ref())?;
+    x509_builder.set_serial_number(generate_serial_number(&kms.rng)?.as_ref())?;
     x509_builder.sign(issuer.private_key(), digest)?;
 
     let x509 = x509_builder.build();
@@ -378,7 +383,7 @@ fn inject_server_crl_dp(
     let mut outer = vec![0x30_u8]; // SEQUENCE
     encode_der_length(&mut outer, dp_seq.len())?;
     outer.extend_from_slice(&dp_seq);
-    let oid = Asn1Object::from_str("2.5.29.31")?;
+    let oid = asn1_object(Nid::CRL_DISTRIBUTION_POINTS)?;
     let val = Asn1OctetString::new_from_bytes(&outer)?;
     x509_builder.append_extension(X509Extension::new_from_der(
         oid.as_ref(),
@@ -448,10 +453,9 @@ fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> Messa
 /// certificates by serial, so revoking one silently revoked (or masked) the other.
 /// 159 random bits (high bit cleared so the INTEGER stays positive and fits in
 /// 20 octets) also satisfy the CA/Browser Forum ≥ 64-bit entropy requirement.
-fn generate_serial_number(kms: &KMS) -> KResult<Asn1Integer> {
+pub(crate) fn generate_serial_number(rng: &KmsRng) -> KResult<Asn1Integer> {
     let mut serial_number_bytes = [0_u8; 20];
-    kms.rng
-        .fill_bytes(&mut serial_number_bytes)
+    rng.fill_public_bytes(&mut serial_number_bytes)
         .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
     // Clear the high bit (positive INTEGER) and set the lowest one so the encoding
     // keeps the full 20 octets and the serial can never be zero.

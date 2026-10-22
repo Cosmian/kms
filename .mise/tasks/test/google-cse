@@ -12,14 +12,6 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 
-# Validate required OAuth credentials
-for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
-  TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; do
-  if [ -z "${!var:-}" ]; then
-    print_error "Required env var $var is not set. Google CSE tests require OAuth credentials."
-  fi
-done
-
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 
@@ -27,13 +19,28 @@ print_header "Running Google CSE tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
-cargo test --workspace --lib \
-  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  -- --nocapture test_google_cse --ignored --exact
+# Credential-free suites: local identity provider and local mock Gmail API.
+cargo test -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} google_cse
+cargo test -p cosmian_kms_cli_actions ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} google_cmd
+if [ "${VARIANT}" = "non-fips" ]; then
+  # The tests drive the prebuilt binary; rebuild so a stale one is not reused.
+  cargo build -p ckms --bin ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  cargo test -p ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} google_cmd
+fi
 
-cargo test \
-  -p cosmian_kms_server \
-  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  -- --nocapture test_wrap_auth --ignored --exact
+# Real Google token validation: only test_wrap_auth needs the OAuth credentials
+# (`--exact` requires the full test path). CI must never skip it silently.
+missing=()
+for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET TEST_GOOGLE_OAUTH_REFRESH_TOKEN; do
+  [ -n "${!var:-}" ] || missing+=("$var")
+done
+if [ "${#missing[@]}" -eq 0 ]; then
+  cargo test -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- --nocapture --ignored --exact routes::google_cse::jwt::tests::test_wrap_auth
+elif [ -n "${CI:-}" ]; then
+  print_error "Google OAuth credentials missing in CI: ${missing[*]}"
+else
+  print_warning "Skipping test_wrap_auth (real Google token), missing: ${missing[*]}"
+fi
 
 print_success "Google CSE tests completed"

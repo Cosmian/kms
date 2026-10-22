@@ -26,7 +26,7 @@ annotations:
     - name: Source
       url: https://github.com/Cosmian/kms
     - name: Documentation
-      url: https://docs.cosmian.com/installation/kubernetes_helm/
+      url: https://docs.cosmian.com/key_management_system/integrations/kubernetes/helm.html
   artifacthub.io/images: |
     - name: kms-fips
       image: ghcr.io/cosmian/kms-fips:5.28.0

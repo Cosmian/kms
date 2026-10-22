@@ -103,6 +103,13 @@ impl ObjectWithMetadata {
         &self.domain
     }
 
+    /// Consume `self`, moving out the id, object and attributes without cloning.
+    /// Read `owner`/`state` beforehand if they are still needed.
+    #[must_use]
+    pub fn into_parts(self) -> (String, Object, Attributes) {
+        (self.id, self.object, self.attributes)
+    }
+
     /// Resolve the effective cryptographic algorithm for this managed object.
     ///
     /// Checks the key block's algorithm first, then falls back to the object's

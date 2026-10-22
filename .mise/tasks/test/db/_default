@@ -22,7 +22,10 @@ command -v nix-shell >/dev/null 2>&1 && HAS_NIX=true
 run_db() {
   local name="$1" task="$2" v="${3:-$VARIANT}"
   print_header "DB suite: $name"
-  if bash "${TASK_DIR}/${task}" --variant "$v" --link "$LINK"; then
+  # The child task is run with plain `bash`, so mise does not parse its flags: it reads the
+  # variant/link from the `usage_*` environment (which would otherwise be inherited from this
+  # task, e.g. fips for Redis, which only supports non-fips).
+  if usage_variant="$v" usage_link="$LINK" bash "${TASK_DIR}/${task}" --variant "$v" --link "$LINK"; then
     PASS+=("$name")
   else
     FAIL+=("$name")

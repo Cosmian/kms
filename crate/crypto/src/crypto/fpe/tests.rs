@@ -8,16 +8,24 @@
 )]
 use num_bigint::BigUint;
 use num_traits::{Num, ToPrimitive};
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rand_distr::Alphanumeric;
 
 use super::{Alphabet, FPEError, Float, Integer, KEY_LENGTH, decrypt_fpe, encrypt_fpe};
+use crate::crypto::KmsRng;
+
+/// `ChaCha20` seeded from `KmsRng`: the test inputs need an infallible `RngExt`.
+fn test_rng() -> ChaCha20Rng {
+    let mut seed = [0_u8; 32];
+    KmsRng::new().fill_bytes(&mut seed).unwrap();
+    ChaCha20Rng::from_seed(seed)
+}
 
 /// Generate a random key using a cryptographically
 /// secure random number generator that is suitable for use with FPE
 fn random_key() -> [u8; 32] {
-    let mut rng = rand::make_rng::<ChaCha20Rng>();
+    let mut rng = test_rng();
     let mut key = [0_u8; KEY_LENGTH];
     rng.fill(&mut key);
     key
@@ -280,13 +288,13 @@ fn fpe_ff1_names() -> Result<(), FPEError> {
 #[test]
 fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
     for _ in 0..100 {
-        let plaintext_len = rand::rng().random_range(8..257);
-        let plaintext: String = rand::rng()
+        let plaintext_len = test_rng().random_range(8..257);
+        let plaintext: String = test_rng()
             .sample_iter(&Alphanumeric)
             .take(plaintext_len)
             .map(char::from)
             .collect();
-        let alphabet = Alphabet::try_from(&plaintext)?;
+        let alphabet: Alphabet = plaintext.parse()?;
         // Skip inputs that don't satisfy the FF1 minimum-length constraint for
         // the derived alphabet. This can happen when the random string has few
         // unique characters (e.g. 5 unique chars require length ≥ 9).
@@ -300,7 +308,7 @@ fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
 
 fn fpe_number_u64_(radix: u32, min_length: usize) -> Result<(), FPEError> {
     let key = random_key();
-    let mut rng = rand::rng();
+    let mut rng = test_rng();
     for _i in 0..20 {
         let digits = rng.random_range(min_length..min_length + 9);
         let itg = Integer::instantiate(radix, digits)?;
@@ -328,7 +336,7 @@ fn fpe_number_u64() -> Result<(), FPEError> {
 #[test]
 fn fpe_number_big_uint() -> Result<(), FPEError> {
     let key = random_key();
-    let mut rng = rand::rng();
+    let mut rng = test_rng();
     for radix in 2..=16 {
         let base = BigUint::from(radix);
         for _i in 0..20 {
@@ -350,7 +358,7 @@ fn fpe_number_big_uint() -> Result<(), FPEError> {
 #[test]
 fn fpe_float() -> Result<(), FPEError> {
     let key = random_key();
-    let mut rng = rand::rng();
+    let mut rng = test_rng();
     let float = Float::instantiate()?;
     for _i in 0..1000 {
         let value = rng.random_range(0.0..f64::MAX);
@@ -376,10 +384,10 @@ fn test_negative_cases() -> Result<(), FPEError> {
 
     // Invalid alphabet: too few characters
     assert!(
-        Alphabet::try_from("a").is_err(),
+        "a".parse::<Alphabet>().is_err(),
         "single-char alphabet must fail"
     );
-    assert!(Alphabet::try_from("").is_err(), "empty alphabet must fail");
+    assert!("".parse::<Alphabet>().is_err(), "empty alphabet must fail");
 
     // Plaintext too short: alpha_lower has 26 chars, min_plaintext_length(26) == 5
     let key = random_key();

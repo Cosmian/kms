@@ -175,6 +175,7 @@ slot_init() {
 
   # ── Computed database URLs (consumed by Rust tests and MISE tasks) ────────
   export KMS_POSTGRES_URL="postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT}/kms"
+  export KMS_POSTGRES_MTLS_URL="postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_MTLS_PORT}/kms"
   export KMS_MYSQL_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MYSQL_PORT}/kms"
   export KMS_MARIADB_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_MARIADB_PORT}/kms"
   export KMS_PERCONA_URL="mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT}/kms"

@@ -1,7 +1,7 @@
 //! `GetKeyMetaData`
 //! ----------------
 //! This API is called by KMS to get metadata about an external key or create a new external key.
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use actix_web::{
     HttpRequest, HttpResponse, post,
@@ -59,7 +59,6 @@ fn time_normalize() -> Result<OffsetDateTime, XksErrorReply> {
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
-#[allow(dead_code)]
 pub(crate) struct RequestMetadata {
     /// This is the ARN of the principal that invoked KMS `CreateKey` (see aws:PrincipalArn).
     /// When the caller is another AWS service, this field will contain either
@@ -93,6 +92,22 @@ pub(crate) struct RequestMetadata {
     /// and MUST NOT perform any validation on its structure.
     /// This field is REQUIRED.
     pub kmsRequestId: String,
+}
+
+/// Log rendering of the request metadata (used by `debug!` only).
+impl fmt::Display for RequestMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "principal: {}, source VPC: {}, source VPC endpoint: {}, operation: {}, \
+             request id: {}",
+            self.awsPrincipalArn,
+            self.awsSourceVpc.as_deref().unwrap_or("-"),
+            self.awsSourceVpce.as_deref().unwrap_or("-"),
+            self.kmsOperation,
+            self.kmsRequestId,
+        )
+    }
 }
 
 /// The HTTP body of the request contains requestMetadata fields
@@ -177,7 +192,7 @@ pub(crate) async fn get_key_metadata(
         request.requestMetadata.kmsRequestId,
         request.requestMetadata.awsPrincipalArn
     );
-    debug!("get metadata request: {:?}", request.requestMetadata);
+    debug!("get metadata request: {}", request.requestMetadata);
     let kms = kms.into_inner();
     let response = match request.requestMetadata.kmsOperation.as_str() {
         "GetKeyMetadata" | "DescribeKey" => get_key_metadata_inner(req_http, request, key_id, &kms)
@@ -406,4 +421,44 @@ pub(crate) async fn create_key(
         keyUsage: key_usage,
         keyStatus: key_status,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RequestMetadata;
+
+    #[test]
+    fn request_metadata_display_with_and_without_vpc_endpoint() {
+        let mut metadata = RequestMetadata {
+            awsPrincipalArn: "arn:aws:iam::123456789012:user/Alice".to_owned(),
+            awsSourceVpc: Some("vpc-1".to_owned()),
+            awsSourceVpce: Some("vpce-2".to_owned()),
+            kmsOperation: "CreateKey".to_owned(),
+            kmsRequestId: "4112f4d6-db54-4af4-ae30-c55a22a8dfae".to_owned(),
+        };
+        assert_eq!(
+            metadata.to_string(),
+            "principal: arn:aws:iam::123456789012:user/Alice, source VPC: vpc-1, source VPC \
+             endpoint: vpce-2, operation: CreateKey, request id: \
+             4112f4d6-db54-4af4-ae30-c55a22a8dfae"
+        );
+
+        metadata.awsSourceVpc = None;
+        metadata.awsSourceVpce = None;
+        assert_eq!(
+            metadata.to_string(),
+            "principal: arn:aws:iam::123456789012:user/Alice, source VPC: -, source VPC \
+             endpoint: -, operation: CreateKey, request id: 4112f4d6-db54-4af4-ae30-c55a22a8dfae"
+        );
+    }
+
+    #[test]
+    fn request_metadata_deserializes_with_optional_members_absent() {
+        let metadata = serde_json::from_str::<RequestMetadata>(
+            r#"{"awsPrincipalArn":"p","kmsOperation":"GetKeyMetadata","kmsRequestId":"r"}"#,
+        )
+        .ok()
+        .map(|m| (m.awsSourceVpc, m.awsSourceVpce, m.kmsRequestId));
+        assert_eq!(metadata, Some((None, None, "r".to_owned())));
+    }
 }

@@ -43,3 +43,12 @@ fpr = "fpr"
 # verbatim in pkcs11-sys as a distinct compat-alias constant.
 EDE = "EDE"
 PROBABLISTIC = "PROBABLISTIC"
+
+[files]
+# Generated/machine-managed supply-chain data: crate names and hashes, never prose.
+# (typos would "fix" the `flate2` crate name to `flat2`.)
+extend-exclude = [
+  "supply-chain/",
+  ".mise/scripts/test/requirements-*.txt",
+  ".mise/scripts/docs/requirements.txt",
+]

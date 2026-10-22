@@ -61,8 +61,8 @@ pub enum WrappingAlgorithm {
 /// This is required to match the Java library behavior which expects
 /// the first tag to describe the type of object and not simply equal 'Object'
 // TODO: check what is specified by the KMIP norm if any
-pub fn tag_from_object(object: &Object) -> String {
-    match &object {
+pub const fn tag_from_object(object: &Object) -> &'static str {
+    match object {
         Object::PublicKey { .. } => "PublicKey",
         Object::SecretData { .. } => "SecretData",
         Object::PGPKey { .. } => "PGPKey",
@@ -73,7 +73,6 @@ pub fn tag_from_object(object: &Object) -> String {
         Object::OpaqueObject { .. } => "OpaqueObject",
         Object::PrivateKey { .. } => "PrivateKey",
     }
-    .to_owned()
 }
 
 /// Converts DER bytes to PEM bytes for keys

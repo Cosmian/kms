@@ -173,11 +173,11 @@ impl TTLVXMLDeserializer {
             }
             // If this node looks like an Attributes aggregate (heuristic: contains many attribute-like tags)
             // perform dedup on known single-instance attribute tags (ProtectStopDate, ProcessStartDate, etc.)
-            let mut seen: HashSet<String> = HashSet::new();
+            let mut seen: HashSet<&'static str> = HashSet::new();
             // NOTE: Do NOT include "Attribute" here for KMIP 2.1. Under an Attributes aggregate,
             // multiple <Attribute> elements are used to carry Vendor-Defined Attributes and must
             // be preserved. Deduplicating them would drop all but the first vendor attribute.
-            let single_instance_tags: [&str; 6] = [
+            let single_instance_tags: [&'static str; 6] = [
                 "ProtectStopDate",
                 "ProcessStartDate",
                 "ActivationDate",
@@ -186,17 +186,11 @@ impl TTLVXMLDeserializer {
                 "CompromiseDate",
             ];
             children.retain(|c| {
-                if single_instance_tags.contains(&c.tag.as_str()) {
-                    if seen.contains(&c.tag) {
-                        // drop duplicate
-                        false
-                    } else {
-                        seen.insert(c.tag.clone());
-                        true
-                    }
-                } else {
-                    true
-                }
+                // keep first occurrence of each single-instance tag, drop duplicates
+                single_instance_tags
+                    .iter()
+                    .find(|t| **t == &*c.tag)
+                    .is_none_or(|t| seen.insert(*t))
             });
         }
     }
@@ -210,7 +204,7 @@ impl TTLVXMLDeserializer {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => {
-                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                    let mut tag = e.name().as_ref().to_owned();
                     // Preserve original RNGAlgorithm tag spelling (spec uses RNGAlgorithm). Older
                     // logic rewrote to RngAlgorithm which conflicted with explicit serde rename.
                     if tag.starts_with("PKCS_11") {
@@ -223,17 +217,13 @@ impl TTLVXMLDeserializer {
                     }
                     let mut node_type = None;
                     for a in e.attributes().flatten() {
-                        if a.key.as_ref() == b"type" {
-                            node_type = Some(String::from_utf8_lossy(&a.value).into_owned());
+                        if a.key.as_ref() == "type" {
+                            node_type = Some(a.value.into_owned());
                         }
                     }
-                    let ttlv = TTLV {
-                        tag: tag.clone(),
-                        value: TTLValue::Structure(Vec::new()),
-                    };
-                    stack.push(match node_type.as_deref() {
-                        Some("Structure") => ttlv,
-                        None if ALLOW_IMPLICIT_STRUCTURE => ttlv,
+                    match node_type.as_deref() {
+                        Some("Structure") => {}
+                        None if ALLOW_IMPLICIT_STRUCTURE => {}
                         None => {
                             return Err(KmipError::Default(format!(
                                 "missing type=\"Structure\" for element '{tag}'"
@@ -244,10 +234,14 @@ impl TTLVXMLDeserializer {
                                 "expected Structure start for tag '{tag}', got {other:?}"
                             )));
                         }
+                    }
+                    stack.push(TTLV {
+                        tag: tag.into(),
+                        value: TTLValue::Structure(Vec::new()),
                     });
                 }
                 Ok(Event::Empty(e)) => {
-                    let mut tag = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                    let mut tag = e.name().as_ref().to_owned();
                     // Keep RNGAlgorithm as-is.
                     if tag.starts_with("PKCS_11") {
                         tag = tag.replace("PKCS_11", "PKCS11");
@@ -257,11 +251,11 @@ impl TTLVXMLDeserializer {
                     let mut name: Option<String> = None;
                     for a in e.attributes().flatten() {
                         let k = a.key.as_ref();
-                        let v = String::from_utf8_lossy(&a.value).into_owned();
+                        let v = a.value.into_owned();
                         match k {
-                            b"type" => ty = Some(v),
-                            b"value" => value = Some(v),
-                            b"name" => name = Some(v),
+                            "type" => ty = Some(v),
+                            "value" => value = Some(v),
+                            "name" => name = Some(v),
                             _ => {}
                         }
                     }
@@ -271,7 +265,7 @@ impl TTLVXMLDeserializer {
                         // Accept an empty structure: either implicit (no type/value) or
                         // explicit type="Structure" on a self-closing element.
                         let ttlv = TTLV {
-                            tag,
+                            tag: tag.into(),
                             value: TTLValue::Structure(Vec::new()),
                         };
                         if let Some(parent) = stack.last_mut() {
@@ -287,7 +281,7 @@ impl TTLVXMLDeserializer {
                         KmipError::Default(format!("missing type attribute for element '{tag}'"))
                     })?;
                     let mut ttlv = TTLV {
-                        tag,
+                        tag: tag.into(),
                         value: Self::parse_primitive(&ty, value.as_deref(), name.as_deref())?,
                     };
                     // Root empty element case
@@ -303,11 +297,11 @@ impl TTLVXMLDeserializer {
                     }
                 }
                 Ok(Event::End(e)) => {
-                    let end_tag_vec = e.name().as_ref().to_vec();
+                    let end_tag = e.name().as_ref().to_owned();
                     let ttlv = stack
                         .pop()
                         .ok_or_else(|| KmipError::Default("unbalanced XML".into()))?;
-                    debug_assert_eq!(ttlv.tag.as_bytes(), end_tag_vec.as_slice());
+                    debug_assert_eq!(ttlv.tag, end_tag);
                     if let Some(parent) = stack.last_mut() {
                         if let TTLValue::Structure(children) = &mut parent.value {
                             children.push(ttlv);
@@ -467,37 +461,38 @@ impl TTLVXMLDeserializer {
                 // Try numeric first; otherwise attempt known textual KMIP enumeration name mapping
                 // via the shared lookup table in `enum_lookup`. Returns (code, canonical_variant_name).
                 // Support decimal or 0x prefixed hexadecimal numeric enumeration literals.
-                let (v, final_name) = if let Some(stripped) = raw.strip_prefix("0x") {
-                    match u32::from_str_radix(stripped, 16) {
-                        Ok(num) => (num, name.unwrap_or("").to_owned()),
-                        Err(_) => {
-                            if let Some((code, canonical)) = lookup_enum_code(raw) {
-                                (code, canonical.to_owned())
-                            } else if let Some(code) = lookup_attribute_reference_tag(raw) {
-                                (code, name.unwrap_or(raw).to_owned())
-                            } else {
-                                return Err(KmipError::Default(format!(
-                                    "unknown Enumeration value '{raw}'"
-                                )));
+                let (v, final_name): (u32, std::borrow::Cow<'static, str>) =
+                    if let Some(stripped) = raw.strip_prefix("0x") {
+                        match u32::from_str_radix(stripped, 16) {
+                            Ok(num) => (num, name.unwrap_or("").to_owned().into()),
+                            Err(_) => {
+                                if let Some((code, canonical)) = lookup_enum_code(raw) {
+                                    (code, canonical.into())
+                                } else if let Some(code) = lookup_attribute_reference_tag(raw) {
+                                    (code, name.unwrap_or(raw).to_owned().into())
+                                } else {
+                                    return Err(KmipError::Default(format!(
+                                        "unknown Enumeration value '{raw}'"
+                                    )));
+                                }
                             }
                         }
-                    }
-                } else {
-                    match raw.parse::<u32>() {
-                        Ok(num) => (num, name.unwrap_or("").to_owned()),
-                        Err(_) => {
-                            if let Some((code, canonical)) = lookup_enum_code(raw) {
-                                (code, canonical.to_owned())
-                            } else if let Some(code) = lookup_attribute_reference_tag(raw) {
-                                (code, name.unwrap_or(raw).to_owned())
-                            } else {
-                                return Err(KmipError::Default(format!(
-                                    "unknown Enumeration value '{raw}'"
-                                )));
+                    } else {
+                        match raw.parse::<u32>() {
+                            Ok(num) => (num, name.unwrap_or("").to_owned().into()),
+                            Err(_) => {
+                                if let Some((code, canonical)) = lookup_enum_code(raw) {
+                                    (code, canonical.into())
+                                } else if let Some(code) = lookup_attribute_reference_tag(raw) {
+                                    (code, name.unwrap_or(raw).to_owned().into())
+                                } else {
+                                    return Err(KmipError::Default(format!(
+                                        "unknown Enumeration value '{raw}'"
+                                    )));
+                                }
                             }
                         }
-                    }
-                };
+                    };
                 Enumeration(KmipEnumerationVariant {
                     value: v,
                     name: final_name,

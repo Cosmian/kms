@@ -375,7 +375,7 @@ async fn test_export_pkcs7() -> Result<(), CosmianError> {
             openssl::pkcs7::Pkcs7Flags::empty(),
         )
         .unwrap();
-    assert!(output.is_empty());
+    assert_eq!(output.len(), 0);
 
     Ok(())
 }

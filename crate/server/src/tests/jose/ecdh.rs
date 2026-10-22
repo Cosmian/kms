@@ -13,7 +13,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::x25519_key_agreement;
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::{
-    elliptic_curves::operation::ecdh_key_agreement, kdf::concat_kdf::concat_kdf,
+    KmsRng, elliptic_curves::operation::ecdh_key_agreement, kdf::concat_kdf::concat_kdf,
     symmetric::rfc3394::rfc3394_wrap,
 };
 use cosmian_logger::log_init;
@@ -21,7 +21,6 @@ use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey},
     nid::Nid,
-    rand::rand_bytes,
     symm::{Cipher, encrypt_aead},
 };
 use serde_json::{Value, json};
@@ -144,13 +143,13 @@ fn build_ec_ecdh_es_request(
         let kek_bits: u32 = if alg == "ECDH-ES+A128KW" { 128 } else { 256 };
         let kek = concat_kdf(&z, kek_bits, alg.as_bytes(), &[], &[]).expect("concat kdf");
         let mut cek = Zeroizing::new(vec![0_u8; cek_len(enc)]);
-        rand_bytes(&mut cek).expect("random cek");
+        KmsRng::new().fill_bytes(&mut cek).expect("random cek");
         let wrapped = rfc3394_wrap(&cek, &kek).expect("rfc3394 wrap");
         (cek, Some(URL_SAFE_NO_PAD.encode(&wrapped)))
     };
 
     let mut iv = vec![0_u8; 12];
-    rand_bytes(&mut iv).expect("random iv");
+    KmsRng::new().fill_bytes(&mut iv).expect("random iv");
     let mut tag = vec![0_u8; 16];
     let ciphertext = encrypt_aead(
         cipher_for(enc),
@@ -523,8 +522,8 @@ mod non_fips {
     use openssl::pkey::PKey;
 
     use super::{
-        KResult, StatusCode, URL_SAFE_NO_PAD, Value, Zeroizing, cek_len, cipher_for, concat_kdf,
-        encrypt_aead, json, log_init, rand_bytes, rfc3394_wrap, test, test_utils,
+        KResult, KmsRng, StatusCode, URL_SAFE_NO_PAD, Value, Zeroizing, cek_len, cipher_for,
+        concat_kdf, encrypt_aead, json, log_init, rfc3394_wrap, test, test_utils,
         x25519_key_agreement,
     };
 
@@ -571,13 +570,13 @@ mod non_fips {
             let kek_bits: u32 = if alg == "ECDH-ES+A128KW" { 128 } else { 256 };
             let kek = concat_kdf(&z, kek_bits, alg.as_bytes(), &[], &[]).expect("concat kdf");
             let mut cek = Zeroizing::new(vec![0_u8; cek_len(enc)]);
-            rand_bytes(&mut cek).expect("random cek");
+            KmsRng::new().fill_bytes(&mut cek).expect("random cek");
             let wrapped = rfc3394_wrap(&cek, &kek).expect("rfc3394 wrap");
             (cek, Some(URL_SAFE_NO_PAD.encode(&wrapped)))
         };
 
         let mut iv = vec![0_u8; 12];
-        rand_bytes(&mut iv).expect("random iv");
+        KmsRng::new().fill_bytes(&mut iv).expect("random iv");
         let mut tag = vec![0_u8; 16];
         let ciphertext = encrypt_aead(
             cipher_for(enc),

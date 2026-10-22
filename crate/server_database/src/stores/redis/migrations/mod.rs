@@ -12,9 +12,9 @@ use crate::{
     },
 };
 
-#[async_trait(?Send)]
-impl Migrate for RedisWithFindex {
-    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+impl RedisWithFindex {
+    /// Return the state of the database ("ready" or "upgrading"), if recorded.
+    pub(crate) async fn get_db_state(&self) -> DbResult<Option<DbState>> {
         let state_str: Option<String> = redis::cmd("GET")
             .arg("db_state")
             .query_async(&mut self.mgr.clone())
@@ -27,6 +27,21 @@ impl Migrate for RedisWithFindex {
         }
     }
 
+    /// Return the version recorded when the database was initialized, if any.
+    /// Used at startup to refuse legacy databases that carry no version marker.
+    pub(crate) async fn get_current_db_version(&self) -> DbResult<Option<String>> {
+        let version: Option<String> = redis::cmd("GET")
+            .arg("db_version")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| DbError::DatabaseError(format!("Failed to get DB version: {e}")))?;
+
+        Ok(version)
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for RedisWithFindex {
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
         let state_json = serde_json::to_string(&state)?;
         redis::cmd("SET")
@@ -37,16 +52,6 @@ impl Migrate for RedisWithFindex {
             .map_err(|e| DbError::DatabaseError(format!("Failed to set DB state: {e}")))?;
 
         Ok(())
-    }
-
-    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let version: Option<String> = redis::cmd("GET")
-            .arg("db_version")
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to get DB version: {e}")))?;
-
-        Ok(version)
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {

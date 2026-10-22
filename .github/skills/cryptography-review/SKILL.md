@@ -7,7 +7,7 @@ description: 'Comprehensive cryptographic audit: FIPS 140-3, BSI TR-02102, ANSSI
 
 Comprehensive cryptographic audit covering FIPS 140-3 compliance, European standards
 (BSI, ANSSI), NIST Special Publications, key management lifecycle, and academic
-cryptanalysis research. Supersedes the former `/fips-audit` skill with broader multi-standard coverage.
+cryptanalysis research. Supersedes the former fips-audit skill with broader multi-standard coverage.
 
 ## When to Use
 

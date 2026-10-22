@@ -1,5 +1,7 @@
 mod decrypt_;
 mod encrypt_;
+use std::fmt;
+
 pub(crate) use decrypt_::decrypt;
 #[cfg(test)]
 pub(crate) use decrypt_::{DecryptRequest, decrypt_inner};
@@ -11,7 +13,6 @@ use serde::{Deserialize, Serialize};
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
-#[allow(dead_code)]
 pub(crate) struct RequestMetadata {
     /// This is the ARN of the principal that invoked KMS Decrypt (see aws:PrincipalArn).
     /// When the caller is another AWS service, this field will contain either
@@ -53,6 +54,24 @@ pub(crate) struct RequestMetadata {
     pub kmsViaService: Option<String>,
 }
 
+/// Log rendering of the request metadata (used by `debug!` only).
+impl fmt::Display for RequestMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "principal: {}, source VPC: {}, source VPC endpoint: {}, key ARN: {}, operation: {}, \
+             request id: {}, via service: {}",
+            self.awsPrincipalArn,
+            self.awsSourceVpc.as_deref().unwrap_or("-"),
+            self.awsSourceVpce.as_deref().unwrap_or("-"),
+            self.kmsKeyArn,
+            self.kmsOperation,
+            self.kmsRequestId,
+            self.kmsViaService.as_deref().unwrap_or("-"),
+        )
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 pub(crate) enum EncryptionAlgorithm {
@@ -64,4 +83,46 @@ pub(crate) enum EncryptionAlgorithm {
 #[allow(non_camel_case_types)]
 pub(crate) enum CdivAlgorithm {
     SHA_256,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RequestMetadata;
+
+    fn metadata() -> RequestMetadata {
+        RequestMetadata {
+            awsPrincipalArn: "arn:aws:iam::123456789012:user/Alice".to_owned(),
+            awsSourceVpc: Some("vpc-1".to_owned()),
+            awsSourceVpce: Some("vpce-2".to_owned()),
+            kmsKeyArn: "arn:aws:kms:eu-west-1:123456789012:key/abc".to_owned(),
+            kmsOperation: "Decrypt".to_owned(),
+            kmsRequestId: "4112f4d6-db54-4af4-ae30-c55a22a8dfae".to_owned(),
+            kmsViaService: Some("ebs.eu-west-1.amazonaws.com".to_owned()),
+        }
+    }
+
+    #[test]
+    fn request_metadata_display_lists_every_audit_field() {
+        assert_eq!(
+            metadata().to_string(),
+            "principal: arn:aws:iam::123456789012:user/Alice, source VPC: vpc-1, source VPC \
+             endpoint: vpce-2, key ARN: arn:aws:kms:eu-west-1:123456789012:key/abc, operation: \
+             Decrypt, request id: 4112f4d6-db54-4af4-ae30-c55a22a8dfae, via service: \
+             ebs.eu-west-1.amazonaws.com"
+        );
+    }
+
+    #[test]
+    fn request_metadata_display_marks_absent_optional_fields() {
+        let mut metadata = metadata();
+        metadata.awsSourceVpc = None;
+        metadata.awsSourceVpce = None;
+        metadata.kmsViaService = None;
+        assert_eq!(
+            metadata.to_string(),
+            "principal: arn:aws:iam::123456789012:user/Alice, source VPC: -, source VPC \
+             endpoint: -, key ARN: arn:aws:kms:eu-west-1:123456789012:key/abc, operation: \
+             Decrypt, request id: 4112f4d6-db54-4af4-ae30-c55a22a8dfae, via service: -"
+        );
+    }
 }

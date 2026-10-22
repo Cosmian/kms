@@ -67,21 +67,26 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                 if items_mut.iter().any(|c| c.tag == "_t")
                     && items_mut.iter().any(|c| c.tag == "_c")
                 {
-                    let mut content_children: Vec<TTLV> = items_mut
+                    let type_tag = items_mut
                         .iter()
-                        .filter(|c| c.tag == "_c")
-                        .cloned()
-                        .collect();
-                    if !content_children.is_empty() {
-                        let type_tag = items_mut
-                            .iter()
-                            .find(|c| c.tag == "_t")
-                            .and_then(|t| match &t.value {
-                                TTLValue::Enumeration(e) => Some(e.name.clone()),
-                                _ => None,
-                            })
-                            .unwrap_or_else(|| ttlv.tag.clone());
+                        .find(|c| c.tag == "_t")
+                        .and_then(|t| match &t.value {
+                            TTLValue::Enumeration(e) => Some(e.name.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| ttlv.tag.clone());
 
+                    let mut content_children: Vec<TTLV> = Vec::new();
+                    let mut i = 0;
+                    while i < items_mut.len() {
+                        if items_mut.get(i).is_some_and(|c| c.tag == "_c") {
+                            content_children.push(items_mut.remove(i));
+                        } else {
+                            i += 1;
+                        }
+                    }
+
+                    if !content_children.is_empty() {
                         for ch in &mut content_children {
                             ch.tag.clone_from(&type_tag);
                             if let TTLValue::Structure(ref mut grandkids) = ch.value {
@@ -144,13 +149,12 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                         // child) must keep their structural wrapper so the
                         // deserializer can reconstruct the original type.
                         if let Some(first) = items_mut.first() {
-                            if TYPE_TAGS.contains(&first.tag.as_str()) {
+                            if TYPE_TAGS.contains(&&*first.tag) {
                                 pending_replacement = Some(first.value.clone());
                             }
                         }
-                    } else if let Some(idx) = items_mut
-                        .iter()
-                        .position(|c| TYPE_TAGS.contains(&c.tag.as_str()))
+                    } else if let Some(idx) =
+                        items_mut.iter().position(|c| TYPE_TAGS.contains(&&*c.tag))
                     {
                         if let Some(el) = items_mut.get(idx) {
                             pending_replacement = Some(el.value.clone());
@@ -161,7 +165,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                 // 2c) Aggressive nested unwrap for known byte-vector tags
                 if pending_replacement.is_none()
                     && !items_mut.is_empty()
-                    && BYTE_LIKE_TAGS.contains(&ttlv.tag.as_str())
+                    && BYTE_LIKE_TAGS.contains(&&*ttlv.tag)
                     && items_mut.len() == 1
                 {
                     let Some(child) = items_mut.first() else {
@@ -176,13 +180,13 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
 
                 // 3) ByteString collapse for whitelisted tags from runs of Integer(0..255)
                 if pending_replacement.is_none() && !items_mut.is_empty() {
-                    let first_tag = items_mut.first().map(|c| c.tag.as_str());
-                    let all_same_tag = items_mut.iter().all(|c| Some(c.tag.as_str()) == first_tag);
+                    let first_tag = items_mut.first().map(|c| &*c.tag);
+                    let all_same_tag = items_mut.iter().all(|c| Some(&*c.tag) == first_tag);
                     let all_bytes = items_mut
                         .iter()
                         .all(|c| matches!(c.value, TTLValue::Integer(0..=255)));
                     if all_same_tag && all_bytes {
-                        let child_tag = items_mut.first().map_or("", |c| c.tag.as_str());
+                        let child_tag = items_mut.first().map_or("", |c| &*c.tag);
                         let collapse_as_bytestring = (BYTE_LIKE_TAGS.contains(&child_tag)
                             && child_tag == ttlv.tag)
                             || (ttlv.tag == "AttributeValue" && child_tag == "_c");
@@ -208,7 +212,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                     let mut map = HashMap::new();
                     for el in items_mut.iter() {
                         if let TTLValue::Integer(v) = el.value {
-                            map.insert(el.tag.as_str(), v);
+                            map.insert(&*el.tag, v);
                         }
                     }
                     if map.contains_key("Year")
@@ -741,14 +745,12 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                             "X",
                             "D",
                         ];
-                        if BIGINT_FIELD_TAGS.contains(&ttlv.tag.as_str()) {
-                            if let Some(val) = try_collapse_digits_run(ttlv.tag.as_str(), 1) {
+                        if BIGINT_FIELD_TAGS.contains(&&*ttlv.tag) {
+                            if let Some(val) = try_collapse_digits_run(&ttlv.tag, 1) {
                                 pending_replacement = Some(val);
                             }
                             if pending_replacement.is_none() {
-                                if let Some(val) =
-                                    try_collapse_sign_and_child_big(ttlv.tag.as_str())
-                                {
+                                if let Some(val) = try_collapse_sign_and_child_big(&ttlv.tag) {
                                     pending_replacement = Some(val);
                                 }
                             }
@@ -758,9 +760,9 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                     // Tests and unambiguous generic collapse
                     if pending_replacement.is_none() {
                         const TEST_BIGINT_TAGS: &[&str] = &["BigIntNeg", "BigIntPos", "TheBigUint"];
-                        if TEST_BIGINT_TAGS.contains(&ttlv.tag.as_str()) {
+                        if TEST_BIGINT_TAGS.contains(&&*ttlv.tag) {
                             let sign = if ttlv.tag == "BigIntNeg" { -1 } else { 1 };
-                            if let Some(val) = try_collapse_digits_run(ttlv.tag.as_str(), sign) {
+                            if let Some(val) = try_collapse_digits_run(&ttlv.tag, sign) {
                                 pending_replacement = Some(val);
                             }
                         }
@@ -768,8 +770,8 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
 
                     if pending_replacement.is_none() {
                         const TEST_BIGINT_TAGS: &[&str] = &["BigIntNeg", "BigIntPos"];
-                        if TEST_BIGINT_TAGS.contains(&ttlv.tag.as_str()) {
-                            if let Some(val) = try_collapse_sign_and_child_big(ttlv.tag.as_str()) {
+                        if TEST_BIGINT_TAGS.contains(&&*ttlv.tag) {
+                            if let Some(val) = try_collapse_sign_and_child_big(&ttlv.tag) {
                                 pending_replacement = Some(val);
                             }
                         }
@@ -789,7 +791,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                 _ => false,
                             });
                             if any_long || any_non_byte {
-                                if let Some(val) = try_collapse_digits_run(ttlv.tag.as_str(), 1) {
+                                if let Some(val) = try_collapse_digits_run(&ttlv.tag, 1) {
                                     pending_replacement = Some(val);
                                 }
                             }
@@ -823,7 +825,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                         let Some(current_tag) = items_mut.get(i).map(|e| e.tag.clone()) else {
                             break;
                         };
-                        let tag_matches = BIGINT_FIELD_TAGS.contains(&current_tag.as_str());
+                        let tag_matches = BIGINT_FIELD_TAGS.contains(&&*current_tag);
                         if tag_matches {
                             let mut sign_opt: Option<i32> = None;
                             let mut mag_opt: Option<kmip_big_int::KmipBigInt> = None;
@@ -935,7 +937,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                     mag = super::KmipBigInt::from(new_big);
                                 }
                                 let new_child = TTLV {
-                                    tag: current_tag.clone(),
+                                    tag: current_tag,
                                     value: TTLValue::BigInteger(mag),
                                 };
                                 for _ in i..=last_same_tag_index {
@@ -953,13 +955,13 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                     let Some(child) = items_mut.first() else {
                         return;
                     };
-                    if BYTE_LIKE_TAGS.contains(&ttlv.tag.as_str()) {
+                    if BYTE_LIKE_TAGS.contains(&&*ttlv.tag) {
                         if let Some(bytes) = bytes_from(child) {
                             pending_replacement = Some(TTLValue::ByteString(bytes));
                         }
                     }
                     if pending_replacement.is_none()
-                        && BYTE_LIKE_TAGS.contains(&ttlv.tag.as_str())
+                        && BYTE_LIKE_TAGS.contains(&&*ttlv.tag)
                         && child.tag == ttlv.tag
                     {
                         if let Some(bytes) = bytes_from(child) {
@@ -1003,7 +1005,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
 
                 if pending_replacement.is_none()
                     && !items_mut.is_empty()
-                    && BYTE_LIKE_TAGS.contains(&ttlv.tag.as_str())
+                    && BYTE_LIKE_TAGS.contains(&&*ttlv.tag)
                 {
                     let mut out: Vec<u8> = Vec::new();
                     let mut all_byte_like = true;
@@ -1066,7 +1068,7 @@ mod tests {
 
     fn tv(tag: &str, value: TTLValue) -> TTLV {
         TTLV {
-            tag: tag.to_owned(),
+            tag: tag.to_owned().into(),
             value,
         }
     }

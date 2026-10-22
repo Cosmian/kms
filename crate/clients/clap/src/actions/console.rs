@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use cosmian_kms_client::{
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::UniqueIdentifier},
@@ -23,10 +23,10 @@ pub enum OutputFormat {
     Quiet,
 }
 
-impl TryFrom<&str> for OutputFormat {
-    type Error = KmsCliError;
+impl FromStr for OutputFormat {
+    type Err = KmsCliError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.to_lowercase().as_str() {
             "json" => Ok(Self::Json),
             "text" => Ok(Self::Text),
@@ -132,7 +132,7 @@ impl Stdout {
     pub fn write(&self) -> KmsCliResult<()> {
         // Check if the output format should be JSON
         let output_format = match std::env::var(COSMIAN_KMS_CLI_FORMAT) {
-            Ok(output_format_var_env) => OutputFormat::try_from(output_format_var_env.as_ref())?,
+            Ok(output_format_var_env) => output_format_var_env.parse::<OutputFormat>()?,
             Err(_) => OutputFormat::Text,
         };
 

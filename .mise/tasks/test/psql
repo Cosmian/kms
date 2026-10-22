@@ -17,6 +17,12 @@ setup_test_logging
 export WITH_HSM=1
 ensure_nix_shell
 
+# TLS-enabled server for the sslmode live tests (test_db_postgresql_tls_*).
+REPO_ROOT="$(get_repo_root)"
+print_status "Starting postgres-mtls container (port ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433})..."
+docker compose --project-directory "${REPO_ROOT}" up -d --wait postgres-mtls
+trap 'docker compose --project-directory "${REPO_ROOT}" stop postgres-mtls 2>/dev/null || true' EXIT
+
 # ── PostgreSQL failover-retry test ────────────────────────────────────────────
 # Starts the pg-failover Docker Compose profile (pg1:5434 / pg2:5435), warms
 # the connection pool against pg1, stops pg1 to simulate a primary failure, and

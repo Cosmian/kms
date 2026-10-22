@@ -14,12 +14,13 @@ Whenever you add, remove, or modify a `CREATE TABLE` statement in any `.sql` fil
 
 The canonical table definitions live in:
 
-| File              | Used by                 |
-| ----------------- | ----------------------- |
-| `query.sql`       | SQLite and PostgreSQL   |
-| `query_mysql.sql` | MySQL, MariaDB, Percona |
+| File               | Used by                                                                |
+| ------------------ | ---------------------------------------------------------------------- |
+| `query.sql`        | SQLite and PostgreSQL                                                  |
+| `query_mysql.sql`  | MySQL, MariaDB, Percona                                                |
+| `query_sqlite.sql` | SQLite overrides (where SQLite JSON syntax diverges from `query.sql`) |
 
-Both files must stay consistent with each other for tables they both define.
+`query.sql` and `query_mysql.sql` must stay consistent for tables they both define. `query_sqlite.sql` only overrides `query.sql` entries by query name; any other name falls back to `query.sql`.
 
 ## What to update in `tables.md`
 
@@ -68,6 +69,7 @@ and any backend-specific differences (e.g. MySQL AUTO_INCREMENT`id` column).
 - [ ] Is the Mermaid diagram still accurate?
 - [ ] Is the table count in the overview sentence correct?
 - [ ] Is the "Links between tables" section still accurate?
+
 ## `rawsql` loader gotcha
 
 Queries are parsed by the `rawsql` crate: a line is a new query tag only if it starts with

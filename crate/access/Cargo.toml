@@ -21,12 +21,12 @@ doctest = false
 [features]
 
 [dependencies]
-cosmian_kmip = { path = "../kmip", version = "5.28.0", default-features = true }
+cosmian_kmip = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 sha2 = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
 time = { workspace = true, features = ["serde-human-readable"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

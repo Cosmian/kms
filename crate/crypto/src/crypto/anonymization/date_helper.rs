@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use chrono::LocalResult;
 
 use super::AnoError;
@@ -11,10 +13,10 @@ pub enum TimeUnit {
     Year,
 }
 
-impl TryFrom<&str> for TimeUnit {
-    type Error = AnoError;
+impl FromStr for TimeUnit {
+    type Err = AnoError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "Second" => Ok(Self::Second),
             "Minute" => Ok(Self::Minute),

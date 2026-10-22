@@ -42,7 +42,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> CosmianResult<()> 
             key_id: dek_id.clone(),
             key_file: dek_file.clone(),
             wrap_key_id: Some(kek_id.clone()),
-            wrapping_algorithm: Some(wrapping_algorithm.clone()),
+            wrapping_algorithm: Some(wrapping_algorithm),
             ..Default::default()
         })?;
 

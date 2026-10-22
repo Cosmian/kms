@@ -183,15 +183,19 @@ pub enum CredentialValue {
 }
 
 impl CredentialValue {
-    #[expect(dead_code)]
-    const fn value(&self) -> u32 {
-        match *self {
-            Self::UsernameAndPassword { .. } => 0x0000_0001,
-            Self::Device { .. } => 0x0000_0002,
-            Self::Attestation { .. } => 0x0000_0003,
-            Self::OneTimePassword { .. } => 0x0000_0004,
-            Self::HashedPassword { .. } => 0x0000_0005,
-            Self::Ticket { .. } => 0x0000_0006,
+    /// The [`CredentialType`] that identifies this credential value structure.
+    ///
+    /// KMIP defines the layout of the Credential Value from the Credential Type
+    /// (KMIP 1.4 section 2.1.2, KMIP 2.1 section 2.1.2); this is the inverse mapping.
+    #[must_use]
+    pub const fn credential_type(&self) -> CredentialType {
+        match self {
+            Self::UsernameAndPassword { .. } => CredentialType::UsernameAndPassword,
+            Self::Device { .. } => CredentialType::Device,
+            Self::Attestation { .. } => CredentialType::Attestation,
+            Self::OneTimePassword { .. } => CredentialType::OneTimePassword,
+            Self::HashedPassword { .. } => CredentialType::HashedPassword,
+            Self::Ticket { .. } => CredentialType::Ticket,
         }
     }
 }
@@ -1206,4 +1210,109 @@ pub enum State {
     /// Destroyed Compromised: The object SHALL NOT be used for any cryptographic purpose; however
     /// its compromised status SHOULD be retained for audit or security purposes.
     Destroyed_Compromised = 0x0000_0006,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AttestationType, Credential, CredentialType, CredentialValue, HashingAlgorithm, Nonce,
+        Ticket, TicketType,
+    };
+
+    fn one_of_each() -> Vec<(CredentialValue, CredentialType, u32)> {
+        vec![
+            (
+                CredentialValue::UsernameAndPassword {
+                    username: "u".to_owned(),
+                    password: Some("p".to_owned()),
+                },
+                CredentialType::UsernameAndPassword,
+                0x1,
+            ),
+            (
+                CredentialValue::Device {
+                    device_serial_number: Some("sn".to_owned()),
+                    password: None,
+                    device_identifier: None,
+                    network_identifier: None,
+                    machine_identifier: None,
+                    media_identifier: None,
+                },
+                CredentialType::Device,
+                0x2,
+            ),
+            (
+                CredentialValue::Attestation {
+                    nonce: Nonce {
+                        nonce_id: vec![1],
+                        nonce_value: vec![2],
+                    },
+                    attestation_type: AttestationType::TPM_Quote,
+                    attestation_measurement: None,
+                    attestation_assertion: None,
+                },
+                CredentialType::Attestation,
+                0x3,
+            ),
+            (
+                CredentialValue::OneTimePassword {
+                    username: "u".to_owned(),
+                    password: None,
+                    one_time_password: "123456".to_owned(),
+                },
+                CredentialType::OneTimePassword,
+                0x4,
+            ),
+            (
+                CredentialValue::HashedPassword {
+                    username: "u".to_owned(),
+                    timestamp: 1,
+                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    hashed_password: vec![0xab],
+                },
+                CredentialType::HashedPassword,
+                0x5,
+            ),
+            (
+                CredentialValue::Ticket {
+                    ticket: Ticket {
+                        ticket_type: TicketType::Login,
+                        ticket_value: vec![9],
+                    },
+                },
+                CredentialType::Ticket,
+                0x6,
+            ),
+        ]
+    }
+
+    /// Every credential value maps to the `CredentialType` of the same KMIP
+    /// enumeration value (0x1..=0x6), as mandated by the KMIP Credential structure.
+    #[test]
+    fn credential_type_matches_kmip_enumeration_values() {
+        for (value, expected, numeric) in one_of_each() {
+            assert_eq!(value.credential_type(), expected);
+            assert_eq!(CredentialType::from_repr(numeric), Some(expected));
+        }
+    }
+
+    /// A `Credential` serialized to JSON and read back keeps the type implied by
+    /// its value, i.e. `credential_type()` stays consistent across a round trip.
+    #[test]
+    fn credential_type_survives_serde_roundtrip() {
+        for (value, expected, _) in one_of_each() {
+            let credential = Credential {
+                credential_type: expected,
+                credential_value: value,
+            };
+            let json = serde_json::to_string(&credential).unwrap_or_default();
+            let back: Option<Credential> = serde_json::from_str(&json).ok();
+            assert_eq!(
+                back.as_ref().map(|c| c.credential_value.credential_type()),
+                Some(expected),
+                "round trip failed for {expected:?}: {json}"
+            );
+            assert_eq!(back, Some(credential));
+        }
+    }
 }

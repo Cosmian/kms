@@ -38,10 +38,11 @@ TMP_DIR=""
 BENCH_DEB_BINARY=""
 BENCH_DEB_OSSL_MODS=""
 OPENSSL_MODULES_DIR=""
-BENCH_HSM_PASSWORD=""
+BENCH_HSM_PASSWORD="${BENCH_HSM_PASSWORD:-}"
 BENCH_VPN_PID_FILES=()
 
-# Build only the ckms CLI (no server).
+# Build only the ckms CLI (no server). KMS_SKIP_BUILD=1 reuses the existing binary
+# (e.g. built on another machine and copied into target/<mode>/).
 # Usage: bench_build_ckms [release|debug]
 # Sets: CARGO_TARGET_DIR, CKMS_BIN
 bench_build_ckms() {
@@ -53,17 +54,26 @@ bench_build_ckms() {
   # shellcheck disable=SC2119
   repo_root="$(get_repo_root)"
 
-  echo "Building ckms CLI (${build_mode})..."
-  cargo build -p ckms \
-    "${cargo_args[@]}" \
-    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+  else
+    echo "Building ckms CLI (${build_mode})..."
+    cargo build -p ckms \
+      "${cargo_args[@]}" \
+      ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  fi
 
   CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${repo_root}/target}"
   CKMS_BIN="${CARGO_TARGET_DIR}/${build_mode}/ckms"
+  [ -x "${CKMS_BIN}" ] || {
+    echo "ERROR: ${CKMS_BIN} not found" >&2
+    return 1
+  }
   export CARGO_TARGET_DIR CKMS_BIN
 }
 
-# Build KMS server and ckms CLI.
+# Build KMS server and ckms CLI. KMS_SKIP_BUILD=1 reuses the existing binaries
+# (e.g. built on another machine and copied into target/<mode>/).
 # Usage: bench_build_binaries [release|debug]
 # Sets: CARGO_TARGET_DIR, KMS_BIN, CKMS_BIN
 bench_build_binaries() {
@@ -75,14 +85,28 @@ bench_build_binaries() {
   # shellcheck disable=SC2119
   repo_root="$(get_repo_root)"
 
-  echo "Building cosmian_kms server and ckms CLI (${build_mode})..."
-  cargo build -p cosmian_kms_server -p ckms \
-    "${cargo_args[@]}" \
-    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+  else
+    echo "Building cosmian_kms server and ckms CLI (${build_mode})..."
+    # Two sequential builds: fat-LTO release links use ~9 GB each and OOM-kill rustc when run in parallel.
+    cargo build -p cosmian_kms_server \
+      "${cargo_args[@]}" \
+      ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+    cargo build -p ckms \
+      "${cargo_args[@]}" \
+      ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+  fi
 
   CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${repo_root}/target}"
   KMS_BIN="${CARGO_TARGET_DIR}/${build_mode}/cosmian_kms"
   CKMS_BIN="${CARGO_TARGET_DIR}/${build_mode}/ckms"
+  for bin in "${KMS_BIN}" "${CKMS_BIN}"; do
+    [ -x "${bin}" ] || {
+      echo "ERROR: ${bin} not found" >&2
+      return 1
+    }
+  done
   export CARGO_TARGET_DIR KMS_BIN CKMS_BIN
 }
 
@@ -307,6 +331,8 @@ _bench_cleanup() {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   }
+  # bnt runs as root, detached from this process group: kill it by name.
+  [ -n "${BENCH_C2P_SIMULATOR:-}" ] && { sudo killall -9 bnt 2>/dev/null || true; }
   local pid_file
   for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
     [ -f "${pid_file}" ] || continue
@@ -439,6 +465,11 @@ assert fns.C_Finalize(None) == 0
   else
     HSM_SLOT_ID="${custom_slot:-1}"
     export HSM_SLOT_ID
+    # An empty PIN is a failed login on a real HSM and counts toward partition lockout.
+    if [ -z "${custom_password}" ]; then
+      echo "ERROR: no HSM password for ${hsm_model}: set BENCH_HSM_PASSWORD or ~/.cosmian/${hsm_model}.sh" >&2
+      return 1
+    fi
     _BENCH_HSM_PASSWORD="${custom_password}"
   fi
 }
@@ -564,8 +595,20 @@ bench_prepare_hsm() {
         /etc/proteccio/proteccio.rc /etc/proteccio/proteccio.ini
       ;;
     crypt2pay)
-      BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
-      bash "${scripts_dir}/prepare_crypt2pay.sh"
+      if [ -n "${CRYPT2PAY_SIMULATOR:-}" ]; then
+        # Local simulator: never use the real HSM's VPN/PIN from ~/.cosmian/crypt2pay.sh.
+        unset OVPN_CONF CRYPT2PAY_HOST CRYPT2PAY_PORT
+        export CRYPT2PAY_PASSWORD=""
+        BENCH_HSM_SLOT=1
+        BENCH_C2P_SIMULATOR=1
+        local sim_dir
+        sim_dir="$(mktemp -d)"
+        (cd "${sim_dir}" && bash "${scripts_dir}/prepare_crypt2pay_simulator.sh")
+        rm -rf "${sim_dir}"
+      else
+        BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+        bash "${scripts_dir}/prepare_crypt2pay.sh"
+      fi
       ;;
     utimaco)
       # Starts the simulator and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG;

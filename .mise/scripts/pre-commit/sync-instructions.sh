@@ -117,13 +117,14 @@ check_hook() {
   # Special cases: Cargo.lock, Cargo.toml, cross-cutting hooks
   if [[ $found -eq 0 ]]; then
     case "$gating" in
-      *Cargo*) found=1 ;;               # lockfile-hashes or rust
-      *README*) found=1 ;;              # docs
-      *\.nix*) found=1 ;;               # nix
-      *\.sh*) found=1 ;;                # bash
-      *\.py*) found=1 ;;                # python
-      *\.md*) found=1 ;;                # markdown
-      *\\\.\(rs\|ts\|tsx\)*) found=1 ;; # update-log-index (cross-cutting)
+      *Cargo*) found=1 ;;                                        # lockfile-hashes or rust
+      *README*) found=1 ;;                                       # docs
+      *\.nix*) found=1 ;;                                        # nix
+      *\.sh*) found=1 ;;                                         # bash
+      *\.py*) found=1 ;;                                         # python
+      *\.md*) found=1 ;;                                         # markdown
+      *'\.github/(workflows|actions)'* | *'\.mise/'*) found=1 ;; # github-actions / mise (supply-chain hooks)
+      *\\\.\(rs\|ts\|tsx\)*) found=1 ;;                          # update-log-index (cross-cutting)
     esac
   fi
 

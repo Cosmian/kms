@@ -15,23 +15,17 @@ use crate::error::{KmsCliError, result::KmsCliResult};
 struct CriterionEstimates {
     mean: CriterionEstimate,
     median: CriterionEstimate,
-    #[allow(dead_code)]
-    std_dev: CriterionEstimate,
     median_abs_dev: Option<CriterionEstimate>,
 }
 
 #[derive(Deserialize)]
 struct CriterionEstimate {
     point_estimate: f64,
-    #[allow(dead_code)]
-    standard_error: f64,
     confidence_interval: CriterionCI,
 }
 
 #[derive(Deserialize)]
 struct CriterionCI {
-    #[allow(dead_code)]
-    confidence_level: f64,
     lower_bound: f64,
     upper_bound: f64,
 }
@@ -176,11 +170,14 @@ fn collect_estimates_recursive(
         let content = fs::read_to_string(&estimates_path)
             .map_err(|e| KmsCliError::Default(format!("Read {}: {e}", estimates_path.display())))?;
         if let Ok(estimates) = serde_json::from_str::<CriterionEstimates>(&content) {
+            // Criterion IDs are always `/`-separated, whatever the platform's path separator.
             let raw_id = dir
                 .strip_prefix(base)
                 .unwrap_or(dir)
-                .to_string_lossy()
-                .to_string();
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
             let id = version_label.map_or_else(
                 || raw_id.clone(),
                 |label| apply_version_label(&raw_id, label),
@@ -237,10 +234,6 @@ struct BenchmarkMeta {
     group_id: String,
     function_id: Option<String>,
     value_str: Option<String>,
-    #[allow(dead_code)]
-    full_id: String,
-    #[allow(dead_code)]
-    directory_name: String,
 }
 
 /// Slope estimate from criterion's `estimates.json`.
@@ -640,3 +633,87 @@ pub(super) fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCl
 }
 
 // =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, fs};
+
+    use super::{
+        BenchPoint, CtBenchmarkComplete, collect_bench_points, collect_estimates_recursive,
+    };
+
+    /// A complete criterion `estimates.json`: it carries `std_dev`, `standard_error` and
+    /// `confidence_level` entries that the CLI never reads but that must not prevent parsing.
+    const FULL_ESTIMATES: &str = r#"{
+        "mean": {"confidence_interval": {"confidence_level": 0.95, "lower_bound": 90.0, "upper_bound": 110.0}, "point_estimate": 100.0, "standard_error": 2.0},
+        "median": {"confidence_interval": {"confidence_level": 0.95, "lower_bound": 88.0, "upper_bound": 108.0}, "point_estimate": 98.0, "standard_error": 1.5},
+        "median_abs_dev": {"confidence_interval": {"confidence_level": 0.95, "lower_bound": 4.0, "upper_bound": 6.0}, "point_estimate": 5.0, "standard_error": 0.5},
+        "slope": {"confidence_interval": {"confidence_level": 0.95, "lower_bound": 95.0, "upper_bound": 105.0}, "point_estimate": 99.0, "standard_error": 1.0},
+        "std_dev": {"confidence_interval": {"confidence_level": 0.95, "lower_bound": 8.0, "upper_bound": 12.0}, "point_estimate": 10.0, "standard_error": 1.1}
+    }"#;
+
+    /// A complete criterion `benchmark.json`, including `full_id` and `directory_name`.
+    const FULL_BENCHMARK: &str = r#"{
+        "group_id": "encrypt",
+        "function_id": "aes-gcm",
+        "value_str": "256",
+        "throughput": null,
+        "full_id": "encrypt/aes-gcm/256",
+        "directory_name": "encrypt/aes-gcm/256",
+        "title": "encrypt/aes-gcm/256"
+    }"#;
+
+    type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+    fn write_benchmark(dir: &std::path::Path) -> TestResult<()> {
+        let new_dir = dir.join("encrypt").join("aes-gcm").join("256").join("new");
+        fs::create_dir_all(&new_dir)?;
+        fs::write(new_dir.join("estimates.json"), FULL_ESTIMATES)?;
+        fs::write(new_dir.join("benchmark.json"), FULL_BENCHMARK)?;
+        Ok(())
+    }
+
+    fn collect_estimates() -> TestResult<Vec<CtBenchmarkComplete>> {
+        let home = tempfile::tempdir()?;
+        write_benchmark(home.path())?;
+        let mut results = vec![];
+        collect_estimates_recursive(home.path(), home.path(), None, &mut results)?;
+        Ok(results)
+    }
+
+    fn collect_points() -> TestResult<BTreeMap<String, Vec<BenchPoint>>> {
+        let home = tempfile::tempdir()?;
+        write_benchmark(home.path())?;
+        Ok(collect_bench_points(home.path())?)
+    }
+
+    #[test]
+    fn full_criterion_estimates_are_collected() {
+        let results = collect_estimates().ok().unwrap_or_default();
+        assert_eq!(results.len(), 1);
+        let entry = results.first();
+        assert_eq!(entry.map(|e| e.id.as_str()), Some("encrypt/aes-gcm/256"));
+        let values = entry.map(|e| {
+            [
+                e.mean.estimate,
+                e.mean.lower_bound,
+                e.mean.upper_bound,
+                e.median.estimate,
+                e.median_abs_dev.estimate,
+            ]
+        });
+        assert_eq!(values, Some([100.0, 90.0, 110.0, 98.0, 5.0]));
+    }
+
+    #[test]
+    fn full_criterion_benchmark_metadata_is_collected() {
+        let groups = collect_points().ok().unwrap_or_default();
+        let points = groups.get("encrypt");
+        assert_eq!(points.map(Vec::len), Some(1));
+        let point = points.and_then(|points| points.first());
+        assert_eq!(point.map(|p| p.function_id.as_str()), Some("aes-gcm"));
+        assert_eq!(point.map(|p| p.value_str.as_str()), Some("256"));
+        // `slope` takes precedence over `mean` as the reported time.
+        assert_eq!(point.map(|p| p.time_ns), Some(99.0));
+    }
+}

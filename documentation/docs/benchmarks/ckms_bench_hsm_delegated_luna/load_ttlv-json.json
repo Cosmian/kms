@@ -1,0 +1,5 @@
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":1,"throughput_rps":229.00,"p50_ms":4.331,"p95_ms":4.616,"p99_ms":5.140}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":16,"throughput_rps":2213.55,"p50_ms":7.142,"p95_ms":8.540,"p99_ms":9.818}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":32,"throughput_rps":2300.70,"p50_ms":13.887,"p95_ms":15.691,"p99_ms":16.597}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":64,"throughput_rps":2301.70,"p50_ms":27.770,"p95_ms":29.321,"p99_ms":30.555}
+{"protocol":"ttlv-json","operation":"hsm/sign-verify/ecdsa-p256","concurrency":96,"throughput_rps":2297.15,"p50_ms":41.632,"p95_ms":43.567,"p99_ms":48.878}

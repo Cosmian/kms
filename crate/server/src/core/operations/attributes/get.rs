@@ -77,7 +77,7 @@ pub(crate) async fn get_attributes(
                 }
             }
             match &best_any {
-                None => best_any = Some((id.clone(), ts)),
+                None => best_any = Some((id, ts)),
                 Some((best_id, best_ts)) => {
                     let replace = match (ts, *best_ts) {
                         (Some(a), Some(b)) => a > b || (a == b && id > *best_id),
@@ -86,7 +86,7 @@ pub(crate) async fn get_attributes(
                         (None, Some(_)) => false,
                     };
                     if replace {
-                        best_any = Some((id.clone(), ts));
+                        best_any = Some((id, ts));
                     }
                 }
             }
@@ -237,14 +237,11 @@ pub(crate) async fn get_attributes(
     if req_attributes.is_empty() {
         // Standard attributes: include VendorExtension so vendor-defined attributes are returned by default.
         // Exclude only Tag::Tag to avoid injecting server-specific tagging unless explicitly requested.
-        let mut all_tags = Vec::new();
-        for tag in Tag::iter() {
-            if tag != Tag::Tag {
-                all_tags.push(tag);
-            }
-        }
-
-        req_attributes.extend(all_tags.iter().map(|t| AttributeReference::Standard(*t)));
+        req_attributes.extend(
+            Tag::iter()
+                .filter(|&t| t != Tag::Tag)
+                .map(AttributeReference::Standard),
+        );
     }
 
     // request selected attributes
@@ -517,8 +514,10 @@ pub(crate) async fn get_attributes(
                     res.quantum_safe = attributes.quantum_safe;
                 }
                 Tag::RandomNumberGenerator => {
-                    // Return a deterministic RNG profile to satisfy KMIP vectors.
-                    // ANSI X9.31 with AES-256 as per AKLC-M-1-21 expected values.
+                    // Protocol-compliance literal: pinned to the values asserted by the vendored
+                    // OASIS vector AKLC-M-1-21 (ANSI X9.31 / AES / 256). It is NOT derived from
+                    // and does not describe the real generator, which is `KmsRng` (OpenSSL
+                    // AES-256 CTR-DRBG, see `Query` -> `QueryRNGs` for the truthful description).
                     res.random_number_generator = Some(RandomNumberGenerator {
                         rng_algorithm: RNGAlgorithm::ANSI_X931,
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

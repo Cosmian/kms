@@ -16,7 +16,7 @@ on:
   workflow_call:
   workflow_dispatch:
   schedule:
-    - cron: 0 1 * * * # Daily at 1 AM
+    - cron: 0 0 * * * # Daily at midnight
 
 # All jobs are restricted to the upstream repository: they need secrets
 # (e.g. PAT_TOKEN to push commits, signing credentials) that forks do not

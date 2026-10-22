@@ -17,14 +17,13 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto,
-    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use openssl::hash::{MessageDigest, hash};
 use tracing::debug;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use super::create_split_key::{CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes};
+use super::create_split_key::{CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes_ref};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
     error::KmsError,
@@ -74,14 +73,14 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
         ));
     }
 
-    let mut owms: Vec<ObjectWithMetadata> = Vec::with_capacity(share_uid_strings.len());
+    let mut owms = Vec::with_capacity(share_uid_strings.len());
     for uid_str in share_uid_strings {
-        let owm = retrieve_object_for_operation(
+        let owm = Box::pin(retrieve_object_for_operation(
             ObjectHandle::from(uid_str.as_str()),
             KmipOperation::Get,
             kms,
             user,
-        )
+        ))
         .await?;
         owms.push(owm);
     }
@@ -97,7 +96,7 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
     }
 
     // Extract metadata from the first share to verify consistency
-    let Some(Object::SplitKey(first_sk)) = owms.first().map(ObjectWithMetadata::object) else {
+    let Some(Object::SplitKey(first_sk)) = owms.first().map(|owm| owm.object()) else {
         kms_bail!(KmsError::InvalidRequest(
             "first share is not a SplitKey object".to_owned()
         ))
@@ -194,7 +193,7 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
                     // Retrieve the wrapping key directly from the DB (server-side, no user check).
                     let wrap_owm = kms
                         .database
-                        .retrieve_object(wrap_key_id)
+                        .retrieve_object_arc(wrap_key_id)
                         .await
                         .map_err(|e| {
                             KmsError::ServerError(format!(
@@ -209,18 +208,17 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
                                  wrapped shares."
                             ))
                         })?;
-                    let wkb = extract_key_bytes(wrap_owm.object())?;
-                    let unwrapped = cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_unwrap(
+                    let wkb = extract_key_bytes_ref(wrap_owm.object())?;
+                    cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_unwrap(
                         &stored_bytes,
-                        &wkb,
+                        wkb,
                     )
                     .map_err(|e| {
                         KmsError::CryptographicError(format!(
                             "JoinSplitKey: AES-KW unwrap of share failed (wrapping key \
                                  '{wrap_key_id}'): {e}"
                         ))
-                    })?;
-                    Zeroizing::new(unwrapped.to_vec())
+                    })?
                 }
                 _ => Zeroizing::new(stored_bytes),
             };

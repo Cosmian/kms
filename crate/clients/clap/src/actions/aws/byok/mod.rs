@@ -22,7 +22,7 @@ impl ByokCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
             Self::Import(action) => {
-                action.run(kms_rest_client).await?;
+                Box::pin(action.run(kms_rest_client)).await?;
             }
             Self::Export(action) => {
                 action.run(kms_rest_client).await?;

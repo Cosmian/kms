@@ -253,3 +253,41 @@ after the arch-specific images are pushed to GHCR.
 # Run locally (requires minikube + helm):
 DOCKER_IMAGE_NAME=ghcr.io/cosmian/kms:develop-amd64 mise run test:k8s:kms-image
 ```
+
+---
+
+## `test:k8s:hsm` — documented HSM deployment (Proteccio, Crypt2pay)
+
+Deploys the KMS with a live Trustway Proteccio or Crypt2pay HSM exactly as the
+"Kubernetes (Helm chart)" section of `documentation/docs/hsm_support/<model>.md` describes. The
+client-image Dockerfile, the Helm values and the Crypt2pay PersistentVolumeClaim are extracted from
+the guide; only placeholders are filled in, so the test fails when the documented instructions
+stop working.
+
+**Checks performed:**
+
+1. Builds the vendor client image in Minikube, creates the configuration and password Secrets from
+   the host's `/etc/proteccio` or `/etc/c2p` (with the read-only/trace adjustments the guide
+   requires), and installs the chart with the documented values.
+2. `--variant fips` uses `ghcr.io/cosmian/kms-fips` (with the documented `command` override for
+   Proteccio) and asserts `/version` reports a FIPS OpenSSL; `--variant non-fips` uses
+   `ghcr.io/cosmian/kms` and drops the `command:` line.
+3. Creates an `hsm::<slot>::…` AES key, encrypts and decrypts with AES-GCM through `ckms` in the
+   KMS pod, and destroys the key (also on failure).
+4. Crypt2pay only: deletes the pod and decrypts again with the same HSM key (objects directory on
+   the PVC).
+
+**Prerequisites:** the vendor library and configuration installed by
+`.github/reusable_scripts/prepare_<model>.sh`, and `PROTECCIO_PASSWORD`/`PROTECCIO_SLOT` or
+`CRYPT2PAY_PASSWORD` (plus `OVPN_CONF` when the Crypt2pay is only reachable through OpenVPN;
+the task starts and stops the tunnel). Locally, `~/.cosmian/<model>.sh` is sourced when present.
+Not part of `test:k8s` (it needs a live HSM).
+
+**In CI:** extra steps of the `hsm-upstream` job in `test_all.yml`, after `test:hsm-<model>`, so
+they share its secrets and its per-HSM concurrency group (the HSMs refuse concurrent CI runs).
+Upstream repository only.
+
+```bash
+mise run test:k8s:hsm --model proteccio --variant fips
+mise run test:k8s:hsm --model crypt2pay --variant non-fips
+```

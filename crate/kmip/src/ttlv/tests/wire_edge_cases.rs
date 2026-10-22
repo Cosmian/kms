@@ -547,9 +547,9 @@ fn w25_round_trip_structure() {
         ttlv::{TTLV, TTLValue},
     };
     let ttlv = TTLV {
-        tag: "RequestMessage".to_owned(),
+        tag: "RequestMessage".into(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "BatchCount".to_owned(),
+            tag: "BatchCount".into(),
             value: TTLValue::Integer(1),
         }]),
     };

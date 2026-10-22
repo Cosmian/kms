@@ -11,7 +11,7 @@ use cosmian_kms_client::{
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
 use cosmian_kms_crypto::crypto::{
-    password_derivation::derive_key_from_password, wrap::wrap_object_with_key,
+    KmsRng, password_derivation::derive_key_from_password, wrap::wrap_object_with_key,
 };
 
 use super::resolve_key::resolve_key_from_options;
@@ -131,6 +131,7 @@ impl WrapSecretDataOrKeyAction {
             &mut object,
             &wrapping_key,
             &KeyWrappingSpecification::default(),
+            &KmsRng::new(),
         )?;
 
         // set the output file path to the input file path if not specified

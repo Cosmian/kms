@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipResultHelper,
     kmip_0::{
@@ -14,7 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         extra::tagging::VENDOR_ATTR_TAG,
         kmip_messages::ResponseMessageBatchItem,
         kmip_operations::{InteropResponse, LogResponse, Operation},
-        kmip_types::{OperationEnumeration, UniqueIdentifier, UniqueIdentifierEnumeration},
+        kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration},
     },
     time_normalize,
     ttlv::KmipFlavor,
@@ -24,6 +26,25 @@ use strum::IntoEnumIterator;
 
 use super::modify_attribute;
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
+
+/// Maximum number of batch items processed from one `RequestMessage`: items run
+/// sequentially, so an unbounded batch would monopolise a worker and DB connections.
+pub(crate) const MAX_BATCH_ITEMS: usize = 10_000;
+
+/// Lazily formats the operations of the first batch items as a list (same output as a
+/// `Vec<OperationEnumeration>` debug print, without allocating the `Vec`).
+struct BatchOperations<'a>(&'a [RequestMessageBatchItemVersioned]);
+
+impl std::fmt::Debug for BatchOperations<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.0.iter().map(|bi| match bi {
+                RequestMessageBatchItemVersioned::V14(item) => item.operation.into(),
+                RequestMessageBatchItemVersioned::V21(item) => item.operation,
+            }))
+            .finish()
+    }
+}
 
 /// Processing of an input KMIP Message
 ///
@@ -41,17 +62,22 @@ pub(crate) async fn message(
         user = user.as_str(),
         "KMIP Request message with {} operation(s): {:?}",
         request.batch_item.len(),
-        request
-            .batch_item
-            .get(..request.batch_item.len().min(10))
-            .unwrap_or(&[])
-            .iter()
-            .map(|bi| match bi {
-                RequestMessageBatchItemVersioned::V14(item) => item.operation.into(),
-                RequestMessageBatchItemVersioned::V21(item) => item.operation,
-            })
-            .collect::<Vec<OperationEnumeration>>(),
+        BatchOperations(
+            request
+                .batch_item
+                .get(..request.batch_item.len().min(10))
+                .unwrap_or(&[])
+        ),
     );
+    if request.batch_item.len() > MAX_BATCH_ITEMS {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Message,
+            format!(
+                "KMIP request message has {} batch items; the maximum is {MAX_BATCH_ITEMS}",
+                request.batch_item.len()
+            ),
+        ));
+    }
     trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::with_capacity(request.batch_item.len());
@@ -94,7 +120,7 @@ pub(crate) async fn message(
         resolve_id_placeholder_for_operation(&mut request_operation, &id_placeholder);
 
         // Capture whether this batch item explicitly requested attributes (used for KMIP 1.x shaping)
-        let get_attrs_requested_refs = extract_get_attrs_requested_refs(&request_operation);
+        let get_attrs_explicit_refs = get_attrs_has_explicit_refs(&request_operation);
 
         // 2) Expand KMIP 2.1 GetAttributes with empty AttributeReference into the full explicit list
         expand_kmip2_get_attributes_request(&mut request_operation, kmip_version);
@@ -179,9 +205,7 @@ pub(crate) async fn message(
         shape_kmip1_get_attributes_response(
             kmip_version,
             &mut response_message_batch_item,
-            get_attrs_requested_refs
-                .as_ref()
-                .is_some_and(|v| !v.is_empty()),
+            get_attrs_explicit_refs,
             kms.vendor_id(),
         );
 
@@ -288,13 +312,15 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
         retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     };
 
-    let mut owm = Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(uid),
-        KmipOperation::GetAttributes,
-        kms,
-        user,
-    ))
-    .await?;
+    let mut owm = Arc::unwrap_or_clone(
+        Box::pin(retrieve_object_for_operation(
+            ObjectHandle::from(uid),
+            KmipOperation::GetAttributes,
+            kms,
+            user,
+        ))
+        .await?,
+    );
 
     // Reset internal attributes
     if let Ok(attrs) = owm.object_mut().attributes_mut() {
@@ -317,42 +343,6 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
     Ok(())
 }
 
-/// Helper function to get the operation name from an Operation enum variant
-#[allow(clippy::missing_const_for_fn)]
-fn get_operation_name(operation: &Operation) -> &'static str {
-    match operation {
-        Operation::Activate(_) => "Activate",
-        Operation::AddAttribute(_) => "AddAttribute",
-        Operation::Certify(_) => "Certify",
-        Operation::Create(_) => "Create",
-        Operation::CreateKeyPair(_) => "CreateKeyPair",
-        Operation::Decrypt(_) => "Decrypt",
-        Operation::DeleteAttribute(_) => "DeleteAttribute",
-        Operation::DeriveKey(_) => "DeriveKey",
-        Operation::Destroy(_) => "Destroy",
-        Operation::DiscoverVersions(_) => "DiscoverVersions",
-        Operation::Encrypt(_) => "Encrypt",
-        Operation::Export(_) => "Export",
-        Operation::Get(_) => "Get",
-        Operation::GetAttributes(_) => "GetAttributes",
-        Operation::Hash(_) => "Hash",
-        Operation::Import(_) => "Import",
-        Operation::Locate(_) => "Locate",
-        Operation::MAC(_) => "MAC",
-        Operation::Query(_) => "Query",
-        Operation::Register(_) => "Register",
-        Operation::ReCertify(_) => "ReCertify",
-        Operation::ReKey(_) => "ReKey",
-        Operation::ReKeyKeyPair(_) => "ReKeyKeyPair",
-        Operation::Revoke(_) => "Revoke",
-        Operation::SetAttribute(_) => "SetAttribute",
-        Operation::Sign(_) => "Sign",
-        Operation::SignatureVerify(_) => "SignatureVerify",
-        Operation::Validate(_) => "Validate",
-        _ => "Unknown",
-    }
-}
-
 async fn process_operation(
     kms: &KMS,
     user: &UserId,
@@ -360,8 +350,9 @@ async fn process_operation(
     request_operation: Operation,
     protocol_version: Option<ProtocolVersion>,
 ) -> Result<Operation, KmsError> {
-    // Get operation name for metrics
-    let operation_name = get_operation_name(&request_operation);
+    // The KMIP operation enumeration drives both the role check and the metrics label
+    let operation = request_operation.operation_enum();
+    let operation_name: &'static str = operation.into();
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
     // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
@@ -369,8 +360,13 @@ async fn process_operation(
 
     // Enforce role-based access control for the RequestMessage path.
     // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
-    super::dispatch::check_role_permission(kms, user, operation_name, &kms.params.crypto_officer)
+    super::dispatch::check_role_permission(kms, user, operation, &kms.params.crypto_officer)
         .await?;
+    // Request-time algorithm policy, as on the single-operation TTLV path.
+    super::algorithm_policy::enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &request_operation,
+    )?;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = Box::pin(async {
@@ -661,11 +657,23 @@ fn resolve_id_placeholder_for_operation(
     }
 }
 
-fn extract_get_attrs_requested_refs(op: &Operation) -> Option<Vec<v21types::AttributeReference>> {
-    if let Operation::GetAttributes(ga) = op {
-        return ga.attribute_reference.clone();
+/// Whether this batch item is a `GetAttributes` request that explicitly lists attribute references.
+fn get_attrs_has_explicit_refs(op: &Operation) -> bool {
+    matches!(op, Operation::GetAttributes(ga) if ga.attribute_reference.as_ref().is_some_and(|v| !v.is_empty()))
+}
+
+/// `io::Write` sink that only counts the bytes written (no allocation).
+struct ByteCounter(usize);
+
+impl std::io::Write for ByteCounter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(buf.len());
+        Ok(buf.len())
     }
-    None
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn expand_kmip2_get_attributes_request(op: &mut Operation, kmip_version: KmipFlavor) {
@@ -698,8 +706,9 @@ fn enforce_max_response_size_for_query(
     // Use serialized JSON payload length as a pragmatic proxy for response size.
     if let Ok(Operation::QueryResponse(resp)) = response_operation {
         if let Some(max_total) = remaining_max_response_size {
-            if let Ok(payload_json) = serde_json::to_string(resp) {
-                let payload_len = i32::try_from(payload_json.len())?;
+            let mut counter = ByteCounter(0);
+            if serde_json::to_writer(&mut counter, resp).is_ok() {
+                let payload_len = i32::try_from(counter.0)?;
                 let approx_total = payload_len.saturating_add(128);
                 if approx_total > max_total {
                     return Ok(Some((

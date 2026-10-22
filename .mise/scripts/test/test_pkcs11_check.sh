@@ -65,7 +65,7 @@ if [ ! -x "${PKCS11_CHECK_VENV}/bin/pkcs11-check" ]; then
   require_cmd python3 "Python 3.12 or newer is required for pkcs11-check"
   rm -rf "${PKCS11_CHECK_VENV}"
   python3 -m venv "${PKCS11_CHECK_VENV}"
-  "${PKCS11_CHECK_VENV}/bin/python" -m pip install --quiet \
+  "${PKCS11_CHECK_VENV}/bin/python" -m pip install --quiet --require-hashes \
     -r "${SCRIPT_DIR}/requirements-pkcs11-check.txt"
 fi
 PKCS11_CHECK_BIN="${PKCS11_CHECK_VENV}/bin/pkcs11-check"

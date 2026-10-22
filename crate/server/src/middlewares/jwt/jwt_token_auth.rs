@@ -13,7 +13,7 @@ use super::UserClaim;
 use crate::{
     error::KmsError,
     middlewares::{
-        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_aws_xks_identity,
+        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_service_identity,
     },
     result::KResult,
 };
@@ -90,8 +90,8 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
         ));
     }
     debug!("JWT-SVID access granted to {sub}!");
-    let username = UserId::from(sub.to_owned());
-    reject_reserved_aws_xks_identity(&username)?;
+    let username = UserId::from(sub);
+    reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
         auth_method: AuthMethod::JwtSvid,
@@ -107,7 +107,7 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
 /// role-based and domain-scoped policies.
 fn oidc_authenticated_user(username: &str, user_claim: &UserClaim) -> KResult<AuthenticatedUser> {
     let username = UserId::from(username.to_owned());
-    reject_reserved_aws_xks_identity(&username)?;
+    reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
         auth_method: AuthMethod::OidcJwt,
@@ -243,14 +243,14 @@ pub(super) async fn handle_jwt(
     // Read the raw `Authorization` header value (e.g. `"Bearer eyJ…"`).
     // `decode_bearer_header` called by `extract_user_claim` will strip the
     // `"Bearer "` prefix and decode the token payload.
-    let identity = req
+    let identity: &str = req
         .headers()
         .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok().map(str::to_owned))
+        .and_then(|h| h.to_str().ok())
         .unwrap_or_default();
 
     // Try to extract and validate the user claim
-    let mut private_claim = extract_user_claim(&configs, &identity);
+    let mut private_claim = extract_user_claim(&configs, identity);
 
     // If no configuration could get the claim, try refreshing them and extract the user claim again
     if private_claim.is_err() {
@@ -262,7 +262,7 @@ pub(super) async fn handle_jwt(
             .refresh()
             .await?;
 
-        private_claim = extract_user_claim(&configs, &identity);
+        private_claim = extract_user_claim(&configs, identity);
     }
 
     match private_claim {
@@ -783,6 +783,41 @@ mod real_validation {
         claims.as_object_mut().expect("object").remove("aud");
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("missing audience must be rejected");
+    }
+
+    /// `jsonwebtoken` parses but never enforces `crit` (RFC 7515 §4.1.11): the production
+    /// path must refuse such a token itself. The header segment is forged by hand, and the
+    /// error message proves the refusal comes from the `crit` check, not the signature.
+    #[tokio::test]
+    async fn token_with_crit_header_is_rejected() {
+        let key = generate_key();
+        let config = config(&key).await;
+        let token = sign(&key, KID, Algorithm::ES256, &valid_claims());
+        let forged_header = URL_SAFE_NO_PAD
+            .encode(json!({"alg": "ES256", "kid": KID, "crit": ["b64"]}).to_string());
+        let forged = format!(
+            "{forged_header}.{}",
+            token.split_once('.').expect("compact JWT").1
+        );
+        let err = config
+            .validate_signed_token(&forged, true)
+            .expect_err("a token with `crit` must be rejected");
+        assert!(err.to_string().contains("critical"), "{err}");
+    }
+
+    /// A correctly signed nested JWT (`cty: JWT`) is refused: it is not supported.
+    #[tokio::test]
+    async fn nested_jwt_is_rejected() {
+        let key = generate_key();
+        let config = config(&key).await;
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some(KID.to_owned());
+        header.cty = Some("JWT".to_owned());
+        let token = encode(&header, &valid_claims(), &key.encoding_key).expect("sign JWT");
+        let err = config
+            .validate_signed_token(&token, true)
+            .expect_err("a nested JWT must be rejected");
+        assert!(err.to_string().contains("Nested"), "{err}");
     }
 
     #[tokio::test]

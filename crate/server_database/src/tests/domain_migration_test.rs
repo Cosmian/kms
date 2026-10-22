@@ -14,9 +14,8 @@ use cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
     kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{ObjectsStore, UserId};
 use cosmian_logger::reexport::tracing;
@@ -33,7 +32,7 @@ const OWNER: &str = "domain_migration_owner";
 /// Store a random AES key with the given `domain` and return its uid.
 async fn store_key<DB: ObjectsStore>(db: &DB, domain: &str) -> DbResult<String> {
     let mut key_bytes = vec![0_u8; 32];
-    CsRng::from_entropy().fill_bytes(&mut key_bytes);
+    KmsRng::new().seeded_csrng()?.fill_bytes(&mut key_bytes);
     let key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         key_bytes.as_slice(),

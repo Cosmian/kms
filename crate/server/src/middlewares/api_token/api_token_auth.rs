@@ -22,7 +22,7 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
     // Retrieve the object from the database
     let owm = kms
         .database
-        .retrieve_object(api_token_id)
+        .retrieve_object_arc(api_token_id)
         .await?
         .ok_or_else(|| {
             KmsError::Kmip21Error(
@@ -47,13 +47,13 @@ async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
 
     // Get the API token bytes and encode as base64
     Ok(base64::engine::general_purpose::STANDARD
-        .encode(owm.object().key_block()?.key_bytes()?)
+        .encode(owm.object().key_block()?.key_bytes_ref()?)
         .to_lowercase())
 }
 
 /// Validate the `Bearer` token in the request against the configured API token.
 pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest) -> KResult<()> {
-    let Some(api_token_id) = kms_server.params.api_token_id.clone() else {
+    let Some(api_token_id) = &kms_server.params.api_token_id else {
         return Err(KmsError::InvalidRequest(
             "API token authentication is not configured".to_owned(),
         ));
@@ -63,7 +63,7 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
     trace!("Token authentication using this API token ID: {api_token_id}");
 
     // Get the stored API token
-    let api_token = get_api_token(kms_server, api_token_id.as_str()).await?;
+    let api_token = get_api_token(kms_server, api_token_id).await?;
 
     // Extract the token from the Authorization header
     let token_part = extract_bearer_token(req)?;

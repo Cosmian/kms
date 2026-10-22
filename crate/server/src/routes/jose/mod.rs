@@ -201,3 +201,81 @@ pub(crate) fn ecdsa_p1363_to_der(p1363: &[u8]) -> Result<Vec<u8>, CryptoApiError
 
     Ok(der)
 }
+
+/// Deserialize a protected-header member as an optional string, treating any
+/// non-string JSON value like an absent member (same as `Value::as_str`).
+/// `Cow` so that strings containing JSON escapes still deserialize.
+pub(super) fn lenient_str<'de, D>(
+    deserializer: D,
+) -> Result<Option<std::borrow::Cow<'de, str>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum MaybeStr<'a> {
+        #[serde(borrow)]
+        Str(std::borrow::Cow<'a, str>),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(
+        match <MaybeStr as serde::Deserialize>::deserialize(deserializer)? {
+            MaybeStr::Str(s) => Some(s),
+            MaybeStr::Other(_) => None,
+        },
+    )
+}
+
+/// Reject protected headers that are not JSON objects (e.g. JSON arrays or primitives)
+/// before deserializing into typed structs whose fields would otherwise be mapped by position
+/// from a JSON array by serde.
+pub(super) fn ensure_json_object(json_bytes: &[u8]) -> Result<(), CryptoApiError> {
+    let first_non_ws = json_bytes
+        .iter()
+        .copied()
+        .find(|b| !b.is_ascii_whitespace());
+    if first_non_ws != Some(b'{') {
+        return Err(CryptoApiError::BadRequest(
+            "Protected header must be a JSON object".to_owned(),
+        ));
+    }
+    Ok(())
+}
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::assertions_on_result_states)]
+mod lenient_str_tests {
+    use std::borrow::Cow;
+
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct H<'a> {
+        #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+        kid: Option<Cow<'a, str>>,
+    }
+
+    #[test]
+    fn escaped_string_is_kept_and_non_string_is_absent() {
+        let h: H = serde_json::from_str(r#"{"kid":"a\u0062\/c"}"#).unwrap();
+        assert_eq!(h.kid.as_deref(), Some("ab/c"));
+        let h: H = serde_json::from_str(r#"{"kid":42}"#).unwrap();
+        assert!(h.kid.is_none());
+        let h: H = serde_json::from_str(r"{}").unwrap();
+        assert!(h.kid.is_none());
+    }
+
+    #[test]
+    fn test_ensure_json_object_rejects_arrays_and_primitives() {
+        use super::ensure_json_object;
+
+        assert!(ensure_json_object(br#"{"kid":"k1"}"#).is_ok());
+        assert!(ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").is_ok());
+
+        assert!(ensure_json_object(b"[\"k1\",\"dir\",\"A256GCM\"]").is_err());
+        assert!(ensure_json_object(b"\"just a string\"").is_err());
+        assert!(ensure_json_object(b"12345").is_err());
+        assert!(ensure_json_object(b"true").is_err());
+        assert!(ensure_json_object(b"").is_err());
+        assert!(ensure_json_object(b"   ").is_err());
+    }
+}

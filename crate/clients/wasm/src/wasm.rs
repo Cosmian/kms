@@ -1681,7 +1681,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
         ExportKeyFormat::JsonTtlv => {
             let kmip_object = response.object;
             let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
-            ttlv.tag = tag_from_object(&kmip_object);
+            ttlv.tag = tag_from_object(&kmip_object).into();
             let bytes = serde_json::to_vec::<TTLV>(&ttlv)
                 .map_err(|e| JsValue::from_str(&format!("{e}")))?;
             JsValue::from(Uint8Array::from(bytes.as_slice()))
@@ -2120,7 +2120,7 @@ pub fn parse_export_certificate_ttlv_response(
             let data = match output_format {
                 CertificateExportFormat::JsonTtlv => {
                     let mut ttlv = to_ttlv(&object).map_err(|e| JsValue::from(e.to_string()))?;
-                    ttlv.tag = tag_from_object(&object);
+                    ttlv.tag = tag_from_object(&object).into();
                     let bytes = serde_json::to_vec::<TTLV>(&ttlv)
                         .map_err(|e| JsValue::from_str(&format!("{e}")))?;
                     JsValue::from(Uint8Array::from(bytes.as_slice()))

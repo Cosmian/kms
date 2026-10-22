@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -48,10 +50,10 @@ pub enum AuditResult {
 impl AuditResult {
     /// Returns a stable string representation used in the hash canonical form.
     #[must_use]
-    pub fn as_canonical_str(&self) -> String {
+    pub fn as_canonical_str(&self) -> Cow<'_, str> {
         match self {
-            Self::Success => "Success".to_owned(),
-            Self::Failure(msg) => format!("Failure:{msg}"),
+            Self::Success => Cow::Borrowed("Success"),
+            Self::Failure(msg) => Cow::Owned(format!("Failure:{msg}")),
         }
     }
 

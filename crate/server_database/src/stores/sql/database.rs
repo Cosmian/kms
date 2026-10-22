@@ -4,19 +4,11 @@ use crate::{DbError, error::DbResult};
 
 /// Minimal, backend-agnostic SQL access used across the server database.
 /// This trait intentionally avoids any dependency on `sqlx` and only
-/// provides shared utilities (loader and binder) that callers use to pick
-/// the right SQL and placeholder style per backend.
+/// provides shared utilities (the query loader) that callers use to pick
+/// the right SQL per backend.
 pub(crate) trait SqlDatabase {
     /// Get the loader that reads the SQL queries for this backend
     fn get_loader(&self) -> &Loader;
-
-    /// Get the 'binder' used in the SQL queries for this database dialect
-    /// e.g. for Postgres/SQLite: "$1", for `MySQL`: "?"
-    #[allow(dead_code)]
-    fn binder(&self, param_number: usize) -> String {
-        // Default to Postgres/SQLite style
-        format!("${param_number}")
-    }
 
     /// Get the SQL query by name using the loader
     /// # Errors

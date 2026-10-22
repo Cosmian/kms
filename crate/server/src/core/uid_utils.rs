@@ -74,7 +74,11 @@ pub(super) async fn resolve_uids(handle: ObjectHandle<'_>, kms: &KMS) -> KResult
             let tags: HashSet<String> = serde_json::from_str(json)?;
             Ok(kms.database.list_uids_for_tags(&tags).await?)
         }
-        handle => Ok(HashSet::from([handle.as_str().to_owned()])),
+        handle => {
+            let mut set = HashSet::with_capacity(1);
+            set.insert(handle.as_str().to_owned());
+            Ok(set)
+        }
     }
 }
 
@@ -220,19 +224,13 @@ pub(crate) async fn resolve_keyset_to_single_uid(
 
     match results.len() {
         0 => Ok(None),
-        1 => Ok(Some(
-            results
-                .into_iter()
-                .next()
-                .map(|(uid, _)| uid)
-                .unwrap_or_default(),
-        )),
+        1 => Ok(results.first().map(|(uid, _)| uid.clone())),
         _ => {
             // Multiple matches — take the one with highest generation
             let best = results
-                .into_iter()
+                .iter()
                 .max_by_key(|(_, attrs)| attrs.rotate_generation.unwrap_or(0));
-            Ok(best.map(|(uid, _)| uid))
+            Ok(best.map(|(uid, _)| uid.clone()))
         }
     }
 }
@@ -305,12 +303,11 @@ pub(crate) async fn walk_keyset_chain(
 
     // Sort all generations newest-first.
     let mut all_pairs: Vec<(String, i32)> = results
-        .into_iter()
-        .map(|(uid, attrs)| (uid, attrs.rotate_generation.unwrap_or(0)))
+        .iter()
+        .map(|(uid, attrs)| (uid.clone(), attrs.rotate_generation.unwrap_or(0)))
         .collect();
     all_pairs.sort_by_key(|b| std::cmp::Reverse(b.1));
     let chain: Vec<String> = all_pairs.into_iter().map(|(uid, _)| uid).collect();
-
     trace!(
         "walk_keyset_chain: keyset '{}' has {} keys in chain",
         keyset_name,

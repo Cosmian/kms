@@ -16,9 +16,13 @@
 //! - [`apply_extensions`] — conditionally appends `id-ce-noRevAvail` during issuance
 //! - [`has_extension`] — checks whether a certificate carries the extension (for validation)
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
+    cosmian_kms_crypto::openssl::oid::asn1_object,
+};
 use openssl::{
-    asn1::{Asn1Object, Asn1OctetString},
+    asn1::Asn1OctetString,
+    nid::Nid,
     x509::{X509, X509Builder, X509Extension},
 };
 use x509_parser::prelude::{FromDer, X509Certificate};
@@ -44,7 +48,7 @@ pub(super) fn apply_extensions(
     let is_self_signed = matches!(issuer, Issuer::PrivateKeyAndSubjectName(..));
     let is_ca = extension_config_is_ca(attributes, vendor_id);
     if is_self_signed && !has_cdp && !is_ca {
-        let oid = Asn1Object::from_str("2.5.29.56")?;
+        let oid = asn1_object(Nid::NO_REV_AVAIL)?;
         let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
         x509_builder.append_extension(X509Extension::new_from_der(
             oid.as_ref(),
@@ -63,8 +67,9 @@ pub(super) fn apply_extensions(
 ///
 /// Used by the `Validate` operation to implement RFC 9608 §4 path validation update.
 pub(crate) fn has_extension(cert: &X509) -> bool {
-    // OID 2.5.29.56 — id-ce-noRevAvail, { id-ce 56 }
-    const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
+    let Ok(no_rev_avail) = asn1_object(Nid::NO_REV_AVAIL) else {
+        return false;
+    };
     let Ok(der) = cert.to_der() else { return false };
     let Ok((_, parsed)) = X509Certificate::from_der(&der) else {
         return false;
@@ -72,5 +77,5 @@ pub(crate) fn has_extension(cert: &X509) -> bool {
     parsed
         .extensions()
         .iter()
-        .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL)
+        .any(|ext| ext.oid.as_bytes() == no_rev_avail.as_slice())
 }

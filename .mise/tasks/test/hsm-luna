@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#MISE description="Run Thales Luna HSM tests (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "Running Thales Luna HSM tests (${VARIANT_NAME})"
+
+# The Thales Luna Client is proprietary: install it only when its tarball is provided
+# (see prepare_luna.sh for LUNA_CLIENT_TAR / LUNA_CONFIG); otherwise it must already be installed.
+if [ -n "${LUNA_CLIENT_TAR:-}" ]; then
+  bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_luna.sh"
+fi
+LUNA_PKCS11_LIB="${LUNA_PKCS11_LIB:-/usr/safenet/lunaclient/lib/libCryptoki2_64.so}"
+[ -f "${LUNA_PKCS11_LIB}" ] ||
+  print_error "Luna PKCS#11 library not found: ${LUNA_PKCS11_LIB} (set LUNA_CLIENT_TAR or LUNA_PKCS11_LIB)"
+# Failed logins count toward partition lockout: never try an empty password.
+: "${LUNA_PASSWORD:?LUNA_PASSWORD (partition password) is required}"
+
+require_cmd cargo
+
+# HSM_USER_PASSWORD and HSM_SLOT_ID are read by the Rust test harness. The suite destroys only
+# the objects it creates, so it can run on a shared partition.
+LUNA_PKCS11_LIB="${LUNA_PKCS11_LIB}" \
+  HSM_USER_PASSWORD="${LUNA_PASSWORD}" \
+  HSM_SLOT_ID="${LUNA_SLOT:-0}" \
+  cargo test \
+  -p luna_pkcs11_loader \
+  --features luna \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- --nocapture tests::test_hsm_luna_all --ignored --exact
+
+print_success "Thales Luna HSM tests completed"

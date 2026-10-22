@@ -303,9 +303,9 @@ fn x18_round_trip_xml() {
     };
 
     let original = TTLV {
-        tag: "RequestMessage".to_owned(),
+        tag: "RequestMessage".into(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "BatchCount".to_owned(),
+            tag: "BatchCount".into(),
             value: TTLValue::Integer(3),
         }]),
     };

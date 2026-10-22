@@ -392,7 +392,7 @@ sign_function_matrix() {
     local i
     for ((i = 0; i < ${#extra_args[@]}; i++)); do
       if [ "${extra_args[i]}" = "--hash-algorithm" ]; then
-        case "${extra_args[i+1]}" in
+        case "${extra_args[i + 1]}" in
           SHA384) digest_algo="sha384" ;;
           SHA512) digest_algo="sha512" ;;
           *) digest_algo="sha256" ;;

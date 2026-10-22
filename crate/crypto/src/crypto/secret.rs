@@ -3,10 +3,7 @@ use std::{
     pin::Pin,
 };
 
-use openssl::rand::rand_bytes;
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use crate::error::CryptoError;
 
 /// Holds secret information of `LENGTH` bytes.
 ///
@@ -27,13 +24,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
         // it is considered safe because `data` is initialized in the previous line
         let data = unsafe { Box::from_raw(Box::into_raw(data).cast::<[u8; LENGTH]>()) };
         Self(Pin::new(data))
-    }
-
-    /// Creates a new random secret.
-    pub fn new_random() -> Result<Self, CryptoError> {
-        let mut secret = Self::new();
-        rand_bytes(&mut secret)?;
-        Ok(secret)
     }
 
     /// Returns the bytes of the secret.

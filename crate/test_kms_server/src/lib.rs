@@ -29,6 +29,8 @@ mod test_jwt;
 
 pub mod test_env;
 
+pub mod mock_gmail;
+
 pub mod vector_runner;
 
 use std::sync::Once;

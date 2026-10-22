@@ -24,7 +24,7 @@ The **Eviden KMS** presents some unique features, such as:
 - **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [GnuPG / OpenPGP keys](./documentation/docs/integrations/gnupg/openpgp.md) (create, import, export, encrypt, decrypt, sign, verify; non-FIPS builds) and [GnuPG smartcard](./documentation/docs/integrations/gnupg/smartcard.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, AWS CloudHSM, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
-- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/key_management_system/kms_clients/index.html), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
 - **Supported Database Backends**: [SQLite, PostgreSQL, MySQL / MariaDB / Percona XtraDB Cluster, and Redis with Findex](./documentation/docs/configuration/database/configuration.md) for persistent cryptographic key and metadata storage.
 
 The **Eviden KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
@@ -102,7 +102,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 - Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
 - Enterprise integrations: Google Workspace CSE, Microsoft DKE, Microsoft SQL Server External (EKM), AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
-- PKI operations: issue, sign, validate, and automate certificate lifecycles.
+- PKI operations: issue, sign, validate, and automate certificate lifecycles, including device enrollment over EST (RFC 7030) and SCEP (RFC 8894) ([docs](./documentation/docs/use_cases/pki-enrollment.md)).
 
 ## 🔒 Security & Compliance
 
@@ -401,7 +401,7 @@ The following table shows base object support across all KMIP versions.
 | Correlation Value                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Init Indicator                           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
 | Final Indicator                          |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Parameters                           |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| RNG Parameters                           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
 | Profile Information                      |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
 | Validation Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
 | Capability Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |

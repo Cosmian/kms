@@ -141,6 +141,8 @@ exclude = [
 
   # Fortinet documentation — returns 503 to automated crawlers
   'docs\.fortinet\.com',
+  # Thales Luna HSM documentation — returns 403 Forbidden to automated crawlers
+  'thalesdocs\.com',
   # Eviden product page — returns 503 Service Unavailable to automated crawlers
   'eviden\.com',
   # GNOME GitLab — returns 500 Internal Server Error to automated crawlers

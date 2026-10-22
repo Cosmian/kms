@@ -1,3 +1,8 @@
+---
+name: ckms-subcommand-test
+description: 'Generate and run integration tests for a new or modified ckms subcommand: test file, helpers, happy-path + error-case + CO-gating coverage, module registration, cargo test -p ckms. Use after adding a ckms subcommand or flag, or when CI/review flags missing CLI test coverage.'
+---
+
 # ckms Subcommand Integration Tests
 
 Write and run integration tests for a new or modified `ckms` subcommand, following the

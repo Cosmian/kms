@@ -31,6 +31,8 @@ use gcp_cloud_hsm_pkcs11_loader::{GCP_CLOUD_HSM_PKCS11_LIB, GcpCloudHsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use kryoptic_pkcs11_loader::{KRYOPTIC_PKCS11_LIB, Kryoptic};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use luna_pkcs11_loader::{LUNA_PKCS11_LIB, Luna};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
@@ -61,6 +63,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
+    routes::enrollment_guard::EnrollmentGuard,
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
@@ -125,6 +128,9 @@ pub struct KMS {
     pub(crate) opa_client: Option<Arc<super::opa::OpaClient>>,
     /// Unified cryptographic RNG for all KMS operations.
     pub(crate) rng: Arc<KmsRng>,
+
+    /// Abuse controls (lockout, replay cache, concurrency cap) of the EST / SCEP endpoints.
+    pub(crate) enrollment_guard: EnrollmentGuard,
 }
 
 impl KMS {
@@ -200,7 +206,7 @@ impl KMS {
         // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
         if let Some(ref key_id) = server_params.ceremony_key_id {
             let owm = database
-                .retrieve_object(key_id)
+                .retrieve_object_arc(key_id)
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(
@@ -330,6 +336,7 @@ impl KMS {
             opa_client,
             audit_store: Self::create_audit_store(&server_params).await?,
             rng,
+            enrollment_guard: EnrollmentGuard::default(),
         })
     }
 
@@ -559,6 +566,14 @@ impl KMS {
                 "GCP Cloud HSM",
                 slot_passwords
             )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "luna" => Ok(instantiate_hsm_with_env!(
+                Luna,
+                "LUNA_PKCS11_LIB",
+                LUNA_PKCS11_LIB,
+                "Luna",
+                slot_passwords
+            )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
@@ -569,7 +584,7 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
+                 luna, proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
                  softhsm2, utimaco, kryoptic, other"
             ),
         }

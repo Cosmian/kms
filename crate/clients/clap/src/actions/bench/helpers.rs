@@ -7,7 +7,9 @@ use std::{
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 use cosmian_kms_client::{
     KmsClient,
-    cosmian_kmip::kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    cosmian_kmip::kmip_0::kmip_types::{
+        BlockCipherMode, HashingAlgorithm, PaddingMethod, RevocationReason, RevocationReasonCode,
+    },
     kmip_2_1::{
         extra::fips::{
             FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
@@ -19,7 +21,8 @@ use cosmian_kms_client::{
             RecommendedCurve, UniqueIdentifier,
         },
         requests::{
-            create_ec_key_pair_request, create_rsa_key_pair_request, symmetric_key_create_request,
+            build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
+            symmetric_key_create_request,
         },
     },
 };
@@ -95,7 +98,13 @@ pub(super) fn run_warmup(rt: &Runtime, client: &KmsClient, warmup_secs: u64) {
     let start = Instant::now();
 
     // Create a temporary AES-128 key for warmup
-    let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+    let key_id = create_sym_key(
+        rt,
+        client,
+        "warmup-aes-128",
+        128,
+        CryptographicAlgorithm::AES,
+    );
     let params = aes_gcm_params();
     let data = Zeroizing::new(vec![0xAB_u8; 64]);
 
@@ -282,19 +291,88 @@ pub(super) fn kem_params() -> CryptographicParameters {
 }
 
 // =============================================================================
+// DETERMINISTIC SETUP KEY IDENTIFIERS
+// =============================================================================
+
+/// Deterministic unique identifier of a benchmark setup key: `bench-<name>`, or
+/// `<hsm_prefix>::bench-<name>` for an HSM-resident key (`hsm_prefix` = `hsm::<slot>`).
+///
+/// Each call site passes its own `name`, so keys in use at the same time never share an
+/// identifier; characters other than ASCII letters, digits, `.`, `_` and `-` (e.g. the `/` of
+/// `ML-KEM-512/P-256`) become `-`. Key-creation benchmarks, which create many keys, use
+/// [`hsm_uid`] instead.
+pub(super) fn bench_uid(hsm_prefix: Option<&str>, name: &str) -> UniqueIdentifier {
+    let name: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    UniqueIdentifier::TextString(hsm_prefix.map_or_else(
+        || format!("bench-{name}"),
+        |prefix| format!("{prefix}::bench-{name}"),
+    ))
+}
+
+/// Remove the key with this deterministic identifier, and its `_pk` public key, left by an
+/// earlier run or protocol pass, so that it can be created again.
+///
+/// The key is revoked first, as the server refuses to destroy an active key. A missing key is
+/// the normal case, so errors are ignored.
+pub(super) async fn remove_leftover_key(client: &KmsClient, uid: &UniqueIdentifier) {
+    for id in [uid.to_string(), format!("{uid}_pk")] {
+        if let Ok(revoke) = build_revoke_key_request(
+            &id,
+            RevocationReason {
+                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                revocation_message: Some("benchmark key re-created".to_owned()),
+            },
+        ) {
+            drop(client.revoke(revoke).await);
+        }
+        drop(
+            client
+                .destroy(Destroy {
+                    unique_identifier: Some(UniqueIdentifier::TextString(id)),
+                    remove: true,
+                    ..Default::default()
+                })
+                .await,
+        );
+    }
+}
+
+/// Set the private key identifier of a key pair request built without one; the server derives
+/// the public key identifier as `<uid>_pk`.
+#[cfg(feature = "non-fips")]
+pub(super) fn with_private_key_uid(mut req: CreateKeyPair, uid: UniqueIdentifier) -> CreateKeyPair {
+    req.private_key_attributes
+        .get_or_insert_with(cosmian_kms_client::kmip_2_1::kmip_attributes::Attributes::default)
+        .unique_identifier = Some(uid);
+    req
+}
+
+// =============================================================================
 // KEY CREATION HELPERS
 // =============================================================================
 
 pub(super) fn create_sym_key(
     rt: &Runtime,
     client: &KmsClient,
+    name: &str,
     bits: usize,
     algo: CryptographicAlgorithm,
 ) -> UniqueIdentifier {
     rt.block_on(async {
+        let uid = bench_uid(None, name);
+        remove_leftover_key(client, &uid).await;
         let req = symmetric_key_create_request(
             &client.config.vendor_id,
-            None,
+            Some(uid),
             bits,
             algo,
             ["bench"],
@@ -314,13 +392,16 @@ pub(super) fn create_sym_key(
 pub(super) fn try_create_sym_key(
     rt: &Runtime,
     client: &KmsClient,
+    name: &str,
     bits: usize,
     algo: CryptographicAlgorithm,
 ) -> Option<UniqueIdentifier> {
     rt.block_on(async {
+        let uid = bench_uid(None, name);
+        remove_leftover_key(client, &uid).await;
         let req = symmetric_key_create_request(
             &client.config.vendor_id,
-            None,
+            Some(uid),
             bits,
             algo,
             ["bench"],
@@ -335,13 +416,16 @@ pub(super) fn try_create_sym_key(
 pub(super) fn create_rsa_kp(
     rt: &Runtime,
     client: &KmsClient,
+    name: &str,
     bits: usize,
 ) -> (UniqueIdentifier, UniqueIdentifier) {
     rt.block_on(async {
+        let uid = bench_uid(None, name);
+        remove_leftover_key(client, &uid).await;
         let req = with_fips_rsa_masks(
             create_rsa_key_pair_request(
                 &client.config.vendor_id,
-                None,
+                Some(uid),
                 ["bench"],
                 bits,
                 false,
@@ -363,13 +447,16 @@ pub(super) fn create_rsa_kp(
 pub(super) fn try_create_ec_kp(
     rt: &Runtime,
     client: &KmsClient,
+    name: &str,
     curve: RecommendedCurve,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
+        let uid = bench_uid(None, name);
+        remove_leftover_key(client, &uid).await;
         let req = with_fips_ec_masks(
             create_ec_key_pair_request(
                 &client.config.vendor_id,
-                None,
+                Some(uid),
                 ["bench"],
                 curve,
                 false,
@@ -391,12 +478,15 @@ pub(super) fn try_create_ec_kp(
 pub(super) fn try_create_ec_kp_no_fips(
     rt: &Runtime,
     client: &KmsClient,
+    name: &str,
     curve: RecommendedCurve,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
+        let uid = bench_uid(None, name);
+        remove_leftover_key(client, &uid).await;
         let req = create_ec_key_pair_request(
             &client.config.vendor_id,
-            None,
+            Some(uid),
             ["bench"],
             curve,
             false,
@@ -415,12 +505,17 @@ pub(super) fn try_create_ec_kp_no_fips(
 pub(super) fn try_create_pqc_kp(
     rt: &Runtime,
     client: &KmsClient,
+    name: &str,
     algorithm: CryptographicAlgorithm,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
-        let req =
+        let uid = bench_uid(None, name);
+        remove_leftover_key(client, &uid).await;
+        let req = with_private_key_uid(
             create_pqc_key_pair_request(&client.config.vendor_id, ["bench"], algorithm, false)
-                .ok()?;
+                .ok()?,
+            uid,
+        );
         let resp = client.create_key_pair(req).await.ok()?;
         Some((
             resp.public_key_unique_identifier,
@@ -443,10 +538,11 @@ pub(super) fn try_create_pqc_kp(
 // `crate/server/src/core/operations/key_ops/crypto_op.rs` ("Oracle routing").
 //
 // `hsm_prefix` is expected to already contain `hsm::<slot>` (built by the
-// `--hsm-slot` CLI flag); a random UUID suffix is appended here to keep
-// unique identifiers distinct across runs.
+// `--hsm-slot` CLI flag). Setup keys get the deterministic identifier
+// `hsm::<slot>::bench-<name>` (see [`bench_uid`]).
 
-/// Build a fresh HSM-resident unique identifier: `<hsm_prefix>::<label>_<uuid>`.
+/// Build a fresh HSM-resident unique identifier, `<hsm_prefix>::<label>_<uuid>`, for the
+/// key-creation benchmarks, which create many keys and cannot reuse one identifier.
 pub(super) fn hsm_uid(hsm_prefix: &str, label: &str) -> String {
     format!("{hsm_prefix}::{label}_{}", Uuid::new_v4())
 }
@@ -457,19 +553,21 @@ pub(super) fn try_create_hsm_sym_key(
     rt: &Runtime,
     client: &KmsClient,
     hsm_prefix: &str,
+    name: &str,
     bits: usize,
     algo: CryptographicAlgorithm,
     ledger: &HsmKeyLedger,
 ) -> Option<UniqueIdentifier> {
     rt.block_on(async {
-        let uid = hsm_uid(hsm_prefix, "sym");
+        let uid = bench_uid(Some(hsm_prefix), name);
+        remove_leftover_key(client, &uid).await;
         let req = match symmetric_key_create_request(
             &client.config.vendor_id,
-            Some(UniqueIdentifier::TextString(uid.clone())),
+            Some(uid.clone()),
             bits,
             algo,
             ["bench"],
-            false,
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable keys
             None,
         ) {
             Ok(req) => req,
@@ -497,17 +595,19 @@ pub(super) fn try_create_hsm_rsa_kp(
     rt: &Runtime,
     client: &KmsClient,
     hsm_prefix: &str,
+    name: &str,
     bits: usize,
     ledger: &HsmKeyLedger,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
-        let uid = hsm_uid(hsm_prefix, "rsa");
+        let uid = bench_uid(Some(hsm_prefix), name);
+        remove_leftover_key(client, &uid).await;
         let req = match create_rsa_key_pair_request(
             &client.config.vendor_id,
-            Some(UniqueIdentifier::TextString(uid.clone())),
+            Some(uid.clone()),
             ["bench"],
             bits,
-            false,
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
             None,
         ) {
             Ok(req) => req,
@@ -550,17 +650,19 @@ pub(super) fn try_create_hsm_ec_kp(
     rt: &Runtime,
     client: &KmsClient,
     hsm_prefix: &str,
+    name: &str,
     curve: RecommendedCurve,
     ledger: &HsmKeyLedger,
 ) -> Option<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
-        let uid = hsm_uid(hsm_prefix, "ec");
+        let uid = bench_uid(Some(hsm_prefix), name);
+        remove_leftover_key(client, &uid).await;
         let req = match create_ec_key_pair_request(
             &client.config.vendor_id,
-            Some(UniqueIdentifier::TextString(uid.clone())),
+            Some(uid.clone()),
             ["bench"],
             curve,
-            false,
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
             None,
         ) {
             Ok(req) => req,

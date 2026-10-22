@@ -19,6 +19,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_kms_crypto::crypto::{
+    KmsRng,
     symmetric::symmetric_ciphers::{Mode, encrypt, random_nonce},
     wrap::wrap_object_with_key,
 };
@@ -301,7 +302,7 @@ impl EncryptAction {
         // we need a nonce (or tweak)
         let nonce = match nonce {
             Some(n) => n,
-            None => random_nonce(cipher)?,
+            None => random_nonce(&KmsRng::new(), cipher)?,
         };
         output_file.write_all(&nonce)?;
 
@@ -342,7 +343,7 @@ impl EncryptAction {
         data_encryption_algorithm: DataEncryptionAlgorithm,
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         // Generate the ephemeral key (DEK)
-        let dek = generate_dek(data_encryption_algorithm)?;
+        let dek = generate_dek(&KmsRng::new(), data_encryption_algorithm)?;
 
         // Wrap the DEK with the KEK
         let (kem_nonce, kem_ciphertext, kem_tag) = self
@@ -381,7 +382,8 @@ impl EncryptAction {
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         trace!("data_encryption_algorithm: {data_encryption_algorithm}");
         // Generate the ephemeral key (DEK)
-        let dek = generate_dek(data_encryption_algorithm)?;
+        let rng = KmsRng::new();
+        let dek = generate_dek(&rng, data_encryption_algorithm)?;
         trace!("dek (len={}): {dek:?}", dek.len());
 
         // First export the KEK locally
@@ -413,6 +415,7 @@ impl EncryptAction {
                 encoding_option: Some(EncodingOption::NoEncoding),
                 ..Default::default()
             },
+            &rng,
         )?;
 
         let encapsulation = dek_object.key_block()?.wrapped_key_bytes()?;
@@ -453,7 +456,7 @@ impl EncryptAction {
         // we need a nonce (or tweak)
         let nonce = match nonce {
             Some(n) => n,
-            None => random_nonce(sym_cipher)?,
+            None => random_nonce(&KmsRng::new(), sym_cipher)?,
         };
         output_buffer.write_all(&nonce)?;
 

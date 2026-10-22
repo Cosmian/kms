@@ -1,0 +1,26 @@
+[package]
+name = "luna_pkcs11_loader"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Thales Luna HSM PKCS#11 loader"
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+cosmian_kms_base_hsm = { workspace = true }
+
+[features]
+# Enable this feature to run Luna tests (they require a Luna HSM)
+luna = []
+# Enable HSM-delegated EdDSA/X25519 support (see cosmian_kms_base_hsm's `non-fips` feature).
+non-fips = ["cosmian_kms_base_hsm/non-fips"]

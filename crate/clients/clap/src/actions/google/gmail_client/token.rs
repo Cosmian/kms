@@ -71,12 +71,16 @@ pub(super) async fn retrieve_token(
 
     let client = reqwest::Client::new();
 
-    let response: GoogleAuthResponse = client
+    let response = client
         .post(&service_account.token_uri)
         .form(&GoogleAuthRequest::new(jwt))
         .send()
-        .await?
-        .json()
         .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(GoogleApiError::TokenEndpoint(format!("{status}: {body}")));
+    }
+    let response: GoogleAuthResponse = serde_json::from_str(&body)?;
     Ok(response.access_token)
 }

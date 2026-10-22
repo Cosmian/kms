@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Verify AI instruction files (AGENTS.md, copilot-instructions, instructions, skills) are consistent"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Checking AI instruction files"
+REPO_ROOT="$(get_repo_root)"
+
+if python3 "${REPO_ROOT}/.mise/scripts/docs/check_ai_docs.py"; then
+  print_success "AI instruction files are consistent"
+else
+  print_error "AI instruction files are inconsistent."
+  echo ""
+  echo "  Fix with: python3 .mise/scripts/docs/check_ai_docs.py --fix"
+  exit 1
+fi

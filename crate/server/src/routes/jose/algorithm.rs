@@ -66,9 +66,11 @@ pub(crate) enum JoseAlgorithm {
     MLDSA44,
 }
 
-impl fmt::Display for JoseAlgorithm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
+impl JoseAlgorithm {
+    /// Return the static string identifier for this JOSE algorithm.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
             Self::Dir => "dir",
             Self::RsaOaep => "RSA-OAEP",
             Self::RsaOaep256 => "RSA-OAEP-256",
@@ -91,8 +93,13 @@ impl fmt::Display for JoseAlgorithm {
             Self::EdDSA => "EdDSA",
             #[cfg(feature = "non-fips")]
             Self::MLDSA44 => "MLDSA44",
-        };
-        f.write_str(s)
+        }
+    }
+}
+
+impl fmt::Display for JoseAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -141,14 +148,21 @@ pub(crate) enum JoseEncAlgorithm {
     A256GCM,
 }
 
-impl fmt::Display for JoseEncAlgorithm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
+impl JoseEncAlgorithm {
+    /// Return the static string identifier for this content-encryption algorithm.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
             Self::A128GCM => "A128GCM",
             Self::A192GCM => "A192GCM",
             Self::A256GCM => "A256GCM",
-        };
-        f.write_str(s)
+        }
+    }
+}
+
+impl fmt::Display for JoseEncAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

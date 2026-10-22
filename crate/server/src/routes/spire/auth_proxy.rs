@@ -56,7 +56,7 @@ pub(crate) async fn proxy_auth_request(
 
     let method = match reqwest_method(req.method().as_str()) {
         Ok(m) => m,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     let mut rb = client.request(method, &target);
@@ -124,11 +124,11 @@ pub(crate) async fn proxy_auth_request(
 /// `HEAD`, `OPTIONS`, etc., breaking any auth-verifier route that distinguishes
 /// them. Returns an error if the method cannot be parsed rather than silently
 /// substituting `POST`.
-fn reqwest_method(method: &str) -> Result<reqwest::Method, HttpResponse> {
+fn reqwest_method(method: &str) -> Result<reqwest::Method, Box<HttpResponse>> {
     reqwest::Method::from_bytes(method.as_bytes()).map_err(|_e| {
-        HttpResponse::BadRequest().json(serde_json::json!({
+        Box::new(HttpResponse::BadRequest().json(serde_json::json!({
             "errors": [format!("unsupported HTTP method: {method}")]
-        }))
+        })))
     })
 }
 

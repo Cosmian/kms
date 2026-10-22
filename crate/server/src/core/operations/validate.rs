@@ -209,19 +209,19 @@ pub(crate) async fn validate_operation(
         ));
     }
 
-    // Convert the certificates from bytes to X509, keeping a DER-bytes → state map
-    // so the internal-state check below can look up each sorted certificate's state.
-    let mut state_by_der: HashMap<Vec<u8>, State> = HashMap::new();
+    // Convert the certificates from bytes to X509, keeping a SHA-256 fingerprint → state map
+    // so the internal-state check below can look up each sorted certificate's state
+    // without copying multi-kilobyte DER buffers into the map key.
+    let mut state_by_digest: HashMap<[u8; 32], State> = HashMap::new();
     let certificates = certificates
         .into_iter()
         .map(|(der_bytes, state)| {
             if let Some(state) = state {
-                state_by_der.insert(der_bytes.clone(), state);
+                state_by_digest.insert(openssl::sha::sha256(&der_bytes), state);
             }
             X509::from_der(der_bytes.as_slice())
         })
         .collect::<Result<Vec<X509>, _>>()?;
-
     // Sort the chain in right order: ROOT/SUBCA/../LEAF.
     // Sorting the chain greatly simplify the flow in the signature and revocation verification
     let certificates = if certificates.len() > 1 {
@@ -241,8 +241,7 @@ pub(crate) async fn validate_operation(
     // chain is checked root-first and this check fails on the first offending
     // certificate, a compromised (or merely deactivated) ancestor makes the whole
     // chain — including any descendant certificates — Invalid.
-    check_internal_certificate_states(&certificates, &state_by_der)?;
-
+    check_internal_certificate_states(&certificates, &state_by_digest)?;
     // CRL check: hard CRL errors (expired CRL, bad signature, explicit revocation)
     // make the chain invalid. Network errors (unreachable CRL distribution point)
     // are treated as soft failures inside `verify_crls()` and do not cause
@@ -427,36 +426,28 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
                 certificate,
             );
 
-            for (idx, sorted_certificate) in sorted_chains.clone().iter().enumerate() {
-                let (ski_2, aki_2) = get_certificate_identifiers(sorted_certificate);
-                trace_certificate("Iterate on sorted certificates", sorted_certificate);
-
-                // Found a certificate child
-                if aki == ski_2 && !aki.is_empty() && !sorted_chains.contains(certificate) {
-                    trace_certificate(
-                        &format!("Insert certificate at index: {}", idx + 1),
-                        certificate,
-                    );
-                    sorted_chains.insert(idx + 1, certificate.to_owned());
-                    break;
-                }
-
-                // Found the authority of the certificate
-                if ski == aki_2 && !ski.is_empty() && !sorted_chains.contains(certificate) {
-                    trace_certificate(&format!("Insert certificate at index: {idx}"), certificate);
-                    sorted_chains.insert(idx, certificate.to_owned());
-                    break;
-                }
-
-                // Not yet placeable: this sorted_certificate is not the right neighbour.
-                // Try the next sorted candidate in the inner loop before giving up.
-                trace!(
-                    "Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}",
-                    hex::encode(aki),
-                    hex::encode(ski),
-                    hex::encode(ski_2),
-                    hex::encode(aki_2)
-                );
+            if sorted_chains.contains(certificate) {
+                continue;
+            }
+            // The certificate goes right after its issuer's child, or right before its own issuer.
+            let insertion =
+                sorted_chains
+                    .iter()
+                    .enumerate()
+                    .find_map(|(idx, sorted_certificate)| {
+                        let (ski_2, aki_2) = get_certificate_identifiers(sorted_certificate);
+                        if !aki.is_empty() && aki == ski_2 {
+                            Some(idx + 1)
+                        } else if !ski.is_empty() && ski == aki_2 {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    });
+            if let Some(idx) = insertion {
+                trace_certificate(&format!("Insert certificate at index: {idx}"), certificate);
+                sorted_chains.insert(idx, certificate.to_owned());
+                break;
             }
         }
     }
@@ -1046,7 +1037,7 @@ async fn tag_raw_certificates_with_state(
 
         let state = match found_uid {
             Some(uid) => {
-                if let Some(owm) = kms.database.retrieve_object(&uid).await? {
+                if let Some(owm) = kms.database.retrieve_object_arc(&uid).await? {
                     if user_has_permission(user, Some(&owm), &KmipOperation::Validate, kms).await? {
                         Some(owm.state())
                     } else {
@@ -1085,13 +1076,14 @@ async fn tag_raw_certificates_with_state(
 /// successfully-parsed [`X509`]).
 fn check_internal_certificate_states(
     certificates: &[X509],
-    state_by_der: &HashMap<Vec<u8>, State>,
+    state_by_digest: &HashMap<[u8; 32], State>,
 ) -> KResult<()> {
     for certificate in certificates {
         let der = certificate
             .to_der()
             .map_err(|e| KmsError::Certificate(format!("Failed to DER-encode certificate: {e}")))?;
-        let Some(state) = state_by_der.get(&der) else {
+        let digest = openssl::sha::sha256(&der);
+        let Some(state) = state_by_digest.get(&digest) else {
             continue;
         };
         if !matches!(state, State::Active | State::PreActive) {
@@ -1106,10 +1098,9 @@ fn check_internal_certificate_states(
 }
 
 fn validate_chain_date(certificates: &[X509], date: &Option<String>) -> KResult<ValidityIndicator> {
-    let current_date = date.clone().map_or_else(
-        || Asn1Time::days_from_now(0),
-        |date| Asn1Time::from_str(date.as_str()),
-    )?;
+    let current_date = date
+        .as_deref()
+        .map_or_else(|| Asn1Time::days_from_now(0), Asn1Time::from_str)?;
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {

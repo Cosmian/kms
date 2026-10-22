@@ -23,12 +23,15 @@ use openssl::{
     ec::{EcGroup, EcKey},
     nid::Nid,
 };
-use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
+use openssl::{pkey::PKey, rsa::Rsa};
 
 #[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use crate::{
-    crypto::wrap::{unwrap_key_block, wrap_object_with_key},
+    crypto::{
+        KmsRng,
+        wrap::{unwrap_key_block, wrap_object_with_key},
+    },
     crypto_bail,
     error::{CryptoError, result::CryptoResult},
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
@@ -42,7 +45,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
     log_init(option_env!("RUST_LOG"));
 
     let mut sym_wrapping_key_bytes = vec![0; 32];
-    rand_bytes(&mut sym_wrapping_key_bytes)?;
+    KmsRng::new().fill_bytes(&mut sym_wrapping_key_bytes)?;
     let sym_wrapping_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         sym_wrapping_key_bytes.as_slice(),
@@ -54,7 +57,7 @@ fn test_wrap_unwrap() -> Result<(), CryptoError> {
 
     // the key to wrap
     let mut sym_key_to_wrap_bytes = vec![0; 32];
-    rand_bytes(&mut sym_key_to_wrap_bytes)?;
+    KmsRng::new().fill_bytes(&mut sym_key_to_wrap_bytes)?;
     let mut sym_key_to_wrap = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         sym_key_to_wrap_bytes.as_slice(),
@@ -144,6 +147,7 @@ fn wrap_test(
                 encoding_option: None,
                 ..Default::default()
             },
+            &KmsRng::new(),
         )?;
         assert_ne!(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
@@ -175,6 +179,7 @@ fn wrap_test(
                 encoding_option: Some(EncodingOption::TTLVEncoding),
                 ..Default::default()
             },
+            &KmsRng::new(),
         )?;
         assert_ne!(
             key_to_wrap.key_block()?.wrapped_key_bytes()?,
@@ -210,7 +215,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
         .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
 
     let mut random_bytes = vec![0; 32];
-    rand_bytes(&mut random_bytes)?;
+    KmsRng::new().fill_bytes(&mut random_bytes)?;
 
     let key_encryption_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
@@ -221,7 +226,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
         },
     )?;
 
-    rand_bytes(&mut random_bytes)?;
+    KmsRng::new().fill_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
@@ -236,6 +241,7 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
         &mut data_encryption_key,
         &key_encryption_key,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -271,7 +277,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
     )?;
 
     let mut random_bytes = vec![0; 32];
-    rand_bytes(&mut random_bytes)?;
+    KmsRng::new().fill_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
@@ -286,6 +292,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         &mut data_encryption_key,
         wrap_key_pair.public_key(),
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -335,7 +342,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
         .cryptographic_usage_mask = Some(CryptographicUsageMask::UnwrapKey);
 
     let mut random_bytes = vec![0; 32];
-    rand_bytes(&mut random_bytes)?;
+    KmsRng::new().fill_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
@@ -350,6 +357,7 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
         &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -382,7 +390,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     )?;
 
     let mut random_bytes = vec![0; 32];
-    rand_bytes(&mut random_bytes)?;
+    KmsRng::new().fill_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
@@ -397,6 +405,7 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
         &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {
@@ -429,7 +438,7 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     )?;
 
     let mut random_bytes = vec![0; 32];
-    rand_bytes(&mut random_bytes)?;
+    KmsRng::new().fill_bytes(&mut random_bytes)?;
     let mut data_encryption_key = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
         random_bytes.as_slice(),
@@ -444,6 +453,7 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
         &mut data_encryption_key,
         &wrap_key_pair_pub,
         &KeyWrappingSpecification::default(),
+        &KmsRng::new(),
     )?;
     let Some(KeyValue::ByteString(_ciphertext)) = &data_encryption_key.key_block()?.key_value
     else {

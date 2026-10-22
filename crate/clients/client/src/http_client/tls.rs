@@ -41,6 +41,20 @@ fn iana_to_openssl_tls12(iana: &str) -> Option<&'static str> {
     }
 }
 
+/// Well-known system CA bundle locations (same candidates as `openssl-probe`).
+const SYSTEM_CA_BUNDLES: &[&str] = &[
+    "/etc/ssl/cert.pem",                                 // macOS, Alpine, OpenBSD
+    "/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo
+    "/etc/pki/tls/certs/ca-bundle.crt",                  // RHEL/CentOS/Fedora
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // RHEL/CentOS
+    "/etc/ssl/ca-bundle.pem",                            // openSUSE
+    "/etc/pki/tls/cacert.pem",                           // OpenELEC
+    "/usr/local/etc/ssl/cert.pem",                       // FreeBSD
+    "/usr/local/share/certs/ca-root-nss.crt",            // FreeBSD
+    "/etc/ssl/certs/ca-bundle.crt",
+    "/var/lib/ca-certificates/ca-bundle.pem",
+];
+
 /// Build an `SslConnectorBuilder` from the HTTP client configuration.
 ///
 /// This replaces the former `reqwest`-based TLS builder. OpenSSL is used
@@ -50,6 +64,21 @@ pub(crate) fn build_ssl_connector(
     http_conf: &HttpClientConfig,
 ) -> HttpClientResult<SslConnectorBuilder> {
     let mut builder = SslConnector::builder(SslMethod::tls_client())?;
+
+    // The statically linked OpenSSL has an empty default trust store (its `ssl/certs` dir is
+    // empty), so fall back to the host CA bundle unless SSL_CERT_FILE/SSL_CERT_DIR is set
+    // (OpenSSL's default verify paths already honor those).
+    if std::env::var_os("SSL_CERT_FILE").is_none() && std::env::var_os("SSL_CERT_DIR").is_none() {
+        if let Some(bundle) = SYSTEM_CA_BUNDLES
+            .iter()
+            .find(|p| std::path::Path::new(p).is_file())
+        {
+            if let Err(e) = builder.load_verify_locations(Some(std::path::Path::new(bundle)), None)
+            {
+                warn!("Failed to load system CA bundle {bundle}: {e}");
+            }
+        }
+    }
 
     // Certificate verification
     if http_conf.accept_invalid_certs {

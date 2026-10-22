@@ -66,6 +66,7 @@ impl KMS {
             if owm.object().object_type() != object_type {
                 continue;
             }
+            let owm = std::sync::Arc::unwrap_or_clone(owm);
             let is_eligible = matches!(
                 owm.state(),
                 State::Active | State::Deactivated | State::Compromised

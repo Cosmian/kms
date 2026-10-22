@@ -1,7 +1,7 @@
 use openssl::pkey::{Id, PKey, Private, Public};
 use zeroize::Zeroizing;
 
-use crate::{crypto_bail, error::CryptoError};
+use crate::{crypto::KmsRng, crypto_bail, error::CryptoError};
 
 mod salsa_sealbox;
 mod standard_curves;
@@ -25,10 +25,14 @@ mod standard_curves;
 ///
 /// Notice we don't send the IV since it is derived by hashing the public key as
 /// well as the ephemeral public key.
-pub fn ecies_encrypt(public_key: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn ecies_encrypt(
+    rng: &KmsRng,
+    public_key: &PKey<Public>,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, CryptoError> {
     let ciphertext = match public_key.id() {
         Id::EC => standard_curves::ecies_encrypt(public_key, plaintext)?,
-        Id::ED25519 | Id::X25519 => salsa_sealbox::sealbox_encrypt(public_key, plaintext)?,
+        Id::ED25519 | Id::X25519 => salsa_sealbox::sealbox_encrypt(rng, public_key, plaintext)?,
         _ => {
             crypto_bail!(
                 "Public key id not supported for ECIES encryption: {:?}",

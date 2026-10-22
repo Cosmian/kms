@@ -261,7 +261,7 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
 
         let ca_owm = kms
             .database
-            .retrieve_object(ca_uid)
+            .retrieve_object_arc(ca_uid)
             .await
             .context("retrieve CA certificate for OCSP")?
             .ok_or_else(|| {
@@ -269,17 +269,17 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
             })?;
 
         let ca_der = match ca_owm.object() {
-        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
-            c.certificate_value.clone()
-        }
-        _ => {
-            return Err(KmsError::InvalidRequest(format!(
-                "Object '{ca_uid}' is not a certificate"
-            )))
-        }
-    };
+            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
+                c.certificate_value.as_slice()
+            }
+            _ => {
+                return Err(KmsError::InvalidRequest(format!(
+                    "Object '{ca_uid}' is not a certificate"
+                )))
+            }
+        };
 
-        let ca_cert = X509::from_der(&ca_der).map_err(|e| {
+        let ca_cert = X509::from_der(ca_der).map_err(|e| {
             KmsError::InvalidRequest(format!("Failed to parse CA certificate: {e}"))
         })?;
 
@@ -486,7 +486,7 @@ fn retrieve_signer_cert_and_key<'a>(
         // Retrieve the signing certificate.
         let cert_owm = kms
             .database
-            .retrieve_object(signer_cert_uid)
+            .retrieve_object_arc(signer_cert_uid)
             .await
             .context("retrieve OCSP signer certificate")?
             .ok_or_else(|| {
@@ -526,7 +526,7 @@ fn retrieve_signer_cert_and_key<'a>(
 
         let signer_cert_der = match cert_owm.object() {
             cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
-                c.certificate_value.clone()
+                c.certificate_value.as_slice()
             }
             _ => {
                 return Err(KmsError::InvalidRequest(format!(
@@ -541,7 +541,7 @@ fn retrieve_signer_cert_and_key<'a>(
         // cannot be pointed at an arbitrary, unqualified certificate/key pair (e.g. a
         // TLS server cert) already present in the KMS. Direct CA signing is exempt.
         if signer_cert_uid != ca_uid {
-            verify_delegated_responder_authorization(&signer_cert_der).map_err(|e| {
+            verify_delegated_responder_authorization(signer_cert_der).map_err(|e| {
                 KmsError::InvalidRequest(format!(
                     "OCSP delegated responder certificate '{signer_cert_uid}' is not \
                      authorized to sign OCSP responses: {e}"
@@ -549,7 +549,7 @@ fn retrieve_signer_cert_and_key<'a>(
             })?;
         }
 
-        let signer_cert = X509::from_der(&signer_cert_der)
+        let signer_cert = X509::from_der(signer_cert_der)
             .map_err(|e| KmsError::InvalidRequest(format!("Cannot parse OCSP signer cert: {e}")))?;
 
         // If signer == CA, return CA cert directly (we already have the CA X509).
@@ -573,7 +573,7 @@ fn retrieve_signer_cert_and_key<'a>(
 
         let key_owm = kms
             .database
-            .retrieve_object(&key_uid)
+            .retrieve_object_arc(&key_uid)
             .await
             .context("retrieve OCSP signer private key")?
             .ok_or_else(|| {

@@ -16,7 +16,7 @@ Usage:
   python scripts/update_readme_kmip.py
 
 Requirements:
-  pip install -r .mise/scripts/docs/requirements.txt
+  pip install --require-hashes -r .mise/scripts/docs/requirements.txt
   (beautifulsoup4 — REQUIRED, not optional: without it, this script silently
   falls back to a hardcoded, less accurate dataset, producing flaky/inconsistent
   KMIP support tables depending on the running environment)

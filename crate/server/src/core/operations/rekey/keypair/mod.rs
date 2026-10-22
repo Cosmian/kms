@@ -104,6 +104,7 @@ impl KMS {
             .await?
             .into_values()
             .next()
+            .map(std::sync::Arc::unwrap_or_clone)
             .ok_or_else(|| {
                 KmsError::Kmip21Error(
                     ErrorReason::Item_Not_Found,

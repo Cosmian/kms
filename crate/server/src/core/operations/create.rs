@@ -34,8 +34,9 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
             // head times out with `408 Request Timeout`.
             let vendor_id = kms.vendor_id().to_owned();
             let create_request = request.clone();
+            let rng = kms.rng.clone();
             tokio::task::spawn_blocking(move || {
-                pgp_ops::create_pgp_key_and_tags(&vendor_id, &create_request)
+                pgp_ops::create_pgp_key_and_tags(&vendor_id, &create_request, &rng)
             })
             .await
             .map_err(|e| KmsError::Default(format!("OpenPGP key generation task failed: {e}")))??

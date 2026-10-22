@@ -168,11 +168,24 @@ spec:
   parameters:
     objects: |
       - objectName: "db-password"
-        objectUID: "5f3a1b2c-4d56-..."   # UID of the KMS object
+        kmsUID: "5f3a1b2c-4d56-..."   # UID of the KMS object
 ```
 
 The `objects` list can reference multiple KMS objects. Each produces a separate file
 inside the pod at `<mountPath>/<objectName>`.
+
+#### Pinning an object version
+
+Each object entry accepts an optional `objectVersion`. When it is empty or absent, the provider always serves the current content of the KMS object. When it is set, it **must** be the version of the object's current content, that is the lower-case hexadecimal SHA-256 digest of the bytes the provider returns; otherwise the mount fails with a `FailedPrecondition` error (`object '<uid>' has version <actual> but the SecretProviderClass pins objectVersion <expected>`).
+
+```yaml
+    objects: |
+      - objectName: "db-password"
+        kmsUID: "5f3a1b2c-4d56-..."
+        objectVersion: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+```
+
+A pinned `objectVersion` makes pods refuse to start (or to re-mount on rotation) when the secret was changed in the KMS, so only pin versions you intend to freeze. Releases before this behavior ignored the field: any `objectVersion` value that is not a content digest must be removed (or emptied) before upgrading.
 
 ### 3. Mount the `SecretProviderClass` in a Pod
 
@@ -238,7 +251,7 @@ To rotate a secret:
 | `pod has unbound immediate PersistentVolumeClaims` | CSI driver not installed | Install `secrets-store-csi-driver` via Helm |
 | `provider not found: cosmian-kms` | Provider DaemonSet not running on the node | Check `kubectl get pods -n kube-system -l app=cosmian-kms-csi-provider` |
 | `connection refused` to KMS | Wrong `server_url` or KMS unreachable | Verify `server_url` from inside the node |
-| `object not found` in mount | Wrong `objectUID` in `SecretProviderClass` | Verify the UID with `ckms objects get <uid>` |
+| `object not found` in mount | Wrong `kmsUID` in `SecretProviderClass` | Verify the UID with `ckms objects get <uid>` |
 | File not updating on rotation | `enableSecretRotation` not enabled | Reinstall CSI driver with `--set enableSecretRotation=true` |
 
 ### Inspect provider logs

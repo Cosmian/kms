@@ -2,7 +2,10 @@ use cosmian_kms_client::{
     kmip_2_1::kmip_types::CryptographicParameters,
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
-use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{SymCipher, random_key};
+use cosmian_kms_crypto::crypto::{
+    KmsRng,
+    symmetric::symmetric_ciphers::{SymCipher, random_key},
+};
 use zeroize::Zeroizing;
 
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -47,6 +50,7 @@ pub(crate) fn build_cipher(
 /// Generate a random Data Encryption Key (DEK) with the appropriate size
 /// for the given data encryption algorithm.
 pub(crate) fn generate_dek(
+    rng: &KmsRng,
     data_encryption_algorithm: DataEncryptionAlgorithm,
 ) -> KmsCliResult<Zeroizing<Vec<u8>>> {
     let cipher = match data_encryption_algorithm {
@@ -58,5 +62,5 @@ pub(crate) fn generate_dek(
         #[cfg(feature = "non-fips")]
         DataEncryptionAlgorithm::AesGcmSiv => SymCipher::Aes256Gcm,
     };
-    Ok(random_key(cipher)?)
+    Ok(random_key(rng, cipher)?)
 }

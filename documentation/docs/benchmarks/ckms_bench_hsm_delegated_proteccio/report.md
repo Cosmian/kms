@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-09
+**Generated**: 2026-10-13
 
 ---
 
@@ -9,8 +9,9 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-10-09 14:53:15 UTC |
+| Date | 2026-10-13 15:10:37 UTC |
 | HSM backend | Proteccio |
+| HSM | Proteccio HR — slot 4, firmware 194 ([details](../proteccio_hsms.md)) |
 | Command | `mise run bench:hsm --delegated --hsm-model proteccio` |
 | Build | release / non-fips |
 | HTTP workers (Actix-web) | 32 |
@@ -28,7 +29,7 @@
 | Mode | sign-verify |
 | Protocols | all |
 | Measurement window | 20 s per concurrency level |
-| Concurrency levels | 1,8,16,32,64,96 |
+| Concurrency levels | 1,16,32,64,96 |
 | Warm-up | 5 s |
 | Cooldown between levels | 2 s |
 
@@ -181,11 +182,12 @@ Criterion (Rust, v0.5) measures the **round-trip latency of a single request** f
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 173 |
-| 8 | 1,417 |
-| 16 | 2,489 |
-| 32 | 2,494 |
-| 64 | 2,496 |
-| 96 | 2,505 |
+| 1 | 175 |
+| 16 | 2,466 |
+| 32 | 2,499 |
+| 64 | 2,498 |
+| 96 | 2,496 |
+
+![Throughput — hsm/sign-verify/ecdsa-p256](load/hsm_sign-verify_ecdsa-p256.svg)
 
 ---

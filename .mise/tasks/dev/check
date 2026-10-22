@@ -25,7 +25,8 @@ run_step "cargo machete" cargo machete
 
 # Sync checks
 run_step "sync-instructions" bash .mise/scripts/pre-commit/sync-instructions.sh
-run_step "log-index-check" mise run docs:sync-logs-check
+run_step "ai-docs-check" mise run docs:check-ai
+run_step "log-index-check" mise run docs:check-logs
 
 # Linting (medium speed)
 run_step "cargo deny" cargo deny check

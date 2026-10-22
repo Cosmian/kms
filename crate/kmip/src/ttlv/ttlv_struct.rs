@@ -4,7 +4,7 @@ use time::OffsetDateTime;
 
 use super::{
     TTLVBytesDeserializer, TTLVBytesSerializer, enum_lookup::lookup_enum_code_for_tag,
-    error::TtlvError, kmip_big_int::KmipBigInt,
+    error::TtlvError, kmip_big_int::KmipBigInt, wire::encoded_len,
 };
 use crate::{KmipResultHelper, kmip_1_4, kmip_2_1};
 
@@ -14,10 +14,21 @@ pub enum KmipFlavor {
     Kmip2,
 }
 
+use std::borrow::Cow;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TTLV {
-    pub tag: String,
+    pub tag: Cow<'static, str>,
     pub value: TTLValue,
+}
+impl TTLV {
+    /// Constructs a TTLV node with a borrowed static tag.
+    #[must_use]
+    pub const fn with_tag(tag: &'static str, value: TTLValue) -> Self {
+        Self {
+            tag: Cow::Borrowed(tag),
+            value,
+        }
+    }
 }
 
 impl TTLV {
@@ -63,13 +74,20 @@ impl TTLV {
     }
 
     pub fn to_bytes(&self, kmip_flavor: KmipFlavor) -> Result<Vec<u8>, TtlvError> {
-        let mut writer = Vec::new();
+        let len = encoded_len(self);
+        let mut writer = Vec::with_capacity(len);
         match kmip_flavor {
             KmipFlavor::Kmip1 => TTLVBytesSerializer::new(&mut writer)
                 .write_ttlv::<kmip_1_4::kmip_types::Tag>(self)?,
             KmipFlavor::Kmip2 => TTLVBytesSerializer::new(&mut writer)
                 .write_ttlv::<kmip_2_1::kmip_types::Tag>(self)?,
         }
+        // Every wire round-trip test exercises this: the Structure length fields rely on it.
+        debug_assert_eq!(
+            writer.len(),
+            len,
+            "encoded_len disagrees with the bytes written"
+        );
         Ok(writer)
     }
 
@@ -100,7 +118,7 @@ impl TTLV {
                     if let Some((code, canonical)) = lookup_enum_code_for_tag(&en.name, &self.tag) {
                         en.value = code;
                         if !canonical.is_empty() {
-                            en.name = canonical.to_owned();
+                            en.name = canonical.into();
                         }
                     }
                 }
@@ -160,7 +178,7 @@ impl PartialEq for TTLValue {
 #[derive(Clone)]
 pub struct KmipEnumerationVariant {
     pub value: u32,
-    pub name: String,
+    pub name: Cow<'static, str>,
 }
 
 impl Debug for KmipEnumerationVariant {

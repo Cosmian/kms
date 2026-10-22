@@ -73,6 +73,75 @@ fn assert_read_only(result: &KResult<impl std::fmt::Debug>) {
     }
 }
 
+#[tokio::test]
+async fn test_attribute_policy_operation_wiring() -> KResult<()> {
+    let kms = instantiate_kms().await?;
+    let uid = UniqueIdentifier::TextString(create_sym_key(&kms, true).await?);
+    let user = UserId::from(USER);
+
+    assert_read_only(
+        &kms.add_attribute(
+            AddAttribute {
+                unique_identifier: uid.clone(),
+                new_attribute: Attribute::RotateAutomatic(true),
+            },
+            &user,
+        )
+        .await,
+    );
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(uid.clone()),
+            new_attribute: Attribute::RotateAutomatic(true),
+        },
+        &user,
+    )
+    .await?;
+    assert_eq!(
+        get_attributes(&kms, &uid.to_string(), Tag::RotateAutomatic)
+            .await?
+            .attributes
+            .rotate_automatic,
+        Some(true)
+    );
+    kms.modify_attribute(
+        ModifyAttribute {
+            unique_identifier: Some(uid.clone()),
+            new_attribute: Attribute::RotateAutomatic(false),
+        },
+        &user,
+    )
+    .await?;
+    assert_eq!(
+        get_attributes(&kms, &uid.to_string(), Tag::RotateAutomatic)
+            .await?
+            .attributes
+            .rotate_automatic,
+        Some(false)
+    );
+
+    let request = GetAttributes {
+        unique_identifier: Some(uid.clone()),
+        attribute_reference: None,
+    };
+    let before = kms.get_attributes(request.clone(), &user).await?.attributes;
+    for tag in [Tag::Sensitive, Tag::Extractable, Tag::State] {
+        assert_read_only(
+            &kms.delete_attribute(
+                DeleteAttribute {
+                    unique_identifier: Some(uid.clone()),
+                    attribute_references: Some(vec![AttributeReference::Standard(tag)]),
+                    ..DeleteAttribute::default()
+                },
+                &user,
+            )
+            .await,
+        );
+    }
+    assert_eq!(kms.get_attributes(request, &user).await?.attributes, before);
+    Ok(())
+}
+
 /// A Sensitive object is created with `AlwaysSensitive = true`; a non-sensitive
 /// one with `AlwaysSensitive = false` (KMIP 2.1 §4.3).
 #[tokio::test]

@@ -75,9 +75,9 @@ fn aes_key(key_value: &[u8]) -> Object {
 
 fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "KeyMaterial".to_owned(),
+        tag: "KeyMaterial".into(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "Key".to_owned(),
+            tag: "Key".into(),
             value: TTLValue::ByteString(key_value.to_vec()),
         }]),
     }
@@ -85,38 +85,38 @@ fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
 
 fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "KeyValue".to_owned(),
+        tag: "KeyValue".into(),
         value: TTLValue::Structure(vec![
             aes_key_material_ttlv(key_value),
             TTLV {
-                tag: "Attributes".to_owned(),
+                tag: "Attributes".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "CryptographicAlgorithm".to_owned(),
+                        tag: "CryptographicAlgorithm".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
-                            name: "AES".to_owned(),
+                            name: "AES".into(),
                             value: 0,
                         }),
                     },
                     TTLV {
-                        tag: "CryptographicLength".to_owned(),
+                        tag: "CryptographicLength".into(),
                         value: TTLValue::Integer(key_value.len() as i32 * 8),
                     },
                     TTLV {
-                        tag: "CryptographicUsageMask".to_owned(),
+                        tag: "CryptographicUsageMask".into(),
                         value: TTLValue::Integer(4),
                     },
                     TTLV {
-                        tag: "KeyFormatType".to_owned(),
+                        tag: "KeyFormatType".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
-                            name: "TransparentSymmetricKey".to_owned(),
+                            name: "TransparentSymmetricKey".into(),
                             value: 0,
                         }),
                     },
                     TTLV {
-                        tag: "ObjectType".to_owned(),
+                        tag: "ObjectType".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
-                            name: "SymmetricKey".to_owned(),
+                            name: "SymmetricKey".into(),
                             value: 0,
                         }),
                     },
@@ -128,25 +128,25 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
 
 fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "KeyBlock".to_owned(),
+        tag: "KeyBlock".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "KeyFormatType".to_owned(),
+                tag: "KeyFormatType".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    name: "TransparentSymmetricKey".to_owned(),
+                    name: "TransparentSymmetricKey".into(),
                     value: 0,
                 }),
             },
             aes_key_value_ttlv(key_value),
             TTLV {
-                tag: "CryptographicAlgorithm".to_owned(),
+                tag: "CryptographicAlgorithm".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
-                    name: "AES".to_owned(),
+                    name: "AES".into(),
                     value: 0,
                 }),
             },
             TTLV {
-                tag: "CryptographicLength".to_owned(),
+                tag: "CryptographicLength".into(),
                 value: TTLValue::Integer(key_value.len() as i32 * 8),
             },
         ]),
@@ -155,7 +155,7 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
 
 fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "SymmetricKey".to_owned(),
+        tag: "SymmetricKey".into(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
     }
 }
@@ -195,14 +195,14 @@ fn test_des_int() {
     log_init(option_env!("RUST_LOG"));
 
     let ttlv = TTLV {
-        tag: "Test".to_owned(),
+        tag: "Test".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "AnInt".to_owned(),
+                tag: "AnInt".into(),
                 value: TTLValue::Integer(2),
             },
             TTLV {
-                tag: "AnotherInt".to_owned(),
+                tag: "AnotherInt".into(),
                 value: TTLValue::Integer(-44),
             },
         ]),
@@ -228,14 +228,14 @@ fn test_des_array() {
 
     log_init(option_env!("RUST_LOG"));
     let ttlv = TTLV {
-        tag: "Test".to_owned(),
+        tag: "Test".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "Ints".to_owned(),
+                tag: "Ints".into(),
                 value: TTLValue::Integer(2),
             },
             TTLV {
-                tag: "Ints".to_owned(),
+                tag: "Ints".into(),
                 value: TTLValue::Integer(4),
             },
         ]),
@@ -255,11 +255,11 @@ fn test_des_enum() {
     log_init(option_env!("RUST_LOG"));
 
     let ttlv = TTLV {
-        tag: "Test".to_owned(),
+        tag: "Test".into(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "CryptoAlgo".to_owned(),
+            tag: "CryptoAlgo".into(),
             value: TTLValue::Enumeration(KmipEnumerationVariant {
-                name: "AES".to_owned(),
+                name: "AES".into(),
                 value: 0,
             }),
         }]),
@@ -626,9 +626,9 @@ fn test_untagged_enum() {
     assert_eq!(
         ttlv,
         TTLV {
-            tag: "Untagged".to_owned(),
+            tag: "Untagged".into(),
             value: TTLValue::Structure(vec![TTLV {
-                tag: "TheInt".to_owned(),
+                tag: "TheInt".into(),
                 value: TTLValue::Integer(12)
             }])
         }

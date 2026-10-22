@@ -99,7 +99,6 @@ const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 /// Operations return `PResult<T>`, which is a custom result type for handling
 /// HSM-specific errors. Failed operations typically return `PError` variants
 /// with descriptive error messages.
-#[expect(dead_code)]
 #[expect(non_snake_case)]
 pub struct HsmLib {
     _library: Library,
@@ -780,9 +779,7 @@ mod function_table_fallback_tests {
             .cargo_metadata(false) // this is a plain test, not a build script
             .get_compiler();
         let mut cmd = Command::new(compiler.path());
-        for (key, value) in compiler.env() {
-            cmd.env(key, value);
-        }
+        cmd.envs(compiler.get_envs());
         cmd.args(compiler.args());
         if !cfg!(target_os = "windows") {
             // Silence the intentional generic-function-pointer-cast warning below:

@@ -1,11 +1,11 @@
 ---
 name: rust-review-all
-description: 'Hardcore Rust code review gate per .github/skills/shared/orchestrator-contract.md: runs 10 review phases via task sub-agents (automatically routed by Jev delegation policy). Each phase writes to ./review/. Use before significant Rust PRs or large code generation.'
+description: 'Hardcore Rust code review gate per .github/skills/shared/orchestrator-contract.md: runs 10 review phases as sub-agents (contract §6). Each phase writes to ./review-YYYY-MM-DD/. Use before significant Rust PRs or large code generation.'
 ---
 
 # Rust Review All — Full Rust Quality Gate
 
-Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order via task sub-agents. Jev's `delegation.enabled: true` automatically routes each phase to `smol` (cheap, mechanical) or `slow` (expensive, reasoning) models. Collects all findings into `./review/`. Produces a unified `./review/SUMMARY.md` with a go/no-go verdict.
+Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order as sub-agents (contract §6: cheap routing for mechanical phases, reasoning routing for judgment phases where the harness supports it). Collects all findings into `./review-YYYY-MM-DD/`. Produces a unified `./review-YYYY-MM-DD/SUMMARY.md` with a go/no-go verdict.
 
 **Orchestration**: See `.github/skills/shared/orchestrator-contract.md` for canonical phase order, skip gates, overlap deduplication, and report schema.
 
@@ -18,15 +18,15 @@ Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order via task sub-agent
 
 ## Orchestrator Contract Reference
 
-This skill implements the 10-phase **Full Audit Order** defined in `.github/skills/shared/orchestrator-contract.md`. Each phase below is a task sub-agent delegate; Jev routes them automatically.
+This skill implements the 10-phase **Full Audit Order** defined in `.github/skills/shared/orchestrator-contract.md`. Each phase below is a sub-agent delegate (contract §6).
 
 ---
 
 ## Prerequisite — Create output directory
 
 ```bash
-mkdir -p ./review
-SUMMARY="./review/SUMMARY.md"
+mkdir -p ./review-$(date +%F)
+SUMMARY="./review-$(date +%F)/SUMMARY.md"
 echo "# Rust Review All — Unified Report" > "${SUMMARY}"
 echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${SUMMARY}"
 echo "" >> "${SUMMARY}"
@@ -39,7 +39,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/kms-caveman [path]`
 
 - Scans the scoped Rust changes once for confirmed panic hazards, new lint suppressions, observed compiler diagnostics, and structural candidates.
-- Report: `./review/kms-caveman.md`
+- Report: `./review-YYYY-MM-DD/kms-caveman.md`
 - **BLOCKER** for confirmed CRITICAL or HIGH findings. Reuse these findings in later phases; do not invoke `/rust-panic-audit` again in this orchestrator. The standalone skill remains available for a dedicated panic audit.
 
 ---
@@ -49,7 +49,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/rust-error-propagation [path]`
 
 - Finds missed `?` opportunities, `.map_err(|e| e.to_string())` anti-patterns, lost error context, silently discarded errors.
-- Report: `./review/rust-error-propagation.md`
+- Report: `./review-YYYY-MM-DD/rust-error-propagation.md`
 - **BLOCKER** if error context is silently dropped in any crypto, DB, or auth path.
 
 ---
@@ -59,7 +59,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/rust-simplify [path]`
 
 - Detects nested control flow (depth > 3), functions over 60 lines, dead code, boolean param traps, redundant iterator chains.
-- Report: `./review/rust-simplify.md`
+- Report: `./review-YYYY-MM-DD/rust-simplify.md`
 - **WARNING** level (non-blocking but must be addressed before merge if count > 5).
 
 ---
@@ -69,7 +69,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/rust-async-refactor [path]` when changed code or affected callers are on async paths or may block an async runtime.
 
 - If the inspected focused diff has no async/blocking relevance, mark the phase **SKIPPED** with that evidence; do not infer this from a search miss alone.
-- Report: `./review/rust-async-refactor.md` when run.
+- Report: `./review-YYYY-MM-DD/rust-async-refactor.md` when run.
 - **WARNING** for parallelism; **BLOCKER** for blocking calls inside an async task.
 
 ---
@@ -79,7 +79,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/rust-refactor [path]`
 
 - Identifies near-identical function bodies, repeated access-control sequences, struct fields that belong in shared traits.
-- Report: `./review/rust-refactor.md`
+- Report: `./review-YYYY-MM-DD/rust-refactor.md`
 - **WARNING** level.
 
 ---
@@ -89,7 +89,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/rust-patterns` as a reference, then evaluate the scoped code against it.
 
 - Checks: newtype wrappers, builder config, command pattern for KMIP ops, trait-based HSM/DB abstraction.
-- Findings appended to `./review/rust-patterns.md`
+- Findings appended to `./review-YYYY-MM-DD/rust-patterns.md`
 - **WARNING** level.
 
 ---
@@ -99,7 +99,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/security-review [path]`
 
 - Covers: OWASP Top 10, CWE Top 25, KMIP authorization, FIPS gating, memory safety (FFI, `unsafe`), side-channel resistance, supply chain.
-- Report: `./review/security-review.md`
+- Report: `./review-YYYY-MM-DD/security-review.md`
 - **BLOCKER** if any HIGH or CRITICAL security findings.
 
 ---
@@ -109,7 +109,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/cryptography-review [path]` when crypto primitives, algorithm selection, key lifecycle or policy, provider initialization, or FIPS feature gates are affected.
 
 - Skip only for a confirmed focused diff that affects none of those areas; file-path checks alone are insufficient. Full/release gates must follow their own no-skip rules.
-- Report: `./review/cryptography-review.md` when run.
+- Report: `./review-YYYY-MM-DD/cryptography-review.md` when run.
 - **BLOCKER** if any non-FIPS-approved algorithm is used in the default build.
 
 ---
@@ -119,7 +119,7 @@ echo "" >> "${SUMMARY}"
 **Invoke**: `/standards-review [path]` when a governing protocol or standards requirement may be affected.
 
 - For a focused diff, skip only after confirming no protocol/standards semantics changed; full/release gates follow their own applicability rules.
-- Report: `./review/standards-review.md` when run.
+- Report: `./review-YYYY-MM-DD/standards-review.md` when run.
 - **BLOCKER** if any spec-violating protocol behaviour.
 
 ---
@@ -129,8 +129,8 @@ echo "" >> "${SUMMARY}"
 ### 10a — Run Clippy and fmt
 
 ```bash
-cargo clippy-all 2>&1 | tee ./review/clippy.txt
-cargo fmt --all -- --check 2>&1 | tee ./review/fmt.txt
+cargo clippy-all 2>&1 | tee ./review-$(date +%F)/clippy.txt
+cargo fmt --all -- --check 2>&1 | tee ./review-$(date +%F)/fmt.txt
 ```
 
 - **BLOCKER** if Clippy emits any warnings.
@@ -138,7 +138,7 @@ cargo fmt --all -- --check 2>&1 | tee ./review/fmt.txt
 
 ### 10b — Classify KMS Caveman lint-suppression findings
 
-Reuse the changed-diff `#[allow(...)]` and `#[expect(...)]` findings from Phase 1; do not repeat the scan. Classify each observed finding using the severity rules below and append evidence to `./review/clippy.txt`.
+Reuse the changed-diff `#[allow(...)]` and `#[expect(...)]` findings from Phase 1; do not repeat the scan. Classify each observed finding using the severity rules below and append evidence to `./review-YYYY-MM-DD/clippy.txt`.
 
 Severity classification:
 
@@ -157,7 +157,7 @@ Any BLOCKER that cannot be fixed immediately must be reported to the reviewer wi
 
 ## Final — Unified Summary
 
-Append to `./review/SUMMARY.md`:
+Append to `./review-YYYY-MM-DD/SUMMARY.md`:
 
 ```markdown
 ## Results
@@ -185,7 +185,7 @@ or
 - [ ] <blocker description with file:line>
 ```
 
-Print the verdict to chat with the count of total blockers and a link to `./review/SUMMARY.md`.
+Print the verdict to chat with the count of total blockers and a link to `./review-YYYY-MM-DD/SUMMARY.md`.
 
 ---
 
@@ -193,15 +193,15 @@ Print the verdict to chat with the count of total blockers and a link to `./revi
 
 | File | Source skill |
 |------|-------------|
-| `./review/kms-caveman.md` | `/kms-caveman` |
-| `./review/rust-error-propagation.md` | `/rust-error-propagation` |
-| `./review/rust-simplify.md` | `/rust-simplify` |
-| `./review/rust-async-refactor.md` | `/rust-async-refactor` |
-| `./review/rust-refactor.md` | `/rust-refactor` |
-| `./review/rust-patterns.md` | `/rust-patterns` |
-| `./review/security-review.md` | `/security-review` |
-| `./review/cryptography-review.md` | `/cryptography-review` (if in scope) |
-| `./review/standards-review.md` | `/standards-review` (if in scope) |
-| `./review/clippy.txt` | `cargo clippy-all` |
-| `./review/fmt.txt` | `cargo fmt --check` |
-| `./review/SUMMARY.md` | This skill |
+| `./review-YYYY-MM-DD/kms-caveman.md` | `/kms-caveman` |
+| `./review-YYYY-MM-DD/rust-error-propagation.md` | `/rust-error-propagation` |
+| `./review-YYYY-MM-DD/rust-simplify.md` | `/rust-simplify` |
+| `./review-YYYY-MM-DD/rust-async-refactor.md` | `/rust-async-refactor` |
+| `./review-YYYY-MM-DD/rust-refactor.md` | `/rust-refactor` |
+| `./review-YYYY-MM-DD/rust-patterns.md` | `/rust-patterns` |
+| `./review-YYYY-MM-DD/security-review.md` | `/security-review` |
+| `./review-YYYY-MM-DD/cryptography-review.md` | `/cryptography-review` (if in scope) |
+| `./review-YYYY-MM-DD/standards-review.md` | `/standards-review` (if in scope) |
+| `./review-YYYY-MM-DD/clippy.txt` | `cargo clippy-all` |
+| `./review-YYYY-MM-DD/fmt.txt` | `cargo fmt --check` |
+| `./review-YYYY-MM-DD/SUMMARY.md` | This skill |
