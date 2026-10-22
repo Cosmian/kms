@@ -849,15 +849,6 @@ criteria = "safe-to-deploy"
 version = "1.3.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.group]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.group]]
-version = "0.14.0"
-criteria = "safe-to-deploy"
-notes = "transitive or direct dependency of the workspace (dependency bump to 0.14.0) — unaudited, pending review"
-
 [[exemptions.half]]
 version = "2.7.1"
 criteria = "safe-to-deploy"
@@ -894,10 +885,6 @@ criteria = "safe-to-deploy"
 version = "0.10.2"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.hyper-rustls]]
-version = "0.27.9"
-criteria = "safe-to-deploy"
 
 [[exemptions.hyper-timeout]]
 version = "0.5.2"
@@ -1019,11 +1006,6 @@ criteria = "safe-to-deploy"
 [[exemptions.language-tags]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
-
-[[exemptions.libc]]
-version = "0.2.191"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.libloading]]
 version = "0.8.9"
@@ -1526,11 +1508,6 @@ criteria = "safe-to-deploy"
 [[exemptions.rusticata-macros]]
 version = "4.1.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.rustls]]
-version = "0.23.46"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.rustls-native-certs]]
 version = "0.8.4"

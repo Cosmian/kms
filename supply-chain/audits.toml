@@ -429,6 +429,12 @@ start = "2022-11-24"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.group]]
+criteria = "safe-to-deploy"
+user-id = 1244 # Sean Bowe (ebfull)
+start = "2019-10-08"
+end = "2027-10-22"
+
 [[trusted.h2]]
 criteria = "safe-to-deploy"
 user-id = 359 # Sean McArthur (seanmonstar)
@@ -477,6 +483,12 @@ user-id = 359 # Sean McArthur (seanmonstar)
 start = "2019-03-01"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hyper-rustls]]
+criteria = "safe-to-deploy"
+user-id = 209038 # Daniel McCarney (cpu)
+start = "2024-01-04"
+end = "2027-10-22"
 
 [[trusted.hyper-tls]]
 criteria = "safe-to-deploy"
@@ -639,6 +651,12 @@ start = "2024-08-15"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:rust-lang/libc"
+start = "2026-10-02"
+end = "2027-10-22"
+
 [[trusted.libm]]
 criteria = "safe-to-deploy"
 user-id = 2915 # Amanieu d'Antras (Amanieu)
@@ -786,6 +804,18 @@ start = "2019-04-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.rcgen]]
+criteria = "safe-to-deploy"
+user-id = 209038 # Daniel McCarney (cpu)
+start = "2024-01-26"
+end = "2027-10-22"
+
+[[trusted.redis]]
+criteria = "safe-to-deploy"
+user-id = 48
+start = "2019-05-30"
+end = "2027-10-22"
+
 [[trusted.ref-cast]]
 criteria = "safe-to-deploy"
 user-id = 3618 # David Tolnay (dtolnay)
@@ -835,12 +865,36 @@ start = "2019-03-04"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.ring]]
+criteria = "safe-to-deploy"
+user-id = 2751 # Joe Birr-Pixton (ctz)
+start = "2025-02-22"
+end = "2027-10-22"
+
 [[trusted.rustix]]
 criteria = "safe-to-deploy"
 user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2021-10-29"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.rustls]]
+criteria = "safe-to-deploy"
+user-id = 209038 # Daniel McCarney (cpu)
+start = "2023-07-05"
+end = "2027-10-22"
+
+[[trusted.rustls-pki-types]]
+criteria = "safe-to-deploy"
+user-id = 2751 # Joe Birr-Pixton (ctz)
+start = "2023-09-07"
+end = "2027-10-22"
+
+[[trusted.rustls-platform-verifier]]
+criteria = "safe-to-deploy"
+user-id = 2751 # Joe Birr-Pixton (ctz)
+start = "2024-08-23"
+end = "2027-10-22"
 
 [[trusted.rustls-webpki]]
 criteria = "safe-to-deploy"
@@ -1384,6 +1438,12 @@ user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2021-12-11"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zlib-rs]]
+criteria = "safe-to-deploy"
+user-id = 1303
+start = "2024-02-23"
+end = "2027-10-22"
 
 [[trusted.zmij]]
 criteria = "safe-to-deploy"
