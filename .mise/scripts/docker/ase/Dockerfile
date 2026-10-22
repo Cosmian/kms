@@ -8,7 +8,7 @@
 #        (run from repo root so docker-compose can use it)
 
 # Stay on 22.04: from 24.04 on, libaio1 is renamed libaio1t64 (soname libaio.so.1t64), which SAP ASE binaries do not load.
-FROM ubuntu:22.04@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401
+FROM ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
 
 # SAP ASE runtime deps
 RUN apt-get update && \
