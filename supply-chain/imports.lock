@@ -369,6 +369,20 @@ user-id = 980
 user-login = "Byron"
 user-name = "Sebastian Thiel"
 
+[[publisher.group]]
+version = "0.12.0"
+when = "2022-05-04"
+user-id = 1244
+user-login = "ebfull"
+user-name = "Sean Bowe"
+
+[[publisher.group]]
+version = "0.14.0"
+when = "2026-06-01"
+user-id = 1244
+user-login = "ebfull"
+user-name = "Sean Bowe"
+
 [[publisher.h2]]
 version = "0.4.16"
 when = "2026-08-17"
@@ -431,6 +445,13 @@ when = "2026-10-06"
 user-id = 359
 user-login = "seanmonstar"
 user-name = "Sean McArthur"
+
+[[publisher.hyper-rustls]]
+version = "0.27.9"
+when = "2026-04-14"
+user-id = 209038
+user-login = "cpu"
+user-name = "Daniel McCarney"
 
 [[publisher.hyper-tls]]
 version = "0.6.0"
@@ -564,10 +585,9 @@ user-login = "fitzgen"
 user-name = "Nick Fitzgerald"
 
 [[publisher.libc]]
-version = "0.2.189"
-when = "2026-07-21"
-user-id = 55123
-user-login = "rust-lang-owner"
+version = "0.2.191"
+when = "2026-10-16"
+trusted-publisher = "github:rust-lang/libc"
 
 [[publisher.libm]]
 version = "0.2.16"
@@ -777,6 +797,20 @@ when = "2026-02-22"
 user-id = 6825
 user-login = "sunfishcode"
 user-name = "Dan Gohman"
+
+[[publisher.rustls]]
+version = "0.23.37"
+when = "2026-02-24"
+user-id = 209038
+user-login = "cpu"
+user-name = "Daniel McCarney"
+
+[[publisher.rustls-webpki]]
+version = "0.103.16"
+when = "2026-10-20"
+user-id = 2751
+user-login = "ctz"
+user-name = "Joe Birr-Pixton"
 
 [[publisher.rustversion]]
 version = "1.0.23"
@@ -1155,6 +1189,20 @@ when = "2026-06-12"
 user-id = 1
 user-login = "alexcrichton"
 user-name = "Alex Crichton"
+
+[[publisher.webpki-root-certs]]
+version = "1.0.10"
+when = "2026-10-19"
+user-id = 209038
+user-login = "cpu"
+user-name = "Daniel McCarney"
+
+[[publisher.webpki-roots]]
+version = "1.0.10"
+when = "2026-10-19"
+user-id = 209038
+user-login = "cpu"
+user-name = "Daniel McCarney"
 
 [[publisher.winapi-util]]
 version = "0.1.11"
@@ -1593,12 +1641,6 @@ Lots of new iterators and shuffling some things around. Some new unsafe code but
 it's well-documented and well-tested. Nothing suspicious.
 """
 
-[[audits.bytecode-alliance.audits.libc]]
-who = "Alex Crichton <alex@alexcrichton.com>"
-criteria = "safe-to-deploy"
-delta = "0.2.189 -> 0.2.190"
-notes = "All in line with changes one would expect from `libc`"
-
 [[audits.bytecode-alliance.audits.matchers]]
 who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
@@ -1709,33 +1751,20 @@ criteria = "safe-to-deploy"
 delta = "0.4.0 -> 0.4.1"
 notes = "Minor changes, nothing worrisome"
 
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Pat Hickey <phickey@fastly.com>"
-criteria = "safe-to-deploy"
-version = "0.100.1"
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Pat Hickey <phickey@fastly.com>"
-criteria = "safe-to-deploy"
-delta = "0.100.1 -> 0.101.4"
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
+[[audits.bytecode-alliance.audits.rustls]]
 who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
-delta = "0.103.10 -> 0.103.12"
-notes = "Minor updates to address recent vulnerabilities, nothing awry."
+delta = "0.23.37 -> 0.23.45"
+notes = """
+A relatively large update, but no new `unsafe` and nothing awry here. Lots of
+protocol/etc updates which I'm not personally an expert within but the rustls
+maintainers are relatively well trusted as well.
+"""
 
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Alex Crichton <alex@alexcrichton.com>"
+[[audits.bytecode-alliance.audits.rustls]]
+who = "Pat Hickey <p.hickey@f5.com>"
 criteria = "safe-to-deploy"
-delta = "0.103.12 -> 0.103.13"
-notes = "Minor fixes for the bug being fixed in this release, nothing awry."
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Alex Crichton <alex@alexcrichton.com>"
-criteria = "safe-to-deploy"
-delta = "0.103.13 -> 0.103.15"
-notes = "Minor updates and feature shufflings."
+delta = "0.23.45 -> 0.23.46"
 
 [[audits.bytecode-alliance.audits.semver]]
 who = "Pat Hickey <phickey@fastly.com>"
@@ -1823,12 +1852,6 @@ who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
 version = "0.2.15"
 notes = "no build.rs, no macros, no unsafe. It reads the filesystem and makes copies of DLLs into OUT_DIR."
-
-[[audits.bytecode-alliance.audits.webpki-root-certs]]
-who = "Chris Fallin <chris@cfallin.org>"
-criteria = "safe-to-deploy"
-version = "1.0.4"
-notes = "Purely a data crate."
 
 [[audits.embark-studios.audits.cfg_aliases]]
 who = "Johan Andersson <opensource@embark-studios.com>"
@@ -3208,6 +3231,18 @@ Path and string handling looks plausibly correct.
 """
 aggregated-from = "https://raw.githubusercontent.com/zcash/librustzcash/main/supply-chain/audits.toml"
 
+[[audits.zcash.audits.group]]
+who = "Kris Nuttycombe <kris@nutty.land>"
+criteria = "safe-to-deploy"
+delta = "0.12.0 -> 0.12.1"
+aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
+
+[[audits.zcash.audits.group]]
+who = "Sean Bowe <ewillbefull@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.12.1 -> 0.13.0"
+aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
+
 [[audits.zcash.audits.inout]]
 who = "Jack Grigg <jack@electriccoin.co>"
 criteria = "safe-to-deploy"
@@ -3275,14 +3310,3 @@ criteria = "safe-to-deploy"
 delta = "0.1.0 -> 0.1.1"
 notes = "Build script changes are for linting."
 aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
-
-[[audits.zcash.audits.webpki-roots]]
-who = "Jack Grigg <jack@electriccoin.co>"
-criteria = "safe-to-deploy"
-version = "0.26.8"
-notes = """
-This crate contains a single constant `TLS_SERVER_ROOTS` and no runtime logic.
-It uses `#![forbid(unsafe_code, unstable_features)]`, and does not have any
-powerful imports.
-"""
-aggregated-from = "https://raw.githubusercontent.com/zcash/wallet/main/supply-chain/audits.toml"
