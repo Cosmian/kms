@@ -63,7 +63,15 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
                 throw new Error(t("objectsDestroy.missingIdentifier", { label }));
             }
             const request = destroy_ttlv_request(id, values.remove);
-            const result_str = await sendKmipRequest(request, serverUrl);
+            let result_str: string | undefined;
+            try {
+                result_str = await sendKmipRequest(request, serverUrl);
+            } catch (e) {
+                if (e instanceof Error && e.message.includes("Wrong_Key_Lifecycle_State")) {
+                    throw new Error(t("objectsDestroy.revokeFirst", { label }));
+                }
+                throw e;
+            }
             if (result_str) {
                 const result: DestroyResponse = await parse_destroy_ttlv_response(result_str);
                 return t("objectsDestroy.success", { objectId: result.UniqueIdentifier });

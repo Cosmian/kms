@@ -760,6 +760,7 @@
         "title": "Destroy {{typeString}} {{label}}",
         "warningTitle": "Warning: This is a destructive action.",
         "mustRevoked": "The {{label}} must be revoked first",
+        "revokeFirst": "Revoke the {{label}} first, please.",
         "destroyKeyPair": "Destroying either public or private key will destroy the whole key pair",
         "hsmRemoved": "Keys in external stores (HSMs) are automatically removed",
         "certNotDestroy": "Destroying a certificate does not destroy its associated private key",
