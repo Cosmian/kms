@@ -778,6 +778,13 @@ user-id = 6825
 user-login = "sunfishcode"
 user-name = "Dan Gohman"
 
+[[publisher.rustls-webpki]]
+version = "0.103.16"
+when = "2026-10-20"
+user-id = 2751
+user-login = "ctz"
+user-name = "Joe Birr-Pixton"
+
 [[publisher.rustversion]]
 version = "1.0.23"
 when = "2026-07-07"
@@ -1155,6 +1162,20 @@ when = "2026-06-12"
 user-id = 1
 user-login = "alexcrichton"
 user-name = "Alex Crichton"
+
+[[publisher.webpki-root-certs]]
+version = "1.0.10"
+when = "2026-10-19"
+user-id = 209038
+user-login = "cpu"
+user-name = "Daniel McCarney"
+
+[[publisher.webpki-roots]]
+version = "1.0.10"
+when = "2026-10-19"
+user-id = 209038
+user-login = "cpu"
+user-name = "Daniel McCarney"
 
 [[publisher.winapi-util]]
 version = "0.1.11"
@@ -1709,34 +1730,6 @@ criteria = "safe-to-deploy"
 delta = "0.4.0 -> 0.4.1"
 notes = "Minor changes, nothing worrisome"
 
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Pat Hickey <phickey@fastly.com>"
-criteria = "safe-to-deploy"
-version = "0.100.1"
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Pat Hickey <phickey@fastly.com>"
-criteria = "safe-to-deploy"
-delta = "0.100.1 -> 0.101.4"
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Alex Crichton <alex@alexcrichton.com>"
-criteria = "safe-to-deploy"
-delta = "0.103.10 -> 0.103.12"
-notes = "Minor updates to address recent vulnerabilities, nothing awry."
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Alex Crichton <alex@alexcrichton.com>"
-criteria = "safe-to-deploy"
-delta = "0.103.12 -> 0.103.13"
-notes = "Minor fixes for the bug being fixed in this release, nothing awry."
-
-[[audits.bytecode-alliance.audits.rustls-webpki]]
-who = "Alex Crichton <alex@alexcrichton.com>"
-criteria = "safe-to-deploy"
-delta = "0.103.13 -> 0.103.15"
-notes = "Minor updates and feature shufflings."
-
 [[audits.bytecode-alliance.audits.semver]]
 who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
@@ -1823,12 +1816,6 @@ who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
 version = "0.2.15"
 notes = "no build.rs, no macros, no unsafe. It reads the filesystem and makes copies of DLLs into OUT_DIR."
-
-[[audits.bytecode-alliance.audits.webpki-root-certs]]
-who = "Chris Fallin <chris@cfallin.org>"
-criteria = "safe-to-deploy"
-version = "1.0.4"
-notes = "Purely a data crate."
 
 [[audits.embark-studios.audits.cfg_aliases]]
 who = "Johan Andersson <opensource@embark-studios.com>"
@@ -3275,14 +3262,3 @@ criteria = "safe-to-deploy"
 delta = "0.1.0 -> 0.1.1"
 notes = "Build script changes are for linting."
 aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
-
-[[audits.zcash.audits.webpki-roots]]
-who = "Jack Grigg <jack@electriccoin.co>"
-criteria = "safe-to-deploy"
-version = "0.26.8"
-notes = """
-This crate contains a single constant `TLS_SERVER_ROOTS` and no runtime logic.
-It uses `#![forbid(unsafe_code, unstable_features)]`, and does not have any
-powerful imports.
-"""
-aggregated-from = "https://raw.githubusercontent.com/zcash/wallet/main/supply-chain/audits.toml"
