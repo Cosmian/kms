@@ -1526,7 +1526,8 @@ dependencies = [
 [[package]]
 name = "cosmian_cover_crypt"
 version = "16.0.1"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=develop#bd2cab02b11fdef9535d22732d00915fcc86b1aa"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "890b6b0b12e8804c46bd8d1e56d6bf356f467a9f7b080a9107df4fffe5b52518"
 dependencies = [
  "cosmian_crypto_core",
  "cosmian_openssl_provider",
