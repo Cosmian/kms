@@ -1927,6 +1927,19 @@
         "error404": "No CRL found for issuer '{{issuerId}}'. The CRL is generated automatically when a certificate is revoked. If no certificate has been revoked yet, the CRL may not exist.",
         "success": "CRL downloaded successfully ({{bytes}} bytes, {{format}} format)"
     },
+    "certificateGenerateCsr": {
+        "title": "Generate a CSR",
+        "alertMessage": "The CSR is signed inside the KMS with the private key, which is never exported.",
+        "alertDescription": "Use this to request a certificate for a sub-CA key held by this KMS (or its HSM, even non-extractable) from an external or offline root CA. You need the Sign permission on the key.",
+        "privateKeyId": "Private Key ID",
+        "privateKeyIdRequired": "Please enter the private key ID",
+        "privateKeyIdPlaceholder": "Enter the private key unique identifier",
+        "subjectName": "Subject Name",
+        "subjectNameRequired": "Please enter the subject distinguished name",
+        "submit": "Generate CSR",
+        "responseTitle": "CSR Generation Result",
+        "success": "CSR generated and downloaded ({{bytes}} bytes, PEM format)"
+    },
     "pgpKeysCreate": {
         "title": "Create an OpenPGP Key",
         "intro": "Create a new OpenPGP transferable secret key (v4). The key is generated unprotected inside the KMS.",
