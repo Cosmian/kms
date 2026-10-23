@@ -34,7 +34,10 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES, SQLITE_QUERIES,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         sql::database::SqlDatabase,
     },
 };
@@ -350,6 +353,57 @@ impl SqlitePool {
         .await?;
         if !backfill_done {
             pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
+                .await?;
+        }
+
+        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
+        // existed, gated by a completion marker. Idempotent: an interrupted run (marker
+        // still unset) re-executes cleanly on the next boot.
+        if pool
+            .get_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+            .await?
+            != Some("true".to_owned())
+        {
+            let select_missing = get_sqlite_query!("select-certificates-missing-serial-tag");
+            let insert_tag = get_sqlite_query!("insert-tags-if-absent");
+            retry_on_transient_lock(|| async {
+                pool.writer
+                    .call(
+                        move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                            let tx = c.transaction()?;
+                            let rows: Vec<(String, String)> = {
+                                let mut stmt = tx.prepare(select_missing)?;
+                                let mut rows = stmt.query([])?;
+                                let mut out = Vec::new();
+                                while let Some(row) = rows.next()? {
+                                    out.push((row.get(0)?, row.get(1)?));
+                                }
+                                out
+                            };
+                            for (id, object_json) in &rows {
+                                match serde_json::from_str::<Object>(object_json) {
+                                    Ok(obj) => {
+                                        if let Some(tag) = certificate_serial_tag(&obj) {
+                                            tx.execute(insert_tag, rusqlite::params![id, tag])?;
+                                        }
+                                    }
+                                    Err(e) => tracing::warn!(
+                                        uid = %id,
+                                        error = %e,
+                                        "serial tag backfill: skipping object that failed to \
+                                         deserialize"
+                                    ),
+                                }
+                            }
+                            tx.commit()?;
+                            Ok(())
+                        },
+                    )
+                    .await
+                    .map_err(DbError::from)
+            })
+            .await?;
+            pool.set_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true")
                 .await?;
         }
 

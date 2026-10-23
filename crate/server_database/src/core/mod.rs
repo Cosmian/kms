@@ -1,6 +1,7 @@
 //! This module contains the core database functionalities, including object management,
 //! permission checks, and caching mechanisms for unwrapped keys.
 mod database_objects;
+pub(crate) use database_objects::extract_serial_hex_from_object;
 mod database_permissions;
 mod db_metrics;
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};

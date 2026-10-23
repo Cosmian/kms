@@ -229,11 +229,16 @@ async fn get_cert_der(kms: &Arc<KMS>, owner: &UserId, cert_id: &str) -> Vec<u8> 
 
 /// Call `generate_crl` and return the DER bytes.
 async fn generate_crl_der(kms: &Arc<KMS>, owner: &UserId, ca_id: &str) -> Vec<u8> {
-    crate::core::operations::generate_crl::generate_crl(kms, ca_id, None, owner)
-        .await
-        .expect("generate_crl")
-        .to_der()
-        .expect("CRL to DER")
+    crate::core::operations::generate_crl::generate_crl(
+        kms,
+        ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(owner),
+    )
+    .await
+    .expect("generate_crl")
+    .to_der()
+    .expect("CRL to DER")
 }
 
 /// Convert a `BigUint` (from `x509_parser`) to `u64` using its big-endian byte representation.
@@ -379,9 +384,14 @@ async fn test_crl_der_and_pem_output_valid() -> KResult<()> {
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "Format CA", None, None, CA_EXT).await?;
 
-    let crl = crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &owner)
-        .await
-        .expect("generate_crl");
+    let crl = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&owner),
+    )
+    .await
+    .expect("generate_crl");
 
     let der = crl.to_der().expect("to_der");
     let pem = crl.to_pem().expect("to_pem");
@@ -538,8 +548,13 @@ async fn test_crl_rejects_ca_without_crl_sign_key_usage() -> KResult<()> {
     )
     .await?;
 
-    let result =
-        crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &owner).await;
+    let result = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&owner),
+    )
+    .await;
 
     assert!(
         result.is_err(),
@@ -582,8 +597,13 @@ async fn test_crl_rejects_non_certificate_issuer() -> KResult<()> {
     } = kms.create(req, &owner).await?;
     let sym_key_id = unique_identifier.to_string();
 
-    let result =
-        crate::core::operations::generate_crl::generate_crl(&kms, &sym_key_id, None, &owner).await;
+    let result = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &sym_key_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&owner),
+    )
+    .await;
     assert!(
         result.is_err(),
         "generate_crl must fail when issuer UID is not a certificate"
@@ -1191,8 +1211,13 @@ async fn test_crl_non_co_cannot_generate_crl_without_ca_access() -> KResult<()> 
     let (ca_id, _) = certify(&kms, &alice, "Access CA", None, None, CA_EXT).await?;
 
     // Bob (not owner, not CO) tries to generate the CRL for alice's CA.
-    let result =
-        crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &bob).await;
+    let result = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&bob),
+    )
+    .await;
     assert!(
         result.is_err(),
         "Non-owner, non-CO user must NOT be able to generate a CRL for another user's CA"

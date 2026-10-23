@@ -2375,6 +2375,59 @@ paths:
         '500':
           description: Internal server error — CRL generation failed
 
+  /certificates/csr:
+    post:
+      tags: [Certificates]
+      summary: Generate a PKCS#10 CSR signed by a private key held by the KMS
+      description: |
+        Builds a PKCS#10 certificate signing request for the private key `private_key_id`
+        and signs it with that key. The private key never leaves the server: keys stored
+        in an HSM sign through the HSM and may be non-extractable (a non-sensitive HSM key
+        is refused). Typical use: create a subordinate CA key in the HSM, generate its CSR
+        here, then have it signed by a root CA on another (offline) KMS.
+
+        The caller needs the `Sign` permission on the private key (never `Get`). Subject
+        attributes keep their input order and may repeat; escape a comma in a value with `\,`.
+        No extension is requested: set CA extensions when the root CA signs the CSR.
+      operationId: generateCsr
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [private_key_id, subject_name]
+              properties:
+                private_key_id:
+                  type: string
+                  description: KMIP unique identifier of the private key, e.g. `hsm::0::subca`
+                subject_name:
+                  type: string
+                  example: C=FR, O=Acme, CN=Acme Sub CA
+      responses:
+        '200':
+          description: The signed CSR
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csr_pem]
+                properties:
+                  csr_pem:
+                    type: string
+                    description: PEM-encoded PKCS#10 certificate signing request
+        '401':
+          description: Unauthorized — missing or invalid credentials, or role not permitted
+        '422':
+          description: >-
+            Invalid request — private key not found or caller lacks the `Sign` permission on it,
+            key not Active, empty or malformed subject, not a private key, or extractable HSM key
+        '500':
+          description: Internal server error — signing failed
+
   # ── REST Crypto API ──────────────────────────────────────────────────────────
 
   /public/certificates/{issuer_id}/crl:

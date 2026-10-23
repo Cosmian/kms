@@ -1927,6 +1927,19 @@
         "error404": "Aucune CRL trouvée pour l'émetteur '{{issuerId}}'. La CRL est générée automatiquement lors de la révocation d'un certificat. Si aucun certificat n'a encore été révoqué, la CRL n'existe peut-être pas.",
         "success": "CRL téléchargée avec succès ({{bytes}} octets, format {{format}})"
     },
+    "certificateGenerateCsr": {
+        "title": "Générer une CSR",
+        "alertMessage": "La CSR est signée dans le KMS avec la clé privée, qui n'est jamais exportée.",
+        "alertDescription": "Permet de demander à une AC racine externe ou hors ligne un certificat pour une clé de sous-AC détenue par ce KMS (ou son HSM, même non exportable). La permission Sign sur la clé est requise.",
+        "privateKeyId": "Identifiant de la clé privée",
+        "privateKeyIdRequired": "Veuillez saisir l'identifiant de la clé privée",
+        "privateKeyIdPlaceholder": "Saisissez l'identifiant unique de la clé privée",
+        "subjectName": "Nom du sujet",
+        "subjectNameRequired": "Veuillez saisir le nom distinctif du sujet",
+        "submit": "Générer la CSR",
+        "responseTitle": "Résultat de la génération de la CSR",
+        "success": "CSR générée et téléchargée ({{bytes}} octets, format PEM)"
+    },
     "pgpKeysCreate": {
         "title": "Créer une clé OpenPGP",
         "intro": "Créer une nouvelle clé secrète transférable OpenPGP (v4). La clé est générée non protégée dans le KMS.",

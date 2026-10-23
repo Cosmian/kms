@@ -1181,6 +1181,48 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     Ok(())
 }
 
+/// A certificate stored without the `_serial=<HEX>` tag gets it from
+/// `backfill_certificate_serial_tags`, and becomes locatable through that tag in Findex.
+pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+    let mut rng = KmsRng::new().seeded_csrng()?;
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let db = RedisWithFindex::instantiate(&get_redis_url(), master_key, true).await?;
+
+    let owner = UserId::from("legacy_owner");
+    let uid = db
+        .create(
+            None,
+            &owner,
+            &crate::tests::legacy_certificate_object(),
+            &Attributes::default(),
+            &HashSet::from(["_cert".to_owned()]),
+        )
+        .await?;
+
+    // Clear the completion marker so the backfill actually runs.
+    redis::cmd("DEL")
+        .arg("certificate_serial_tag_backfilled")
+        .query_async::<()>(&mut db.mgr.clone())
+        .await?;
+    let serial_tag = HashSet::from(["_serial=0ABBCC".to_owned()]);
+    assert!(
+        !db.list_uids_for_tags(&serial_tag).await?.contains(&uid),
+        "the legacy certificate must not be locatable by serial before the backfill"
+    );
+
+    db.backfill_certificate_serial_tags().await?;
+
+    assert!(db.retrieve_tags(&uid).await?.contains("_serial=0ABBCC"));
+    assert!(
+        db.list_uids_for_tags(&serial_tag).await?.contains(&uid),
+        "the backfilled serial tag must be indexed in Findex"
+    );
+
+    db.delete(&uid).await?;
+    Ok(())
+}
+
 /// Logical Redis database used by [`test_migration_state_markers`], kept apart from the
 /// default database (0) shared by the other Redis tests.
 const ISOLATED_REDIS_DB: u8 = 15;

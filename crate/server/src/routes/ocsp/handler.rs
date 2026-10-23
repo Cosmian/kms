@@ -38,13 +38,10 @@ use base64::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::kmip_types::LinkType},
-    cosmian_kms_crypto::openssl::{
-        kmip_private_key_to_openssl,
-        ocsp::{
-            CrlReasonCode, NoncePolicy, OcspBuildConfig, OcspCertStatus, OcspStatusEntry,
-            ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
-            verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
-        },
+    cosmian_kms_crypto::openssl::ocsp::{
+        CrlReasonCode, NoncePolicy, OcspBuildConfig, OcspCertStatus, OcspStatusEntry,
+        ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
+        verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
     },
 };
 use cosmian_logger::{debug, info};
@@ -54,7 +51,16 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::NoncePolicyConfig,
-    core::{KMS, operations::generate_crl::kmip_reason_to_crl_reason},
+    core::{
+        KMS,
+        certificate::oracle_signing::{
+            placeholder_signer_certificate, placeholder_signing_key, sign_ocsp_response_with_oracle,
+        },
+        operations::{
+            certify::{IssuerKey, load_issuer_key},
+            generate_crl::kmip_reason_to_crl_reason,
+        },
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -95,8 +101,7 @@ const fn is_ocsp_get_path_too_long(encoded_len: usize) -> bool {
 
 type OcspResponseFuture<'a> = Pin<Box<dyn Future<Output = KResult<HttpResponse>> + 'a>>;
 type OcspStatusFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspCertStatus>> + 'a>>;
-type OcspSignerKey = openssl::pkey::PKey<openssl::pkey::Private>;
-type OcspSignerMaterials = (X509, OcspSignerKey);
+type OcspSignerMaterials = (X509, IssuerKey);
 type OcspSignerFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspSignerMaterials>> + 'a>>;
 type OcspCacheEntry = (Vec<u8>, Instant);
 type OcspCache = RwLock<HashMap<String, OcspCacheEntry>>;
@@ -363,15 +368,38 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
             archive_cutoff_secs: archive_cutoff,
         };
 
-        let resp_der = build_ocsp_response(
-            request_der,
-            &ca_cert,
-            &signer_cert,
-            &signer_key,
-            &entries,
-            &config,
-        )
+        let resp_der = match &signer_key {
+            IssuerKey::Local(key) => {
+                build_ocsp_response(request_der, &ca_cert, &signer_cert, key, &entries, &config)
+            }
+            // HSM key: build with a throwaway key and a certificate carrying the signer's
+            // name, then have the HSM sign the real response.
+            IssuerKey::Oracle(_) => {
+                let placeholder = placeholder_signing_key()?;
+                let placeholder_cert = placeholder_signer_certificate(&signer_cert, &placeholder)?;
+                build_ocsp_response(
+                    request_der,
+                    &ca_cert,
+                    &placeholder_cert,
+                    &placeholder,
+                    &entries,
+                    &config,
+                )
+            }
+        }
         .map_err(|e| KmsError::CryptographicError(format!("OCSP response build failed: {e}")))?;
+        let resp_der = match &signer_key {
+            IssuerKey::Local(_) => resp_der,
+            IssuerKey::Oracle(key) => {
+                Box::pin(sign_ocsp_response_with_oracle(
+                    kms,
+                    key,
+                    &signer_cert,
+                    &resp_der,
+                ))
+                .await?
+            }
+        };
 
         // ── 8. Cache + respond ────────────────────────────────────────────────────
         // `unknown` responses are not cached: they are what random-serial requests
@@ -579,16 +607,16 @@ fn retrieve_signer_cert_and_key<'a>(
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("OCSP signer private key not found: {key_uid}"))
             })?;
-
-        // The key may be wrapped at rest (server `key_encryption_key` or a user KEK).
-        // The responder is unauthenticated, so unwrap on behalf of the key's owner.
-        let signer_key_object =
-            Box::pin(kms.get_unwrapped(key_owm.id(), key_owm.object(), key_owm.owner_id()))
-                .await
-                .context("unwrap OCSP signer private key")?;
-        let signer_key = kmip_private_key_to_openssl(&signer_key_object).map_err(|e| {
-            KmsError::CryptographicError(format!("Cannot load OCSP signing key: {e}"))
-        })?;
+        // The key may be wrapped at rest (server `key_encryption_key` or a user KEK), or live in
+        // an HSM. The responder is unauthenticated, so load it on behalf of the key's owner.
+        let signer_key = Box::pin(load_issuer_key(
+            kms,
+            &key_owm,
+            signer_x509.public_key()?,
+            key_owm.owner_id(),
+        ))
+        .await
+        .context("load OCSP signer private key")?;
 
         Ok((signer_x509, signer_key))
     })
