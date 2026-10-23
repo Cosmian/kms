@@ -32,10 +32,12 @@ use openssl::{pkey::PKey, rsa::Rsa};
 #[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
 #[cfg(feature = "non-fips")]
-use crate::crypto::{kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair};
+use crate::crypto::{
+    KeyPairIdentity, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair,
+};
 use crate::{
     crypto::{
-        KeyPairIdentity, KmsRng,
+        KmsRng,
         wrap::{unwrap_key_block, wrap_object_with_key},
     },
     crypto_bail,
