@@ -5,19 +5,17 @@
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
-            KmipOperation,
-            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-            kmip_objects::ObjectType,
-            kmip_types::{LinkType, OperationEnumeration},
+            KmipOperation, extra::tagging::SYSTEM_TAG_PUBLIC_KEY, kmip_objects::ObjectType,
+            kmip_types::OperationEnumeration,
         },
     },
     cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use openssl::{
     hash::MessageDigest,
-    pkey::Id,
+    pkey::{Id, PKey},
     x509::{X509Name, X509NameBuilder, X509Req, X509ReqBuilder},
 };
 
@@ -25,11 +23,8 @@ use super::dispatch::check_role_permission;
 use crate::{
     core::{
         KMS, ObjectHandle,
-        certificate::{
-            linked_id_str,
-            oracle_signing::{
-                OracleSigningKey, assemble_csr, oracle_sign, placeholder_signing_key, prepare_csr,
-            },
+        certificate::oracle_signing::{
+            OracleSigningKey, assemble_csr, oracle_sign, placeholder_signing_key, prepare_csr,
         },
         retrieve_object_utils::retrieve_object_for_operation,
     },
@@ -141,6 +136,12 @@ pub(crate) async fn generate_csr(
             sk.id()
         )));
     }
+    if !sk.has_usage_mask(CryptographicUsageMask::Sign, true) {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "CSR generation: the usage mask of private key '{}' does not allow Sign",
+            sk.id()
+        )));
+    }
     let is_hsm = ObjectHandle::from(sk.id()).is_hsm();
     if is_hsm && sk.attributes().sensitive != Some(true) {
         kms_bail!(KmsError::InvalidRequest(format!(
@@ -149,29 +150,27 @@ pub(crate) async fn generate_csr(
         )));
     }
 
-    let pk_id = sk
-        .attributes()
-        .get_link(LinkType::PublicKeyLink)
-        .map_or_else(
-            || format!("{}{SYSTEM_TAG_PUBLIC_KEY}", sk.id()),
-            |link| linked_id_str(&link).into_owned(),
-        );
-    // The public key is not secret and `Sign` on the private key was checked above: do not
-    // require a separate `Get` grant on it. The final signature check guards the pairing.
-    let pk_owm = kms
-        .database
-        .retrieve_object_arc(&pk_id)
-        .await
-        .with_context(|| format!("CSR generation: retrieving public key '{pk_id}'"))?
-        .ok_or_else(|| {
-            KmsError::ItemNotFound(format!("CSR generation: public key '{pk_id}' not found"))
+    // Never follow the `PublicKeyLink` of the private key: it is user-controlled and would let a
+    // caller probe objects they have no grant on. Database keys use the public key derived from
+    // the private key; HSM objects carry no KMIP links, their public key is `<sk>_pk`.
+    let (csr, public_key) = if is_hsm {
+        let pk_id = format!("{}{SYSTEM_TAG_PUBLIC_KEY}", sk.id());
+        let pk_owm = kms
+            .database
+            .retrieve_object_arc(&pk_id)
+            .await
+            .with_context(|| format!("CSR generation: retrieving public key '{pk_id}'"))?
+            .ok_or_else(|| {
+                KmsError::ItemNotFound(format!("CSR generation: public key '{pk_id}' not found"))
+            })?;
+        let pk_object =
+            Box::pin(kms.get_unwrapped(pk_owm.id(), pk_owm.object(), pk_owm.owner_id()))
+                .await
+                .with_context(|| format!("CSR generation: retrieving public key '{pk_id}'"))?;
+        let public_key = kmip_public_key_to_openssl(&pk_object)?;
+        let key = OracleSigningKey::for_hsm_uid(sk.id(), public_key.clone())?.ok_or_else(|| {
+            KmsError::ServerError(format!("CSR generation: '{}' is not an HSM key", sk.id()))
         })?;
-    let pk_object = Box::pin(kms.get_unwrapped(pk_owm.id(), pk_owm.object(), pk_owm.owner_id()))
-        .await
-        .with_context(|| format!("CSR generation: retrieving public key '{pk_id}'"))?;
-    let public_key = kmip_public_key_to_openssl(&pk_object)?;
-
-    let csr = if let Some(key) = OracleSigningKey::for_hsm_uid(sk.id(), public_key.clone())? {
         let draft = {
             let mut builder = X509ReqBuilder::new()?;
             builder.set_version(0)?;
@@ -183,10 +182,11 @@ pub(crate) async fn generate_csr(
         };
         let (req, tbs) = prepare_csr(&draft, key.algorithm)?;
         let signature = Box::pin(oracle_sign(kms, &key, &tbs)).await?;
-        assemble_csr(req, &signature)?
+        (assemble_csr(req, &signature)?, public_key)
     } else {
         let unwrapped = Box::pin(kms.get_unwrapped(sk.id(), sk.object(), user)).await?;
         let private_key = kmip_private_key_to_openssl(&unwrapped)?;
+        let public_key = PKey::public_key_from_der(&private_key.public_key_to_der()?)?;
         let mut builder = X509ReqBuilder::new()?;
         builder.set_version(0)?;
         builder.set_subject_name(&name)?;
@@ -196,13 +196,22 @@ pub(crate) async fn generate_csr(
             Id::RSA | Id::EC => MessageDigest::sha256(),
             _ => MessageDigest::null(),
         };
-        builder.sign(&private_key, digest)?;
-        builder.build()
+        // KEM keys (X25519, ML-KEM, ...) cannot sign: a client error, not a server failure
+        builder
+            .sign(&private_key, digest)
+            .map_err(|_openssl_error| {
+                KmsError::InvalidRequest(format!(
+                    "CSR generation: a {:?} key cannot sign a CSR",
+                    private_key.id()
+                ))
+            })?;
+        (builder.build(), public_key)
     };
 
     if !csr.verify(&public_key)? {
         kms_bail!(KmsError::ServerError(format!(
-            "CSR generation: the signature does not verify with public key '{pk_id}'"
+            "CSR generation: the signature does not verify with the public key of '{}'",
+            sk.id()
         )));
     }
     Ok(csr)

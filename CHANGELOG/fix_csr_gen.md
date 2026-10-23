@@ -13,7 +13,9 @@
   issues through `Certify`, so it works with any HSM CA key. SCEP returns a clear `NotSupported`
   error for a non-extractable (sensitive) HSM CA key instead of failing while trying to load it;
   non-sensitive HSM CA keys keep working as before. Ed25519/Ed448 HSM keys (non-FIPS) are supported
-  for CSRs, certificates, CRLs and OCSP. CSR generation refuses a private key that is not Active.
+  for CSRs, certificates, CRLs and OCSP. CSR generation refuses a private key that is not Active
+  or whose usage mask lacks `Sign`, never follows the user-settable `PublicKeyLink` (it leaked
+  attributes of other users' objects), and answers 4xx for keys that cannot sign (X25519, ML-KEM).
 - Fixed: the OCSP responder answered `unauthorized` to every request for a sub-CA (issuer hashes
   were computed from the CA's issuer name instead of its subject name).
 

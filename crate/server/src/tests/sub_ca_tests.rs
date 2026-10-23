@@ -6,17 +6,19 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{CertificateType, RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{
+        CertificateType, CryptographicUsageMask, RevocationReason, RevocationReasonCode,
+    },
     kmip_2_1::{
         extra::{
             VENDOR_ATTR_X509_EXTENSION,
             tagging::{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, VENDOR_ID_COSMIAN},
         },
-        kmip_attributes::Attributes,
+        kmip_attributes::{Attribute, Attributes},
         kmip_objects::{Certificate, Object, ObjectType},
-        kmip_operations::{Certify, Get, GetAttributes, Import, Revoke},
+        kmip_operations::{Certify, Get, GetAttributes, Import, ModifyAttribute, Revoke},
         kmip_types::{
-            CertificateRequestType, CryptographicAlgorithm, LinkType, LinkedObjectIdentifier,
+            CertificateRequestType, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier, VendorAttribute, VendorAttributeValue,
         },
         requests::create_rsa_key_pair_request,
@@ -285,6 +287,54 @@ async fn csr_generation_refuses_a_deactivated_key() -> KResult<()> {
         err.to_string().contains("only Active keys may sign"),
         "{err}"
     );
+    Ok(())
+}
+
+/// The `PublicKeyLink` of a private key is user-controlled: it must neither be followed (it could
+/// point to an object the caller has no grant on) nor make the CSR fail with a dump of that object.
+#[tokio::test]
+async fn csr_generation_ignores_the_public_key_link_of_the_private_key() -> KResult<()> {
+    let kms = make_kms().await?;
+    let alice = user("alice@example.com");
+    let bob = user("bob@example.com");
+    let (alice_sk, _) = make_key_pair(&kms, &alice).await?;
+    let (bob_sk, _) = make_key_pair(&kms, &bob).await?;
+    kms.modify_attribute(
+        ModifyAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(alice_sk.clone())),
+            new_attribute: Attribute::Link(Link {
+                link_type: LinkType::PublicKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(bob_sk),
+            }),
+        },
+        &alice,
+    )
+    .await?;
+    let csr = generate_csr(&kms, &alice_sk, "CN=alice", &alice).await?;
+    assert!(csr.verify(csr.public_key()?.as_ref())?);
+    Ok(())
+}
+
+/// A key whose usage mask lacks Sign does not sign a CSR, as for the KMIP Sign operation.
+#[tokio::test]
+async fn csr_generation_refuses_a_key_that_cannot_sign() -> KResult<()> {
+    let kms = make_kms().await?;
+    let owner = user("pki-admin@example.com");
+    let (sk_id, _) = make_key_pair(&kms, &owner).await?;
+    kms.modify_attribute(
+        ModifyAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(sk_id.clone())),
+            new_attribute: Attribute::CryptographicUsageMask(
+                CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+            ),
+        },
+        &owner,
+    )
+    .await?;
+    let Err(err) = generate_csr(&kms, &sk_id, "CN=x", &owner).await else {
+        panic!("a key without the Sign usage must not sign a CSR");
+    };
+    assert!(err.to_string().contains("does not allow Sign"), "{err}");
     Ok(())
 }
 
