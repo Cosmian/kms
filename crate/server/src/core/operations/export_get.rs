@@ -516,15 +516,7 @@ async fn post_process_active_private_key(
     // Return as-is, honouring wrapping when requested.
     if is_pqc_algorithm(key_block.cryptographic_algorithm) {
         let stored_fmt = key_block.key_format_type;
-        if key_format_type.is_some()
-            && !matches!(
-                key_format_type,
-                Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
-            )
-        {
-            kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
-        }
-        // If a specific format is requested that differs from the stored format, reject
+        // These keys have no OpenSSL round-trip: only the stored format can be returned
         if let Some(requested) = key_format_type {
             if *requested != stored_fmt {
                 kms_bail!(
@@ -810,14 +802,7 @@ async fn process_public_key(
         // PQC public keys: skip the OpenSSL round-trip, same rationale as private keys.
         if is_pqc_algorithm(key_block.cryptographic_algorithm) {
             let stored_fmt = key_block.key_format_type;
-            if key_format_type.is_some()
-                && !matches!(
-                    key_format_type,
-                    Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
-                )
-            {
-                kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
-            }
+            // These keys have no OpenSSL round-trip: only the stored format can be returned
             if let Some(requested) = key_format_type {
                 if *requested != stored_fmt {
                     kms_bail!(
@@ -1000,7 +985,8 @@ async fn process_covercrypt_key(
     Ok(())
 }
 
-/// Returns `true` for PQC algorithm variants (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA).
+/// Returns `true` for algorithms whose keys have no OpenSSL representation and must skip the
+/// OpenSSL round-trip on export: PQC (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA) and `ConfigurableKEM`.
 const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
     matches!(
         algo,
@@ -1011,6 +997,7 @@ const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
                 | CryptographicAlgorithm::MLDSA_44
                 | CryptographicAlgorithm::MLDSA_65
                 | CryptographicAlgorithm::MLDSA_87
+                | CryptographicAlgorithm::ConfigurableKEM
                 | CryptographicAlgorithm::X25519MLKEM768
                 | CryptographicAlgorithm::X448MLKEM1024
                 | CryptographicAlgorithm::SLHDSA_SHA2_128s
