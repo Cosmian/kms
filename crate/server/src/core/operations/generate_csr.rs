@@ -4,11 +4,14 @@
 //! oracle (the HSM key may be non-extractable), database keys sign in process.
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-        kmip_objects::ObjectType,
-        kmip_types::{LinkType, OperationEnumeration},
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_objects::ObjectType,
+            kmip_types::{LinkType, OperationEnumeration},
+        },
     },
     cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
@@ -128,6 +131,14 @@ pub(crate) async fn generate_csr(
     {
         kms_bail!(KmsError::InvalidRequest(format!(
             "CSR generation: '{private_key_id}' is not a private key"
+        )));
+    }
+    // KMIP §4.57: only Active keys sign (as the KMIP Sign operation and Certify require)
+    let state = sk.effective_state();
+    if state != State::Active {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "CSR generation: private key '{}' is in state '{state}' — only Active keys may sign",
+            sk.id()
         )));
     }
     let is_hsm = ObjectHandle::from(sk.id()).is_hsm();
