@@ -8,11 +8,12 @@
   in an HSM (non-extractable): the HSM signs the TBS bytes and the result is verified with the
   issuer public key before being stored.
   Behaviour change: this applies to every HSM issuer key, including non-sensitive ones that used to be
-  exported; HSM CA keys other than RSA/EC/Ed25519 are now rejected, and EC HSM CAs sign with SHA-256.
-- The OCSP responder signs with an HSM-protected CA key through the crypto oracle. EST/SCEP
-  enrollment returns a clear `NotSupported` error for a non-extractable (sensitive) HSM CA key
-  instead of failing while trying to load it; non-sensitive HSM CA keys keep working as before.
-  Ed25519 HSM keys (non-FIPS) are supported for CSRs, certificates, CRLs and OCSP.
+  exported; HSM CA keys other than RSA/EC/Ed25519/Ed448 are now rejected, and EC HSM CAs sign with SHA-256.
+- The OCSP responder signs with an HSM-protected CA key through the crypto oracle. EST enrollment
+  issues through `Certify`, so it works with any HSM CA key. SCEP returns a clear `NotSupported`
+  error for a non-extractable (sensitive) HSM CA key instead of failing while trying to load it;
+  non-sensitive HSM CA keys keep working as before. Ed25519/Ed448 HSM keys (non-FIPS) are supported
+  for CSRs, certificates, CRLs and OCSP. CSR generation refuses a private key that is not Active.
 - Fixed: the OCSP responder answered `unauthorized` to every request for a sub-CA (issuer hashes
   were computed from the CA's issuer name instead of its subject name).
 

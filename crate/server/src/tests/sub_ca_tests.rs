@@ -271,6 +271,23 @@ async fn user_granted_only_sign_on_the_private_key_gets_a_csr() -> KResult<()> {
     Ok(())
 }
 
+/// KMIP §4.57: a revoked (Deactivated) key no longer signs, so no CSR is produced with it.
+#[tokio::test]
+async fn csr_generation_refuses_a_deactivated_key() -> KResult<()> {
+    let kms = make_kms().await?;
+    let owner = user("pki-admin@example.com");
+    let (sk_id, _) = make_key_pair(&kms, &owner).await?;
+    revoke_certificate(&kms, &owner, &sk_id).await?;
+    let Err(err) = generate_csr(&kms, &sk_id, "CN=x", &owner).await else {
+        panic!("a Deactivated key must not sign a CSR");
+    };
+    assert!(
+        err.to_string().contains("only Active keys may sign"),
+        "{err}"
+    );
+    Ok(())
+}
+
 /// Ed25519 keys sign without a digest, unlike RSA and EC.
 #[cfg(feature = "non-fips")]
 #[tokio::test]

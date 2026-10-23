@@ -2421,10 +2421,10 @@ paths:
                     description: PEM-encoded PKCS#10 certificate signing request
         '401':
           description: Unauthorized — missing or invalid credentials, or role not permitted
-        '404':
-          description: Private key not found or caller lacks the `Sign` permission on it
         '422':
-          description: Invalid request — empty or malformed subject, not a private key, or extractable HSM key
+          description: >-
+            Invalid request — private key not found or caller lacks the `Sign` permission on it,
+            key not Active, empty or malformed subject, not a private key, or extractable HSM key
         '500':
           description: Internal server error — signing failed
 
