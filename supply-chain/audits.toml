@@ -1,7 +1,11 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.ctutils]]
+who = "Théophile BRÉZOT <theophile.brezot@cosmian.com>"
+criteria = "safe-to-deploy"
+delta = "0.4.2 -> 0.4.5"
+notes = "No unsafe code or macros where modified in this release."
 
 [[trusted.actix-codec]]
 criteria = "safe-to-deploy"
