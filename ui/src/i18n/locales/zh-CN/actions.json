@@ -1928,6 +1928,19 @@
         "error404": "未找到颁发者 '{{issuerId}}' 的 CRL。吊销证书时系统会自动生成 CRL。若尚未吊销任何证书，CRL 可能不存在。",
         "success": "CRL 下载成功（{{bytes}} 字节，{{format}} 格式）"
     },
+    "certificateGenerateCsr": {
+        "title": "生成 CSR",
+        "alertMessage": "CSR 在 KMS 内部使用私钥签名，私钥不会被导出。",
+        "alertDescription": "用于向外部或离线根 CA 申请由本 KMS（或其 HSM，即使不可导出）持有的子 CA 密钥的证书。需要对该密钥拥有 Sign 权限。",
+        "privateKeyId": "私钥 ID",
+        "privateKeyIdRequired": "请输入私钥 ID",
+        "privateKeyIdPlaceholder": "输入私钥的唯一标识符",
+        "subjectName": "主体名称",
+        "subjectNameRequired": "请输入主体可分辨名称",
+        "submit": "生成 CSR",
+        "responseTitle": "CSR 生成结果",
+        "success": "CSR 已生成并下载（{{bytes}} 字节，PEM 格式）"
+    },
     "pgpKeysCreate": {
         "title": "创建 OpenPGP 密钥",
         "intro": "创建新的 OpenPGP 可传输私钥 (v4)。该密钥在 KMS 内部以未受口令保护的形式生成。",
