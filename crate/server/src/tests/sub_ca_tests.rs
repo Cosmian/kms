@@ -371,6 +371,40 @@ async fn csr_for_a_database_ed25519_key() -> KResult<()> {
     Ok(())
 }
 
+/// A key-agreement key cannot sign: the caller made a bad request, the server did not fail.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn csr_generation_refuses_an_x25519_key() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_types::RecommendedCurve, requests::create_ec_key_pair_request,
+    };
+
+    use crate::error::KmsError;
+    let kms = make_kms().await?;
+    let owner = user("pki-admin@example.com");
+    let response = kms
+        .create_key_pair(
+            create_ec_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                EMPTY_TAGS,
+                RecommendedCurve::CURVE25519,
+                false,
+                None,
+            )?,
+            &owner,
+        )
+        .await?;
+    let sk_id = response.private_key_unique_identifier.to_string();
+    let result = generate_csr(&kms, &sk_id, "CN=x25519", &owner).await;
+    assert!(
+        matches!(result, Err(KmsError::InvalidRequest(_))),
+        "expected InvalidRequest, got {:?}",
+        result.map(|_csr| ())
+    );
+    Ok(())
+}
+
 /// Issue a leaf certificate under `(root_id, root_sk_id)`; returns its id.
 async fn make_leaf(kms: &KMS, owner: &UserId, root_id: &str, root_sk_id: &str) -> KResult<String> {
     let mut attributes = Attributes {
