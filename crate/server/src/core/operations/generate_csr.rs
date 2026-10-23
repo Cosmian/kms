@@ -196,15 +196,14 @@ pub(crate) async fn generate_csr(
             Id::RSA | Id::EC => MessageDigest::sha256(),
             _ => MessageDigest::null(),
         };
-        // KEM keys (X25519, ML-KEM, ...) cannot sign: a client error, not a server failure
-        builder
-            .sign(&private_key, digest)
-            .map_err(|_openssl_error| {
-                KmsError::InvalidRequest(format!(
-                    "CSR generation: a {:?} key cannot sign a CSR",
-                    private_key.id()
-                ))
-            })?;
+        // Key-agreement keys cannot sign: a client error, not a server failure
+        if matches!(private_key.id(), Id::X25519 | Id::X448) {
+            kms_bail!(KmsError::InvalidRequest(format!(
+                "CSR generation: a {:?} key cannot sign a CSR",
+                private_key.id()
+            )));
+        }
+        builder.sign(&private_key, digest)?;
         (builder.build(), public_key)
     };
 
