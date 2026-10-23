@@ -48,6 +48,8 @@ use crate::{
 mod ec_dek;
 #[cfg(feature = "non-fips")]
 mod eddsa_sign;
+#[cfg(feature = "non-fips")]
+mod hybrid_kem_dek;
 mod issues;
 mod multi_hsm;
 mod permissions;
@@ -83,6 +85,10 @@ async fn test_hsm_all() {
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
         info!("HSM: eddsa_sign");
         Box::pin(eddsa_sign::test_hsm_eddsa_sign()).await.unwrap();
+        info!("HSM: hybrid_kem_lifecycle");
+        Box::pin(hybrid_kem_dek::test_hybrid_kem_lifecycle())
+            .await
+            .unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
