@@ -59,6 +59,7 @@ mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
+mod sub_ca;
 mod symmetric_dek;
 pub(crate) mod test_helpers;
 
@@ -128,6 +129,9 @@ async fn test_hsm_all() {
     Box::pin(issues::test_hsm_locate_name_filter_does_not_leak_kek())
         .await
         .unwrap();
+
+    info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
+    Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
 
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();

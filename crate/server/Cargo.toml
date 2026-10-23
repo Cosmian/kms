@@ -96,6 +96,7 @@ cosmian_kms_server_database = { workspace = true }
 cosmian_logger = { workspace = true }
 crypt2pay_pkcs11_loader = { workspace = true }
 dashmap = { workspace = true }
+der = { workspace = true, features = ["alloc", "derive", "oid"] }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 fs4 = { workspace = true }
@@ -146,6 +147,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 utimaco_pkcs11_loader = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+x509-cert = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 

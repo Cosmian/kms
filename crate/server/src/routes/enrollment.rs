@@ -294,6 +294,14 @@ pub(crate) async fn load_ca_signing_material(
             "the enrollment CA key is not available".to_owned(),
         ));
     }
+    // A non-sensitive HSM key can be exported and keeps working; a sensitive one cannot
+    if ObjectHandle::from(private_key.id()).is_hsm()
+        && private_key.attributes().sensitive == Some(true)
+    {
+        return Err(KmsError::NotSupported(
+            "SCEP cannot use a non-extractable HSM CA key".to_owned(),
+        ));
+    }
     let unwrapped = Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), &user))
         .await
         .inspect_err(|e| log_ca_use_failure(&ca_uid, e))?;

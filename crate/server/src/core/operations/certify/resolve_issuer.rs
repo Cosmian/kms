@@ -7,23 +7,30 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_attributes::Attributes,
             kmip_operations::Certify,
-            kmip_types::{LinkType, UniqueIdentifier},
+            kmip_types::{LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         },
     },
     cosmian_kms_crypto::openssl::{kmip_certificate_to_openssl, kmip_private_key_to_openssl},
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::trace;
+use openssl::pkey::{PKey, Public};
 
 #[cfg(feature = "non-fips")]
 use super::rfc9935;
-use super::{issuer::Issuer, subject::Subject};
+use super::{
+    issuer::{Issuer, IssuerKey},
+    subject::Subject,
+};
 use crate::{
     core::{
         KMS,
-        certificate::retrieve_issuer_private_key_and_certificate,
+        certificate::{
+            oracle_signing::OracleSigningKey, retrieve_issuer_private_key_and_certificate,
+        },
         operations::algorithm_policy::{
             enforce_kmip_algorithm_policy_for_public_key,
             enforce_kmip_algorithm_policy_for_retrieved_key,
@@ -102,31 +109,80 @@ pub(crate) async fn get_issuer<'a>(
     .await?;
     // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
     ensure_issuer_key_active(&issuer_private_key)?;
-    enforce_kmip_algorithm_policy_for_retrieved_key(
-        &kms.params,
-        "Certify",
-        issuer_private_key.id(),
+    // HSM keys are represented by a metadata stub that is not a loadable key: for them the
+    // policy is enforced on the issuer public key below.
+    if !ObjectHandle::from(issuer_private_key.id()).is_hsm() {
+        enforce_kmip_algorithm_policy_for_retrieved_key(
+            &kms.params,
+            "Certify",
+            issuer_private_key.id(),
+            &issuer_private_key,
+        )?;
+    }
+    let issuer_x509 = kmip_certificate_to_openssl(issuer_certificate.object())?;
+    let issuer_key = Box::pin(load_issuer_key(
+        kms,
         &issuer_private_key,
-    )?;
-    // The private key may be stored in wrapped form (e.g. when using an HSM with a KEK).
-    // Unwrap it before converting to OpenSSL format for signing.
-    let unwrapped_pk =
-        Box::pin(kms.get_unwrapped(issuer_private_key.id(), issuer_private_key.object(), user))
-            .await?;
-    let issuer_key = kmip_private_key_to_openssl(&unwrapped_pk)?;
+        issuer_x509.public_key()?,
+        user,
+    ))
+    .await?;
     // The retrieved-key check trusts KMIP attributes, which may be absent (PKCS#8 import): also
-    // check the real key material.
-    enforce_kmip_algorithm_policy_for_public_key(
-        &kms.params,
-        "Certify",
-        &issuer_key,
-        issuer_private_key.object().attributes().ok(),
-    )?;
+    // check the real key material. HSM keys have no loaded material: the policy is checked on the
+    // issuer certificate's public key.
+    match &issuer_key {
+        IssuerKey::Local(key) => enforce_kmip_algorithm_policy_for_public_key(
+            &kms.params,
+            "Certify",
+            key,
+            issuer_private_key.object().attributes().ok(),
+        )?,
+        IssuerKey::Oracle(key) => enforce_kmip_algorithm_policy_for_public_key(
+            &kms.params,
+            "Certify",
+            &key.public_key,
+            issuer_private_key.object().attributes().ok(),
+        )?,
+    }
     Ok(Issuer::PrivateKeyAndCertificate(
         UniqueIdentifier::TextString(issuer_certificate.id().to_owned()),
         issuer_key,
-        kmip_certificate_to_openssl(issuer_certificate.object())?,
+        issuer_x509,
     ))
+}
+
+/// Load the issuer signing key: in memory for database keys, by reference for HSM keys
+/// (which may be non-extractable and must never be exported).
+pub(crate) async fn load_issuer_key(
+    kms: &KMS,
+    private_key: &ObjectWithMetadata,
+    issuer_public_key: PKey<Public>,
+    user: &UserId,
+) -> KResult<IssuerKey> {
+    if let Some(key) = OracleSigningKey::for_hsm_uid(private_key.id(), issuer_public_key)? {
+        return Ok(IssuerKey::Oracle(key));
+    }
+    // The private key may be stored in wrapped form (e.g. with a server KEK): unwrap it first.
+    let unwrapped =
+        Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), user)).await?;
+    Ok(IssuerKey::Local(kmip_private_key_to_openssl(&unwrapped)?))
+}
+
+/// Link to the private key of `public_key`. HSM objects carry no KMIP links: the private key of
+/// an HSM public key `<sk>_pk` is `<sk>`.
+pub(super) fn private_key_link_of(
+    public_key: &ObjectWithMetadata,
+) -> Option<LinkedObjectIdentifier> {
+    public_key
+        .attributes()
+        .get_link(LinkType::PrivateKeyLink)
+        .or_else(|| {
+            public_key
+                .id()
+                .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
+                .filter(|_| ObjectHandle::from(public_key.id()).is_hsm())
+                .map(|sk_uid| LinkedObjectIdentifier::TextString(sk_uid.to_owned()))
+        })
 }
 
 async fn fetch_object_from_attributes(
@@ -179,24 +235,34 @@ async fn issuer_for_self_signed_certificate<'a>(
             })?;
             // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
             ensure_issuer_key_active(&private_key)?;
-            let unwrapped_pk =
-                Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), user)).await?;
+            let issuer_key = Box::pin(load_issuer_key(
+                kms,
+                &private_key,
+                certificate.public_key()?,
+                user,
+            ))
+            .await?;
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
-                kmip_private_key_to_openssl(&unwrapped_pk)?,
+                issuer_key,
                 certificate.clone(),
             ))
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, public_key, subject_name) => {
             // the user is creating a self-signed certificate from a public key
             // try fetching the corresponding private key to sign it
-            let private_key = fetch_object_from_attributes(
-                LinkType::PrivateKeyLink,
-                kms,
-                public_key.attributes(),
-                user,
-            )
-            .await?
+            let private_key = match private_key_link_of(public_key) {
+                Some(link) => Some(
+                    Box::pin(retrieve_object_for_operation(
+                        ObjectHandle::from(&link.to_string()),
+                        KmipOperation::Certify,
+                        kms,
+                        user,
+                    ))
+                    .await?,
+                ),
+                None => None,
+            }
             .ok_or_else(|| {
                 KmsError::InvalidRequest(
                     "No private key link found to create a self-signed certificate from a public \
@@ -206,8 +272,13 @@ async fn issuer_for_self_signed_certificate<'a>(
             })?;
             // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
             ensure_issuer_key_active(&private_key)?;
-            let unwrapped_pk =
-                Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), user)).await?;
+            let issuer_key = Box::pin(load_issuer_key(
+                kms,
+                &private_key,
+                subject.public_key()?,
+                user,
+            ))
+            .await?;
             // see if we can find an existing certificate to link to the public key
             let certificate = fetch_object_from_attributes(
                 LinkType::CertificateLink,
@@ -219,12 +290,12 @@ async fn issuer_for_self_signed_certificate<'a>(
             match certificate {
                 Some(certificate) => Ok(Issuer::PrivateKeyAndCertificate(
                     unique_identifier.clone(),
-                    kmip_private_key_to_openssl(&unwrapped_pk)?,
+                    issuer_key,
                     kmip_certificate_to_openssl(certificate.object())?,
                 )),
                 None => Ok(Issuer::PrivateKeyAndSubjectName(
                     unique_identifier.clone(),
-                    kmip_private_key_to_openssl(&unwrapped_pk)?,
+                    issuer_key,
                     subject_name,
                 )),
             }
@@ -252,7 +323,9 @@ async fn issuer_for_self_signed_certificate<'a>(
             }
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
-                kmip_private_key_to_openssl(&keypair_data.private_key_object)?,
+                IssuerKey::Local(kmip_private_key_to_openssl(
+                    &keypair_data.private_key_object,
+                )?),
                 subject_name,
             ))
         }

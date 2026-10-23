@@ -871,7 +871,7 @@ impl Database {
 /// generated serial numbers have a leading nibble of `0`, and naively trimming all
 /// leading `'0'` characters (rather than only whole zero bytes) desynchronises this
 /// hex string from the OCSP layer's for exactly those certificates.
-fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
+pub(crate) fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
     const UPPER_HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
     let cert_bytes = match object {

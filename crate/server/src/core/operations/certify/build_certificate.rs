@@ -5,7 +5,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::C
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_2_1::{
-            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::SYSTEM_TAG_CERTIFICATE},
+            extra::{
+                VENDOR_ATTR_X509_EXTENSION,
+                tagging::{SYSTEM_TAG_CERTIFICATE, set_certificate_serial_tag},
+            },
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
             kmip_operations::Certify,
@@ -34,20 +37,27 @@ use openssl::{
     x509::{X509, X509Extension},
 };
 
-use super::{issuer::Issuer, rfc9608, subject::Subject};
+use super::{
+    issuer::{Issuer, IssuerKey},
+    rfc9608,
+    subject::Subject,
+};
 #[cfg(feature = "non-fips")]
 use super::{rfc9881, rfc9909, rfc9935};
 use crate::{
-    core::KMS,
+    core::{
+        KMS,
+        certificate::oracle_signing::{placeholder_signing_key, sign_certificate_with_oracle},
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
 
 const X509_VERSION3: i32 = 2;
 
-pub(crate) fn build_and_sign_certificate(
+pub(crate) async fn build_and_sign_certificate(
     kms: &KMS,
-    issuer: &Issuer,
+    issuer: &Issuer<'_>,
     subject: &Subject,
     request: Certify,
     kms_public_url: Option<&str>,
@@ -132,15 +142,27 @@ pub(crate) fn build_and_sign_certificate(
     // RFC 9608 §2–§3: auto-add noRevAvail for self-signed end-entity certs
     apply_no_rev_avail(&mut x509_builder, issuer, &attributes, vendor_id, has_cdp)?;
 
-    // The digest must match the *issuer's signing key* type, not the subject key.
-    let digest = signing_digest(issuer.private_key());
-
-    // Set the issuer name and private key
+    // Set the issuer name and serial number
     x509_builder.set_issuer_name(issuer.subject_name())?;
     x509_builder.set_serial_number(generate_serial_number(&kms.rng)?.as_ref())?;
-    x509_builder.sign(issuer.private_key(), digest)?;
-
-    let x509 = x509_builder.build();
+    let x509 = match issuer.key() {
+        IssuerKey::Local(key) => {
+            // The digest must match the *issuer's signing key* type, not the subject key.
+            x509_builder.sign(key, signing_digest(key))?;
+            x509_builder.build()
+        }
+        IssuerKey::Oracle(key) => {
+            // HSM key: OpenSSL serialises the certificate with a throwaway key, the HSM then
+            // signs the real TBS bytes.
+            let draft = {
+                let placeholder = placeholder_signing_key()?;
+                x509_builder.sign(&placeholder, MessageDigest::sha256())?;
+                x509_builder.build()
+            };
+            Box::pin(sign_certificate_with_oracle(kms, key, &draft)).await?
+        }
+    };
+    let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
 
     // Process the tags
     let mut tags = attributes.remove_tags(vendor_id).unwrap_or_default();
@@ -151,6 +173,11 @@ pub(crate) fn build_and_sign_certificate(
     tags.extend(subject.tags(vendor_id).iter().cloned());
     // add the certificate "system" tag
     tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
+    // a renewed certificate inherits the old certificate's tags: replace the old serial tag
+    set_certificate_serial_tag(
+        &mut tags,
+        &certificate_attributes.certificate_subject_serial_number,
+    );
 
     // link the certificate to the issuer certificate
     attributes.set_link(
@@ -168,7 +195,6 @@ pub(crate) fn build_and_sign_certificate(
     attributes.key_format_type = Some(KeyFormatType::X509);
 
     // Add certificate attributes
-    let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
     attributes.certificate_attributes = Some(certificate_attributes);
 
     // KMIP §4.48 / §4.51: set initial_date so the auto-rotation scheduler can
