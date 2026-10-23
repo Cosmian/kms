@@ -1459,11 +1459,6 @@ version = "0.6.0"
 criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 0.6.0) — unaudited, pending review"
 
-[[exemptions.ring]]
-version = "0.17.14"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.ripemd]]
 version = "0.1.3"
 criteria = "safe-to-deploy"
