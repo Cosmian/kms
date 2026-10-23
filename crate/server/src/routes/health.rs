@@ -18,8 +18,6 @@ enum HealthStatus {
 struct DependencyHealth {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<&'static str>,
-    status: HealthStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -30,7 +28,7 @@ struct Dependencies {
 
 #[derive(Serialize, Debug)]
 pub(crate) struct HealthResponse {
-    status: HealthStatus,
+    status: HealthzzzStatus,
     latency_ms: u128,
     dependencies: Dependencies,
 }

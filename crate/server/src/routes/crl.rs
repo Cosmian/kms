@@ -44,7 +44,7 @@ pub(crate) struct CrlQueryParams {
 ///
 /// Returns the signed CRL in DER (default) or PEM format.
 #[get("/certificates/{issuer_id}/crl")]
-pub(crate) async fn get_crl(
+pub(crasync fn get_crl(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
     path: Path<String>,
