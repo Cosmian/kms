@@ -28,7 +28,10 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         MYSQL_QUERIES,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         sql::{
             database::SqlDatabase,
             locate_query::{
@@ -389,6 +392,51 @@ impl MySqlPool {
             conn.exec_drop(upsert_param, (WRAPPING_KEY_BACKFILL_PARAM, "true"))
                 .await
                 .map_err(DbError::from)?;
+        }
+
+        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
+        // existed, gated by a completion marker (same shape as above).
+        let serial_marker: Option<String> = conn
+            .exec_first(select_param, (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,))
+            .await
+            .map_err(DbError::from)?;
+        if serial_marker.as_deref() != Some("true") {
+            let select_sql = MYSQL_QUERIES
+                .get("select-certificates-missing-serial-tag")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: select-certificates-missing-serial-tag".to_owned(),
+                    )
+                })?;
+            let insert_sql = MYSQL_QUERIES.get("insert-tags-if-absent").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: insert-tags-if-absent".to_owned())
+            })?;
+            let missing_rows: Vec<(String, String)> =
+                conn.query(select_sql).await.map_err(DbError::from)?;
+            for (id, object_json) in &missing_rows {
+                match serde_json::from_str::<Object>(object_json) {
+                    Ok(obj) => {
+                        if let Some(tag) = certificate_serial_tag(&obj) {
+                            conn.exec_drop(insert_sql, (id, &tag))
+                                .await
+                                .map_err(DbError::from)?;
+                        }
+                    }
+                    Err(e) => warn!(
+                        "serial tag backfill: skipping object {id} that failed to \
+                         deserialize: {e}"
+                    ),
+                }
+            }
+            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
+            })?;
+            conn.exec_drop(
+                upsert_param,
+                (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true"),
+            )
+            .await
+            .map_err(DbError::from)?;
         }
 
         let this = Self { pool };

@@ -17,6 +17,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX,
             kmip_attributes::Attributes,
             kmip_data_structures::KeyWrappingSpecification,
             kmip_objects::ObjectType,
@@ -199,13 +200,14 @@ impl RekeyOperation for CertificateRekey {
         // Resolve issuer from the old certificate's attributes
         let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
         // Build and sign the new certificate
-        let (certificate_object, tags, attributes) = build_and_sign_certificate(
+        let (certificate_object, tags, attributes) = Box::pin(build_and_sign_certificate(
             kms,
             &issuer,
             &subject,
             certify_request,
             kms.params.kms_public_url.as_deref(),
-        )?;
+        ))
+        .await?;
 
         Ok([ReplacementObject {
             new_uid,
@@ -265,7 +267,12 @@ impl RekeyOperation for CertificateRekey {
         replacement
             .attributes
             .set_rotation_metadata_from(old_attrs)?;
-        replacement.tags.extend(old_attrs.get_tags(kms.vendor_id()));
+        replacement.tags.extend(
+            old_attrs
+                .get_tags(kms.vendor_id())
+                .into_iter()
+                .filter(|t| !t.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX)),
+        );
 
         Ok(())
     }

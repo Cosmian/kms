@@ -127,6 +127,9 @@ SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Act
 -- name: insert-tags
 INSERT INTO tags (id, tag) VALUES ($1, $2);
 
+-- name: insert-tags-if-absent
+INSERT INTO tags (id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING;
+
 -- name: select-tags
 SELECT tag FROM tags WHERE id=$1;
 
@@ -188,6 +191,11 @@ SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 
 -- name: update-wrapping-key-id
 UPDATE objects SET wrapping_key_id = $1 WHERE id = $2;
+
+-- name: select-certificates-missing-serial-tag
+SELECT objects.id, objects.object FROM objects
+INNER JOIN tags c ON c.id = objects.id AND c.tag = '_cert'
+WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag, 1, 8) = '_serial=');
 
 -- name: create-table-crypto_officer_activations
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (

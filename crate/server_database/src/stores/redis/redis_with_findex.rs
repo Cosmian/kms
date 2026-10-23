@@ -9,6 +9,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
         KmipOperation,
+        extra::tagging::{SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX},
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
     },
@@ -39,7 +40,10 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::{AtomicScriptOutcome, ScriptOp},
@@ -343,6 +347,7 @@ impl RedisWithFindex {
         // O(N) scan runs at most once per database (a fresh database has no
         // objects, so this is a no-op that only writes the marker).
         redis_with_findex.backfill_wrapped_by_index().await?;
+        Box::pin(redis_with_findex.backfill_certificate_serial_tags()).await?;
 
         Ok(redis_with_findex)
     }
@@ -382,6 +387,69 @@ impl RedisWithFindex {
             .await
             .map_err(|e| {
                 DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
+            })?;
+        Ok(())
+    }
+
+    /// Add the `_serial=<HEX>` tag to certificates stored before that tag existed.
+    ///
+    /// Candidates come from the `_cert` Findex keyword. Updating the tags through the normal
+    /// atomic path re-indexes the Findex keywords. Gated by a completion marker so the scan runs
+    /// at most once per database; a failed update leaves the marker unset so the next boot retries.
+    pub(crate) async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let marker: Option<String> = redis::cmd("GET")
+            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to read serial tag backfill marker: {e}"))
+            })?;
+        if marker.as_deref() == Some("true") {
+            return Ok(());
+        }
+
+        let indexed_uids = self
+            .findex
+            .search(&Keyword::from(SYSTEM_TAG_CERTIFICATE.as_bytes()))
+            .await
+            .map_err(|e| db_error!(format!("Error searching certificate keyword: {e:?}")))?;
+        for uid in indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+        {
+            let Some(db_object) = self.objects_db.object_get(&uid).await? else {
+                continue;
+            };
+            let mut tags = db_object.tags.clone().unwrap_or_default();
+            if tags
+                .iter()
+                .any(|tag| tag.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX))
+            {
+                continue;
+            }
+            let Some(tag) = certificate_serial_tag(&db_object.object) else {
+                continue;
+            };
+            tags.insert(tag);
+            self.run_atomic(
+                None,
+                &[AtomicOperation::UpdateObject((
+                    uid,
+                    db_object.object,
+                    db_object.attributes.unwrap_or_default(),
+                    Some(tags),
+                ))],
+            )
+            .await?;
+        }
+
+        redis::cmd("SET")
+            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+            .arg("true")
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to set serial tag backfill marker: {e}"))
             })?;
         Ok(())
     }

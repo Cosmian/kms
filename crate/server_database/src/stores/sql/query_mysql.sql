@@ -180,6 +180,10 @@ WHERE read_access.userid = ? OR read_access.userid = '*';
 INSERT INTO tags (id, tag)
 VALUES (?, ?);
 
+-- name: insert-tags-if-absent
+INSERT IGNORE INTO tags (id, tag)
+VALUES (?, ?);
+
 -- name: select-tags
 SELECT tag
 FROM tags
@@ -222,6 +226,11 @@ SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 
 -- name: update-wrapping-key-id
 UPDATE objects SET wrapping_key_id = ? WHERE id = ?;
+
+-- name: select-certificates-missing-serial-tag
+SELECT objects.id, objects.object FROM objects
+INNER JOIN tags c ON c.id = objects.id AND c.tag = '_cert'
+WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag, 1, 8) = '_serial=');
 
 -- name: has-index
 SELECT 1

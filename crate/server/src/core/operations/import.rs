@@ -8,9 +8,10 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
             extra::tagging::{
-                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY,
-                SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA,
-                SYSTEM_TAG_SYMMETRIC_KEY,
+                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX,
+                SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY, SYSTEM_TAG_PRIVATE_KEY,
+                SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
+                set_certificate_serial_tag,
             },
             kmip_attributes::Attributes,
             kmip_data_structures::KeyValue,
@@ -325,6 +326,7 @@ pub(super) fn process_certificate(
     // parse the certificate as an OpenSSL object to extract attributes
     let certificate = X509::from_der(certificate_der_bytes)?;
     let cert_attrs = openssl_x509_to_certificate_attributes(&certificate);
+    set_certificate_serial_tag(&mut tags, &cert_attrs.certificate_subject_serial_number);
     let cert_len = i32::try_from(certificate_der_bytes.len()).ok();
     let object = request.object;
 
@@ -698,7 +700,10 @@ async fn process_pkcs12(
         Object::PrivateKey(PrivateKey { key_block }) => key_block.pkcs_der_bytes()?,
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
-    let user_tags = request_attributes.get_tags(kms.vendor_id());
+    let mut user_tags = request_attributes.get_tags(kms.vendor_id());
+    // the serial tag is computed from the certificate, never taken from the request (it would
+    // otherwise also be copied onto the keys)
+    user_tags.retain(|t| !t.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX));
 
     // recover the password from the attributes
     let password = request_attributes
@@ -908,6 +913,9 @@ async fn process_pkcs12(
         user,
     ));
 
+    let leaf_serial = leaf_certificate_attributes
+        .certificate_subject_serial_number
+        .clone();
     let mut leaf_attributes = request_attributes.clone();
     // merge the object attributes with the request attributes; overwrite with the correct cryptographic parameters
     leaf_attributes.merge(
@@ -928,6 +936,7 @@ async fn process_pkcs12(
     // certificate tags
     let mut leaf_tags = user_tags.clone();
     leaf_tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
+    set_certificate_serial_tag(&mut leaf_tags, &leaf_serial);
     leaf_attributes.set_tags(kms.vendor_id(), leaf_tags)?;
 
     // Add links to the leaf certificate
@@ -971,6 +980,9 @@ async fn process_pkcs12(
         chain.into_iter().rev()
     // reverse the chain to have the root first
     {
+        let chain_serial = chain_certificate_attributes
+            .certificate_subject_serial_number
+            .clone();
         let mut chain_attributes = request_attributes.clone();
         // Add links to the chain certificate
         chain_attributes.merge(
@@ -993,6 +1005,7 @@ async fn process_pkcs12(
         // certificate tags
         let mut chain_tags = user_tags.clone();
         chain_tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
+        set_certificate_serial_tag(&mut chain_tags, &chain_serial);
         chain_attributes.set_tags(kms.vendor_id(), chain_tags)?;
 
         if let Some(parent_certificate_id) = parent_certificate_id {

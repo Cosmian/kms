@@ -9,6 +9,7 @@
 - [PKI Support]()
   - [Introduction](use_cases/pki.md)
   - [Revocation & CRL Distribution](use_cases/pki-revocation.md)
+  - [Delegated sub-CA with an HSM key](use_cases/pki-sub-ca-csr.md)
   - [OCSP Responder](use_cases/pki-ocsp.md)
   - [Device enrollment: EST and SCEP](use_cases/pki-enrollment.md)
     - [EST (RFC 7030)](use_cases/pki-enrollment-est.md)
