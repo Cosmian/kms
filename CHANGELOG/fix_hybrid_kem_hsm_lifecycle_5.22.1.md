@@ -17,6 +17,6 @@
 
 ## Dependencies
 
-- Bump the workspace version to 5.22.1 so that `cargo publish --dry-run` verifies the local crates instead of the already published 5.22.0 ones, which resolved to a newer `cosmian_kms_crypto` from crates.io.
+- Bump the workspace version to 5.22.1 and pin the internal path dependencies with `=5.22.1`, so that `cargo publish --dry-run` verifies the local 5.22.1 crates instead of newer 5.2x releases already on crates.io (a caret requirement matched them, and `cosmian_kms_crypto` 5.25.0 does not compile against `openssl` 0.10.79).
 - Fix the RUSTSEC advisories published since 5.22.0: `h2` (RUSTSEC-2026-0258, `actix-web` 4.17), `tokio` (RUSTSEC-2026-0386), `lru` 0.18 (RUSTSEC-2026-0253), `tokio-postgres`/`postgres-protocol` (RUSTSEC-2026-0178/0179/0180, with `aes-kw` 0.3.1), `quick-xml` 0.42 (RUSTSEC-2026-0194/0195) and `mysql_async` 0.37 without the `derive` feature (RUSTSEC-2026-0173).
 - Ignore RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5, no 0.5.x patch) in `deny.toml` and `.cargo/audit.toml`, with its reason.
