@@ -8,19 +8,35 @@ use cosmian_kms_client_utils::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{KeyWrapType, RevocationReason, RevocationReasonCode},
+        kmip_0::kmip_types::{
+            CryptographicUsageMask, KeyWrapType, RevocationReason, RevocationReasonCode,
+        },
         kmip_2_1::{
             extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
+            kmip_data_structures::{KeyValue, KeyWrappingData, KeyWrappingSpecification},
             kmip_operations::{
-                Activate, CreateKeyPair, Destroy, Export, GetAttributes, Operation, ReKeyKeyPair,
-                Revoke,
+                Activate, CreateKeyPair, Destroy, Export, GetAttributes, Import, Operation,
+                ReKeyKeyPair, Revoke,
             },
-            kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
-            requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
+                EncodingOption, EncryptionKeyInformation, KeyFormatType, RecommendedCurve,
+                UniqueIdentifier, WrappingMethod,
+            },
+            requests::{
+                create_pqc_key_pair_request, create_symmetric_key_kmip_object, decrypt_request,
+                encrypt_request,
+            },
         },
+        time_normalize,
     },
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+    cosmian_kms_crypto::{
+        crypto::{
+            KeyPair, KeyPairIdentity, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair,
+        },
+        reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+    },
 };
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -45,6 +61,8 @@ enum Alg {
     MlKem512P256,
     MlKem768P256,
     X25519MlKem768,
+    /// Pure (non hybrid) ML-KEM, stored as PKCS#8
+    MlKem768,
 }
 
 impl Alg {
@@ -82,6 +100,12 @@ impl Alg {
                 CryptographicAlgorithm::X25519MLKEM768,
                 false,
             )?,
+            Self::MlKem768 => create_pqc_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                [tag],
+                CryptographicAlgorithm::MLKEM_768,
+                false,
+            )?,
         })
     }
 
@@ -97,6 +121,11 @@ impl Alg {
                 CryptographicAlgorithm::X25519MLKEM768,
                 KeyFormatType::Raw,
                 KeyFormatType::Raw,
+            ),
+            Self::MlKem768 => (
+                CryptographicAlgorithm::MLKEM_768,
+                KeyFormatType::PKCS8,
+                KeyFormatType::PKCS8,
             ),
         }
     }
@@ -400,4 +429,241 @@ async fn lifecycle(alg: Alg) -> KResult<()> {
     delete_key(&kek_uid, &owner, &kms).await?;
     export_object(&kms, &owner, &sk).await.unwrap_err();
     Ok(())
+}
+
+/// Same import attributes as `ckms keys import`: activated now, usage mask from `--key-usage`.
+async fn import_activated(
+    kms: &Arc<KMS>,
+    owner: &str,
+    uid: &str,
+    object: Object,
+    object_type: ObjectType,
+) -> KResult<()> {
+    kms.import(
+        Import {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            object_type,
+            attributes: Attributes {
+                object_type: Some(object_type),
+                activation_date: Some(time_normalize()?),
+                cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+                ..Default::default()
+            },
+            replace_existing: None,
+            key_wrap_type: None,
+            object,
+        },
+        &UserId::from(owner),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Keys created on a server without KEK, exported TTLV-wrapped by a software AES key, then
+/// imported (still wrapped) in a server whose KEK is in the HSM. The software key is itself
+/// wrapped by the HSM KEK on that server.
+pub(super) async fn test_ttlv_wrapped_kem_import() -> KResult<()> {
+    for alg in [Alg::MlKem768P256, Alg::X25519MlKem768, Alg::MlKem768] {
+        Box::pin(ttlv_wrapped_import(alg)).await?;
+    }
+    Ok(())
+}
+
+async fn ttlv_wrapped_import(alg: Alg) -> KResult<()> {
+    let kek_uuid = Uuid::new_v4();
+    let owner = Uuid::new_v4().to_string();
+    let tag = Uuid::new_v4().to_string();
+    let sqlite_path = get_tmp_sqlite_path();
+
+    let prod = restart(&owner, kek_uuid, &sqlite_path, false).await?;
+    let kek_uid = hsm_clap_config(&owner, Some(kek_uuid))?
+        .key_encryption_key
+        .ok_or_else(|| KmsError::Default("Missing KEK".to_owned()))?;
+    create_kek(&kek_uid, &owner, &prod).await?;
+    // the source server has no key encryption key
+    let mut source_config = hsm_clap_config(&owner, None)?;
+    source_config.db.sqlite_path = get_tmp_sqlite_path();
+    let source =
+        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(source_config)?)).await?);
+
+    // the same software AES wrapping key on both servers
+    let aes = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[7_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    for kms in [&prod, &source] {
+        import_activated(kms, &owner, "kemkek", aes.clone(), ObjectType::SymmetricKey).await?;
+    }
+
+    let response = send_message(
+        source.clone(),
+        &owner,
+        vec![Operation::CreateKeyPair(Box::new(
+            alg.create_request(&tag)?,
+        ))],
+    )
+    .await?;
+    let Operation::CreateKeyPairResponse(response) = &response[0] else {
+        return Err(KmsError::ServerError("invalid response".to_owned()));
+    };
+    let sk = uid_string(&response.private_key_unique_identifier)?;
+    let pk = uid_string(&response.public_key_unique_identifier)?;
+    assert_roundtrip(&source, &owner, &pk, &sk).await?;
+
+    for (uid, object_type) in [(&sk, ObjectType::PrivateKey), (&pk, ObjectType::PublicKey)] {
+        // what `ckms keys export --wrap-key-id kemkek -f json-ttlv` asks for
+        let exported = source
+            .export(
+                Export {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    key_format_type: None,
+                    key_compression_type: None,
+                    key_wrap_type: None,
+                    key_wrapping_specification: Some(KeyWrappingSpecification {
+                        wrapping_method: WrappingMethod::Encrypt,
+                        encryption_key_information: Some(EncryptionKeyInformation {
+                            unique_identifier: UniqueIdentifier::TextString("kemkek".to_owned()),
+                            cryptographic_parameters: None,
+                        }),
+                        encoding_option: Some(EncodingOption::TTLVEncoding),
+                        ..Default::default()
+                    }),
+                },
+                &UserId::from(owner.as_str()),
+            )
+            .await?
+            .object;
+        assert!(exported.is_wrapped());
+        import_activated(&prod, &owner, uid, exported, object_type).await?;
+    }
+    assert_roundtrip(&prod, &owner, &pk, &sk).await?;
+
+    // cold cache: unwrap again from the database
+    drop(prod);
+    let prod = restart(&owner, kek_uuid, &sqlite_path, false).await?;
+    assert_roundtrip(&prod, &owner, &pk, &sk).await?;
+    Ok(())
+}
+
+/// `ConfigurableKEM` and native hybrid keys generated client side, wrapped (TTLV) by the HSM KEK
+/// with a KMIP Encrypt, and imported as already wrapped.
+pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
+    let kek_uuid = Uuid::new_v4();
+    let owner = Uuid::new_v4().to_string();
+    let sqlite_path = get_tmp_sqlite_path();
+    let kms = restart(&owner, kek_uuid, &sqlite_path, false).await?;
+    let kek_uid = hsm_clap_config(&owner, Some(kek_uuid))?
+        .key_encryption_key
+        .ok_or_else(|| KmsError::Default("Missing KEK".to_owned()))?;
+    create_kek(&kek_uid, &owner, &kms).await?;
+
+    for configurable in [true, false] {
+        let sk = format!("cw-{}", Uuid::new_v4());
+        let pk = format!("{sk}_pk");
+        let pair = client_key_pair(configurable, &sk, &pk)?;
+        for (uid, object, object_type) in [
+            (&sk, pair.private_key(), ObjectType::PrivateKey),
+            (&pk, pair.public_key(), ObjectType::PublicKey),
+        ] {
+            let block = object.key_block()?;
+            let plaintext = block
+                .key_value
+                .as_ref()
+                .ok_or_else(|| KmsError::Default("no key value".to_owned()))?
+                .to_ttlv_bytes(block.key_format_type)?;
+            let response = send_message(
+                kms.clone(),
+                &owner,
+                vec![Operation::Encrypt(Box::new(encrypt_request(
+                    &kek_uid, None, plaintext, None, None, None,
+                )?))],
+            )
+            .await?;
+            let Operation::EncryptResponse(response) = &response[0] else {
+                return Err(KmsError::ServerError("invalid response".to_owned()));
+            };
+            // the same layout as the server wrapping: IV || ciphertext || tag
+            let wrapped = [
+                response.i_v_counter_nonce.clone().unwrap_or_default(),
+                response.data.clone().unwrap_or_default(),
+                response
+                    .authenticated_encryption_tag
+                    .clone()
+                    .unwrap_or_default(),
+            ]
+            .concat();
+            let mut wrapped_object = object.clone();
+            let wrapped_block = wrapped_object.key_block_mut()?;
+            wrapped_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped)));
+            wrapped_block.key_wrapping_data = Some(KeyWrappingData {
+                wrapping_method: WrappingMethod::Encrypt,
+                encryption_key_information: Some(EncryptionKeyInformation {
+                    unique_identifier: UniqueIdentifier::TextString(kek_uid.clone()),
+                    cryptographic_parameters: None,
+                }),
+                mac_signature_key_information: None,
+                mac_signature: None,
+                iv_counter_nonce: None,
+                encoding_option: Some(EncodingOption::TTLVEncoding),
+            });
+            import_activated(&kms, &owner, uid, wrapped_object, object_type).await?;
+        }
+        assert_roundtrip(&kms, &owner, &pk, &sk).await?;
+    }
+
+    // cold cache: the HSM unwraps both pairs again
+    drop(kms);
+    let kms = restart(&owner, kek_uuid, &sqlite_path, false).await?;
+    for uid in locate_keys(&owner, &kms, None).await? {
+        let uid = uid_string(&uid)?;
+        if let Some(sk) = uid.strip_suffix("_pk").filter(|s| s.starts_with("cw-")) {
+            assert_roundtrip(&kms, &owner, &uid, sk).await?;
+        }
+    }
+    Ok(())
+}
+
+fn client_key_pair(configurable: bool, sk: &str, pk: &str) -> KResult<KeyPair> {
+    let common = Attributes {
+        activation_date: Some(time_normalize()?),
+        ..Default::default()
+    };
+    if configurable {
+        kem_keygen(
+            VENDOR_ID_COSMIAN,
+            sk.to_owned(),
+            None,
+            pk.to_owned(),
+            None,
+            Attributes {
+                cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                    qlength: Some(256),
+                    recommended_curve: Some(RecommendedCurve::P256),
+                }),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
+                    ..Default::default()
+                }),
+                ..common
+            },
+        )
+    } else {
+        create_hybrid_kem_key_pair(
+            CryptographicAlgorithm::X25519MLKEM768,
+            KeyPairIdentity {
+                vendor_id: VENDOR_ID_COSMIAN,
+                private_key_uid: sk,
+                public_key_uid: pk,
+                common_attributes: common,
+                private_key_attributes: None,
+                public_key_attributes: None,
+            },
+            None,
+        )
+    }
+    .map_err(|e| KmsError::Default(e.to_string()))
 }

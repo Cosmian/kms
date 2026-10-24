@@ -89,6 +89,14 @@ async fn test_hsm_all() {
         Box::pin(hybrid_kem_dek::test_hybrid_kem_lifecycle())
             .await
             .unwrap();
+        info!("HSM: hybrid_kem_ttlv_wrapped_import");
+        Box::pin(hybrid_kem_dek::test_ttlv_wrapped_kem_import())
+            .await
+            .unwrap();
+        info!("HSM: hybrid_kem_client_wrapped_import");
+        Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
+            .await
+            .unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");

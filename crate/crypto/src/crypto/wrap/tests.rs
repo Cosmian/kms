@@ -474,7 +474,7 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
 }
 
 /// ByteString-only asymmetric keys (`ConfigurableKEM`, native hybrid KEM) have no OpenSSL
-/// representation: they must wrap/unwrap as raw bytes.
+/// representation: they must wrap/unwrap as raw bytes (`NoEncoding`) and as TTLV.
 #[cfg(feature = "non-fips")]
 #[test]
 fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
@@ -521,33 +521,35 @@ fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
         None,
     )?;
 
-    for i in 0..4 {
-        let pair = if i < 2 {
-            &mut configurable
-        } else {
-            &mut native
-        };
-        let obj = if i % 2 == 0 {
-            pair.private_key_mut()
-        } else {
-            pair.public_key_mut()
-        };
-        let bytes = obj.key_block()?.key_bytes()?;
-        let format = obj.key_block()?.key_format_type;
-        wrap_object_with_key(
-            obj,
-            &sym_key,
-            &KeyWrappingSpecification {
-                encoding_option: Some(EncodingOption::NoEncoding),
-                ..Default::default()
-            },
-            &KmsRng::new(),
-        )?;
-        assert!(obj.is_wrapped());
-        unwrap_key_block(obj.key_block_mut()?, &sym_key)?;
-        assert_eq!(obj.key_block()?.key_bytes()?, bytes);
-        assert_eq!(obj.key_block()?.key_format_type, format);
-        assert!(obj.key_block()?.key_wrapping_data.is_none());
+    for encoding in [EncodingOption::NoEncoding, EncodingOption::TTLVEncoding] {
+        for i in 0..4 {
+            let pair = if i < 2 {
+                &mut configurable
+            } else {
+                &mut native
+            };
+            let obj = if i % 2 == 0 {
+                pair.private_key_mut()
+            } else {
+                pair.public_key_mut()
+            };
+            let bytes = obj.key_block()?.key_bytes()?;
+            let format = obj.key_block()?.key_format_type;
+            wrap_object_with_key(
+                obj,
+                &sym_key,
+                &KeyWrappingSpecification {
+                    encoding_option: Some(encoding),
+                    ..Default::default()
+                },
+                &KmsRng::new(),
+            )?;
+            assert!(obj.is_wrapped());
+            unwrap_key_block(obj.key_block_mut()?, &sym_key)?;
+            assert_eq!(obj.key_block()?.key_bytes()?, bytes, "{encoding:?} #{i}");
+            assert_eq!(obj.key_block()?.key_format_type, format);
+            assert!(obj.key_block()?.key_wrapping_data.is_none());
+        }
     }
     Ok(())
 }
