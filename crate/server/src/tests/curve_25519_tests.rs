@@ -344,7 +344,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
     assert_eq!(
         batch_item.result_reason,
-        Some(ErrorReason::Operation_Not_Supported)
+        Some(ErrorReason::Feature_Not_Supported)
     );
     assert_eq!(
         batch_item.result_message,

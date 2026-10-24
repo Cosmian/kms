@@ -29,7 +29,7 @@ use super::audit::{inject_audit_request, inject_response_uid};
 use crate::{
     core::{
         KMS,
-        operations::{dispatch, message},
+        operations::{MAX_BATCH_ITEMS, dispatch, message},
     },
     error::KmsError,
     middlewares::UserId,
@@ -46,6 +46,9 @@ const TTLV_ERROR_RESPONSE: [u8; 160] = [
     5, 0, 0, 0, 4, 0, 0, 0, 5, 0, 0, 0, 0, 66, 0, 125, 7, 0, 0, 0, 19, 85, 110, 114, 101, 99, 111,
     118, 101, 114, 97, 98, 108, 101, 32, 101, 114, 114, 111, 114, 0, 0, 0, 0, 0,
 ];
+
+/// Maximum UTF-8 byte length of an error message copied into each batch-item response.
+const MAX_ERROR_MESSAGE_BYTES: usize = 512;
 
 /// Generate an "Invalid Message" KMIP error response message in TTLV format
 fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
@@ -105,22 +108,80 @@ fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
     }
 }
 
-/// According to the specs, when a Request Message is invalid, the KMIP server must return a
-/// Response message containing a header and a Batch Item without Operation,
-/// but with the Result Status field set to Operation Failed
-fn invalid_response_message(major: i32, minor: i32, error_message: String) -> ResponseMessage {
+/// `Operation` and `Unique Batch Item ID` of each request batch item, read from the raw request
+/// TTLV so message-level errors can echo them (KMIP 2.1 §8.6, Table 399).
+fn request_batch_item_ids(
+    request: Option<&TTLV>,
+) -> Vec<(Option<&KmipEnumerationVariant>, Option<&[u8]>)> {
+    let Some(TTLV {
+        value: TTLValue::Structure(items),
+        ..
+    }) = request
+    else {
+        return vec![];
+    };
+
+    items
+        .iter()
+        .filter(|item| &*item.tag == "BatchItem")
+        .map(|item| {
+            let TTLValue::Structure(children) = &item.value else {
+                return (None, None);
+            };
+            let operation = children.iter().find_map(|child| {
+                (&*child.tag == "Operation").then_some(match &child.value {
+                    TTLValue::Enumeration(value) => Some(value),
+                    _ => None,
+                })?
+            });
+            let unique_batch_item_id = children.iter().find_map(|child| {
+                (&*child.tag == "UniqueBatchItemID").then_some(match &child.value {
+                    TTLValue::ByteString(value) => Some(value.as_slice()),
+                    _ => None,
+                })?
+            });
+            (operation, unique_batch_item_id)
+        })
+        .collect()
+}
+
+fn truncate_error_message(mut error_message: String) -> String {
+    if error_message.len() > MAX_ERROR_MESSAGE_BYTES {
+        let mut end = MAX_ERROR_MESSAGE_BYTES;
+        while !error_message.is_char_boundary(end) {
+            end -= 1;
+        }
+        error_message.truncate(end);
+    }
+    error_message
+}
+
+/// According to the specification, when a Request Message is invalid, the KMIP server returns a
+/// Response Message containing an Operation Failed batch item for every request batch item.
+/// Each item echoes its `Operation` and `Unique Batch Item ID` when specified by the request.
+fn invalid_response_message(
+    major: i32,
+    minor: i32,
+    error_message: String,
+    request: Option<&TTLV>,
+) -> ResponseMessage {
+    let error_message = truncate_error_message(error_message);
+
     macro_rules! error_batch_item {
-        ($variant:ident, $mod:ident) => {
+        ($variant:ident, $mod:ident, $op:expr, $id:expr) => {
             ResponseMessageBatchItemVersioned::$variant(
                 cosmian_kmip::$mod::kmip_messages::ResponseMessageBatchItem {
-                    operation: None,
-                    unique_batch_item_id: None,
+                    operation: $op.and_then(|value: &KmipEnumerationVariant| {
+                        cosmian_kmip::$mod::kmip_types::OperationEnumeration::from_repr(value.value)
+                            .or_else(|| value.name.parse().ok())
+                    }),
+                    unique_batch_item_id: $id.map(<[u8]>::to_vec),
                     result_status:
                         cosmian_kmip::kmip_0::kmip_types::ResultStatusEnumeration::OperationFailed,
                     result_reason: Some(
                         cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message,
                     ),
-                    result_message: Some(error_message),
+                    result_message: Some(error_message.clone()),
                     asynchronous_correlation_value: None,
                     response_payload: None,
                     message_extension: None,
@@ -129,11 +190,20 @@ fn invalid_response_message(major: i32, minor: i32, error_message: String) -> Re
         };
     }
 
-    let batch_item = if major == 2 {
-        error_batch_item!(V21, kmip_2_1)
-    } else {
-        error_batch_item!(V14, kmip_1_4)
-    };
+    let mut ids = request_batch_item_ids(request);
+    if ids.is_empty() || ids.len() > MAX_BATCH_ITEMS {
+        ids = vec![(None, None)];
+    }
+    let batch_item = ids
+        .into_iter()
+        .map(|(operation, unique_batch_item_id)| {
+            if major == 2 {
+                error_batch_item!(V21, kmip_2_1, operation, unique_batch_item_id)
+            } else {
+                error_batch_item!(V14, kmip_1_4, operation, unique_batch_item_id)
+            }
+        })
+        .collect::<Vec<_>>();
 
     ResponseMessage {
         response_header: ResponseMessageHeader {
@@ -141,10 +211,10 @@ fn invalid_response_message(major: i32, minor: i32, error_message: String) -> Re
                 protocol_version_major: major,
                 protocol_version_minor: minor,
             },
-            batch_count: 1,
+            batch_count: i32::try_from(batch_item.len()).unwrap_or(i32::MAX),
             ..Default::default()
         },
-        batch_item: vec![batch_item],
+        batch_item,
     }
 }
 
@@ -178,7 +248,7 @@ pub(crate) async fn kmip_2_1_json(
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
+    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1, body_str)).await?;
 
     inject_response_uid(&req_http, &ttlv, &op_name);
 
@@ -204,23 +274,27 @@ async fn handle_ttlv(
     user: &UserId,
     major: i32,
     minor: i32,
+    raw_request: &str,
 ) -> KResult<TTLV> {
     if &*ttlv.tag == "RequestMessage" {
-        let req = match from_ttlv::<RequestMessage>(ttlv) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(target: "kmip", "Failed to parse RequestMessage: {}", e);
-                return Ok(error_response_ttlv(major, minor, &e.to_string()));
-            }
-        };
         let span = tracing::span!(tracing::Level::TRACE, "message");
-        let resp = Box::pin(message(kms, req, user))
-            .instrument(span)
-            .await
-            .unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to process request: {}", e);
-                invalid_response_message(major, minor, e.to_string())
-            });
+        let resp = match from_ttlv::<RequestMessage>(ttlv) {
+            Ok(req) => Box::pin(message(kms, req, user))
+                .instrument(span)
+                .await
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        }
+        .unwrap_or_else(|msg| {
+            let error_message = truncate_error_message(msg);
+            error!(target: "kmip", "Failed to process request: {error_message}");
+            invalid_response_message(
+                major,
+                minor,
+                error_message,
+                serde_json::from_str::<TTLV>(raw_request).ok().as_ref(),
+            )
+        });
         let ttlv = to_ttlv(&resp).unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
             error_response_ttlv(major, minor, e.to_string().as_str())
@@ -300,7 +374,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = &*ttlv.tag);
-        let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
+        let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor, body_str))
             .instrument(span)
             .await?;
 
@@ -378,17 +452,26 @@ async fn handle_ttlv_bytes_parsed(
     {
         Ok((response_bytes, response_ttlv)) => (response_bytes, Some(response_ttlv)),
         Err(e) => {
-            let response_message = invalid_response_message(major, minor, e.to_string());
-            warn!(target: "kmip", "Failed to process request:\n{response_message}");
-            let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
-                error_response_ttlv(major, minor, e.to_string().as_str())
-            });
             let flavor = if major == 1 {
                 KmipFlavor::Kmip1
             } else {
                 KmipFlavor::Kmip2
             };
+            let request = TTLV::from_bytes(ttlv_bytes, flavor).ok();
+            let error_message = truncate_error_message(e.to_string());
+            let response_message =
+                invalid_response_message(major, minor, error_message.clone(), request.as_ref());
+            warn!(
+                target: "kmip",
+                major,
+                minor,
+                batch_count = response_message.batch_item.len(),
+                "Failed to process KMIP request: {error_message}"
+            );
+            let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
+                error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
+                error_response_ttlv(major, minor, e.to_string().as_str())
+            });
             match TTLV::to_bytes(&response_ttlv, flavor) {
                 Ok(response_bytes) => (response_bytes, Some(response_ttlv)),
                 Err(e) => {
@@ -570,7 +653,7 @@ mod tests {
     fn error_response_message() {
         // log_init(Some("debug"));
         log_init(option_env!("RUST_LOG"));
-        let response = super::invalid_response_message(1, 0, "Unknown Error".to_owned());
+        let response = super::invalid_response_message(1, 0, "Unknown Error".to_owned(), None);
         assert_eq!(response.response_header.batch_count, 1);
         assert_eq!(response.batch_item.len(), 1);
         #[expect(clippy::panic)]
@@ -590,6 +673,52 @@ mod tests {
         assert_eq!(ttlv.tag, "ResponseMessage");
         let bytes = super::TTLV::to_bytes(&ttlv, cosmian_kmip::ttlv::KmipFlavor::Kmip1).unwrap();
         info!("\n{:?}", &bytes);
+    }
+
+    #[test]
+    fn invalid_response_caps_message_for_every_batch_item() {
+        let request = super::TTLV {
+            tag: "RequestMessage".into(),
+            value: super::TTLValue::Structure(
+                (0..super::MAX_BATCH_ITEMS)
+                    .map(|index| super::TTLV {
+                        tag: "BatchItem".into(),
+                        value: super::TTLValue::Structure(if index == 0 {
+                            vec![super::TTLV {
+                                tag: "Operation".into(),
+                                value: super::TTLValue::ByteString(vec![0; 1024]),
+                            }]
+                        } else {
+                            vec![]
+                        }),
+                    })
+                    .collect(),
+            ),
+        };
+        let error_message = format!(
+            "Expected Integer value, got: {:?}",
+            super::TTLValue::ByteString(vec![0; 1024])
+        );
+        let response = super::invalid_response_message(1, 0, error_message, Some(&request));
+
+        assert_eq!(response.batch_item.len(), super::MAX_BATCH_ITEMS);
+        assert!(
+            response
+                .batch_item
+                .iter()
+                .all(|item| { matches!(item, super::ResponseMessageBatchItemVersioned::V14(_)) })
+        );
+        let result_message_bytes: usize = response
+            .batch_item
+            .iter()
+            .map(|item| match item {
+                super::ResponseMessageBatchItemVersioned::V14(item) => {
+                    item.result_message.as_ref().map_or(0, String::len)
+                }
+                super::ResponseMessageBatchItemVersioned::V21(_) => 0,
+            })
+            .sum();
+        assert!(result_message_bytes <= super::MAX_BATCH_ITEMS * super::MAX_ERROR_MESSAGE_BYTES);
     }
 }
 
