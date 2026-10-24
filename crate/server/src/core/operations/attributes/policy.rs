@@ -32,6 +32,34 @@ pub(crate) fn read_only_error(operation: KmipOperation) -> KmsError {
     )
 }
 
+/// Error for adding a second instance of a single-valued attribute (KMIP 2.1 §6.1.2).
+pub(crate) fn single_valued(message: &str) -> KmsError {
+    KmsError::Kmip21Error(ErrorReason::Attribute_Single_Valued, message.to_owned())
+}
+
+/// Whether a custom attribute is server-owned (KMIP 1.x `y-` names, KMIP 2.1 §4.46).
+pub(crate) fn is_server_vendor_attribute(
+    vendor_identification: &str,
+    attribute_name: &str,
+) -> bool {
+    vendor_identification == "KMIP1" && attribute_name.starts_with("y-")
+}
+
+/// Rejects client writes to server-owned custom attributes (KMIP 1.x `y-` names, KMIP 2.1 §4.46).
+pub(crate) fn check_vendor_attribute(
+    attribute: &Attribute,
+    operation: KmipOperation,
+) -> KResult<()> {
+    match attribute {
+        Attribute::VendorAttribute(va)
+            if is_server_vendor_attribute(&va.vendor_identification, &va.attribute_name) =>
+        {
+            Err(read_only_error(operation))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Rejects attributes the server manages for this operation.
 pub(crate) fn check_read_only(tag: Option<Tag>, operation: KmipOperation) -> KResult<()> {
     if tag.map(|tag| tag.edit_policy(operation)) == Some(AttributeEditPolicy::ServerManaged) {
@@ -79,25 +107,29 @@ pub(crate) async fn check_grant(
     owm: &ObjectWithMetadata,
     user: &UserId,
     operation: KmipOperation,
-    attribute: &Attribute,
+    tag: Option<Tag>,
 ) -> KResult<()> {
-    if attribute.tag().map(|tag| tag.edit_policy(operation))
-        != Some(AttributeEditPolicy::RequiresGrant)
-        || kms
-            .user_can_perform_operation(owm, user, &operation)
-            .await?
+    let Some(tag) =
+        tag.filter(|tag| tag.edit_policy(operation) == AttributeEditPolicy::RequiresGrant)
+    else {
+        return Ok(());
+    };
+    if kms
+        .user_can_perform_operation(owm, user, &operation)
+        .await?
     {
         return Ok(());
     }
     let (verb, operation_name) = match operation {
         KmipOperation::AddAttribute => ("adding", "AddAttribute"),
         KmipOperation::SetAttribute => ("modifying", "SetAttribute"),
+        KmipOperation::DeleteAttribute => ("deleting", "DeleteAttribute"),
         _ => ("modifying", "ModifyAttribute"),
     };
     Err(KmsError::Kmip21Error(
         ErrorReason::Permission_Denied,
         format!(
-            "DENIED: {verb} {attribute} attribute requires ownership or explicit {operation_name} grant"
+            "DENIED: {verb} {tag} attribute requires ownership or explicit {operation_name} grant"
         ),
     ))
 }

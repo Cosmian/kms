@@ -178,7 +178,7 @@ def main():
                 }
 
             # Output result as JSON for easy parsing
-            print(json.dumps(result, indent=2))
+            print(json.dumps(result, indent=2, default=str))
 
         except Exception as operation_error:
             # Catch any unhandled exceptions from operations
@@ -1013,7 +1013,16 @@ def perform_revoke(proxy, verbose=False):
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH, 256
         )
 
-        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        # Revoke (non-compromise) is only valid from Active: activate at creation.
+        from datetime import datetime, timezone
+
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, activation_date_attr]
+        )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
         # Check if create operation succeeded
@@ -1496,8 +1505,12 @@ def perform_mac(proxy, verbose=False):
             int(datetime.now(timezone.utc).timestamp()),
         )
 
+        mask_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_USAGE_MASK,
+            [enums.CryptographicUsageMask.MAC_GENERATE],
+        )
         template = cobjects.TemplateAttribute(
-            attributes=[algorithm_attr, length_attr, activation_date_attr]
+            attributes=[algorithm_attr, length_attr, activation_date_attr, mask_attr]
         )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 

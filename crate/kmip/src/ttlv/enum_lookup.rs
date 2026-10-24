@@ -22,7 +22,19 @@ use crate::{
 #[must_use]
 pub fn lookup_enum_code(name: &str) -> Option<(u32, &'static str)> {
     let key = name.replace('-', "_");
-    FORWARD_TABLE.get(key.as_str()).copied()
+    FORWARD_TABLE.get(key.as_str()).copied().or_else(|| {
+        if !key.contains("V1_") && !key.contains("LOS_1") {
+            return None;
+        }
+        // KMIP 1.x Profile Name, XML spelling of the spec text: "Baseline Server TLS v1.2
+        // KMIP v1.2" -> "BaselineServerTLSV1_2KMIPV1_2" (library: "BaselineServerTLSv12KMIPv12"),
+        // "Suite B minLOS_128 ..." -> "SuiteBMinLOS_128..." (library: "SuiteBMinLOS128...").
+        let key = key
+            .replace("KMIPV1_", "KMIPv1")
+            .replace("TLSV1_2", "TLSv12")
+            .replace("LOS_1", "LOS1");
+        FORWARD_TABLE.get(key.as_str()).copied()
+    })
 }
 
 /// Tag-aware enum code lookup. When a TTLV tag is known (e.g.
@@ -128,6 +140,10 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         k21_ops::PKCS11Function,
         k21_ops::PKCS11ReturnCode,
         k21::Tag,
+        k21::SplitKeyMethod,
+        k21::RNGMode,
+        k21::ClientRegistrationMethod,
+        k21::ProfileName,
     );
 
     #[cfg(feature = "interop")]
@@ -155,6 +171,8 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         k14::RecommendedCurve,
         k14::ObjectType,
         k14::CryptographicAlgorithm,
+        k14::PutFunction,
+        k14::ProfileName,
     );
 
     // ── KMIP 0 (base) types ──────────────────────────────────────────────
@@ -172,6 +190,15 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         k0::CertificateType,
         k0::MaskGenerator,
         k0::RNGAlgorithm,
+        k0::KeyWrapType,
+        k0::DRBGAlgorithm,
+        k0::FIPS186Variation,
+        k0::ValidationAuthorityType,
+        k0::ValidationType,
+        k0::UnwrapMode,
+        k0::DestroyAction,
+        k0::ShreddingAlgorithm,
+        k0::AlternativeNameType,
     );
 
     // ErrorReason: insert underscore canonical names AND PascalCase aliases.
@@ -196,7 +223,15 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         // KeyFormatType
         ("PKCS_1", "PKCS1"),
         ("PKCS_8", "PKCS8"),
+        ("PKCS_12", "PKCS12"),
         ("X_509", "X509"),
+        // LinkType (KMIP XML profile spelling of "PKCS#12 ... Link")
+        ("PKCS_12CertificateLink", "PKCS12CertificateLink"),
+        ("PKCS_12PasswordLink", "PKCS12PasswordLink"),
+        // Tag, as Attribute Reference values ("X.509 Certificate ...")
+        ("X_509CertificateIdentifier", "X509CertificateIdentifier"),
+        ("X_509CertificateIssuer", "X509CertificateIssuer"),
+        ("X_509CertificateSubject", "X509CertificateSubject"),
         // CryptographicAlgorithm
         ("3DES", "THREE_DES"),
         ("DES3", "THREE_DES"),
@@ -207,12 +242,30 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         ("HMAC_SHA512", "HMACSHA512"),
         // OperationEnumeration
         ("PKCS_11", "PKCS11"),
+        // DerivationMethod (KMIP XML profile spelling of "Asymmetric Key")
+        ("AsymmetricKey", "Asymmetric_Key"),
         // HashingAlgorithm
         ("SHA_1", "SHA1"),
         ("SHA_224", "SHA224"),
         ("SHA_256", "SHA256"),
         ("SHA_384", "SHA384"),
         ("SHA_512", "SHA512"),
+        // DigitalSignatureAlgorithm (KMIP XML profile spelling of the spec names,
+        // e.g. "SHA-256 with RSA Encryption" -> "SHA_256WithRSAEncryption")
+        ("SHA_1WithRSAEncryption", "SHA1WithRSAEncryption"),
+        ("SHA_224WithRSAEncryption", "SHA224WithRSAEncryption"),
+        ("SHA_256WithRSAEncryption", "SHA256WithRSAEncryption"),
+        ("SHA_384WithRSAEncryption", "SHA384WithRSAEncryption"),
+        ("SHA_512WithRSAEncryption", "SHA512WithRSAEncryption"),
+        ("SHA3_256WithRSAEncryption", "SHA3256WithRSAEncryption"),
+        ("SHA3_384WithRSAEncryption", "SHA3384WithRSAEncryption"),
+        ("SHA3_512WithRSAEncryption", "SHA3512WithRSAEncryption"),
+        ("RSASSA_PSS", "RSASSAPSS"),
+        ("DSAWithSHA_1", "DSAWithSHA1"),
+        ("ECDSAWithSHA_1", "ECDSAWithSHA1"),
+        // SplitKeyMethod ("Polynomial Sharing GF (2^8)" -> "PolynomialSharingGF2_8")
+        ("PolynomialSharingGF2_16", "PolynomialSharingGf216"),
+        ("PolynomialSharingGF2_8", "PolynomialSharingGf28"),
         // ResultStatusEnumeration
         ("Pending", "OperationPending"),
         ("Undo", "OperationUndone"),
@@ -221,11 +274,13 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         ("ANSI_X9_31", "ANSI_X931"),
         ("FIPS_186_2", "FIPS186_2"),
         ("ANSI_X9_62", "ANSI_X962"),
+        // DRBGAlgorithm ("Dual-EC")
+        ("Dual_EC", "DualEC"),
         // RevocationReasonCode / RNGAlgorithm (shared "Unspecified" name)
         ("UNSPECIFIED_RNG", "Unspecified"),
         ("RNG_Unspecified", "Unspecified"),
-        // MaskGenerator
-        ("MGF1", "MFG1"),
+        // MaskGenerator (historical misspelling)
+        ("MFG1", "MGF1"),
         // RecommendedCurve (underscore-separated forms)
         ("P_192", "P192"),
         ("K_163", "K163"),
@@ -357,6 +412,39 @@ static REVERSE_TABLE: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
 mod tests {
     use super::*;
 
+    /// Query response enumerations (Capability Information, RNG Parameters, Validation
+    /// Information, Profile Information, Client Registration Method) and Put Function resolve,
+    /// including the KMIP XML spellings of 1.x Profile Names and of `Dual-EC`.
+    #[test]
+    fn test_query_and_profile_enumerations() {
+        for (name, expected) in [
+            ("NotProcessed", (0x3, "NotProcessed")),
+            ("KeyMaterialDeleted", (0x2, "KeyMaterialDeleted")),
+            ("Cryptographic", (0x2, "Cryptographic")),
+            ("XChangeNotice", (0x5, "XChangeNotice")),
+            ("Dual_EC", (0x2, "DualEC")),
+            ("NISTCMVP", (0x2, "NISTCMVP")),
+            ("ServerPreGenerated", (0x2, "ServerPreGenerated")),
+            ("New", (0x1, "New")),
+            (
+                "TapeLibraryServerKMIPV1_0",
+                (0xA, "TapeLibraryServerKMIPv10"),
+            ),
+            (
+                "BaselineClientTLSV1_2KMIPV1_2",
+                (0x4, "BaselineClientTLSv12KMIPv12"),
+            ),
+            (
+                "SuiteBMinLOS_192ServerKMIPV1_1",
+                (0x3B, "SuiteBMinLOS192ServerKMIPv11"),
+            ),
+            ("XMLServerKMIPV1_4", (0x9C, "XMLServerKMIPv14")),
+        ] {
+            assert_eq!(lookup_enum_code(name), Some(expected), "{name}");
+        }
+        assert_eq!(lookup_enum_code("NoSuchProfileKMIPV1_2"), None);
+    }
+
     #[test]
     fn test_forward_table_aliases() {
         // Canonical entries
@@ -377,6 +465,79 @@ mod tests {
         // k14 cross-version compat
         assert!(lookup_enum_code("THREE_DES").is_some());
         assert!(lookup_enum_code("Template").is_some());
+    }
+
+    /// KMIP XML profile spellings of Digital Signature Algorithm and Split Key Method
+    /// values resolve to the library variants; the canonical name stays the library one.
+    #[test]
+    fn test_spec_spelled_signature_and_split_key_names() {
+        for (alias, canonical) in [
+            ("SHA_1WithRSAEncryption", "SHA1WithRSAEncryption"),
+            ("SHA_224WithRSAEncryption", "SHA224WithRSAEncryption"),
+            ("SHA_256WithRSAEncryption", "SHA256WithRSAEncryption"),
+            ("SHA_384WithRSAEncryption", "SHA384WithRSAEncryption"),
+            ("SHA_512WithRSAEncryption", "SHA512WithRSAEncryption"),
+            ("SHA3_256WithRSAEncryption", "SHA3256WithRSAEncryption"),
+            ("SHA3_384WithRSAEncryption", "SHA3384WithRSAEncryption"),
+            ("SHA3_512WithRSAEncryption", "SHA3512WithRSAEncryption"),
+            ("RSASSA-PSS", "RSASSAPSS"),
+            ("DSAWithSHA_1", "DSAWithSHA1"),
+            ("ECDSAWithSHA_1", "ECDSAWithSHA1"),
+        ] {
+            let variant = k21::DigitalSignatureAlgorithm::iter()
+                .find(|v| <&'static str>::from(*v) == canonical)
+                .map(|v| v as u32);
+            assert_eq!(
+                lookup_enum_code(alias),
+                variant.map(|code| (code, canonical)),
+                "{alias}"
+            );
+        }
+        for (name, variant) in [
+            (
+                "PolynomialSharingGF2_8",
+                k21::SplitKeyMethod::PolynomialSharingGf28,
+            ),
+            (
+                "PolynomialSharingGF2_16",
+                k21::SplitKeyMethod::PolynomialSharingGf216,
+            ),
+            (
+                "PolynomialSharingPrimeField",
+                k21::SplitKeyMethod::PolynomialSharingPrimeField,
+            ),
+        ] {
+            assert_eq!(
+                lookup_enum_code(name),
+                Some((variant as u32, <&'static str>::from(variant)))
+            );
+        }
+    }
+
+    /// XML profile spellings of the PKCS#12 Key Format Type and Link Types, the X.509 tag
+    /// names as Attribute Reference values, and Alternative Name Type values.
+    #[test]
+    fn test_pkcs12_x509_and_alternative_name_spellings() {
+        for (name, code, canonical) in [
+            ("PKCS_12", 0x16, "PKCS12"),
+            ("PKCS_12CertificateLink", 0x10C, "PKCS12CertificateLink"),
+            ("PKCS_12PasswordLink", 0x10D, "PKCS12PasswordLink"),
+            (
+                "X_509CertificateIdentifier",
+                0x42_00B5,
+                "X509CertificateIdentifier",
+            ),
+            ("X_509CertificateIssuer", 0x42_00B6, "X509CertificateIssuer"),
+            (
+                "X_509CertificateSubject",
+                0x42_00B7,
+                "X509CertificateSubject",
+            ),
+            ("ObjectSerialNumber", 0x3, "ObjectSerialNumber"),
+            ("UninterpretedTextString", 0x1, "UninterpretedTextString"),
+        ] {
+            assert_eq!(lookup_enum_code(name), Some((code, canonical)), "{name}");
+        }
     }
 
     #[test]
@@ -434,6 +595,11 @@ mod tests {
             }
             None => failures.push("HKDF NOT in forward table".to_owned()),
         }
+        assert_eq!(
+            lookup_enum_code("AsymmetricKey"),
+            Some((0x08, "Asymmetric_Key")),
+            "XML spelling AsymmetricKey must resolve to Asymmetric Key"
+        );
 
         // HashingAlgorithm — SHA3 variants: tag-aware lookup must return
         // HashingAlgorithm codes (0x0E-0x11), NOT CryptographicAlgorithm codes

@@ -377,9 +377,9 @@ fn test_import_export_wrap_private_key(
             .unique_identifier
             .clone_from(&private_key.key_block()?.attributes()?.unique_identifier);
 
-        // Fresh may legitimately be materialized as `Some(false)` after key material
-        // is returned (e.g., via unwrap-on-export). Ignore it for this equivalence check.
-        exp_attrs.fresh = None;
+        // Fresh legitimately differs between the two exports (it flips once key material
+        // has been served, KMIP 1.4 §3.34). Ignore it for this equivalence check.
+        exp_attrs.fresh = private_key.key_block()?.attributes()?.fresh;
 
         assert_eq!(
             exported_unwrapped_key.key_block()?.key_value,

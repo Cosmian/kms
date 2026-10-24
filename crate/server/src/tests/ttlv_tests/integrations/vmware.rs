@@ -277,7 +277,7 @@ fn add_attributes(client: &SocketClient, uid: &str) {
         if let RequestMessageBatchItemVersioned::V14(batch_item) = batch_item {
             if let Operation::AddAttribute(add_attribute_request) = &mut batch_item.request_payload
             {
-                add_attribute_request.unique_identifier = uid.to_owned();
+                add_attribute_request.unique_identifier = Some(uid.to_owned());
             } else {
                 panic!("Expected AddAttribute operation");
             }

@@ -70,6 +70,11 @@ impl TTLV {
             }
             i += 8;
         }
+        if major == i32::MAX || minor == i32::MAX {
+            return Err(TtlvError::from(
+                "No Protocol Version Major and Minor found in the TTLV message",
+            ));
+        }
         Ok((major, minor))
     }
 

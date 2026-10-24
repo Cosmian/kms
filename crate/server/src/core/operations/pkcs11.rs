@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use cosmian_kms_base_hsm::HsmLib;
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
-    PKCS11, PKCS11Function, PKCS11Response, PKCS11ReturnCode,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::kmip_operations::{PKCS11, PKCS11Function, PKCS11Response, PKCS11ReturnCode},
 };
 use cosmian_logger::trace;
 
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
+
+/// Name of the default PKCS#11 V3.0 interface (the only one served).
+const DEFAULT_PKCS11_INTERFACE: &str = "PKCS 11";
 
 /// PKCS#11 operation implementation
 ///
@@ -17,9 +21,10 @@ use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 /// - `C_Initialize`: Initialize PKCS#11 library (via HSM)
 /// - `C_GetInfo`: Get library information (via HSM)
 /// - `C_Finalize`: Finalize PKCS#11 library (via HSM)
-/// - Other functions: Delegated to HSM with generic interface (limited support)
+/// - Other functions: answered with `CKR_FUNCTION_NOT_SUPPORTED`
 ///
 /// According to the KMIP spec:
+/// - PKCS#11 Interface: Optional - only the default V3.0 interface is served
 /// - PKCS#11 Function: REQUIRED - The function to perform
 /// - Correlation Value: Optional - Must be returned if provided in previous response
 /// - PKCS#11 Input Parameters: Optional - Parameters to the function
@@ -32,10 +37,23 @@ use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResult<PKCS11Response> {
     trace!("function={:?}", request.pkcs11_function);
 
-    // Get the function to perform (default to `C_Initialize` if not specified)
-    let func = request
-        .pkcs11_function
-        .unwrap_or(PKCS11Function::C_Initialize);
+    // PKCS#11 Function is REQUIRED (KMIP 2.1 Table 273)
+    let func = request.pkcs11_function.ok_or_else(|| {
+        KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            "PKCS#11: the PKCS#11 Function is required".to_owned(),
+        )
+    })?;
+
+    // Only the default V3.0 interface is supported (KMIP 2.1 Table 273)
+    if let Some(interface) = request.pkcs11_interface.as_deref() {
+        if interface != DEFAULT_PKCS11_INTERFACE {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::PKCS_11_Invalid_Interface,
+                format!("PKCS#11: unsupported interface '{interface}'"),
+            ));
+        }
+    }
 
     // Generate or use provided correlation value
     // According to spec: "Must be returned to the server if provided in a previous response"
@@ -45,7 +63,10 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
 
     // Require HSM for all PKCS#11 operations
     let hsm = kms.hsm.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("PKCS#11 operations require HSM to be configured".to_owned())
+        KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            "PKCS#11 operations require HSM to be configured".to_owned(),
+        )
     })?;
 
     // Get the underlying HsmLib for direct PKCS#11 function calls
@@ -53,7 +74,10 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
         .hsm_lib()
         .and_then(|any| any.downcast_ref::<Arc<HsmLib>>())
         .ok_or_else(|| {
-            KmsError::InvalidRequest("HSM does not support PKCS#11 operations".to_owned())
+            KmsError::Kmip21Error(
+                ErrorReason::Feature_Not_Supported,
+                "HSM does not support PKCS#11 operations".to_owned(),
+            )
         })?;
 
     match func {
@@ -62,6 +86,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
             // Note: The library may already be initialized from instantiation
             match HsmLib::initialize(hsm_lib) {
                 Ok(()) => Ok(PKCS11Response {
+                    pkcs11_interface: None,
                     pkcs11_function: Some(func),
                     pkcs11_output_parameters: None,
                     pkcs11_return_code: Some(PKCS11ReturnCode::OK),
@@ -84,6 +109,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
                         PKCS11ReturnCode::CKR_GENERAL_ERROR
                     };
                     Ok(PKCS11Response {
+                        pkcs11_interface: None,
                         pkcs11_function: Some(func),
                         pkcs11_output_parameters: None,
                         pkcs11_return_code: Some(return_code),
@@ -96,6 +122,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
             // Get real PKCS#11 info from HsmLib via `C_GetInfo`
             match hsm_lib.get_info() {
                 Ok(output) => Ok(PKCS11Response {
+                    pkcs11_interface: None,
                     pkcs11_function: Some(func),
                     pkcs11_output_parameters: if output.is_empty() {
                         None
@@ -117,6 +144,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
                     };
                     trace!("PKCS#11 `C_GetInfo` failed: {e}");
                     Ok(PKCS11Response {
+                        pkcs11_interface: None,
                         pkcs11_function: Some(func),
                         pkcs11_output_parameters: None,
                         pkcs11_return_code: Some(return_code),
@@ -129,6 +157,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
             // Call `C_Finalize` directly on HsmLib
             match hsm_lib.finalize() {
                 Ok(()) => Ok(PKCS11Response {
+                    pkcs11_interface: None,
                     pkcs11_function: Some(func),
                     pkcs11_output_parameters: None,
                     pkcs11_return_code: Some(PKCS11ReturnCode::OK),
@@ -138,6 +167,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
                 Err(e) => {
                     trace!("PKCS#11 `C_Finalize` failed: {e}");
                     Ok(PKCS11Response {
+                        pkcs11_interface: None,
                         pkcs11_function: Some(func),
                         pkcs11_output_parameters: None,
                         pkcs11_return_code: Some(PKCS11ReturnCode::CKR_GENERAL_ERROR),
@@ -146,230 +176,78 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
                 }
             }
         }
-        PKCS11Function::C_OpenSession => {
-            trace!("PKCS#11 `C_OpenSession` not yet implemented");
+        // Every other function of CK_FUNCTION_LIST_3_0 is not implemented by the server.
+        _ => {
+            trace!("PKCS#11 `{func:?}` not implemented");
             Ok(PKCS11Response {
+                pkcs11_interface: None,
                 pkcs11_function: Some(func),
                 pkcs11_output_parameters: None,
                 pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
                 correlation_value: Some(correl),
             })
         }
-        PKCS11Function::C_CloseSession => {
-            trace!("PKCS#11 `C_CloseSession` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::kmip_operations::{PKCS11, PKCS11Function},
+    };
+
+    use super::pkcs11;
+    use crate::{error::KmsError, middlewares::UserId, tests::test_utils::test_kms};
+
+    async fn reason(request: PKCS11) -> Result<Option<ErrorReason>, String> {
+        let kms = test_kms().await.map_err(|e| e.to_string())?;
+        match pkcs11(&kms, request, &UserId::from("pkcs11-test@example.com")).await {
+            Err(KmsError::Kmip21Error(reason, _)) => Ok(Some(reason)),
+            Err(error) => Err(error.to_string()),
+            Ok(_) => Ok(None),
         }
-        PKCS11Function::C_DestroyObject => {
-            trace!("PKCS#11 `C_DestroyObject` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
+    }
+
+    #[tokio::test]
+    async fn function_is_required() {
+        assert_eq!(
+            reason(PKCS11 {
+                pkcs11_interface: None,
+                pkcs11_function: None,
+                pkcs11_input_parameters: None,
+                correlation_value: None,
             })
-        }
-        PKCS11Function::C_Decrypt => {
-            trace!("PKCS#11 `C_Decrypt` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
+            .await,
+            Ok(Some(ErrorReason::Invalid_Field))
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_interface_is_rejected() {
+        assert_eq!(
+            reason(PKCS11 {
+                pkcs11_interface: Some("PKCS 12".to_owned()),
+                pkcs11_function: Some(PKCS11Function::C_Initialize),
+                pkcs11_input_parameters: None,
+                correlation_value: None,
             })
-        }
-        PKCS11Function::C_DecryptInit => {
-            trace!("PKCS#11 `C_DecryptInit` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
+            .await,
+            Ok(Some(ErrorReason::PKCS_11_Invalid_Interface))
+        );
+    }
+
+    #[tokio::test]
+    async fn without_hsm_the_feature_is_not_supported() {
+        assert_eq!(
+            reason(PKCS11 {
+                pkcs11_interface: None,
+                pkcs11_function: Some(PKCS11Function::C_GetInfo),
+                pkcs11_input_parameters: None,
+                correlation_value: None,
             })
-        }
-        PKCS11Function::C_DecryptUpdate => {
-            trace!("PKCS#11 `C_DecryptUpdate` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_DecryptFinal => {
-            trace!("PKCS#11 `C_DecryptFinal` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_Encrypt => {
-            trace!("PKCS#11 `C_Encrypt` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_EncryptInit => {
-            trace!("PKCS#11 `C_EncryptInit` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_EncryptUpdate => {
-            trace!("PKCS#11 `C_EncryptUpdate` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_EncryptFinal => {
-            trace!("PKCS#11 `C_EncryptFinal` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_FindObjectsInit => {
-            trace!("PKCS#11 `C_FindObjectsInit` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_FindObjects => {
-            trace!("PKCS#11 `C_FindObjects` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_FindObjectsFinal => {
-            trace!("PKCS#11 `C_FindObjectsFinal` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_GenerateKey => {
-            trace!("PKCS#11 `C_GenerateKey` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_GenerateKeyPair => {
-            trace!("PKCS#11 `C_GenerateKeyPair` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_GenerateRandom => {
-            trace!("PKCS#11 `C_GenerateRandom` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_SeedRandom => {
-            trace!("PKCS#11 `C_SeedRandom` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_GetAttributeValue => {
-            trace!("PKCS#11 `C_GetAttributeValue` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_GetMechanismList => {
-            trace!("PKCS#11 `C_GetMechanismList` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_GetMechanismInfo => {
-            trace!("PKCS#11 `C_GetMechanismInfo` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_Login => {
-            trace!("PKCS#11 `C_Login` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_Logout => {
-            trace!("PKCS#11 `C_Logout` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_WrapKey => {
-            trace!("PKCS#11 `C_WrapKey` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
-        PKCS11Function::C_UnwrapKey => {
-            trace!("PKCS#11 `C_UnwrapKey` not yet implemented");
-            Ok(PKCS11Response {
-                pkcs11_function: Some(func),
-                pkcs11_output_parameters: None,
-                pkcs11_return_code: Some(PKCS11ReturnCode::CKR_FUNCTION_NOT_SUPPORTED),
-                correlation_value: Some(correl),
-            })
-        }
+            .await,
+            Ok(Some(ErrorReason::Feature_Not_Supported))
+        );
     }
 }

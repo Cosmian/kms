@@ -282,24 +282,62 @@ fn w14_extreme_depth_no_stack_overflow() {
 }
 
 // ---------------------------------------------------------------------------
-// W15: Integer with wrong length declared (not 4) — parser reads 4 bytes anyway,
-//       but the extra bytes will be left in the stream; the caller does not check
-//       alignment for single-item reads, so this is an informational test.
-//       We verify the parser does not panic (returns a value or error).
+// W15: Integer with wrong length declared (not 4) is rejected: KMIP 2.1 Table 427
+//       fixes the length of Integer, Enumeration and Interval to 4 and of Long
+//       Integer, Boolean, Date Time and Date Time Extended to 8.
 // ---------------------------------------------------------------------------
 #[test]
 fn w15_integer_declared_length_zero() {
-    // Integer is always 4+4=8 bytes, independent of the declared length field.
-    // Length=0 is technically invalid per KMIP spec but we test parser robustness.
     let data = [
         0x42, 0x00, 0x0D, // tag: BatchCount
         0x02, // type: Integer
         0x00, 0x00, 0x00, 0x00, // length: 0 (wrong per spec, Integer must be 4)
-        0x00, 0x00, 0x00, 0x01, // value bytes (will be read as padding by Integer branch)
-        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, // value
+        0x00, 0x00, 0x00, 0x00, // padding
     ];
-    // Either succeeds or fails cleanly — must never panic
-    let _result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
+    TTLV::from_bytes(&data, KmipFlavor::Kmip1).unwrap_err();
+}
+
+// ---------------------------------------------------------------------------
+// W15b: a Boolean must encode exactly 0 or 1 (KMIP 2.1 Table 427)
+// ---------------------------------------------------------------------------
+#[test]
+fn w15b_boolean_value_must_be_zero_or_one() {
+    let mut data = vec![
+        0x42, 0x00, 0x26, // tag: CriticalityIndicator
+        0x06, // type: Boolean
+        0x00, 0x00, 0x00, 0x08, // length: 8
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    ];
+    TTLV::from_bytes(&data, KmipFlavor::Kmip2).unwrap();
+    data[8] = 0x01;
+    TTLV::from_bytes(&data, KmipFlavor::Kmip2).unwrap_err();
+}
+
+// ---------------------------------------------------------------------------
+// W15c: Structure lengths are multiples of 8; unknown tags report `UNKNOWN_TAG`
+//        while extension tags (0x54xxxx) decode under their hex name
+// ---------------------------------------------------------------------------
+#[test]
+fn w15c_structure_alignment_and_tags() {
+    let misaligned = [0x42, 0x00, 0x7B, 0x01, 0x00, 0x00, 0x00, 0x04, 0, 0, 0, 0];
+    TTLV::from_bytes(&misaligned, KmipFlavor::Kmip2).unwrap_err();
+
+    let unknown = [0x42, 0xFF, 0xFE, 0x01, 0x00, 0x00, 0x00, 0x00];
+    let error =
+        TTLV::from_bytes(&unknown, KmipFlavor::Kmip2).expect_err("tag 0x42FFFE is not defined");
+    assert!(
+        error.to_string().contains(crate::ttlv::UNKNOWN_TAG),
+        "{error}"
+    );
+
+    let extension = [0x54, 0x00, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00];
+    let ttlv = TTLV::from_bytes(&extension, KmipFlavor::Kmip2).expect("extension tag decodes");
+    assert_eq!(ttlv.tag, "0x540010");
+    assert_eq!(
+        ttlv.to_bytes(KmipFlavor::Kmip2).expect("re-encodes"),
+        extension
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +570,7 @@ fn w28_biginteger_oversized_length_rejected() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("exceeds maximum") || msg.contains("MAX"),
+        msg.contains(&format!("not exceed {MAX_TTLV_FIELD_BYTES}")),
         "error message must mention the length guard, got: {msg}"
     );
 }

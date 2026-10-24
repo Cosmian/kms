@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    collections::{BTreeSet, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::{
@@ -47,31 +50,55 @@ impl AtomicOperation {
     }
 }
 
+/// Controls which destroyed objects a listing query returns when it does not
+/// request an explicit lifecycle state.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DestroyedFilter {
+    /// Include both live and destroyed objects.
+    #[default]
+    Include,
+    /// Exclude `Destroyed` and `Destroyed_Compromised` objects.
+    Exclude,
+    /// Return only `Destroyed` and `Destroyed_Compromised` objects.
+    Only,
+}
+
 /// Controls how many rows a listing query (`find_with_options` /
 /// `find_all_with_options`) returns, so that stores able to do so filter and
 /// cap the result in the database rather than after fetching every match.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FindOptions {
     /// Maximum number of rows returned by one store. `None` means unbounded.
     pub limit: Option<usize>,
-    /// When `true` and no explicit `state` is requested, exclude `Destroyed`
-    /// and `Destroyed_Compromised` objects.
-    pub exclude_destroyed: bool,
+    /// How to filter destroyed objects when no exact state is requested.
+    pub destroyed: DestroyedFilter,
+    /// HSM uids the caller holds grants on, for a caller who is not an HSM administrator.
+    ///
+    /// HSMs record no per-user permissions: when set, an HSM store looks up only these keys,
+    /// in this order, instead of enumerating the device, so `limit` bounds the work and every
+    /// returned row is visible to the caller. Stores that filter by user in their own query
+    /// ignore it.
+    pub hsm_granted_uids: Option<Arc<BTreeSet<String>>>,
 }
 
 impl FindOptions {
     /// Apply these options to rows already fetched, for stores that cannot push
-    /// them into their own query. `requested_state` is the explicit state filter
-    /// of the search: when set, `exclude_destroyed` does not apply.
+    /// them into their own query. `requested_state` overrides `destroyed`.
     pub fn apply(
         &self,
         requested_state: Option<State>,
         rows: &mut Vec<(String, State, Attributes)>,
     ) {
-        if self.exclude_destroyed && requested_state.is_none() {
-            rows.retain(|(_, state, _)| {
-                !matches!(state, State::Destroyed | State::Destroyed_Compromised)
-            });
+        if requested_state.is_none() {
+            match self.destroyed {
+                DestroyedFilter::Include => {}
+                DestroyedFilter::Exclude => rows.retain(|(_, state, _)| {
+                    !matches!(state, State::Destroyed | State::Destroyed_Compromised)
+                }),
+                DestroyedFilter::Only => rows.retain(|(_, state, _)| {
+                    matches!(state, State::Destroyed | State::Destroyed_Compromised)
+                }),
+            }
         }
         if let Some(limit) = self.limit {
             rows.truncate(limit);

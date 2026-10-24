@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
@@ -601,24 +601,6 @@ impl ObjectsStore for SqlitePool {
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-        // If an explicit UID already exists, return a clear error matching CLI expectations
-        let exists = self
-            .writer
-            .call({
-                let uid_check = uid.clone();
-                move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
-                    let present = stmt.exists(params_from_iter([&uid_check]))?;
-                    Ok(present)
-                }
-            })
-            .await
-            .map_err(DbError::from)?;
-        if exists {
-            return Err(InterfaceError::Db(
-                "one or more objects already exist".to_owned(),
-            ));
-        }
         let object_json = serde_json::to_string(object)
             .map_err(|e| InterfaceError::Db(format!("failed serializing object: {e}")))?;
         let attributes_json = serde_json::to_string(attributes)
@@ -658,7 +640,17 @@ impl ObjectsStore for SqlitePool {
                 },
             )
             .await
-            .map_err(DbError::from)?;
+            .map_err(|error| match error {
+                tokio_rusqlite::Error::Error(rusqlite::Error::SqliteFailure(sqlite_error, _))
+                    if sqlite_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+                {
+                    InterfaceError::from(DbError::Kmip21Error(
+                        ErrorReason::Object_Already_Exists,
+                        "one or more objects already exist".to_owned(),
+                    ))
+                }
+                other => InterfaceError::from(DbError::from(other)),
+            })?;
         Ok(uid)
     }
 
@@ -1715,7 +1707,8 @@ fn apply_owned_ops(
                 let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
                 let exists = stmt.exists(params_from_iter([uid]))?;
                 if exists {
-                    return Err(DbError::DatabaseError(
+                    return Err(DbError::Kmip21Error(
+                        ErrorReason::Object_Already_Exists,
                         "one or more objects already exist".to_owned(),
                     ));
                 }

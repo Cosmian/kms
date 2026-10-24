@@ -6,7 +6,9 @@ use strum::Display;
 
 use crate::{
     KmipError, kmip_0,
-    kmip_0::kmip_types::{DRBGAlgorithm, FIPS186Variation, HashingAlgorithm, RNGAlgorithm},
+    kmip_0::kmip_types::{
+        DRBGAlgorithm, ErrorReason, FIPS186Variation, HashingAlgorithm, RNGAlgorithm,
+    },
     kmip_1_4::kmip_attributes::CustomAttributeValue,
     kmip_2_1::{self},
 };
@@ -69,42 +71,38 @@ macro_rules! impl_try_from_with_error {
     };
 }
 
-/// KMIP 1.4 Key Compression Type Enumeration
+/// KMIP 1.4 Key Compression Type Enumeration (KMIP 1.4 §9.1.3.2.1, Table 283)
 #[kmip_enum]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x1,
-    ECPublicKeyTypeX962Compressed = 0x2,
-    ECPublicKeyTypeX962CompressedPrime = 0x3,
-    ECPublicKeyTypeX962CompressedChar2 = 0x4,
+    ECPublicKeyTypeX962CompressedPrime = 0x2,
+    ECPublicKeyTypeX962CompressedChar2 = 0x3,
+    ECPublicKeyTypeX962Hybrid = 0x4,
 }
 
-impl_from_grouped!(KeyCompressionType => kmip_2_1::kmip_types::KeyCompressionType, {
-    ECPublicKeyTypeUncompressed => ECPublicKeyTypeUncompressed,
-    ECPublicKeyTypeX962Compressed | ECPublicKeyTypeX962CompressedPrime => ECPublicKeyTypeX962CompressedPrime,
-    ECPublicKeyTypeX962CompressedChar2 => ECPublicKeyTypeX962CompressedChar2,
-});
+impl_from_1to1!(KeyCompressionType => kmip_2_1::kmip_types::KeyCompressionType, [
+    ECPublicKeyTypeUncompressed, ECPublicKeyTypeX962CompressedPrime,
+    ECPublicKeyTypeX962CompressedChar2, ECPublicKeyTypeX962Hybrid,
+]);
 
 impl TryFrom<kmip_2_1::kmip_types::KeyCompressionType> for KeyCompressionType {
     type Error = KmipError;
 
     fn try_from(value: kmip_2_1::kmip_types::KeyCompressionType) -> Result<Self, Self::Error> {
-        match value {
+        Ok(match value {
             kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeUncompressed => {
-                Ok(Self::ECPublicKeyTypeUncompressed)
+                Self::ECPublicKeyTypeUncompressed
             }
             kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedPrime => {
-                Ok(Self::ECPublicKeyTypeX962CompressedPrime)
+                Self::ECPublicKeyTypeX962CompressedPrime
             }
             kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962CompressedChar2 => {
-                Ok(Self::ECPublicKeyTypeX962CompressedChar2)
+                Self::ECPublicKeyTypeX962CompressedChar2
             }
             kmip_2_1::kmip_types::KeyCompressionType::ECPublicKeyTypeX962Hybrid => {
-                Err(KmipError::InvalidKmip14Value(
-                    ResultReason::InvalidField,
-                    "ECPublicKeyTypeX962Hybrid is not supported in KMIP 1".to_owned(),
-                ))
+                Self::ECPublicKeyTypeX962Hybrid
             }
-        }
+        })
     }
 }
 
@@ -461,12 +459,14 @@ pub enum LinkType {
     ChildLink = 0x109,
     PreviousLink = 0x10A,
     NextLink = 0x10B,
+    PKCS12CertificateLink = 0x10C,
+    PKCS12PasswordLink = 0x10D,
 }
 
 impl_from_1to1!(LinkType => kmip_2_1::kmip_types::LinkType, [
     CertificateLink, PublicKeyLink, PrivateKeyLink, DerivationBaseObjectLink,
     DerivedKeyLink, ReplacementObjectLink, ReplacedObjectLink, ParentLink,
-    ChildLink, PreviousLink, NextLink,
+    ChildLink, PreviousLink, NextLink, PKCS12CertificateLink, PKCS12PasswordLink,
 ]);
 
 impl TryFrom<kmip_2_1::kmip_types::LinkType> for LinkType {
@@ -489,14 +489,14 @@ impl TryFrom<kmip_2_1::kmip_types::LinkType> for LinkType {
             kmip_2_1::kmip_types::LinkType::ChildLink => Ok(Self::ChildLink),
             kmip_2_1::kmip_types::LinkType::PreviousLink => Ok(Self::PreviousLink),
             kmip_2_1::kmip_types::LinkType::NextLink => Ok(Self::NextLink),
-            kmip_2_1::kmip_types::LinkType::PKCS12CertificateLink
-            | kmip_2_1::kmip_types::LinkType::PKCS12PasswordLink
-            | kmip_2_1::kmip_types::LinkType::WrappingKeyLink => {
-                Err(KmipError::InvalidKmip14Value(
-                    ResultReason::InvalidField,
-                    "{value:?} is not  supported in KMIP 1.4".to_owned(),
-                ))
+            kmip_2_1::kmip_types::LinkType::PKCS12CertificateLink => {
+                Ok(Self::PKCS12CertificateLink)
             }
+            kmip_2_1::kmip_types::LinkType::PKCS12PasswordLink => Ok(Self::PKCS12PasswordLink),
+            kmip_2_1::kmip_types::LinkType::WrappingKeyLink => Err(KmipError::InvalidKmip14Value(
+                ResultReason::InvalidField,
+                format!("{value:?} is not supported in KMIP 1.4"),
+            )),
         }
     }
 }
@@ -511,6 +511,8 @@ pub enum DerivationMethod {
     NIST800_108_C = 0x5,
     NIST800_108_F = 0x6,
     NIST800_108_DPI = 0x7,
+    // The XML lookup table resolves the spec spelling "AsymmetricKey" to the 2.1 name.
+    #[strum(to_string = "ASYMMETRIC_KEY", serialize = "Asymmetric_Key")]
     ASYMMETRIC_KEY = 0x8,
 }
 
@@ -743,48 +745,165 @@ impl TryFrom<kmip_2_1::kmip_types::OperationEnumeration> for OperationEnumeratio
     }
 }
 
-/// KMIP 1.4 Result Status Enumeration
-#[kmip_enum]
-pub enum ResultStatus {
-    Success = 0x1,
-    OperationFailed = 0x2,
-    OperationPending = 0x3,
-    OperationUndone = 0x4,
-}
-
 /// KMIP 1.4 Result Reason Enumeration
 #[kmip_enum]
 pub enum ResultReason {
+    #[strum(serialize = "ItemNotFound", serialize = "Item_Not_Found")]
     ItemNotFound = 0x1,
+    #[strum(serialize = "ResponseTooLarge", serialize = "Response_Too_Large")]
     ResponseTooLarge = 0x2,
+    #[strum(
+        serialize = "AuthenticationNotSuccessful",
+        serialize = "Authentication_Not_Successful"
+    )]
     AuthenticationNotSuccessful = 0x3,
+    #[strum(serialize = "InvalidMessage", serialize = "Invalid_Message")]
     InvalidMessage = 0x4,
+    #[strum(
+        serialize = "OperationNotSupported",
+        serialize = "Operation_Not_Supported"
+    )]
     OperationNotSupported = 0x5,
+    #[strum(serialize = "MissingData", serialize = "Missing_Data")]
     MissingData = 0x6,
+    #[strum(serialize = "InvalidField", serialize = "Invalid_Field")]
     InvalidField = 0x7,
+    #[strum(serialize = "FeatureNotSupported", serialize = "Feature_Not_Supported")]
     FeatureNotSupported = 0x8,
+    #[strum(
+        serialize = "OperationCanceled",
+        serialize = "Operation_Canceled_By_Requester"
+    )]
     OperationCanceled = 0x9,
+    #[strum(
+        serialize = "CryptographicFailure",
+        serialize = "Cryptographic_Failure"
+    )]
     CryptographicFailure = 0xA,
     IllegalOperation = 0xB,
+    #[strum(serialize = "PermissionDenied", serialize = "Permission_Denied")]
     PermissionDenied = 0xC,
+    #[strum(serialize = "ObjectArchived", serialize = "Object_Archived")]
     ObjectArchived = 0xD,
     IndexOutOfBounds = 0xE,
+    #[strum(
+        serialize = "ApplicationNamespaceNotSupported",
+        serialize = "Application_Namespace_Not_Supported"
+    )]
     ApplicationNamespaceNotSupported = 0xF,
+    #[strum(
+        serialize = "KeyFormatTypeNotSupported",
+        serialize = "Key_Format_Type_Not_Supported"
+    )]
     KeyFormatTypeNotSupported = 0x10,
+    #[strum(
+        serialize = "KeyCompressionTypeNotSupported",
+        serialize = "Key_Compression_Type_Not_Supported"
+    )]
     KeyCompressionTypeNotSupported = 0x11,
+    #[strum(serialize = "EncodingOptionError", serialize = "Encoding_Option_Error")]
     EncodingOptionError = 0x12,
+    #[strum(serialize = "KeyValueNotPresent", serialize = "Key_Value_Not_Present")]
     KeyValueNotPresent = 0x13,
+    #[strum(serialize = "AttestationRequired", serialize = "Attestation_Required")]
     AttestationRequired = 0x14,
+    #[strum(serialize = "AttestationFailed", serialize = "Attestation_Failed")]
     AttestationFailed = 0x15,
     Sensitive = 0x16,
+    #[strum(serialize = "NotExtractable", serialize = "Not_Extractable")]
     NotExtractable = 0x17,
+    #[strum(serialize = "ObjectAlreadyExists", serialize = "Object_Already_Exists")]
     ObjectAlreadyExists = 0x18,
+    #[strum(serialize = "GeneralFailure", serialize = "General_Failure")]
     GeneralFailure = 0x100,
 }
 
+impl From<ErrorReason> for ResultReason {
+    fn from(value: ErrorReason) -> Self {
+        match value {
+            ErrorReason::Item_Not_Found
+            | ErrorReason::Object_Not_Found
+            | ErrorReason::Wrapping_Object_Not_Found
+            | ErrorReason::Unknown_Object_Group
+            | ErrorReason::Attribute_Not_Found
+            | ErrorReason::Attribute_Instance_Not_Found => Self::ItemNotFound,
+            ErrorReason::Response_Too_Large => Self::ResponseTooLarge,
+            ErrorReason::Authentication_Not_Successful | ErrorReason::Bad_Password => {
+                Self::AuthenticationNotSuccessful
+            }
+            ErrorReason::Invalid_Message
+            | ErrorReason::Codec_Error
+            | ErrorReason::Unknown_Tag
+            | ErrorReason::Unsupported_Protocol_Version => Self::InvalidMessage,
+            ErrorReason::Operation_Not_Supported => Self::OperationNotSupported,
+            ErrorReason::Missing_Data | ErrorReason::Missing_Initialization_Vector => {
+                Self::MissingData
+            }
+            ErrorReason::Invalid_Field
+            | ErrorReason::Invalid_Ticket
+            | ErrorReason::Numeric_Range
+            | ErrorReason::Invalid_Data_Type
+            | ErrorReason::Read_Only_Attribute
+            | ErrorReason::Multi_Valued_Attribute
+            | ErrorReason::Unsupported_Attribute
+            | ErrorReason::Attribute_Read_Only
+            | ErrorReason::Attribute_Single_Valued
+            | ErrorReason::Bad_Cryptographic_Parameters
+            | ErrorReason::Illegal_Object_Type
+            | ErrorReason::Incompatible_Cryptographic_Usage_Mask
+            | ErrorReason::Invalid_Asynchronous_Correlation_Value
+            | ErrorReason::Invalid_Attribute
+            | ErrorReason::Invalid_Attribute_Value
+            | ErrorReason::Invalid_Correlation_Value
+            | ErrorReason::Invalid_CSR
+            | ErrorReason::Invalid_Object_Type
+            | ErrorReason::Non_Unique_Name_Attribute
+            | ErrorReason::Unknown_Enumeration
+            | ErrorReason::Constraint_Violation
+            | ErrorReason::Duplicate_Process_Request => Self::InvalidField,
+            ErrorReason::Feature_Not_Supported
+            | ErrorReason::Unknown_Message_Extension
+            | ErrorReason::Unsupported_Cryptographic_Parameters
+            | ErrorReason::Key_Wrap_Type_Not_Supported
+            | ErrorReason::Protection_Storage_Unavailable
+            | ErrorReason::Private_Protection_Storage_Unavailable
+            | ErrorReason::Public_Protection_Storage_Unavailable => Self::FeatureNotSupported,
+            ErrorReason::Operation_Canceled_By_Requester => Self::OperationCanceled,
+            ErrorReason::Cryptographic_Failure => Self::CryptographicFailure,
+            ErrorReason::Permission_Denied
+            | ErrorReason::Wrong_Key_Lifecycle_State
+            | ErrorReason::Object_Destroyed
+            | ErrorReason::Not_Authorised
+            | ErrorReason::Usage_Limit_Exceeded
+            | ErrorReason::Wrapping_Object_Destroyed => Self::PermissionDenied,
+            ErrorReason::Object_Archived | ErrorReason::Wrapping_Object_Archived => {
+                Self::ObjectArchived
+            }
+            ErrorReason::Application_Namespace_Not_Supported => {
+                Self::ApplicationNamespaceNotSupported
+            }
+            ErrorReason::Key_Format_Type_Not_Supported => Self::KeyFormatTypeNotSupported,
+            ErrorReason::Key_Compression_Type_Not_Supported => Self::KeyCompressionTypeNotSupported,
+            ErrorReason::Encoding_Option_Error => Self::EncodingOptionError,
+            ErrorReason::Key_Value_Not_Present => Self::KeyValueNotPresent,
+            ErrorReason::Attestation_Required => Self::AttestationRequired,
+            ErrorReason::Attestation_Failed => Self::AttestationFailed,
+            ErrorReason::Sensitive => Self::Sensitive,
+            ErrorReason::Not_Extractable => Self::NotExtractable,
+            ErrorReason::Object_Already_Exists => Self::ObjectAlreadyExists,
+            ErrorReason::Internal_Server_Error
+            | ErrorReason::Server_Limit_Exceeded
+            | ErrorReason::PKCS_11_Codec_Error
+            | ErrorReason::PKCS_11_Invalid_Function
+            | ErrorReason::PKCS_11_Invalid_Interface
+            | ErrorReason::General_Failure => Self::GeneralFailure,
+        }
+    }
+}
+
 impl From<ResultReason> for kmip_0::kmip_types::ErrorReason {
-    fn from(val: ResultReason) -> Self {
-        match val {
+    fn from(value: ResultReason) -> Self {
+        match value {
             ResultReason::ItemNotFound => Self::Item_Not_Found,
             ResultReason::ResponseTooLarge => Self::Response_Too_Large,
             ResultReason::AuthenticationNotSuccessful => Self::Authentication_Not_Successful,
@@ -1000,32 +1119,21 @@ pub enum ProfileName {
     KMIP21 = 0x8000_0001,
 }
 
-/// KMIP 1.4 RNG Mode Enumeration
-#[kmip_enum]
-pub enum RNGMode {
-    SharedInstantiation = 0x1,
-    NonSharedInstantiation = 0x2,
-}
-
 /// KMIP 1.4 Client Registration Method Enumeration
 #[kmip_enum]
 pub enum ClientRegistrationMethod {
     Unspecified = 0x1,
-    ServerPreProvided = 0x2,
+    ServerPreGenerated = 0x2,
     ServerOnDemand = 0x3,
     ClientGenerated = 0x4,
     ClientRegistered = 0x5,
 }
 
-/// KMIP 1.4 Storage Status Mask Enumeration
-#[kmip_enum]
-pub enum StorageStatusMask {
-    Online = 0x1,
-    Archival = 0x2,
-    Destroyed = 0x4,
-}
+/// KMIP 1.4 Storage Status Mask: an Integer used as a bit mask (Locate request payload),
+/// identical to the KMIP 2.1 bit mask (Online 0x1, Archival 0x2, Destroyed 0x4).
+pub use crate::kmip_2_1::kmip_types::StorageStatusMask;
 
-/// KMIP 1.4 Recommended Curve Enumeration
+/// KMIP 1.4 Recommended Curve Enumeration (KMIP 1.4 §9.1.3.2.5, Table 293)
 #[kmip_enum]
 pub enum RecommendedCurve {
     P192 = 0x1,
@@ -1047,41 +1155,81 @@ pub enum RecommendedCurve {
     SECP112R2 = 0x11,
     SECP128R1 = 0x12,
     SECP128R2 = 0x13,
-    SECP160R1 = 0x14,
-    SECP160K1 = 0x15,
-    SECP256K1 = 0x16,
-    BRAINPOOLP160R1 = 0x17,
-    BRAINPOOLP160T1 = 0x18,
-    BRAINPOOLP192R1 = 0x19,
-    BRAINPOOLP192T1 = 0x1A,
-    BRAINPOOLP224R1 = 0x1B,
-    BRAINPOOLP224T1 = 0x1C,
-    BRAINPOOLP256R1 = 0x1D,
-    BRAINPOOLP256T1 = 0x1E,
-    BRAINPOOLP320R1 = 0x1F,
-    BRAINPOOLP320T1 = 0x20,
-    BRAINPOOLP384R1 = 0x21,
-    BRAINPOOLP384T1 = 0x22,
-    BRAINPOOLP512R1 = 0x23,
-    BRAINPOOLP512T1 = 0x24,
+    SECP160K1 = 0x14,
+    SECP160R1 = 0x15,
+    SECP160R2 = 0x16,
+    SECP192K1 = 0x17,
+    SECP224K1 = 0x18,
+    SECP256K1 = 0x19,
+    SECT113R1 = 0x1A,
+    SECT113R2 = 0x1B,
+    SECT131R1 = 0x1C,
+    SECT131R2 = 0x1D,
+    SECT163R1 = 0x1E,
+    SECT193R1 = 0x1F,
+    SECT193R2 = 0x20,
+    SECT239K1 = 0x21,
+    ANSIX9P192V2 = 0x22,
+    ANSIX9P192V3 = 0x23,
+    ANSIX9P239V1 = 0x24,
+    ANSIX9P239V2 = 0x25,
+    ANSIX9P239V3 = 0x26,
+    ANSIX9C2PNB163V1 = 0x27,
+    ANSIX9C2PNB163V2 = 0x28,
+    ANSIX9C2PNB163V3 = 0x29,
+    ANSIX9C2PNB176V1 = 0x2A,
+    ANSIX9C2TNB191V1 = 0x2B,
+    ANSIX9C2TNB191V2 = 0x2C,
+    ANSIX9C2TNB191V3 = 0x2D,
+    ANSIX9C2PNB208W1 = 0x2E,
+    ANSIX9C2TNB239V1 = 0x2F,
+    ANSIX9C2TNB239V2 = 0x30,
+    ANSIX9C2TNB239V3 = 0x31,
+    ANSIX9C2PNB272W1 = 0x32,
+    ANSIX9C2PNB304W1 = 0x33,
+    ANSIX9C2TNB359V1 = 0x34,
+    ANSIX9C2PNB368W1 = 0x35,
+    ANSIX9C2TNB431R1 = 0x36,
+    BRAINPOOLP160R1 = 0x37,
+    BRAINPOOLP160T1 = 0x38,
+    BRAINPOOLP192R1 = 0x39,
+    BRAINPOOLP192T1 = 0x3A,
+    BRAINPOOLP224R1 = 0x3B,
+    BRAINPOOLP224T1 = 0x3C,
+    BRAINPOOLP256R1 = 0x3D,
+    BRAINPOOLP256T1 = 0x3E,
+    BRAINPOOLP320R1 = 0x3F,
+    BRAINPOOLP320T1 = 0x40,
+    BRAINPOOLP384R1 = 0x41,
+    BRAINPOOLP384T1 = 0x42,
+    BRAINPOOLP512R1 = 0x43,
+    BRAINPOOLP512T1 = 0x44,
 }
 
 impl_from_1to1!(RecommendedCurve => kmip_2_1::kmip_types::RecommendedCurve, [
     P192, K163, B163, P224, K233, B233, P256, K283, B283, P384, K409, B409, P521, K571, B571,
-    SECP112R1, SECP112R2, SECP128R1, SECP128R2, SECP160R1, SECP160K1, SECP256K1,
-    BRAINPOOLP160R1, BRAINPOOLP160T1, BRAINPOOLP192R1, BRAINPOOLP192T1,
-    BRAINPOOLP224R1, BRAINPOOLP224T1, BRAINPOOLP256R1, BRAINPOOLP256T1,
-    BRAINPOOLP320R1, BRAINPOOLP320T1, BRAINPOOLP384R1, BRAINPOOLP384T1,
-    BRAINPOOLP512R1, BRAINPOOLP512T1,
+    SECP112R1, SECP112R2, SECP128R1, SECP128R2, SECP160K1, SECP160R1, SECP160R2, SECP192K1,
+    SECP224K1, SECP256K1, SECT113R1, SECT113R2, SECT131R1, SECT131R2, SECT163R1, SECT193R1,
+    SECT193R2, SECT239K1, ANSIX9P192V2, ANSIX9P192V3, ANSIX9P239V1, ANSIX9P239V2, ANSIX9P239V3,
+    ANSIX9C2PNB163V1, ANSIX9C2PNB163V2, ANSIX9C2PNB163V3, ANSIX9C2PNB176V1, ANSIX9C2TNB191V1,
+    ANSIX9C2TNB191V2, ANSIX9C2TNB191V3, ANSIX9C2PNB208W1, ANSIX9C2TNB239V1, ANSIX9C2TNB239V2,
+    ANSIX9C2TNB239V3, ANSIX9C2PNB272W1, ANSIX9C2PNB304W1, ANSIX9C2TNB359V1, ANSIX9C2PNB368W1,
+    ANSIX9C2TNB431R1, BRAINPOOLP160R1, BRAINPOOLP160T1, BRAINPOOLP192R1, BRAINPOOLP192T1,
+    BRAINPOOLP224R1, BRAINPOOLP224T1, BRAINPOOLP256R1, BRAINPOOLP256T1, BRAINPOOLP320R1,
+    BRAINPOOLP320T1, BRAINPOOLP384R1, BRAINPOOLP384T1, BRAINPOOLP512R1, BRAINPOOLP512T1,
 ]);
 
 impl_try_from_with_error!(kmip_2_1::kmip_types::RecommendedCurve => RecommendedCurve, [
     P192, K163, B163, P224, K233, B233, P256, K283, B283, P384, K409, B409, P521, K571, B571,
-    SECP112R1, SECP112R2, SECP128R1, SECP128R2, SECP160R1, SECP160K1, SECP256K1,
-    BRAINPOOLP160R1, BRAINPOOLP160T1, BRAINPOOLP192R1, BRAINPOOLP192T1,
-    BRAINPOOLP224R1, BRAINPOOLP224T1, BRAINPOOLP256R1, BRAINPOOLP256T1,
-    BRAINPOOLP320R1, BRAINPOOLP320T1, BRAINPOOLP384R1, BRAINPOOLP384T1,
-    BRAINPOOLP512R1, BRAINPOOLP512T1,
+    SECP112R1, SECP112R2, SECP128R1, SECP128R2, SECP160K1, SECP160R1, SECP160R2, SECP192K1,
+    SECP224K1, SECP256K1, SECT113R1, SECT113R2, SECT131R1, SECT131R2, SECT163R1, SECT193R1,
+    SECT193R2, SECT239K1, ANSIX9P192V2, ANSIX9P192V3, ANSIX9P239V1, ANSIX9P239V2, ANSIX9P239V3,
+    ANSIX9C2PNB163V1, ANSIX9C2PNB163V2, ANSIX9C2PNB163V3, ANSIX9C2PNB176V1, ANSIX9C2TNB191V1,
+    ANSIX9C2TNB191V2, ANSIX9C2TNB191V3, ANSIX9C2PNB208W1, ANSIX9C2TNB239V1, ANSIX9C2TNB239V2,
+    ANSIX9C2TNB239V3, ANSIX9C2PNB272W1, ANSIX9C2PNB304W1, ANSIX9C2TNB359V1, ANSIX9C2PNB368W1,
+    ANSIX9C2TNB431R1, BRAINPOOLP160R1, BRAINPOOLP160T1, BRAINPOOLP192R1, BRAINPOOLP192T1,
+    BRAINPOOLP224R1, BRAINPOOLP224T1, BRAINPOOLP256R1, BRAINPOOLP256T1, BRAINPOOLP320R1,
+    BRAINPOOLP320T1, BRAINPOOLP384R1, BRAINPOOLP384T1, BRAINPOOLP512R1, BRAINPOOLP512T1,
 ], "RecommendedCurve not supported in KMIP 1");
 
 /// KMIP 1.4 Digital Signature Algorithm Enumeration
@@ -1103,13 +1251,17 @@ pub enum DigitalSignatureAlgorithm {
     ECDSAWithSHA256 = 0xE,
     ECDSAWithSHA384 = 0xF,
     ECDSAWithSHA512 = 0x10,
+    SHA3256WithRSAEncryption = 0x11,
+    SHA3384WithRSAEncryption = 0x12,
+    SHA3512WithRSAEncryption = 0x13,
 }
 
 impl_from_1to1!(DigitalSignatureAlgorithm => kmip_2_1::kmip_types::DigitalSignatureAlgorithm, [
-    MD2WithRSAEncryption, MD5WithRSAEncryption, SHA1WithRSAEncryption,
-    SHA224WithRSAEncryption, SHA256WithRSAEncryption, SHA384WithRSAEncryption,
-    SHA512WithRSAEncryption, RSASSAPSS, DSAWithSHA1, DSAWithSHA224, DSAWithSHA256,
-    ECDSAWithSHA1, ECDSAWithSHA224, ECDSAWithSHA256, ECDSAWithSHA384, ECDSAWithSHA512,
+    MD2WithRSAEncryption, MD5WithRSAEncryption, SHA1WithRSAEncryption, SHA224WithRSAEncryption,
+    SHA256WithRSAEncryption, SHA384WithRSAEncryption, SHA512WithRSAEncryption, RSASSAPSS,
+    DSAWithSHA1, DSAWithSHA224, DSAWithSHA256, ECDSAWithSHA1, ECDSAWithSHA224, ECDSAWithSHA256,
+    ECDSAWithSHA384, ECDSAWithSHA512, SHA3256WithRSAEncryption, SHA3384WithRSAEncryption,
+    SHA3512WithRSAEncryption,
 ]);
 
 impl TryFrom<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatureAlgorithm {
@@ -1148,16 +1300,23 @@ impl TryFrom<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatu
             kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA224 => {
                 Self::ECDSAWithSHA224
             }
-            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA256
-            | kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA384
-            | kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA512 => {
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA256 => {
                 Self::ECDSAWithSHA256
             }
-            x => {
-                return Err(KmipError::InvalidKmip14Value(
-                    ResultReason::OperationNotSupported,
-                    format!("DigitalSignatureAlgorithm not supported in KMIP 1: {x:?}"),
-                ));
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA384 => {
+                Self::ECDSAWithSHA384
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::ECDSAWithSHA512 => {
+                Self::ECDSAWithSHA512
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA3256WithRSAEncryption => {
+                Self::SHA3256WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => {
+                Self::SHA3384WithRSAEncryption
+            }
+            kmip_2_1::kmip_types::DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => {
+                Self::SHA3512WithRSAEncryption
             }
         })
     }
@@ -1293,10 +1452,12 @@ pub struct RandomNumberGenerator {
     pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(rename = "DRBGAlgorithm", alias = "DrbgAlgorithm")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drbg_algorithm: Option<DRBGAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(rename = "FIPS186Variation", alias = "Fips186Variation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fips186_variation: Option<FIPS186Variation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1766,5 +1927,29 @@ mod tests {
         assert_eq!(u32::from(ObjectType::SecretData), 0x07);
         assert_eq!(u32::from(ObjectType::OpaqueObject), 0x08);
         assert_eq!(u32::from(ObjectType::PGPKey), 0x09);
+    }
+
+    #[test]
+    fn test_result_reason_from_kmip_2_error_reason() {
+        assert_eq!(
+            ResultReason::from(kmip_0::kmip_types::ErrorReason::Item_Not_Found),
+            ResultReason::ItemNotFound
+        );
+        assert_eq!(
+            ResultReason::from(kmip_0::kmip_types::ErrorReason::Codec_Error),
+            ResultReason::InvalidMessage
+        );
+        assert_eq!(
+            ResultReason::from(kmip_0::kmip_types::ErrorReason::Wrong_Key_Lifecycle_State),
+            ResultReason::PermissionDenied
+        );
+        assert_eq!(
+            ResultReason::from(kmip_0::kmip_types::ErrorReason::Read_Only_Attribute),
+            ResultReason::InvalidField
+        );
+        assert_eq!(
+            ResultReason::from(kmip_0::kmip_types::ErrorReason::Unknown_Message_Extension),
+            ResultReason::FeatureNotSupported
+        );
     }
 }

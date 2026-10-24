@@ -4,6 +4,7 @@ use std::{cmp::min, collections::HashSet};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
+        creation_time,
         kmip_2_1::{
             extra::{
                 VENDOR_ATTR_X509_EXTENSION,
@@ -14,7 +15,6 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::Certify,
             kmip_types::{KeyFormatType, LinkType, VendorAttributeValue},
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::KmsRng,
@@ -199,7 +199,7 @@ pub(crate) async fn build_and_sign_certificate(
     // KMIP §4.48 / §4.51: set initial_date so the auto-rotation scheduler can
     // compute the first rotation deadline via `initial_date + rotate_offset + interval`
     // without requiring a prior `rotate_date` (which is only set after the first rotation).
-    attributes.initial_date = Some(time_normalize()?);
+    attributes.initial_date = Some(creation_time()?);
 
     Ok((
         openssl_certificate_to_kmip(&x509).map_err(KmsError::from)?,

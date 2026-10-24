@@ -22,6 +22,10 @@ use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
 }};
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::kmip_attributes::Attributes,
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
     kmip_objects::ObjectType,
@@ -46,7 +50,7 @@ pub(crate) async fn create_key_pair(
     request: CreateKeyPair,
     owner: &UserId,
 ) -> KResult<CreateKeyPairResponse> {
-    debug!("Create key pair: {request}");
+    debug!("CreateKeyPair request");
 
     KMS::reject_protection_storage_masks(
         request.common_protection_storage_masks.is_some()
@@ -126,10 +130,7 @@ pub(crate) async fn create_key_pair(
         private_key_attributes.rotate_generation = Some(0);
         private_key_attributes.rotate_latest = Some(true);
     }
-    trace!(
-        "Private key attributes after lifecycle update: {}",
-        private_key_attributes
-    );
+    trace!("Private key lifecycle attributes initialized");
     let private_key_tags = private_key_attributes.get_tags(kms.vendor_id());
     let cryptographic_algorithm = private_key_attributes.cryptographic_algorithm;
 
@@ -152,10 +153,7 @@ pub(crate) async fn create_key_pair(
     if let Ok(object_attributes) = public_key.attributes_mut() {
         object_attributes.always_sensitive = public_key_attributes.always_sensitive;
     }
-    trace!(
-        "Public key attributes after lifecycle update: {}",
-        public_key_attributes
-    );
+    trace!("Public key lifecycle attributes initialized");
     let public_key_tags = public_key_attributes.get_tags(kms.vendor_id());
     Box::pin(wrap_and_cache(
         kms,
@@ -183,6 +181,7 @@ pub(crate) async fn create_key_pair(
             public_key_tags,
         )),
     ];
+    kms.constraints.check_new_objects(&operations)?;
     let ids = kms.database.atomic(owner, &operations).await?;
 
     let sk_uid = ids
@@ -203,6 +202,32 @@ pub(crate) async fn create_key_pair(
         private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid.to_owned()),
         public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid.to_owned()),
     })
+}
+
+/// Resolve an attribute that must hold the same value on the private and the public key.
+///
+/// KMIP 2.1 §6.1.9: Private/Public Key Attributes take precedence over Common Attributes,
+/// and Table 191 requires the same value on both keys; a mismatch is `Invalid_Attribute`.
+fn resolve_shared_attribute<T: Clone + PartialEq>(
+    name: &str,
+    field: impl Fn(&Attributes) -> Option<&T>,
+    common: &Attributes,
+    private: Option<&Attributes>,
+    public: Option<&Attributes>,
+) -> KResult<Option<T>> {
+    let common = field(common);
+    let private = private.and_then(&field).or(common);
+    let public = public.and_then(&field).or(common);
+    match (private, public) {
+        (Some(sk), Some(pk)) if sk != pk => Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Attribute,
+            format!(
+                "CreateKeyPair: {name} must have the same value for the private and public keys"
+            ),
+        )),
+        (Some(value), _) | (_, Some(value)) => Ok(Some(value.clone())),
+        (None, None) => Ok(None),
+    }
 }
 
 /// Generate a key pair and the corresponding system tags.
@@ -227,29 +252,51 @@ pub(super) fn generate_key_pair(
 ) -> KResult<KeyPair> {
     trace!("Internal create key pair");
 
-    let common_attributes = request.common_attributes.unwrap_or_default();
+    let mut common_attributes = request.common_attributes.unwrap_or_default();
+    let private_attributes = request.private_key_attributes.as_ref();
+    let public_attributes = request.public_key_attributes.as_ref();
+
+    // Private/Public Key Attributes take precedence over Common Attributes and these four
+    // attributes must be identical on both keys (KMIP 2.1 §6.1.9, Table 191). Fold the
+    // resolved values into the common attributes, which drive key generation below.
+    let algorithm = resolve_shared_attribute(
+        "Cryptographic Algorithm",
+        |a| a.cryptographic_algorithm.as_ref(),
+        &common_attributes,
+        private_attributes,
+        public_attributes,
+    )?;
+    let resolved_length = resolve_shared_attribute(
+        "Cryptographic Length",
+        |a| a.cryptographic_length.as_ref(),
+        &common_attributes,
+        private_attributes,
+        public_attributes,
+    )?;
+    let resolved_curve_parameters = resolve_shared_attribute(
+        "Cryptographic Domain Parameters",
+        |a| a.cryptographic_domain_parameters.as_ref(),
+        &common_attributes,
+        private_attributes,
+        public_attributes,
+    )?;
+    resolve_shared_attribute(
+        "Cryptographic Parameters",
+        |a| a.cryptographic_parameters.as_ref(),
+        &common_attributes,
+        private_attributes,
+        public_attributes,
+    )?;
+    common_attributes.cryptographic_algorithm = algorithm;
+    common_attributes.cryptographic_length = resolved_length;
+    common_attributes.cryptographic_domain_parameters = resolved_curve_parameters;
 
     // Check that the cryptographic algorithm is specified.
-    let cryptographic_algorithm =
-        if let Some(cryptographic_algorithm) = &common_attributes.cryptographic_algorithm {
-            *cryptographic_algorithm
-        } else if let Some(cryptographic_algorithm) = &request
-            .private_key_attributes
-            .as_ref()
-            .and_then(|att| att.cryptographic_algorithm)
-        {
-            *cryptographic_algorithm
-        } else if let Some(cryptographic_algorithm) = &request
-            .public_key_attributes
-            .as_ref()
-            .and_then(|att| att.cryptographic_algorithm)
-        {
-            *cryptographic_algorithm
-        } else {
-            kms_bail!(KmsError::InvalidRequest(
-                "the cryptographic algorithm must be specified for key pair creation".to_owned()
-            ))
-        };
+    let Some(cryptographic_algorithm) = algorithm else {
+        kms_bail!(KmsError::InvalidRequest(
+            "the cryptographic algorithm must be specified for key pair creation".to_owned()
+        ))
+    };
     trace!("cryptographic_algorithm: {cryptographic_algorithm}");
 
     // Generate the key pair based on the cryptographic algorithm.
@@ -415,11 +462,20 @@ pub(super) fn generate_key_pair(
             }
         }
         CryptographicAlgorithm::RSA => {
-            let key_size_in_bits = u32::try_from(
-                common_attributes
-                    .cryptographic_length
-                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_owned()))?,
-            )?;
+            let requested_length = common_attributes
+                .cryptographic_length
+                .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_owned()))?;
+            let key_size_in_bits = u32::try_from(requested_length)
+                .ok()
+                .filter(|bits| *bits > 0)
+                .ok_or_else(|| {
+                    KmsError::Kmip21Error(
+                        ErrorReason::Invalid_Attribute_Value,
+                        format!(
+                            "CreateKeyPair: invalid RSA Cryptographic Length {requested_length}"
+                        ),
+                    )
+                })?;
             debug!("RSA key pair generation: size in bits: {key_size_in_bits}");
 
             create_rsa_key_pair(
@@ -554,4 +610,86 @@ pub(super) fn generate_key_pair(
         }
     }?;
     Ok(key_pair)
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_types::{CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve},
+        },
+    };
+
+    use super::resolve_shared_attribute;
+    use crate::error::KmsError;
+
+    fn curve(recommended_curve: RecommendedCurve) -> Attributes {
+        Attributes {
+            cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                qlength: None,
+                recommended_curve: Some(recommended_curve),
+            }),
+            ..Attributes::default()
+        }
+    }
+
+    #[test]
+    fn per_key_attribute_is_resolved_and_mismatch_rejected() {
+        fn field(a: &Attributes) -> Option<&CryptographicDomainParameters> {
+            a.cryptographic_domain_parameters.as_ref()
+        }
+        let common = Attributes::default();
+
+        // The curve is only given on the private key: it is the effective value.
+        let resolved = resolve_shared_attribute(
+            "domain",
+            field,
+            &common,
+            Some(&curve(RecommendedCurve::P256)),
+            None,
+        )
+        .ok()
+        .flatten();
+        assert_eq!(
+            resolved.and_then(|p| p.recommended_curve),
+            Some(RecommendedCurve::P256)
+        );
+
+        // Private and public key disagree: Invalid_Attribute.
+        let err = resolve_shared_attribute(
+            "domain",
+            field,
+            &common,
+            Some(&curve(RecommendedCurve::P256)),
+            Some(&curve(RecommendedCurve::P384)),
+        )
+        .err();
+        assert!(matches!(
+            err,
+            Some(KmsError::Kmip21Error(ErrorReason::Invalid_Attribute, _))
+        ));
+
+        // A per-key value overrides the common one, and the other key inherits the common
+        // value: they differ, so this is rejected too.
+        let err = resolve_shared_attribute(
+            "algorithm",
+            |a: &Attributes| a.cryptographic_algorithm.as_ref(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                ..Attributes::default()
+            },
+            Some(&Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                ..Attributes::default()
+            }),
+            None,
+        )
+        .err();
+        assert!(matches!(
+            err,
+            Some(KmsError::Kmip21Error(ErrorReason::Invalid_Attribute, _))
+        ));
+    }
 }

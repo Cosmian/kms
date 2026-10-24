@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -11,9 +13,6 @@ use cosmian_kmip::{
     },
     time_normalize,
 };
-
-use std::str::FromStr;
-
 use serde::Serialize;
 
 use crate::error::UtilsError;

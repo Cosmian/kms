@@ -6,9 +6,12 @@
 //! updates `CKA_LABEL` / `CKA_START_DATE` / `CKA_END_DATE` on both old and new keys.
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation, kmip_objects::ObjectType, kmip_operations::ReKeyResponse,
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation, kmip_objects::ObjectType, kmip_operations::ReKeyResponse,
+            kmip_types::UniqueIdentifier,
+        },
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
@@ -185,6 +188,8 @@ impl KMS {
             secs / cosmian_kms_server_database::reexport::cosmian_kms_interfaces::SECS_PER_DAY
         });
 
+        self.constraints
+            .check(old_owm.object().object_type(), old_attrs)?;
         // Generate the new key on the same HSM slot.
         if let Err(e) = self
             .database
@@ -218,11 +223,14 @@ impl KMS {
                         )
                     },
                 );
-                return Err(KmsError::InvalidRequest(format!(
-                    "HSM key '{new_uid}' already exists — generation {new_gen} was already \
-                     created on this HSM slot. A previous rotation may have \
-                     completed.{retry_hint}"
-                )));
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Object_Already_Exists,
+                    format!(
+                        "HSM key '{new_uid}' already exists — generation {new_gen} was already \
+                         created on this HSM slot. A previous rotation may have \
+                         completed.{retry_hint}"
+                    ),
+                ));
             }
             return Err(KmsError::InvalidRequest(format!(
                 "Failed to generate new HSM key '{new_uid}': {e}"

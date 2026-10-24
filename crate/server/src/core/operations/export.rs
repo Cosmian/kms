@@ -17,6 +17,6 @@ use crate::{
 /// If both are present, the key will be wrapped.
 /// If none are present, the key will be returned as is.
 pub(crate) async fn export(kms: &KMS, request: Export, user: &UserId) -> KResult<ExportResponse> {
-    trace!("{request}");
+    trace!("Export request");
     Box::pin(export_get(kms, request, KmipOperation::Export, user)).await
 }

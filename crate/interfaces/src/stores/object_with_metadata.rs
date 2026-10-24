@@ -228,9 +228,7 @@ impl ObjectWithMetadata {
                 let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
                 ul.usage_limits_total >= needed
             }
-            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-                ul.usage_limits_total > 0
-            }
+            UsageLimitsUnit::Object => ul.usage_limits_total > 0,
         }
     }
 

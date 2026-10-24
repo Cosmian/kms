@@ -75,6 +75,7 @@ pub fn query_vendor_id(client: &KmsClient) -> String {
         .block_on(async {
             let request = Query {
                 query_function: Some(vec![QueryFunction::QueryServerInformation]),
+                ..Default::default()
             };
             client
                 .query(request)

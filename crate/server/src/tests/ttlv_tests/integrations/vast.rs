@@ -45,8 +45,8 @@
 //! * `ReKey`     → succeeds, returns a new `UniqueIdentifier`.
 //! * `DeriveKey` → parsed correctly; may fail at operation level (e.g.
 //!   `Operation_Not_Supported`), but **never** with `Invalid_Message`.
-//! * `ReCertify` → parsed correctly; expected to fail with
-//!   `Operation_Not_Supported` (not `Invalid_Message`).
+//! * `ReCertify` → parsed correctly; fails with `Item_Not_Found` on an unknown
+//!   certificate (not `Invalid_Message`).
 //! * `Check`     → succeeds, echoes back the `UniqueIdentifier`.
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -146,7 +146,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Activate(Activate {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
@@ -296,7 +296,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Destroy(Destroy {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
@@ -406,7 +406,7 @@ fn test_vast_rekey_aes_key() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::ReKey(ReKey {
-                    unique_identifier: original_uid.clone(),
+                    unique_identifier: Some(original_uid.clone()),
                     offset: None,
                     template_attribute: None,
                 }),
@@ -490,7 +490,7 @@ fn test_vast_check_aes_key() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Check(Check {
-                    unique_identifier: uid.clone(),
+                    unique_identifier: Some(uid.clone()),
                     usage_limits_count: None,
                     cryptographic_usage_mask: Some(usage_mask),
                     lease_time: None,
@@ -542,7 +542,7 @@ fn test_vast_derive_key_request_parsed() {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::{
         kmip_data_structures::DerivationParameters,
         kmip_operations::DeriveKey,
-        kmip_types::{DerivationMethod, OperationEnumeration as OpEnum},
+        kmip_types::{DerivationMethod, ObjectType, OperationEnumeration as OpEnum},
     };
     log_init(option_env!("RUST_LOG"));
     let client = get_client();
@@ -571,6 +571,7 @@ fn test_vast_derive_key_request_parsed() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::DeriveKey(DeriveKey {
+                    object_type: ObjectType::SymmetricKey,
                     unique_identifier: vec![base_uid.clone()],
                     derivation_method: DerivationMethod::HMAC,
                     derivation_parameters: Some(DerivationParameters {
@@ -637,31 +638,21 @@ fn test_vast_derive_key_request_parsed() {
     destroy_key(&client, &base_uid);
 }
 
-/// A KMIP 1.4 `ReCertify` request must be **parsed without error**.
-/// Before the fix this returned `Invalid_Message`; after the fix the
-/// deserializer accepts the payload and the server should return
-/// `Operation_Not_Supported` (KMIP 2.1 has no `ReCertify` equivalent),
-/// but must **not** return `Invalid_Message`.
-///
-/// Note: `CertificateRequestValue` was introduced as a TTLV tag only in
-/// KMIP 2.0, so we cannot construct the request via the typed Rust API and
-/// send it via KMIP 1.4 TTLV encoding.  Instead we send a minimal valid
-/// KMIP 1.4 `ReCertify` request that only contains the fields supported
-/// by the 1.4 TTLV tag set (`UniqueIdentifier` + `CertificateRequestType`).
+/// A KMIP 1.4 `ReCertify` request (KMIP 1.4 §4.8, KMIP 2.1 §6.1.45) must be parsed
+/// over the binary wire and executed: on an unknown certificate the server answers
+/// `Item_Not_Found`, never `Invalid_Message`.
 #[test]
 fn test_vast_recertify_request_parsed() {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_1_4::{
             kmip_operations::ReCertify,
-            kmip_types::{CertificateRequestType, OperationEnumeration as OpEnum},
+            kmip_types::{CertificateRequestType, OperationEnumeration as OpEnum, ResultReason},
         },
-        ttlv::to_ttlv,
+        ttlv::{TTLV, from_ttlv, to_ttlv},
     };
     log_init(option_env!("RUST_LOG"));
     let client = get_client();
 
-    // Build a stripped-down ReCertify without CertificateRequestValue
-    // (that tag didn't exist in KMIP 1.4 TTLV).
     let request_message = RequestMessage {
         request_header: RequestMessageHeader {
             protocol_version: ProtocolVersion {
@@ -680,6 +671,7 @@ fn test_vast_recertify_request_parsed() {
                     unique_identifier: Some("non-existent-cert-id".to_owned()),
                     certificate_request_type: Some(CertificateRequestType::PEM),
                     certificate_request_value: Some(vec![]),
+                    offset: Some(3600),
                     template_attribute: None,
                 }),
                 message_extension: None,
@@ -687,69 +679,29 @@ fn test_vast_recertify_request_parsed() {
         )],
     };
 
-    // Serialize to TTLV manually, stripping any fields whose tags are
-    // unknown to the KMIP 1.4 tag set (e.g., CertificateRequestValue).
-    // If even the minimal struct can't be serialized, skip the send test
-    // but still verify that the struct roundtrips through Rust serde.
-    let ttlv_result = to_ttlv(&request_message);
-    match ttlv_result {
-        Err(e) => {
-            // Acceptable: the ReCertify struct contains fields whose TTLV tags
-            // are not registered in the KMIP 1.4 tag map. The important thing
-            // is that the *server* can *parse* the operation variant — the
-            // deserialization match arm exists and does not fall through to
-            // Invalid_Message. We only verify the Rust struct roundtrip here.
-            info!("ReCertify TTLV serialisation skipped (expected for KMIP 1.4 tag set): {e}");
-        }
-        Ok(ttlv) => {
-            // If serialisation succeeded (e.g., the tag map was extended),
-            // send the request and verify the server doesn't return Invalid_Message.
-            use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::TTLV;
-            let bytes = match TTLV::to_bytes(&ttlv, KmipFlavor::Kmip1) {
-                Ok(b) => b,
-                Err(e) => {
-                    // TTLV encoding also failed (e.g. tag lookup by name failed
-                    // after struct serialisation). This is the same expected
-                    // limitation as above — skip sending to the server.
-                    info!("ReCertify TTLV to_bytes skipped (expected for KMIP 1.4 tag set): {e}");
-                    return;
-                }
-            };
-            let raw_response = client
-                .send_raw_request(&bytes)
-                .expect("ReCertify: raw send failed");
-
-            let response_ttlv = TTLV::from_bytes(&raw_response, KmipFlavor::Kmip1)
-                .expect("ReCertify: TTLV parse failed");
-            let response: ResponseMessage =
-                cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::from_ttlv(response_ttlv)
-                    .expect("ReCertify: ResponseMessage deserialise failed");
-
-            let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) =
-                response.batch_item.first()
-            else {
-                panic!("ReCertify: expected V14 batch item");
-            };
-
-            let result_message = batch_item
-                .result_message
-                .as_deref()
-                .unwrap_or("")
-                .to_lowercase();
-
-            assert!(
-                !result_message.contains("invalid message")
-                    && !result_message.contains("invalid_message"),
-                "ReCertify: server must not return Invalid_Message; got: {:?}",
-                batch_item.result_message
-            );
-
-            info!(
-                "ReCertify returned {:?} (not Invalid_Message): {:?}",
-                batch_item.result_status, batch_item.result_message
-            );
-        }
-    }
+    let ttlv = to_ttlv(&request_message).expect("ReCertify: TTLV serialisation failed");
+    let bytes = TTLV::to_bytes(&ttlv, KmipFlavor::Kmip1).expect("ReCertify: to_bytes failed");
+    let raw_response = client
+        .send_raw_request(&bytes)
+        .expect("ReCertify: raw send failed");
+    let response_ttlv =
+        TTLV::from_bytes(&raw_response, KmipFlavor::Kmip1).expect("ReCertify: TTLV parse failed");
+    let response: ResponseMessage =
+        from_ttlv(response_ttlv).expect("ReCertify: ResponseMessage deserialise failed");
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("ReCertify: expected V14 batch item");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    assert_eq!(
+        batch_item.result_reason,
+        Some(ResultReason::ItemNotFound),
+        "ReCertify: {:?}",
+        batch_item.result_message
+    );
 }
 
 /// VAST issues a KMIP 1.4 `Get` to retrieve a DEK wrapped by a KEK, then
@@ -824,6 +776,7 @@ fn test_vast_get_dek_wrapped_by_kek() {
                 request_payload: Operation::Get(Get {
                     unique_identifier: Some(dek_uid.clone()),
                     key_format_type: None,
+                    key_wrap_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: Some(KeyWrappingSpecification {
                         wrapping_method: WrappingMethod::Encrypt,
@@ -904,6 +857,7 @@ fn test_vast_get_dek_wrapped_by_kek() {
                 request_payload: Operation::Get(Get {
                     unique_identifier: Some(kek_uid.clone()),
                     key_format_type: None,
+                    key_wrap_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
                 }),
@@ -1030,6 +984,7 @@ fn test_vast_workflow_create_locate_get_attributes() {
                 unique_batch_item_id: None,
                 request_payload: Operation::Locate(Locate {
                     maximum_items: None,
+                    offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attribute: Some(vec![Attribute::Name(Name {
@@ -1182,7 +1137,7 @@ fn test_vast_opn_add_attribute_persistence() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_uid.clone(),
+                    unique_identifier: Some(key_uid.clone()),
                     attribute: Attribute::OperationPolicyName("default".to_owned()),
                 }),
                 message_extension: None,
@@ -1329,7 +1284,7 @@ fn test_vast_opn_survives_rekey() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_uid.clone(),
+                    unique_identifier: Some(key_uid.clone()),
                     attribute: Attribute::Name(Name {
                         name_value: vast_key_name.clone(),
                         name_type: NameType::UninterpretedTextString,
@@ -1367,7 +1322,7 @@ fn test_vast_opn_survives_rekey() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_uid.clone(),
+                    unique_identifier: Some(key_uid.clone()),
                     attribute: Attribute::OperationPolicyName("default".to_owned()),
                 }),
                 message_extension: None,
@@ -1405,7 +1360,7 @@ fn test_vast_opn_survives_rekey() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::ReKey(ReKey {
-                    unique_identifier: key_uid.clone(),
+                    unique_identifier: Some(key_uid.clone()),
                     offset: None,
                     template_attribute: None,
                 }),
@@ -1563,7 +1518,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                     ephemeral: None,
                     unique_batch_item_id: None,
                     request_payload: Operation::AddAttribute(AddAttribute {
-                        unique_identifier: uid.clone(),
+                        unique_identifier: Some(uid.clone()),
                         attribute: Attribute::Name(Name {
                             name_value: name.clone(),
                             name_type: NameType::UninterpretedTextString,
@@ -1605,7 +1560,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::ReKey(ReKey {
-                    unique_identifier: key_uids[0].clone(),
+                    unique_identifier: Some(key_uids[0].clone()),
                     offset: None,
                     template_attribute: None,
                 }),
@@ -1646,6 +1601,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                     unique_batch_item_id: None,
                     request_payload: Operation::Locate(Locate {
                         maximum_items: None,
+                        offset_items: None,
                         storage_status_mask: None,
                         object_group_member: None,
                         attribute: Some(vec![Attribute::Name(Name {
@@ -1740,7 +1696,7 @@ fn test_vast_opn_returned_in_default_get_attributes() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_uid.clone(),
+                    unique_identifier: Some(key_uid.clone()),
                     attribute: Attribute::OperationPolicyName("default".to_owned()),
                 }),
                 message_extension: None,

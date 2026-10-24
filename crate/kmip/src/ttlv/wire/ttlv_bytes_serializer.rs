@@ -8,14 +8,22 @@ use crate::ttlv::{
 /// Write a tag as a 3-byte big-endian integer.
 /// Falls back to the forward enum-lookup table when the tag name does not
 /// exactly match a [`KmipTag`] variant (e.g. `PascalCase` serde renames like
-/// `CertificateSubjectCn` vs `CertificateSubjectCN`).
+/// `CertificateSubjectCn` vs `CertificateSubjectCN`), and accepts vendor extension
+/// tags (`0x54xxxx`) in their KMIP JSON hex form.
 fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
-    let tag = TAG::from_str(tag_str).or_else(|_| {
-        lookup_enum_code(tag_str)
+    let tag_value = match TAG::from_str(tag_str) {
+        Ok(tag) => tag.to_u32(),
+        Err(_) => lookup_enum_code(tag_str)
             .and_then(|(code, _)| TAG::from_u32(code).ok())
-            .ok_or_else(|| TtlvError::from(format!("Unknown tag: {tag_str}")))
-    })?;
-    let tag_value: u32 = tag.to_u32();
+            .map(|tag| tag.to_u32())
+            .or_else(|| {
+                tag_str
+                    .strip_prefix("0x")
+                    .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                    .filter(|value| value >> 16 == 0x54)
+            })
+            .ok_or_else(|| TtlvError::from(format!("Unknown tag: {tag_str}")))?,
+    };
     let tag_bytes = tag_value.to_be_bytes();
     // Write only the lowest 3 bytes in big-endian
     writer.write_all(&tag_bytes[1..])?;

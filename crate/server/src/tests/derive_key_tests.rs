@@ -4,8 +4,13 @@ use std::collections::HashSet;
 #[cfg(feature = "non-fips")]
 use std::sync::Arc;
 
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+    requests::{create_symmetric_key_kmip_object, import_object_request},
+};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm},
+    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm},
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
@@ -38,7 +43,7 @@ use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::core::KMS;
-use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
+use crate::{error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 /// Helper function to create a symmetric key for testing `DeriveKey` operations
 fn create_base_symmetric_key_request() -> Create {
@@ -337,6 +342,10 @@ async fn test_derive_key_error_cases() -> KResult<()> {
                 CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
                 // Note: Missing DeriveKey usage mask
             ),
+            // Whole seconds: a sub-second "now" is still in the future for the state check.
+            activation_date: Some(
+                cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize()?,
+            ),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             object_type: Some(ObjectType::SymmetricKey),
             ..Attributes::default()
@@ -375,10 +384,159 @@ async fn test_derive_key_error_cases() -> KResult<()> {
 
     let result = kms.derive_key(derive_request, &owner).await;
     match result {
-        Err(e) => assert!(e.to_string().contains("DeriveKey usage mask")),
+        Err(e) => assert!(e.to_string().contains("DeriveKey usage mask"), "{e}"),
         Ok(_) => panic!("expected error"),
     }
 
+    Ok(())
+}
+
+/// KMIP 2.1 §4.57 / Table 207: only an Active base object can be used to derive a key, and
+/// an unsupported derivation method is `Feature_Not_Supported`.
+#[tokio::test]
+async fn test_derive_key_preactive_base_and_unsupported_method() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("test_user");
+
+    // A base key with the DeriveKey usage mask but no Activation Date stays Pre-Active.
+    let mut create_request = create_base_symmetric_key_request();
+    create_request.attributes.activation_date = None;
+    let base_key_id = kms.create(create_request, &owner).await?.unique_identifier;
+
+    let derive_with = |method| {
+        DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            base_key_id.clone(),
+            method,
+            DerivationParameters {
+                salt: Some(b"test salt".to_vec()),
+                iteration_count: Some(1000),
+                ..DerivationParameters::default()
+            },
+            Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(128),
+                object_type: Some(ObjectType::SymmetricKey),
+                ..Attributes::default()
+            },
+        )
+    };
+
+    let err = kms
+        .derive_key(derive_with(DerivationMethod::PBKDF2), &owner)
+        .await
+        .expect_err("a Pre-Active base key must be refused");
+    assert!(
+        matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, _)
+        ),
+        "unexpected error: {err}"
+    );
+
+    let err = kms
+        .derive_key(derive_with(DerivationMethod::ENCRYPT), &owner)
+        .await
+        .expect_err("an unsupported derivation method must be refused");
+    assert!(
+        matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Feature_Not_Supported, _)
+        ),
+        "unexpected error: {err}"
+    );
+
+    Ok(())
+}
+
+/// Known answers of the OASIS draft vectors TC-DERIVEKEY-1 (HASH) and TC-DERIVEKEY-2 (HMAC):
+/// SHA-256 over the key, and HMAC-SHA-256 of `0102` under the key, truncated to 128 bits.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_derive_key_hash_and_hmac_known_answers() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("test_user");
+    let base = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &hex::decode("00112233445566778899aabbccddeeff").expect("hex"),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_usage_mask: Some(CryptographicUsageMask::DeriveKey),
+            ..Attributes::default()
+        },
+    )?;
+    let import = import_object_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        base,
+        None,
+        false,
+        false,
+        EMPTY_TAGS,
+    )?;
+    let base_id = kms.import(import, &owner).await?.unique_identifier;
+
+    let derive =
+        |method, derivation_data: Option<&[u8]>, hashing_algorithm: Option<HashingAlgorithm>| {
+            DeriveKey::new_single_base(
+                ObjectType::SymmetricKey,
+                base_id.clone(),
+                method,
+                DerivationParameters {
+                    cryptographic_parameters: hashing_algorithm.map(|h| CryptographicParameters {
+                        hashing_algorithm: Some(h),
+                        ..CryptographicParameters::default()
+                    }),
+                    derivation_data: derivation_data.map(|d| Zeroizing::new(d.to_vec())),
+                    ..DerivationParameters::default()
+                },
+                Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    cryptographic_length: Some(128),
+                    ..Attributes::default()
+                },
+            )
+        };
+    let derived_bytes = async |request: DeriveKey| -> KResult<Vec<u8>> {
+        let uid = kms.derive_key(request, &owner).await?.unique_identifier;
+        let object = kms
+            .get(Get::new(uid, false, None, None), &owner)
+            .await?
+            .object;
+        Ok(object.key_block()?.key_bytes()?.to_vec())
+    };
+
+    let sha256 = Some(HashingAlgorithm::SHA256);
+    assert_eq!(
+        hex::encode(derived_bytes(derive(DerivationMethod::HASH, None, sha256)).await?),
+        "a8faed6abbf35c12a4b26e40f6feb19d"
+    );
+    assert_eq!(
+        hex::encode(derived_bytes(derive(DerivationMethod::HMAC, Some(&[1, 2]), sha256)).await?),
+        "1e15c1f1da233629f770fb0a04a5020e"
+    );
+
+    // HASH needs the hash algorithm and hashes the key or the data, not both; HMAC needs data.
+    for request in [
+        derive(DerivationMethod::HASH, None, None),
+        derive(DerivationMethod::HASH, Some(&[1, 2]), sha256),
+        derive(DerivationMethod::HMAC, None, sha256),
+    ] {
+        let err = kms
+            .derive_key(request, &owner)
+            .await
+            .expect_err("invalid HASH/HMAC parameters must be refused");
+        assert!(
+            matches!(err, KmsError::InvalidRequest(_)),
+            "unexpected error: {err}"
+        );
+    }
+    // A 512-bit key exceeds the SHA-256 output: §6.1.14 requires an error.
+    let mut too_long = derive(DerivationMethod::HASH, None, sha256);
+    too_long.attributes.cryptographic_length = Some(512);
+    kms.derive_key(too_long, &owner)
+        .await
+        .expect_err("a length beyond the digest size must be refused");
     Ok(())
 }
 
@@ -467,10 +625,60 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
 
     let result = kms.derive_key(derive_request, &owner).await;
     match result {
-        Err(e) => assert!(e.to_string().contains("failed to retrieve base object")),
+        Err(e) => {
+            assert!(matches!(
+                e,
+                KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)
+            ));
+            assert!(e.to_string().contains("object not found for identifier"));
+        }
         Ok(_) => panic!("expected error"),
     }
 
+    Ok(())
+}
+
+/// A caller without `DeriveKey` permission gets the same answer as for a missing base key.
+#[tokio::test]
+async fn test_derive_key_without_permission_is_object_not_found() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("derive_owner");
+    let stranger = UserId::from("derive_stranger");
+
+    let base_key_id = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+
+    let derive_request = DeriveKey::new_single_base(
+        ObjectType::SymmetricKey,
+        base_key_id,
+        DerivationMethod::PBKDF2,
+        DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            initialization_vector: None,
+            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
+            salt: Some(b"test salt".to_vec()),
+            iteration_count: Some(100_000),
+        },
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(128),
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        },
+    );
+    let error = kms
+        .derive_key(derive_request, &stranger)
+        .await
+        .expect_err("a user without permission must not derive");
+    assert!(matches!(
+        error,
+        KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)
+    ));
     Ok(())
 }
 
@@ -850,6 +1058,16 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
     let shared_ab = secret_bytes(&kms, "shared-secret-ab").await?;
     let shared_ba = secret_bytes(&kms, "shared-secret-ba").await?;
     assert_eq!(shared_ab.as_slice(), shared_ba.as_slice());
+    // Derived objects start Pre-Active; only Active objects may be derived from (§3.31).
+    for uid in ["shared-secret-ab", "shared-secret-ba"] {
+        kms.activate(
+            Activate {
+                unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            },
+            &owner,
+        )
+        .await?;
+    }
 
     let sealing_key_ab = kms
         .derive_key(

@@ -496,9 +496,10 @@ async fn find_revoked_certificates(
             .to_vec();
         entries.push(RevokedEntry {
             serial_number,
-            // Determine revocation date (deactivation_date from attributes)
+            // Revocation date: Compromise Date for a compromise, else the Deactivation Date
             revocation_date: attributes
-                .deactivation_date
+                .compromise_date
+                .or(attributes.deactivation_date)
                 .unwrap_or_else(OffsetDateTime::now_utc),
             // Map KMIP RevocationReasonCode to CRL reason code
             reason_code: attributes

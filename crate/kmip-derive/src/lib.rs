@@ -103,18 +103,23 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
                         formatter.write_str(concat!("a ", stringify!(#name), " variant as a u32 or string"))
                     }
 
-                    // Handle u32 deserialization using strum::FromRepr
+                    // Handle u32 deserialization using strum::FromRepr.
+                    // The "Unknown enumeration value" text is
+                    // `cosmian_kmip::ttlv::UNKNOWN_ENUMERATION`: servers map it to the
+                    // `Unknown Enumeration` result reason.
                     fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
                     where
                         E: serde::de::Error,
                     {
-                        let value = value as u32;
-                        #name::from_repr(value).ok_or_else(|| {
-                            E::invalid_value(
-                                serde::de::Unexpected::Unsigned(value as u64),
-                                &concat!("valid ", stringify!(#name), " value"),
-                            )
-                        })
+                        u32::try_from(value)
+                            .ok()
+                            .and_then(#name::from_repr)
+                            .ok_or_else(|| {
+                                E::custom(format!(
+                                    concat!("Unknown enumeration value: {:#010x} for ", stringify!(#name)),
+                                    value
+                                ))
+                            })
                     }
                     // Handle string deserialization using std::str::FromStr
                     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -123,10 +128,10 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
                     {
                         use std::str::FromStr;
                         #name::from_str(value).map_err(|_| {
-                            E::invalid_value(
-                                serde::de::Unexpected::Str(value),
-                                &concat!("valid ", stringify!(#name), " name"),
-                            )
+                            E::custom(format!(
+                                concat!("Unknown enumeration value: {:?} for ", stringify!(#name)),
+                                value
+                            ))
                         })
                     }
                     // Handle string deserialization using std::str::FromStr

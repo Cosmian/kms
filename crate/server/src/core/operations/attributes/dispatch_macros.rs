@@ -17,7 +17,6 @@ macro_rules! with_common_simple_attributes {
                 CryptographicParameters => cryptographic_parameters,
                 CryptographicDomainParameters => cryptographic_domain_parameters,
                 CryptographicUsageMask => cryptographic_usage_mask,
-                Digest => digest,
                 DeactivationDate => deactivation_date,
                 ObjectGroup => object_group,
                 ContactInformation => contact_information,
@@ -54,7 +53,7 @@ macro_rules! with_common_simple_attributes {
                 ProtectStopDate => protect_stop_date,
                 ProtectionLevel => protection_level,
                 ProtectionPeriod => protection_period,
-                ProtectionStorageMasks => protection_storage_masks,
+                ProtectionStorageMask => protection_storage_masks,
                 QuantumSafe => quantum_safe,
                 RandomNumberGenerator => random_number_generator,
                 RevocationReason => revocation_reason,
@@ -89,7 +88,8 @@ macro_rules! match_add_attribute {
                 Attribute::$variant(value) => {
                     trace!(concat!(stringify!($variant), ": {:?}"), value);
                     if $attrs.$field.is_some() {
-                        return Err(KmsError::InvalidRequest(
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Attribute_Single_Valued,
                             concat!(stringify!($variant), " already exists").to_owned(),
                         ));
                     }

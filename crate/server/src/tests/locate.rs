@@ -50,7 +50,7 @@ async fn test_locate() -> KResult<()> {
                 protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
-            batch_count: 2,
+            batch_count: 1,
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(

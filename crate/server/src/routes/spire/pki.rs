@@ -274,7 +274,12 @@ pub(crate) async fn sign_intermediate(
     // Build the Certify request
     let csr_pem_bytes = body.csr.as_bytes().to_vec();
 
-    let mut certify_attrs = Attributes::default();
+    // Activation Date now: the issued intermediate is Active immediately (KMIP 2.1 §4.57
+    // transition 1); without it the certificate would start Pre-Active.
+    let mut certify_attrs = Attributes {
+        activation_date: Some(time::OffsetDateTime::now_utc()),
+        ..Attributes::default()
+    };
     certify_attrs.set_link(
         LinkType::PrivateKeyLink,
         LinkedObjectIdentifier::TextString(ca_private_key_uid.clone()),

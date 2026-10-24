@@ -15,7 +15,7 @@ use crate::{
         kmip_operations::Locate,
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, Name, NameType,
-            RecommendedCurve,
+            ObjectGroupMember, RecommendedCurve, StorageStatusMask,
         },
     },
     ttlv::{from_ttlv, to_ttlv},
@@ -374,8 +374,11 @@ fn test_locate_template_attribute_fortigate() {
     // wrapped in a TemplateAttribute instead of placed directly in the payload.
     let locate_1_4 = Locate {
         maximum_items: Some(1),
-        storage_status_mask: None,
-        object_group_member: None,
+        offset_items: Some(1),
+        storage_status_mask: Some(
+            StorageStatusMask::OnlineStorage | StorageStatusMask::ArchivalStorage,
+        ),
+        object_group_member: Some(ObjectGroupMember::GroupMemberFresh),
         attribute: None, // no direct attributes — name filter arrives via TemplateAttribute
         template_attribute: Some(TemplateAttribute {
             attribute: Some(vec![Attribute::Name(Name {
@@ -389,6 +392,11 @@ fn test_locate_template_attribute_fortigate() {
     let ttlv = to_ttlv(&locate_1_4).expect("Failed to serialize Locate to TTLV");
     info!("Locate TTLV: {:#?}", ttlv);
     let deserialized: Locate = from_ttlv(ttlv).expect("Failed to deserialize Locate from TTLV");
+    // KMIP 1.4 Storage Status Mask is an Integer bit mask: a combined value must survive.
+    assert_eq!(
+        deserialized.storage_status_mask,
+        locate_1_4.storage_status_mask
+    );
 
     let ta = deserialized
         .template_attribute
@@ -409,6 +417,15 @@ fn test_locate_template_attribute_fortigate() {
         .attributes
         .name
         .expect("KMIP 2.1 Locate.attributes.name should contain the Name filter");
+    assert_eq!(locate_2_1.offset_items, Some(1));
+    assert!(matches!(
+        locate_2_1.storage_status_mask.as_ref(),
+        Some(mask) if mask.contains(crate::kmip_2_1::kmip_types::StorageStatusMask::OnlineStorage)
+    ));
+    assert_eq!(
+        locate_2_1.object_group_member,
+        Some(crate::kmip_2_1::kmip_types::ObjectGroupMember::Group_Member_Fresh)
+    );
     assert!(
         names.iter().any(|n| n.name_value == key_name),
         "KMIP 2.1 Attributes.name should contain '{key_name}'; got: {names:?}"
@@ -499,6 +516,7 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
     };
 
     let request = DeriveKey::new_single_base(
+        ObjectType::SecretData,
         "base-key",
         DerivationMethod::PBKDF2,
         Some(DerivationParameters {
@@ -530,6 +548,10 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
 
     let request_2_1: crate::kmip_2_1::kmip_operations::DeriveKey = request.into();
     assert_eq!(request_2_1.object_unique_identifier.len(), 1);
+    assert_eq!(
+        request_2_1.object_type,
+        crate::kmip_2_1::kmip_objects::ObjectType::SecretData
+    );
 }
 
 #[test]
@@ -543,6 +565,7 @@ fn test_derive_key_1_4_repeated_identifiers_round_trip_and_conversion_order() {
     };
 
     let request = DeriveKey::new_asymmetric(
+        ObjectType::SecretData,
         "private-key",
         "peer-public-key",
         None,

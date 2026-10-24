@@ -23,7 +23,7 @@ async fn test_hs256_compute_verify() -> KResult<()> {
         VENDOR_ID_COSMIAN,
         None,
         256,
-        CryptographicAlgorithm::AES,
+        CryptographicAlgorithm::HMACSHA256,
         EMPTY_TAGS,
         false,
         None,

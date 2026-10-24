@@ -5,7 +5,7 @@ use std::{
 };
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{CertificateType, ErrorReason, State},
     kmip_2_1::{
         KmipOperation,
         kmip_objects::{Certificate, Object},
@@ -135,7 +135,7 @@ pub(crate) async fn validate_operation(
     request: Validate,
     user: &UserId,
 ) -> KResult<ValidateResponse> {
-    trace!("Validate: {}", request);
+    trace!("Validate request");
 
     // Reject oversized chains up front, before any per-certificate database
     // lookup (UID retrieval or the raw-bytes `find_certificate_state_by_der`
@@ -153,6 +153,19 @@ pub(crate) async fn validate_operation(
         )));
     }
 
+    // Only X.509 certificates can be validated: refuse other types instead of failing in DER parsing.
+    if request
+        .certificate
+        .iter()
+        .flatten()
+        .any(|c| c.certificate_type != CertificateType::X509)
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            "Validate: only X509 certificates can be validated".to_owned(),
+        ));
+    }
+
     debug!("Get input certificates as bytes");
     // Each entry pairs a certificate's DER bytes with its internal KMS lifecycle
     // state, when known: `Some(state)` when the certificate is tracked by the KMS
@@ -161,8 +174,9 @@ pub(crate) async fn validate_operation(
     let (certificates, certificates_number): (TaggedCertificates, usize) =
         match (request.unique_identifier, request.certificate) {
             (None, None) => {
-                return Err(KmsError::Certificate(
-                    "Empty chain cannot be validated".to_owned(),
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Field,
+                    "Validate: an empty chain cannot be validated".to_owned(),
                 ));
             }
             (None, Some(certificates)) => {
@@ -222,6 +236,37 @@ pub(crate) async fn validate_operation(
             X509::from_der(der_bytes.as_slice())
         })
         .collect::<Result<Vec<X509>, _>>()?;
+    // KMIP 2.1 §6.1.58 Table 341: a chain that fails validation is reported in a
+    // successful response with Validity Indicator `Invalid`, not as an operation failure.
+    let validity_indicator = match Box::pin(check_chain(
+        kms,
+        certificates,
+        &state_by_digest,
+        request.validity_time.as_deref(),
+    ))
+    .await
+    {
+        Ok(()) => ValidityIndicator::Valid,
+        Err(KmsError::Certificate(reason)) => {
+            warn!("Certificate chain is invalid: {reason}");
+            ValidityIndicator::Invalid
+        }
+        Err(e) => return Err(e),
+    };
+    Ok(ValidateResponse { validity_indicator })
+}
+
+/// Run the signature, date, internal-state and CRL checks on a chain.
+///
+/// # Errors
+/// Returns [`KmsError::Certificate`] when the chain is invalid, any other error when
+/// the checks cannot be performed.
+async fn check_chain(
+    kms: &KMS,
+    certificates: Vec<X509>,
+    state_by_digest: &HashMap<[u8; 32], State>,
+    validity_time: Option<&str>,
+) -> KResult<()> {
     // Sort the chain in right order: ROOT/SUBCA/../LEAF.
     // Sorting the chain greatly simplify the flow in the signature and revocation verification
     let certificates = if certificates.len() > 1 {
@@ -231,7 +276,7 @@ pub(crate) async fn validate_operation(
     };
 
     verify_chain_signature(&certificates)?;
-    validate_chain_date(&certificates, &request.validity_time)?;
+    validate_chain_date(&certificates, validity_time)?;
 
     // Internal KMS lifecycle-state check: every certificate in the chain that the
     // KMS tracks must currently be Active or PreActive. This catches revocations
@@ -241,29 +286,21 @@ pub(crate) async fn validate_operation(
     // chain is checked root-first and this check fails on the first offending
     // certificate, a compromised (or merely deactivated) ancestor makes the whole
     // chain — including any descendant certificates — Invalid.
-    check_internal_certificate_states(&certificates, &state_by_digest)?;
+    check_internal_certificate_states(&certificates, state_by_digest)?;
     // CRL check: hard CRL errors (expired CRL, bad signature, explicit revocation)
     // make the chain invalid. Network errors (unreachable CRL distribution point)
     // are treated as soft failures inside `verify_crls()` and do not cause
     // this function to return an error — the certificate is treated as valid when
     // the CRL DP is simply unreachable. Only deterministic revocation evidence
     // or a malformed/expired CRL propagates here as an error.
-    if let Err(crl_err) = verify_crls(
+    verify_crls(
         certificates,
         kms.params.proxy_params.as_ref(),
         kms.params.kms_public_url.as_deref(),
     )
     .await
-    {
-        warn!("CRL validation failed: {crl_err}");
-        return Err(KmsError::Certificate(format!(
-            "Certificate chain is invalid: {crl_err}"
-        )));
-    }
-
-    Ok(ValidateResponse {
-        validity_indicator: ValidityIndicator::Valid,
-    })
+    .map_err(|crl_err| KmsError::Certificate(format!("CRL validation failed: {crl_err}")))?;
+    Ok(())
 }
 
 /// Extracts the subject key identifier and authority key identifier from an X509 certificate.
@@ -985,10 +1022,13 @@ async fn certificate_by_uid(
     {
         Ok((certificate_value.clone(), uid_owm.state()))
     } else {
-        Err(KmsError::Certificate(format!(
-            "Requested a Certificate Object, got a {}",
-            uid_owm.object().object_type()
-        )))
+        Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
+            format!(
+                "Validate: requested a Certificate Object, got a {}",
+                uid_owm.object().object_type()
+            ),
+        ))
     }
 }
 
@@ -1021,12 +1061,16 @@ async fn certificate_by_uid(
 /// owner must still be able to have their raw-bytes chain flagged as containing a
 /// compromised certificate.
 async fn tag_raw_certificates_with_state(
-    certificates: Vec<Vec<u8>>,
+    certificates: Vec<Certificate>,
     kms: &KMS,
     user: &UserId,
 ) -> KResult<TaggedCertificates> {
     let mut tagged = Vec::with_capacity(certificates.len());
-    for der_bytes in certificates {
+    for Certificate {
+        certificate_value: der_bytes,
+        ..
+    } in certificates
+    {
         let found_uid = Box::pin(
             kms.database
                 .find_certificate_state_by_der(&der_bytes, kms.vendor_id()),
@@ -1097,10 +1141,8 @@ fn check_internal_certificate_states(
     Ok(())
 }
 
-fn validate_chain_date(certificates: &[X509], date: &Option<String>) -> KResult<ValidityIndicator> {
-    let current_date = date
-        .as_deref()
-        .map_or_else(|| Asn1Time::days_from_now(0), Asn1Time::from_str)?;
+fn validate_chain_date(certificates: &[X509], date: Option<&str>) -> KResult<ValidityIndicator> {
+    let current_date = date.map_or_else(|| Asn1Time::days_from_now(0), Asn1Time::from_str)?;
     certificates
         .iter()
         .try_fold(ValidityIndicator::Valid, |acc, certificate| {

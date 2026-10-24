@@ -11,8 +11,8 @@ use cosmian_kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
         },
     },
 };
@@ -108,10 +108,6 @@ pub fn to_rsa_public_key(
                     cryptographic_usage_mask: public_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
-                    cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        ..CryptographicParameters::default()
-                    }),
                     cryptographic_domain_parameters: None,
                     link: Some(vec![Link {
                         link_type: LinkType::PrivateKeyLink,
@@ -184,10 +180,6 @@ pub fn to_rsa_private_key(
                     cryptographic_usage_mask: private_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
-                    cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        ..CryptographicParameters::default()
-                    }),
                     cryptographic_domain_parameters: None,
                     link: Some(vec![Link {
                         link_type: LinkType::PublicKeyLink,

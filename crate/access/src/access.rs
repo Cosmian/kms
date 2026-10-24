@@ -105,11 +105,19 @@ impl Role {
     /// Dispatch-level decision for `operation` once roles are configured.
     ///
     /// Exhaustive over every KMIP operation: a new variant cannot be allowed by omission.
+    ///
+    /// An `Operator` may use approved security functions, observe server state, call the
+    /// stateless server services, and retrieve (`Get`) or `Export` an object it owns or was
+    /// granted, and manage the lifecycle and attributes of such objects. It cannot reach
+    /// server-wide administration (`PKCS11`, `SetConstraints`, `RNGSeed`). Creating objects
+    /// needs the Create right.
     #[must_use]
     pub const fn decide(self, operation: OperationEnumeration) -> RoleDecision {
         use OperationEnumeration as Op;
         match operation {
-            // Cryptographic use, attribute reads, discovery, random output, server services.
+            // Cryptographic use, key output, attribute reads, discovery, random output, server
+            // services: every role; the handler still requires ownership or a grant on the
+            // objects used (a Crypto Officer may grant `Get`/`Export` to an Operator).
             Op::Encrypt
             | Op::Decrypt
             | Op::Sign
@@ -126,10 +134,11 @@ impl Role {
             | Op::DiscoverVersions
             | Op::RNGRetrieve
             | Op::Log
-            | Op::PKCS11
             | Op::Interop
-            // Per-object lifecycle, key output and attribute management: the handler requires
-            // ownership or a grant; an active Crypto Officer bypasses ownership there.
+            | Op::Login
+            | Op::Logout
+            | Op::Ping
+            | Op::GetConstraints
             | Op::Get
             | Op::Export
             | Op::Certify
@@ -143,8 +152,12 @@ impl Role {
             | Op::ModifyAttribute
             | Op::AddAttribute
             | Op::DeleteAttribute
-            // Share reassembly: the handler checks share ownership.
             | Op::JoinSplitKey => RoleDecision::Allow,
+            // Server-wide administration: Crypto Officer only.
+            Op::PKCS11 | Op::RNGSeed | Op::SetConstraints => match self {
+                Self::Operator => RoleDecision::Deny,
+                Self::CryptoOfficer => RoleDecision::Allow,
+            },
             // Operations that create Managed Objects.
             Op::Create
             | Op::Import
@@ -153,11 +166,6 @@ impl Role {
             | Op::ReKeyKeyPair
             | Op::CreateSplitKey => match self {
                 Self::Operator => RoleDecision::RequireCreatePermission,
-                Self::CryptoOfficer => RoleDecision::Allow,
-            },
-            // Additional input to the server DRBG.
-            Op::RNGSeed => match self {
-                Self::Operator => RoleDecision::Deny,
                 Self::CryptoOfficer => RoleDecision::Allow,
             },
             // Not served by this KMS: refused until their implementation decides a policy.
@@ -169,18 +177,13 @@ impl Role {
             | Op::Poll
             | Op::Notify
             | Op::Put
-            | Op::Login
-            | Op::Logout
             | Op::DelegatedLogin
             | Op::AdjustAttribute
             | Op::SetEndpointRole
             | Op::ReProvision
             | Op::SetDefaults
-            | Op::SetConstraints
-            | Op::GetConstraints
             | Op::QueryAsynchronousRequests
-            | Op::Process
-            | Op::Ping => RoleDecision::Deny,
+            | Op::Process => RoleDecision::Deny,
         }
     }
 }
@@ -293,13 +296,14 @@ impl CryptoOfficerConfig {
     }
 
     /// Operations a Crypto Officer *candidate* may call before the ceremony activates them:
-    /// create or import the ceremony key, then split and re-join it.
+    /// create or import the ceremony key, mark it as a ceremony key, then split and re-join it.
     #[must_use]
     pub const fn is_ceremony_prerequisite(operation: OperationEnumeration) -> bool {
         matches!(
             operation,
             OperationEnumeration::Create
                 | OperationEnumeration::Import
+                | OperationEnumeration::SetAttribute
                 | OperationEnumeration::CreateSplitKey
                 | OperationEnumeration::JoinSplitKey
         )
@@ -415,12 +419,23 @@ mod tests {
         for (role, op, expected) in [
             (Role::Operator, Op::RNGSeed, Deny),
             (Role::CryptoOfficer, Op::RNGSeed, Allow),
-            (Role::Operator, Op::Ping, Deny),
-            (Role::CryptoOfficer, Op::Ping, Deny),
+            (Role::Operator, Op::Ping, Allow),
+            (Role::CryptoOfficer, Op::Ping, Allow),
             (Role::Operator, Op::Get, Allow),
             (Role::Operator, Op::Export, Allow),
+            (Role::CryptoOfficer, Op::Get, Allow),
             (Role::Operator, Op::JoinSplitKey, Allow),
+            (Role::Operator, Op::Revoke, Allow),
+            (Role::Operator, Op::Destroy, Allow),
+            (Role::Operator, Op::PKCS11, Deny),
+            (Role::Operator, Op::ReCertify, Allow),
+            (Role::Operator, Op::SetConstraints, Deny),
+            (Role::CryptoOfficer, Op::SetConstraints, Allow),
+            (Role::Operator, Op::GetConstraints, Allow),
+            (Role::Operator, Op::Login, Allow),
             (Role::Operator, Op::RNGRetrieve, Allow),
+            (Role::Operator, Op::Encrypt, Allow),
+            (Role::Operator, Op::Poll, Deny),
         ] {
             assert_eq!(role.decide(op), expected, "{role:?} / {op}");
         }

@@ -12,6 +12,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::{Destroy, DestroyResponse},
             kmip_types::{KeyFormatType, LinkType, UniqueIdentifier},
         },
+        time_normalize,
     },
     cosmian_kms_interfaces::{CryptoOracle, KeyType},
 };
@@ -37,7 +38,7 @@ pub(crate) async fn destroy_operation(
     mut request: Destroy,
     user: &UserId,
 ) -> KResult<DestroyResponse> {
-    trace!("{request}");
+    trace!("Destroy request");
     // there must be an identifier
     let unique_identifier = request
         .unique_identifier
@@ -129,88 +130,30 @@ pub(crate) async fn recursively_destroy_object(
             continue;
         }
 
-        // Determine the effective current state. In some historical paths the DB "state" column
-        // was persisted as Active while the serialized attributes (both in object key_block and in
-        // metadata) still held a PreActive state (KMIP compliant initial state after Create).
-        // We treat such objects as effectively PreActive for lifecycle enforcement so that
-        // Destroy is allowed without a prior Revoke, matching KMIP and mandatory vector expectations.
-        let db_state = owm.state();
-        let attributes_state = owm
-            .object()
-            .attributes()
-            .unwrap_or_else(|_| owm.attributes())
-            .state
-            .unwrap_or(db_state);
-        let effective_state = attributes_state;
-        // Policy evaluation: use the effective state from attributes for KMIP compliance
-        let activation_date = owm
-            .object()
-            .attributes()
-            .unwrap_or_else(|_| owm.attributes())
-            .activation_date;
-        let effective_policy_state = effective_state;
-
-        // Check if the object is already destroyed or of an unsupported type for Destroy
+        // KMIP 2.1 §6.1.15 / §4.57 (transitions 2, 7, 9): objects SHALL only be destroyed
+        // in the Pre-Active, Deactivated or Compromised state.
+        let effective_state = owm.effective_state();
         let object_type = owm.object().object_type();
-        if effective_state == State::Destroyed
-            || effective_state == State::Destroyed_Compromised
-            || (object_type != ObjectType::PrivateKey
-                && object_type != ObjectType::SymmetricKey
-                && object_type != ObjectType::PGPKey
-                && object_type != ObjectType::Certificate
-                && object_type != ObjectType::SecretData
-                && object_type != ObjectType::PublicKey
-                && object_type != ObjectType::OpaqueObject
-                && object_type != ObjectType::SplitKey)
-        {
+        if matches!(
+            effective_state,
+            State::Destroyed | State::Destroyed_Compromised
+        ) {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Object_Destroyed,
+                format!("object {} has already been destroyed", owm.id()),
+            ));
+        }
+        if object_type == ObjectType::CertificateRequest {
             continue;
         }
-
-        // KMIP 2.1 lifecycle enforcement:
-        // - Objects created via Register (start Active) can be destroyed directly
-        // - Objects created via Create then explicitly Activated require revocation before destroy
-        // - PreActive objects can always be destroyed directly
-        // The key distinction is explicit vs implicit activation.
         trace!(
-            "[destroy] policy-eval uid={} type={:?} db_state={:?} attr_state={:?} effective_state={:?} activation_date={:?} policy_state={:?} remove={}",
+            "[destroy] uid={} type={:?} state={:?} remove={}",
             owm.id(),
             object_type,
-            db_state,
-            attributes_state,
             effective_state,
-            activation_date,
-            effective_policy_state,
             remove
         );
-
-        // Check if this is an explicitly activated object that requires revocation
-        let requires_revocation = effective_policy_state == State::Active
-            && matches!(
-                object_type,
-                ObjectType::SymmetricKey
-                    | ObjectType::SecretData
-                    | ObjectType::Certificate
-                    | ObjectType::PrivateKey
-                    | ObjectType::PublicKey
-                    | ObjectType::SplitKey
-            )
-            // Only objects that were explicitly activated (Create -> Activate flow) require revocation
-            // Objects that were registered (Register -> already Active) can be destroyed directly
-            // We can distinguish by checking if activation_date exists and initial_date exists,
-            // and if activation_date exists (indicating explicit activation)
-            // For Create→Activate flow, activation_date will be set by the Activate operation
-            // For Register flow, objects start Active without needing explicit activation
-            && activation_date.is_some();
-
-        if requires_revocation {
-            trace!(
-                "[destroy] DENY revoke-before-destroy (explicitly activated) uid={} type={:?} state={:?} activation_date={:?} initial_date={:?}",
-                owm.id(),
-                object_type,
-                effective_policy_state,
-                activation_date,
-                owm.attributes().initial_date
-            );
+        if effective_state == State::Active {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
                 "DENIED".to_owned(),
@@ -219,7 +162,6 @@ pub(crate) async fn recursively_destroy_object(
 
         // perform the chain of destroy operations depending on the type of object
         count += 1;
-        let object_type = owm.object().object_type();
 
         match object_type {
             ObjectType::SymmetricKey
@@ -269,7 +211,7 @@ pub(crate) async fn recursively_destroy_object(
                         .map(|l| l.to_string())
                     {
                         if !ids_to_skip.contains(&public_key_id) {
-                            recursively_destroy_object(
+                            match recursively_destroy_object(
                                 &UniqueIdentifier::TextString(public_key_id),
                                 remove,
                                 cascade,
@@ -277,7 +219,12 @@ pub(crate) async fn recursively_destroy_object(
                                 user,
                                 ids_to_skip.clone(),
                             )
-                            .await?;
+                            .await
+                            {
+                                // the linked key may already be destroyed
+                                Err(KmsError::Kmip21Error(ErrorReason::Object_Destroyed, _)) => {}
+                                other => other?,
+                            }
                             kms.record_cascading_metrics("Destroy", op_start, user);
                         }
                     }
@@ -375,7 +322,7 @@ pub(crate) async fn recursively_destroy_object(
 
     if count == 0 {
         return Err(KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
+            ErrorReason::Object_Not_Found,
             unique_identifier.to_string(),
         ));
     }
@@ -392,20 +339,23 @@ async fn destroy_core(
     kms: &KMS,
 ) -> KResult<()> {
     if remove {
-        remove_from_database(handle, state, kms).await
+        remove_from_database(handle, state, kms).await?;
     } else {
-        update_as_destroyed(handle, object, state, kms).await
+        update_as_destroyed(handle, object, state, kms).await?;
     }
+    // The key schedules of open multi-part operations must not outlive the key.
+    kms.multi_part.purge_key(handle.as_str());
+    Ok(())
 }
 
 /// Remove an Object from the database
 /// This is a Cosmian specific operation
 async fn remove_from_database(handle: ObjectHandle<'_>, state: State, kms: &KMS) -> KResult<()> {
     if state == State::Active {
-        return Err(KmsError::InvalidRequest(format!(
-            "Object with unique identifier: {handle} is active. It must be revoked \
-             first"
-        )));
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Wrong_Key_Lifecycle_State,
+            format!("Object with unique identifier: {handle} is active. It must be revoked first"),
+        ));
     }
     kms.database.delete(handle.as_str()).await?;
     Ok(())
@@ -419,20 +369,25 @@ async fn update_as_destroyed(
     state: State,
     kms: &KMS,
 ) -> KResult<()> {
-    // Determine target destroyed state. Historically Active objects were rejected earlier unless
-    // policy relaxed (e.g. for freshly registered asymmetric keys). We now allow an Active state
-    // to transition directly to Destroyed when the caller passed earlier lifecycle checks.
+    // Active objects were rejected by the caller (KMIP 2.1 §6.1.15).
     let new_state = match state {
         State::Active | State::PreActive | State::Deactivated => State::Destroyed,
         State::Compromised => State::Destroyed_Compromised,
         State::Destroyed | State::Destroyed_Compromised => return Ok(()),
+    };
+    // KMIP 2.1 §4.20: the server sets the Destroy Date when the object is destroyed.
+    let now = time_normalize()?;
+    let mark_destroyed = |mut attributes: Attributes| {
+        attributes.state = Some(new_state);
+        attributes.destroy_date = Some(now);
+        attributes
     };
 
     // The KMIP specs mandates that KeyMaterial be destroyed. For objects lacking a Key Block
     // (OpaqueObject) we instead zero the opaque_data_value. Certificates are handled by clearing
     // attributes to defaults.
     trace!(
-        "[destroy-core] uid={handle} type={:?} pre-state={:?} object={object}",
+        "[destroy-core] uid={handle} type={:?} pre-state={:?}",
         object.object_type(),
         state
     );
@@ -445,9 +400,9 @@ async fn update_as_destroyed(
             // Wiping these made a revoked-then-destroyed certificate vanish from the CRL
             // and OCSP report it `unknown`.
             let previous = kms.database.retrieve_object(handle.as_str()).await?;
-            previous.map_or_else(Attributes::default, |owm| {
+            mark_destroyed(previous.map_or_else(Attributes::default, |owm| {
                 retained_certificate_attributes(owm.attributes())
-            })
+            }))
         }
         Object::OpaqueObject(_) => {
             if let Object::OpaqueObject(inner) = object {
@@ -458,11 +413,11 @@ async fn update_as_destroyed(
                 inner.opaque_data_value.clear();
             }
             // OpaqueObject has no embedded attributes; use default container
-            Attributes::default()
+            mark_destroyed(Attributes::default())
         }
         _ => {
             let key_block = object.key_block_mut()?;
-            let attributes = key_block.attributes().cloned().unwrap_or_default();
+            let attributes = mark_destroyed(key_block.attributes().cloned().unwrap_or_default());
             // Empty the Key Material
             key_block.key_format_type = KeyFormatType::Raw;
             key_block.key_value = Some(KeyValue::Structure {

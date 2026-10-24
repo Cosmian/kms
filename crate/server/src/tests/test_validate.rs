@@ -29,14 +29,18 @@
 mod pqc_validate_tests {
     use std::sync::Arc;
 
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-        extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
-        kmip_attributes::Attributes,
-        kmip_objects::{Certificate, Object},
-        kmip_operations::{Certify, Get, GetAttributes, Validate},
-        kmip_types::{
-            CertificateAttributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, ValidityIndicator, VendorAttribute, VendorAttributeValue,
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
+            kmip_attributes::Attributes,
+            kmip_objects::{Certificate, Object},
+            kmip_operations::{Certify, Get, GetAttributes, Validate},
+            kmip_types::{
+                CertificateAttributes, CryptographicAlgorithm, Link, LinkType,
+                LinkedObjectIdentifier, UniqueIdentifier, ValidityIndicator, VendorAttribute,
+                VendorAttributeValue,
+            },
         },
     };
     use x509_parser::prelude::{FromDer, X509Certificate};
@@ -126,6 +130,7 @@ authorityKeyIdentifier=keyid:always,issuer
 
         let attributes = Attributes {
             cryptographic_algorithm: Some(algo),
+            activation_date: Some(time::OffsetDateTime::now_utc()),
             certificate_attributes: Some(CertificateAttributes::parse_subject_line(&subject_name)?),
             link: if links.is_empty() { None } else { Some(links) },
             vendor_attributes: Some(vec![VendorAttribute {
@@ -187,7 +192,8 @@ authorityKeyIdentifier=keyid:always,issuer
         );
     }
 
-    /// Validate a chain with an explicit `validity_time`. Expects an error (invalid / expired).
+    /// Validate a chain with an explicit `validity_time`. Expects a successful response
+    /// with Validity Indicator `Invalid` (KMIP 2.1 §6.1.58).
     async fn assert_chain_invalid_at(
         kms: &Arc<KMS>,
         owner: &str,
@@ -207,8 +213,8 @@ authorityKeyIdentifier=keyid:always,issuer
         };
         let res = Box::pin(kms.validate(req, &UserId::from(owner))).await;
         assert!(
-            res.is_err(),
-            "expected an error (expired/invalid chain), got: {res:?}"
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
+            "expected Validity Indicator Invalid (expired chain), got: {res:?}"
         );
     }
 
@@ -715,6 +721,7 @@ authorityKeyIdentifier=keyid:always,issuer
 
             Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_512),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     subject_name,
                 )?),
@@ -752,6 +759,7 @@ authorityKeyIdentifier=keyid:always,issuer
 
         let attrs = Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
+            activation_date: Some(time::OffsetDateTime::now_utc()),
             certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                 "C=FR, O=PQCTest, CN=ML-KEM-768 Self-Signed",
             )?),
@@ -801,8 +809,8 @@ authorityKeyIdentifier=keyid:always,issuer
         // Chain must be valid today.
         assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
 
-        // Year 4804 is well beyond the 365-day default validity.
-        assert_chain_invalid_at(&kms, &owner, &[&root_id, &leaf_id], "4804152030Z").await;
+        // Year 4804 (ASN.1 GeneralizedTime) is well beyond the 365-day default validity.
+        assert_chain_invalid_at(&kms, &owner, &[&root_id, &leaf_id], "48040415203000Z").await;
         Ok(())
     }
 
@@ -844,7 +852,13 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
 
         assert_chain_valid(&kms, &owner, &[&root_id, &int_id, &leaf_id]).await;
-        assert_chain_invalid_at(&kms, &owner, &[&root_id, &int_id, &leaf_id], "4804152030Z").await;
+        assert_chain_invalid_at(
+            &kms,
+            &owner,
+            &[&root_id, &int_id, &leaf_id],
+            "48040415203000Z",
+        )
+        .await;
         Ok(())
     }
 
@@ -900,7 +914,7 @@ authorityKeyIdentifier=keyid:always,issuer
         };
         let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
-            res.is_err(),
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
             "missing intermediate must cause validation failure, got: {res:?}"
         );
         Ok(())
@@ -954,7 +968,7 @@ authorityKeyIdentifier=keyid:always,issuer
         };
         let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
-            res.is_err(),
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
             "missing root must cause validation failure, got: {res:?}"
         );
         Ok(())
@@ -973,7 +987,10 @@ authorityKeyIdentifier=keyid:always,issuer
         };
         let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
-            res.is_err(),
+            matches!(
+                &res,
+                Err(KmsError::Kmip21Error(ErrorReason::Invalid_Field, _))
+            ),
             "empty chain must return an error, got: {res:?}"
         );
         Ok(())
@@ -1031,7 +1048,7 @@ authorityKeyIdentifier=keyid:always,issuer
         };
         let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
-            res.is_err(),
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
             "leaf from chain-A validated with root from chain-B must fail, got: {res:?}"
         );
 
@@ -1235,7 +1252,7 @@ mod internal_state_and_crl_cascade_tests {
     use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_0::kmip_types::{CertificateType, RevocationReason, RevocationReasonCode},
         kmip_2_1::{
             extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
             kmip_attributes::Attributes,
@@ -1252,6 +1269,16 @@ mod internal_state_and_crl_cascade_tests {
     };
 
     use crate::{core::KMS, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
+
+    /// Wrap DER bytes in the `Certificate` structures a Validate request carries.
+    fn raw_certificates<const N: usize>(ders: [Vec<u8>; N]) -> Vec<Certificate> {
+        ders.into_iter()
+            .map(|certificate_value| Certificate {
+                certificate_type: CertificateType::X509,
+                certificate_value,
+            })
+            .collect()
+    }
 
     /// Root CA extension — no CDP (self-signed roots have nothing "superior" to
     /// publish a CRL about them; this is exactly why the internal-state check is
@@ -1324,6 +1351,7 @@ basicConstraints=critical,CA:FALSE
         let attrs = Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             cryptographic_length: Some(2048),
+            activation_date: Some(time::OffsetDateTime::now_utc()),
             certificate_attributes: Some(CertificateAttributes::parse_subject_line(&subject_name)?),
             link: if links.is_empty() { None } else { Some(links) },
             vendor_attributes: Some(vec![VendorAttribute {
@@ -1474,7 +1502,10 @@ basicConstraints=critical,CA:FALSE
             validity_time: None,
         };
         let res = Box::pin(kms.validate(req, owner)).await;
-        assert!(res.is_err(), "expected chain to be Invalid, got: {res:?}");
+        assert!(
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
+            "expected chain to be Invalid, got: {res:?}"
+        );
     }
 
     /// Self-contained replacement for the old network-dependent
@@ -1512,13 +1543,13 @@ basicConstraints=critical,CA:FALSE
         let ca_der = get_cert_der(&kms, &owner, &ca_id).await;
         let leaf_der = get_cert_der(&kms, &owner, &leaf_id).await;
         let req = Validate {
-            certificate: Some(vec![ca_der, leaf_der]),
+            certificate: Some(raw_certificates([ca_der, leaf_der])),
             unique_identifier: None,
             validity_time: None,
         };
         let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
-            res.is_err(),
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
             "raw-bytes chain must also detect the CRL-based revocation, got: {res:?}"
         );
         Ok(())
@@ -1647,7 +1678,7 @@ basicConstraints=critical,CA:FALSE
 
         // Valid before compromise, supplied purely as raw bytes.
         let req = Validate {
-            certificate: Some(vec![root_der.clone(), leaf_der.clone()]),
+            certificate: Some(raw_certificates([root_der.clone(), leaf_der.clone()])),
             unique_identifier: None,
             validity_time: None,
         };
@@ -1657,13 +1688,13 @@ basicConstraints=critical,CA:FALSE
         revoke_cert(&kms, &owner, &root_id, RevocationReasonCode::CACompromise).await?;
 
         let req = Validate {
-            certificate: Some(vec![root_der, leaf_der]),
+            certificate: Some(raw_certificates([root_der, leaf_der])),
             unique_identifier: None,
             validity_time: None,
         };
         let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
-            res.is_err(),
+            matches!(&res, Ok(r) if r.validity_indicator == ValidityIndicator::Invalid),
             "raw-bytes chain must detect the root's internal compromise via exact-DER match, \
              got: {res:?}"
         );

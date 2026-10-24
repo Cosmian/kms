@@ -39,6 +39,7 @@ fn build_query_request(major: i32, minor: i32) -> RequestMessage {
                 unique_batch_item_id: None,
                 request_payload: Operation::Query(Query {
                     query_function: Some(vec![QueryFunction::QueryOperations]),
+                    ..Default::default()
                 }),
                 message_extension: None,
             },
@@ -65,19 +66,19 @@ async fn test_kmip_endpoints() -> KResult<()> {
     Ok(())
 }
 
-/// Tests that the JSON `/kmip` endpoint rejects KMIP versions other than 2.1 and 1.4.
-/// The binary `/kmip` endpoint accepts all 1.x versions, but the JSON path explicitly
-/// only handles 2.1 and 1.4.
+/// Tests that the JSON `/kmip` endpoint accepts every minor version of the majors advertised
+/// by Discover Versions (same major, different minor: process normally, KMIP 1.4 §11.1) and
+/// rejects other majors with Unsupported Protocol Version.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_kmip_json_rejects_old_versions() -> KResult<()> {
+async fn test_kmip_json_version_gate() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let fut = async {
         let app = test_utils::test_app(None).await;
 
-        // These versions should be rejected by the JSON /kmip endpoint
-        let rejected_versions = [(1, 0), (1, 1), (1, 2), (1, 3)];
+        // Majors not advertised by Discover Versions are rejected
+        let rejected_versions = [(0, 9), (3, 0)];
 
         for (major, minor) in rejected_versions {
             let request_message = build_query_request(major, minor);
@@ -91,13 +92,29 @@ async fn test_kmip_json_rejects_old_versions() -> KResult<()> {
                 "KMIP {major}.{minor} should be rejected by /kmip JSON endpoint, got: {response_json}"
             );
             assert!(
-                response_json.contains("only accepts KMIP 2.1 or 1.4"),
+                response_json.contains("only accepts KMIP"),
                 "KMIP {major}.{minor} rejection should mention accepted versions, got: {response_json}"
+            );
+            assert!(
+                response_json.contains("Unsupported_Protocol_Version"),
+                "KMIP {major}.{minor} rejection should carry Unsupported_Protocol_Version, got: \
+                 {response_json}"
             );
         }
 
-        // These versions should be accepted
-        let accepted_versions = [(1, 4), (2, 1)];
+        // Every minor of an advertised major must be accepted
+        let accepted_versions = [
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (1, 4),
+            (1, 5),
+            (2, 0),
+            (2, 1),
+            (2, 2),
+            (2, 3),
+        ];
 
         for (major, minor) in accepted_versions {
             let request_message = build_query_request(major, minor);
@@ -106,7 +123,11 @@ async fn test_kmip_json_rejects_old_versions() -> KResult<()> {
 
             let response_json = serde_json::to_string(&response_ttlv)?;
             assert!(
-                !response_json.contains("only accepts KMIP 2.1 or 1.4"),
+                !response_json.contains("only accepts KMIP"),
+                "KMIP {major}.{minor} should be accepted by /kmip JSON endpoint, got: {response_json}"
+            );
+            assert!(
+                !response_json.contains("Unsupported_Protocol_Version"),
                 "KMIP {major}.{minor} should be accepted by /kmip JSON endpoint, got: {response_json}"
             );
         }

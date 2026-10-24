@@ -2,12 +2,9 @@ use std::collections::HashSet;
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_objects::{PrivateKey, PublicKey},
-            kmip_types::{RecommendedCurve, UsageLimitsUnit},
-        },
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::{PrivateKey, PublicKey},
+        kmip_types::{RecommendedCurve, UsageLimitsUnit},
     },
     cosmian_kms_crypto::{
         CryptoError,
@@ -18,7 +15,9 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, SecretDataType},
+        kmip_0::kmip_types::{
+            CryptographicUsageMask, ErrorReason, HashingAlgorithm, SecretDataType, State,
+        },
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -43,8 +42,13 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS, operations::key_ops::crypto_op::ObjectLifecycleExt,
-        retrieve_object_utils::user_has_permission, uid_utils::ObjectHandle,
+        KMS,
+        operations::{
+            key_ops::crypto_op::ObjectLifecycleExt,
+            mac::{compute_hmac, hmac_algorithm_to_hashing},
+        },
+        retrieve_object_utils::user_has_permission,
+        uid_utils::ObjectHandle,
     },
     error::KmsError,
     kms_bail,
@@ -68,13 +72,22 @@ pub(crate) async fn derive_key(
         DerivationMethod::PBKDF2 | DerivationMethod::HKDF => {
             Box::pin(derive_key_symmetric(kms, request, user)).await
         }
+        // A bare digest or single HMAC of the key is not an approved KDF (SP 800-108/56C):
+        // offered outside FIPS mode only.
+        #[cfg(feature = "non-fips")]
+        DerivationMethod::HASH | DerivationMethod::HMAC => {
+            Box::pin(derive_key_symmetric(kms, request, user)).await
+        }
         DerivationMethod::Asymmetric_Key => {
             Box::pin(derive_key_asymmetric(kms, request, user)).await
         }
-        _ => kms_bail!(KmsError::InvalidRequest(format!(
-            "DeriveKey: Unsupported derivation method: {:?}",
-            request.derivation_method
-        ))),
+        _ => kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            format!(
+                "DeriveKey: Unsupported derivation method: {:?}",
+                request.derivation_method
+            )
+        )),
     }
 }
 
@@ -97,6 +110,37 @@ async fn derive_key_symmetric(
         DerivationMethod::HKDF => {
             if request.derivation_parameters.derivation_data.is_none() {
                 debug!("DeriveKey: No derivation data (info) provided for HKDF");
+            }
+        }
+        // KMIP 2.1 §7.12: HASH requires the hash algorithm and hashes either the derivation key
+        // or the derivation data; this server hashes the base object's key material.
+        DerivationMethod::HASH => {
+            if request
+                .derivation_parameters
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|cp| cp.hashing_algorithm)
+                .is_none()
+            {
+                kms_bail!(KmsError::InvalidRequest(
+                    "DeriveKey: HASH requires a Hashing Algorithm in the Cryptographic Parameters"
+                        .to_owned()
+                ));
+            }
+            if request.derivation_parameters.derivation_data.is_some() {
+                kms_bail!(KmsError::InvalidRequest(
+                    "DeriveKey: HASH hashes either the derivation key or the derivation data, not \
+                     both"
+                        .to_owned()
+                ));
+            }
+        }
+        DerivationMethod::HMAC => {
+            if request.derivation_parameters.derivation_data.is_none() {
+                kms_bail!(KmsError::InvalidRequest(
+                    "DeriveKey: Derivation Data is mandatory when derivation method is HMAC"
+                        .to_owned()
+                ));
             }
         }
         DerivationMethod::Asymmetric_Key => {
@@ -136,19 +180,31 @@ async fn derive_key_symmetric(
         .retrieve_object(base_key_handle.as_str())
         .await?
     else {
-        kms_bail!(KmsError::InvalidRequest(format!(
-            "DeriveKey: failed to retrieve base object {base_key_handle}"
-        )))
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Object_Not_Found,
+            format!("object not found for identifier {base_key_handle}")
+        ))
     };
 
     let has_permission =
         user_has_permission(user, Some(&base_key_owm), &KmipOperation::DeriveKey, kms).await?;
     if !has_permission {
-        kms_bail!(KmsError::Unauthorized(format!(
-            "User {user} does not have DeriveKey permission on object {base_key_handle}"
-        )));
+        // Same reason and text as a missing object: an unauthorized caller learns nothing.
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Object_Not_Found,
+            format!("object not found for identifier {base_key_handle}")
+        ));
     }
 
+    // Table 207 / §3.31: only Active objects may be used to derive keys.
+    base_key_owm.check_process_window()?;
+    let base_state = base_key_owm.effective_state();
+    if base_state != State::Active {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Wrong_Key_Lifecycle_State,
+            format!("DeriveKey: base object state {base_state:?} is not accepted (must be Active)")
+        ));
+    }
     base_key_owm.set_object(
         Box::pin(kms.get_unwrapped(base_key_owm.id(), base_key_owm.object(), user))
             .await
@@ -165,7 +221,8 @@ async fn derive_key_symmetric(
         .attributes()
         .is_usage_authorized_for(CryptographicUsageMask::DeriveKey)?
     {
-        kms_bail!(KmsError::InvalidRequest(
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             "DeriveKey: base object does not have DeriveKey usage mask".to_owned()
         ));
     }
@@ -174,7 +231,10 @@ async fn derive_key_symmetric(
     let base_key_bytes = match base_key_owm.object() {
         Object::SymmetricKey(SymmetricKey { key_block })
         | Object::SecretData(SecretData { key_block, .. }) => key_block.key_bytes_ref()?,
-        _ => kms_bail!("DeriveKey: base object must be a SymmetricKey or SecretData"),
+        _ => kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
+            "DeriveKey: base object must be a SymmetricKey or SecretData".to_owned()
+        )),
     };
 
     // Validate that required attributes are provided for the derived object
@@ -200,7 +260,7 @@ async fn derive_key_symmetric(
         .and_then(|cp| cp.hashing_algorithm)
         .unwrap_or(HashingAlgorithm::SHA256);
 
-    let derived_key_bytes = match request.derivation_method {
+    let mut derived_key_bytes = match request.derivation_method {
         DerivationMethod::PBKDF2 => {
             let salt = request
                 .derivation_parameters
@@ -246,6 +306,24 @@ async fn derive_key_symmetric(
                 hashing_algorithm,
             )?
         }
+        DerivationMethod::HASH => Zeroizing::new(
+            openssl::hash::hash(get_message_digest(hashing_algorithm)?, base_key_bytes)?.to_vec(),
+        ),
+        DerivationMethod::HMAC => {
+            // §7.12: the derivation key's attributes identify the PRF when they can (HMAC keys);
+            // otherwise the Cryptographic Parameters' Hashing Algorithm (default SHA-256) is used.
+            let prf = base_key_owm
+                .attributes()
+                .cryptographic_algorithm
+                .and_then(|ca| hmac_algorithm_to_hashing(ca).ok())
+                .unwrap_or(hashing_algorithm);
+            let data = request
+                .derivation_parameters
+                .derivation_data
+                .as_deref()
+                .map_or(&[][..], Vec::as_slice);
+            Zeroizing::new(compute_hmac(base_key_bytes, data, prf)?)
+        }
         _ => kms_bail!(KmsError::InvalidRequest(format!(
             "DeriveKey: unsupported derivation method: {:?}",
             request.derivation_method
@@ -257,6 +335,8 @@ async fn derive_key_symmetric(
             "DeriveKey: specified length exceeds the output of the derivation method".to_owned()
         ));
     }
+    // HASH and HMAC produce a full digest; the derived object keeps its leading bytes.
+    derived_key_bytes.truncate(cryptographic_length);
 
     let uid = requested_derived_object_id(&request.attributes);
     let mut attributes = request.attributes.clone();
@@ -294,7 +374,8 @@ async fn derive_key_symmetric(
                 key_block,
             })
         }
-        _ => kms_bail!(KmsError::InvalidRequest(
+        _ => kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
             "DeriveKey: object type must be SymmetricKey or SecretData".to_owned()
         )),
     };
@@ -364,7 +445,8 @@ async fn derive_key_asymmetric(
     let peer_allowed =
         user_has_permission(user, peer_owm.as_ref(), &KmipOperation::DeriveKey, kms).await?;
     if private_owm.is_none() || peer_owm.is_none() || !private_allowed || !peer_allowed {
-        kms_bail!(KmsError::InvalidRequest(
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Object_Not_Found,
             "DeriveKey: asymmetric derivation requires access to both referenced objects"
                 .to_owned()
         ));
@@ -388,15 +470,21 @@ async fn derive_key_asymmetric(
 
     let private_state = private_owm.effective_state();
     if private_state != State::Active {
-        kms_bail!(KmsError::InvalidRequest(format!(
-            "DeriveKey: private key state {private_state:?} is not accepted (must be Active)"
-        )));
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Wrong_Key_Lifecycle_State,
+            format!(
+                "DeriveKey: private key state {private_state:?} is not accepted (must be Active)"
+            )
+        ));
     }
     let peer_state = peer_owm.effective_state();
     if peer_state != State::Active {
-        kms_bail!(KmsError::InvalidRequest(format!(
-            "DeriveKey: peer public key state {peer_state:?} is not accepted (must be Active)"
-        )));
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Wrong_Key_Lifecycle_State,
+            format!(
+                "DeriveKey: peer public key state {peer_state:?} is not accepted (must be Active)"
+            )
+        ));
     }
 
     private_owm.enforce_usage_limits(32)?;
@@ -505,6 +593,7 @@ async fn derive_key_asymmetric(
         )),
     ];
 
+    kms.constraints.check_new_objects(&operations)?;
     kms.database.atomic(user, &operations).await.map_err(|e| {
         KmsError::InvalidRequest(format!(
             "DeriveKey: failed to persist asymmetric derived object and links: {e}"
@@ -525,7 +614,7 @@ fn decrement_usage_limits_in_attributes(attributes: &mut Attributes, data_len: u
                 let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
                 ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
             }
-            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+            UsageLimitsUnit::Object => {
                 ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
             }
         }
@@ -571,6 +660,8 @@ async fn persist_single_base_derived_object(
         *object_attributes = attributes.clone();
     }
 
+    kms.constraints
+        .check(derived_object.object_type(), attributes)?;
     let tags = HashSet::new();
     let uid = kms
         .database
@@ -701,7 +792,8 @@ fn validate_x25519_private_object(private_owm: &ObjectWithMetadata) -> KResult<Z
                     .attributes()
                     .is_usage_authorized_for(CryptographicUsageMask::KeyAgreement)?
             {
-                kms_bail!(KmsError::InvalidRequest(
+                kms_bail!(KmsError::Kmip21Error(
+                    ErrorReason::Incompatible_Cryptographic_Usage_Mask,
                     "DeriveKey: private key must allow DeriveKey and KeyAgreement".to_owned()
                 ));
             }
@@ -731,7 +823,8 @@ fn validate_x25519_private_object(private_owm: &ObjectWithMetadata) -> KResult<Z
             }
             Ok(raw_bytes)
         }
-        _ => kms_bail!(KmsError::InvalidRequest(
+        _ => kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
             "DeriveKey: first identifier must reference a private key".to_owned()
         )),
     }
@@ -761,7 +854,8 @@ fn validate_x25519_public_object(peer_owm: &ObjectWithMetadata) -> KResult<Zeroi
                 .attributes()
                 .is_usage_authorized_for(CryptographicUsageMask::KeyAgreement)?
             {
-                kms_bail!(KmsError::InvalidRequest(
+                kms_bail!(KmsError::Kmip21Error(
+                    ErrorReason::Incompatible_Cryptographic_Usage_Mask,
                     "DeriveKey: peer public key must allow KeyAgreement".to_owned()
                 ));
             }
@@ -789,7 +883,8 @@ fn validate_x25519_public_object(peer_owm: &ObjectWithMetadata) -> KResult<Zeroi
             }
             Ok(raw_bytes)
         }
-        _ => kms_bail!(KmsError::InvalidRequest(
+        _ => kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
             "DeriveKey: second identifier must reference a public key".to_owned()
         )),
     }

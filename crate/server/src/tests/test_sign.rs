@@ -161,6 +161,40 @@ async fn test_streaming_signature_verification(
     );
     assert!(final_response.correlation_value.is_none()); // No correlation value in final response
 
+    // Multi-part Sign: the chunks signed in parts verify as one message
+    let mut sign_cv = None;
+    let mut multi_part_signature = None;
+    for (i, chunk) in chunks.iter().enumerate() {
+        let response = kms
+            .sign(
+                Sign {
+                    unique_identifier: Some(private_key_id.clone()),
+                    data: Some(Zeroizing::new(chunk.to_vec())),
+                    correlation_value: sign_cv.clone(),
+                    init_indicator: (i == 0).then_some(true),
+                    final_indicator: (i == chunks.len() - 1).then_some(true),
+                    ..Default::default()
+                },
+                owner,
+            )
+            .await?;
+        sign_cv = response.correlation_value;
+        multi_part_signature = response.signature_data;
+    }
+    assert!(sign_cv.is_none());
+    let verify = kms
+        .signature_verify(
+            SignatureVerify {
+                unique_identifier: Some(public_key_id.clone()),
+                data: Some(TEST_DATA.to_vec()),
+                signature_data: multi_part_signature,
+                ..Default::default()
+            },
+            owner,
+        )
+        .await?;
+    assert_eq!(verify.validity_indicator, Some(ValidityIndicator::Valid));
+
     Ok(())
 }
 

@@ -898,8 +898,13 @@ pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_information: Option<EncryptionKeyInformation>,
+    #[serde(
+        rename = "MACSignatureKeyInformation",
+        alias = "MacSignatureKeyInformation"
+    )]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature_key_information: Option<MacSignatureKeyInformation>,
+    #[serde(rename = "MACSignature", alias = "MacSignature")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "IVCounterNonce")]
@@ -985,6 +990,10 @@ pub struct KeyWrappingSpecification {
     pub wrapping_method: WrappingMethod,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_information: Option<EncryptionKeyInformation>,
+    #[serde(
+        rename = "MACSignatureKeyInformation",
+        alias = "MacOrSignatureKeyInformation"
+    )]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_or_signature_key_information: Option<MacSignatureKeyInformation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1355,6 +1364,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             PublicExponent,
             PrimeExponentP,
             PrimeExponentQ,
+            #[serde(rename = "CRTCoefficient", alias = "CrtCoefficient")]
             CRTCoefficient,
             RecommendedCurve,
             QString,
@@ -1526,7 +1536,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                         }
                         Field::CRTCoefficient => {
                             if crt_coefficient.is_some() {
-                                return Err(de::Error::duplicate_field("CrtCoefficient"));
+                                return Err(de::Error::duplicate_field("CRTCoefficient"));
                             }
                             crt_coefficient = Some(Box::new(map.next_value()?));
                         }
@@ -1734,6 +1744,10 @@ pub struct ServerInformation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cluster_info: Option<String>,
 
+    #[serde(
+        rename = "AlternateFailoverEndpoints",
+        alias = "AlternativeFailoverEndpoints"
+    )]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alternative_failover_endpoints: Option<Vec<String>>,
 }
@@ -1852,6 +1866,7 @@ pub struct ObjectDefaults {
 
     /// The Object Groups is a structure that lists the relevant Object Group Attributes
     /// and their values
+    #[serde(rename = "ObjectGroup", alias = "ObjectGroups")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_groups: Option<Vec<Attribute>>,
 }
@@ -1957,6 +1972,7 @@ pub struct CapabilityInformation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shredding_algorithm: Option<ShreddingAlgorithm>,
 
+    #[serde(rename = "RNGMode", alias = "RngMode")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rng_mode: Option<RNGMode>,
 
@@ -1990,6 +2006,7 @@ impl Display for CapabilityInformation {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGParameters {
+    #[serde(rename = "RNGAlgorithm", alias = "RngAlgorithm")]
     pub rng_algorithm: RNGAlgorithm,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
@@ -1997,10 +2014,12 @@ pub struct RNGParameters {
     pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(rename = "DRBGAlgorithm", alias = "DrbgAlgorithm")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drbg_algorithm: Option<DRBGAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(rename = "FIPS186Variation", alias = "Fips186Variation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fips186_variation: Option<FIPS186Variation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2014,6 +2033,7 @@ pub struct ProfileInformation {
     pub profile_name: ProfileName,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_version: Option<ProfileVersion>,
+    #[serde(rename = "ServerURI", alias = "ServerUri")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

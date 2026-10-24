@@ -6,7 +6,7 @@ use std::{
 };
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
@@ -166,10 +166,13 @@ impl Database {
         // storing an HSM-prefixed object in the SQL backend would corrupt the key
         // namespace and make the object unreachable once a real HSM is attached.
         if uid.starts_with("hsm::") {
-            return Err(DbError::InvalidRequest(format!(
-                "No HSM is configured for UID '{uid}'. \
-                 Start the server with an HSM plugin to create HSM keys."
-            )));
+            return Err(DbError::Kmip21Error(
+                ErrorReason::Feature_Not_Supported,
+                format!(
+                    "No HSM is configured for UID '{uid}'. \
+                     Start the server with an HSM plugin to create HSM keys."
+                ),
+            ));
         }
         // No registered prefix matched – fall back to the default store.
         map.get("")

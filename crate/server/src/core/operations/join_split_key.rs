@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::{
             KmipOperation,
             extra::VENDOR_ID_COSMIAN,
@@ -23,7 +23,9 @@ use tracing::debug;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use super::create_split_key::{CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes_ref};
+use super::create_split_key::{
+    CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes_ref, requested_share_attributes,
+};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
     error::KmsError,
@@ -88,16 +90,17 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
     // Validate: all shares must be SplitKey objects
     for owm in &owms {
         if owm.object().object_type() != ObjectType::SplitKey {
-            kms_bail!(KmsError::InvalidRequest(format!(
-                "object {} is not a SplitKey object",
-                owm.id()
-            )));
+            kms_bail!(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Object_Type,
+                format!("object {} is not a SplitKey object", owm.id())
+            ));
         }
     }
 
     // Extract metadata from the first share to verify consistency
     let Some(Object::SplitKey(first_sk)) = owms.first().map(|owm| owm.object()) else {
-        kms_bail!(KmsError::InvalidRequest(
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
             "first share is not a SplitKey object".to_owned()
         ))
     };
@@ -280,6 +283,8 @@ pub(crate) async fn join_split_key(
     request: JoinSplitKey,
     user: &UserId,
 ) -> KResult<JoinSplitKeyResponse> {
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+
     // Resolve share UIDs from the request
     let mut share_uids: Vec<String> = Vec::with_capacity(request.unique_identifier.len());
     for uid_ref in &request.unique_identifier {
@@ -359,7 +364,10 @@ pub(crate) async fn join_split_key(
         now,
     )?;
 
-    // Apply any additional attributes requested by the caller
+    // Apply any additional attributes requested by the caller: Name and Usage Mask replace
+    // the defaults, every other attribute is merged without overwriting server values.
+    let (requested_attrs, requested_tags) =
+        requested_share_attributes(request.attributes.as_ref(), kms.vendor_id());
     if let Some(req_attrs) = &request.attributes {
         if let Some(name) = &req_attrs.name {
             reconstructed_attrs.name = Some(name.clone());
@@ -368,9 +376,12 @@ pub(crate) async fn join_split_key(
             reconstructed_attrs.cryptographic_usage_mask = Some(usage);
         }
     }
+    reconstructed_attrs.merge(&requested_attrs, false);
+    kms.constraints
+        .check(reconstructed_object.object_type(), &reconstructed_attrs)?;
 
     // Store the reconstructed key
-    let mut tags: HashSet<String> = HashSet::new();
+    let mut tags: HashSet<String> = requested_tags;
     tags.insert("reconstructed-split-key".to_owned());
 
     // Session ID for audit-log correlation of this JoinSplitKey invocation.

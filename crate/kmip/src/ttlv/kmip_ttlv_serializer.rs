@@ -216,11 +216,14 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         })?)
     }
 
+    /// `i128` is only used for Date Time Extended values (the deserializer reads `i128` from
+    /// `DateTimeExtended` nodes only); the binary encoding holds 64 bits.
     #[instrument(level = "trace", skip(self))]
     fn serialize_i128(self, v: i128) -> Result<Self::Ok> {
-        i64::try_from(v)
-            .map_err(|_e| TtlvError::custom("i128 is not supported".to_owned()))
-            .and_then(|v64| self.serialize_i64(v64))
+        let v = i64::try_from(v)
+            .map_err(|_e| TtlvError::custom(format!("DateTimeExtended {v} exceeds 64 bits")))?;
+        self.current_mut()?.value = TTLValue::DateTimeExtended(i128::from(v));
+        Ok(())
     }
 
     #[instrument(level = "trace", skip(self, _v))]

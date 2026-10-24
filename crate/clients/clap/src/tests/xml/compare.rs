@@ -1,20 +1,52 @@
-use cosmian_kmip::{
-    kmip_0,
-    kmip_2_1::{self, kmip_objects::Object},
-};
+use std::collections::HashSet;
+
+use cosmian_kmip::kmip_2_1::{self, kmip_objects::Object};
 use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_messages::ResponseMessage;
-use cosmian_logger::trace;
 
 use crate::{
     error::{KmsCliError, result::KmsCliResult},
-    tests::xml::versioned::compare_versioned_batch_item,
+    tests::xml::{deviations::Ctx, versioned::compare_versioned_batch_item},
 };
 
 /// Compare expected and actual KMIP responses on essential fields and payloads.
+///
+/// `vector` is the vector file stem and `request` the 0-based response index, used to
+/// look up accepted deviations; `generated_uids` are the objects the server generated so far.
 pub(crate) fn compare_response_messages(
+    vector: &str,
+    request: usize,
+    generated_uids: &HashSet<String>,
     expected: &ResponseMessage,
     actual: &ResponseMessage,
 ) -> KmsCliResult<()> {
+    let ctx = |batch| Ctx {
+        vector,
+        request,
+        batch,
+        generated_uids,
+        object_generated: false,
+    };
+    // Time stamp and other header fields are server-generated and stay uncompared.
+    let (eh, ah) = (&expected.response_header, &actual.response_header);
+    let (ev, av) = (&eh.protocol_version, &ah.protocol_version);
+    if (ev.protocol_version_major, ev.protocol_version_minor)
+        != (av.protocol_version_major, av.protocol_version_minor)
+        && !ctx(0).allows("protocol_version")
+    {
+        return Err(KmsCliError::Default(format!(
+            "protocol_version mismatch expected={}.{} actual={}.{}",
+            ev.protocol_version_major,
+            ev.protocol_version_minor,
+            av.protocol_version_major,
+            av.protocol_version_minor
+        )));
+    }
+    if eh.batch_count != ah.batch_count {
+        return Err(KmsCliError::Default(format!(
+            "batch_count mismatch expected={} actual={}",
+            eh.batch_count, ah.batch_count
+        )));
+    }
     if expected.batch_item.len() != actual.batch_item.len() {
         return Err(KmsCliError::Default(format!(
             "batch size mismatch expected={} actual={}",
@@ -23,20 +55,20 @@ pub(crate) fn compare_response_messages(
         )));
     }
 
-    for (index, (exp_item, act_item)) in expected
+    for (batch, (exp_item, act_item)) in expected
         .batch_item
         .iter()
         .zip(actual.batch_item.iter())
         .enumerate()
     {
-        compare_versioned_batch_item(index, exp_item, act_item)?;
+        compare_versioned_batch_item(&ctx(batch), exp_item, act_item)?;
     }
 
     Ok(())
 }
 
 // Deep compare of KMIP Object, including nested KeyBlock, KeyValue, and Attributes when present
-pub(crate) fn compare_object(expected: &Object, actual: &Object) -> KmsCliResult<()> {
+pub(crate) fn compare_object(ctx: &Ctx, expected: &Object, actual: &Object) -> KmsCliResult<()> {
     use std::mem::discriminant;
     if discriminant(expected) != discriminant(actual) {
         return Err(KmsCliError::Default(format!(
@@ -52,7 +84,7 @@ pub(crate) fn compare_object(expected: &Object, actual: &Object) -> KmsCliResult
                     e.pgp_key_version, a.pgp_key_version
                 )));
             }
-            compare_key_block(&e.key_block, &a.key_block)?;
+            compare_key_block(ctx, &e.key_block, &a.key_block)?;
         }
         (Object::SecretData(e), Object::SecretData(a)) => {
             if e.secret_data_type != a.secret_data_type {
@@ -61,7 +93,7 @@ pub(crate) fn compare_object(expected: &Object, actual: &Object) -> KmsCliResult
                     e.secret_data_type, a.secret_data_type
                 )));
             }
-            compare_key_block(&e.key_block, &a.key_block)?;
+            compare_key_block(ctx, &e.key_block, &a.key_block)?;
         }
         (Object::SplitKey(e), Object::SplitKey(a)) => {
             if e.split_key_parts != a.split_key_parts {
@@ -94,16 +126,16 @@ pub(crate) fn compare_object(expected: &Object, actual: &Object) -> KmsCliResult
                     e.prime_field_size, a.prime_field_size
                 )));
             }
-            compare_key_block(&e.key_block, &a.key_block)?;
+            compare_key_block(ctx, &e.key_block, &a.key_block)?;
         }
         (Object::PrivateKey(e), Object::PrivateKey(a)) => {
-            compare_key_block(&e.key_block, &a.key_block)?;
+            compare_key_block(ctx, &e.key_block, &a.key_block)?;
         }
         (Object::PublicKey(e), Object::PublicKey(a)) => {
-            compare_key_block(&e.key_block, &a.key_block)?;
+            compare_key_block(ctx, &e.key_block, &a.key_block)?;
         }
         (Object::SymmetricKey(e), Object::SymmetricKey(a)) => {
-            compare_key_block(&e.key_block, &a.key_block)?;
+            compare_key_block(ctx, &e.key_block, &a.key_block)?;
         }
         // Should never happen due to discriminant check, but keep a safe fallback
         _ => {
@@ -130,14 +162,18 @@ fn normalize_kwd(
 }
 
 pub(crate) fn compare_key_block(
+    ctx: &Ctx,
     expected: &kmip_2_1::kmip_data_structures::KeyBlock,
     actual: &kmip_2_1::kmip_data_structures::KeyBlock,
 ) -> KmsCliResult<()> {
-    // if expected.key_format_type != actual.key_format_type {
-    //     return Err(KmsCliError::Default(
-    //         "KeyBlock.key_format_type expected=None actual=Some".to_string(),
-    //     ));
-    // }
+    if expected.key_format_type != actual.key_format_type
+        && !ctx.allows("key_block.key_format_type")
+    {
+        return Err(KmsCliError::Default(format!(
+            "KeyBlock.key_format_type expected={:?} actual={:?}",
+            expected.key_format_type, actual.key_format_type
+        )));
+    }
     if expected.key_compression_type != actual.key_compression_type {
         return Err(KmsCliError::Default(format!(
             "KeyBlock.key_compression_type expected={:?} actual={:?}",
@@ -147,7 +183,7 @@ pub(crate) fn compare_key_block(
 
     match (&expected.key_value, &actual.key_value) {
         (None, None) => {}
-        (Some(e), Some(a)) => compare_key_value(e, a)?,
+        (Some(e), Some(a)) => compare_key_value(ctx, e, a)?,
         (None, Some(_)) => {
             return Err(KmsCliError::Default(
                 "KeyBlock.key_value expected=None actual=Some".to_string(),
@@ -197,7 +233,28 @@ pub(crate) fn compare_key_block(
     Ok(())
 }
 
+/// Key bytes must match exactly. An empty or `$KEY_MATERIAL_` expected value is a vector
+/// placeholder (V21 placeholders were already replaced by the actual bytes) and accepts any;
+/// a server-generated key only has to match in length.
+fn compare_key_bytes(ctx: &Ctx, what: &str, expected: &[u8], actual: &[u8]) -> KmsCliResult<()> {
+    let placeholder = expected.is_empty() || expected.starts_with(b"$KEY_MATERIAL_");
+    let differs = if ctx.object_generated {
+        expected.len() != actual.len()
+    } else {
+        expected != actual
+    };
+    if !placeholder && differs && !ctx.allows("key_value.bytes") {
+        return Err(KmsCliError::Default(format!(
+            "{what} bytes mismatch expected_len={} actual_len={}",
+            expected.len(),
+            actual.len()
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn compare_key_value(
+    ctx: &Ctx,
     expected: &kmip_2_1::kmip_data_structures::KeyValue,
     actual: &kmip_2_1::kmip_data_structures::KeyValue,
 ) -> KmsCliResult<()> {
@@ -211,15 +268,7 @@ pub(crate) fn compare_key_value(
     }
     match (expected, actual) {
         (KeyValue::ByteString(eb), KeyValue::ByteString(ab)) => {
-            // When expected is empty (placeholder substitution), accept any actual content.
-            // Otherwise, lengths must match (content may differ for server-generated material).
-            if !eb.is_empty() && eb.len() != ab.len() {
-                return Err(KmsCliError::Default(format!(
-                    "KeyValue::ByteString length mismatch expected_len={} actual_len={}",
-                    eb.len(),
-                    ab.len()
-                )));
-            }
+            compare_key_bytes(ctx, "KeyValue::ByteString", eb, ab)?;
         }
         (
             KeyValue::Structure {
@@ -231,14 +280,15 @@ pub(crate) fn compare_key_value(
                 attributes: aa,
             },
         ) => {
-            if std::mem::discriminant(ekm) != std::mem::discriminant(akm) {
-                // Tolerate servers returning raw bytes for transparent symmetric key material
-                let tolerant = matches!(ekm, KeyMaterial::TransparentSymmetricKey { .. })
-                    && matches!(akm, KeyMaterial::ByteString(_));
-                if tolerant {
-                    // Consider equivalent for vector purposes
-                    return Ok(());
-                }
+            // Transparent symmetric key bytes compare against raw bytes.
+            let symmetric_vs_raw = matches!(
+                (ekm, akm),
+                (
+                    KeyMaterial::TransparentSymmetricKey { .. },
+                    KeyMaterial::ByteString(_)
+                )
+            );
+            if !symmetric_vs_raw && discriminant(ekm) != discriminant(akm) {
                 return Err(KmsCliError::Default(format!(
                     "KeyMaterial type mismatch expected={ekm} actual={akm}"
                 )));
@@ -246,27 +296,16 @@ pub(crate) fn compare_key_value(
 
             match (ekm, akm) {
                 (KeyMaterial::ByteString(e), KeyMaterial::ByteString(a)) => {
-                    // When expected is empty (placeholder substitution), accept any actual content.
-                    // Otherwise, lengths must match (content may differ for server-generated material).
-                    if !e.is_empty() && e.len() != a.len() {
-                        return Err(KmsCliError::Default(format!(
-                            "KeyMaterial::ByteString length mismatch expected_len={} actual_len={}",
-                            e.len(),
-                            a.len()
-                        )));
-                    }
+                    compare_key_bytes(ctx, "KeyMaterial::ByteString", e, a)?;
+                }
+                (KeyMaterial::TransparentSymmetricKey { key: e }, KeyMaterial::ByteString(a)) => {
+                    compare_key_bytes(ctx, "KeyMaterial::TransparentSymmetricKey", e, a)?;
                 }
                 (
                     KeyMaterial::TransparentSymmetricKey { key: ek },
                     KeyMaterial::TransparentSymmetricKey { key: ak },
                 ) => {
-                    if ek.len() != ak.len() {
-                        return Err(KmsCliError::Default(format!(
-                            "KeyMaterial::TransparentSymmetricKey mismatch expected_len={} actual_len={}",
-                            ek.len(),
-                            ak.len()
-                        )));
-                    }
+                    compare_key_bytes(ctx, "KeyMaterial::TransparentSymmetricKey", ek, ak)?;
                 }
                 (
                     KeyMaterial::TransparentRSAPublicKey {
@@ -447,7 +486,7 @@ pub(crate) fn compare_key_value(
                 // If the expected vector doesn't specify attributes, accept whatever the server returns
                 (None, _) => {}
                 (Some(ea), Some(aa)) => {
-                    compare_attributes(ea, aa)?;
+                    compare_attributes(ctx, ea, aa)?;
                 }
                 (Some(_), None) => {
                     return Err(KmsCliError::Default(
@@ -467,251 +506,161 @@ pub(crate) fn compare_key_value(
     Ok(())
 }
 
-// Deep compare for Attributes. Compares each Option field by presence and value;
-// for vectors (Name, Link, VendorAttribute), compares length and elements.
+// Deep compare for Attributes: every field is compared by presence and value, except
+// server-generated timestamps (`initial_date`, `last_change_date`) and the vendor
+// attributes the server adds on its own.
 pub(crate) fn compare_attributes(
+    ctx: &Ctx,
     expected: &kmip_2_1::kmip_attributes::Attributes,
     actual: &kmip_2_1::kmip_attributes::Attributes,
 ) -> KmsCliResult<()> {
-    use kmip_2_1::kmip_attributes::Attributes as Attr;
-    let (e, a): (&Attr, &Attr) = (expected, actual);
+    let (e, a) = (expected, actual);
 
-    // Helper macro to compare simple Option<T: Eq> strictly
-    macro_rules! cmp_opt {
+    macro_rules! mismatch {
         ($field:ident) => {
-            if e.$field != a.$field {
-                return Err(KmsCliError::Default(format!(
-                    "Attributes.{} mismatch",
-                    stringify!($field)
-                )));
-            }
+            Err(KmsCliError::Default(format!(
+                "Attributes.{} mismatch expected={:?} actual={:?}",
+                stringify!($field),
+                e.$field,
+                a.$field
+            )))
         };
     }
-
-    // Compare scalar Option fields
-    // cmp_opt!(activation_date);
-    cmp_opt!(alternative_name);
-    cmp_opt!(always_sensitive);
-    cmp_opt!(application_specific_information);
-    cmp_opt!(archive_date);
-    cmp_opt!(attribute_index);
-    cmp_opt!(certificate_attributes);
-    cmp_opt!(certificate_type);
-    cmp_opt!(certificate_length);
-    cmp_opt!(comment);
-    cmp_opt!(compromise_date);
-    cmp_opt!(compromise_occurrence_date);
-    cmp_opt!(contact_information);
-    cmp_opt!(critical);
-    cmp_opt!(cryptographic_algorithm);
-    cmp_opt!(cryptographic_domain_parameters);
-    cmp_opt!(cryptographic_length);
-    cmp_opt!(cryptographic_parameters);
-    cmp_opt!(cryptographic_usage_mask);
-    cmp_opt!(deactivation_date);
-    cmp_opt!(description);
-    cmp_opt!(destroy_date);
-    // cmp_opt!(digest);
-    cmp_opt!(digital_signature_algorithm);
-    cmp_opt!(extractable);
-    // Fresh is stateful: server may persist `Fresh=false` after key material has been
-    // returned once (e.g., Get with key wrapping disabled / unwrap-on-export).
-    // Be lenient when expected=Some(true) and actual=None/Some(false).
-    if e.fresh != a.fresh {
-        let expected = e.fresh;
-        let actual = a.fresh;
-        let tolerated = matches!(expected, Some(true)) && matches!(actual, None | Some(false));
-        if !tolerated {
-            return Err(KmsCliError::Default(
-                "Attributes.fresh mismatch".to_string(),
-            ));
-        }
+    macro_rules! allowed {
+        ($field:ident) => {
+            ctx.allows(concat!("attributes.", stringify!($field)))
+        };
     }
-    // cmp_opt!(initial_date);
-    cmp_opt!(key_format_type);
-    cmp_opt!(key_value_location);
-    cmp_opt!(key_value_present);
-    // cmp_opt!(last_change_date);
-
-    match (&e.digest, &a.digest) {
-        (None, None) => {}
-        (Some(ed), Some(ad)) => {
-            let ed_len = ed.digest_value.as_ref().map_or(0, std::vec::Vec::len);
-            let ad_len = ad.digest_value.as_ref().map_or(0, std::vec::Vec::len);
-
-            if ed_len != ad_len {
-                return Err(KmsCliError::Default(format!(
-                    "Attributes.digest.digest_value length mismatch expected_len={ed_len} actual_len={ad_len}"
-                )));
+    macro_rules! cmp_opt {
+        ($($field:ident),+ $(,)?) => {$(
+            if e.$field != a.$field && !allowed!($field) {
+                return mismatch!($field);
             }
-
-            if ed.hashing_algorithm != ad.hashing_algorithm {
-                return Err(KmsCliError::Default(
-                    "Attributes.hashing_algorithm mismatch".to_string(),
-                ));
+        )+};
+    }
+    // `$NOW` and `$NOW-<delta>` parse to the UNIX epoch: the server's real date must be present.
+    macro_rules! cmp_date {
+        ($($field:ident),+ $(,)?) => {$(
+            let ok = if e.$field == Some(time::OffsetDateTime::UNIX_EPOCH) {
+                a.$field.is_some()
+            } else {
+                e.$field == a.$field
+            };
+            if !ok && !allowed!($field) {
+                return mismatch!($field);
             }
-
-            if ed.key_format_type != ad.key_format_type {
-                return Err(KmsCliError::Default(
-                    "Attributes.key_format_type mismatch".to_string(),
-                ));
-            }
-        }
-        (None, Some(_)) => {
-            return Err(KmsCliError::Default(
-                "Attributes.digest expected=None actual=Some".to_string(),
-            ));
-        }
-        (Some(_), None) => {
-            return Err(KmsCliError::Default(
-                "Attributes.digest expected=Some actual=None".to_string(),
-            ));
-        }
+        )+};
     }
 
-    // link: Option<Vec<Link>>
-    match (&e.link, &a.link) {
-        (None, None) => {}
-        (Some(el), Some(al)) => {
-            if el.len() != al.len() {
-                return Err(KmsCliError::Default(format!(
-                    "Attributes.link length mismatch expected={} actual={}",
-                    el.len(),
-                    al.len()
-                )));
+    // Systematic deviation (`UNIMPLEMENTED_ATTRIBUTES`): the server never sets these, so an
+    // absent actual value is accepted; a present one must match.
+    macro_rules! cmp_unimplemented {
+        ($($field:ident),+) => {$(
+            if e.$field != a.$field && a.$field.is_some() && !allowed!($field) {
+                return mismatch!($field);
             }
-            for (i, (le, la)) in el.iter().zip(al.iter()).enumerate() {
-                if le.link_type != la.link_type {
-                    return Err(KmsCliError::Default(format!(
-                        "Attributes.link[{}].link_type mismatch: expected={:?} actual={:?}",
-                        i, le.link_type, la.link_type
-                    )));
-                }
-
-                // Filter on unique_identifier
-                if le != la {
-                    return Err(KmsCliError::Default(format!(
-                        "Attributes.link[{i}] mismatch: expected={le} actual={la}"
-                    )));
-                }
-            }
-        }
-        (None, Some(_)) => {
-            return Err(KmsCliError::Default(
-                "Attributes.link expected=None actual=Some".to_string(),
-            ));
-        }
-        (Some(_), None) => {
-            return Err(KmsCliError::Default(
-                "Attributes.link expected=Some actual=None".to_string(),
-            ));
-        }
+        )+};
     }
-    // name: Option<Vec<Name>>
-    match (&e.name, &a.name) {
-        (None, None) => {}
-        (Some(en), Some(an)) => {
-            if en.len() != an.len() {
-                return Err(KmsCliError::Default(format!(
-                    "Attributes.name length mismatch expected={} actual={}",
-                    en.len(),
-                    an.len()
-                )));
-            }
-            for (i, (ne, na)) in en.iter().zip(an.iter()).enumerate() {
-                if ne != na {
-                    return Err(KmsCliError::Default(format!(
-                        "Attributes.name[{i}] mismatch"
-                    )));
-                }
-            }
+    cmp_unimplemented!(lease_time, protection_storage_masks);
+    cmp_date!(activation_date, deactivation_date, destroy_date);
+    if ctx.object_generated {
+        // Server creation time and digest of fresh key material: presence and form only.
+        if e.original_creation_date.is_some() != a.original_creation_date.is_some()
+            && !allowed!(original_creation_date)
+        {
+            return mismatch!(original_creation_date);
         }
-        (None, Some(_)) => {
-            return Err(KmsCliError::Default(
-                "Attributes.name expected=None actual=Some".to_string(),
-            ));
+        let digest_form = |d: &Option<Vec<kmip_2_1::kmip_types::Digest>>| {
+            d.as_ref().map(|d| {
+                d.iter()
+                    .map(|d| {
+                        (
+                            d.hashing_algorithm,
+                            d.key_format_type,
+                            d.digest_value.as_ref().map(Vec::len),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
+        if digest_form(&e.digest) != digest_form(&a.digest) && !allowed!(digest) {
+            return mismatch!(digest);
         }
-        (Some(_), None) => {
-            return Err(KmsCliError::Default(
-                "Attributes.name expected=Some actual=None".to_string(),
-            ));
-        }
+    } else {
+        cmp_date!(original_creation_date);
+        cmp_opt!(digest);
     }
-
-    cmp_opt!(never_extractable);
-    cmp_opt!(nist_key_type);
-    cmp_opt!(object_group);
-    cmp_opt!(object_group_member);
-    cmp_opt!(object_type);
-    cmp_opt!(opaque_data_type);
-    // cmp_opt!(original_creation_date);
-    cmp_opt!(pkcs_12_friendly_name);
-    cmp_opt!(process_start_date);
-    cmp_opt!(protect_stop_date);
-    cmp_opt!(protection_level);
-    cmp_opt!(protection_period);
-    // ProtectionStorageMasks is absent in RequestMessages: crate/kmip/src/kmip_2_1/specifications/XML/optional/AKLC-O-1-21.xml
-    // cmp_opt!(protection_storage_masks);
-    cmp_opt!(quantum_safe);
-    cmp_opt!(random_number_generator);
-    cmp_opt!(revocation_reason);
-    cmp_opt!(rotate_automatic);
-    cmp_opt!(rotate_date);
-    cmp_opt!(rotate_generation);
-    cmp_opt!(rotate_interval);
-    cmp_opt!(rotate_latest);
-    cmp_opt!(rotate_name);
-    cmp_opt!(rotate_offset);
-    cmp_opt!(sensitive);
-    cmp_opt!(short_unique_identifier);
-    // State: be lenient when expected=PreActive and actual=Active (some servers may eagerly
-    // set Active or fail to fully undo transient activation within batch UNDO semantics).
-    if e.state != a.state {
-        use kmip_0::kmip_types::State;
-        let expected = e.state;
-        let actual = a.state;
-        let tolerated =
-            matches!(expected, Some(State::PreActive)) && matches!(actual, Some(State::Active));
-        if !tolerated {
-            return Err(KmsCliError::Default(
-                "Attributes.state mismatch".to_string(),
-            ));
-        }
+    // KMIP 1.3+ 3.44: the server sets Random Number Generator on objects it generates; a vector
+    // recorded on a reference server that did not may omit it. A value it does give must match.
+    let rng_omitted = ctx.object_generated && e.random_number_generator.is_none();
+    if !rng_omitted {
+        cmp_opt!(random_number_generator);
     }
-    cmp_opt!(unique_identifier);
-    cmp_opt!(usage_limits);
-    // vendor_attributes: Option<Vec<VendorAttribute>>
-    match (&e.vendor_attributes, &a.vendor_attributes) {
-        (None, None) => {
-            trace!("Both expected and actual Attributes.vendor_attributes are None");
-        }
-        (Some(ev), Some(av)) => {
-            if ev.len() != av.len() {
-                return Err(KmsCliError::Default(format!(
-                    "Attributes.vendor_attributes length mismatch expected={} actual={}",
-                    ev.len(),
-                    av.len()
-                )));
-            }
-            for (i, (ve, va)) in ev.iter().zip(av.iter()).enumerate() {
-                if ve != va {
-                    return Err(KmsCliError::Default(format!(
-                        "Attributes.vendor_attributes[{i}] mismatch. Expected: {ve}, Actual: {va}"
-                    )));
-                }
-            }
-        }
-        // TODO: re-enable
-        (None, Some(_)) | (Some(_), None) => {
-            // Cosmian KMS always return vendor_attributes with a tag to facilitate KMIP Locate operation
-            // return Err(KmsCliError::Default(
-            //     "Attributes.vendor_attributes expected=None actual=Some".to_string(),
-            // ));
-        }
+    cmp_opt!(
+        alternative_name,
+        always_sensitive,
+        application_specific_information,
+        archive_date,
+        attribute_index,
+        certificate_attributes,
+        certificate_type,
+        certificate_length,
+        comment,
+        compromise_date,
+        compromise_occurrence_date,
+        contact_information,
+        critical,
+        cryptographic_algorithm,
+        cryptographic_domain_parameters,
+        cryptographic_length,
+        cryptographic_parameters,
+        cryptographic_usage_mask,
+        description,
+        digital_signature_algorithm,
+        extractable,
+        fresh,
+        key_format_type,
+        key_value_location,
+        key_value_present,
+        link,
+        name,
+        never_extractable,
+        nist_key_type,
+        object_group,
+        object_group_member,
+        object_type,
+        opaque_data_type,
+        pkcs_12_friendly_name,
+        process_start_date,
+        protect_stop_date,
+        protection_level,
+        protection_period,
+        quantum_safe,
+        revocation_reason,
+        rotate_automatic,
+        rotate_date,
+        rotate_generation,
+        rotate_interval,
+        rotate_latest,
+        rotate_name,
+        rotate_offset,
+        sensitive,
+        short_unique_identifier,
+        state,
+        unique_identifier,
+        usage_limits,
+        x_509_certificate_identifier,
+        x_509_certificate_issuer,
+        x_509_certificate_subject,
+    );
+    // Permanent tolerance: the server always adds vendor attributes (a tag used by Locate),
+    // so vendor attributes absent from the vector are accepted; expected ones must match.
+    if e.vendor_attributes.is_some()
+        && e.vendor_attributes != a.vendor_attributes
+        && !allowed!(vendor_attributes)
+    {
+        return mismatch!(vendor_attributes);
     }
-    cmp_opt!(x_509_certificate_identifier);
-    cmp_opt!(x_509_certificate_issuer);
-    cmp_opt!(x_509_certificate_subject);
 
     Ok(())
 }

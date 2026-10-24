@@ -44,6 +44,7 @@ impl ModifyAttributesAction {
             unique_identifier, ..
         } = kms_rest_client
             .modify_attribute(ModifyAttribute {
+                current_attribute: None,
                 unique_identifier: Some(uid.clone()),
                 new_attribute: attribute.clone(),
             })

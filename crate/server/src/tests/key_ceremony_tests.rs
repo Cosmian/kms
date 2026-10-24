@@ -150,6 +150,7 @@ async fn split_key(
         split_key_parts: total_parts,
         split_key_threshold: total_parts, // XOR n-of-n
         split_key_method: SplitKeyMethod::XOR,
+        prime_field_size: None,
         attributes: None,
         protection_storage_masks: None,
     };
@@ -2027,6 +2028,7 @@ async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
         split_key_parts: 2,
         split_key_threshold: 2,
         split_key_method: SplitKeyMethod::XOR,
+        prime_field_size: None,
         attributes: None,
         protection_storage_masks: None,
     };
@@ -2171,5 +2173,85 @@ async fn repro_issue_909_get_on_star_bypasses_import_gate() -> KResult<()> {
         "Bob must still be blocked from Create/Import"
     );
 
+    Ok(())
+}
+
+/// An Undo batch never "undoes" a Crypto Officer ceremony split: the split removes the
+/// source key, so deleting the shares would lose the key. The item keeps `Success` and
+/// its shares are kept.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+                ResponseMessageBatchItemVersioned,
+            },
+            kmip_types::{BatchErrorContinuationOption, ProtocolVersion, ResultStatusEnumeration},
+        },
+        kmip_2_1::{
+            kmip_messages::RequestMessageBatchItem,
+            kmip_operations::{Get, Operation},
+        },
+    };
+
+    let provisioner = "admin";
+    let officers = ["alice@example.com", "carol@example.com", "dave@example.com"];
+    let kms = ceremony_kms(officers.iter().map(|o| (*o).to_owned()).collect()).await?;
+    let key_uid = create_key(&kms, provisioner).await?;
+
+    let item =
+        |operation| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(operation));
+    let response = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    batch_count: 2,
+                    batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
+                    ..Default::default()
+                },
+                batch_item: vec![
+                    item(Operation::CreateSplitKey(CreateSplitKey {
+                        object_type: ObjectType::SymmetricKey,
+                        unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
+                        split_key_parts: 3,
+                        split_key_threshold: 3,
+                        split_key_method: SplitKeyMethod::XOR,
+                        prime_field_size: None,
+                        attributes: None,
+                        protection_storage_masks: None,
+                    })),
+                    item(Operation::Get(Get {
+                        unique_identifier: Some(UniqueIdentifier::TextString(
+                            "undo-ceremony-missing".to_owned(),
+                        )),
+                        ..Default::default()
+                    })),
+                ],
+            },
+            &UserId::from(provisioner),
+        )
+        .await?;
+
+    let Some(ResponseMessageBatchItemVersioned::V21(split)) = response.batch_item.first() else {
+        panic!("expected a KMIP 2.1 response item");
+    };
+    assert_eq!(split.result_status, ResultStatusEnumeration::Success);
+    let Some(Operation::CreateSplitKeyResponse(shares)) = &split.response_payload else {
+        panic!("expected a Create Split Key response");
+    };
+    assert_eq!(shares.unique_identifier.len(), 3);
+    for share in &shares.unique_identifier {
+        let share = uid_string(share)?;
+        assert!(
+            kms.database.retrieve_object(&share).await?.is_some(),
+            "share {share} must be kept"
+        );
+    }
     Ok(())
 }

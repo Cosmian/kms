@@ -6,7 +6,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_findex::{Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode};
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
         KmipOperation,
         extra::tagging::{SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX},
@@ -19,8 +19,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, UserId,
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectHandle, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, error, trace, warn};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -36,7 +36,7 @@ use super::{
     permissions::PermissionDB,
 };
 use crate::{
-    db_bail, db_error,
+    db_error,
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
@@ -538,7 +538,10 @@ impl RedisWithFindex {
         }
         let (script_ops, index_diffs) = build_batch(&attempt.uids);
         match self.objects_db.atomic_script(&script_ops).await? {
-            AtomicScriptOutcome::CreateConflict(uid) => db_bail!("object {uid} already exists"),
+            AtomicScriptOutcome::CreateConflict(uid) => Err(DbError::Kmip21Error(
+                ErrorReason::Object_Already_Exists,
+                format!("object {uid} already exists"),
+            )),
             AtomicScriptOutcome::CasConflict => Ok(AtomicAttempt::Retry),
             AtomicScriptOutcome::Committed => {
                 let uids: Vec<String> = operations
@@ -621,7 +624,12 @@ impl RedisWithFindex {
             // Earlier operation in this batch already touched the uid: Create is
             // only valid if that left it absent (e.g. Delete then Create); the
             // earlier precondition is kept.
-            Some(entry) if entry.current.is_some() => db_bail!("object {uid} already exists"),
+            Some(entry) if entry.current.is_some() => {
+                return Err(DbError::Kmip21Error(
+                    ErrorReason::Object_Already_Exists,
+                    format!("object {uid} already exists"),
+                ));
+            }
             Some(entry) => entry.current = Some(db_object),
             None => {
                 attempt.uids.insert(
@@ -1434,20 +1442,20 @@ impl PermissionsStore for RedisWithFindex {
         // `permissions` and `redis_db_objects` are independent `HashMap`s whose
         // iteration orders are not guaranteed to correspond, and `objects_get`
         // may legitimately return fewer entries (e.g. a stale permission for an
-        // object that no longer exists). Missing objects are skipped.
+        // object that no longer exists). Missing objects are skipped, except HSM
+        // keys, which live in the HSM store and never in `objects_db`.
         Ok(permissions
             .into_iter()
             .filter_map(|(uid, permissions)| {
                 let uid_string: String = uid.into();
-                let redis_db_object = redis_db_objects.remove(&uid_string)?;
-                Some((
-                    uid_string,
-                    (
-                        redis_db_object.owner,
-                        redis_db_object.state,
-                        permissions.into_iter().collect::<HashSet<KmipOperation>>(),
-                    ),
-                ))
+                let operations = permissions.into_iter().collect::<HashSet<KmipOperation>>();
+                match redis_db_objects.remove(&uid_string) {
+                    Some(object) => Some((uid_string, (object.owner, object.state, operations))),
+                    None if ObjectHandle::from(uid_string.as_str()).is_hsm() => {
+                        Some((uid_string, (String::new(), State::Active, operations)))
+                    }
+                    None => None,
+                }
             })
             .collect())
     }

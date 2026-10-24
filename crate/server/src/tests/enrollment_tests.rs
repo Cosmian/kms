@@ -34,6 +34,7 @@ use cosmian_kms_server_database::reexport::{
                 VendorAttributeValue,
             },
         },
+        time_normalize,
     },
     cosmian_kms_crypto::openssl::{
         csr_attrs::csr_with_challenge_password,
@@ -171,6 +172,8 @@ async fn make_kms_inner(
         unique_identifier: Some(UniqueIdentifier::TextString(CA_UID.to_owned())),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(3072),
+        // only Active keys may sign certificates (KMIP 2.1 §4.57)
+        activation_date: Some(time_normalize()?),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(
             "C=FR, O=KMS Test, CN=Enrollment Test CA",
         )?),

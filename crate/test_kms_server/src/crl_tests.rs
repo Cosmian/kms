@@ -448,14 +448,18 @@ async fn test_crl_validation_lifecycle() {
         "CRL should contain exactly 1 revoked certificate"
     );
 
-    // ── Step 7: Validate the chain again (should FAIL — cert is in CRL) ──
+    // ── Step 7: Validate the chain again (Invalid — cert is in CRL, KMIP 2.1 §6.1.58) ──
     let validate_req2 =
         build_validate_certificate_request(&[ee_cert_id.clone(), ca_cert_id.clone()], None)
             .unwrap();
     let validate_result = client.validate(validate_req2).await;
     assert!(
-        validate_result.is_err(),
-        "Validation should fail for a revoked certificate whose serial appears in the CRL"
+        matches!(
+            &validate_result,
+            Ok(r) if r.validity_indicator == ValidityIndicator::Invalid
+        ),
+        "Validation of a revoked certificate whose serial appears in the CRL must report \
+         Invalid, got: {validate_result:?}"
     );
 
     // Cleanup

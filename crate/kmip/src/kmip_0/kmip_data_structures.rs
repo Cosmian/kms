@@ -11,6 +11,7 @@ pub struct ValidationInformation {
     pub validation_authority_type: ValidationAuthorityType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_authority_country: Option<String>,
+    #[serde(rename = "ValidationAuthorityURI", alias = "ValidationAuthorityUri")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_authority_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -23,8 +24,13 @@ pub struct ValidationInformation {
     pub validation_level: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_certificate_identifier: Option<String>,
+    #[serde(
+        rename = "ValidationCertificateURI",
+        alias = "ValidationCertificateUri"
+    )]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_certificate_uri: Option<String>,
+    #[serde(rename = "ValidationVendorURI", alias = "ValidationVendorUri")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validation_vendor_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+#MISE description="KMIPKit (Rust KMIP 2.1 client) live interop tests over binary TTLV + mTLS (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--full" help="Run every KMIPKit live family (~2h; matrix runners fail on unsupported cases by design) instead of the fast gate"
+
+# Runs the external KMIPKit Rust client's live tests against a locally-built KMS
+# over binary KMIP 2.1 TTLV on a mutual-TLS socket (port 5696).
+#
+# Fast gate (default): the 20 single-operation `cosmian_kms_*` tests plus the
+# `lifecycle::` family. `--full` runs every live family (local only).
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
+
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "kmipkit tests require non-fips variant (got: ${usage_variant})"
+fi
+
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+KMIPKIT_URL="https://github.com/NeverWe1come/KMIPKit.git"
+# head of PR #56 (feature/KMIPKIT-0015-cosmian-kms-integration)
+KMIPKIT_SHA="21fa97fc712aa5922d2bba12fa596f9dfd5be2e0"
+# same image as KMIPKit compose test-pki
+PKI_IMAGE="alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412"
+# hardcoded in KMIPKit's client()
+KMIP_PORT=5696
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+
+require_cmd docker
+require_cmd git
+require_cmd cargo
+require_cmd lsof
+
+_TMP_DIR=""
+cleanup() {
+  kms_stop
+  [ -n "${_TMP_DIR}" ] && rm -rf "${_TMP_DIR}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+if wait_for_port 127.0.0.1 "${KMIP_PORT}" 0; then
+  print_error "port ${KMIP_PORT} is already in use; KMIPKit cannot target another port"
+fi
+
+_TMP_DIR=$(mktemp -d /tmp/kmipkit-XXXXXX)
+KMIPKIT_DIR="${_TMP_DIR}/kmipkit"
+CERTS_DIR="${_TMP_DIR}/certs"
+mkdir -p "${KMIPKIT_DIR}" "${CERTS_DIR}"
+
+print_status "Fetching KMIPKit ${KMIPKIT_SHA}..."
+git -C "${KMIPKIT_DIR}" init -q
+git -C "${KMIPKIT_DIR}" remote add origin "${KMIPKIT_URL}"
+git -C "${KMIPKIT_DIR}" fetch -q --depth 1 origin "${KMIPKIT_SHA}"
+git -C "${KMIPKIT_DIR}" checkout -q FETCH_HEAD
+
+print_status "Generating mTLS PKI with KMIPKit's generator..."
+# Container files are root-owned with mode 600: chown them back to the caller.
+docker run --rm -v "${CERTS_DIR}:/output" -v "${KMIPKIT_DIR}/tests/integration/cosmian:/scripts:ro" \
+  "${PKI_IMAGE}" sh -c "sh /scripts/generate-pki.sh && chown -R $(id -u):$(id -g) /output"
+
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+HTTP_PORT=$(kms_pick_free_port)
+KMS_CONF="${_TMP_DIR}/kms.toml"
+KMS_LOG_FILE="${_TMP_DIR}/kms.log"
+cat >"${KMS_CONF}" <<TOML
+default_username = "kmipkit-integration"
+
+[db]
+database_type  = "sqlite"
+sqlite_path    = "${_TMP_DIR}/db"
+clear_database = true
+
+[http]
+hostname = "127.0.0.1"
+port     = ${HTTP_PORT}
+
+[tls]
+tls_cert_file        = "${CERTS_DIR}/server/server.crt"
+tls_key_file         = "${CERTS_DIR}/server/server.key"
+clients_ca_cert_file = "${CERTS_DIR}/server/clients-ca.crt"
+
+[roles]
+crypto_officer_users            = ["kmipkit-integration-client"]
+crypto_officer_require_ceremony = false
+
+[socket_server]
+socket_server_start    = true
+socket_server_port     = ${KMIP_PORT}
+socket_server_hostname = "127.0.0.1"
+
+[logging]
+rust_log    = "warn,cosmian_kms_server=info"
+ansi_colors = false
+TOML
+
+print_status "Starting KMS (binary KMIP + mTLS on port ${KMIP_PORT})..."
+"$(get_kms_bin)" --config "${KMS_CONF}" >"${KMS_LOG_FILE}" 2>&1 &
+# shellcheck disable=SC2034 # read by kms_stop in .mise/lib/kms_server.sh
+KMS_PID=$!
+if ! wait_for_port 127.0.0.1 "${KMIP_PORT}" 120; then
+  tail -n 100 "${KMS_LOG_FILE}" || true
+  print_error "KMS KMIP socket did not open on ${KMIP_PORT}"
+fi
+
+# KMIPKit hardcodes 127.0.0.1:${KMIP_PORT}: make sure the listener is our freshly built
+# local binary (not a released/containerised KMS that grabbed the port instead).
+_listener_pid=$(lsof -nP -iTCP:"${KMIP_PORT}" -sTCP:LISTEN -t 2>/dev/null | sort -u | tr '\n' ' ')
+if [ "${_listener_pid% }" != "${KMS_PID}" ] || ! kill -0 "${KMS_PID}" 2>/dev/null; then
+  tail -n 100 "${KMS_LOG_FILE}" || true
+  print_error "port ${KMIP_PORT} is not served by the local KMS (pid ${KMS_PID}; listener: ${_listener_pid:-none})"
+fi
+print_info "KMIPKit targets local KMS $("$(get_kms_bin)" --version 2>&1 | head -n1) (pid ${KMS_PID})"
+
+TEST_FILTERS=(cosmian_kms_ lifecycle::)
+if [ "${usage_full:-false}" = "true" ]; then
+  TEST_FILTERS=()
+fi
+
+print_status "Running KMIPKit live tests..."
+if ! (cd "${KMIPKIT_DIR}" &&
+  RUSTUP_TOOLCHAIN="$(sed -n 's/^channel = "\(.*\)"$/\1/p' "${REPO_ROOT}/rust-toolchain.toml")" \
+  CARGO_TARGET_DIR="$(get_cargo_target_dir)/kmipkit" \
+  KMIPKIT_COSMIAN_CERT_DIR="${CERTS_DIR}" \
+    cargo test --locked -p kmipkit-client --test cosmian_kms -- --ignored --test-threads=1 \
+    "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}"); then
+  tail -n 100 "${KMS_LOG_FILE}" || true
+  print_error "KMIPKit live tests failed"
+fi
+print_success "KMIPKit live tests passed"

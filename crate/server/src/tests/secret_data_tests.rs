@@ -355,18 +355,8 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         key_material.to_vec()
     );
 
-    let revoke_request = Revoke {
-        unique_identifier: Some(secret_id.clone()),
-        revocation_reason: RevocationReason {
-            revocation_reason_code: RevocationReasonCode::Unspecified,
-            revocation_message: None,
-        },
-        compromise_occurrence_date: None,
-        cascade: true,
-    };
-
-    kms.revoke(revoke_request, &owner).await?;
-
+    // The imported secret is Pre-Active: it can be destroyed without a Revoke (KMIP 2.1
+    // §6.1.15), and a non-compromise Revoke would fail (§4.57).
     let destroy_request = Destroy {
         unique_identifier: Some(secret_id.clone()),
         remove: true,

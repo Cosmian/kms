@@ -29,6 +29,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::Certify,
             kmip_types::{CertificateRequestType, LinkType, LinkedObjectIdentifier},
         },
+        time_normalize,
     },
     cosmian_kms_crypto::openssl::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, oid::nid_of,
@@ -402,6 +403,9 @@ pub(crate) async fn issue_from_csr(
         LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
     );
     template.apply(csr, kms.vendor_id(), &mut attributes)?;
+    // A device certificate is usable (and renewable) as soon as it is issued: without an
+    // Activation Date Certify leaves it Pre-Active (KMIP 2.1 §4.57).
+    attributes.activation_date = Some(time_normalize()?);
     let response = Box::pin(certify_for_owner(
         kms,
         Certify {

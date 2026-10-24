@@ -10,7 +10,7 @@ use crate::{
     KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, CertificateType, CryptographicUsageMask,
-        ErrorReason, KeyValueLocationType, RevocationReason, State, X509CertificateIdentifier,
+        ErrorReason, KeyValueLocation, RevocationReason, State, X509CertificateIdentifier,
     },
     kmip_2_1::{
         kmip_objects::ObjectType,
@@ -22,7 +22,7 @@ use crate::{
             VENDOR_ATTR_AAD, VendorAttribute,
         },
     },
-    time_utils::time_normalize,
+    time_utils::{creation_time, time_normalize},
     ttlv::Interval,
 };
 
@@ -195,8 +195,13 @@ pub struct Attributes {
     /// or secret data (i.e., digest of the Key Material),
     /// certificate (i.e., digest of the Certificate Value),
     /// or opaque object (i.e., digest of the Opaque Data Value)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub digest: Option<Digest>,
+    /// Multiple instances are permitted (one per hashing algorithm / key format type).
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "deserialize_digests"
+    )]
+    pub digest: Option<Vec<Digest>>,
 
     /// The Digital Signature Algorithm attribute specifies the digital signature algorithm
     /// that is used with the signing key.
@@ -232,10 +237,12 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
 
-    // The Key Value Location attribute identifies whether the key value is stored
-    /// on the KMIP server or stored on an external repository.
+    /// The Key Value Location attribute indicates where the Key Value absent from the
+    /// Key Block of a registered object is held.
+    // shortcut: one instance kept although the spec permits several; upgrade to a Vec when a
+    // client needs more than one location.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_value_location: Option<KeyValueLocationType>,
+    pub key_value_location: Option<KeyValueLocation>,
 
     /// The Key Value Present attribute is a Boolean that indicates whether a key value
     /// is present in the key block.
@@ -293,6 +300,7 @@ pub struct Attributes {
 
     /// The NIST Key Type attribute is used to identify the key type used with the
     /// NIST SP 800-56 and SP 800-108 operations.
+    #[serde(rename = "NISTKeyType", alias = "NistKeyType")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nist_key_type: Option<NistKeyType>,
 
@@ -325,6 +333,7 @@ pub struct Attributes {
 
     /// The PKCS#12 Friendly Name attribute is a string used to identify the key
     /// material stored within a PKCS#12 object.
+    #[serde(rename = "PKCS12FriendlyName", alias = "Pkcs12FriendlyName")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pkcs_12_friendly_name: Option<String>,
 
@@ -347,11 +356,9 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protection_period: Option<i64>,
 
-    /// The Protection Storage Masks attribute contains a list of masks that define
-    /// storage protections required for an object.
-    /// Accept both singular and plural XML tag forms.
+    /// The Protection Storage Mask attribute identifies a required storage protection.
+    #[serde(rename = "ProtectionStorageMask", alias = "ProtectionStorageMasks")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(alias = "ProtectionStorageMask")]
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 
     /// The Quantum Safe attribute is a Boolean that indicates whether the key is
@@ -970,7 +977,7 @@ impl Display for Attributes {
         if let Some(value) = &self.destroy_date {
             writeln!(f, "  Destroy Date: {value}")?;
         }
-        if let Some(value) = &self.digest {
+        for value in self.digest.iter().flatten() {
             writeln!(f, "  Digest: {value}")?;
         }
         if let Some(value) = &self.digital_signature_algorithm {
@@ -1257,9 +1264,9 @@ pub enum Attribute {
     /// Format Type MAY be requested by the client.
     KeyFormatType(KeyFormatType),
 
-    /// The Key Value Location attribute identifies whether the key value is stored
-    /// on the KMIP server or stored on an external repository.
-    KeyValueLocation(KeyValueLocationType),
+    /// The Key Value Location attribute indicates where the Key Value absent from the
+    /// Key Block of a registered object is held.
+    KeyValueLocation(KeyValueLocation),
 
     /// The Key Value Present attribute is a Boolean that indicates whether a key value
     /// is present in the key block.
@@ -1289,6 +1296,7 @@ pub enum Attribute {
 
     /// The NIST Key Type attribute is used to identify the key type used with the
     /// NIST SP 800-56 and SP 800-108 operations.
+    #[serde(rename = "NISTKeyType", alias = "NistKeyType")]
     NistKeyType(NistKeyType),
 
     /// The Object Group attribute is a Text String that MAY be used to identify a group
@@ -1315,6 +1323,7 @@ pub enum Attribute {
 
     /// The PKCS#12 Friendly Name attribute is a string used to identify the key
     /// material stored within a PKCS#12 object.
+    #[serde(rename = "PKCS12FriendlyName", alias = "Pkcs12FriendlyName")]
     Pkcs12FriendlyName(String),
 
     /// The Process Start Date attribute is the date and time that a managed object
@@ -1332,9 +1341,9 @@ pub enum Attribute {
     /// object MAY be protected.
     ProtectionPeriod(i64),
 
-    /// The Protection Storage Masks attribute contains a list of masks that define
-    /// storage protections required for an object.
-    ProtectionStorageMasks(ProtectionStorageMasks),
+    /// The Protection Storage Mask attribute identifies a required storage protection.
+    #[serde(alias = "ProtectionStorageMasks")]
+    ProtectionStorageMask(ProtectionStorageMasks),
 
     /// The Quantum Safe attribute is a Boolean that indicates whether the key is
     /// quantum safe or not.
@@ -1471,7 +1480,7 @@ impl Attribute {
             Self::ProtectStopDate(_) => Some(Tag::ProtectStopDate),
             Self::ProtectionLevel(_) => Some(Tag::ProtectionLevel),
             Self::ProtectionPeriod(_) => Some(Tag::ProtectionPeriod),
-            Self::ProtectionStorageMasks(_) => Some(Tag::ProtectionStorageMasks),
+            Self::ProtectionStorageMask(_) => Some(Tag::ProtectionStorageMask),
             Self::QuantumSafe(_) => Some(Tag::QuantumSafe),
             Self::RandomNumberGenerator(_) => Some(Tag::RandomNumberGenerator),
             Self::RevocationReason(_) => Some(Tag::RevocationReason),
@@ -1571,7 +1580,7 @@ impl From<Attributes> for Vec<Attribute> {
         if let Some(destroy_date) = attributes.destroy_date {
             vec.push(Attribute::DestroyDate(destroy_date));
         }
-        if let Some(digest) = attributes.digest {
+        for digest in attributes.digest.into_iter().flatten() {
             vec.push(Attribute::Digest(digest));
         }
         if let Some(digital_signature_algorithm) = attributes.digital_signature_algorithm {
@@ -1650,7 +1659,7 @@ impl From<Attributes> for Vec<Attribute> {
             vec.push(Attribute::ProtectionPeriod(protection_period));
         }
         if let Some(protection_storage_masks) = attributes.protection_storage_masks {
-            vec.push(Attribute::ProtectionStorageMasks(protection_storage_masks));
+            vec.push(Attribute::ProtectionStorageMask(protection_storage_masks));
         }
         if let Some(quantum_safe) = attributes.quantum_safe {
             vec.push(Attribute::QuantumSafe(quantum_safe));
@@ -1758,7 +1767,7 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::DeactivationDate(value) => attrs.deactivation_date = Some(value),
                 Attribute::Description(value) => attrs.description = Some(value),
                 Attribute::DestroyDate(value) => attrs.destroy_date = Some(value),
-                Attribute::Digest(value) => attrs.digest = Some(value),
+                Attribute::Digest(value) => attrs.digest.get_or_insert_with(Vec::new).push(value),
                 Attribute::DigitalSignatureAlgorithm(value) => {
                     attrs.digital_signature_algorithm = Some(value);
                 }
@@ -1789,7 +1798,7 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::ProtectStopDate(value) => attrs.protect_stop_date = Some(value),
                 Attribute::ProtectionLevel(value) => attrs.protection_level = Some(value),
                 Attribute::ProtectionPeriod(value) => attrs.protection_period = Some(value),
-                Attribute::ProtectionStorageMasks(value) => {
+                Attribute::ProtectionStorageMask(value) => {
                     attrs.protection_storage_masks = Some(value);
                 }
                 Attribute::QuantumSafe(value) => attrs.quantum_safe = Some(value),
@@ -1884,14 +1893,22 @@ impl Attributes {
     /// - Sets `ReplacementObjectLink` → new key UID
     /// - Removes the Name attribute (transferred to the replacement)
     /// - Updates Last Change Date to now
-    pub fn retire_for_replacement(&mut self, new_uid: &str) -> Result<(), KmipError> {
+    /// - When `deactivate` is set (the object is Active), sets the Deactivation Date to
+    ///   now; KMIP 2.1 §4.18 forbids changing it in any other state.
+    pub fn retire_for_replacement(
+        &mut self,
+        new_uid: &str,
+        deactivate: bool,
+    ) -> Result<(), KmipError> {
         let now = time_normalize()?;
         self.set_link(
             LinkType::ReplacementObjectLink,
             LinkedObjectIdentifier::TextString(new_uid.to_owned()),
         );
         self.name = None;
-        self.deactivation_date = Some(now);
+        if deactivate {
+            self.deactivation_date = Some(now);
+        }
         self.last_change_date = Some(now);
         Ok(())
     }
@@ -1948,7 +1965,7 @@ impl Attributes {
             if let Some(algo) = req_attrs.cryptographic_algorithm {
                 if self.cryptographic_algorithm != Some(algo) {
                     return Err(KmipError::InvalidKmip21Value(
-                        ErrorReason::Constraint_Violation,
+                        ErrorReason::Invalid_Field,
                         format!(
                             "{operation_name}: changing the cryptographic algorithm is not \
                              allowed. Use Create/CreateKeyPair for a different algorithm."
@@ -1962,7 +1979,7 @@ impl Attributes {
                         && cdp.recommended_curve != existing_cdp.recommended_curve
                     {
                         return Err(KmipError::InvalidKmip21Value(
-                            ErrorReason::Constraint_Violation,
+                            ErrorReason::Invalid_Field,
                             format!(
                                 "{operation_name}: changing the recommended curve is not allowed. \
                                  Use Create/CreateKeyPair for a different curve."
@@ -1974,7 +1991,7 @@ impl Attributes {
             if let Some(len) = req_attrs.cryptographic_length {
                 if self.cryptographic_length.is_some() && self.cryptographic_length != Some(len) {
                     return Err(KmipError::InvalidKmip21Value(
-                        ErrorReason::Constraint_Violation,
+                        ErrorReason::Invalid_Field,
                         format!(
                             "{operation_name}: changing the cryptographic length is not allowed. \
                              Use Create/CreateKeyPair for a different key size."
@@ -1988,24 +2005,18 @@ impl Attributes {
 
     /// Create replacement attributes for a new key based on these (old) attributes.
     ///
-    /// Per KMIP 1.4 §4.4 Table 173 / §4.5 Table 177 / §4.8 Table 187:
+    /// Per KMIP 2.1 Tables 298/303/304 (Re-certify / Re-key / Re-key Key Pair):
     /// - Copies attributes from the existing key
-    /// - Removes stale unique identifier and links
+    /// - Removes stale unique identifier, links, and the Destroy Date, Compromise Dates
+    ///   and Revocation Reason
     /// - Sets `ReplacedObjectLink` → old key UID
-    /// - Applies offset-based date computation
+    /// - Without `offset` (seconds), keeps the Activation, Process Start, Protect Stop and
+    ///   Deactivation Dates of the existing key; with `offset`, the Activation Date is
+    ///   `now + offset` and the other dates are shifted by the same amount as the
+    ///   Activation Date
+    /// - The Usage Limits Count is reset to the Usage Limits Total
     pub fn for_replacement(&self, old_uid: &str, offset: Option<i64>) -> Result<Self, KmipError> {
         let now = time_normalize()?;
-        let activation_date = Some(offset.map_or(now, |secs| now + Duration::seconds(secs)));
-        let deactivation_date = match (self.deactivation_date, self.activation_date) {
-            (Some(old_deactivation), Some(old_activation)) => {
-                activation_date.map(|new_activation| {
-                    let shift = new_activation - old_activation;
-                    old_deactivation + shift
-                })
-            }
-            _ => None,
-        };
-
         let mut new_attrs = self.clone();
 
         // Clear fields that must not be set on the replacement key
@@ -2013,6 +2024,7 @@ impl Attributes {
         new_attrs.destroy_date = None;
         new_attrs.compromise_date = None;
         new_attrs.compromise_occurrence_date = None;
+        new_attrs.revocation_reason = None;
 
         // Remove any existing replacement/replaced links (from a previous rekey)
         new_attrs.remove_link(LinkType::ReplacementObjectLink);
@@ -2024,14 +2036,273 @@ impl Attributes {
             LinkedObjectIdentifier::TextString(old_uid.to_owned()),
         );
 
-        // Set dates per spec
-        new_attrs.initial_date = Some(now);
+        new_attrs.initial_date = Some(creation_time()?);
         new_attrs.last_change_date = Some(now);
-        new_attrs.activation_date = activation_date;
-        if deactivation_date.is_some() {
-            new_attrs.deactivation_date = deactivation_date;
+        if let Some(secs) = offset {
+            let activation_date = now + Duration::seconds(secs);
+            if let Some(old_activation) = self.activation_date {
+                let shift = activation_date - old_activation;
+                new_attrs.process_start_date = self.process_start_date.map(|d| d + shift);
+                new_attrs.protect_stop_date = self.protect_stop_date.map(|d| d + shift);
+                new_attrs.deactivation_date = self.deactivation_date.map(|d| d + shift);
+            }
+            new_attrs.activation_date = Some(activation_date);
+        }
+        if let Some(usage_limits) = new_attrs.usage_limits.as_mut() {
+            usage_limits.usage_limits_count = Some(usage_limits.usage_limits_total);
         }
 
         Ok(new_attrs)
+    }
+}
+
+/// Deserializes the multi-instance `Digest` attribute.
+///
+/// TTLV (not human readable) carries repeated `Digest` elements. JSON also accepts the single
+/// `Digest` object that earlier releases persisted in the attributes column.
+fn deserialize_digests<'de, D>(deserializer: D) -> Result<Option<Vec<Digest>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        Many(Vec<Digest>),
+        One(Digest),
+    }
+    if !deserializer.is_human_readable() {
+        return Vec::<Digest>::deserialize(deserializer).map(Some);
+    }
+    Ok(
+        Option::<OneOrMany>::deserialize(deserializer)?.map(|digests| match digests {
+            OneOrMany::Many(digests) => digests,
+            OneOrMany::One(digest) => vec![digest],
+        }),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Attribute;
+    use crate::kmip_2_1::kmip_types::{ProtectionStorageMasks, Tag};
+
+    #[test]
+    fn attribute_variants_use_spec_tag_names() {
+        let value = serde_json::to_value(Attribute::Pkcs12FriendlyName("n".to_owned())).ok();
+        assert!(value.is_some_and(|v| v.get("PKCS12FriendlyName").is_some()));
+        let old: Option<Attribute> =
+            serde_json::from_value(serde_json::json!({"Pkcs12FriendlyName": "n"})).ok();
+        assert_eq!(old, Some(Attribute::Pkcs12FriendlyName("n".to_owned())));
+    }
+
+    #[test]
+    fn protection_storage_mask_uses_singular_tag() {
+        let attribute = Attribute::ProtectionStorageMask(ProtectionStorageMasks::Software);
+        assert_eq!(attribute.tag(), Some(Tag::ProtectionStorageMask));
+    }
+
+    #[test]
+    fn protection_storage_mask_accepts_legacy_plural_variant_name() -> Result<(), String> {
+        let mask = ProtectionStorageMasks::Software;
+        let expected = Attribute::ProtectionStorageMask(mask);
+        let value = serde_json::to_value(&expected).map_err(|e| e.to_string())?;
+        let inner = value
+            .get("ProtectionStorageMask")
+            .ok_or("expected ProtectionStorageMask variant name")?
+            .clone();
+        let legacy = serde_json::json!({ "ProtectionStorageMasks": inner });
+        let decoded: Attribute = serde_json::from_value(legacy).map_err(|e| e.to_string())?;
+        if decoded == expected {
+            Ok(())
+        } else {
+            Err(format!("unexpected decode: {decoded:?}"))
+        }
+    }
+
+    /// Attributes persisted by earlier releases with the old NIST Key Type and Key Value
+    /// Location Type names still decode (to the variant with the same code where one exists).
+    #[test]
+    fn stored_attributes_with_legacy_enumeration_names_decode() -> Result<(), String> {
+        use super::Attributes;
+        use crate::{kmip_0::kmip_types::KeyValueLocationType, kmip_2_1::kmip_types::NistKeyType};
+
+        for (nist, expected_nist) in [
+            ("AESP1", NistKeyType::PrivateSignatureKey),
+            ("DESRW256", NistKeyType::PrivateKeyTransportKey),
+            ("HMACSHA384", NistKeyType::PublicStaticKeyAgreementKey),
+            ("HMACSHA512", NistKeyType::PrivateEphemeralKeyAgreementKey),
+        ] {
+            for (location, expected_location) in [
+                ("Unspecified", KeyValueLocationType::UninterpretedTextString),
+                ("OnPremise", KeyValueLocationType::URI),
+                ("OffPremise", KeyValueLocationType::UninterpretedTextString),
+                (
+                    "OnPremiseOffPremise",
+                    KeyValueLocationType::UninterpretedTextString,
+                ),
+            ] {
+                let stored =
+                    format!(r#"{{"NistKeyType":"{nist}","KeyValueLocation":"{location}"}}"#);
+                let decoded: Attributes =
+                    serde_json::from_str(&stored).map_err(|e| format!("{stored}: {e}"))?;
+                if decoded.nist_key_type != Some(expected_nist)
+                    || decoded.key_value_location.as_ref().map(|l| {
+                        (
+                            l.key_value_location_value.as_str(),
+                            l.key_value_location_type,
+                        )
+                    }) != Some(("", expected_location))
+                {
+                    return Err(format!("{stored}: unexpected decode {decoded:?}"));
+                }
+            }
+        }
+        // New values serialize under their spec names
+        let value =
+            serde_json::to_value(NistKeyType::PrivateSignatureKey).map_err(|e| e.to_string())?;
+        if value != serde_json::json!("PrivateSignatureKey") {
+            return Err(format!("unexpected spec name {value}"));
+        }
+        Ok(())
+    }
+
+    /// Key Value Location is a structure (KMIP 2.1 Table 82) in TTLV and in persisted JSON.
+    #[test]
+    fn key_value_location_is_a_structure() -> Result<(), String> {
+        use super::Attributes;
+        use crate::{
+            kmip_0::kmip_types::{KeyValueLocation, KeyValueLocationType},
+            ttlv::{from_ttlv, to_ttlv},
+        };
+
+        let attributes = Attributes {
+            key_value_location: Some(KeyValueLocation {
+                key_value_location_value: "HSM-13345".to_owned(),
+                key_value_location_type: KeyValueLocationType::URI,
+            }),
+            ..Attributes::default()
+        };
+        let ttlv = to_ttlv(&attributes).map_err(|e| e.to_string())?;
+        let decoded: Attributes = from_ttlv(ttlv).map_err(|e| e.to_string())?;
+        let json = serde_json::to_string(&attributes).map_err(|e| e.to_string())?;
+        let from_json: Attributes = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        if decoded != attributes || from_json != attributes {
+            return Err(format!(
+                "round trip: {decoded:?} / {from_json:?} via {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Several Digest attributes round-trip through TTLV and JSON; the single object
+    /// persisted by earlier releases still decodes.
+    #[test]
+    fn digest_is_multi_instance() -> Result<(), String> {
+        use super::Attributes;
+        use crate::{
+            kmip_0::kmip_types::HashingAlgorithm,
+            kmip_2_1::kmip_types::{Digest, KeyFormatType},
+            ttlv::{from_ttlv, to_ttlv},
+        };
+
+        let digest = |value: u8, kft| Digest {
+            hashing_algorithm: HashingAlgorithm::SHA256,
+            digest_value: Some(vec![value; 32]),
+            key_format_type: Some(kft),
+        };
+        let same = |decoded: &Attributes, expected: &Attributes, form: &str| {
+            if decoded == expected {
+                Ok(())
+            } else {
+                Err(format!("{form}: {decoded:?} != {expected:?}"))
+            }
+        };
+        let attributes = Attributes {
+            digest: Some(vec![
+                digest(1, KeyFormatType::TransparentRSAPrivateKey),
+                digest(2, KeyFormatType::PKCS1),
+            ]),
+            ..Attributes::default()
+        };
+        let ttlv = to_ttlv(&attributes).map_err(|e| e.to_string())?;
+        same(
+            &from_ttlv(ttlv).map_err(|e| e.to_string())?,
+            &attributes,
+            "TTLV",
+        )?;
+        let json = serde_json::to_string(&attributes).map_err(|e| e.to_string())?;
+        same(
+            &serde_json::from_str(&json).map_err(|e| e.to_string())?,
+            &attributes,
+            "JSON",
+        )?;
+
+        let single = Attributes {
+            digest: Some(vec![digest(3, KeyFormatType::Raw)]),
+            ..Attributes::default()
+        };
+        let ttlv = to_ttlv(&single).map_err(|e| e.to_string())?;
+        same(
+            &from_ttlv(ttlv).map_err(|e| e.to_string())?,
+            &single,
+            "TTLV single",
+        )?;
+        let legacy =
+            serde_json::to_value(digest(3, KeyFormatType::Raw)).map_err(|e| e.to_string())?;
+        let decoded = serde_json::from_value(serde_json::json!({ "Digest": legacy }))
+            .map_err(|e| e.to_string())?;
+        same(&decoded, &single, "legacy JSON object")
+    }
+
+    /// Certificate Attributes survive binary TTLV; JSON keeps the historical names
+    /// (`CertificateSubjectCn`) and also decodes the spec tag names (`CertificateSubjectCN`).
+    #[test]
+    fn certificate_attributes_round_trip_binary_ttlv() -> Result<(), String> {
+        use super::Attributes;
+        use crate::{
+            kmip_2_1::kmip_types::CertificateAttributes,
+            ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
+        };
+
+        let attributes = Attributes {
+            certificate_attributes: Some(CertificateAttributes {
+                certificate_subject_cn: "CN".to_owned(),
+                certificate_subject_ou: "OU".to_owned(),
+                certificate_issuer_dn_qualifier: "Q".to_owned(),
+                ..CertificateAttributes::default()
+            }),
+            ..Attributes::default()
+        };
+        let bytes = to_ttlv(&attributes)
+            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+            .map_err(|e| e.to_string())?;
+        let ttlv = TTLV::from_bytes(&bytes, KmipFlavor::Kmip2).map_err(|e| e.to_string())?;
+        let decoded: Attributes = from_ttlv(ttlv).map_err(|e| e.to_string())?;
+        if decoded != attributes {
+            return Err(format!("binary TTLV: {decoded:?}"));
+        }
+        let mut legacy = serde_json::to_value(&attributes).map_err(|e| e.to_string())?;
+        let cert = legacy
+            .get_mut("CertificateAttributes")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or("no CertificateAttributes")?;
+        for (new, old) in [
+            ("CertificateSubjectCN", "CertificateSubjectCn"),
+            ("CertificateSubjectOU", "CertificateSubjectOu"),
+            (
+                "CertificateIssuerDNQualifier",
+                "CertificateIssuerDnQualifier",
+            ),
+        ] {
+            // JSON keeps the historical name; the KMIP tag name is accepted as an alias.
+            let value = cert.remove(old).ok_or(old)?;
+            cert.insert(new.to_owned(), value);
+        }
+        let decoded: Attributes = serde_json::from_value(legacy).map_err(|e| e.to_string())?;
+        if decoded == attributes {
+            Ok(())
+        } else {
+            Err(format!("legacy JSON: {decoded:?}"))
+        }
     }
 }
