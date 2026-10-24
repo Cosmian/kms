@@ -18,7 +18,7 @@
 
 use std::fmt::Write as _;
 
-use quick_xml::{Reader, events::Event};
+use quick_xml::{Reader, XmlVersion, events::Event};
 use regex::Regex;
 
 use crate::{
@@ -164,7 +164,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
 
     // Stream over XML bytes to extract top-level RequestMessage / ResponseMessage snippets
     let mut reader = Reader::from_str(xml);
-    reader.trim_text(true);
+    reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut depth: i32 = 0;
     let mut capturing = false;
@@ -173,7 +173,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_owned();
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
                     capturing = true;
                     depth = 0; // depth relative to root
@@ -184,9 +184,9 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     current.push('<');
                     current.push_str(&name);
                     for attr in e.attributes().flatten() {
-                        if let Ok(val) = attr.unescape_value() {
+                        if let Ok(val) = attr.normalized_value(XmlVersion::Implicit1_0) {
                             current.push(' ');
-                            current.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
+                            current.push_str(attr.key.as_ref());
                             current.push_str("=\"");
                             current.push_str(&val);
                             current.push('"');
@@ -197,16 +197,16 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 }
             }
             Ok(Event::Empty(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_owned();
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
                     // Self-closing root (unlikely in KMIP); treat as full fragment
                     current.clear();
                     current.push('<');
                     current.push_str(&name);
                     for attr in e.attributes().flatten() {
-                        if let Ok(val) = attr.unescape_value() {
+                        if let Ok(val) = attr.normalized_value(XmlVersion::Implicit1_0) {
                             current.push(' ');
-                            current.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
+                            current.push_str(attr.key.as_ref());
                             current.push_str("=\"");
                             current.push_str(&val);
                             current.push('"');
@@ -237,9 +237,9 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     current.push('<');
                     current.push_str(&name);
                     for attr in e.attributes().flatten() {
-                        if let Ok(val) = attr.unescape_value() {
+                        if let Ok(val) = attr.normalized_value(XmlVersion::Implicit1_0) {
                             current.push(' ');
-                            current.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
+                            current.push_str(attr.key.as_ref());
                             current.push_str("=\"");
                             current.push_str(&val);
                             current.push('"');
@@ -249,19 +249,15 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 }
             }
             Ok(Event::Text(e)) if capturing => {
-                if let Ok(txt) = e.unescape() {
-                    current.push_str(&txt);
-                } else {
-                    current.push_str(&String::from_utf8_lossy(e.as_ref()));
-                }
+                current.push_str(&e);
             }
             Ok(Event::CData(e)) if capturing => {
                 current.push_str("<![CDATA[");
-                current.push_str(&String::from_utf8_lossy(&e.into_inner()));
+                current.push_str(&e.into_inner());
                 current.push_str("]]>");
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_owned();
                 if capturing {
                     let _ = write!(&mut current, "</{name}>");
                     depth -= 1;

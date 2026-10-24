@@ -72,6 +72,7 @@ ignore = [
   { id = "RUSTSEC-2025-0009", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2025-0010", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 timing variability; no 0.5.x patch exists (fixed only in >=0.7.6). 0.5.5 is pulled by elliptic-curve 0.13 (k256/p256 0.13 of cosmian_kms_crypto, p256 0.13 of the PKCS#11 crates, jsonwebtoken 10 rust_crypto p256/p384 0.13); upstream elliptic-curve 0.14 requires an API migration that does not belong to a patch release. Remove when the workspace moves to elliptic-curve 0.14" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use

@@ -14,3 +14,9 @@
 
 - Add a SoftHSM2-backed hybrid KEM lifecycle test (`tests::hsm::hybrid_kem_dek`), TTLV-wrapped import tests (export wrapped by a software AES key, and client-side wrap by the HSM KEK), a wrap/unwrap unit test (`NoEncoding` and TTLV) for `ByteString`-only KEM keys, and a TTLV round-trip test for `ConfigurableKEM*` key values.
 - Fix the stale `test_toml` snapshot (`rate_limit_per_second`, `otlp_allow_insecure`) in `crate/server/src/main.rs`.
+
+## Dependencies
+
+- Bump the workspace version to 5.22.1 so that `cargo publish --dry-run` verifies the local crates instead of the already published 5.22.0 ones, which resolved to a newer `cosmian_kms_crypto` from crates.io.
+- Fix the RUSTSEC advisories published since 5.22.0: `h2` (RUSTSEC-2026-0258, `actix-web` 4.17), `tokio` (RUSTSEC-2026-0386), `lru` 0.18 (RUSTSEC-2026-0253), `tokio-postgres`/`postgres-protocol` (RUSTSEC-2026-0178/0179/0180, with `aes-kw` 0.3.1), `quick-xml` 0.42 (RUSTSEC-2026-0194/0195) and `mysql_async` 0.37 without the `derive` feature (RUSTSEC-2026-0173).
+- Ignore RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5, no 0.5.x patch) in `deny.toml` and `.cargo/audit.toml`, with its reason.
