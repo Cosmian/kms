@@ -11,10 +11,15 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
         kmip_operations::{
-            CreateKeyPair, GetAttributes, Locate, Operation, ReKeyKeyPair, Revoke, Sign,
+            CreateKeyPair, Get, GetAttributes, Import, Locate, Operation, ReKeyKeyPair, Revoke,
+            Sign,
         },
-        kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
+            RecommendedCurve, UniqueIdentifier,
+        },
         requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
     },
 };
@@ -246,56 +251,127 @@ async fn test_configurable_kem_requested_mask_is_honoured() -> KResult<()> {
     assert_round_trip(&kms, &owner, &sk, &pk).await
 }
 
+/// Re-import the public key `pk` under a fresh identifier, with its component attributes
+/// replaced by `curve` and `algorithm` (`None` strips them) in both the request and the object.
+async fn import_relabelled(
+    kms: &KMS,
+    owner: &UserId,
+    pk: &str,
+    curve: Option<RecommendedCurve>,
+    algorithm: Option<CryptographicAlgorithm>,
+) -> KResult<String> {
+    let relabel = |attributes: &mut Attributes| {
+        attributes.cryptographic_domain_parameters = curve.map(|c| CryptographicDomainParameters {
+            recommended_curve: Some(c),
+            ..CryptographicDomainParameters::default()
+        });
+        attributes.cryptographic_parameters = algorithm.map(|a| CryptographicParameters {
+            cryptographic_algorithm: Some(a),
+            ..CryptographicParameters::default()
+        });
+    };
+    let mut object = kms.get(Get::from(pk), owner).await?.object;
+    relabel(object.attributes_mut()?);
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::PublicKey),
+        ..Attributes::default()
+    };
+    relabel(&mut attributes);
+    let uid = Uuid::new_v4().to_string();
+    kms.import(
+        Import {
+            unique_identifier: UniqueIdentifier::TextString(uid.clone()),
+            object_type: ObjectType::PublicKey,
+            replace_existing: Some(false),
+            key_wrap_type: None,
+            attributes,
+            object,
+        },
+        owner,
+    )
+    .await?;
+    Ok(uid)
+}
+
 /// The algorithm policy checks both components of a hybrid key when it is used, so
-/// tightening the policy after creation takes effect on existing keys.
+/// tightening the policy after creation takes effect on existing keys. The components are
+/// read from the serialized key, so stripped or relabelled KMIP attributes cannot bypass it.
 #[tokio::test]
 async fn test_configurable_kem_policy_on_use() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
     let conf = https_clap_config();
     let sqlite_path = conf.db.sqlite_path.clone();
     let owner = UserId::from("configurable_kem_policy");
-    let (sk, pk) = {
+    // an ML-KEM-768/P-256 key pair, and two imports of its public key: one with the
+    // components stripped, one relabelled as ML-KEM-512/P-384
+    let (sk, pk, stripped, relabelled) = {
         let kms = kms_from(conf).await?;
-        create(&kms, &owner, hybrid_request("hybrid-kem-policy")?).await?
+        let (sk, pk) = create(&kms, &owner, hybrid_request("hybrid-kem-policy")?).await?;
+        let stripped = import_relabelled(&kms, &owner, &pk, None, None).await?;
+        let relabelled = import_relabelled(
+            &kms,
+            &owner,
+            &pk,
+            Some(RecommendedCurve::P384),
+            Some(CryptographicAlgorithm::MLKEM_512),
+        )
+        .await?;
+        (sk, pk, stripped, relabelled)
     };
 
     // a server restarted on the same database with a tighter policy
-    let with_policy = |algorithms: Vec<CryptographicAlgorithm>, curve: RecommendedCurve| {
+    let with_policy = |algorithm: CryptographicAlgorithm, curve: RecommendedCurve| {
         let mut conf = https_clap_config();
         conf.db.sqlite_path.clone_from(&sqlite_path);
         conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
-        conf.kmip_policy.allowlists.algorithms = Some(algorithms);
+        conf.kmip_policy.allowlists.algorithms =
+            Some(vec![CryptographicAlgorithm::ConfigurableKEM, algorithm]);
         conf.kmip_policy.allowlists.curves = Some(vec![curve]);
         conf
     };
-    let ml_kem_768 = vec![
-        CryptographicAlgorithm::ConfigurableKEM,
+
+    let allowed = kms_from(with_policy(
         CryptographicAlgorithm::MLKEM_768,
-    ];
-
-    let allowed = kms_from(with_policy(ml_kem_768.clone(), RecommendedCurve::P256)).await?;
-    assert_round_trip(&allowed, &owner, &sk, &pk).await?;
-    drop(allowed);
-
-    let curve_denied = kms_from(with_policy(ml_kem_768, RecommendedCurve::P384)).await?;
-    assert!(
-        encapsulate(&curve_denied, &owner, &pk).await.is_err(),
-        "P-256 component used while only P-384 is allowed"
-    );
-    drop(curve_denied);
-
-    let ml_kem_denied = kms_from(with_policy(
-        vec![
-            CryptographicAlgorithm::ConfigurableKEM,
-            CryptographicAlgorithm::MLKEM_512,
-        ],
         RecommendedCurve::P256,
     ))
     .await?;
-    assert!(
-        encapsulate(&ml_kem_denied, &owner, &pk).await.is_err(),
-        "ML-KEM-768 component used while only ML-KEM-512 is allowed"
-    );
+    // all three are the same key: usable when the policy allows its real components
+    for uid in [&pk, &stripped, &relabelled] {
+        assert_round_trip(&allowed, &owner, &sk, uid).await?;
+    }
+    let (_, enc) = encapsulate(&allowed, &owner, &pk).await?;
+    drop(allowed);
+
+    for (algorithm, curve, denied) in [
+        (
+            CryptographicAlgorithm::MLKEM_768,
+            RecommendedCurve::P384,
+            "P-256",
+        ),
+        (
+            CryptographicAlgorithm::MLKEM_512,
+            RecommendedCurve::P256,
+            "ML-KEM-768",
+        ),
+        // the policy matches the relabelled attributes, not the key
+        (
+            CryptographicAlgorithm::MLKEM_512,
+            RecommendedCurve::P384,
+            "ML-KEM-768/P-256",
+        ),
+    ] {
+        let kms = kms_from(with_policy(algorithm, curve)).await?;
+        for uid in [&pk, &stripped, &relabelled] {
+            assert!(
+                encapsulate(&kms, &owner, uid).await.is_err(),
+                "{uid}: {denied} component used while only {algorithm}/{curve:?} is allowed"
+            );
+        }
+        assert!(
+            decapsulate(&kms, &owner, &sk, enc.clone()).await.is_err(),
+            "{denied} private key used while only {algorithm}/{curve:?} is allowed"
+        );
+    }
     Ok(())
 }
 
