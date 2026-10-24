@@ -299,7 +299,7 @@ impl KMS {
     #[allow(clippy::missing_const_for_fn)] // kms_bail! is not const-compatible
     pub(crate) fn reject_protection_storage_masks(has_masks: bool) -> KResult<()> {
         if has_masks {
-            kms_bail!(KmsError::UnsupportedPlaceholder)
+            kms_bail!(KmsError::UnsupportedProtectionMasks)
         }
         Ok(())
     }

@@ -5,29 +5,31 @@
 //! `ReCertify` creates a **new certificate with a fresh UID** and links it to the
 //! old certificate via `ReplacedObject` / `ReplacementObject` links.
 //!
-//! The old certificate is marked `Deactivated` (KMIP §4.57 transition 6) and
-//! receives a `ReplacementObjectLink` pointing to the new certificate. Keys linked
-//! to the old certificate are updated to point to the new certificate via their
-//! `CertificateLink`.
+//! The old certificate receives a `ReplacementObjectLink` pointing to the new
+//! certificate; an Active old certificate is retired by setting its Deactivation Date
+//! to now (KMIP 2.1 §4.18, §4.57 transition 6). Keys linked to the old certificate are
+//! updated to point to the new certificate via their `CertificateLink`.
 
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_data_structures::KeyWrappingSpecification,
             kmip_objects::ObjectType,
             kmip_operations::{Certify, ReCertify, ReCertifyResponse},
-            kmip_types::{LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+            kmip_types::{
+                CertificateRequestType, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+            },
         },
         time_normalize,
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
-use cosmian_logger::trace;
+use cosmian_logger::{trace, warn};
 
 use super::rekey::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
 use crate::{
@@ -39,7 +41,6 @@ use crate::{
         uid_utils::{ObjectHandle, from_request},
     },
     error::KmsError,
-    kms_bail,
     middlewares::UserId,
     result::KResult,
 };
@@ -55,6 +56,14 @@ pub(crate) struct CertificateRekey {
     issuer_cert_id: Option<String>,
     /// Explicit issuer private key link from the `ReCertify` request, if provided.
     issuer_private_key_id: Option<String>,
+    /// Certificate Request Type from the `ReCertify` request.
+    certificate_request_type: Option<CertificateRequestType>,
+    /// Certificate Request Value from the `ReCertify` request: when present, the new
+    /// certificate is issued from it (KMIP 2.1 §6.1.45: the request takes precedence).
+    certificate_request_value: Option<Vec<u8>>,
+    /// Certificate Request Unique Identifier from the `ReCertify` request: a managed
+    /// Certificate Request to issue the new certificate from.
+    certificate_request_unique_identifier: Option<UniqueIdentifier>,
 }
 
 /// KMIP `ReCertify` operation — certificate rotation with new UID.
@@ -67,7 +76,7 @@ pub(crate) async fn recertify(
     request: ReCertify,
     owner: &UserId,
 ) -> KResult<ReCertifyResponse> {
-    trace!("ReCertify: {}", serde_json::to_string(&request)?);
+    trace!("ReCertify request");
     let (issuer_cert_id, issuer_private_key_id) =
         request.attributes.as_ref().map_or((None, None), |attrs| {
             let cert = attrs
@@ -83,6 +92,11 @@ pub(crate) async fn recertify(
             offset: request.offset,
             issuer_cert_id,
             issuer_private_key_id,
+            certificate_request_type: request.certificate_request_type,
+            certificate_request_value: request.certificate_request_value.clone(),
+            certificate_request_unique_identifier: request
+                .certificate_request_unique_identifier
+                .clone(),
         },
         kms,
         &request,
@@ -119,18 +133,31 @@ impl RekeyOperation for CertificateRekey {
             .await?,
         );
 
-        if owm.object().object_type() != ObjectType::Certificate {
-            kms_bail!(KmsError::InvalidRequest(format!(
-                "ReCertify: object {uid} is not a Certificate"
-            )));
+        let object_type = owm.object().object_type();
+        if object_type != ObjectType::Certificate {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Object_Type,
+                format!("ReCertify: object {uid} is a {object_type:?}, not a Certificate"),
+            ));
         }
 
-        if owm.state() != State::Active && owm.state() != State::Deactivated {
-            kms_bail!(KmsError::InvalidRequest(format!(
-                "ReCertify: certificate '{uid}' is in state '{}' — only Active or Deactivated \
-                 certificates can be renewed",
-                owm.state()
-            )));
+        // Table 302 lists no lifecycle-state reason: refuse with Permission Denied.
+        let state = owm.effective_state();
+        if state != State::Active && state != State::Deactivated {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Permission_Denied,
+                format!(
+                    "ReCertify: certificate '{uid}' is in state '{state}' — only Active or \
+                     Deactivated certificates can be renewed"
+                ),
+            ));
+        }
+        if self.certificate_request_value.is_some() && self.certificate_request_type.is_none() {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                "ReCertify: Certificate Request Type is required with a Certificate Request"
+                    .to_owned(),
+            ));
         }
 
         Ok([RotationCandidate {
@@ -142,6 +169,7 @@ impl RekeyOperation for CertificateRekey {
     async fn generate_replacement(
         &self,
         kms: &KMS,
+        user: &UserId,
         candidates: &[RotationCandidate; 1],
     ) -> KResult<[ReplacementObject; 1]> {
         let [candidate] = candidates;
@@ -162,6 +190,12 @@ impl RekeyOperation for CertificateRekey {
         // so that CA-signed certificates are re-signed by the original issuer CA rather than by
         // the subject's private key (which the cert's PrivateKeyLink points to).
         let mut base_attrs = candidate.owm.attributes().clone();
+        // KMIP 2.1 Table 299: not carried over to the new certificate
+        base_attrs.revocation_reason = None;
+        base_attrs.destroy_date = None;
+        base_attrs.compromise_date = None;
+        base_attrs.compromise_occurrence_date = None;
+        base_attrs.state = None;
         if let Some(cert_id) = &self.issuer_cert_id {
             base_attrs.set_link(
                 LinkType::CertificateLink,
@@ -182,9 +216,15 @@ impl RekeyOperation for CertificateRekey {
             );
         }
         let certify_request = Certify {
-            unique_identifier: Some(UniqueIdentifier::TextString(candidate.uid.clone())),
-            certificate_request_type: None,
-            certificate_request_value: None,
+            // A managed Certificate Request, when given, is the subject; otherwise the
+            // existing certificate is renewed (an inline request takes precedence over both)
+            unique_identifier: Some(
+                self.certificate_request_unique_identifier
+                    .clone()
+                    .unwrap_or_else(|| UniqueIdentifier::TextString(candidate.uid.clone())),
+            ),
+            certificate_request_type: self.certificate_request_type,
+            certificate_request_value: self.certificate_request_value.clone(),
             attributes: Some(Attributes {
                 // The new certificate UID is set in the attributes so `get_subject` uses it.
                 unique_identifier: Some(UniqueIdentifier::TextString(new_uid.clone())),
@@ -193,11 +233,10 @@ impl RekeyOperation for CertificateRekey {
             protection_storage_masks: None,
         };
 
-        // Resolve subject (will produce Subject::Certificate from existing cert)
-        let owner = candidate.owm.owner_id();
-        let subject = Box::pin(get_subject(kms, &certify_request, owner)).await?;
-        // Resolve issuer from the old certificate's attributes
-        let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
+        // Resolve subject and issuer as the requester: a grant on the certificate does not
+        // extend to the owner's issuer key or Certificate Request objects.
+        let subject = Box::pin(get_subject(kms, &certify_request, user)).await?;
+        let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, user)).await?;
         // Build and sign the new certificate
         let (certificate_object, tags, attributes) = build_and_sign_certificate(
             kms,
@@ -291,27 +330,36 @@ impl RekeyOperation for CertificateRekey {
         let [candidate] = candidates;
         let [replacement] = replacements;
 
-        // Phase 2: Update the old certificate with ReplacementObjectLink
+        // Phase 2: Update the old certificate with ReplacementObjectLink; only an Active
+        // certificate is retired (Deactivation Date = now, §4.57 transition 6).
+        let deactivate = candidate.owm.effective_state() == State::Active;
         let mut old_object = candidate.owm.object().clone();
         let mut old_attributes = candidate.owm.attributes().clone();
-        old_attributes.retire_for_replacement(&replacement.new_uid)?;
+        old_attributes.retire_for_replacement(&replacement.new_uid, deactivate)?;
         if let Ok(obj_attrs) = old_object.attributes_mut() {
-            obj_attrs.retire_for_replacement(&replacement.new_uid)?;
+            obj_attrs.retire_for_replacement(&replacement.new_uid, deactivate)?;
+        }
+        if deactivate {
+            old_attributes.state = Some(State::Deactivated);
+            if let Ok(obj_attrs) = old_object.attributes_mut() {
+                obj_attrs.state = Some(State::Deactivated);
+            }
         }
 
-        let mut operations = vec![
-            AtomicOperation::UpdateObject((
+        let mut operations = vec![AtomicOperation::UpdateObject((
+            candidate.uid.clone(),
+            old_object,
+            old_attributes,
+            None,
+        ))];
+        if deactivate {
+            // UpdateObject only rewrites the `attributes` JSON column; the `state` column
+            // must be updated separately so that `find_due_for_rotation` sees it.
+            operations.push(AtomicOperation::UpdateState((
                 candidate.uid.clone(),
-                old_object,
-                old_attributes,
-                None,
-            )),
-            // KMIP §4.57 transition 6: old certificate becomes Deactivated after ReCertify.
-            // UpdateObject alone only rewrites the `attributes` JSON column; the `state`
-            // column must be updated separately so that subsequent queries (including
-            // `find_due_for_rotation`) see the correct lifecycle state.
-            AtomicOperation::UpdateState((candidate.uid.clone(), State::Deactivated)),
-        ];
+                State::Deactivated,
+            )));
+        }
 
         // Relink keys: update CertificateLink on linked PK/SK to point to new cert UID
         relink_keys_to_new_certificate(
@@ -340,7 +388,7 @@ impl RekeyOperation for CertificateRekey {
 /// to point to the new certificate UID.
 async fn relink_keys_to_new_certificate(
     kms: &KMS,
-    _user: &str,
+    user: &UserId,
     old_cert: ObjectHandle<'_>,
     old_cert_attrs: &Attributes,
     new_cert: ObjectHandle<'_>,
@@ -349,9 +397,14 @@ async fn relink_keys_to_new_certificate(
     for lt in [LinkType::PublicKeyLink, LinkType::PrivateKeyLink] {
         if let Some(key_uid) = old_cert_attrs.get_link(lt) {
             let key_uid_str = linked_id_str(&key_uid);
-            if let Some(op) =
-                relink_single_key(kms, ObjectHandle::from(&*key_uid_str), old_cert, new_cert)
-                    .await?
+            if let Some(op) = relink_single_key(
+                kms,
+                user,
+                ObjectHandle::from(&*key_uid_str),
+                old_cert,
+                new_cert,
+            )
+            .await?
             {
                 operations.push(op);
             }
@@ -361,8 +414,11 @@ async fn relink_keys_to_new_certificate(
 }
 
 /// Update a single key's `CertificateLink` if it points to the old certificate.
+///
+/// A key the requester cannot `Certify` with is left untouched.
 async fn relink_single_key(
     kms: &KMS,
+    user: &UserId,
     key: ObjectHandle<'_>,
     old_cert: ObjectHandle<'_>,
     new_cert: ObjectHandle<'_>,
@@ -375,6 +431,13 @@ async fn relink_single_key(
         return Ok(None);
     };
     if cert_link.to_string() != old_cert.as_str() {
+        return Ok(None);
+    }
+    if !kms
+        .user_can_perform_operation(&key_owm, user, &KmipOperation::Certify)
+        .await?
+    {
+        warn!("ReCertify: not relinking key '{key_uid}': '{user}' cannot certify with it");
         return Ok(None);
     }
 

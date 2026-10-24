@@ -33,6 +33,18 @@ for root, _dirs, files in os.walk(BASE):
             manifest = tomllib.load(f)
         name = manifest.get('name', os.path.basename(rel))
         desc = manifest.get('description', '').strip().split('\n')[0]  # First line only
+        expected_reasons = {
+            step['assert_error_reason']
+            for step in manifest.get('steps', [])
+            if 'assert_error_reason' in step
+        }
+        if rel.startswith('negative/') and len(expected_reasons) == 1:
+            reason = expected_reasons.pop()
+            desc = re.sub(
+                r' returns [A-Za-z_]+ error as per KMIP spec',
+                f' expects {reason}',
+                desc,
+            )
         # Wrap bare email addresses in <> so markdownlint MD034 is satisfied
         desc = re.sub(
             r'(?<![<\`])([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?![>\`])',
@@ -598,13 +610,13 @@ request = "step_batch.json"             # must be a full RequestMessage JSON
 raw_request = true
 assert_success = true                   # asserts ALL BatchItem ResultStatus == Success
 
-# Error testing: assert failure and inspect reason
+# Error testing: assert failure and its required result reason
 [[steps]]
 operation = "Encrypt"
 request = "step_encrypt_after_revoke.json"
 assert_success = false
-assert_error_reason = "PermissionDenied"          # match ResultReason tag
-# assert_error_contains = "partial message match" # alternative: substring in ResultMessage
+assert_error_reason = "PermissionDenied"          # required ResultReason tag
+# assert_error_contains = "partial message match" # optional ResultMessage substring
 
 # Negative assertions: verify fields are absent from response
 [steps.assert_fields_absent]

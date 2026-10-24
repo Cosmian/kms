@@ -148,6 +148,7 @@ async fn test_validate_cli() -> CosmianResult<()> {
     })?;
     info!("leaf1 cert imported: {leaf1_certificate_id}");
 
+    // KMIP 2.1 §6.1.58: an invalid chain is a successful response with Validity Indicator Invalid.
     let test1_res = validate_certificate(
         &owner_client_conf_path,
         "certificates",
@@ -157,12 +158,12 @@ async fn test_validate_cli() -> CosmianResult<()> {
             leaf1_certificate_id,
         ],
         None,
-    );
+    )?;
     info!(
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res:?}"
     );
-    assert!(test1_res.is_err());
+    assert_eq!(test1_res.trim(), "Invalid");
 
     let test2_res = validate_certificate(
         &owner_client_conf_path,
@@ -177,20 +178,20 @@ async fn test_validate_cli() -> CosmianResult<()> {
         "validate chain with leaf2: result supposed to be valid, as leaf2 was never revoked. \
          test2_res: {test2_res}"
     );
-    assert!(test2_res.contains("Valid"));
+    assert_eq!(test2_res.trim(), "Valid");
 
     let test3_res = validate_certificate(
         &owner_client_conf_path,
         "certificates",
         vec![intermediate_certificate_id, root_certificate_id.clone()],
-        // Date: 15/04/2048
-        Some("4804152030Z".to_owned()),
-    );
+        // Date: 15/04/2048 20:30:00 UTC (ASN.1 GeneralizedTime)
+        Some("20480415203000Z".to_owned()),
+    )?;
     info!(
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
          leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    assert!(test3_res.is_err());
+    assert_eq!(test3_res.trim(), "Invalid");
 
     let test4_res = validate_certificate(
         &owner_client_conf_path,
@@ -200,7 +201,7 @@ async fn test_validate_cli() -> CosmianResult<()> {
     )?;
 
     info!("validate chain only. Must be valid.");
-    assert!(test4_res.contains("Valid"));
+    assert_eq!(test4_res.trim(), "Valid");
 
     info!("validate tests successfully passed");
     Ok(())

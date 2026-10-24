@@ -15,8 +15,7 @@ impl Tag {
     /// Edit restrictions for the four attribute-edit operations. Unlisted tags default
     /// to `Allowed`; new attributes still require policy review and object authorization.
     ///
-    /// `AddAttribute` keeps its legacy rules: `State` stays `Allowed` here and the Add
-    /// handler rejects it later with an `InvalidRequest` error, not `Attribute_Read_Only`.
+    /// KMIP 2.1 §6.1.2: read-only attributes SHALL NOT be added.
     #[must_use]
     pub const fn edit_policy(self, operation: KmipOperation) -> AttributeEditPolicy {
         use AttributeEditPolicy::{Allowed, RequiresGrant, ServerManaged};
@@ -32,9 +31,8 @@ impl Tag {
                 | Self::RotateLatest,
                 _,
             )
-            // Read-only metadata: KMIP 2.1 4.15, 4.21, 4.25; Set follows 6.1.51.
-            // Add retains legacy rules, including State's later handler rejection.
             | (
+                // Read-only metadata: KMIP 2.1 4.15, 4.21, 4.25; Set follows 6.1.51.
                 Self::UniqueIdentifier
                 | Self::ObjectType
                 | Self::CryptographicLength
@@ -44,12 +42,47 @@ impl Tag {
                 | Self::Fresh
                 | Self::LastChangeDate
                 | Self::OriginalCreationDate
-                | Self::State,
-                SetAttribute | ModifyAttribute | DeleteAttribute,
+                | Self::State
+                // KMIP 2.1 §4: "Modifiable by client: No / Deletable by client: No".
+                | Self::CryptographicAlgorithm
+                | Self::KeyFormatType
+                | Self::ArchiveDate
+                | Self::CompromiseDate
+                | Self::DestroyDate
+                | Self::CertificateType
+                | Self::KeyValuePresent
+                | Self::OpaqueDataType
+                | Self::X509CertificateIdentifier
+                | Self::X509CertificateIssuer
+                | Self::X509CertificateSubject,
+                AddAttribute | SetAttribute | ModifyAttribute | DeleteAttribute,
             )
-            | (Self::RotateAutomatic, AddAttribute | DeleteAttribute)
-            | (Self::Sensitive | Self::Extractable, DeleteAttribute) => ServerManaged,
-            (Self::Sensitive | Self::Extractable, _) => RequiresGrant,
+            // Modifiable by client, but "Deletable by client: No".
+            | (
+                Self::CryptographicUsageMask
+                | Self::DigitalSignatureAlgorithm
+                | Self::ActivationDate
+                | Self::DeactivationDate
+                | Self::Sensitive
+                | Self::Extractable,
+                DeleteAttribute,
+            )
+            | (Self::RotateAutomatic, AddAttribute | DeleteAttribute) => ServerManaged,
+            // Attributes that weaken or redirect key usage need ownership or an explicit grant
+            // of the edit operation: a generic `Get` grant is not enough.
+            (
+                Self::Sensitive
+                | Self::Extractable
+                | Self::UsageLimits
+                | Self::CryptographicUsageMask
+                | Self::ActivationDate
+                | Self::DeactivationDate
+                | Self::Link
+                | Self::LinkType
+                | Self::RotateInterval
+                | Self::RevocationReason,
+                _,
+            ) => RequiresGrant,
             _ => Allowed,
         }
     }
@@ -142,20 +175,44 @@ mod tests {
                 Tag::OriginalCreationDate,
                 Tag::State,
             ],
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
+            [ServerManaged; 4],
+        ),
+        (
+            &[
+                Tag::CryptographicAlgorithm,
+                Tag::KeyFormatType,
+                Tag::ArchiveDate,
+                Tag::CompromiseDate,
+                Tag::DestroyDate,
+                Tag::CertificateType,
+            ],
+            [ServerManaged; 4],
+        ),
+        (
+            &[
+                Tag::CryptographicUsageMask,
+                Tag::ActivationDate,
+                Tag::DeactivationDate,
+                Tag::Sensitive,
+                Tag::Extractable,
+            ],
+            [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
         ),
         (
             &[Tag::RotateAutomatic],
             [ServerManaged, Allowed, Allowed, ServerManaged],
         ),
         (
-            &[Tag::Sensitive, Tag::Extractable],
-            [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
+            &[
+                Tag::UsageLimits,
+                Tag::Link,
+                Tag::LinkType,
+                Tag::RotateInterval,
+                Tag::RevocationReason,
+            ],
+            [RequiresGrant; 4],
         ),
-        (
-            &[Tag::Comment, Tag::Name, Tag::Link, Tag::LinkType],
-            [Allowed; 4],
-        ),
+        (&[Tag::Comment, Tag::Name], [Allowed; 4]),
     ];
 
     #[test]

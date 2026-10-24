@@ -23,7 +23,7 @@ func TestEncryptDecryptAES_GCM_V14(t *testing.T) {
 
     // Encrypt
     encResp, err := client.Encrypt(id).
-        WithCryptographicParameters(kmip.AES_GCM).
+        WithCryptographicParameters(aesGCM96).
         Data(plaintext).
         ExecContext(tctx(t))
     require.NoError(t, err, "Encrypt")
@@ -36,7 +36,7 @@ func TestEncryptDecryptAES_GCM_V14(t *testing.T) {
 
     // Decrypt
     decResp, err := client.Decrypt(id).
-        WithCryptographicParameters(kmip.AES_GCM).
+        WithCryptographicParameters(aesGCM96).
         WithIvCounterNonce(encResp.IVCounterNonce).
         WithAuthTag(encResp.AuthenticatedEncryptionTag).
         Data(encResp.Data).
@@ -70,13 +70,13 @@ func TestEncryptDecryptAES_GCM_MultiVersion(t *testing.T) {
             plaintext := []byte("KMIP encrypt test payload")
 
             encResp, err := client.Encrypt(id).
-                WithCryptographicParameters(kmip.AES_GCM).
+                WithCryptographicParameters(aesGCM96).
                 Data(plaintext).
                 ExecContext(tctx(t))
             require.NoError(t, err, "Encrypt KMIP %s", versionName(ver))
 
             decResp, err := client.Decrypt(id).
-                WithCryptographicParameters(kmip.AES_GCM).
+                WithCryptographicParameters(aesGCM96).
                 WithIvCounterNonce(encResp.IVCounterNonce).
                 WithAuthTag(encResp.AuthenticatedEncryptionTag).
                 Data(encResp.Data).

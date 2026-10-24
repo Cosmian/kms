@@ -4,7 +4,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
-        kmip_types::ProtocolVersion,
+        kmip_types::{ProtocolVersion, ResultStatusEnumeration},
     },
     kmip_1_4, kmip_2_1,
     ttlv::KmipFlavor,
@@ -70,6 +70,7 @@ fn test_query_(major: i32, minor: i32) {
                                 kmip_2_1::kmip_types::QueryFunction::QueryObjects,
                                 kmip_2_1::kmip_types::QueryFunction::QueryServerInformation,
                             ]),
+                            ..Default::default()
                         },
                     ),
                     message_extension: None,
@@ -141,4 +142,56 @@ fn test_query_(major: i32, minor: i32) {
         };
         assert!(!vendor_identification.is_empty());
     }
+}
+
+#[test]
+fn test_query_rngs_and_server_information_2_1_binary() {
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            kmip_2_1::kmip_messages::RequestMessageBatchItem {
+                operation: kmip_2_1::kmip_types::OperationEnumeration::Query,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: kmip_2_1::kmip_operations::Operation::Query(
+                    kmip_2_1::kmip_operations::Query {
+                        query_function: Some(vec![
+                            kmip_2_1::kmip_types::QueryFunction::QueryRNGs,
+                            kmip_2_1::kmip_types::QueryFunction::QueryServerInformation,
+                        ]),
+                        ..Default::default()
+                    },
+                ),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)
+        .expect("Failed to send Query request");
+
+    assert_eq!(response.batch_item.len(), 1);
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[0] else {
+        panic!("Expected KMIP 2.1 response");
+    };
+    assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
+    let Some(kmip_2_1::kmip_operations::Operation::QueryResponse(query_response)) =
+        &batch_item.response_payload
+    else {
+        panic!("Expected QueryResponse");
+    };
+    assert_eq!(
+        query_response.rng_parameters.as_ref().map(Vec::len),
+        Some(1)
+    );
 }

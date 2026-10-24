@@ -207,7 +207,12 @@ pub(crate) async fn encrypt(
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
         Err(e) => match e {
             KmsError::Unauthorized(msg)
-            | KmsError::Kmip21Error(ErrorReason::Permission_Denied, msg) => XksErrorReply {
+            | KmsError::Kmip21Error(
+                ErrorReason::Permission_Denied
+                | ErrorReason::Invalid_Object_Type
+                | ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                msg,
+            ) => XksErrorReply {
                 errorName: XksErrorName::InvalidKeyUsageException,
                 errorMessage: Some(msg),
             }
@@ -230,7 +235,11 @@ pub(crate) async fn encrypt(
             // Unsupported algorithm / operation
             KmsError::NotSupported(msg)
             | KmsError::UnsupportedAlgorithm(msg)
-            | KmsError::Kmip21Error(ErrorReason::Operation_Not_Supported, msg) => XksErrorReply {
+            | KmsError::Kmip21Error(
+                ErrorReason::Operation_Not_Supported
+                | ErrorReason::Unsupported_Cryptographic_Parameters,
+                msg,
+            ) => XksErrorReply {
                 errorName: XksErrorName::UnsupportedOperationException,
                 errorMessage: Some(msg),
             }

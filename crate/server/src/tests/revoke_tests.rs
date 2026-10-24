@@ -26,7 +26,7 @@
 //! - AKLC-M-2-21: Revoke on an already-`Destroyed` key succeeds without changing state.
 //! - EC key-pair cascade: `cascade=true` propagates the revocation to the paired key;
 //!   `cascade=false` does not.
-//! - Unknown UID returns `Item_Not_Found`.
+//! - Unknown UID returns `Object_Not_Found`.
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
@@ -318,38 +318,41 @@ async fn test_deactivated_ca_compromise_yields_compromised() -> KResult<()> {
     Ok(())
 }
 
-/// KMIP §6.1.44: `Deactivated + Unspecified` is a no-op (stays `Deactivated`).
-///
-/// A second Revoke with a non-compromise reason MUST succeed but MUST NOT change
-/// the state back or forward — this allows Revoke → Destroy sequences after Re-Key
-/// to still succeed on already-deactivated predecessor keys.
-#[tokio::test]
-async fn test_deactivated_unspecified_is_noop() -> KResult<()> {
-    let app = test_utils::setup_app(None).await;
-    let uid = create_aes_key(&app).await?;
-
-    revoke(
-        &app,
-        &uid,
-        RevocationReasonCode::CessationOfOperation,
-        false,
-    )
-    .await?;
-    assert_eq!(get_state(&app, &uid).await?, Some(State::Deactivated));
-
-    // Second Revoke with a non-compromise reason must succeed (no error) but not move state.
-    revoke(&app, &uid, RevocationReasonCode::Unspecified, false).await?;
-    assert_eq!(
-        get_state(&app, &uid).await?,
-        Some(State::Deactivated),
-        "Deactivated + non-compromise reason MUST remain Deactivated"
+/// Asserts that a Revoke with `reason_code` fails with `Wrong_Key_Lifecycle_State` and
+/// leaves the object in `state`.
+async fn assert_revoke_refused<S, B>(
+    app: &S,
+    uid: &str,
+    reason_code: RevocationReasonCode,
+    state: State,
+) -> KResult<()>
+where
+    S: actix_web::dev::Service<
+            actix_http::Request,
+            Response = actix_web::dev::ServiceResponse<B>,
+            Error = actix_web::Error,
+        >,
+    B: actix_web::body::MessageBody,
+{
+    let error = revoke(app, uid, reason_code, false)
+        .await
+        .err()
+        .map(|e| e.to_string());
+    assert!(
+        error
+            .as_deref()
+            .is_some_and(|e| e.contains(&ErrorReason::Wrong_Key_Lifecycle_State.to_string())),
+        "Revoke with {reason_code:?} on a {state:?} object must fail with \
+         Wrong_Key_Lifecycle_State, got: {error:?}"
     );
+    assert_eq!(get_state(app, uid).await?, Some(state));
     Ok(())
 }
 
-/// KMIP §6.1.44: `Deactivated + Superseded` is a no-op (stays `Deactivated`).
+/// KMIP 2.1 §4.57: a non-compromise reason only moves Active to Deactivated, so revoking a
+/// Deactivated object with `Unspecified` is `Wrong_Key_Lifecycle_State` and keeps it Deactivated.
 #[tokio::test]
-async fn test_deactivated_superseded_is_noop() -> KResult<()> {
+async fn test_deactivated_unspecified_is_refused() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -360,22 +363,45 @@ async fn test_deactivated_superseded_is_noop() -> KResult<()> {
         false,
     )
     .await?;
-    revoke(&app, &uid, RevocationReasonCode::Superseded, false).await?;
-
     assert_eq!(get_state(&app, &uid).await?, Some(State::Deactivated));
-    Ok(())
+
+    assert_revoke_refused(
+        &app,
+        &uid,
+        RevocationReasonCode::Unspecified,
+        State::Deactivated,
+    )
+    .await
 }
 
-// ── Section C: Destroyed key pass-through (AKLC-M-2-21) ──────────────────────
-
-/// AKLC-M-2-21 compatibility: Revoking an already-`Destroyed` key MUST succeed
-/// without error and MUST NOT change the state (it remains `Destroyed`).
-///
-/// This covers the `Revoke → Destroy → Revoke` pattern that appears in Re-Key
-/// sequences where the predecessor key is destroyed and then a cascading Revoke
-/// is replayed.
+/// KMIP 2.1 §4.57: `Deactivated + Superseded` is `Wrong_Key_Lifecycle_State`.
 #[tokio::test]
-async fn test_revoke_on_destroyed_key_succeeds_as_passthrough() -> KResult<()> {
+async fn test_deactivated_superseded_is_refused() -> KResult<()> {
+    let app = test_utils::setup_app(None).await;
+    let uid = create_aes_key(&app).await?;
+
+    revoke(
+        &app,
+        &uid,
+        RevocationReasonCode::CessationOfOperation,
+        false,
+    )
+    .await?;
+    assert_revoke_refused(
+        &app,
+        &uid,
+        RevocationReasonCode::Superseded,
+        State::Deactivated,
+    )
+    .await
+}
+
+// ── Section C: Destroyed keys ────────────────────────────────────────────────
+
+/// KMIP 2.1 §4.57: only a compromise moves a Destroyed object (to Destroyed Compromised,
+/// as in AKLC-M-2-21); a non-compromise reason is `Wrong_Key_Lifecycle_State`.
+#[tokio::test]
+async fn test_revoke_on_destroyed_key_non_compromise_is_refused() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -383,27 +409,26 @@ async fn test_revoke_on_destroyed_key_succeeds_as_passthrough() -> KResult<()> {
     destroy_key(&app, &uid).await?;
     assert_eq!(get_state(&app, &uid).await?, Some(State::Destroyed));
 
-    // A subsequent Revoke on a Destroyed key MUST succeed (no Item_Not_Found).
-    revoke(
+    assert_revoke_refused(
         &app,
         &uid,
         RevocationReasonCode::CessationOfOperation,
-        false,
+        State::Destroyed,
     )
     .await?;
 
-    // State MUST still be Destroyed — no state regression.
+    // A compromise is accepted and moves it to Destroyed Compromised.
+    revoke(&app, &uid, RevocationReasonCode::KeyCompromise, false).await?;
     assert_eq!(
         get_state(&app, &uid).await?,
-        Some(State::Destroyed),
-        "Revoke on Destroyed key MUST be a pass-through (AKLC-M-2-21)"
+        Some(State::Destroyed_Compromised)
     );
     Ok(())
 }
 
-/// AKLC-M-2-21: Revoking an already-`Destroyed_Compromised` key also succeeds.
+/// KMIP 2.1 §4.57: a Destroyed Compromised object accepts no further revocation.
 #[tokio::test]
-async fn test_revoke_on_destroyed_compromised_key_succeeds_as_passthrough() -> KResult<()> {
+async fn test_revoke_on_destroyed_compromised_key_is_refused() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -425,21 +450,13 @@ async fn test_revoke_on_destroyed_compromised_key_succeeds_as_passthrough() -> K
         Some(State::Destroyed_Compromised)
     );
 
-    // Subsequent Revoke MUST succeed as a pass-through.
-    revoke(
+    assert_revoke_refused(
         &app,
         &uid,
         RevocationReasonCode::CessationOfOperation,
-        false,
+        State::Destroyed_Compromised,
     )
-    .await?;
-
-    assert_eq!(
-        get_state(&app, &uid).await?,
-        Some(State::Destroyed_Compromised),
-        "Revoke on Destroyed_Compromised key MUST be a pass-through (AKLC-M-2-21)"
-    );
-    Ok(())
+    .await
 }
 
 // ── Section D: EC key-pair cascade ───────────────────────────────────────────
@@ -544,9 +561,9 @@ async fn test_ec_pair_revoke_public_cascade_true_revokes_private() -> KResult<()
 
 // ── Section E: Error cases ────────────────────────────────────────────────────
 
-/// KMIP §6.1.44: Revoking a non-existent UID MUST return `Item_Not_Found`.
+/// KMIP §6.1.44: Revoking a non-existent UID MUST return `Object_Not_Found`.
 #[tokio::test]
-async fn test_revoke_unknown_uid_returns_item_not_found() -> KResult<()> {
+async fn test_revoke_unknown_uid_returns_object_not_found() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
 
     let result = revoke(
@@ -559,14 +576,14 @@ async fn test_revoke_unknown_uid_returns_item_not_found() -> KResult<()> {
 
     assert!(
         result.is_err(),
-        "Revoke on unknown UID MUST fail with Item_Not_Found"
+        "Revoke on unknown UID MUST fail with Object_Not_Found"
     );
-    // The error message MUST contain the Item_Not_Found reason.
+    // The error message MUST contain the Object_Not_Found reason.
     let err_str = result.unwrap_err().to_string();
-    let expected = ErrorReason::Item_Not_Found.to_string();
+    let expected = ErrorReason::Object_Not_Found.to_string();
     assert!(
         err_str.contains(&expected),
-        "Expected Item_Not_Found in error, got: {err_str}"
+        "Expected Object_Not_Found in error, got: {err_str}"
     );
     Ok(())
 }

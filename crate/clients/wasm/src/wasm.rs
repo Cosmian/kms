@@ -121,6 +121,7 @@ pub fn set_vendor_id(vendor_id: &str) {
 pub fn query_server_information_ttlv_request() -> Result<JsValue, JsValue> {
     let request = Query {
         query_function: Some(vec![QueryFunction::QueryServerInformation]),
+        ..Default::default()
     };
     to_wasm_ttlv(&request)
 }
@@ -2463,6 +2464,7 @@ pub fn modify_attribute_ttlv_request(
     let attribute = build_selected_attribute(attribute_name, attribute_value)
         .map_err(|e| JsValue::from(e.to_string()))?;
     let request = ModifyAttribute {
+        current_attribute: None,
         unique_identifier: Some(unique_identifier),
         new_attribute: attribute,
     };

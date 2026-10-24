@@ -1,6 +1,7 @@
 mod add_attribute_1_4;
 mod add_attribute_2_1;
 mod attribute_version_gating;
+mod batch_semantics_2_1;
 mod config;
 mod create_1_4;
 mod create_2_1;
@@ -12,6 +13,7 @@ mod decrypt_2_1;
 mod discover_versions;
 mod encrypt_1_4;
 mod encrypt_2_1;
+mod export_destroyed_2_1;
 mod get_1_0;
 mod get_1_4;
 mod get_2_1;
@@ -25,13 +27,16 @@ mod import_2_1;
 mod integrations;
 mod locate_1_4;
 mod locate_2_1;
+mod message_1_4;
 mod normative_tests;
+mod ping_2_1;
 #[cfg(not(target_os = "windows"))]
 mod pykmip;
 mod query;
 mod register_1_4;
 mod register_2_1;
 mod register_operation_policy_name_1_0;
+mod rng_2_1;
 mod socket_client;
 
 const TEST_HOST: &str = "127.0.0.1";

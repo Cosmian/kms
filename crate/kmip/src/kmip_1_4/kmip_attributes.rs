@@ -13,7 +13,7 @@ pub use crate::{
     KmipError,
     kmip_0::kmip_types::{
         AlternativeName, ApplicationSpecificInformation, BlockCipherMode, CertificateType,
-        CryptographicUsageMask, KeyValueLocationType, PaddingMethod, RevocationReason, State,
+        CryptographicUsageMask, KeyValueLocation, PaddingMethod, RevocationReason, State,
         UsageLimits, X509CertificateIdentifier,
     },
     kmip_1_4::{
@@ -64,7 +64,7 @@ pub enum Attribute {
     Extractable(bool),
     Fresh(bool),
     InitialDate(OffsetDateTime),
-    KeyValueLocation(KeyValueLocationType),
+    KeyValueLocation(KeyValueLocation),
     KeyValuePresent(bool),
     LastChangeDate(OffsetDateTime),
     LeaseTime(Interval),
@@ -584,7 +584,7 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::KeyValuePresent(value))
                     }
                     "Key Value Location" => {
-                        let value: KeyValueLocationType = map.next_value()?;
+                        let value: KeyValueLocation = map.next_value()?;
                         Ok(Attribute::KeyValueLocation(value))
                     }
                     "Original Creation Date" => {
@@ -675,7 +675,7 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::StorageStatusMask(v) => {
                 // StorageStatusMask is a Locate filter field — not an object attribute in KMIP 2.1.
                 // Preserve as VendorAttribute to avoid corrupting the Comment attribute slot.
-                warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
+                warn!("KMIP 2.1 does not support the KMIP 1 attribute Storage Status Mask {v:?}");
                 Self::VendorAttribute(VendorAttribute {
                     vendor_identification: "KMIP1".to_owned(),
                     attribute_name: "__Storage Status Mask__".to_owned(),
@@ -952,7 +952,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::OpaqueDataType(_)
             | kmip_2_1::kmip_attributes::Attribute::ProtectionLevel(_)
             | kmip_2_1::kmip_attributes::Attribute::ProtectionPeriod(_)
-            | kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMasks(_)
+            | kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMask(_)
             | kmip_2_1::kmip_attributes::Attribute::QuantumSafe(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateAutomatic(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateDate(_)
@@ -1109,7 +1109,10 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                     attributes.x_509_certificate_issuer = Some(v);
                 }
                 Attribute::Digest(v) => {
-                    attributes.digest = Some(v.into());
+                    attributes
+                        .digest
+                        .get_or_insert_with(Vec::new)
+                        .push(v.into());
                 }
                 Attribute::Pkcs12FriendlyName(v) => {
                     attributes.pkcs_12_friendly_name = Some(v);
@@ -1143,7 +1146,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                         attribute_value: VendorAttributeValue::TextString(v.clone()),
                     });
                 }
-                Attribute::StorageStatusMask(_v) => {
+                Attribute::StorageStatusMask(_) => {
                     // Not supported in KMIP 2.1 attribute set; this is typically a Locate payload field.
                     warn!("KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}");
                 }

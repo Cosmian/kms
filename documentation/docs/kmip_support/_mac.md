@@ -24,12 +24,36 @@ The Eviden KMS server supports the following MAC algorithms:
 - HMAC-SHA-256
 - HMAC-SHA-384
 - HMAC-SHA-512
+- HMAC-SHA3-224, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512 (keys of algorithm `HMACSHA3224` to `HMACSHA3512` can be created)
 
 For the complete list of supported MAC algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
+
+The hash function is taken from the request `Hashing Algorithm`, else from the request `Cryptographic Algorithm`
+(`HMACSHA*`; any other value returns `Bad_Cryptographic_Parameters`), else from the key's algorithm. Unsupported
+hash functions return `Feature_Not_Supported`.
+
+The key's Cryptographic Usage Mask must contain `MAC Generate` (MAC) or `MAC Verify` (MAC Verify), or the key must
+have no mask at all; otherwise the request fails with `Incompatible_Cryptographic_Usage_Mask`. HMAC keys created by
+the server get both bits; older HMAC keys need their mask updated. A key in the wrong state returns
+`Wrong_Key_Lifecycle_State` and a usable object of the wrong type `Invalid_Object_Type`.
+
+A request with both `Init Indicator` and `Final Indicator` but no `Correlation Value` is a single-part request.
+A single-part MAC without `Data` returns `Invalid_Field`. HSM keys cannot be used for multi-part MAC
+(`Feature_Not_Supported`).
+
+### MAC Verify
+
+MAC Verify accepts Active, Deactivated and Compromised keys. It supports multi-part requests: the `MACData` to check
+may be sent on the Init or the Final part, and a missing `MACData` at the end returns `Invalid_Field`. The
+`ValidityIndicator` is returned only on single-part or final responses. The comparison runs in constant time.
 
 ## Example - Simple MAC
 
 Computing MAC with SHA3-512 using a MAC key.
+
+!!! warning "The key must allow MAC"
+    The key must have the `MAC Generate` (and, for MAC Verify, `MAC Verify`) bit in its Cryptographic Usage Mask.
+    An AES key created with the default mask (see [Create](./_create.md)) does not; use an HMAC key instead.
 
 Corresponding [KMS CLI](../kms_clients/index.md) command:
 
@@ -82,7 +106,7 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         },
         {
-          "tag": "Data",
+          "tag": "MACData",
           "type": "ByteString",
           "value": "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA"
         }
@@ -92,17 +116,19 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
 
 ## Example - Stream MAC
 
-Computing MAC for a large file in multiple parts using SHA3-512.
+Computing MAC for a large file in multiple parts using HMAC-SHA-256. The Init response returns a 16-byte random
+Correlation Value; every later part sends it back unchanged. The MAC shown is the one of the
+`hmac_sha256_multi_part` test vector, computed with that vector's key.
 
 Corresponding [KMS CLI](../kms_clients/index.md) commands:
 
 ```bash
 # First part with init indicator
-ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --data 0011223344556677889900 -i
+ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha256 --data 0102 -i
 # Middle part using correlation value
-ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --correlation-value F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA --data 0011223344556677889900
+ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha256 --correlation-value 0123456789ABCDEF0123456789ABCDEF --data 030405060708091011121314
 # Final part with final indicator
-ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F -f --data 0011223344556677889900
+ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha256 --correlation-value 0123456789ABCDEF0123456789ABCDEF -f --data 1516
 ```
 
 === "Request 1 (Init)"
@@ -124,14 +150,14 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
             {
               "tag": "HashingAlgorithm",
               "type": "Enumeration",
-              "value": "SHA3512"
+              "value": "SHA256"
             }
           ]
         },
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "0011223344556677889900"
+          "value": "0102"
         },
         {
           "tag": "InitIndicator",
@@ -157,7 +183,7 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         }
       ]
     }
@@ -182,19 +208,19 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
             {
               "tag": "HashingAlgorithm",
               "type": "Enumeration",
-              "value": "SHA3512"
+              "value": "SHA256"
             }
           ]
         },
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "0011223344556677889900"
+          "value": "030405060708091011121314"
         },
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         }
       ]
     }
@@ -215,7 +241,7 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         }
       ]
     }
@@ -240,19 +266,19 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
             {
               "tag": "HashingAlgorithm",
               "type": "Enumeration",
-              "value": "SHA3512"
+              "value": "SHA256"
             }
           ]
         },
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "0011223344556677889900"
+          "value": "1516"
         },
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         },
         {
           "tag": "FinalIndicator",
@@ -276,9 +302,9 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         },
         {
-          "tag": "Data",
+          "tag": "MACData",
           "type": "ByteString",
-          "value": "511BDAFDB2D059BD94FC72B8301ABF01DB9E02127420AED072B891A83952B88063DF3470225ACC6D46AD503E5E86B16BAEB581F218A148472120A9B541E1AF5D"
+          "value": "C911E78196D64C30F631BB079EA37B97A95936D4DA764D6A171DF030C895ECF9"
         }
       ]
     }

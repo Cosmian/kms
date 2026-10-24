@@ -13,7 +13,7 @@ pub use cosmian_crypto_core::bytes_ser_de::{
 pub use data_to_encrypt::DataToEncrypt;
 pub use error::{KmipError, result::KmipResultHelper};
 pub use safe_bigint::SafeBigInt;
-pub use time_utils::time_normalize;
+pub use time_utils::{creation_time, time_normalize};
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() < size {

@@ -64,7 +64,7 @@ async fn decrypt_data_test() -> KResult<()> {
 
     let import_key = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
-        object_type: ObjectType::PrivateKey,
+        object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
         attributes: Attributes::default(),

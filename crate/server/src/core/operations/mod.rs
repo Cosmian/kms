@@ -1,8 +1,10 @@
 mod activate;
 mod attributes;
 mod auto_rotate;
+pub(crate) mod batch_undo;
 pub(crate) mod certify;
 mod check;
+pub(crate) mod constraints;
 mod create;
 mod create_key_pair;
 mod create_split_key;
@@ -22,6 +24,7 @@ mod import;
 mod join_split_key;
 pub(crate) mod key_ops;
 mod locate;
+pub(crate) mod login;
 mod mac;
 mod message;
 pub(crate) mod pgp_ops;
@@ -66,8 +69,11 @@ pub(crate) use join_split_key::{join_split_key, perform_crypto_officer_ceremony_
 pub(crate) use locate::locate;
 pub(crate) use mac::{mac, mac_verify};
 #[cfg(test)]
-pub(crate) use message::MAX_BATCH_ITEMS;
 pub(crate) use message::message;
+pub(crate) use message::{
+    BatchItemInput, DecodedRequestMessage, MAX_BATCH_ITEMS, decode_request_message,
+    kmip_error_response_fields, process_message,
+};
 pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;
 pub(crate) use register::register;

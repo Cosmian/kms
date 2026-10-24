@@ -45,7 +45,7 @@ The KMIP implementation does not:
 - specify how the certificate extensions are provided
 - and only supports Certificate Signing Request (CSR) and certifying public keys
 
-Eviden has extended the specifications and offers 4 possibilities to generate a
+Eviden has extended the specifications and offers 5 possibilities to generate a
 certificate
 
 1. Providing a Certificate Signing Request (CSR)
@@ -53,6 +53,13 @@ certificate
 3. Providing an existing certificate id to re-certify
 4. Generating a keypair then signing the public key to generate a certificate
    specifying a subject name and an algorithm
+5. Providing the Unique Identifier of a managed Certificate Request object
+
+The certificate starts `Pre-Active` unless the Activation Date of the request has passed.
+A Certificate Request Value requires a Certificate Request Type, otherwise the server returns `Invalid_Field`.
+An issuer private key that is not `Active` returns `Invalid_Field`.
+Other object types return `Invalid_Object_Type`.
+A request that breaches the server constraints returns `Constraint_Violation`.
 
 The signer is specified by providing an issuer private key id
 and/or an issuer certificate via the Links in the attributes of the request. If only

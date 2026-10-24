@@ -1,5 +1,6 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
-    RNGRetrieve, RNGRetrieveResponse,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::kmip_operations::{RNGRetrieve, RNGRetrieveResponse},
 };
 use cosmian_logger::trace;
 
@@ -17,13 +18,17 @@ pub(crate) async fn rng_retrieve(
     request: RNGRetrieve,
     _user: &UserId,
 ) -> KResult<RNGRetrieveResponse> {
-    trace!("RNGRetrieve: {}", serde_json::to_string(&request)?);
-    let req_len: usize = usize::try_from(request.data_length.max(0))
-        .map_err(|e| KmsError::InvalidRequest(format!("Requested RNG length too large: {e}")))?;
+    trace!("RNGRetrieve request");
+    let req_len: usize = usize::try_from(request.data_length).map_err(|_e| {
+        KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!("RNGRetrieve: invalid Data Length {}", request.data_length),
+        )
+    })?;
     // Enforce sane upper bound without env dependence
     if req_len > MAX_RNG_RETRIEVE {
         return Err(KmsError::Kmip21Error(
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Field,
+            ErrorReason::Invalid_Field,
             format!("Requested RNG length {req_len} exceeds maximum {MAX_RNG_RETRIEVE}"),
         ));
     }
@@ -37,7 +42,7 @@ pub(crate) async fn rng_retrieve(
     let mut data = vec![0_u8; req_len];
     kms.rng
         .fill_public_bytes(&mut data)
-        .map_err(|e| KmsError::ServerError(format!("KmsRng failed: {e}")))?;
+        .map_err(|e| KmsError::CryptographicError(format!("KmsRng failed: {e}")))?;
     Ok(RNGRetrieveResponse { data })
 }
 
@@ -76,6 +81,21 @@ mod tests {
         if resp.data.len() != 32 {
             return Err(KmsError::InvalidRequest(
                 "expected RNG to return requested length".to_owned(),
+            ));
+        }
+
+        // A negative Data Length is an invalid field, not an empty success
+        let negative =
+            rng_retrieve(&kms, RNGRetrieve { data_length: -1 }, &UserId::from("user")).await;
+        if !matches!(
+            negative,
+            Err(KmsError::Kmip21Error(
+                cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Field,
+                _
+            ))
+        ) {
+            return Err(KmsError::InvalidRequest(
+                "expected Invalid_Field for a negative Data Length".to_owned(),
             ));
         }
         Ok(())

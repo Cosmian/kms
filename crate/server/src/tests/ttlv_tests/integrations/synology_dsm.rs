@@ -226,6 +226,7 @@ fn locate_by_name(client: &SocketClient, name_value: &str) -> Vec<String> {
                 unique_batch_item_id: None,
                 request_payload: Operation::Locate(Locate {
                     maximum_items: None,
+                    offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attribute: Some(vec![Attribute::Name(Name {
@@ -356,7 +357,7 @@ fn activate_volume_key(client: &SocketClient, uid: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Activate(Activate {
-                    unique_identifier: uid.to_owned(),
+                    unique_identifier: Some(uid.to_owned()),
                 }),
                 message_extension: None,
             },
@@ -485,6 +486,7 @@ fn get_key(client: &SocketClient, uid: &str) {
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::Get {
                         unique_identifier: Some(uid.to_owned()),
                         key_format_type: None,
+                        key_wrap_type: None,
                         key_compression_type: None,
                         key_wrapping_specification: None,
                     },

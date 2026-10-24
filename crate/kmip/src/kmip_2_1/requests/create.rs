@@ -20,6 +20,36 @@ use crate::{
     time_normalize,
 };
 
+/// Default usage mask of a created symmetric key: HMAC (and SHA-3 used as HMAC) keys also get
+/// `MACGenerate | MACVerify`, which the MAC and MAC Verify operations require.
+fn symmetric_key_default_usage_mask(
+    cryptographic_algorithm: CryptographicAlgorithm,
+) -> CryptographicUsageMask {
+    let mask = CryptographicUsageMask::Encrypt
+        | CryptographicUsageMask::Decrypt
+        | CryptographicUsageMask::WrapKey
+        | CryptographicUsageMask::UnwrapKey
+        | CryptographicUsageMask::KeyAgreement;
+    match cryptographic_algorithm {
+        CryptographicAlgorithm::HMACSHA1
+        | CryptographicAlgorithm::HMACSHA224
+        | CryptographicAlgorithm::HMACSHA256
+        | CryptographicAlgorithm::HMACSHA384
+        | CryptographicAlgorithm::HMACSHA512
+        | CryptographicAlgorithm::HMACSHA3224
+        | CryptographicAlgorithm::HMACSHA3256
+        | CryptographicAlgorithm::HMACSHA3384
+        | CryptographicAlgorithm::HMACSHA3512
+        | CryptographicAlgorithm::SHA3224
+        | CryptographicAlgorithm::SHA3256
+        | CryptographicAlgorithm::SHA3384
+        | CryptographicAlgorithm::SHA3512 => {
+            mask | CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify
+        }
+        _ => mask,
+    }
+}
+
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key_kmip_object(
     vendor_id: &str,
@@ -133,13 +163,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_algorithm: Some(cryptographic_algorithm),
         cryptographic_length,
         cryptographic_parameters: None,
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
+        cryptographic_usage_mask: Some(symmetric_key_default_usage_mask(cryptographic_algorithm)),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: key_id,

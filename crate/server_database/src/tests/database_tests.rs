@@ -18,7 +18,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, ObjectsStore, PermissionsStore,
+    UserId,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
@@ -189,7 +190,12 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             ],
         )
         .await;
-    atomic.unwrap_err();
+    let err = atomic.expect_err("an atomic create with an existing identifier must fail");
+    if !matches!(&err, InterfaceError::ObjectAlreadyExists(_)) {
+        return Err(DbError::Default(format!(
+            "atomic duplicate create returned unexpected error: {err:?}"
+        )));
+    }
 
     // this however should work
     db.atomic(
@@ -747,7 +753,7 @@ fn check_found(
 /// - a tag search returns the objects carrying *all* the searched tags, once each;
 /// - a user sees the objects granted to them directly or through the wildcard
 ///   user `*`, once each even when both grants exist, and nothing else;
-/// - `exclude_destroyed` hides destroyed objects unless that state is requested;
+/// - `destroyed` (`Exclude`/`Only`) filters destroyed objects unless that state is requested;
 /// - `limit` caps the number of rows.
 pub(super) async fn find_with_options_test<DB: ObjectsStore + PermissionsStore>(
     db: &DB,
@@ -802,11 +808,11 @@ pub(super) async fn find_with_options_test<DB: ObjectsStore + PermissionsStore>(
 
     let unbounded = FindOptions::default();
     let live = FindOptions {
-        exclude_destroyed: true,
+        destroyed: DestroyedFilter::Exclude,
         ..FindOptions::default()
     };
-    let find = |tags: Attributes, state: Option<State>, user: &UserId, options: FindOptions| {
-        let user = user.clone();
+    let find = |tags: Attributes, state: Option<State>, user: &UserId, options: &FindOptions| {
+        let (user, options) = (user.clone(), options.clone());
         async move {
             db.find_with_options(
                 Some(&tags),
@@ -820,21 +826,27 @@ pub(super) async fn find_with_options_test<DB: ObjectsStore + PermissionsStore>(
         }
     };
 
-    let rows = find(search(&[&t1, &t2, &t3])?, None, &owner, unbounded).await?;
+    let rows = find(search(&[&t1, &t2, &t3])?, None, &owner, &unbounded).await?;
     check_found("all three tags", &rows, &[&uids[0]])?;
-    let rows = find(search(&[&t1, &t2])?, None, &owner, unbounded).await?;
+    let rows = find(search(&[&t1, &t2])?, None, &owner, &unbounded).await?;
     check_found("two tags", &rows, &[&uids[0], &uids[1], &uids[3]])?;
-    let rows = find(search(&[&t1, &t2])?, None, &owner, live).await?;
+    let rows = find(search(&[&t1, &t2])?, None, &owner, &live).await?;
     check_found("two tags, destroyed excluded", &rows, &[&uids[0], &uids[1]])?;
-    let rows = find(search(&[&t1, &t2])?, Some(State::Destroyed), &owner, live).await?;
+    let rows = find(search(&[&t1, &t2])?, Some(State::Destroyed), &owner, &live).await?;
     check_found("two tags, destroyed requested", &rows, &[&uids[3]])?;
-    let rows = find(search(&[&t1])?, None, &grantee, unbounded).await?;
+    let destroyed = FindOptions {
+        destroyed: DestroyedFilter::Only,
+        ..FindOptions::default()
+    };
+    let rows = find(search(&[&t1, &t2])?, None, &owner, &destroyed).await?;
+    check_found("two tags, destroyed only", &rows, &[&uids[3]])?;
+    let rows = find(search(&[&t1])?, None, &grantee, &unbounded).await?;
     check_found("grantee", &rows, &[&uids[0], &uids[1]])?;
     let rows = find(
         search(&[&t1])?,
         None,
         &owner,
-        FindOptions {
+        &FindOptions {
             limit: Some(2),
             ..FindOptions::default()
         },

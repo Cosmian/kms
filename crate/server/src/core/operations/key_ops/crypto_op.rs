@@ -32,12 +32,14 @@ use std::{borrow::Borrow, collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_0::kmip_types::{DRBGAlgorithm, ErrorReason, RNGAlgorithm, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
-            kmip_types::{UniqueIdentifier, UsageLimitsUnit},
+            kmip_types::{
+                CryptographicAlgorithm, RandomNumberGenerator, UniqueIdentifier, UsageLimitsUnit,
+            },
         },
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
@@ -87,6 +89,20 @@ impl ObjectLifecycleExt for Object {
         requested_activation_date: Option<OffsetDateTime>,
     ) -> KResult<Attributes> {
         let computed_digest = digest(self)?;
+        // KMIP 1.4 §3.34 / §3.44: the server sets Fresh and the Random Number Generator
+        // on every object it creates; `KmsRng` is described as in Query → QueryRNGs.
+        let attributes = self.attributes_mut()?;
+        attributes.fresh = Some(true);
+        attributes.random_number_generator = Some(RandomNumberGenerator {
+            rng_algorithm: RNGAlgorithm::DRBG,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            hashing_algorithm: None,
+            drbg_algorithm: Some(DRBGAlgorithm::CTR),
+            recommended_curve: None,
+            fips186_variation: None,
+            prediction_resistance: Some(false),
+        });
         Ok(self.setup_lifecycle(object_type, requested_activation_date, computed_digest)?)
     }
 }
@@ -254,6 +270,38 @@ impl<T: CryptoOpSpec> KeySelectionSpec for T {
     }
 }
 
+/// Why a key the caller may use is still unusable for `operation`: the wrong object type
+/// (`Invalid_Object_Type`) or a missing usage mask (`Incompatible_Cryptographic_Usage_Mask`).
+/// `None` for operations that do not use this reporting.
+fn ineligibility_reason(operation: KmipOperation, owm: &ObjectWithMetadata) -> Option<ErrorReason> {
+    let accepted: &[ObjectType] = match operation {
+        KmipOperation::Encrypt => &[
+            ObjectType::Certificate,
+            ObjectType::SymmetricKey,
+            ObjectType::PublicKey,
+            ObjectType::PGPKey,
+        ],
+        KmipOperation::Decrypt => &[
+            ObjectType::SymmetricKey,
+            ObjectType::PGPKey,
+            ObjectType::PrivateKey,
+        ],
+        KmipOperation::Sign => &[ObjectType::PrivateKey, ObjectType::PGPKey],
+        KmipOperation::SignatureVerify => &[
+            ObjectType::PublicKey,
+            ObjectType::PrivateKey,
+            ObjectType::PGPKey,
+        ],
+        KmipOperation::MAC => &[ObjectType::SymmetricKey],
+        _ => return None,
+    };
+    Some(if accepted.contains(&owm.object().object_type()) {
+        ErrorReason::Incompatible_Cryptographic_Usage_Mask
+    } else {
+        ErrorReason::Invalid_Object_Type
+    })
+}
+
 // ─── Generic key selection ────────────────────────────────────────────────────
 
 /// Result of key resolution for a cryptographic operation.
@@ -338,6 +386,8 @@ impl KMS {
         let mut found_but_no_permission = false;
         // Track state mismatches so we can surface a useful error instead of "not found".
         let mut wrong_state: Option<(String, State)> = None;
+        // The caller is authorized on these keys, so telling why one is unusable leaks nothing.
+        let mut ineligible: Option<(String, ErrorReason)> = None;
 
         for candidate in candidates {
             let owm = candidate.borrow();
@@ -382,6 +432,9 @@ impl KMS {
 
             // 3. Eligibility (object type + usage mask)
             if !Spec::is_key_eligible(owm, self.vendor_id()) {
+                if let Some(reason) = ineligibility_reason(Spec::KMIP_OP, owm) {
+                    ineligible.get_or_insert_with(|| (owm.id().to_owned(), reason));
+                }
                 continue;
             }
 
@@ -403,11 +456,19 @@ impl KMS {
                 ))
             } else if let Some((uid, state)) = wrong_state {
                 KmsError::Kmip21Error(
-                    ErrorReason::Permission_Denied,
+                    ErrorReason::Wrong_Key_Lifecycle_State,
                     format!(
                         "{}: key {uid} is in state {state:?} but operation requires one of {:?}",
                         Spec::OP_NAME,
                         Spec::accepted_states()
+                    ),
+                )
+            } else if let Some((uid, reason)) = ineligible {
+                KmsError::Kmip21Error(
+                    reason,
+                    format!(
+                        "{}: key {uid} is not usable for this operation: {reason:?}",
+                        Spec::OP_NAME,
                     ),
                 )
             } else {
@@ -751,7 +812,7 @@ impl KMS {
                     ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
                     decremented = true;
                 }
-                UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                UsageLimitsUnit::Object => {
                     ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
                     decremented = true;
                 }
@@ -868,7 +929,7 @@ impl KMS {
                         let effective = owm.effective_state();
                         if !Op::accepted_states().contains(&effective) {
                             return Err(KmsError::Kmip21Error(
-                                ErrorReason::Permission_Denied,
+                                ErrorReason::Wrong_Key_Lifecycle_State,
                                 format!(
                                     "{}: key {uid} is in state {effective:?} but operation \
                                      requires one of {:?}",
@@ -899,7 +960,7 @@ impl KMS {
                             let effective = owm.effective_state();
                             if !Op::accepted_states().contains(&effective) {
                                 return Err(KmsError::Kmip21Error(
-                                    ErrorReason::Permission_Denied,
+                                    ErrorReason::Wrong_Key_Lifecycle_State,
                                     format!(
                                         "{}: key {uid} is in state {effective:?} but operation \
                                          requires one of {:?}",
@@ -1071,6 +1132,11 @@ mod tests {
         let mut obj = test_object();
         let attrs = obj.setup_with_lifecycle(ObjectType::SymmetricKey, None)?;
         assert_eq!(attrs.state, Some(State::PreActive));
+        assert_eq!(attrs.fresh, Some(true));
+        assert_eq!(
+            attrs.random_number_generator.map(|rng| rng.rng_algorithm),
+            Some(super::RNGAlgorithm::DRBG)
+        );
         Ok(())
     }
 

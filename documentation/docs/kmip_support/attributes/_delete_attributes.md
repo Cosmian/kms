@@ -15,9 +15,21 @@ before the object is touched:
 
 - `UniqueIdentifier`, `ObjectType`, `CryptographicLength`, `CertificateLength`, `Digest`
 - `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `Fresh`
-- `State`
+- `State`, `CryptographicAlgorithm`, `KeyFormatType`, `ArchiveDate`, `CompromiseDate`, `DestroyDate`, `CertificateType`
+- `KeyValuePresent`, `OpaqueDataType`, `X509CertificateIdentifier`, `X509CertificateIssuer`, `X509CertificateSubject`
 - `Sensitive`, `Extractable`, `AlwaysSensitive`, `NeverExtractable`
+- `CryptographicUsageMask`, `DigitalSignatureAlgorithm`, `ActivationDate`, `DeactivationDate`
 - `RotateAutomatic`, `RotateGeneration`, `RotateDate`, `RotateLatest`
+- server-owned KMIP 1.x vendor attributes (names starting with `y-`)
+
+### Other rules
+
+- A Current Attribute that matches no instance returns `Attribute_Instance_Not_Found` if the attribute exists, else `Attribute_Not_Found`.
+- A request that deletes nothing returns `Attribute_Not_Found`.
+- A reference to `Link` clears every link. A `Link` with an empty linked identifier removes every link of that type.
+- `UsageLimits`, `Link`, `LinkType`, `RotateInterval` and `RevocationReason` can be deleted only by the object owner or by a user holding an explicit `DeleteAttribute` grant (`Permission_Denied` otherwise).
+- Every successful Delete updates the `LastChangeDate`.
+- KMIP 1.4 responses echo the deleted attribute.
 
 ## Example - Delete links on Certificate
 

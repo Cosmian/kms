@@ -10,8 +10,8 @@
  *       - set → get (value readable, not hex bytes in VendorExtension)
  *       - set → modify → delete (full lifecycle)
  *   • cryptographic_length: set and modify rejected (read-only per spec)
- *   • key_usage: set → delete
- *   • cryptographic_algorithm: set
+ *   • key_usage: set, delete rejected
+ *   • cryptographic_algorithm: set and modify rejected
  *   • multiple link attributes set in one key
  *   • error handling: non-existent object ID returns a response (no UI crash)
  */
@@ -217,7 +217,7 @@ test.describe("Object attributes", () => {
         await selectOption(page, "attribute-name-select", "Cryptographic Length");
         await page.locator('input[type="number"]').fill("128");
         const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute_Read_Only/);
+        expect(setText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
 
         // Get: value is unchanged ─────────────────────────────────────────────
         await gotoAndWait(page, "/ui/attributes/get");
@@ -232,12 +232,12 @@ test.describe("Object attributes", () => {
         await selectOption(page, "attribute-name-select", "Cryptographic Length");
         await page.locator('input[type="number"]').fill("256");
         const modifyText = await submitAndWaitForResponse(page);
-        expect(modifyText).toMatch(/Attribute_Read_Only/);
+        expect(modifyText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
     });
 
     // ── Key Usage ─────────────────────────────────────────────────────────────
 
-    test("set and delete a key_usage attribute", async ({ page }) => {
+    test("delete of a key_usage attribute is rejected as read-only", async ({ page }) => {
         const keyId = await createSymKey(page);
 
         // Set usage to Encrypt ─────────────────────────────────────────────────
@@ -253,7 +253,8 @@ test.describe("Object attributes", () => {
         await page.fill('input[placeholder="Enter object ID"]', keyId);
         await selectOption(page, "attribute-name-select", "Key Usage");
         const deleteText = await submitAndWaitForResponse(page);
-        expect(deleteText).toMatch(/has been deleted for/i);
+        // Cryptographic Usage Mask is server-managed: deletion is refused.
+        expect(deleteText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
     });
 
     test("modify key_usage attribute", async ({ page }) => {
@@ -278,7 +279,7 @@ test.describe("Object attributes", () => {
 
     // ── Cryptographic Algorithm ───────────────────────────────────────────────
 
-    test("set a cryptographic_algorithm attribute", async ({ page }) => {
+    test("set a cryptographic_algorithm attribute is rejected as read-only", async ({ page }) => {
         const keyId = await createSymKey(page);
 
         await gotoAndWait(page, "/ui/attributes/set");
@@ -289,10 +290,11 @@ test.describe("Object attributes", () => {
         await expect(page.locator("#attribute_value")).toBeVisible({ timeout: UI_READY_TIMEOUT });
         await selectOptionById(page, "#attribute_value", "AES");
         const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute has been set for/i);
+        // Cryptographic Algorithm is read-only once the key exists.
+        expect(setText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
     });
 
-    test("modify cryptographic_algorithm attribute", async ({ page }) => {
+    test("set and modify of cryptographic_algorithm are rejected as read-only", async ({ page }) => {
         const keyId = await createSymKey(page);
 
         // Set to AES ───────────────────────────────────────────────────────────
@@ -302,16 +304,17 @@ test.describe("Object attributes", () => {
         await expect(page.locator("#attribute_value")).toBeVisible({ timeout: UI_READY_TIMEOUT });
         await selectOptionById(page, "#attribute_value", "AES");
         const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute has been set for/i);
+        expect(setText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
 
-        // Modify (re-set to AES to verify the modify API works) ───────────────
+        // Modify (also rejected) ───────────────
         await gotoAndWait(page, "/ui/attributes/modify");
         await page.fill('input[placeholder="Enter object ID"]', keyId);
         await selectOption(page, "attribute-name-select", "Cryptographic Algorithm");
         await expect(page.locator("#attribute_value")).toBeVisible({ timeout: UI_READY_TIMEOUT });
         await selectOptionById(page, "#attribute_value", "AES");
         const modifyText = await submitAndWaitForResponse(page);
-        expect(modifyText).toMatch(/Attribute has been modified for/i);
+        // Modify is refused as well.
+        expect(modifyText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
     });
 
     // ── Multiple link attributes on a single key ──────────────────────────────

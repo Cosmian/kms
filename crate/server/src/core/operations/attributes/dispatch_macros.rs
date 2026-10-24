@@ -12,7 +12,8 @@ macro_rules! match_add_attribute {
                 Attribute::$variant(value) => {
                     trace!(concat!(stringify!($variant), ": {:?}"), value);
                     if $attrs.$field.is_some() {
-                        return Err(KmsError::InvalidRequest(
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Attribute_Single_Valued,
                             concat!(stringify!($variant), " already exists").to_owned(),
                         ));
                     }

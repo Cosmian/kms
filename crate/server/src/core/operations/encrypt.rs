@@ -16,7 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
-        kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -35,7 +35,9 @@ use cosmian_kms_server_database::reexport::{
                 ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
                 ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt, default_cryptographic_parameters,
             },
-            symmetric::symmetric_ciphers::{SymCipher, encrypt as sym_encrypt, random_nonce},
+            symmetric::symmetric_ciphers::{
+                Mode, StreamCipher, SymCipher, encrypt as sym_encrypt, random_nonce,
+            },
         },
         openssl::kmip_public_key_to_openssl,
     },
@@ -55,7 +57,13 @@ use crate::core::operations::algorithm_policy::{
 };
 use crate::{
     config::ServerParams,
-    core::{KMS, operations::CryptoOpSpec},
+    core::{
+        KMS,
+        operations::{
+            CryptoOpSpec,
+            key_ops::multi_part::{FixedFields, Part, StreamOwner, reject_multi_part_for_oracle},
+        },
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -116,8 +124,16 @@ impl CryptoOpSpec for EncryptOp {
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &UserId,
+        user: &UserId,
     ) -> KResult<Self::Response> {
+        let part = Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?;
+        if part.is_multi_part() {
+            return encrypt_multi_part(kms, owm, request, part, user);
+        }
         let data = request.data.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
         })?;
@@ -133,6 +149,14 @@ impl CryptoOpSpec for EncryptOp {
         uid: &str,
         prefix: &str,
     ) -> KResult<Self::Response> {
+        reject_multi_part_for_oracle(
+            Self::OP_NAME,
+            Part::classify(
+                request.init_indicator,
+                request.final_indicator,
+                request.correlation_value.as_deref(),
+            )?,
+        )?;
         let data = request.data.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
         })?;
@@ -238,6 +262,16 @@ pub(super) fn encrypt_bulk(
                 .authenticated_encryption_additional_data
                 .as_deref()
                 .unwrap_or(EMPTY_SLICE);
+            // One IV for several items would reuse a nonce under the same key (fatal for GCM):
+            // every item then gets a fresh random nonce, prepended to its ciphertext.
+            if request.i_v_counter_nonce.is_some() && bulk_data.len() > 1 {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Field,
+                    "Encrypt: an IV/Counter/Nonce cannot be supplied for bulk encryption of \
+                     several items"
+                        .to_owned(),
+                ));
+            }
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 let (key_bytes, cipher) = get_key_and_cipher(request, owm)?;
                 let nonce = match request.i_v_counter_nonce.as_deref() {
@@ -339,7 +373,7 @@ fn encrypt_with_symmetric_key(
     owm: &ObjectWithMetadata,
     rng: &KmsRng,
 ) -> KResult<EncryptResponse> {
-    trace!("entering. owm: {}", owm.attributes());
+    trace!("Encrypting with symmetric key");
 
     let key_block = owm.object().key_block()?;
     let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
@@ -382,41 +416,13 @@ fn encrypt_with_symmetric_key(
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
     // ECB (nonce_size == 0) MUST NOT output or require a nonce; do not generate one.
-    let nonce = if aead.nonce_size() == 0 {
-        Cow::Borrowed(EMPTY_SLICE)
-    } else {
-        let n = match request.i_v_counter_nonce.as_deref() {
-            Some(n) => Cow::Borrowed(n),
-            None => Cow::Owned(random_nonce(rng, aead)?),
-        };
-        let expected = aead.nonce_size();
-        if n.len() != expected && !aead.allows_variable_nonce() {
-            return Err(KmsError::InvalidRequest(format!(
-                "Encrypt: invalid IV/nonce length: expected {expected} bytes for {:?}, got {}",
-                aead,
-                n.len()
-            )));
-        }
-        n
-    };
+    let (nonce, generated_nonce) = encryption_nonce(request, stored_cp, aead, rng)?;
+    let tag_length = tag_length(request.cryptographic_parameters.as_ref(), aead)?;
     let aad = request
         .authenticated_encryption_additional_data
         .as_deref()
         .unwrap_or(EMPTY_SLICE);
-    let padding_method = request
-        .cryptographic_parameters
-        .as_ref()
-        .and_then(|cp| cp.padding_method)
-        .unwrap_or({
-            // KMIP mandatory vectors for ECB expect no padding when the plaintext is block aligned
-            // and omit an explicit PaddingMethod. Default to None ONLY for ECB; keep PKCS5 elsewhere.
-            match aead {
-                SymCipher::Aes128Ecb | SymCipher::Aes192Ecb | SymCipher::Aes256Ecb => {
-                    PaddingMethod::None
-                }
-                _ => PaddingMethod::PKCS5,
-            }
-        });
+    let padding_method = padding_method(request.cryptographic_parameters.as_ref(), aead);
     if aead.nonce_size() == 0 {
         trace!(
             "ECB encrypt: plaintext_len={}, padding_method={padding_method:?}",
@@ -448,79 +454,281 @@ fn encrypt_with_symmetric_key(
             tag.len()
         );
     }
-    // Validate and apply AEAD TagLength handling.
-    // For AEAD (ChaCha20-Poly1305), KMIP vectors expect an invalid tag length to fail the request
-    // (e.g., TagLength=1). For GCM, vectors accept only specific lengths; reject others.
-    let adjusted_tag = if aead.tag_size() != 0 {
-        if let Some(cp) = request.cryptographic_parameters.as_ref() {
-            if let Some(mode) = cp.block_cipher_mode {
-                match mode {
-                    BlockCipherMode::AEAD => {
-                        if let Some(tl) = cp.tag_length {
-                            // ChaCha20-Poly1305 has a fixed 16-byte tag; reject mismatched lengths
-                            let expected = tag.len();
-                            if usize::try_from(tl).ok() != Some(expected) {
-                                return Err(KmsError::Kmip21Error(
-                                    ErrorReason::General_Failure,
-                                    "L_KMIPCRYPTO_random:invalid-tag-length".to_owned(),
-                                ));
-                            }
-                        }
-                        Some(tag)
-                    }
-                    BlockCipherMode::GCM => {
-                        if let Some(tl) = cp.tag_length {
-                            // KMIP vectors validate GCM TagLength values; allow 12..=16 bytes only.
-                            let tl_usize = usize::try_from(tl)?;
-                            if !(12..=16).contains(&tl_usize) {
-                                return Err(KmsError::Kmip21Error(
-                                    ErrorReason::General_Failure,
-                                    "L_KMIPCRYPTO_random:invalid-tag-length".to_owned(),
-                                ));
-                            }
-                            // Truncate to requested length within allowed range
-                            let truncated = if tl_usize < tag.len() {
-                                tag.get(..tl_usize)
-                                    .map_or_else(|| tag.clone(), std::borrow::ToOwned::to_owned)
-                            } else {
-                                tag
-                            };
-                            Some(truncated)
-                        } else {
-                            Some(tag)
-                        }
-                    }
-                    _ => Some(tag),
-                }
-            } else {
-                Some(tag)
-            }
-        } else {
-            Some(tag)
-        }
-    } else {
-        None
-    };
+    let adjusted_tag = (aead.tag_size() != 0).then(|| truncate_tag(tag, tag_length));
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(ciphertext),
-        // nonce-return-policy:
-        // The value used if the Cryptographic Parameters specified Random IV
-        // and the IV/Counter/Nonce value was not provided in the request and the algorithm requires the provision of an IV/Counter/Nonce.
-        i_v_counter_nonce: if aead.nonce_size() != 0
-            && request
-                .i_v_counter_nonce
-                .as_ref()
-                .map_or(0, std::vec::Vec::len)
-                == 0
-        {
-            Some(nonce.into_owned())
-        } else {
-            None
-        },
-        correlation_value: request.correlation_value.clone(),
+        // KMIP 2.1 Table 215: the IV is returned only when the server generated it.
+        i_v_counter_nonce: generated_nonce.then(|| nonce.into_owned()),
+        correlation_value: None,
         authenticated_encryption_tag: adjusted_tag,
+    })
+}
+
+/// Cryptographic Parameters field from the request, else from the key's stored attributes.
+fn parameter<T>(
+    request: Option<&CryptographicParameters>,
+    stored: Option<&CryptographicParameters>,
+    field: impl Fn(&CryptographicParameters) -> Option<T>,
+) -> Option<T> {
+    request.and_then(&field).or_else(|| stored.and_then(&field))
+}
+
+/// IV/Counter/Nonce of a symmetric encryption (KMIP 2.1 §6.1.17): the request's value, or a
+/// server-generated random one (returned in the response, flagged by the returned boolean).
+///
+/// Honours `IV Length` and `Random IV`; deterministic IV construction (`Fixed Field Length`,
+/// `Invocation Field Length`) and counter settings (`Counter Length`, `Initial Counter Value`)
+/// are not implemented and are rejected as unsupported.
+pub(super) fn encryption_nonce<'a>(
+    request: &'a Encrypt,
+    stored: Option<&CryptographicParameters>,
+    cipher: SymCipher,
+    rng: &KmsRng,
+) -> KResult<(Cow<'a, [u8]>, bool)> {
+    if cipher.nonce_size() == 0 {
+        return Ok((Cow::Borrowed(EMPTY_SLICE), false));
+    }
+    let req_cp = request.cryptographic_parameters.as_ref();
+    for cp in [req_cp, stored].into_iter().flatten() {
+        if cp.fixed_field_length.is_some()
+            || cp.invocation_field_length.is_some()
+            || cp.counter_length.is_some()
+            || cp.initial_counter_value.is_some()
+        {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Unsupported_Cryptographic_Parameters,
+                "Encrypt: Fixed Field Length, Invocation Field Length, Counter Length and \
+                 Initial Counter Value are not supported"
+                    .to_owned(),
+            ));
+        }
+    }
+    // `IV Length` is in bits: a multiple of 8, at most 1024 (OpenSSL's 128-byte IV limit),
+    // validated before anything is allocated.
+    let invalid_iv_length = |bits: i32| {
+        KmsError::Kmip21Error(
+            ErrorReason::Bad_Cryptographic_Parameters,
+            format!("Encrypt: IV Length of {bits} bits is not valid for {cipher:?}"),
+        )
+    };
+    let iv_length = parameter(req_cp, stored, |cp| cp.iv_length)
+        .map(|bits| {
+            usize::try_from(bits)
+                .ok()
+                .filter(|b| (8..=1024).contains(b) && b % 8 == 0)
+                .map(|b| b / 8)
+                .filter(|len| *len == cipher.nonce_size() || cipher.allows_variable_nonce())
+                .ok_or_else(|| invalid_iv_length(bits))
+        })
+        .transpose()?;
+    match request.i_v_counter_nonce.as_deref() {
+        Some(iv) if !iv.is_empty() => {
+            let expected = iv_length.unwrap_or_else(|| cipher.nonce_size());
+            if iv.len() != expected && (iv_length.is_some() || !cipher.allows_variable_nonce()) {
+                return Err(KmsError::InvalidRequest(format!(
+                    "Encrypt: invalid IV/nonce length: expected {expected} bytes for {cipher:?}, \
+                     got {}",
+                    iv.len()
+                )));
+            }
+            Ok((Cow::Borrowed(iv), false))
+        }
+        // Random IV explicitly disabled and no IV supplied
+        _ if parameter(req_cp, stored, |cp| cp.random_iv) == Some(false) => {
+            Err(KmsError::Kmip21Error(
+                ErrorReason::Missing_Initialization_Vector,
+                "missing-iv".to_owned(),
+            ))
+        }
+        _ => {
+            let len = iv_length.unwrap_or_else(|| cipher.nonce_size());
+            // A server-generated random GCM IV is at least 96 bits (NIST SP 800-38D §8.2.2).
+            if cipher.allows_variable_nonce() && len < 12 {
+                return Err(invalid_iv_length(
+                    parameter(req_cp, stored, |cp| cp.iv_length).unwrap_or_default(),
+                ));
+            }
+            let mut nonce = vec![0; len];
+            rng.fill_bytes(&mut nonce)?;
+            Ok((Cow::Owned(nonce), true))
+        }
+    }
+}
+
+fn invalid_tag_length() -> KmsError {
+    KmsError::Kmip21Error(
+        ErrorReason::Bad_Cryptographic_Parameters,
+        "L_KMIPCRYPTO_random:invalid-tag-length".to_owned(),
+    )
+}
+
+/// Validated `Tag Length` (bytes) requested for an authenticated encryption, `None` for the
+/// cipher's full tag. GCM and ChaCha20-Poly1305 accept 12 to 16 bytes (truncation, see
+/// [`SymCipher::min_tag_size`]); other AEAD ciphers only their full tag length.
+pub(super) fn tag_length(
+    cp: Option<&CryptographicParameters>,
+    cipher: SymCipher,
+) -> KResult<Option<usize>> {
+    let Some(requested) = cp.and_then(|cp| cp.tag_length) else {
+        return Ok(None);
+    };
+    if cipher.tag_size() == 0 {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Unsupported_Cryptographic_Parameters,
+            "TagLength is only supported for authenticated encryption modes".to_owned(),
+        ));
+    }
+    let requested = usize::try_from(requested).map_err(|_e| invalid_tag_length())?;
+    if !(cipher.min_tag_size()..=cipher.tag_size()).contains(&requested) {
+        return Err(invalid_tag_length());
+    }
+    Ok(Some(requested))
+}
+
+fn truncate_tag(mut tag: Vec<u8>, tag_length: Option<usize>) -> Vec<u8> {
+    if let Some(len) = tag_length {
+        tag.truncate(len);
+    }
+    tag
+}
+
+/// Ciphers whose OpenSSL streaming matches their one-shot output, hence usable for multi-part
+/// operations. XTS (one data unit per call), key wrapping, GCM-SIV and the custom `ChaCha20`
+/// nonce layout are single-part only (KMIP 2.1 §6.1: multi-part support is optional).
+pub(super) fn ensure_multi_part_cipher(op: &str, cipher: SymCipher) -> KResult<()> {
+    let supported = match cipher {
+        SymCipher::Aes128Ecb
+        | SymCipher::Aes192Ecb
+        | SymCipher::Aes256Ecb
+        | SymCipher::Aes128Cbc
+        | SymCipher::Aes192Cbc
+        | SymCipher::Aes256Cbc
+        | SymCipher::Aes128Gcm
+        | SymCipher::Aes192Gcm
+        | SymCipher::Aes256Gcm => true,
+        #[cfg(feature = "non-fips")]
+        SymCipher::Chacha20Poly1305 => true,
+        _ => false,
+    };
+    if !supported {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            format!("{op}: multi-part operations are not supported with {cipher:?}"),
+        ));
+    }
+    Ok(())
+}
+
+/// Default padding: none for ECB (KMIP mandatory vectors), PKCS#5 otherwise.
+pub(super) fn padding_method(
+    cp: Option<&CryptographicParameters>,
+    cipher: SymCipher,
+) -> PaddingMethod {
+    cp.and_then(|cp| cp.padding_method).unwrap_or(match cipher {
+        SymCipher::Aes128Ecb | SymCipher::Aes192Ecb | SymCipher::Aes256Ecb => PaddingMethod::None,
+        _ => PaddingMethod::PKCS5,
+    })
+}
+
+/// Whether OpenSSL must pad (ECB/CBC only); other padding methods are unsupported.
+pub(super) fn openssl_padding(padding: PaddingMethod) -> KResult<bool> {
+    match padding {
+        PaddingMethod::None => Ok(false),
+        PaddingMethod::PKCS5 => Ok(true),
+        other => Err(KmsError::Kmip21Error(
+            ErrorReason::Unsupported_Cryptographic_Parameters,
+            format!("Padding method {other:?} is not currently supported"),
+        )),
+    }
+}
+
+/// State of a multi-part encryption.
+struct EncryptState {
+    cipher: StreamCipher,
+    tag_length: Option<usize>,
+    nonce_to_return: Option<Vec<u8>>,
+    fixed: FixedFields,
+}
+
+/// Multi-part symmetric encryption (KMIP 2.1 §6.1 and §6.1.17): the OpenSSL cipher context
+/// is kept server-side under the Correlation Value; the tag is returned with the final part.
+fn encrypt_multi_part(
+    kms: &KMS,
+    owm: &ObjectWithMetadata,
+    request: &Encrypt,
+    part: Part<'_>,
+    user: &UserId,
+) -> KResult<EncryptResponse> {
+    let owner = StreamOwner {
+        op: EncryptOp::OP_NAME,
+        user,
+        key_uid: owm.id(),
+    };
+    let ((data, nonce, tag), correlation_value) = kms.multi_part.run(
+        &kms.rng,
+        part,
+        owner,
+        || {
+            if !matches!(owm.object(), Object::SymmetricKey { .. }) {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Feature_Not_Supported,
+                    "Encrypt: multi-part encryption is only supported with symmetric keys"
+                        .to_owned(),
+                ));
+            }
+            let (key_bytes, cipher) = get_key_and_cipher(request, owm)?;
+            ensure_multi_part_cipher(EncryptOp::OP_NAME, cipher)?;
+            let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+            let (nonce, generated) = encryption_nonce(request, stored_cp, cipher, &kms.rng)?;
+            let tag_length = tag_length(request.cryptographic_parameters.as_ref(), cipher)?;
+            let padding = openssl_padding(padding_method(
+                request.cryptographic_parameters.as_ref(),
+                cipher,
+            ))?;
+            let aad = request
+                .authenticated_encryption_additional_data
+                .as_deref()
+                .unwrap_or(EMPTY_SLICE);
+            let mut stream = cipher.stream_cipher(Mode::Encrypt, key_bytes, &nonce, aad)?;
+            stream.set_padding(padding);
+            Ok(EncryptState {
+                cipher: stream,
+                tag_length,
+                fixed: FixedFields::new(request.cryptographic_parameters.as_ref(), &nonce, aad),
+                nonce_to_return: generated.then(|| nonce.into_owned()),
+            })
+        },
+        |state, last| {
+            state.fixed.check(
+                EncryptOp::OP_NAME,
+                request.cryptographic_parameters.as_ref(),
+                request.i_v_counter_nonce.as_deref(),
+                request.authenticated_encryption_additional_data.as_deref(),
+            )?;
+            let mut output = state.cipher.update(
+                request
+                    .data
+                    .as_deref()
+                    .map_or(EMPTY_SLICE, |d| d.as_slice()),
+            )?;
+            let tag = if last {
+                let (tail, tag) = state.cipher.finalize_encryption()?;
+                output.extend_from_slice(&tail);
+                (!tag.is_empty()).then(|| truncate_tag(tag, state.tag_length))
+            } else {
+                None
+            };
+            Ok((output, state.nonce_to_return.take(), tag))
+        },
+    )?;
+    Ok(EncryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        data: (!data.is_empty()).then_some(data),
+        i_v_counter_nonce: nonce,
+        correlation_value,
+        authenticated_encryption_tag: tag,
     })
 }
 

@@ -233,11 +233,6 @@ async fn wrap_using_kms(
         }
         _ => kms_bail!("wrap_key: unsupported object type: {}", object_type),
     };
-    if wrapping_key.state() != State::Active {
-        return Err(KmsError::NotSupported(format!(
-            "The wrapping key {wrapping_key_uid} is not active"
-        )));
-    }
     // The server-configured key_encryption_key is a shared server resource accessible
     // to all users, so skip the ownership check for it (mirrors the bypass in
     // `wrap_using_crypto_oracle` — issue #761).
@@ -246,6 +241,8 @@ async fn wrap_using_kms(
         .key_wrapping_key
         .as_deref()
         .is_some_and(|kek| kek == wrapping_key_uid);
+    // Permission comes before any check on the key itself (state, usage mask): those errors
+    // would otherwise reveal the state of another user's key.
     if !is_server_kek && wrapping_key.owner() != user {
         let ops = kms
             .database
@@ -255,11 +252,16 @@ async fn wrap_using_kms(
             .iter()
             .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
         {
-            return Err(KmsError::NotSupported(format!(
+            return Err(KmsError::Unauthorized(format!(
                 "The user {user} does not have the permission to wrap with the key \
                  {wrapping_key_uid}"
             )));
         }
+    }
+    if wrapping_key.state() != State::Active {
+        return Err(KmsError::NotSupported(format!(
+            "The wrapping key {wrapping_key_uid} is not active"
+        )));
     }
 
     // If the wrapping key is itself wrapped, we must unwrap it first

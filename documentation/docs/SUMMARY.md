@@ -177,6 +177,8 @@
   - [Hash](kmip_support/_hash.md)
   - [Import](kmip_support/_import.md)
   - [Locate](kmip_support/_locate.md)
+  - [Login and Logout](kmip_support/_login.md)
+  - [KMIP Tickets (explanation)](kmip_support/tickets.md)
   - [Mac](kmip_support/_mac.md)
   - [Key rotation]()
     - [Re-Key](kmip_support/key_rotation/_re-key.md)

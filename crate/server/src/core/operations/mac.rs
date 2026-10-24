@@ -1,24 +1,34 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{HashingAlgorithm, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_data_structures::KeyBlock,
             kmip_objects::Object,
             kmip_operations::{MAC, MACResponse, MACVerify, MACVerifyResponse},
-            kmip_types::{CryptographicAlgorithm, UniqueIdentifier, ValidityIndicator},
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier,
+                ValidityIndicator,
+            },
         },
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::trace;
-use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
+use openssl::{
+    md::{Md, MdRef},
+    md_ctx::MdCtx,
+    pkey::PKey,
+};
 
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, KeysetMode},
+        operations::{
+            CryptoOpSpec, KeysetMode,
+            key_ops::multi_part::{Part, StreamOwner, reject_multi_part_for_oracle},
+        },
     },
     error::KmsError,
     kms_bail,
@@ -45,47 +55,40 @@ impl CryptoOpSpec for MacOp {
     }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
-        // MAC does NOT enforce CryptographicUsageMask::MACGenerate for backward compat.
+        // KMIP 2.1 §4.1: an Active object SHALL only be used for the purposes allowed by its
+        // Cryptographic Usage Mask (a key without any mask is accepted).
         matches!(owm.object(), Object::SymmetricKey { .. })
+            && owm.has_usage_mask(CryptographicUsageMask::MACGenerate, true)
     }
 
     fn execute_local(
-        _kms: &KMS,
+        kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &UserId,
+        user: &UserId,
     ) -> KResult<Self::Response> {
-        // Determine hashing algorithm: if explicit cryptographic_parameters supplied use them,
-        // otherwise infer from the key's registered CryptographicAlgorithm or its attributes.
-        let algorithm = if let Some(cp) = &request.cryptographic_parameters {
-            cp.hashing_algorithm.ok_or_else(|| {
-                KmsError::InvalidRequest("Hashing algorithm is required".to_owned())
-            })?
-        } else {
-            let key_block = owm.object().key_block()?;
-            infer_hmac_hashing_algorithm(key_block, owm.attributes())?
+        let part = Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?;
+        let data = part_data(request.data.as_deref(), part, "MAC")?;
+        trace!("Mac: part: {part:?}, data len: {}", data.len());
+        let owner = StreamOwner {
+            op: Self::OP_NAME,
+            user,
+            key_uid: owm.id(),
         };
-        trace!("Mac: algorithm: {algorithm:?}");
-
-        let data = request.data.as_deref().unwrap_or_default();
-        trace!("Mac: data len: {}", data.len());
-
-        if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
-            kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
-        }
-
-        let digest = if let Some(correlation_value) = &request.correlation_value {
-            compute_hmac(correlation_value, data, algorithm)?
-        } else {
-            let key_bytes = owm.object().key_block()?.key_bytes_ref().context("mac")?;
-            compute_hmac(key_bytes, data, algorithm)?
-        };
-
-        let (mac_data, correlation_value) = if request.init_indicator.unwrap_or(false) {
-            (None, Some(digest))
-        } else {
-            (Some(digest), None)
-        };
+        let (mac_data, correlation_value) = kms.multi_part.run(
+            &kms.rng,
+            part,
+            owner,
+            || hmac_context(owm, request.cryptographic_parameters.as_ref(), "mac"),
+            |ctx, last| {
+                ctx.digest_sign_update(data)?;
+                Ok(if last { Some(hmac_final(ctx)?) } else { None })
+            },
+        )?;
 
         Ok(MACResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -100,7 +103,13 @@ impl CryptoOpSpec for MacOp {
         uid: &str,
         prefix: &str,
     ) -> KResult<Self::Response> {
-        let data = request.data.as_deref().unwrap_or_default();
+        let part = Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?;
+        reject_multi_part_for_oracle(Self::OP_NAME, part)?;
+        let data = part_data(request.data.as_deref(), part, "MAC")?;
         let lock = kms.crypto_oracles.read().await;
         let crypto_oracle = lock.get(prefix).ok_or_else(|| {
             KmsError::InvalidRequest(format!("MAC: unknown crypto oracle prefix: {prefix}"))
@@ -114,6 +123,13 @@ impl CryptoOpSpec for MacOp {
             correlation_value: None,
         })
     }
+}
+
+/// State of a multi-part MAC Verify: the running HMAC and the MAC to check, which may be
+/// supplied on the initial or the final part.
+struct MacVerifyState {
+    ctx: MdCtx,
+    mac_data: Vec<u8>,
 }
 
 /// Marker type for the `MACVerify` operation's key selection requirements.
@@ -145,39 +161,62 @@ impl CryptoOpSpec for MacVerifyOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         matches!(owm.object(), Object::SymmetricKey { .. })
+            && owm.has_usage_mask(CryptographicUsageMask::MACVerify, true)
     }
 
     fn execute_local(
-        _kms: &KMS,
+        kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &UserId,
+        user: &UserId,
     ) -> KResult<Self::Response> {
-        let key_block = owm.object().key_block()?;
-        let key_bytes = key_block.key_bytes_ref().context("mac_verify")?;
-
-        // Determine hashing algorithm: prefer explicit request param; otherwise infer from key.
-        let algorithm = if let Some(cp) = &request.cryptographic_parameters {
-            cp.hashing_algorithm.ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "Hashing algorithm is required in cryptographic parameters if provided"
-                        .to_owned(),
-                )
-            })?
-        } else {
-            infer_hmac_hashing_algorithm(key_block, owm.attributes())?
+        let part = Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?;
+        if part == Part::Single && request.mac_data.is_empty() {
+            return Err(missing_mac_data());
+        }
+        let owner = StreamOwner {
+            op: Self::OP_NAME,
+            user,
+            key_uid: owm.id(),
         };
-
-        let expected_mac = compute_hmac(key_bytes, &request.data, algorithm)?;
-        let validity = if expected_mac == request.mac_data {
-            ValidityIndicator::Valid
-        } else {
-            ValidityIndicator::Invalid
-        };
+        let (validity_indicator, correlation_value) = kms.multi_part.run(
+            &kms.rng,
+            part,
+            owner,
+            || {
+                Ok(MacVerifyState {
+                    ctx: hmac_context(
+                        owm,
+                        request.cryptographic_parameters.as_ref(),
+                        "mac_verify",
+                    )?,
+                    mac_data: Vec::new(),
+                })
+            },
+            |state, last| {
+                state.ctx.digest_sign_update(&request.data)?;
+                if !request.mac_data.is_empty() {
+                    state.mac_data.clone_from(&request.mac_data);
+                }
+                if !last {
+                    return Ok(None);
+                }
+                if state.mac_data.is_empty() {
+                    return Err(missing_mac_data());
+                }
+                let computed = hmac_final(&mut state.ctx)?;
+                Ok(Some(validity(&computed, &state.mac_data)))
+            },
+        )?;
 
         Ok(MACVerifyResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            validity_indicator: validity,
+            validity_indicator,
+            correlation_value,
         })
     }
 
@@ -187,6 +226,15 @@ impl CryptoOpSpec for MacVerifyOp {
         uid: &str,
         prefix: &str,
     ) -> KResult<Self::Response> {
+        let part = Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?;
+        reject_multi_part_for_oracle(Self::OP_NAME, part)?;
+        if request.mac_data.is_empty() {
+            return Err(missing_mac_data());
+        }
         let lock = kms.crypto_oracles.read().await;
         let crypto_oracle = lock.get(prefix).ok_or_else(|| {
             KmsError::InvalidRequest(format!("MACVerify: unknown crypto oracle prefix: {prefix}"))
@@ -201,11 +249,12 @@ impl CryptoOpSpec for MacVerifyOp {
             .await?;
         Ok(MACVerifyResponse {
             unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            validity_indicator: if valid {
+            validity_indicator: Some(if valid {
                 ValidityIndicator::Valid
             } else {
                 ValidityIndicator::Invalid
-            },
+            }),
+            correlation_value: None,
         })
     }
 }
@@ -226,8 +275,37 @@ pub(crate) async fn mac_verify(
 
 // ─── Helper functions ────────────────────────────────────────────────────────
 
-fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult<Vec<u8>> {
-    let message_digest = match algorithm {
+/// Data of a part: required for single-part requests (KMIP 2.1 §6.1), optional otherwise.
+fn part_data<'a>(data: Option<&'a [u8]>, part: Part<'_>, op: &str) -> KResult<&'a [u8]> {
+    match (data, part) {
+        (Some(data), _) => Ok(data),
+        (None, Part::Single) => Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!("{op}: Data is required for a single-part operation"),
+        )),
+        (None, _) => Ok(&[]),
+    }
+}
+
+fn missing_mac_data() -> KmsError {
+    KmsError::Kmip21Error(
+        ErrorReason::Invalid_Field,
+        "MACVerify: MAC Data is required for a single-part operation or by the final part"
+            .to_owned(),
+    )
+}
+
+/// Constant-time MAC comparison.
+fn validity(computed: &[u8], expected: &[u8]) -> ValidityIndicator {
+    if computed.len() == expected.len() && openssl::memcmp::eq(computed, expected) {
+        ValidityIndicator::Valid
+    } else {
+        ValidityIndicator::Invalid
+    }
+}
+
+fn hmac_md(algorithm: HashingAlgorithm) -> KResult<&'static MdRef> {
+    Ok(match algorithm {
         HashingAlgorithm::SHA1 => Md::sha1(),
         HashingAlgorithm::SHA224 => Md::sha224(),
         HashingAlgorithm::SHA256 => Md::sha256(),
@@ -237,21 +315,78 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
         HashingAlgorithm::SHA3256 => Md::sha3_256(),
         HashingAlgorithm::SHA3384 => Md::sha3_384(),
         HashingAlgorithm::SHA3512 => Md::sha3_512(),
-        algorithm => kms_bail!("Unsupported hashing algorithm: {:?}", algorithm),
-    };
+        algorithm => {
+            kms_bail!(KmsError::NotSupported(format!(
+                "Unsupported hashing algorithm: {algorithm:?}"
+            )))
+        }
+    })
+}
 
+/// Start an HMAC with the key of `owm` and the algorithm from the request or the key.
+fn hmac_context(
+    owm: &ObjectWithMetadata,
+    request_parameters: Option<&CryptographicParameters>,
+    context: &'static str,
+) -> KResult<MdCtx> {
+    let key_block = owm.object().key_block()?;
+    let algorithm = mac_hashing_algorithm(key_block, owm.attributes(), request_parameters)?;
+    trace!("Mac: algorithm: {algorithm:?}");
+    hmac_init(key_block.key_bytes_ref().context(context)?, algorithm)
+}
+
+fn hmac_init(key: &[u8], algorithm: HashingAlgorithm) -> KResult<MdCtx> {
+    let message_digest = hmac_md(algorithm)?;
     let key = PKey::hmac(key)?;
     let mut ctx = MdCtx::new()?;
+    // The context keeps its own reference to the key.
     ctx.digest_sign_init(Some(message_digest), &key)?;
-    ctx.digest_sign_update(data)?;
+    Ok(ctx)
+}
+
+fn hmac_final(ctx: &mut MdCtx) -> KResult<Vec<u8>> {
     let mut hmac = Vec::with_capacity(64);
     ctx.digest_sign_final_to_vec(&mut hmac)?;
     trace!("HMAC computed: {} bytes", hmac.len());
     Ok(hmac)
 }
 
+/// One-shot HMAC of `data` under `key` (also used by the Derive Key HMAC method).
+pub(crate) fn compute_hmac(
+    key: &[u8],
+    data: &[u8],
+    algorithm: HashingAlgorithm,
+) -> KResult<Vec<u8>> {
+    let mut ctx = hmac_init(key, algorithm)?;
+    ctx.digest_sign_update(data)?;
+    hmac_final(&mut ctx)
+}
+
+/// Hashing algorithm of the HMAC: the request's Hashing Algorithm, else its HMAC
+/// Cryptographic Algorithm (KMIP 2.1 Table 259), else inferred from the key.
+fn mac_hashing_algorithm(
+    key_block: &KeyBlock,
+    attrs: &Attributes,
+    request_parameters: Option<&CryptographicParameters>,
+) -> KResult<HashingAlgorithm> {
+    if let Some(cp) = request_parameters {
+        if let Some(hashing_algorithm) = cp.hashing_algorithm {
+            return Ok(hashing_algorithm);
+        }
+        if let Some(ca) = cp.cryptographic_algorithm {
+            return hmac_algorithm_to_hashing(ca).map_err(|_e| {
+                KmsError::Kmip21Error(
+                    ErrorReason::Bad_Cryptographic_Parameters,
+                    format!("MAC: {ca:?} is not an HMAC algorithm"),
+                )
+            });
+        }
+    }
+    infer_hmac_hashing_algorithm(key_block, attrs)
+}
+
 /// Map a `CryptographicAlgorithm` HMAC variant to its `HashingAlgorithm`.
-fn hmac_algorithm_to_hashing(ca: CryptographicAlgorithm) -> KResult<HashingAlgorithm> {
+pub(crate) fn hmac_algorithm_to_hashing(ca: CryptographicAlgorithm) -> KResult<HashingAlgorithm> {
     match ca {
         CryptographicAlgorithm::HMACSHA1 => Ok(HashingAlgorithm::SHA1),
         CryptographicAlgorithm::HMACSHA224 => Ok(HashingAlgorithm::SHA224),
@@ -278,6 +413,12 @@ fn infer_hmac_hashing_algorithm(
             return Ok(ha);
         }
     }
+    // the Cryptographic Algorithm attribute (KMIP 2.1 §4.12) when the key block does not carry it
+    if let Some(ca) = attrs.cryptographic_algorithm {
+        if let Ok(ha) = hmac_algorithm_to_hashing(ca) {
+            return Ok(ha);
+        }
+    }
     let cp = attrs
         .cryptographic_parameters
         .as_ref()
@@ -300,11 +441,14 @@ mod tests {
     use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
         kmip_2_1::{
             extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-            kmip_operations::MAC,
-            kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+            kmip_operations::{MAC, MACVerify},
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier,
+                ValidityIndicator,
+            },
             requests::symmetric_key_create_request,
         },
     };
@@ -312,6 +456,7 @@ mod tests {
     use crate::{
         config::ServerParams,
         core::{KMS, operations::mac::compute_hmac},
+        error::KmsError,
         middlewares::UserId,
         result::KResult,
         tests::test_utils::https_clap_config,
@@ -366,15 +511,36 @@ mod tests {
         Ok(())
     }
 
+    fn mac_request(
+        uid: &UniqueIdentifier,
+        data: Option<&[u8]>,
+        correlation_value: Option<Vec<u8>>,
+        init_indicator: Option<bool>,
+        final_indicator: Option<bool>,
+    ) -> MAC {
+        MAC {
+            unique_identifier: Some(uid.clone()),
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA3256),
+                ..Default::default()
+            }),
+            data: data.map(<[u8]>::to_vec),
+            correlation_value,
+            init_indicator,
+            final_indicator,
+        }
+    }
+
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
         let kms = Arc::new(
             KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
         );
+        let user = UserId::from("user");
 
-        let unique_identifier = Some(
-            kms.create(
+        let uid = kms
+            .create(
                 symmetric_key_create_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -384,58 +550,180 @@ mod tests {
                     false,
                     None,
                 )?,
-                &UserId::from("user"),
+                &user,
             )
             .await?
-            .unique_identifier,
-        );
+            .unique_identifier;
 
-        let request = MAC {
-            unique_identifier: unique_identifier.clone(),
+        // Single-part reference over the whole message
+        let single = kms
+            .mac(
+                mac_request(&uid, Some(&[1, 2, 3, 4, 5, 6]), None, None, None),
+                &user,
+            )
+            .await?;
+        let expected = single.mac_data.unwrap();
+        assert_eq!(expected.len(), 32);
+        assert_eq!(single.correlation_value, None);
+
+        // Multi-part: init, middle, final must give the same MAC (keyed with the stored key)
+        let init = kms
+            .mac(
+                mac_request(&uid, Some(&[1, 2]), None, Some(true), None),
+                &user,
+            )
+            .await?;
+        assert_eq!(init.mac_data, None);
+        let cv = init.correlation_value.unwrap();
+        let middle = kms
+            .mac(
+                mac_request(&uid, Some(&[3, 4]), Some(cv.clone()), None, None),
+                &user,
+            )
+            .await?;
+        assert_eq!(middle.mac_data, None);
+        assert_eq!(middle.correlation_value.as_ref(), Some(&cv));
+        let last = kms
+            .mac(
+                mac_request(&uid, Some(&[5, 6]), Some(cv.clone()), None, Some(true)),
+                &user,
+            )
+            .await?;
+        assert_eq!(last.mac_data, Some(expected.clone()));
+        assert_eq!(last.correlation_value, None);
+
+        // Multi-part MAC Verify; MAC Data supplied on the initial part
+        let verify = |data: &[u8], mac_data: Vec<u8>, cv: Option<Vec<u8>>, init, fin| MACVerify {
+            unique_identifier: uid.clone(),
             cryptographic_parameters: Some(CryptographicParameters {
                 hashing_algorithm: Some(HashingAlgorithm::SHA3256),
                 ..Default::default()
             }),
-            data: Some(vec![1, 2, 3]),
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
+            data: data.to_vec(),
+            mac_data,
+            correlation_value: cv,
+            init_indicator: init,
+            final_indicator: fin,
         };
-        let response = kms.mac(request, &UserId::from("user")).await?;
-        assert_eq!(response.mac_data.unwrap().len(), 32);
-        assert_eq!(response.correlation_value, None);
+        let init = kms
+            .mac_verify(
+                verify(&[1, 2, 3], expected.clone(), None, Some(true), None),
+                &user,
+            )
+            .await?;
+        assert_eq!(init.validity_indicator, None);
+        let cv = init.correlation_value.unwrap();
+        let last = kms
+            .mac_verify(
+                verify(&[4, 5, 6], Vec::new(), Some(cv), None, Some(true)),
+                &user,
+            )
+            .await?;
+        assert_eq!(last.validity_indicator, Some(ValidityIndicator::Valid));
 
-        // Stream initialization
-        let request = MAC {
-            unique_identifier: unique_identifier.clone(),
-            cryptographic_parameters: Some(CryptographicParameters {
-                hashing_algorithm: Some(HashingAlgorithm::SHA3256),
-                ..Default::default()
-            }),
-            data: Some(vec![1, 2, 3]),
-            correlation_value: None,
-            init_indicator: Some(true),
-            final_indicator: None,
-        };
-        let response = kms.mac(request, &UserId::from("user")).await?;
-        assert_eq!(response.mac_data, None);
-        assert_eq!(response.correlation_value.clone().unwrap().len(), 32);
+        // Single-part MAC Verify of a wrong MAC
+        let mut wrong = expected;
+        if let Some(byte) = wrong.first_mut() {
+            *byte ^= 1;
+        }
+        let res = kms
+            .mac_verify(verify(&[1, 2, 3, 4, 5, 6], wrong, None, None, None), &user)
+            .await?;
+        assert_eq!(res.validity_indicator, Some(ValidityIndicator::Invalid));
 
-        // Stream finalization
-        let request = MAC {
-            unique_identifier,
-            cryptographic_parameters: Some(CryptographicParameters {
-                hashing_algorithm: Some(HashingAlgorithm::SHA3256),
-                ..Default::default()
-            }),
-            data: Some(vec![1, 2, 3]),
-            correlation_value: response.correlation_value,
-            init_indicator: None,
-            final_indicator: Some(true),
-        };
-        let response = kms.mac(request, &UserId::from("user")).await?;
-        assert_eq!(response.mac_data.unwrap().len(), 32);
-        assert_eq!(response.correlation_value, None);
+        // Another user cannot continue the stream; the owner still can afterwards
+        let init = kms
+            .mac(mac_request(&uid, Some(&[1]), None, Some(true), None), &user)
+            .await?;
+        let cv = init.correlation_value.unwrap();
+        kms.mac(
+            mac_request(&uid, Some(&[2]), Some(cv.clone()), None, Some(true)),
+            &UserId::from("mallory"),
+        )
+        .await
+        .unwrap_err();
+        let last = kms
+            .mac(
+                mac_request(&uid, Some(&[2]), Some(cv), None, Some(true)),
+                &user,
+            )
+            .await?;
+        assert!(last.mac_data.is_some());
+
+        // Single-part MAC requires Data
+        let err = kms
+            .mac(mac_request(&uid, None, None, None, None), &user)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
+        ));
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_server_mac_requires_usage_mask() -> KResult<()> {
+        let kms = Arc::new(
+            KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
+        );
+        let user = UserId::from("user");
+        // AES keys created with the default mask (Encrypt|Decrypt|...) have no MACGenerate bit
+        let uid = kms
+            .create(
+                symmetric_key_create_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    256,
+                    CryptographicAlgorithm::AES,
+                    EMPTY_TAGS,
+                    false,
+                    None,
+                )?,
+                &user,
+            )
+            .await?
+            .unique_identifier;
+        let err = kms
+            .mac(mac_request(&uid, Some(&[1]), None, None, None), &user)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                KmsError::Kmip21Error(ErrorReason::Incompatible_Cryptographic_Usage_Mask, _)
+            ),
+            "{err:?}"
+        );
+        Ok(())
+    }
+
+    /// KMIP 2.1 Table 259: the MAC algorithm comes from the key's Cryptographic Algorithm
+    /// attribute when the request carries no parameters and the key block holds no algorithm.
+    #[test]
+    fn hmac_algorithm_is_inferred_from_the_attribute() {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            kmip_attributes::Attributes, kmip_data_structures::KeyBlock, kmip_types::KeyFormatType,
+        };
+
+        use super::infer_hmac_hashing_algorithm;
+
+        let key_block = KeyBlock {
+            key_format_type: KeyFormatType::Raw,
+            key_compression_type: None,
+            key_value: None,
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        };
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::HMACSHA1),
+            ..Attributes::default()
+        };
+        assert_eq!(
+            infer_hmac_hashing_algorithm(&key_block, &attributes).unwrap(),
+            HashingAlgorithm::SHA1
+        );
+        infer_hmac_hashing_algorithm(&key_block, &Attributes::default()).unwrap_err();
     }
 }

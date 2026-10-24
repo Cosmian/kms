@@ -13,6 +13,11 @@ Read-Only attributes SHALL NOT be modified using this operation.
 
 This operation can be applied to all [supported objects](../objects.md).
 
+- The attribute must already exist, else `Attribute_Not_Found`. Exempt: `Name`, `Sensitive`, `Extractable`, `ActivationDate`, `AttributeIndex` and the rotation attributes.
+- A Current Attribute is honoured; one that matches no instance returns `Attribute_Instance_Not_Found`.
+- Without a Current Attribute, the single `Name` instance is replaced; several instances return `Invalid_Field`; none adds it.
+- Every successful Modify updates the `LastChangeDate`.
+
 ### Supported attributes
 
 The following KMIP attributes can be modified:
@@ -20,7 +25,6 @@ The following KMIP attributes can be modified:
 | Attribute | Notes |
 |---|---|
 | `ActivationDate` | **Pre-Active objects only.** If the new date ≤ now the object automatically transitions to **Active** (KMIP spec §3.22). |
-| `CryptographicAlgorithm` | Replaces the algorithm of the managed object. |
 | `CryptographicParameters` | Replaces the cryptographic parameters structure. |
 | `CryptographicDomainParameters` | Replaces the domain parameters structure. |
 | `CryptographicUsageMask` | Replaces the bitmask of allowed cryptographic usages. |
@@ -40,58 +44,12 @@ The following attributes are **read-only** for `ModifyAttribute` and SHALL NOT b
 - `State` (use Revoke and Destroy to change it)
 - `AlwaysSensitive`, `NeverExtractable`
 - `RotateGeneration`, `RotateDate`, `RotateLatest`
+- `CryptographicAlgorithm`, `KeyFormatType`, `ArchiveDate`, `CompromiseDate`, `DestroyDate`, `CertificateType`
+- `KeyValuePresent`, `OpaqueDataType`, `X509CertificateIdentifier`, `X509CertificateIssuer`, `X509CertificateSubject`
 
-`Sensitive` and `Extractable` can be modified only by the object owner or by a user holding an explicit
-`ModifyAttribute` grant.
-
-## Example - Modify the cryptographic algorithm
-
-```bash
-  ckms attributes modify -i my_symmetric_key --cryptographic-algorithm chacha20
-```
-
-=== "Request"
-
-    ```json
-    {
-      "tag": "ModifyAttribute",
-      "type": "Structure",
-      "value": [
-        {
-          "tag": "UniqueIdentifier",
-          "type": "TextString",
-          "value": "my_symmetric_key"
-        },
-        {
-          "tag": "NewAttribute",
-          "type": "Structure",
-          "value": [
-            {
-              "tag": "CryptographicAlgorithm",
-              "type": "Enumeration",
-              "value": "ChaCha20"
-            }
-          ]
-        }
-      ]
-    }
-    ```
-
-=== "Response"
-
-    ```json
-    {
-      "tag": "ModifyAttributeResponse",
-      "type": "Structure",
-      "value": [
-        {
-          "tag": "UniqueIdentifier",
-          "type": "TextString",
-          "value": "my_symmetric_key"
-        }
-      ]
-    }
-    ```
+`Sensitive`, `Extractable`, `UsageLimits`, `CryptographicUsageMask`, `ActivationDate`, `DeactivationDate`, `Link`,
+`LinkType`, `RotateInterval` and `RevocationReason` can be modified only by the object owner or by a user holding an
+explicit `ModifyAttribute` grant. A `Get` grant is not enough: the refusal is `Permission_Denied`.
 
 ## Example - Modify the activation date on a Pre-Active key
 
@@ -206,7 +164,7 @@ Attempting to modify a read-only attribute such as `State` will return an `Attri
             { "tag": "Operation", "type": "Enumeration", "value": "ModifyAttribute" },
             { "tag": "ResultStatus", "type": "Enumeration", "value": "OperationFailed" },
             { "tag": "ResultReason", "type": "Enumeration", "value": "Attribute_Read_Only" },
-            { "tag": "ResultMessage", "type": "TextString", "value": "DENIED" }
+            { "tag": "ResultMessage", "type": "TextString", "value": "DENIED: this attribute is server-managed and cannot be modified by the user" }
           ]
         }
       ]

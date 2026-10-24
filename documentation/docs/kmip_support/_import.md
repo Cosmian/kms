@@ -19,6 +19,11 @@ for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md). OpenPGP keys (`PGPKey`) can be imported as transferable secret or public keys (ASCII armored or binary bytes) in non-FIPS mode.
 
+A State supplied by the client is kept. Otherwise the object is `Active` if its Activation Date has passed, and
+`Pre-Active` if not.
+A Unique Identifier starting with `[`, or an Object Type that does not match the object, returns `Invalid_Field`.
+A request that breaches the server constraints returns `Constraint_Violation`.
+
 ## Example - A NIST P-256 EC private key in SEC1 format
 
 Importing a NIST P-256 EC Private Key in SEC1 format.

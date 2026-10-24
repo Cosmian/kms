@@ -464,3 +464,49 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     assert_eq!(data_encryption_key.key_block()?, &original_key_block);
     Ok(())
 }
+
+/// A byte-string key wrapped with No Encoding keeps its own Key Format Type: PKCS#1 must not be
+/// silently re-encoded as PKCS#8.
+#[test]
+fn wrap_no_encoding_keeps_pkcs1_format() -> CryptoResult<()> {
+    #[cfg(not(feature = "non-fips"))]
+    openssl::provider::Provider::load(None, "fips")
+        .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
+
+    let mut kek_bytes = vec![0; 32];
+    KmsRng::new().fill_bytes(&mut kek_bytes)?;
+    let kek = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        kek_bytes.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+
+    let rsa = Rsa::generate(2048)?;
+    let pkcs1 = rsa.private_key_to_der()?;
+    let mut key = openssl_private_key_to_kmip(
+        &PKey::from_rsa(rsa)?,
+        KeyFormatType::PKCS1,
+        Some(CryptographicUsageMask::Unrestricted),
+    )?;
+    assert_eq!(key.key_block()?.key_format_type, KeyFormatType::PKCS1);
+    let original_key_block = key.key_block()?.clone();
+
+    let spec = KeyWrappingSpecification {
+        encoding_option: Some(cosmian_kmip::kmip_2_1::kmip_types::EncodingOption::NoEncoding),
+        ..KeyWrappingSpecification::default()
+    };
+    let wrapped_plaintext = super::wrap_key::key_data_to_wrap(&key, &spec)?;
+    assert_eq!(wrapped_plaintext.as_slice(), pkcs1.as_slice());
+
+    wrap_object_with_key(&mut key, &kek, &spec, &KmsRng::new())?;
+    unwrap_key_block(key.key_block_mut()?, &kek)?;
+    assert_eq!(key.key_block()?.key_format_type, KeyFormatType::PKCS1);
+    assert_eq!(
+        key.key_block()?.key_bytes()?,
+        original_key_block.key_bytes()?
+    );
+    Ok(())
+}

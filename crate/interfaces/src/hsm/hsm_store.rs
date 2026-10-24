@@ -24,10 +24,10 @@ use num_bigint_dig::{BigInt, Sign};
 use zeroize::Zeroizing;
 
 use crate::{
-    AtomicOperation, CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
-    HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial,
-    KeyType, MacAlgorithm, MacKeyMetadata, ObjectWithMetadata, ObjectsStore, SigningAlgorithm,
-    SigningKeyMetadata, UserId,
+    AtomicOperation, CryptoAlgorithm, CryptoOracle, DestroyedFilter, EcCurve, FindOptions, HSM,
+    HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+    InterfaceError, InterfaceResult, KeyMaterial, KeyType, MacAlgorithm, MacKeyMetadata,
+    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
@@ -146,6 +146,128 @@ impl HsmStore {
             .iter()
             .find(|a| a.as_str() != "*")
             .map_or("admin", String::as_str)
+    }
+
+    /// Return at most `options.limit` HSM keys matching the search. With
+    /// `options.hsm_granted_uids`, only those keys are looked up, so the work is bounded by the
+    /// caller's grants and the requested page instead of the number of keys on the device.
+    async fn find_matching(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let mut uids = Vec::new();
+        // HSM keys are never destroyed: a destroyed-only listing matches none of them.
+        let limit = if state.is_none() && options.destroyed == DestroyedFilter::Only {
+            0
+        } else {
+            options.limit.unwrap_or(usize::MAX)
+        };
+        if limit == 0 {
+            return Ok(uids);
+        }
+        let mut search_attributes = researched_attributes.cloned().unwrap_or_else(|| {
+            debug!("No researched_attributes provided. Defaulting to empty filter attributes");
+            Attributes::default()
+        });
+        if let Err(e) = check_basic_compatibility(vendor_id, &search_attributes, state) {
+            debug!("{e}");
+            return Ok(uids);
+        }
+        let object_filter = match HsmObjectFilter::try_from(&search_attributes) {
+            Ok(object_filter) => object_filter,
+            Err(e) => {
+                debug!("HSM find: incompatible filter, skipping HSM search: {e}");
+                return Ok(uids);
+            }
+        };
+        let key_size_filter = search_attributes.get_cryptographic_length();
+        let requested_tags = search_attributes.get_tags(vendor_id);
+        let key_id_filter = match search_attributes.unique_identifier {
+            Some(unique_identifier) => {
+                let Some(str) = unique_identifier.as_str() else {
+                    return Ok(uids);
+                };
+                Some(str.to_owned())
+            }
+            None => None,
+        };
+        let wanted = |uid: &str, meta: Option<&KeyMetadata>| {
+            key_id_filter
+                .as_ref()
+                .is_none_or(|wanted_id| uid == wanted_id)
+                && (requested_tags.is_empty()
+                    || meta.is_some_and(|m| requested_tags.is_subset(&m.tags)))
+                && key_size_filter
+                    .is_none_or(|size| meta.is_some_and(|m| m.key_length_in_bits == size))
+        };
+
+        if let Some(granted) = &options.hsm_granted_uids {
+            for uid in &**granted {
+                // Keys of another HSM instance do not parse with this prefix.
+                let Ok((slot_id, object_id)) = parse_uid_with_prefix(uid, &self.prefix) else {
+                    continue;
+                };
+                // Without metadata the key type cannot be checked against the filter (and the
+                // key may no longer exist): skip it.
+                let Some(meta) = self
+                    .hsm
+                    .get_key_metadata(slot_id, object_id.as_bytes())
+                    .await
+                    .unwrap_or_default()
+                else {
+                    continue;
+                };
+                if !filter_accepts(&object_filter, &meta.key_type) || !wanted(uid, Some(&meta)) {
+                    continue;
+                }
+                let attrs = build_find_attributes(&Some(meta), &object_filter);
+                uids.push((uid.clone(), State::Active, attrs));
+                if uids.len() >= limit {
+                    break;
+                }
+            }
+            return Ok(uids);
+        }
+
+        for slot_id in self.hsm.get_available_slot_list().await? {
+            let found = self
+                .hsm
+                .find(slot_id, object_filter.clone())
+                .await
+                .unwrap_or(vec![]);
+            for object_id in found {
+                trace!("Getting metadata for: {:02X?}", object_id);
+                let object_meta = self
+                    .hsm
+                    .get_key_metadata(slot_id, &object_id)
+                    .await
+                    .unwrap_or_default();
+                let object_string = match str::from_utf8(&object_id) {
+                    Ok(object_string) => object_string,
+                    Err(err) => {
+                        error!("Failed to decode object_id {}", err);
+                        continue;
+                    }
+                };
+                let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
+                if !wanted(&uid, object_meta.as_ref()) {
+                    continue;
+                }
+                trace!("Found: {uid}");
+                // Populate basic attributes from HSM metadata so callers
+                // (Locate, /access/owned) can display key info without a
+                // separate GetAttributes round-trip.
+                let attrs = build_find_attributes(&object_meta, &object_filter);
+                uids.push((uid, State::Active, attrs));
+                if uids.len() >= limit {
+                    return Ok(uids);
+                }
+            }
+        }
+        Ok(uids)
     }
 }
 
@@ -430,8 +552,26 @@ impl ObjectsStore for HsmStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        let slot_ids = self.hsm.get_available_slot_list().await?;
-        let mut uids = Vec::new();
+        self.find_with_options(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        user: &UserId,
+        user_must_be_owner: bool,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         // When the caller requires ownership (e.g. /access/owned), non-admin
         // users should not see HSM keys — only HSM admins "own" HSM keys.
         if user_must_be_owner && !self.is_admin(user) {
@@ -439,90 +579,10 @@ impl ObjectsStore for HsmStore {
                 "User '{}' is not an HSM admin; skipping HSM keys for ownership query",
                 user
             );
-            return Ok(uids);
+            return Ok(Vec::new());
         }
-        let mut search_attributes = researched_attributes.cloned().unwrap_or_else(|| {
-            debug!("No researched_attributes provided. Defaulting to empty filter attributes");
-            Attributes::default()
-        });
-        match check_basic_compatibility(vendor_id, &search_attributes, state) {
-            Ok(()) => {}
-            Err(e) => {
-                debug!("{e}");
-                return Ok(uids);
-            }
-        }
-        let object_filter = match HsmObjectFilter::try_from(&search_attributes) {
-            Ok(object_filter) => object_filter,
-            Err(e) => {
-                debug!("HSM find: incompatible filter, skipping HSM search: {e}");
-                return Ok(uids);
-            }
-        };
-        let key_size_filter = search_attributes.get_cryptographic_length();
-        let requested_tags = search_attributes.get_tags(vendor_id);
-        let key_id_filter = match search_attributes.unique_identifier {
-            Some(unique_identifier) => {
-                let Some(str) = unique_identifier.as_str() else {
-                    return Ok(uids);
-                };
-                Some(str.to_owned())
-            }
-            None => None,
-        };
-
-        for slot_id in slot_ids {
-            let found = self
-                .hsm
-                .find(slot_id, object_filter.clone())
-                .await
-                .unwrap_or(vec![]);
-            for object_id in found {
-                trace!("Getting metadata for: {:02X?}", object_id);
-                let object_meta = self
-                    .hsm
-                    .get_key_metadata(slot_id, &object_id)
-                    .await
-                    .unwrap_or_default();
-                if !requested_tags.is_empty()
-                    && object_meta
-                        .as_ref()
-                        .is_none_or(|metadata| !requested_tags.is_subset(&metadata.tags))
-                {
-                    continue;
-                }
-                if let Some(expected_key_size) = key_size_filter {
-                    if let Some(ref meta) = object_meta {
-                        if meta.key_length_in_bits != expected_key_size {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-                }
-                let object_string = match str::from_utf8(&object_id) {
-                    Ok(object_string) => object_string,
-                    Err(err) => {
-                        error!("Failed to decode object_id {}", err);
-                        continue;
-                    }
-                };
-                let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
-                trace!("Found: {uid}");
-                if let Some(ref wanted_id) = key_id_filter {
-                    if !uid.eq(wanted_id) {
-                        continue;
-                    }
-                }
-                // Populate basic attributes from HSM metadata so callers
-                // (Locate, /access/owned) can display key info without a
-                // separate GetAttributes round-trip.
-                let attrs = build_find_attributes(&object_meta, &object_filter);
-                uids.push((uid, State::Active, attrs));
-            }
-        }
-
-        Ok(uids)
+        self.find_matching(researched_attributes, state, vendor_id, options)
+            .await
     }
 
     async fn find_due_for_rotation(
@@ -708,10 +768,24 @@ impl ObjectsStore for HsmStore {
         state: Option<State>,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // HSM objects have no concept of user ownership — delegate to `find` with the HSM admin
-        // user, which will return all HSM objects that match the filter.
-        let owner = UserId::from(self.owner_name());
-        self.find(researched_attributes, state, &owner, false, vendor_id)
+        // HSM objects have no concept of user ownership: every matching key is returned.
+        self.find_matching(
+            researched_attributes,
+            state,
+            vendor_id,
+            &FindOptions::default(),
+        )
+        .await
+    }
+
+    async fn find_all_with_options(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+        options: &FindOptions,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        self.find_matching(researched_attributes, state, vendor_id, options)
             .await
     }
 }
@@ -1226,6 +1300,27 @@ fn build_keyset_attributes(meta: &KeyMetadata) -> Attributes {
     attrs.rotate_name.clone_from(&meta.rotate_name);
     attrs.rotate_generation = meta.rotate_generation;
     attrs
+}
+
+/// Whether a key of `key_type` is one `HSM::find(filter)` would list.
+const fn filter_accepts(filter: &HsmObjectFilter, key_type: &KeyType) -> bool {
+    matches!(
+        (filter, key_type),
+        (HsmObjectFilter::Any, _)
+            | (HsmObjectFilter::AesKey, KeyType::AesKey)
+            | (
+                HsmObjectFilter::RsaKey,
+                KeyType::RsaPrivateKey | KeyType::RsaPublicKey
+            )
+            | (HsmObjectFilter::RsaPrivateKey, KeyType::RsaPrivateKey)
+            | (HsmObjectFilter::RsaPublicKey, KeyType::RsaPublicKey)
+            | (
+                HsmObjectFilter::EcKey,
+                KeyType::EcPrivateKey | KeyType::EcPublicKey
+            )
+            | (HsmObjectFilter::EcPrivateKey, KeyType::EcPrivateKey)
+            | (HsmObjectFilter::EcPublicKey, KeyType::EcPublicKey)
+    )
 }
 
 fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
@@ -1829,7 +1924,10 @@ fn to_object_with_metadata(
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, sync::Arc};
+    use std::{
+        collections::{BTreeSet, HashSet},
+        sync::Arc,
+    };
 
     use async_trait::async_trait;
     #[cfg(feature = "non-fips")]
@@ -1857,10 +1955,10 @@ mod tests {
     #[cfg(feature = "non-fips")]
     use crate::EcPrivateKeyMaterial;
     use crate::{
-        CryptoAlgorithm, CryptoOracle, EcCurve, HSM, HashingAlgorithm, HsmKeyAlgorithm,
-        HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError,
-        InterfaceResult, KeyMaterial, KeyMetadata, KeyType, MacAlgorithm, MacKeyMetadata,
-        ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
+        CryptoAlgorithm, CryptoOracle, EcCurve, FindOptions, HSM, HashingAlgorithm,
+        HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+        InterfaceError, InterfaceResult, KeyMaterial, KeyMetadata, KeyType, MacAlgorithm,
+        MacKeyMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
         crypto_oracle::EncryptedContent, hsm::HsmStore,
     };
     type SigningAlgorithmResolver = Box<
@@ -2060,6 +2158,74 @@ mod tests {
             found.first().map(|(uid, _, _)| uid.as_str()),
             Some("hsm::7::matching")
         );
+    }
+
+    /// With granted uids, the store looks up only those keys (no device enumeration: the mock
+    /// has no `find`/`get_available_slot_list` expectation) and stops at the limit.
+    #[tokio::test]
+    async fn test_find_with_granted_uids_does_not_enumerate_and_honours_limit() {
+        let mut mock = MockHsm::new();
+        mock.expect_get_key_metadata().returning(|slot, key_id| {
+            Ok((slot == 1 && key_id != b"gone").then(|| test_metadata("key", HashSet::new())))
+        });
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let granted = Arc::new(BTreeSet::from(
+            [
+                "hsm::1::a",
+                "hsm::1::b",
+                "hsm::1::gone",
+                "hsm2::1::other",
+                "not-an-hsm-uid",
+            ]
+            .map(str::to_owned),
+        ));
+        let user = UserId::from("user");
+        let find = |limit| {
+            let options = FindOptions {
+                limit,
+                hsm_granted_uids: Some(granted.clone()),
+                ..FindOptions::default()
+            };
+            let (store, user) = (&store, &user);
+            async move {
+                store
+                    .find_with_options(None, None, user, false, "cosmian", &options)
+                    .await
+                    .map(|rows| rows.into_iter().map(|(uid, _, _)| uid).collect::<Vec<_>>())
+            }
+        };
+        let all = find(None).await;
+        assert!(
+            matches!(&all, Ok(uids) if uids == &["hsm::1::a", "hsm::1::b"]),
+            "{all:?}"
+        );
+        let first = find(Some(1)).await;
+        assert!(
+            matches!(&first, Ok(uids) if uids == &["hsm::1::a"]),
+            "{first:?}"
+        );
+    }
+
+    /// Without granted uids, enumeration stops reading metadata once the limit is reached.
+    #[tokio::test]
+    async fn test_find_with_limit_stops_enumeration() {
+        let mut mock = MockHsm::new();
+        mock.expect_get_available_slot_list()
+            .return_once(|| Ok(vec![2]));
+        mock.expect_find()
+            .return_once(|_, _| Ok(vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()]));
+        mock.expect_get_key_metadata()
+            .times(2)
+            .returning(|_, _| Ok(Some(test_metadata("key", HashSet::new()))));
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let options = FindOptions {
+            limit: Some(2),
+            ..FindOptions::default()
+        };
+        let found = store
+            .find_all_with_options(None, None, "cosmian", &options)
+            .await;
+        assert!(matches!(&found, Ok(rows) if rows.len() == 2), "{found:?}");
     }
 
     #[tokio::test]

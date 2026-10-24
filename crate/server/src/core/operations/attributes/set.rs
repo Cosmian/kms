@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attribute,
-        kmip_objects::ObjectType,
-        kmip_operations::{SetAttribute, SetAttributeResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attribute,
+            kmip_objects::ObjectType,
+            kmip_operations::{SetAttribute, SetAttributeResponse},
+            kmip_types::UniqueIdentifier,
+        },
+        time_normalize,
     },
     cosmian_kms_interfaces::SECS_PER_DAY,
 };
@@ -16,7 +20,10 @@ use time::OffsetDateTime;
 /// `SECS_PER_DAY - 1`, used for ceiling integer division of seconds into whole days.
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
-use super::policy::{check_grant, check_read_only, check_rotate_name, read_only_error};
+use super::policy::{
+    check_extractable_latch, check_grant, check_read_only, check_rotate_name,
+    check_vendor_attribute, read_only_error,
+};
 use crate::{
     core::{
         KMS,
@@ -56,7 +63,7 @@ pub(crate) async fn set_attribute(
     request: SetAttribute,
     user: &UserId,
 ) -> KResult<SetAttributeResponse> {
-    debug!("{request}");
+    debug!("SetAttribute request");
 
     // there must be an identifier
     let object_handle = from_request(request.unique_identifier.as_ref(), "Set Attribute")?;
@@ -64,6 +71,7 @@ pub(crate) async fn set_attribute(
     // Read-only guard — must be checked before the DB round-trip.
     check_read_only(request.new_attribute.tag(), KmipOperation::SetAttribute)?;
     check_rotate_name(&request.new_attribute, "SetAttribute")?;
+    check_vendor_attribute(&request.new_attribute, KmipOperation::SetAttribute)?;
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -136,9 +144,23 @@ pub(crate) async fn set_attribute(
         &owm,
         user,
         KmipOperation::SetAttribute,
-        &request.new_attribute,
+        request.new_attribute.tag(),
     )
     .await?;
+
+    // KMIP 2.1 §4.1: Activation Date is client-settable only while Pre-Active.
+    if matches!(&request.new_attribute, Attribute::ActivationDate(_))
+        && owm.state() != State::PreActive
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Wrong_Key_Lifecycle_State,
+            format!(
+                "SetAttribute: ActivationDate can only be set on a Pre-Active object (current \
+                 state: {:?})",
+                owm.state()
+            ),
+        ));
+    }
 
     let (id, mut object, mut attributes) = owm.into_parts();
     // Check if the attribute is allowed to be set
@@ -151,7 +173,6 @@ pub(crate) async fn set_attribute(
             CryptographicParameters => cryptographic_parameters,
             CryptographicDomainParameters => cryptographic_domain_parameters,
             CryptographicUsageMask => cryptographic_usage_mask,
-            Digest => digest,
             DeactivationDate => deactivation_date,
             ObjectGroup => object_group,
             ContactInformation => contact_information,
@@ -189,7 +210,7 @@ pub(crate) async fn set_attribute(
             ProtectStopDate => protect_stop_date,
             ProtectionLevel => protection_level,
             ProtectionPeriod => protection_period,
-            ProtectionStorageMasks => protection_storage_masks,
+            ProtectionStorageMask => protection_storage_masks,
             QuantumSafe => quantum_safe,
             RandomNumberGenerator => random_number_generator,
             RevocationReason => revocation_reason,
@@ -205,7 +226,10 @@ pub(crate) async fn set_attribute(
             X509CertificateIdentifier => x_509_certificate_identifier,
         }
         custom {
-            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
+            Attribute::AlwaysSensitive(_)
+            | Attribute::NeverExtractable(_)
+            | Attribute::State(_)
+            | Attribute::Digest(_) => {
                 // Defensive: already refused by `check_read_only`.
                 return Err(read_only_error(KmipOperation::SetAttribute));
             }
@@ -217,6 +241,7 @@ pub(crate) async fn set_attribute(
             }
             Attribute::Extractable(extractable) => {
                 trace!("Set Attribute: Extractable: {:?}", extractable);
+                check_extractable_latch(&attributes, extractable, KmipOperation::SetAttribute)?;
                 attributes.apply_extractable(extractable);
             }
             Attribute::Link(link) => {
@@ -234,13 +259,27 @@ pub(crate) async fn set_attribute(
             Attribute::Name(name) => {
                 trace!("Set Attribute: Name: {}", name);
                 let names = attributes.name.get_or_insert(vec![]);
-                if !names.iter().any(|n| n == &name) {
-                    names.push(name);
+                match names.len() {
+                    0 => names.push(name),
+                    1 => {
+                        if let Some(first) = names.first_mut() {
+                            *first = name;
+                        }
+                    }
+                    _ => {
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Multi_Valued_Attribute,
+                            "SetAttribute: Name has several instances; use ModifyAttribute with a \
+                             Current Attribute or DeleteAttribute"
+                                .to_owned(),
+                        ));
+                    }
                 }
             }
         }
     }
 
+    attributes.last_change_date = Some(time_normalize()?);
     let tags = kms.database.retrieve_tags(&id).await?;
 
     // For SQL keys: initialise keyset metadata when rotate_name is first set.
@@ -331,7 +370,7 @@ pub(crate) async fn set_attribute(
             // metadata column by `update_object` below.
             if let Ok(object_attributes) = object.attributes_mut() {
                 object_attributes.clone_from(&attributes);
-                debug!("Set Object Attribute: {}", object_attributes);
+                debug!("Synchronized embedded object attributes");
             }
         }
         _ => {
@@ -342,7 +381,7 @@ pub(crate) async fn set_attribute(
         }
     }
 
-    debug!("Set Attribute: {}", attributes);
+    debug!("Set object attribute");
     kms.database
         .update_object(&id, &object, &attributes, Some(&tags))
         .await?;

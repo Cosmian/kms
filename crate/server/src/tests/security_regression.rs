@@ -277,7 +277,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
     dek_request.attributes.usage_limits = Some(UsageLimits {
-        usage_limits_unit: UsageLimitsUnit::Operation,
+        usage_limits_unit: UsageLimitsUnit::Object,
         usage_limits_count: None,
         usage_limits_total: 100,
     });
@@ -424,7 +424,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     // Set UsageLimits on private key attributes
     if let Some(ref mut pk_attrs) = create_request.private_key_attributes {
         pk_attrs.usage_limits = Some(UsageLimits {
-            usage_limits_unit: UsageLimitsUnit::Operation,
+            usage_limits_unit: UsageLimitsUnit::Object,
             usage_limits_count: None,
             usage_limits_total: 100,
         });
@@ -793,11 +793,17 @@ async fn test_crypto_op_reports_permission_error_to_grantee() -> KResult<()> {
 async fn test_kmip_json_endpoint_requires_json_content_type() -> KResult<()> {
     use actix_web::{http::StatusCode, test};
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_2_1::kmip_operations::Query, ttlv::to_ttlv,
+        kmip_2_1::{kmip_operations::Query, kmip_types::QueryFunction},
+        ttlv::to_ttlv,
     };
 
     let app = crate::tests::test_utils::test_app(None).await;
-    let body = serde_json::to_vec(&to_ttlv(&Query::default())?)?;
+    // Query Function is REQUIRED by KMIP 2.1 §6.1.40
+    let query = Query {
+        query_function: Some(vec![QueryFunction::QueryOperations]),
+        ..Default::default()
+    };
+    let body = serde_json::to_vec(&to_ttlv(&query)?)?;
     for (content_type, accepted) in [
         ("text/plain", false),
         ("application/x-www-form-urlencoded", false),
@@ -1111,5 +1117,275 @@ async fn test_default_kmip_policy_applies_to_batched_request_messages() -> KResu
     };
     assert_eq!(item.result_status, ResultStatusEnumeration::OperationFailed);
     assert_eq!(item.result_reason, Some(ErrorReason::Constraint_Violation));
+    Ok(())
+}
+
+/// Regression test: `ReKeyKeyPair` follows the private key's client-editable Public Key Link
+/// only to a public key the caller may re-key; another user's public key is reported as
+/// not found and left untouched.
+///
+/// Guards: COSMIAN-2026-044 (`ReKeyKeyPair` linked public key authorization)
+#[tokio::test]
+async fn test_rekey_keypair_does_not_retire_another_users_linked_public_key() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_2_1::{
+            kmip_attributes::Attribute,
+            kmip_operations::{ReKeyKeyPair, SetAttribute},
+            kmip_types::{Link, LinkType, LinkedObjectIdentifier},
+            requests::create_rsa_key_pair_request,
+        },
+    };
+
+    let kms = test_kms().await?;
+    let victim = UserId::from("rekey_link_victim@example.com");
+    let attacker = UserId::from("rekey_link_attacker@example.com");
+    let victim_pair = kms
+        .create_key_pair(
+            create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?,
+            &victim,
+        )
+        .await?;
+    let attacker_pair = kms
+        .create_key_pair(
+            create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?,
+            &attacker,
+        )
+        .await?;
+    let victim_pk = victim_pair.public_key_unique_identifier.to_string();
+
+    // The attacker points its own private key at the victim's public key
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(attacker_pair.private_key_unique_identifier.clone()),
+            new_attribute: Attribute::Link(Link {
+                link_type: LinkType::PublicKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(victim_pk.clone()),
+            }),
+        },
+        &attacker,
+    )
+    .await?;
+    let before = kms.database.retrieve_state(&victim_pk).await?;
+
+    let err = kms
+        .rekey_keypair(
+            ReKeyKeyPair {
+                private_key_unique_identifier: Some(attacker_pair.private_key_unique_identifier),
+                ..ReKeyKeyPair::default()
+            },
+            &attacker,
+        )
+        .await
+        .expect_err("the victim's public key must not be re-keyed");
+    assert!(
+        matches!(err, KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)),
+        "{err:?}"
+    );
+    let after = kms.database.retrieve_state(&victim_pk).await?;
+    assert_eq!(after, before, "the victim's public key must be unchanged");
+    assert_eq!(after.map(|(state, _)| state), Some(State::Active));
+    Ok(())
+}
+
+/// Regression test: a caller with only a `Get` grant cannot change the attributes that
+/// govern key usage (Usage Limits, Link, Deactivation Date, …) nor delete them; an explicit
+/// grant of the edit operation is required.
+///
+/// Guards: GHSA-c75c-3cmm-48h7 (attribute edits relying on a generic `Get` grant)
+#[tokio::test]
+async fn test_get_grant_cannot_edit_usage_attributes() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attribute,
+            kmip_operations::{DeleteAttribute, SetAttribute},
+            kmip_types::{
+                AttributeReference, Link, LinkType, LinkedObjectIdentifier, Tag, UsageLimits,
+                UsageLimitsUnit,
+            },
+        },
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("usage_owner@example.com");
+    let grantee = UserId::from("usage_grantee@example.com");
+    let key = create_aes_key(&kms, owner.as_str()).await?;
+    let link = Attribute::Link(Link {
+        link_type: LinkType::ParentLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString("other".to_owned()),
+    });
+    let set = |new_attribute: Attribute| SetAttribute {
+        unique_identifier: Some(key.clone()),
+        new_attribute,
+    };
+    kms.set_attribute(set(link.clone()), &owner).await?;
+    kms.database
+        .grant_operations(
+            &key.to_string(),
+            &grantee,
+            HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    let denied = |err: KmsError| {
+        assert!(
+            matches!(
+                err,
+                KmsError::Kmip21Error(ErrorReason::Permission_Denied, _)
+            ),
+            "{err:?}"
+        );
+    };
+    for attribute in [
+        Attribute::UsageLimits(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: None,
+            usage_limits_total: 1_000_000,
+        }),
+        link.clone(),
+        Attribute::DeactivationDate(time::OffsetDateTime::now_utc()),
+        Attribute::RotateInterval(60),
+    ] {
+        denied(
+            kms.set_attribute(set(attribute.clone()), &grantee)
+                .await
+                .expect_err(&format!("Get grantee must not set {attribute}")),
+        );
+    }
+    denied(
+        kms.delete_attribute(
+            DeleteAttribute {
+                unique_identifier: Some(key.clone()),
+                current_attribute: None,
+                attribute_references: Some(vec![AttributeReference::Standard(Tag::Link)]),
+            },
+            &grantee,
+        )
+        .await
+        .expect_err("Get grantee must not delete the links"),
+    );
+
+    // An explicit grant of the edit operation is enough
+    kms.database
+        .grant_operations(
+            &key.to_string(),
+            &grantee,
+            HashSet::from([KmipOperation::SetAttribute]),
+        )
+        .await?;
+    kms.set_attribute(set(Attribute::RotateInterval(60)), &grantee)
+        .await?;
+    Ok(())
+}
+
+/// Regression test: Delete Attribute cannot remove the server-owned KMIP 1.x custom
+/// attributes (`y-` names), by reference or by wiping all vendor attributes.
+#[tokio::test]
+async fn test_delete_attribute_keeps_server_owned_vendor_attributes() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            kmip_operations::DeleteAttribute,
+            kmip_types::{AttributeReference, Tag, VendorAttributeReference, VendorAttributeValue},
+        },
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("vendor_owner@example.com");
+    let key = create_aes_key(&kms, owner.as_str()).await?.to_string();
+    let owm = kms
+        .database
+        .retrieve_object(&key)
+        .await?
+        .ok_or_else(|| KmsError::ItemNotFound(key.clone()))?;
+    let mut attributes = owm.attributes().clone();
+    attributes.set_vendor_attribute(
+        "KMIP1",
+        "y-server",
+        VendorAttributeValue::TextString("kept".to_owned()),
+    );
+    attributes.set_vendor_attribute(
+        "acme",
+        "client",
+        VendorAttributeValue::TextString("removed".to_owned()),
+    );
+    let tags = kms.database.retrieve_tags(&key).await?;
+    kms.database
+        .update_object(&key, owm.object(), &attributes, Some(&tags))
+        .await?;
+
+    let delete = |reference: AttributeReference| DeleteAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(key.clone())),
+        current_attribute: None,
+        attribute_references: Some(vec![reference]),
+    };
+    let err = kms
+        .delete_attribute(
+            delete(AttributeReference::Vendor(VendorAttributeReference {
+                vendor_identification: "KMIP1".to_owned(),
+                attribute_name: "y-server".to_owned(),
+            })),
+            &owner,
+        )
+        .await
+        .expect_err("a server-owned attribute must not be deleted");
+    assert!(
+        matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+        ),
+        "{err:?}"
+    );
+
+    kms.delete_attribute(
+        delete(AttributeReference::Standard(Tag::VendorExtension)),
+        &owner,
+    )
+    .await?;
+    let (_, attributes) = kms
+        .database
+        .retrieve_state(&key)
+        .await?
+        .ok_or_else(|| KmsError::ItemNotFound(key.clone()))?;
+    assert!(
+        attributes
+            .get_vendor_attribute_value("KMIP1", "y-server")
+            .is_some()
+    );
+    assert!(
+        attributes
+            .get_vendor_attribute_value("acme", "client")
+            .is_none()
+    );
+    Ok(())
+}
+
+/// Regression test: Get Attributes without a Unique Identifier (and no ID Placeholder) no
+/// longer selects the newest object in the database, which could belong to another user,
+/// and the error does not reveal any identifier.
+///
+/// Guards: COSMIAN-2026-047 (Get Attributes implicit selection of another user's object)
+#[tokio::test]
+async fn test_get_attributes_without_identifier_selects_nothing() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::GetAttributes;
+
+    let kms = test_kms().await?;
+    let foreign_key = create_aes_key(&kms, "implicit_owner@example.com").await?;
+    let err = kms
+        .get_attributes(
+            GetAttributes {
+                unique_identifier: None,
+                attribute_reference: None,
+            },
+            &UserId::from("implicit_intruder@example.com"),
+        )
+        .await
+        .expect_err("no object may be selected implicitly");
+    assert!(matches!(err, KmsError::UnsupportedPlaceholder), "{err:?}");
+    assert!(!err.to_string().contains(&foreign_key.to_string()));
     Ok(())
 }

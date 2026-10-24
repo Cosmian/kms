@@ -5,10 +5,13 @@
 //! This module isolates that logic from the standard key pair rotation pipeline.
 
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType,
-        kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        },
     },
     cosmian_kms_crypto::{
         crypto::cover_crypt::attributes::rekey_edit_action_from_attributes,
@@ -37,6 +40,13 @@ pub(super) async fn try_covercrypt_rekey(
     for owm in kms
         .retrieve_eligible_keys(object_handle, ObjectType::PrivateKey)
         .await?
+        .into_iter()
+        .filter(|owm| {
+            matches!(
+                owm.state(),
+                State::Active | State::Deactivated | State::Compromised
+            )
+        })
     {
         let key_format_type = owm.attributes().key_format_type.or_else(|| {
             owm.object()

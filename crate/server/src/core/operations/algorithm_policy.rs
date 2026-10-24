@@ -1145,14 +1145,14 @@ fn validate_key_size_bits(
 ) -> KResult<()> {
     if bits <= 0 {
         return deny(
-            ErrorReason::Invalid_Field,
+            ErrorReason::Invalid_Attribute_Value,
             "CryptographicLength must be > 0",
         );
     }
 
     let bits_u32 = u32::try_from(bits).map_err(|e| {
         KmsError::Kmip21Error(
-            ErrorReason::Invalid_Field,
+            ErrorReason::Invalid_Attribute_Value,
             format!("CryptographicLength must be a non-negative integer: {e}"),
         )
     })?;

@@ -7,12 +7,15 @@ use std::{
         mpsc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::ssl::{SslAcceptor, SslStream, SslVerifyMode};
-use tokio::task::JoinHandle;
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore},
+    task::JoinHandle,
+};
 
 use crate::{
     config::ServerParams,
@@ -32,6 +35,10 @@ const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_SOCKET_CONNECTIONS: usize = 1024;
 /// Maximum TTLV request body size, same as the HTTP payload limit.
 const MAX_SOCKET_REQUEST_BODY: usize = 64 * 1024 * 1024;
+/// Process-wide budget of request bytes held at once, from body allocation until the response
+/// is sent. The per-request limit alone allows `MAX_SOCKET_CONNECTIONS` × 64 MiB = 64 GiB; a
+/// request that does not fit in the remaining budget is refused and its connection closed.
+const MAX_SOCKET_INFLIGHT_BYTES: usize = 256 * 1024 * 1024;
 
 /// Releases a connection slot when the client thread ends, even on panic.
 struct ConnectionSlot(Arc<AtomicUsize>);
@@ -302,6 +309,7 @@ impl SocketServer {
         });
 
         let active_connections = Arc::new(AtomicUsize::new(0));
+        let inflight_bytes = Arc::new(Semaphore::new(MAX_SOCKET_INFLIGHT_BYTES));
         // Accept incoming connections
         for stream in listener.incoming() {
             if *stop_requested
@@ -347,14 +355,19 @@ impl SocketServer {
                         continue;
                     }
                     let server_config = server_config.clone();
+                    let inflight_bytes = inflight_bytes.clone();
                     let handler = handler.clone();
                     // Spawn a new thread to handle the client connection
                     let kms_server = kms_server.clone();
                     thread::spawn(move || {
                         let _slot = slot;
-                        if let Err(e) =
-                            handle_client(&kms_server, &server_config, &handler, &mut stream)
-                        {
+                        if let Err(e) = handle_client(
+                            &kms_server,
+                            &server_config,
+                            &handler,
+                            &inflight_bytes,
+                            &mut stream,
+                        ) {
                             error!("Error handling socket client: {}", e);
                         }
                     });
@@ -372,6 +385,7 @@ fn handle_client(
     kms_server: &Arc<KMS>,
     server_config: &Arc<SslAcceptor>,
     handler: &Arc<impl Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync>,
+    inflight_bytes: &Arc<Semaphore>,
     stream: &mut TcpStream,
 ) -> KResult<()> {
     // Accept TLS connection
@@ -393,12 +407,18 @@ fn handle_client(
         })
         .context("socket server: failed to set socket timeouts")?;
 
-    while let Some(request) = read_request(&mut tls_stream)? {
+    loop {
+        let Some((request, permit)) = read_request(&mut tls_stream, inflight_bytes)? else {
+            break;
+        };
         let username = client_username(&tls_stream)?;
-        debug!("socket server: received request: {}", hex::encode(&request));
+        debug!("socket server: received request ({} bytes)", request.len());
 
         // Process the request
         let response = handler(username.as_str(), &request, kms_server.clone());
+        // Return the request bytes to the budget before the (client-paced) response write.
+        drop(request);
+        drop(permit);
 
         // Send the response
         tls_stream
@@ -419,8 +439,13 @@ fn handle_client(
 /// Read one TTLV message (8-byte header followed by its body).
 ///
 /// Returns `Ok(None)` when the client closed the connection or stayed idle past
-/// [`SOCKET_IO_TIMEOUT`]. The declared length is checked before allocating the body.
-fn read_request(stream: &mut impl Read) -> KResult<Option<Vec<u8>>> {
+/// [`SOCKET_IO_TIMEOUT`]. The declared length is checked, and reserved in the process-wide
+/// `inflight_bytes` budget, before allocating the body; the returned permit holds the
+/// reservation.
+fn read_request(
+    stream: &mut impl Read,
+    inflight_bytes: &Arc<Semaphore>,
+) -> KResult<Option<(Vec<u8>, OwnedSemaphorePermit)>> {
     let mut header = [0_u8; 8];
     match stream.read_exact(&mut header) {
         Ok(()) => {}
@@ -444,21 +469,53 @@ fn read_request(stream: &mut impl Read) -> KResult<Option<Vec<u8>>> {
              {MAX_SOCKET_REQUEST_BODY} bytes limit"
         )));
     }
+    let size = 8 + length;
+    let permit = inflight_bytes
+        .clone()
+        .try_acquire_many_owned(
+            u32::try_from(size).context("socket server: failed to convert request size")?,
+        )
+        .map_err(|e| {
+            KmsError::ServerError(format!(
+                "socket server: cannot accept a {size}-byte request, the \
+                 {MAX_SOCKET_INFLIGHT_BYTES}-byte in-flight request budget is exhausted ({e}); \
+                 closing the connection"
+            ))
+        })?;
 
     // Read the rest of the request directly into a single contiguous buffer
-    let mut request = vec![0_u8; 8 + length];
+    let mut request = vec![0_u8; size];
     request
         .get_mut(..8)
         .context("socket server: failed to get header slice")?
         .copy_from_slice(&header);
-    stream
-        .read_exact(
-            request
-                .get_mut(8..)
-                .context("socket server: failed to get body slice")?,
-        )
-        .context("socket server: failed to read request body")?;
-    Ok(Some(request))
+    // The body must arrive within about one `SOCKET_IO_TIMEOUT` (the deadline is checked
+    // between reads, so a stalled read can add one more): a per-read timeout alone would let
+    // a client trickle bytes and hold its budget reservation indefinitely.
+    let deadline = Instant::now() + SOCKET_IO_TIMEOUT;
+    let mut received = 8_usize;
+    while received < size {
+        if Instant::now() >= deadline {
+            kms_bail!(KmsError::ServerError(
+                "socket server: request body not received within the I/O timeout".to_owned()
+            ));
+        }
+        let buffer = request
+            .get_mut(received..)
+            .context("socket server: failed to get body slice")?;
+        let read = match stream.read(buffer) {
+            Ok(read) => read,
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e).context("socket server: failed to read request body"),
+        };
+        if read == 0 {
+            kms_bail!(KmsError::ServerError(
+                "socket server: connection closed in the middle of a request".to_owned()
+            ));
+        }
+        received = received.saturating_add(read);
+    }
+    Ok(Some((request, permit)))
 }
 
 /// Extract the username from the client certificate, with the same checks as HTTP mTLS.
@@ -519,6 +576,7 @@ mod tests {
         error::Error,
         fs, io,
         net::{TcpListener, TcpStream},
+        sync::Arc,
         thread,
     };
 
@@ -533,10 +591,11 @@ mod tests {
         },
         x509::{X509, X509NameBuilder, extension::BasicConstraints},
     };
+    use tokio::sync::Semaphore;
 
     use super::{
-        MAX_SOCKET_REQUEST_BODY, SocketServerParams, client_username, create_openssl_acceptor,
-        read_request,
+        MAX_SOCKET_INFLIGHT_BYTES, MAX_SOCKET_REQUEST_BODY, SocketServerParams, client_username,
+        create_openssl_acceptor, read_request,
     };
     use crate::routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER};
 
@@ -684,11 +743,15 @@ mod tests {
         header
     }
 
+    fn budget() -> Arc<Semaphore> {
+        Arc::new(Semaphore::new(MAX_SOCKET_INFLIGHT_BYTES))
+    }
+
     /// A declared length above the limit is refused before the body buffer is allocated.
     #[test]
     fn oversized_request_is_rejected_before_allocation() -> TestResult {
         let too_big = u32::try_from(MAX_SOCKET_REQUEST_BODY + 1)?;
-        let Err(e) = read_request(&mut io::Cursor::new(ttlv_header(too_big))) else {
+        let Err(e) = read_request(&mut io::Cursor::new(ttlv_header(too_big)), &budget()) else {
             return Err("oversized request accepted".into());
         };
         if !e.to_string().contains("exceeds") {
@@ -702,11 +765,40 @@ mod tests {
         let mut message = ttlv_header(8);
         message.extend_from_slice(&[7; 8]);
         let mut stream = io::Cursor::new(message.clone());
-        if read_request(&mut stream)? != Some(message) {
+        let budget = budget();
+        if read_request(&mut stream, &budget)?.map(|(request, _)| request) != Some(message) {
             return Err("request not read back verbatim".into());
         }
-        if read_request(&mut stream)?.is_some() {
+        if read_request(&mut stream, &budget)?.is_some() {
             return Err("EOF must end the session".into());
+        }
+        Ok(())
+    }
+
+    /// Requests in flight share one byte budget: a request that does not fit is refused before
+    /// its body is allocated, and the bytes return to the budget once the permit is dropped.
+    #[test]
+    fn inflight_request_bytes_are_bounded_and_released() -> TestResult {
+        let mut message = ttlv_header(8);
+        message.extend_from_slice(&[7; 8]);
+        let budget = Arc::new(Semaphore::new(message.len()));
+        let held = read_request(&mut io::Cursor::new(message.clone()), &budget)?
+            .ok_or("first request not read")?;
+        if budget.available_permits() != 0 {
+            return Err("the request bytes were not reserved".into());
+        }
+        let Err(e) = read_request(&mut io::Cursor::new(message.clone()), &budget) else {
+            return Err("a request over the in-flight budget was accepted".into());
+        };
+        if !e
+            .to_string()
+            .contains("in-flight request budget is exhausted")
+        {
+            return Err(format!("unexpected error: {e}").into());
+        }
+        drop(held);
+        if read_request(&mut io::Cursor::new(message), &budget)?.is_none() {
+            return Err("the budget was not released after the response".into());
         }
         Ok(())
     }

@@ -70,6 +70,8 @@ pub(crate) async fn retrieve_object_for_operation(
                     // ("cannot be activated") rather than Object_Not_Found; allow retrieval
                     // so activate.rs can emit the correct lifecycle error.
                     | KmipOperation::Activate
+                    // Validate reports a revoked certificate as Invalid (KMIP 2.1 §6.1.58)
+                    | KmipOperation::Validate
             ),
             State::Destroyed | State::Destroyed_Compromised => {
                 // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
@@ -79,9 +81,14 @@ pub(crate) async fn retrieve_object_for_operation(
                 // Similarly, Activate on a destroyed object must return Wrong_Key_Lifecycle_State
                 // ("cannot be activated") rather than Object_Not_Found; allow retrieval so activate.rs
                 // can emit the correct lifecycle error.
+                // Export of a destroyed object succeeds without key material (KMIP 2.1 §6.1.18).
                 matches!(
                     operation_type,
-                    KmipOperation::Get | KmipOperation::GetAttributes | KmipOperation::Activate
+                    KmipOperation::Get
+                        | KmipOperation::Export
+                        | KmipOperation::GetAttributes
+                        | KmipOperation::Activate
+                        | KmipOperation::Validate
                 )
             }
         };

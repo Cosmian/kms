@@ -1075,7 +1075,7 @@ pub(super) fn test_message_enforce_enum() {
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }),
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
@@ -1382,6 +1382,7 @@ fn normative_request_message_test() {
                         QueryFunction::QueryOperations,
                         QueryFunction::QueryObjects,
                     ]),
+                    ..Default::default()
                 }),
                 message_extension: None,
             },
@@ -1479,6 +1480,7 @@ pub(super) fn test_simple_message_request() {
                 unique_batch_item_id: None,
                 request_payload: Operation::Query(Query {
                     query_function: Some(vec![QueryFunction::QueryOperations]),
+                    ..Default::default()
                 }),
                 message_extension: None,
             },
@@ -1550,7 +1552,7 @@ pub(super) fn test_message_request() {
                 message_extension: Some(vec![MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }]),
             },
         )],
@@ -1603,7 +1605,7 @@ pub(super) fn test_message_response() {
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }),
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
@@ -1621,7 +1623,7 @@ pub(super) fn test_message_response() {
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: true,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }),
                 result_status: ResultStatusEnumeration::OperationUndone,
                 result_reason: Some(ErrorReason::Response_Too_Large),
@@ -1906,4 +1908,179 @@ fn test_set_attribute_with_link() {
         .to_bytes(crate::ttlv::KmipFlavor::Kmip2)
         .expect("Failed to convert TTLV to bytes");
     info!("Serialized TTLV bytes: {:?}", bytes);
+}
+
+/// Login, Set Constraints and Get Constraints (KMIP 2.1 §6.1.30, §6.1.52, §6.1.22) and a
+/// Ticket credential survive the binary TTLV and the JSON TTLV encodings.
+#[test]
+fn test_login_and_constraints_round_trip() {
+    use crate::{
+        kmip_0::kmip_types::{Ticket, TicketType},
+        kmip_2_1::kmip_operations::{
+            Constraint, Constraints, GetConstraints, GetConstraintsResponse, Login, LoginResponse,
+            ObjectGroups, ObjectTypes, SetConstraints, SetConstraintsResponse,
+        },
+        ttlv::{Interval, KmipFlavor},
+    };
+
+    fn round_trip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: &T) {
+        let mut ttlv = to_ttlv(value).unwrap();
+        // A response batch item is encoded under the `BatchItem` tag in a message.
+        if ttlv.tag == "MessageResponseBatchItem" {
+            ttlv.tag = "BatchItem".into();
+        }
+        let bytes = ttlv.to_bytes(KmipFlavor::Kmip2).unwrap();
+        let from_bytes: T =
+            from_ttlv(TTLV::from_bytes(&bytes, KmipFlavor::Kmip2).unwrap()).unwrap();
+        assert_eq!(&from_bytes, value);
+        let json = serde_json::to_string(&ttlv).unwrap();
+        let from_json: T = from_ttlv(serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
+        assert_eq!(&from_json, value);
+    }
+
+    let ticket = Ticket {
+        ticket_type: TicketType::Login,
+        ticket_value: vec![7; 32],
+    };
+    let constraints = Constraints {
+        constraint: vec![
+            Constraint {
+                object_types: Some(ObjectTypes {
+                    object_type: vec![ObjectType::SymmetricKey],
+                }),
+                object_groups: Some(ObjectGroups {
+                    object_group: vec!["Group1".to_owned()],
+                }),
+                attributes: Some(Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    cryptographic_length: Some(256),
+                    ..Attributes::default()
+                }),
+            },
+            Constraint::default(),
+        ],
+    };
+    let item =
+        |op: Operation| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op));
+    let request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            authentication: Some(Authentication {
+                credential: vec![Credential {
+                    credential_type: CredentialType::Ticket,
+                    credential_value: CredentialValue::Ticket {
+                        ticket: ticket.clone(),
+                    },
+                }],
+            }),
+            batch_count: 4,
+            ..Default::default()
+        },
+        batch_item: vec![
+            item(Operation::Login(Login {
+                lease_time: Some(Interval(0)),
+                request_count: Some(3),
+                usage_limits: None,
+            })),
+            item(Operation::SetConstraints(SetConstraints {
+                constraints: Some(constraints.clone()),
+            })),
+            item(Operation::SetConstraints(SetConstraints::default())),
+            item(Operation::GetConstraints(GetConstraints)),
+        ],
+    };
+    round_trip(&request);
+
+    for response in [
+        Operation::LoginResponse(LoginResponse { ticket }),
+        Operation::SetConstraintsResponse(SetConstraintsResponse),
+        Operation::GetConstraintsResponse(GetConstraintsResponse { constraints }),
+        Operation::GetConstraintsResponse(GetConstraintsResponse::default()),
+    ] {
+        round_trip(&ResponseMessageBatchItem::new_with_response(
+            ResultStatusEnumeration::Success,
+            response,
+        ));
+    }
+}
+
+/// KMIP 2.1 §6.1.57 Table 340: a Validate request carries Certificate structures (Certificate
+/// Type + Certificate Value), not bare byte strings.
+#[test]
+fn test_validate_certificate_is_a_structure() {
+    use crate::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_2_1::{kmip_objects::Certificate, kmip_operations::Validate},
+        ttlv::{KmipFlavor, TTLValue},
+    };
+
+    let validate = Validate {
+        // Several entries, like a leaf + intermediate + root chain.
+        certificate: Some(
+            (1_u8..=3)
+                .map(|i| Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: vec![0x30, 0x03, 0x02, 0x01, i],
+                })
+                .collect(),
+        ),
+        unique_identifier: None,
+        validity_time: None,
+    };
+    let mut ttlv = to_ttlv(&validate).unwrap();
+    // A request payload is encoded under the `RequestPayload` tag in a message.
+    ttlv.tag = "RequestPayload".into();
+    let TTLValue::Structure(fields) = &ttlv.value else {
+        panic!("Validate must be a structure");
+    };
+    assert!(
+        fields
+            .iter()
+            .any(|f| f.tag == "Certificate" && matches!(f.value, TTLValue::Structure(_))),
+        "Certificate must be encoded as a structure: {fields:?}"
+    );
+    let direct: Validate = from_ttlv(ttlv.clone()).unwrap();
+    assert_eq!(direct, validate, "direct");
+    let bytes = ttlv.to_bytes(KmipFlavor::Kmip2).unwrap();
+    let decoded: Validate =
+        from_ttlv(TTLV::from_bytes(&bytes, KmipFlavor::Kmip2).unwrap()).unwrap();
+    assert_eq!(decoded, validate, "bytes");
+}
+
+/// Same for KMIP 1.4 §4.24, whose Validate already used Certificate structures.
+#[test]
+fn test_validate_certificates_round_trip_1_4() {
+    use crate::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_1_4::{kmip_objects::Certificate, kmip_operations::Validate},
+        ttlv::{KmipFlavor, TTLValue},
+    };
+
+    let validate = Validate {
+        certificate: Some(
+            (1_u8..=3)
+                .map(|i| Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: vec![0x30, 0x03, 0x02, 0x01, i],
+                })
+                .collect(),
+        ),
+        unique_identifier: None,
+        validity_time: None,
+    };
+    let mut ttlv = to_ttlv(&validate).unwrap();
+    ttlv.tag = "RequestPayload".into();
+    let direct: Validate = from_ttlv(ttlv.clone()).unwrap();
+    assert!(direct.certificate == validate.certificate, "direct");
+    let bytes = ttlv.to_bytes(KmipFlavor::Kmip1).unwrap();
+    let decoded: Validate =
+        from_ttlv(TTLV::from_bytes(&bytes, KmipFlavor::Kmip1).unwrap()).unwrap();
+    assert!(decoded.certificate == validate.certificate, "bytes");
+    let TTLValue::Structure(fields) = &ttlv.value else {
+        panic!("Validate must be a structure");
+    };
+    assert_eq!(fields.iter().filter(|f| f.tag == "Certificate").count(), 3);
 }

@@ -143,6 +143,7 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         ObjectType::Certificate => {
             let request = ReCertify {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+                certificate_request_unique_identifier: None,
                 offset: None,
                 attributes: None,
                 certificate_request_type: None,
@@ -768,6 +769,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=initial-date-test",
                 )?),
@@ -845,6 +847,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=policy-at-creation-test",
                 )?),
@@ -906,6 +909,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=auto-rotate-test",
                 )?),
@@ -1167,6 +1171,7 @@ mod tests {
             attributes: Some(Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(2048),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=keypair-rotation-test",
                 )?),
@@ -1298,6 +1303,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=keyset-uid-test",
                 )?),

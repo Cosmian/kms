@@ -832,13 +832,14 @@ pub(crate) async fn test_crypto_officer_users() -> CosmianResult<()> {
     );
     assert!(result_grant_create.is_ok());
 
-    // then user can create objects
+    // Creation permission does not authorize key output for an Operator, even when an
+    // object-level Export grant exists.
     let key_id_user = gen_key(&user_client_conf_path);
     assert!(key_id_user.is_ok());
     let keypair_id_user = gen_key(&user_client_conf_path);
     assert!(keypair_id_user.is_ok());
     let imported_key_id = export_import_sym_key(initial_key_id, &user_client_conf_path);
-    assert!(imported_key_id.is_ok());
+    assert!(imported_key_id.is_err());
 
     // simple user can't grant create access
     let result_grant_create = grant_access(

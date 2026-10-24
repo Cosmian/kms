@@ -102,7 +102,7 @@ sequenceDiagram
             R->>R: Capture output variables
         else assert_success = false
             R->>R: Assert failure (HTTP error or ResultStatus != Success)
-            R->>R: Optionally check assert_error_reason
+            R->>R: Assert exact assert_error_reason
             R->>R: Optionally check assert_error_contains
         end
     end
