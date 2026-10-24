@@ -14,6 +14,8 @@ pub use serializer::TTLVXMLSerializer;
 
 mod parser;
 pub use parser::KmipXmlDoc;
+#[cfg(test)]
+pub(crate) use parser::parse_message_ttlvs;
 
 #[allow(
     clippy::panic,

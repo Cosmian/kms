@@ -273,6 +273,29 @@ async fn test_encrypt_compromised_key_rejected() -> KResult<()> {
 
 const MAC_DATA: &[u8] = b"data-to-mac";
 
+/// Create an HMAC-SHA256 key: MAC/MACVerify require the `MACGenerate`/`MACVerify` usage mask.
+async fn create_hmac_key<S, B>(app: &S) -> KResult<String>
+where
+    S: actix_web::dev::Service<
+            actix_http::Request,
+            Response = actix_web::dev::ServiceResponse<B>,
+            Error = actix_web::Error,
+        >,
+    B: actix_web::body::MessageBody,
+{
+    let create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::HMACSHA256,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let cr: CreateResponse = test_utils::post_2_1(app, create_req).await?;
+    Ok(cr.unique_identifier.to_string())
+}
+
 /// Compute an HMAC-SHA256 tag on [`MAC_DATA`] with an Active key.
 async fn compute_hmac<S, B>(app: &S, kid: &str) -> KResult<Vec<u8>>
 where
@@ -305,7 +328,7 @@ async fn test_mac_deactivated_key_rejected() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None).await;
 
-    let kid = create_aes_key(&app).await?;
+    let kid = create_hmac_key(&app).await?;
     // MAC works while key is Active
     compute_hmac(&app, &kid).await?;
 
@@ -338,7 +361,7 @@ async fn test_mac_compromised_key_rejected() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None).await;
 
-    let kid = create_aes_key(&app).await?;
+    let kid = create_hmac_key(&app).await?;
     compromise_key(&app, &kid).await?;
 
     let result = test_utils::post_2_1::<_, _, MACResponse, _>(
@@ -367,7 +390,7 @@ async fn test_mac_verify_deactivated_key_succeeds() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None).await;
 
-    let kid = create_aes_key(&app).await?;
+    let kid = create_hmac_key(&app).await?;
     let tag = compute_hmac(&app, &kid).await?;
 
     deactivate_key(&app, &kid).await?;
@@ -383,6 +406,9 @@ async fn test_mac_verify_deactivated_key_succeeds() -> KResult<()> {
             }),
             data: MAC_DATA.to_vec(),
             mac_data: tag,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
         },
     )
     .await
@@ -393,7 +419,7 @@ async fn test_mac_verify_deactivated_key_succeeds() -> KResult<()> {
     })?;
     assert_eq!(
         resp.validity_indicator,
-        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
+        Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid),
         "MACVerify should report Valid"
     );
     Ok(())
@@ -405,7 +431,7 @@ async fn test_mac_verify_compromised_key_succeeds() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None).await;
 
-    let kid = create_aes_key(&app).await?;
+    let kid = create_hmac_key(&app).await?;
     let tag = compute_hmac(&app, &kid).await?;
 
     compromise_key(&app, &kid).await?;
@@ -420,6 +446,9 @@ async fn test_mac_verify_compromised_key_succeeds() -> KResult<()> {
             }),
             data: MAC_DATA.to_vec(),
             mac_data: tag,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
         },
     )
     .await
@@ -430,7 +459,7 @@ async fn test_mac_verify_compromised_key_succeeds() -> KResult<()> {
     })?;
     assert_eq!(
         resp.validity_indicator,
-        ValidityIndicator::Valid,
+        Some(ValidityIndicator::Valid),
         "MACVerify should report Valid"
     );
     Ok(())
@@ -814,8 +843,20 @@ async fn test_preactive_to_deactivated_combined_transition() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None).await;
 
-    // Create a key with a future activation date to make it PreActive.
-    let kid = create_aes_key(&app).await?;
+    // Create a key without an Activation Date: it is Pre-Active, so its Activation Date
+    // may still be set (KMIP 2.1 §4.1).
+    let mut create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    create_req.attributes.activation_date = None;
+    let cr: CreateResponse = test_utils::post_2_1(&app, create_req).await?;
+    let kid = cr.unique_identifier.to_string();
 
     // Set ActivationDate in the past → server auto-activates.
     let past_activation = OffsetDateTime::now_utc() - Duration::hours(2);

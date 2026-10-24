@@ -280,7 +280,8 @@ impl Default for RequestMessageHeader {
                 protocol_version_major: 2,
                 protocol_version_minor: 1,
             },
-            maximum_response_size: Some(1024 * 1024),
+            // Unbounded unless the client asks: the server enforces any limit sent (§9.12)
+            maximum_response_size: None,
             client_correlation_value: None,
             server_correlation_value: None,
             asynchronous_indicator: None,

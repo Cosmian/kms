@@ -98,6 +98,7 @@ async fn test_attribute_policy_operation_wiring() -> KResult<()> {
     );
     kms.modify_attribute(
         ModifyAttribute {
+            current_attribute: None,
             unique_identifier: Some(uid.clone()),
             new_attribute: Attribute::RotateAutomatic(false),
         },
@@ -186,6 +187,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
     let modify = kms
         .modify_attribute(
             ModifyAttribute {
+                current_attribute: None,
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::AlwaysSensitive(false),
             },
@@ -365,6 +367,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
     let mod_res = kms
         .modify_attribute(
             ModifyAttribute {
+                current_attribute: None,
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::Sensitive(false),
             },
@@ -410,6 +413,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
     let mod_ext_res = kms
         .modify_attribute(
             ModifyAttribute {
+                current_attribute: None,
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::Extractable(false),
             },
@@ -570,36 +574,29 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
         "expected Not_Extractable even with wrapping spec, got: {err_wrapped:?}"
     );
 
-    // 4. Latch behavior: Set Extractable=true -> NeverExtractable latches to false.
-    kms.set_attribute(
-        SetAttribute {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            new_attribute: Attribute::Extractable(true),
-        },
-        &user,
-    )
-    .await?;
-    let resp = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
-    assert_eq!(
-        resp.attributes.never_extractable,
-        Some(false),
-        "NeverExtractable must transition to false when Extractable becomes true"
+    // 4. Latch behavior: a key created non-extractable can never be re-enabled.
+    let err_reenable = kms
+        .set_attribute(
+            SetAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                new_attribute: Attribute::Extractable(true),
+            },
+            &user,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err_reenable,
+            KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
+        ),
+        "re-enabling Extractable must be refused, got: {err_reenable:?}"
     );
-
-    // Set Extractable=false again -> NeverExtractable must STAY false.
-    kms.set_attribute(
-        SetAttribute {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            new_attribute: Attribute::Extractable(false),
-        },
-        &user,
-    )
-    .await?;
     let resp = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
     assert_eq!(
         resp.attributes.never_extractable,
-        Some(false),
-        "NeverExtractable must latch to false and never revert to true"
+        Some(true),
+        "NeverExtractable must stay true after a refused re-enable"
     );
 
     // Defensive latch check: If an object somehow has NeverExtractable=true while
@@ -750,6 +747,7 @@ async fn test_pkcs12_sensitive_export_requires_non_empty_password() -> KResult<(
 
     // Export certificate target (which links to the sensitive private key) as PKCS#12
     let cert_attrs = Attributes {
+        activation_date: Some(time::OffsetDateTime::now_utc()),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(
             "C=FR, O=KMS Test, CN=Cert Sensitive PKCS12",
         )?),

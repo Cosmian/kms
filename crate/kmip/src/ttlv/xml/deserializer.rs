@@ -49,7 +49,8 @@ define_usage_mask_lookup! {
     "MACGenerate" | "Container" => 0x0000_0080,
     "MACVerify" | "OnPremises" => 0x0000_0100,
     "DeriveKey" | "OffPremises" => 0x0000_0200,
-    "SelfManaged" => 0x0000_0400,
+    // KMIP 1.4 Table 325 "Content Commitment (Non Repudiation)"; reserved since KMIP 2.0
+    "SelfManaged" | "ContentCommitment" => 0x0000_0400,
     "KeyAgreement" | "Outsourced" => 0x0000_0800,
     "CertificateSign" | "Validated" => 0x0000_1000,
     "CRLSign" | "SameJurisdiction" => 0x0000_2000,
@@ -385,15 +386,21 @@ impl TTLVXMLDeserializer {
                 let raw = value.ok_or_else(|| KmipError::Default("missing value".into()))?;
                 // Accept the following literal forms:
                 //   1. 0x... (hex, big-endian two's complement bytes)
-                //   2. <hex without 0x> (if any hex alphabetic characters present a-fA-F)
+                //   2. <hex without 0x> if any hex alphabetic character is present, or if it is
+                //      padded to a multiple of 8 bytes (the KMIP XML profile form, e.g. the
+                //      exponent `0000000000010001`)
                 //   3. <decimal integer> (optionally negative)
-                // The KMIP XML interop vectors frequently provide leading zero padded hex without 0x.
+                // Hex is big-endian two's complement as given: leading zero bytes are kept so
+                // that a positive value whose top bit is set stays positive.
                 let is_decimal_candidate = raw
                     .chars()
                     .all(|c| c.is_ascii_digit() || (c == '-' && raw.len() > 1));
-                let contains_hex_alpha = raw
+                let is_hex = raw
                     .chars()
-                    .any(|c| c.is_ascii_hexdigit() && c.is_ascii_alphabetic());
+                    .any(|c| c.is_ascii_hexdigit() && c.is_ascii_alphabetic())
+                    || (!raw.is_empty()
+                        && raw.len().is_multiple_of(16)
+                        && raw.chars().all(|c| c.is_ascii_hexdigit()));
                 let bytes = if let Some(stripped) = raw.strip_prefix("0x") {
                     let even_hex = if stripped.len() % 2 == 1 {
                         format!("0{stripped}")
@@ -402,18 +409,12 @@ impl TTLVXMLDeserializer {
                     };
                     hex::decode(&even_hex)
                         .map_err(|e| KmipError::Default(format!("bigint hex decode: {e}")))?
-                } else if contains_hex_alpha {
-                    // Treat as hex (letters force hex interpretation)
-                    let s = raw.trim_start_matches('0');
-                    let hex_body = if s.is_empty() {
-                        "00".to_owned()
+                } else if is_hex {
+                    // Treat as hex
+                    let even_hex = if raw.len() % 2 == 1 {
+                        format!("0{raw}")
                     } else {
-                        s.to_owned()
-                    };
-                    let even_hex = if hex_body.len() % 2 == 1 {
-                        format!("0{hex_body}")
-                    } else {
-                        hex_body
+                        raw.to_owned()
                     };
                     hex::decode(&even_hex)
                         .map_err(|e| KmipError::Default(format!("bigint hex decode: {e}")))?

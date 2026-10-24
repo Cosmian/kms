@@ -180,7 +180,10 @@ impl From<rusqlite::Error> for DbError {
         // Some SQLite API misuses surface as "Query is not read-only"; in our context, this
         // most commonly happens on duplicate imports. Map to a clearer, user-facing message.
         if msg.contains("Query is not read-only") {
-            Self::DatabaseError("one or more objects already exist".to_owned())
+            Self::Kmip21Error(
+                ErrorReason::Object_Already_Exists,
+                "one or more objects already exist".to_owned(),
+            )
         } else {
             Self::SqlError(msg)
         }
@@ -192,7 +195,10 @@ impl<E: std::error::Error + Send + Sync + 'static> From<tokio_rusqlite::Error<E>
         // The error type is generic across tokio-rusqlite versions; rely on string content.
         let msg = e.to_string();
         if msg.contains("Query is not read-only") {
-            Self::DatabaseError("one or more objects already exist".to_owned())
+            Self::Kmip21Error(
+                ErrorReason::Object_Already_Exists,
+                "one or more objects already exist".to_owned(),
+            )
         } else {
             Self::SqlError(msg)
         }
@@ -205,7 +211,10 @@ impl From<tokio_postgres::Error> for DbError {
         if let Some(db_err) = e.as_db_error() {
             use tokio_postgres::error::SqlState;
             if *db_err.code() == SqlState::UNIQUE_VIOLATION {
-                return Self::DatabaseError("one or more objects already exist".to_owned());
+                return Self::Kmip21Error(
+                    ErrorReason::Object_Already_Exists,
+                    "one or more objects already exist".to_owned(),
+                );
             }
             // Display collapses this to "db error"; keep the SQLSTATE for
             // `is_pg_retryable_error`, but log the message (may name tables/constraints)
@@ -229,7 +238,10 @@ impl From<mysql_async::Error> for DbError {
             mysql_async::Error::Server(ref se) => {
                 // 1062 ER_DUP_ENTRY: Duplicate entry for key (unique/primary key violation)
                 if se.code == 1062 {
-                    return Self::DatabaseError("one or more objects already exist".to_owned());
+                    return Self::Kmip21Error(
+                        ErrorReason::Object_Already_Exists,
+                        "one or more objects already exist".to_owned(),
+                    );
                 }
                 Self::SqlError(se.to_string())
             }
@@ -266,7 +278,11 @@ impl From<InterfaceError> for DbError {
     fn from(value: InterfaceError) -> Self {
         match value {
             InterfaceError::Db(s) => Self::Store(s),
+            InterfaceError::ObjectAlreadyExists(s) => {
+                Self::Kmip21Error(ErrorReason::Object_Already_Exists, s)
+            }
             InterfaceError::Unauthorized(s) => Self::Unauthorized(s),
+            InterfaceError::InvalidRequest(s) => Self::InvalidRequest(s),
             x => Self::Store(x.to_string()),
         }
     }
@@ -333,6 +349,9 @@ impl From<KmipError> for DbError {
 impl From<DbError> for InterfaceError {
     fn from(value: DbError) -> Self {
         match value {
+            DbError::Kmip21Error(ErrorReason::Object_Already_Exists, msg) => {
+                Self::ObjectAlreadyExists(msg)
+            }
             DbError::Unauthorized(msg) => Self::Unauthorized(msg),
             DbError::InvalidRequest(msg) => Self::InvalidRequest(msg),
             DbError::NotSupported(msg) => Self::NotSupported(msg),

@@ -14,6 +14,16 @@ If no Attribute Reference is provided, the server SHALL return all attributes.
 
 This operation can be applied to all [supported objects](../objects.md).
 
+Implementation notes:
+
+- The same Attribute Reference twice in a request returns `Invalid_Field`.
+- Without a Unique Identifier, the ID Placeholder is used; the server never scans the whole table.
+- `ShortUniqueIdentifier` is the hex-encoded SHA-256 of the Unique Identifier (KMIP 2.1 §4.56).
+- `KeyFormatType` is the format a default Get returns: PKCS#1 for RSA keys, Raw for symmetric keys (KMIP 2.1 §4.26, Table 81).
+- `DestroyDate`, `LeaseTime` and `RandomNumberGenerator` are returned only when set; the server never invents them.
+- Rotation attributes are returned only when requested or set.
+- With an empty Attribute Reference, the response also lists `UniqueIdentifier`, `ShortUniqueIdentifier`, `Sensitive`, `AlwaysSensitive`, `Extractable`, `NeverExtractable` and every stored attribute.
+
 ## Example - A symmetric key
 
 Get the attributes of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
@@ -397,3 +407,6 @@ Please note in the response:
       ]
     }
     ```
+
+!!! note "Examples abridged"
+    The three example responses above do not list every attribute described in the Implementation notes.

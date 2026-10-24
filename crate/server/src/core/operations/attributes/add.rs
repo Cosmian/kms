@@ -14,7 +14,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{debug, trace};
 
 use super::policy::{
-    check_grant, check_read_only, check_rotate_name, check_sql_rotate_name, read_only_error,
+    check_extractable_latch, check_grant, check_read_only, check_rotate_name,
+    check_sql_rotate_name, check_vendor_attribute, read_only_error, single_valued,
 };
 use crate::{
     core::{
@@ -32,7 +33,7 @@ pub(crate) async fn add_attribute(
     request: AddAttribute,
     user: &UserId,
 ) -> KResult<AddAttributeResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    trace!("AddAttribute request");
 
     // there must be an identifier
     let object_handle = from_request(Some(&request.unique_identifier), "Add Attribute")?;
@@ -40,6 +41,7 @@ pub(crate) async fn add_attribute(
     // Read-only guard — these attributes are server-managed.
     check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
     check_rotate_name(&request.new_attribute, "AddAttribute")?;
+    check_vendor_attribute(&request.new_attribute, KmipOperation::AddAttribute)?;
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -49,7 +51,7 @@ pub(crate) async fn add_attribute(
     ))
     .await?;
     let owm = Arc::unwrap_or_clone(owm);
-    trace!("Retrieved object for: {}", owm.object());
+    trace!("Retrieved object for AddAttribute");
 
     check_sql_rotate_name(owm.id(), &request.new_attribute, "AddAttribute", "key")?;
 
@@ -62,10 +64,11 @@ pub(crate) async fn add_attribute(
         &owm,
         user,
         KmipOperation::AddAttribute,
-        &request.new_attribute,
+        request.new_attribute.tag(),
     )
     .await?;
 
+    let echoed_attribute = Some(request.new_attribute.clone());
     let (id, mut object, mut attributes) = owm.into_parts();
     // Check if the attribute is allowed to be set
     with_common_simple_attributes! {
@@ -78,7 +81,7 @@ pub(crate) async fn add_attribute(
             Attribute::Link(link) => {
                 trace!("Link: {}", link);
                 if attributes.get_link(link.link_type).is_some() {
-                    return Err(KmsError::InvalidRequest("Link already exists".to_owned()));
+                    return Err(single_valued("Link already exists"));
                 }
                 attributes.set_link(link.link_type, link.linked_object_identifier);
             }
@@ -98,9 +101,7 @@ pub(crate) async fn add_attribute(
                         )
                         .is_some()
                 {
-                    return Err(KmsError::InvalidRequest(
-                        "Vendor Attribute already exists".to_owned(),
-                    ));
+                    return Err(single_valued("Vendor Attribute already exists"));
                 }
                 attributes.set_vendor_attribute(
                     &vendor_attribute.vendor_identification,
@@ -129,16 +130,17 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.description = Some(description);
             }
-            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
+            Attribute::AlwaysSensitive(_)
+            | Attribute::NeverExtractable(_)
+            | Attribute::State(_)
+            | Attribute::Digest(_) => {
                 // Defensive: already refused by `check_read_only`.
                 return Err(read_only_error(KmipOperation::AddAttribute));
             }
             Attribute::Sensitive(sensitive) => {
                 trace!("Sensitive: {:?}", sensitive);
                 if attributes.sensitive.is_some() {
-                    return Err(KmsError::InvalidRequest(
-                        "Sensitive already exists".to_owned(),
-                    ));
+                    return Err(single_valued("Sensitive already exists"));
                 }
                 // Setting Sensitive also (re)computes the server-managed
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
@@ -147,10 +149,9 @@ pub(crate) async fn add_attribute(
             Attribute::Extractable(extractable) => {
                 trace!("Extractable: {:?}", extractable);
                 if attributes.extractable.is_some() {
-                    return Err(KmsError::InvalidRequest(
-                        "Extractable already exists".to_owned(),
-                    ));
+                    return Err(single_valued("Extractable already exists"));
                 }
+                check_extractable_latch(&attributes, extractable, KmipOperation::AddAttribute)?;
                 attributes.apply_extractable(extractable);
             }
         }
@@ -178,9 +179,10 @@ pub(crate) async fn add_attribute(
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = object.attributes_mut()?;
-            object_attributes.clone_from(&attributes);
-            debug!("Set Object Attribute: {}", object_attributes);
+            if let Ok(object_attributes) = object.attributes_mut() {
+                object_attributes.clone_from(&attributes);
+                debug!("Synchronized embedded object attributes");
+            }
         }
         _ => {
             trace!(
@@ -190,12 +192,13 @@ pub(crate) async fn add_attribute(
         }
     }
 
-    debug!("Add Attribute: {}", attributes);
+    debug!("Added object attribute");
     kms.database
         .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
 
     Ok(AddAttributeResponse {
         unique_identifier: UniqueIdentifier::TextString(id),
+        echoed_attribute,
     })
 }

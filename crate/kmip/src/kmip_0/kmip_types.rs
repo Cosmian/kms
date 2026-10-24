@@ -99,11 +99,24 @@ pub enum HashingAlgorithm {
 
 /// The ticket structure used to specify a Ticket
 /// KMIP 2.1 Only. Used in Authentication
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Ticket {
     pub ticket_type: TicketType,
     pub ticket_value: Vec<u8>,
+}
+
+/// The Ticket Value is a bearer secret: `Debug` never prints it.
+impl std::fmt::Debug for Ticket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ticket")
+            .field("ticket_type", &self.ticket_type)
+            .field(
+                "ticket_value",
+                &format_args!("<{} bytes>", self.ticket_value.len()),
+            )
+            .finish()
+    }
 }
 
 /// A Credential is a structure used to convey information used to authenticate a client
@@ -173,7 +186,8 @@ pub enum CredentialValue {
     },
     HashedPassword {
         username: String,
-        timestamp: u64, // epoch millis
+        /// Date Time Extended: microseconds since the Unix epoch (KMIP 2.1 Table 415)
+        timestamp: i128,
         hashing_algorithm: Option<HashingAlgorithm>,
         hashed_password: Vec<u8>,
     },
@@ -281,7 +295,8 @@ impl Serialize for CredentialValue {
             } => {
                 let mut st = serializer.serialize_struct("HashedPassword", 4)?;
                 st.serialize_field("Username", username)?;
-                st.serialize_field("Timestamp", timestamp)?;
+                // KMIP defines no `Timestamp` tag: the field uses Time Stamp (0x420092).
+                st.serialize_field("TimeStamp", timestamp)?;
                 if let Some(hashing_algorithm) = hashing_algorithm {
                     st.serialize_field("HashingAlgorithm", hashing_algorithm)?;
                 }
@@ -317,6 +332,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
             AttestationMeasurement,
             AttestationAssertion,
             OneTimePassword,
+            #[serde(rename = "TimeStamp", alias = "Timestamp")]
             Timestamp,
             HashingAlgorithm,
             HashedPassword,
@@ -348,7 +364,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
                 let mut attestation_measurement: Option<Vec<u8>> = None;
                 let mut attestation_assertion: Option<Vec<u8>> = None;
                 let mut one_time_password: Option<String> = None;
-                let mut timestamp: Option<u64> = None;
+                let mut timestamp: Option<i128> = None;
                 let mut hashing_algorithm: Option<HashingAlgorithm> = None;
                 let mut hashed_password: Option<Vec<u8>> = None;
                 let mut ticket: Option<Ticket> = None;
@@ -524,6 +540,7 @@ impl<'de> Deserialize<'de> for CredentialValue {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Nonce {
+    #[serde(rename = "NonceID", alias = "NonceId")]
     pub nonce_id: Vec<u8>,
     pub nonce_value: Vec<u8>,
 }
@@ -631,18 +648,24 @@ pub struct MessageExtension {
     /// i.e. [A-Za-z0-9_.])
     pub vendor_identification: String,
     pub criticality_indicator: bool,
-    // Vendor extension structure is not precisely defined by KMIP reference
-    pub vendor_extension: Vec<u8>,
+    /// Vendor-specific Structure (KMIP 2.1 Table 418). Its content is vendor-defined
+    /// and not interpreted by this library: it decodes from any Structure.
+    pub vendor_extension: VendorExtension,
 }
+
+/// The Vendor Extension Structure of a Message Extension.
+///
+/// Its children are vendor-defined (typically extension tags `0x54xxxx`); this library
+/// understands no vendor extension, so they are skipped on decoding and none are encoded.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Eq, PartialEq)]
+pub struct VendorExtension;
 
 impl std::fmt::Display for MessageExtension {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "MessageExtension {{ vendor_identification: {}, criticality_indicator: {}, vendor_extension: <{} bytes> }}",
-            self.vendor_identification,
-            self.criticality_indicator,
-            self.vendor_extension.len()
+            "MessageExtension {{ vendor_identification: {}, criticality_indicator: {} }}",
+            self.vendor_identification, self.criticality_indicator,
         )
     }
 }
@@ -722,23 +745,12 @@ pub enum RNGAlgorithm {
     ANSI_X962 = 0x6,
 }
 
-/// Types of validation authorities that can validate cryptographic objects.
+/// Validation Authority Type enumeration (KMIP 2.1 §11.62, KMIP 1.4 §9.1.3.2.36).
 #[kmip_enum]
 pub enum ValidationAuthorityType {
-    /// Common Criteria Testing Laboratory authority.
-    CommonCriteriaTestingLaboratory = 0x0000_0001,
-    /// National Voluntary Laboratory Accreditation Program.
-    Nvlap = 0x0000_0002,
-    /// National Information Assurance Partnership.
-    Niap = 0x0000_0003,
-    /// Authority not matching any other defined type.
-    Unspecified = 0x0000_0004,
-    /// Federal Information Processing Standards authority.
-    FipsApprovedSecurityFunction = 0x0000_0005,
-    /// ISO/IEC 19790 compliant validation.
-    Iso19790Compliant = 0x0000_0006,
-    /// Federal Information Security Management Act authority.
-    Fisma = 0x0000_0007,
+    Unspecified = 0x0000_0001,
+    NISTCMVP = 0x0000_0002,
+    CommonCriteria = 0x0000_0003,
 }
 
 #[kmip_enum]
@@ -753,8 +765,10 @@ pub enum ValidationType {
 #[kmip_enum]
 pub enum UnwrapMode {
     Unspecified = 0x1,
-    UsingWrappingKey = 0x2,
-    UsingTransportKey = 0x3,
+    #[strum(to_string = "Processed", serialize = "UsingWrappingKey")]
+    Processed = 0x2,
+    #[strum(to_string = "NotProcessed", serialize = "UsingTransportKey")]
+    NotProcessed = 0x3,
 }
 
 /// KMIP 1.4 Destroy Action Enumeration
@@ -773,7 +787,8 @@ pub enum DestroyAction {
 pub enum ShreddingAlgorithm {
     Unspecified = 0x1,
     Cryptographic = 0x2,
-    Unsupervised = 0x3,
+    #[strum(to_string = "Unsupported", serialize = "Unsupervised")]
+    Unsupported = 0x3,
 }
 
 #[kmip_enum]
@@ -855,6 +870,8 @@ pub enum KeyRoleType {
 
 #[kmip_enum]
 pub enum MaskGenerator {
+    // The Rust name keeps the historical misspelling; the wire name is the spec's `MGF1`.
+    #[strum(to_string = "MGF1", serialize = "MFG1")]
     MFG1 = 0x0000_0001,
 }
 
@@ -1139,17 +1156,80 @@ pub enum AlternativeNameType {
     ObjectSerialNumber = 0x3,
     EmailAddress = 0x4,
     DNSName = 0x5,
-    X500DirectoryName = 0x6,
+    #[strum(to_string = "X500DistinguishedName", serialize = "X500DirectoryName")]
+    X500DistinguishedName = 0x6,
     IPAddress = 0x7,
 }
 
-/// `KeyValueLocationType` enumeration indicates where a key value is stored
+/// `KeyValueLocationType` enumeration (KMIP 2.1 §11.31): how the Key Value Location is expressed
+///
+/// Earlier releases persisted the non-spec names `Unspecified`, `OnPremise`, `OffPremise` and
+/// `OnPremiseOffPremise`; they still deserialize: `OnPremise` (code 2) as `URI`, the others,
+/// which have no spec equivalent, as `UninterpretedTextString`.
 #[kmip_enum]
 pub enum KeyValueLocationType {
-    Unspecified = 0x1,
-    OnPremise = 0x2,
-    OffPremise = 0x3,
-    OnPremiseOffPremise = 0x4,
+    #[strum(
+        to_string = "UninterpretedTextString",
+        serialize = "Unspecified",
+        serialize = "OffPremise",
+        serialize = "OnPremiseOffPremise"
+    )]
+    UninterpretedTextString = 0x1,
+    #[strum(to_string = "URI", serialize = "OnPremise")]
+    URI = 0x2,
+}
+
+/// Key Value Location attribute (KMIP 2.1 §4.27 Table 82, KMIP 1.4 §3.42): where the Key Value
+/// omitted from the Key Block of a registered object is held.
+///
+/// Earlier releases modelled (and persisted) the attribute as its Key Value Location Type only;
+/// such a stored value still deserializes, with an empty Key Value Location Value.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase", from = "KeyValueLocationRepr")]
+pub struct KeyValueLocation {
+    /// The location of the Key Value.
+    pub key_value_location_value: String,
+    /// How the location is expressed.
+    pub key_value_location_type: KeyValueLocationType,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum KeyValueLocationRepr {
+    #[serde(rename_all = "PascalCase")]
+    Structure {
+        key_value_location_value: String,
+        key_value_location_type: KeyValueLocationType,
+    },
+    Legacy(KeyValueLocationType),
+}
+
+impl From<KeyValueLocationRepr> for KeyValueLocation {
+    fn from(repr: KeyValueLocationRepr) -> Self {
+        match repr {
+            KeyValueLocationRepr::Structure {
+                key_value_location_value,
+                key_value_location_type,
+            } => Self {
+                key_value_location_value,
+                key_value_location_type,
+            },
+            KeyValueLocationRepr::Legacy(key_value_location_type) => Self {
+                key_value_location_value: String::new(),
+                key_value_location_type,
+            },
+        }
+    }
+}
+
+impl fmt::Display for KeyValueLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} ({})",
+            self.key_value_location_value, self.key_value_location_type
+        )
+    }
 }
 
 /// `X509CertificateIdentifier` structure for identifying X.509 certificates
@@ -1214,6 +1294,17 @@ pub enum State {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ticket_debug_hides_the_value() {
+        let ticket = Ticket {
+            ticket_type: TicketType::Login,
+            ticket_value: vec![0xAB, 0xCD, 0xEF],
+        };
+        let shown = format!("{ticket:?}");
+        assert!(shown.contains("<3 bytes>"));
+        assert!(!shown.to_lowercase().contains("ab") && !shown.contains("171"));
+    }
+
     use super::{
         AttestationType, Credential, CredentialType, CredentialValue, HashingAlgorithm, Nonce,
         Ticket, TicketType,
@@ -1314,5 +1405,104 @@ mod tests {
             );
             assert_eq!(back, Some(credential));
         }
+    }
+
+    /// The Hashed Password Timestamp is a Date Time Extended (KMIP 2.1 Table 415), and the
+    /// Vendor Extension of a Message Extension is a Structure (Table 418) whose vendor tags
+    /// (`0x54xxxx`) decode from the binary wire.
+    #[test]
+    fn hashed_password_and_vendor_extension_wire_types() {
+        use crate::{
+            kmip_0::kmip_types::{MessageExtension, VendorExtension},
+            ttlv::{KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
+        };
+
+        fn find<'a>(ttlv: &'a TTLV, tag: &str) -> Option<&'a TTLV> {
+            if ttlv.tag == tag {
+                return Some(ttlv);
+            }
+            match &ttlv.value {
+                TTLValue::Structure(children) => children.iter().find_map(|c| find(c, tag)),
+                _ => None,
+            }
+        }
+
+        let credential = Credential {
+            credential_type: CredentialType::HashedPassword,
+            credential_value: CredentialValue::HashedPassword {
+                username: "u".to_owned(),
+                timestamp: 1_700_000_000_000_000,
+                hashing_algorithm: None,
+                hashed_password: vec![1],
+            },
+        };
+        let ttlv = to_ttlv(&credential).ok();
+        assert_eq!(
+            ttlv.as_ref()
+                .and_then(|t| find(t, "TimeStamp"))
+                .map(|t| &t.value),
+            Some(&TTLValue::DateTimeExtended(1_700_000_000_000_000))
+        );
+        let decoded: Option<Credential> = ttlv
+            .and_then(|t| t.to_bytes(KmipFlavor::Kmip2).ok())
+            .and_then(|b| TTLV::from_bytes(&b, KmipFlavor::Kmip2).ok())
+            .and_then(|t| from_ttlv(t).ok());
+        assert_eq!(decoded, Some(credential));
+
+        let extension = TTLV {
+            tag: "MessageExtension".into(),
+            value: TTLValue::Structure(vec![
+                TTLV {
+                    tag: "VendorIdentification".into(),
+                    value: TTLValue::TextString("acme".to_owned()),
+                },
+                TTLV {
+                    tag: "CriticalityIndicator".into(),
+                    value: TTLValue::Boolean(true),
+                },
+                TTLV {
+                    tag: "VendorExtension".into(),
+                    value: TTLValue::Structure(vec![TTLV {
+                        tag: "0x540A0B".into(),
+                        value: TTLValue::Integer(7),
+                    }]),
+                },
+            ]),
+        };
+        let decoded = extension
+            .to_bytes(KmipFlavor::Kmip2)
+            .ok()
+            .and_then(|b| TTLV::from_bytes(&b, KmipFlavor::Kmip2).ok());
+        assert_eq!(decoded.as_ref(), Some(&extension));
+        let extension: Option<MessageExtension> = decoded.and_then(|t| from_ttlv(t).ok());
+        assert_eq!(
+            extension,
+            Some(MessageExtension {
+                vendor_identification: "acme".to_owned(),
+                criticality_indicator: true,
+                vendor_extension: VendorExtension {},
+            })
+        );
+    }
+
+    /// An undefined enumeration value fails with the `UNKNOWN_ENUMERATION` text that servers
+    /// map to the `Unknown Enumeration` result reason.
+    #[test]
+    fn unknown_enumeration_value_error_is_marked() {
+        use crate::{
+            kmip_0::kmip_types::State,
+            ttlv::{KmipEnumerationVariant, TTLV, TTLValue, UNKNOWN_ENUMERATION, from_ttlv},
+        };
+        let ttlv = TTLV {
+            tag: "State".into(),
+            value: TTLValue::Enumeration(KmipEnumerationVariant {
+                value: 0x99,
+                name: "".into(),
+            }),
+        };
+        assert!(matches!(
+            from_ttlv::<State>(ttlv),
+            Err(e) if e.to_string().contains(UNKNOWN_ENUMERATION)
+        ));
     }
 }

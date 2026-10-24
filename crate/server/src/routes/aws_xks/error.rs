@@ -159,7 +159,12 @@ impl ResponseError for XksErrorReply {
 pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorReply {
     let (error_name, msg) = match e {
         KmsError::Unauthorized(msg)
-        | KmsError::Kmip21Error(ErrorReason::Permission_Denied, msg) => {
+        | KmsError::Kmip21Error(
+            ErrorReason::Permission_Denied
+            | ErrorReason::Invalid_Object_Type
+            | ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            msg,
+        ) => {
             (XksErrorName::InvalidKeyUsageException, msg)
         }
         KmsError::ItemNotFound(msg) | KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg) => {
@@ -175,7 +180,11 @@ pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorRe
         // Unsupported algorithm / operation
         KmsError::NotSupported(msg)
         | KmsError::UnsupportedAlgorithm(msg)
-        | KmsError::Kmip21Error(ErrorReason::Operation_Not_Supported, msg) => {
+        | KmsError::Kmip21Error(
+            ErrorReason::Operation_Not_Supported
+            | ErrorReason::Unsupported_Cryptographic_Parameters,
+            msg,
+        ) => {
             (XksErrorName::UnsupportedOperationException, msg)
         }
         // Validation / bad request errors (cryptographic errors, invalid requests, and all

@@ -53,6 +53,8 @@ graph TB
 
 `RNGSeed` (additional input to the server DRBG) is restricted to Crypto Officers once roles are configured; `RNGRetrieve` stays available to every authenticated user.
 
+An Operator can also call `Get` and `Export` on an object it owns or on which a Crypto Officer (or the owner) has granted the `get` or `export` right. Without such a grant the request is refused with `Permission_Denied`.
+
 !!! note "Fail-secure default"
     When `crypto_officer_users` is configured but a user is not in the list, the server
     assigns the **Operator** role (minimum privilege). Users are never silently promoted.

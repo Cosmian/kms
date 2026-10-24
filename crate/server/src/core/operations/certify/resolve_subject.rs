@@ -15,12 +15,15 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-        kmip_objects::ObjectType,
-        kmip_operations::{Certify, CreateKeyPair},
-        kmip_types::{CertificateRequestType, LinkType, UniqueIdentifier},
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::{Certify, CreateKeyPair},
+            kmip_types::{CertificateRequestType, LinkType, UniqueIdentifier},
+        },
     },
     cosmian_kms_crypto::openssl::{
         certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
@@ -160,31 +163,52 @@ fn cryptographic_usage_mask_public_key(
     })
 }
 
+/// Parse a certificate request of the given type (KMIP 2.1 §6.1.6.1: a bad request is
+/// `Invalid_CSR`, CRMF is not supported).
+fn parse_csr(
+    certificate_request_type: CertificateRequestType,
+    certificate_request_value: &[u8],
+) -> KResult<X509Req> {
+    match certificate_request_type {
+        CertificateRequestType::PEM => X509Req::from_pem(certificate_request_value),
+        CertificateRequestType::PKCS10 => X509Req::from_der(certificate_request_value),
+        CertificateRequestType::CRMF => kms_bail!(KmsError::NotSupported(
+            "Certificate Request Type CRMF not supported".to_owned()
+        )),
+    }
+    .map_err(|error| {
+        KmsError::Kmip21Error(
+            ErrorReason::Invalid_CSR,
+            format!("Certify: invalid certificate request: {error}"),
+        )
+    })
+}
+
 /// Determine the subject of the issued certificate.
 /// The subject can be recovered from different sources:
 /// - a public key and a subject name
 /// - a certificate
 /// - a key pair and a subject name
-/// - a CSR
+/// - a CSR, passed in the request or as a managed Certificate Request object
 pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> KResult<Subject> {
-    // Did the user provide a CSR?
-    if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
-        let x509_req = match &request
-            .certificate_request_type
-            .as_ref()
-            .unwrap_or(&CertificateRequestType::PEM)
-        {
-            CertificateRequestType::PEM => X509Req::from_pem(pkcs10_bytes),
-            CertificateRequestType::PKCS10 => X509Req::from_der(pkcs10_bytes),
-            CertificateRequestType::CRMF => kms_bail!(KmsError::InvalidRequest(
-                "Certificate Request Type CRMF not supported".to_owned()
-            )),
-        }?;
-        let certificate_id = request
+    let destination_id = || {
+        request
             .attributes
             .as_ref()
             .and_then(|attributes| attributes.unique_identifier.clone())
-            .unwrap_or_default();
+    };
+    // Did the user provide a CSR?
+    if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
+        // KMIP 2.1 Table 179: the type is REQUIRED when the request is present
+        let certificate_request_type = request.certificate_request_type.ok_or_else(|| {
+            KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                "Certify: Certificate Request Type is required with a Certificate Request"
+                    .to_owned(),
+            )
+        })?;
+        let x509_req = parse_csr(certificate_request_type, pkcs10_bytes)?;
+        let certificate_id = destination_id().unwrap_or_default();
         authorize_destination_uid(kms, &certificate_id, user).await?;
         // see if there is a link to a private key (in case of self-signed cert)
         return Ok(Subject::X509Req(certificate_id, x509_req));
@@ -202,13 +226,23 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         {
             let object_type = owm.object().object_type();
             match object_type {
+                // If the user passed a managed Certificate Request, certify it
+                ObjectType::CertificateRequest => {
+                    let Object::CertificateRequest(csr) = owm.object() else {
+                        kms_bail!(KmsError::Kmip21Error(
+                            ErrorReason::Invalid_Object_Type,
+                            format!("Certify: object {request_id} is not a Certificate Request"),
+                        ))
+                    };
+                    let x509_req =
+                        parse_csr(csr.certificate_request_type, &csr.certificate_request_value)?;
+                    let certificate_id = destination_id().unwrap_or_default();
+                    authorize_destination_uid(kms, &certificate_id, user).await?;
+                    return Ok(Subject::X509Req(certificate_id, x509_req));
+                }
                 // If the user passed a certificate, attempt to renew it
                 ObjectType::Certificate => {
-                    let certificate_id = request
-                        .attributes
-                        .as_ref()
-                        .and_then(|attributes| attributes.unique_identifier.clone())
-                        .unwrap_or_else(|| request_id.clone());
+                    let certificate_id = destination_id().unwrap_or_else(|| request_id.clone());
                     authorize_destination_uid(kms, &certificate_id, user).await?;
                     return Ok(Subject::Certificate(
                         certificate_id,
@@ -228,8 +262,12 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
                 {
                     Some(linked_public_key(kms, &owm, user).await?)
                 }
-                // Invalid request
-                x => kms_bail!("Invalid Certify request for object type {x:?}"),
+                x => {
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Invalid_Object_Type,
+                        format!("Invalid Certify request for object type {x:?}"),
+                    ));
+                }
             }
         } else {
             return Err(KmsError::ItemNotFound(request_id.to_string()));

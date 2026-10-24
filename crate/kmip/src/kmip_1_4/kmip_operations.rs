@@ -271,12 +271,12 @@ impl Display for CreateKeyPairResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Register {
-    // Determines the type of object being registered
+    /// Determines the type of object being registered
     pub object_type: ObjectType,
-    /// The object being registered
-    pub object: Object,
     /// Template attributes for the object
     pub template_attribute: TemplateAttribute,
+    /// The object being registered
+    pub object: Object,
 }
 
 impl From<Register> for kmip_2_1::kmip_operations::Register {
@@ -306,10 +306,14 @@ pub struct RegisterResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKey {
-    /// Unique identifier of the symmetric key to be rekeyed
-    pub unique_identifier: String,
-    /// Offset from the initialization date of the new key
+    /// Unique identifier of the symmetric key to be rekeyed; the ID Placeholder when omitted
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+    /// Offset from the initialization date of the new key
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::interval::serialize_option_secs"
+    )]
     pub offset: Option<i64>,
     /// Template attributes for the new key
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -319,7 +323,7 @@ pub struct ReKey {
 impl From<ReKey> for kmip_2_1::kmip_operations::ReKey {
     fn from(rekey: ReKey) -> Self {
         Self {
-            unique_identifier: Some(rekey.unique_identifier.into()),
+            unique_identifier: rekey.unique_identifier.map(Into::into),
             offset: rekey.offset,
             attributes: rekey.template_attribute.map(Into::into),
             protection_storage_masks: None,
@@ -343,10 +347,14 @@ pub struct ReKeyResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
-    /// Unique identifier of private key to be rekeyed
-    pub private_key_unique_identifier: String,
-    /// Offset from the initialization date of the new key pair
+    /// Unique identifier of private key to be rekeyed; the ID Placeholder when omitted
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_key_unique_identifier: Option<String>,
+    /// Offset from the initialization date of the new key pair
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::interval::serialize_option_secs"
+    )]
     pub offset: Option<i64>,
     /// Common template attributes for both public and private key
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -378,7 +386,7 @@ pub struct ReKeyKeyPairResponse {
 impl From<ReKeyKeyPair> for kmip_2_1::kmip_operations::ReKeyKeyPair {
     fn from(rekey: ReKeyKeyPair) -> Self {
         Self {
-            private_key_unique_identifier: Some(rekey.private_key_unique_identifier.into()),
+            private_key_unique_identifier: rekey.private_key_unique_identifier.map(Into::into),
             offset: rekey.offset,
             common_attributes: rekey.common_template_attribute.map(Into::into),
             private_key_attributes: rekey.private_key_template_attribute.map(Into::into),
@@ -411,6 +419,8 @@ impl TryFrom<kmip_2_1::kmip_operations::ReKeyKeyPairResponse> for ReKeyKeyPairRe
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
+    /// Type of the object to derive (Symmetric Key or Secret Data), 1.4 Table 180.
+    pub object_type: ObjectType,
     /// Unique identifiers of the object or objects to derive from.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub unique_identifier: Vec<String>,
@@ -428,12 +438,14 @@ impl DeriveKey {
     /// Build a KMIP 1.4 `DeriveKey` request from a single base object identifier.
     #[must_use]
     pub fn new_single_base(
+        object_type: ObjectType,
         unique_identifier: impl Into<String>,
         derivation_method: DerivationMethod,
         derivation_parameters: Option<DerivationParameters>,
         template_attribute: Option<TemplateAttribute>,
     ) -> Self {
         Self {
+            object_type,
             unique_identifier: vec![unique_identifier.into()],
             derivation_method,
             derivation_parameters,
@@ -444,12 +456,14 @@ impl DeriveKey {
     /// Build a KMIP 1.4 asymmetric `DeriveKey` request using two identifiers.
     #[must_use]
     pub fn new_asymmetric(
+        object_type: ObjectType,
         private_key_identifier: impl Into<String>,
         peer_public_key_identifier: impl Into<String>,
         derivation_parameters: Option<DerivationParameters>,
         template_attribute: Option<TemplateAttribute>,
     ) -> Self {
         Self {
+            object_type,
             unique_identifier: vec![
                 private_key_identifier.into(),
                 peer_public_key_identifier.into(),
@@ -463,23 +477,8 @@ impl DeriveKey {
 
 impl From<DeriveKey> for kmip_2_1::kmip_operations::DeriveKey {
     fn from(derive: DeriveKey) -> Self {
-        // KMIP 1.4 does not include ObjectType in the request; default to SymmetricKey
-        // per the spec which says DeriveKey creates "a symmetric key or secret data".
-        let object_type = derive
-            .template_attribute
-            .as_ref()
-            .and_then(|ta| ta.attribute.as_ref())
-            .and_then(|attrs| {
-                attrs.iter().find_map(|a| {
-                    if let Attribute::ObjectType(ot) = a {
-                        Some((*ot).into())
-                    } else {
-                        None
-                    }
-                })
-            })
-            .unwrap_or(kmip_2_1::kmip_objects::ObjectType::SymmetricKey);
         let DeriveKey {
+            object_type,
             unique_identifier,
             derivation_method,
             derivation_parameters,
@@ -487,7 +486,7 @@ impl From<DeriveKey> for kmip_2_1::kmip_operations::DeriveKey {
         } = derive;
 
         Self {
-            object_type,
+            object_type: object_type.into(),
             object_unique_identifier: unique_identifier
                 .into_iter()
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString)
@@ -523,7 +522,10 @@ pub struct Certify {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_request_type: Option<CertificateRequestType>,
     /// Tag 0x420018 `CertificateRequest` (KMIP 1.4 name).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        alias = "CertificateRequestValue",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub certificate_request: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
@@ -555,6 +557,7 @@ impl From<Certify> for kmip_2_1::kmip_operations::Certify {
     }
 }
 
+
 /// 4.8 Re-certify
 /// This operation requests the server to generate a new Certificate object for an existing public key.
 /// Per KMIP 1.4 §4.8 Table 188, all fields are optional.
@@ -568,8 +571,16 @@ pub struct ReCertify {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_request_type: Option<CertificateRequestType>,
     /// A Byte String object with the certificate request.
+    #[serde(rename = "CertificateRequest", alias = "CertificateRequestValue")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_request_value: Option<Vec<u8>>,
+    /// Interval between the Initial Date and the Activation Date of the new certificate
+    /// (KMIP 1.4 §4.8).
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::interval::serialize_option_secs"
+    )]
+    pub offset: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
@@ -592,9 +603,10 @@ impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
         });
         Self {
             unique_identifier: recertify.unique_identifier.map(Into::into),
+            certificate_request_unique_identifier: None,
             certificate_request_type: cert_req_type,
             certificate_request_value: recertify.certificate_request_value,
-            offset: None,
+            offset: recertify.offset,
             attributes: recertify.template_attribute.map(Into::into),
             protection_storage_masks: None,
         }
@@ -614,8 +626,8 @@ impl From<kmip_2_1::kmip_operations::ReCertify> for ReCertify {
             unique_identifier: recertify.unique_identifier.map(|u| u.to_string()),
             certificate_request_type: cert_req_type,
             certificate_request_value: recertify.certificate_request_value,
+            offset: recertify.offset,
             template_attribute: None,
-            // KMIP 1.4 does not support offset; it is dropped during downgrade.
         }
     }
 }
@@ -628,6 +640,10 @@ pub struct Locate {
     /// An Integer object that indicates the maximum number of object identifiers the server MAY return.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum_items: Option<i32>,
+
+    /// An Integer object that indicates the number of matching object identifiers to skip.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_items: Option<i32>,
 
     /// An Integer object (used as a bit mask) that indicates whether only on-line objects, only archived objects,
     /// or both on-line and archived objects are to be searched. If omitted, then on-line only is assumed.
@@ -673,10 +689,17 @@ impl From<Locate> for kmip_2_1::kmip_operations::Locate {
         let attributes: Attributes = all_attrs.into();
         Self {
             maximum_items: locate.maximum_items,
-            storage_status_mask: None,
-            object_group_member: None,
+            offset_items: locate.offset_items,
+            storage_status_mask: locate.storage_status_mask,
+            object_group_member: locate.object_group_member.map(|member| match member {
+                ObjectGroupMember::GroupMemberFresh => {
+                    kmip_2_1::kmip_types::ObjectGroupMember::Group_Member_Fresh
+                }
+                ObjectGroupMember::GroupMemberDefault => {
+                    kmip_2_1::kmip_types::ObjectGroupMember::Group_Member_Default
+                }
+            }),
             attributes,
-            offset_items: None,
         }
     }
 }
@@ -685,6 +708,9 @@ impl From<Locate> for kmip_2_1::kmip_operations::Locate {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocateResponse {
+    /// Number of objects matching the request, regardless of Offset/Maximum Items (KMIP 1.3+)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub located_items: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "UniqueIdentifier")]
     pub unique_identifier: Option<Vec<String>>,
 }
@@ -696,6 +722,7 @@ impl TryFrom<kmip_2_1::kmip_operations::LocateResponse> for LocateResponse {
         trace!("Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value}");
 
         Ok(Self {
+            located_items: value.located_items,
             unique_identifier: value
                 .unique_identifier
                 .map(|ids| ids.iter().map(ToString::to_string).collect()),
@@ -721,7 +748,9 @@ impl Display for LocateResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Check {
-    pub unique_identifier: String,
+    /// The ID Placeholder when omitted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_limits_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -767,9 +796,9 @@ impl Display for CheckResponse {
 impl From<Check> for kmip_2_1::kmip_operations::Check {
     fn from(check: Check) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                check.unique_identifier,
-            )),
+            unique_identifier: check
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             usage_limits_count: check.usage_limits_count,
             cryptographic_usage_mask: check
                 .cryptographic_usage_mask
@@ -809,6 +838,9 @@ pub struct Get {
     pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+    /// `NotWrapped` or `AsRegistered`: how the returned key is wrapped (KMIP 1.4 §4.11).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_wrap_type: Option<KeyWrapType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -824,7 +856,7 @@ impl From<Get> for kmip_2_1::kmip_operations::Get {
             key_format_type: get.key_format_type.map(Into::into),
             key_compression_type: get.key_compression_type.map(Into::into),
             key_wrapping_specification: get.key_wrapping_specification.map(Into::into),
-            key_wrap_type: None,
+            key_wrap_type: get.key_wrap_type,
         }
     }
 }
@@ -1041,15 +1073,18 @@ fn attribute_name_from_tag(tag: kmip_2_1::kmip_types::Tag) -> String {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
-    pub unique_identifier: String,
+    /// If omitted, then the ID Placeholder value is used by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     pub attribute: Attribute,
 }
 
 impl From<AddAttribute> for kmip_2_1::kmip_operations::AddAttribute {
     fn from(add_attribute: AddAttribute) -> Self {
         Self {
-            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                add_attribute.unique_identifier,
+            unique_identifier: add_attribute.unique_identifier.map_or_else(
+                kmip_2_1::kmip_types::UniqueIdentifier::id_placeholder,
+                kmip_2_1::kmip_types::UniqueIdentifier::TextString,
             ),
             new_attribute: add_attribute.attribute.into(),
         }
@@ -1078,9 +1113,14 @@ impl From<kmip_2_1::kmip_operations::AddAttributeResponse> for AddAttributeRespo
     fn from(add_attribute_response: kmip_2_1::kmip_operations::AddAttributeResponse) -> Self {
         Self {
             unique_identifier: add_attribute_response.unique_identifier.to_string(),
-            attribute: Attribute::Comment(
-                "KMIP 2 does not send the attribute value on the response".to_owned(),
-            ),
+            attribute: add_attribute_response
+                .echoed_attribute
+                .and_then(|a| Attribute::try_from(a).ok())
+                .unwrap_or_else(|| {
+                    Attribute::Comment(
+                        "KMIP 2 does not send the attribute value on the response".to_owned(),
+                    )
+                }),
         }
     }
 }
@@ -1101,6 +1141,7 @@ impl From<ModifyAttribute> for kmip_2_1::kmip_operations::ModifyAttribute {
             unique_identifier: v
                 .unique_identifier
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            current_attribute: None,
             new_attribute: v.attribute.into(),
         }
     }
@@ -1152,7 +1193,9 @@ impl TryFrom<kmip_2_1::kmip_operations::ModifyAttributeResponse> for ModifyAttri
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttribute {
-    pub unique_identifier: String,
+    /// The ID Placeholder when omitted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     pub attribute_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_index: Option<i32>,
@@ -1193,7 +1236,7 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
             AttributeReference::Standard,
         );
         Self {
-            unique_identifier: Some(UniqueIdentifier::TextString(v.unique_identifier)),
+            unique_identifier: v.unique_identifier.map(UniqueIdentifier::TextString),
             current_attribute: None,
             attribute_references: Some(vec![a_ref]),
         }
@@ -1271,14 +1314,17 @@ pub struct GetUsageAllocationResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Activate {
-    pub unique_identifier: String,
+    /// If omitted, then the ID Placeholder value is used by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
 }
 
 impl From<Activate> for kmip_2_1::kmip_operations::Activate {
     fn from(activate: Activate) -> Self {
         Self {
-            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                activate.unique_identifier,
+            unique_identifier: activate.unique_identifier.map_or_else(
+                kmip_2_1::kmip_types::UniqueIdentifier::id_placeholder,
+                kmip_2_1::kmip_types::UniqueIdentifier::TextString,
             ),
         }
     }
@@ -1326,15 +1372,17 @@ pub struct RevokeResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Destroy {
-    pub unique_identifier: String,
+    /// The ID Placeholder when omitted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
 }
 
 impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
     fn from(destroy: Destroy) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                destroy.unique_identifier,
-            )),
+            unique_identifier: destroy
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             remove: false,
             cascade: false,
             expected_object_type: None,
@@ -1382,7 +1430,9 @@ pub struct RecoverResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct Validate {
     /// One or more Certificates.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // The TTLV deserializer reports a `Certificate` structure inside a structure under the
+    // key `Object` (it is a KMIP Object variant), hence the alias.
+    #[serde(alias = "Object", skip_serializing_if = "Option::is_none")]
     pub certificate: Option<Vec<Certificate>>,
     /// One or more Unique Identifiers of Certificate Objects.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1398,11 +1448,13 @@ impl From<Validate> for kmip_2_1::kmip_operations::Validate {
         Self {
             certificate: validate
                 .certificate
-                .map(|certs| certs.into_iter().map(|c| c.certificate_value).collect()),
+                .map(|certs| certs.into_iter().map(Into::into).collect()),
             unique_identifier: validate
                 .unique_identifier
                 .map(|uids| uids.into_iter().map(Into::into).collect()),
-            validity_time: validate.validity_time.map(|t| t.to_string()),
+            validity_time: validate
+                .validity_time
+                .map(crate::ttlv::asn1_date_time::format),
         }
     }
 }
@@ -1424,6 +1476,17 @@ impl From<ValidateResponse> for kmip_2_1::kmip_operations::ValidateResponse {
     }
 }
 
+impl From<kmip_2_1::kmip_operations::ValidateResponse> for ValidateResponse {
+    fn from(response: kmip_2_1::kmip_operations::ValidateResponse) -> Self {
+        let validity_indicator = match response.validity_indicator {
+            kmip_2_1::kmip_types::ValidityIndicator::Valid => ValidityIndicator::Valid,
+            kmip_2_1::kmip_types::ValidityIndicator::Invalid => ValidityIndicator::Invalid,
+            kmip_2_1::kmip_types::ValidityIndicator::Unknown => ValidityIndicator::Unknown,
+        };
+        Self { validity_indicator }
+    }
+}
+
 /// 4.25 Query
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1439,6 +1502,7 @@ impl From<Query> for kmip_2_1::kmip_operations::Query {
                     .map(Into::into)
                     .collect::<Vec<kmip_2_1::kmip_types::QueryFunction>>()
             }),
+            object_groups: None,
         }
     }
 }
@@ -1468,15 +1532,18 @@ pub struct QueryResponse {
     pub extension_information: Option<Vec<ExtensionInformation>>,
 
     /// List of attestation types supported by the server.
+    #[serde(rename = "AttestationType", alias = "AttestationTypes")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_types: Option<Vec<AttestationType>>,
 
     /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
     /// and a set of OPTIONAL fields that describe a Random Number Generator
+    #[serde(rename = "RNGParameters", alias = "RngParameters")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rng_parameters: Option<Vec<RNGParameters>>,
 
     /// List of profiles supported by the server.
+    #[serde(rename = "ProfileInformation", alias = "ProfilesInformation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profiles_information: Option<Vec<ProfileInformation>>,
 
@@ -1539,8 +1606,7 @@ impl TryFrom<kmip_2_1::kmip_operations::QueryResponse> for QueryResponse {
             operation,
             object_type,
             vendor_identification: value.vendor_identification,
-            // TODO: what is expected as server_information in KMIP 1 is not clear
-            server_information: None,
+            server_information: value.server_information.map(Into::into),
             extension_information,
             attestation_types: value.attestation_types,
             rng_parameters,
@@ -1587,7 +1653,9 @@ pub struct PollResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
-    pub unique_identifier: String,
+    /// If omitted, then the ID Placeholder value SHALL be used by the server (KMIP 1.4 Table 229).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
 
     /// The Cryptographic Parameters (Block
     /// Cipher Mode, Padding Method,
@@ -1637,9 +1705,9 @@ pub struct Encrypt {
 impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
     fn from(value: Encrypt) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                value.unique_identifier,
-            )),
+            unique_identifier: value
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
             data: value.data.map(Zeroizing::new),
             i_v_counter_nonce: value.i_v_counter_nonce,
@@ -1700,7 +1768,9 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
-    pub unique_identifier: String,
+    /// If omitted, then the ID Placeholder value SHALL be used by the server (KMIP 1.4 Table 231).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
 
     /// The Cryptographic Parameters (Block Cipher Mode, Padding Method) corresponding
     /// to the particular decryption method requested.
@@ -1753,9 +1823,9 @@ pub struct Decrypt {
 impl From<Decrypt> for kmip_2_1::kmip_operations::Decrypt {
     fn from(value: Decrypt) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                value.unique_identifier,
-            )),
+            unique_identifier: value
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
             data: value.data,
             i_v_counter_nonce: value.i_v_counter_nonce,
@@ -1870,7 +1940,11 @@ impl From<Sign> for kmip_2_1::kmip_operations::Sign {
 #[serde(rename_all = "PascalCase")]
 pub struct SignResponse {
     pub unique_identifier: String,
-    pub signature_data: Vec<u8>,
+    /// Required for single-part, absent on non-final parts of a multi-part Sign (Table 234).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_data: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
 }
 
 impl TryFrom<kmip_2_1::kmip_operations::SignResponse> for SignResponse {
@@ -1880,7 +1954,8 @@ impl TryFrom<kmip_2_1::kmip_operations::SignResponse> for SignResponse {
         trace!("Converting KMIP 2.1 SignResponse to KMIP 1.4: {value}");
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
-            signature_data: value.signature_data.unwrap_or_default(),
+            signature_data: value.signature_data,
+            correlation_value: value.correlation_value,
         })
     }
 }
@@ -1889,9 +1964,11 @@ impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SignResponse {{ unique_identifier: {}, signature_data_len: {} }}",
+            "SignResponse {{ unique_identifier: {}, signature_data_len: {}, correlation_value: \
+             {} }}",
             self.unique_identifier,
-            self.signature_data.len()
+            self.signature_data.as_ref().map_or(0, Vec::len),
+            self.correlation_value.is_some()
         )
     }
 }
@@ -1948,7 +2025,15 @@ impl From<SignatureVerify> for kmip_2_1::kmip_operations::SignatureVerify {
 #[serde(rename_all = "PascalCase")]
 pub struct SignatureVerifyResponse {
     pub unique_identifier: String,
+    /// Always present in KMIP 1.4 (Table 236): `Unknown` on non-final parts of a multi-part
+    /// verification.
     pub validity_indicator: ValidityIndicator,
+    /// The optional data recovered from the signature.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// The stream value to provide in the next parts of a multi-part verification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
 }
 
 impl TryFrom<kmip_2_1::kmip_operations::SignatureVerifyResponse> for SignatureVerifyResponse {
@@ -1967,6 +2052,8 @@ impl TryFrom<kmip_2_1::kmip_operations::SignatureVerifyResponse> for SignatureVe
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
             validity_indicator: vi_1_4,
+            data: value.data,
+            correlation_value: value.correlation_value,
         })
     }
 }
@@ -1985,7 +2072,9 @@ impl Display for SignatureVerifyResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MAC {
-    pub unique_identifier: String,
+    /// If omitted, then the ID Placeholder value SHALL be used by the server (KMIP 1.4 Table 237).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be hashed.
@@ -2004,9 +2093,9 @@ pub struct MAC {
 impl From<MAC> for kmip_2_1::kmip_operations::MAC {
     fn from(value: MAC) -> Self {
         Self {
-            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                value.unique_identifier,
-            )),
+            unique_identifier: value
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
             data: value.data,
             correlation_value: value.correlation_value,
@@ -2047,23 +2136,41 @@ impl TryFrom<kmip_2_1::kmip_operations::MACResponse> for MACResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerify {
-    pub unique_identifier: String,
+    /// If omitted, then the ID Placeholder value is used by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+    /// The data the MAC was computed over (optional).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data: Vec<u8>,
-    #[serde(rename = "MACData")]
+    /// Required for single-part, optional for multi-part (Table 239).
+    #[serde(rename = "MACData", default, skip_serializing_if = "Vec::is_empty")]
     pub mac_data: Vec<u8>,
+    /// Specifies the existing stream or by-parts cryptographic operation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
 }
 
 impl From<MACVerify> for kmip_2_1::kmip_operations::MACVerify {
     fn from(value: MACVerify) -> Self {
         Self {
-            unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
-                value.unique_identifier,
+            unique_identifier: value.unique_identifier.map_or_else(
+                kmip_2_1::kmip_types::UniqueIdentifier::id_placeholder,
+                kmip_2_1::kmip_types::UniqueIdentifier::TextString,
             ),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
             data: value.data,
             mac_data: value.mac_data,
+            correlation_value: value.correlation_value,
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
         }
     }
 }
@@ -2073,7 +2180,12 @@ impl From<MACVerify> for kmip_2_1::kmip_operations::MACVerify {
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerifyResponse {
     pub unique_identifier: String,
+    /// Always present in KMIP 1.4 (Table 240): `Unknown` on non-final parts of a multi-part
+    /// verification.
     pub validity_indicator: ValidityIndicator,
+    /// The stream value to provide in the next parts of a multi-part verification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
 }
 
 impl TryFrom<kmip_2_1::kmip_operations::MACVerifyResponse> for MACVerifyResponse {
@@ -2081,13 +2193,16 @@ impl TryFrom<kmip_2_1::kmip_operations::MACVerifyResponse> for MACVerifyResponse
 
     fn try_from(value: kmip_2_1::kmip_operations::MACVerifyResponse) -> Result<Self, Self::Error> {
         let vi_1_4 = match value.validity_indicator {
-            kmip_2_1::kmip_types::ValidityIndicator::Valid => ValidityIndicator::Valid,
-            kmip_2_1::kmip_types::ValidityIndicator::Invalid => ValidityIndicator::Invalid,
-            kmip_2_1::kmip_types::ValidityIndicator::Unknown => ValidityIndicator::Unknown,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Valid) => ValidityIndicator::Valid,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Invalid) => ValidityIndicator::Invalid,
+            Some(kmip_2_1::kmip_types::ValidityIndicator::Unknown) | None => {
+                ValidityIndicator::Unknown
+            }
         };
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
             validity_indicator: vi_1_4,
+            correlation_value: value.correlation_value,
         })
     }
 }
@@ -2145,9 +2260,9 @@ pub struct RNGSeed {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    /// Number of bytes of seed data accepted by the RNG.
-    /// KMIP 1.4 optional vectors use <DataLength>; accept it as an alias.
-    #[serde(alias = "DataLength")]
+    /// KMIP 1.4 §4.36: the response field is `Data Length`.
+    /// `AmountOfSeedData` is still accepted from servers older than this fix.
+    #[serde(rename = "DataLength", alias = "AmountOfSeedData")]
     pub amount_of_seed_data: i32,
 }
 
@@ -2183,15 +2298,34 @@ impl TryFrom<kmip_2_1::kmip_operations::RNGSeedResponse> for RNGSeedResponse {
 pub struct Hash {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
-    pub data: Vec<u8>,
+    /// Required for single-part, optional for multi-part (KMIP 1.4 Table 245).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-parts cryptographic operation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
 }
 
 /// Response to a Hash request
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct HashResponse {
-    #[serde(rename = "Data", alias = "HashData")]
-    pub hash_data: Vec<u8>,
+    /// Present for single-part and final parts (KMIP 1.4 Table 246).
+    #[serde(
+        rename = "Data",
+        alias = "HashData",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub hash_data: Option<Vec<u8>>,
+    /// The stream value to provide in the next parts of a multi-part hash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
 }
 
 impl From<Hash> for kmip_2_1::kmip_operations::Hash {
@@ -2201,10 +2335,10 @@ impl From<Hash> for kmip_2_1::kmip_operations::Hash {
                 .cryptographic_parameters
                 .map(Into::into)
                 .unwrap_or_default(),
-            data: Some(value.data),
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
+            data: value.data,
+            correlation_value: value.correlation_value,
+            init_indicator: value.init_indicator,
+            final_indicator: value.final_indicator,
         }
     }
 }
@@ -2214,7 +2348,8 @@ impl TryFrom<kmip_2_1::kmip_operations::HashResponse> for HashResponse {
 
     fn try_from(value: kmip_2_1::kmip_operations::HashResponse) -> Result<Self, Self::Error> {
         Ok(Self {
-            hash_data: value.data.unwrap_or_default(),
+            hash_data: value.data,
+            correlation_value: value.correlation_value,
         })
     }
 }
@@ -2381,6 +2516,7 @@ impl From<CreateSplitKey> for kmip_2_1::kmip_operations::CreateSplitKey {
             split_key_parts: req.split_key_parts,
             split_key_threshold: req.split_key_threshold,
             split_key_method: req.split_key_method.into(),
+            prime_field_size: None,
             attributes: req.template_attribute.map(Into::into),
             protection_storage_masks: None,
         }
@@ -2754,12 +2890,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
         Ok(match value {
             Operation::Activate(activate) => Self::Activate(activate.into()),
             Operation::AddAttribute(add_attribute) => Self::AddAttribute(add_attribute.into()),
-            // Operation::Archive(archive) => {
-            //     Self::Archive(archive.into())
-            // }
-            // Operation::Cancel(cancel) => {
-            //     Self::Cancel(cancel.into())
-            // }
+
             Operation::Certify(certify) => Self::Certify(Box::new(certify.into())),
             // Operation::Check(check) => Self::Check(check.into()),
             Operation::Create(create) => Self::Create(create.into()),
@@ -2823,9 +2954,10 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::Hash(hash) => Self::Hash(hash.into()),
             Operation::Validate(validate) => Self::Validate(validate.into()),
             op => {
-                return Err(KmipError::NotSupported(format!(
-                    "Conversion of KMIP 1.x operation to KMIP 2.1 is not supported for: {op}"
-                )));
+                return Err(KmipError::Kmip21(
+                    crate::kmip_0::kmip_types::ErrorReason::Operation_Not_Supported,
+                    format!("Operation not supported by this server: {op}"),
+                ));
             }
         })
     }
@@ -2842,12 +2974,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::AddAttributeResponse(add_attribute_response) => {
                 Self::AddAttributeResponse(add_attribute_response.into())
             }
-            // Operation::ArchiveResponse(archive_response) => {
-            //     Self::ArchiveResponse(archive_response.into())
-            // }
-            // Operation::CancelResponse(cancel_response) => {
-            //     Self::CancelResponse(cancel_response.into())
-            // }
+
             kmip_2_1::kmip_operations::Operation::CertifyResponse(certify_response) => {
                 Self::CertifyResponse(certify_response.try_into().context("CertifyResponse")?)
             }
@@ -3012,9 +3139,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::SignResponse(sign_response) => {
                 Self::SignResponse(sign_response.try_into().context("SignResponse")?)
             }
-            // Operation::ValidateResponse(validate_response) => {
-            //     Self::ValidateResponse(validate_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::ValidateResponse(validate_response) => {
+                Self::ValidateResponse(validate_response.into())
+            }
             op => {
                 return Err(KmipError::NotSupported(format!(
                     "Conversion from KMIP 2.1 to KMIP 1.x is not supported for Response \
@@ -3069,4 +3196,103 @@ pub struct Put {
 #[serde(rename_all = "PascalCase")]
 pub struct PutResponse {
     pub unique_identifier: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn certify_conversion_is_supported() -> Result<(), KmipError> {
+        let operation = Operation::Certify(Certify {
+            unique_identifier: Some("public-key".to_owned()),
+            certificate_request_type: Some(CertificateRequestType::PKCS10),
+            certificate_request: Some(vec![1, 2, 3]),
+            template_attribute: None,
+        });
+        let converted: kmip_2_1::kmip_operations::Operation = operation.try_into()?;
+        if matches!(converted, kmip_2_1::kmip_operations::Operation::Certify(_)) {
+            Ok(())
+        } else {
+            Err(KmipError::Default(
+                "Certify converted to the wrong operation".to_owned(),
+            ))
+        }
+    }
+
+    #[test]
+    fn omitted_legacy_request_identifiers_use_id_placeholder() -> Result<(), String> {
+        let expected = kmip_2_1::kmip_types::UniqueIdentifier::id_placeholder();
+        let certify: Certify = serde_json::from_str("{}").map_err(|error| error.to_string())?;
+        let certify: kmip_2_1::kmip_operations::Certify = certify.into();
+        if certify.unique_identifier.is_some()
+            || certify.certificate_request_type.is_some()
+            || certify.certificate_request_value.is_some()
+        {
+            return Err("omitted Certify fields were not preserved".to_owned());
+        }
+
+        let activate: kmip_2_1::kmip_operations::Activate = Activate {
+            unique_identifier: None,
+        }
+        .into();
+        if activate.unique_identifier != expected {
+            return Err("omitted Activate identifier did not use ID Placeholder".to_owned());
+        }
+
+        let add_attribute: kmip_2_1::kmip_operations::AddAttribute = AddAttribute {
+            unique_identifier: None,
+            attribute: Attribute::ObjectType(ObjectType::SymmetricKey),
+        }
+        .into();
+        if add_attribute.unique_identifier != expected {
+            return Err("omitted AddAttribute identifier did not use ID Placeholder".to_owned());
+        }
+
+        let mac_verify: kmip_2_1::kmip_operations::MACVerify = MACVerify {
+            unique_identifier: None,
+            cryptographic_parameters: None,
+            data: Vec::new(),
+            mac_data: Vec::new(),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        }
+        .into();
+        if mac_verify.unique_identifier != expected {
+            return Err("omitted MACVerify identifier did not use ID Placeholder".to_owned());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn certify_and_validate_responses_convert_to_kmip_1_4() -> Result<(), KmipError> {
+        let certify = kmip_2_1::kmip_operations::Operation::CertifyResponse(
+            kmip_2_1::kmip_operations::CertifyResponse {
+                unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                    "certificate".to_owned(),
+                ),
+            },
+        );
+        let certify: Operation = certify.try_into()?;
+        if !matches!(certify, Operation::CertifyResponse(_)) {
+            return Err(KmipError::Default(
+                "CertifyResponse converted to the wrong operation".to_owned(),
+            ));
+        }
+
+        let validate = kmip_2_1::kmip_operations::Operation::ValidateResponse(
+            kmip_2_1::kmip_operations::ValidateResponse {
+                validity_indicator: kmip_2_1::kmip_types::ValidityIndicator::Valid,
+            },
+        );
+        let validate: Operation = validate.try_into()?;
+        if matches!(validate, Operation::ValidateResponse(_)) {
+            Ok(())
+        } else {
+            Err(KmipError::Default(
+                "ValidateResponse converted to the wrong operation".to_owned(),
+            ))
+        }
+    }
 }

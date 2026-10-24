@@ -64,6 +64,22 @@ pub(crate) fn update_cached_artifacts_versioned(
     for bi in &resp.batch_item {
         match bi {
             ResponseMessageBatchItemVersioned::V21(inner) => {
+                let cv = match &inner.response_payload {
+                    Some(Op21::EncryptResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op21::DecryptResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op21::SignResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op21::SignatureVerifyResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op21::MACResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op21::MACVerifyResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op21::HashResponse(r)) => r.correlation_value.as_ref(),
+                    _ => None,
+                };
+                if let Some(cv) = cv {
+                    state.last_crypto_correlation_value = Some(cv.clone());
+                }
+                if let Some(Op21::LoginResponse(r)) = &inner.response_payload {
+                    state.last_ticket_value = Some(r.ticket.ticket_value.clone());
+                }
                 update_artifacts_from_payload!(
                     state, pending_encrypt_aad, Op21, &inner.response_payload,
                     uid:
@@ -97,6 +113,19 @@ pub(crate) fn update_cached_artifacts_versioned(
                 );
             }
             ResponseMessageBatchItemVersioned::V14(inner) => {
+                let cv = match &inner.response_payload {
+                    Some(Op14::EncryptResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op14::DecryptResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op14::SignResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op14::SignatureVerifyResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op14::MACResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op14::MACVerifyResponse(r)) => r.correlation_value.as_ref(),
+                    Some(Op14::HashResponse(r)) => r.correlation_value.as_ref(),
+                    _ => None,
+                };
+                if let Some(cv) = cv {
+                    state.last_crypto_correlation_value = Some(cv.clone());
+                }
                 update_artifacts_from_payload!(
                     state, pending_encrypt_aad, Op14, &inner.response_payload,
                     uid:

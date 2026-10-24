@@ -28,8 +28,12 @@ error if there is more than one valid certificate chain.
 
 ## Implementation
 
-The `Get` operation allows exporting `Active` objects only.
-When an object is `Destroyed` or `Deactivated`, the `Export` operation must be used instead.
+The `Get` operation returns `Pre-Active`, `Active` and `Compromised` objects.
+A `Deactivated` object returns `Permission_Denied` and a `Destroyed` object returns `Object_Destroyed`:
+use the `Export` operation instead.
+
+An object registered without its Key Value (Key Value Present false) is returned as registered.
+Requesting a Key Format Type or key wrapping for it fails with `Key_Value_Not_Present`.
 
 Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md)
 for more details.

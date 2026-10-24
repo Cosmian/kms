@@ -135,74 +135,98 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
         major_version = version.split('.')[0]
         operation_section = '6' if major_version in ('2', '3') else '4'
 
-        for heading in soup.find_all(['h2']):  # Operations are typically in h2 headings
-            text = heading.get_text(strip=True)
+        # Operation names are matched strictly against the heading text (never as a
+        # substring): "Get" must not match "Get Constraints", nor "Login" "Delegated Login".
+        # Headings are <h2> in KMIP 1.x ("4.1 Create") and <h3> in KMIP 2.x ("6.1.8 Create").
+        # The spec text splits some words ("H ash", "Re-key"/"Rekey"): compare without
+        # whitespace and hyphens.
+        def heading_key(name: str) -> str:
+            return re.sub(r'[\s\-]', '', name).lower()
 
-            # Only look at the operations section
-            section_pattern = f'^{operation_section}\\.\\d+'
-            if not re.match(section_pattern, text):
-                continue
-
-            # Match patterns like "4.1 Create" or "4.1Create" (with or without space, without "Operation" suffix)
-            # Known operations from KMIP spec
-            # NOTE: Order matters! More specific operations (longer names) must come before shorter ones
-            # to avoid partial matches (e.g., "Create Key Pair" must come before "Create")
-            known_ops = [
+        known_ops = {
+            heading_key(name): name
+            for name in (
+                'Activate',
+                'Add Attribute',
+                'Archive',
+                'Cancel',
+                'Certify',
+                'Check',
+                'Create',
                 'Create Key Pair',
                 'Create Split Key',
-                'Join Split Key',
-                'Rekey Key Pair',
-                'Re-key Key Pair',
+                'Decrypt',
+                'Delegated Login',
+                'Delete Attribute',
+                'Derive Key',
+                'DeriveKey',
+                'Destroy',
+                'Discover Versions',
+                'Encrypt',
+                'Export',
+                'Get',
                 'Get Attribute List',
                 'Get Attributes',
+                'Get Constraints',
                 'Get Usage Allocation',
-                'Add Attribute',
-                'Modify Attribute',
-                'Set Attribute',
-                'Delete Attribute',
-                'Signature Verify',
+                'Hash',
+                'Import',
+                'Join Split Key',
+                'Locate',
+                'Login',
+                'Logout',
+                'MAC',
                 'MAC Verify',
+                'Modify Attribute',
+                'Notify',
+                'Obtain Lease',
+                'Poll',
+                'Put',
+                'Query',
                 'RNG Retrieve',
                 'RNG Seed',
-                'Discover Versions',
-                'Obtain Lease',
-                'Derive Key',
-                'Recertify',
                 'Re-certify',
-                'Create',
-                'Register',
-                'Rekey',
+                'Recertify',
                 'Re-key',
-                'Certify',
-                'Locate',
-                'Check',
-                'Get',
-                'Activate',
-                'Revoke',
-                'Destroy',
-                'Archive',
+                'Rekey',
+                'Re-key Key Pair',
+                'Rekey Key Pair',
                 'Recover',
-                'Validate',
-                'Query',
-                'Cancel',
-                'Poll',
-                'Notify',
-                'Put',
-                'Encrypt',
-                'Decrypt',
+                'Register',
+                'Revoke',
+                'Set Attribute',
+                'Set Constraints',
                 'Sign',
-                'MAC',
-                'Hash',
-                'Export',
-                'Import',
-            ]
+                'Signature Verify',
+                'Validate',
+            )
+        }
 
-            # Check if this heading contains any known operation name
-            for known_op in known_ops:
-                if known_op.lower() in text.lower():
-                    op_name = normalize_operation_name(known_op)
-                    operations.add(op_name)
-                    break
+        # KMIP 1.x: client-to-server operations are section 4, Notify and Put section 5.
+        # KMIP 2.x: section 6 (6.1 client-to-server, 6.2 server-to-client).
+        major_version = version.split('.')[0]
+        operation_sections = '6' if major_version in ('2', '3') else '45'
+        heading_re = re.compile(
+            rf'^[{operation_sections}](?:\.\d+)+\s*(.+)$', re.DOTALL
+        )
+
+        for heading in soup.find_all(['h2', 'h3']):
+            match = heading_re.match(heading.get_text(' ', strip=True))
+            if not match:
+                continue
+            known_op = known_ops.get(heading_key(match.group(1)))
+            if known_op:
+                operations.add(normalize_operation_name(known_op))
+
+        if not operations:
+            # A silent fallback to hard-coded data would make the support tables
+            # drift from the specification: fail instead.
+            print(
+                f'Error: no operation heading found in {spec_file}; '
+                'the spec layout changed, fix parse_kmip_spec_with_bs4',
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         # Extract attributes from tables
         # Look for attribute definition tables
@@ -307,8 +331,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
         # Combine with fallback data to ensure we don't miss anything
         fallback = get_fallback_version_data(version)
 
-        # Prefer parsed operations if we found any, otherwise use fallback
-        final_operations = operations if operations else fallback['operations']
+        final_operations = operations  # never empty: checked above
 
         return {
             'operations': final_operations,
@@ -600,6 +623,7 @@ def detect_implemented_operations() -> Set[str]:
             'rng_seed': 'RNG Seed',
             'query': 'Query',
             'register': 'Register',
+            'recertify': 'Re-certify',
             'rekey': 'Re-key',
             'rekey_keypair': 'Re-key Key Pair',
             'revoke': 'Revoke',
@@ -691,21 +715,26 @@ def _detect_ops_from_rust_content(rust_source: str) -> Set[str]:
         'Get': 'Get',
         'GetAttributeList': 'Get Attribute List',
         'GetAttributes': 'Get Attributes',
+        'GetConstraints': 'Get Constraints',
         'Hash': 'Hash',
         'Import': 'Import',
         'Locate': 'Locate',
+        'Login': 'Login',
+        'Logout': 'Logout',
         'MAC': 'MAC',
         'MACVerify': 'MAC Verify',
         'ModifyAttribute': 'Modify Attribute',
         'PKCS11': 'PKCS11',  # non-standard KMIP extension, may be omitted in spec-based table
         'Query': 'Query',
         'ReKey': 'Re-key',
+        'ReCertify': 'Re-certify',
         'ReKeyKeyPair': 'Re-key Key Pair',
         'Register': 'Register',
         'Revoke': 'Revoke',
         'RNGRetrieve': 'RNG Retrieve',
         'RNGSeed': 'RNG Seed',
         'SetAttribute': 'Set Attribute (Modify)',
+        'SetConstraints': 'Set Constraints',
         'Sign': 'Sign',
         'SignatureVerify': 'Signature Verify',
         'Validate': 'Validate',
@@ -735,6 +764,7 @@ def _detect_ops_from_rust_content(rust_source: str) -> Set[str]:
         r'\brng_seed\s*\(': 'RNG Seed',
         r'\bmodify_attribute\s*\(': 'Modify Attribute',
         r'\bset_attribute\s*\(': 'Set Attribute (Modify)',
+        r'\bget_constraints\s*\(': 'Get Constraints',
     }
     for pattern, disp in handler_map.items():
         if re.search(pattern, rust_source):
@@ -1023,6 +1053,7 @@ def map_operation_support(ops: Set[str]) -> Dict[str, str]:
         'Get',
         'Get Attributes',
         'Get Attribute List',
+        'Get Constraints',
         'Add Attribute',
         'Set Attribute (Modify)',
         'Delete Attribute',
@@ -1053,6 +1084,10 @@ def map_operation_support(ops: Set[str]) -> Dict[str, str]:
         'Join Split Key',
         'Export',
         'Import',
+        'Login',
+        'Logout',
+        'Delegated Login',
+        'Set Constraints',
     ]
 
     return {op: '✅' if op in ops else '❌' for op in all_operations}
@@ -1210,7 +1245,7 @@ def map_attribute_support(attrs: List[str]) -> Dict[str, str]:
             result[readable] = '✅' if supported else '❌'
             continue
 
-        pattern = re.compile(rf'\b{re.escape(snake)}\b')
+        pattern = re.compile(rf'\b{re.escape(snake)}s?\b')
         for _, text in ops_texts:
             if pattern.search(text):
                 supported = True
@@ -1218,6 +1253,42 @@ def map_attribute_support(attrs: List[str]) -> Dict[str, str]:
         result[readable] = '✅' if supported else '❌'
 
     return result
+
+
+# Behaviour of the operations that carry server-side state; verified against
+# crate/server/src/core/operations/{login,constraints}.rs and core/ticket handling.
+LOGIN_CONSTRAINTS_SECTION = """
+### Login tickets and constraints
+
+- **Login** issues a 32-byte random ticket (Ticket Type `Login`) bound to the user that the
+  transport authenticated (TLS client certificate, JWT, API token or default user). A Request
+  Message whose header carries a `Ticket` credential is processed only if the ticket is known,
+  unexpired and issued to that same user (else `Invalid Ticket`) and has requests left (else
+  `Usage Limit Exceeded`); each message consumes one request. Tickets never replace transport
+  authentication.
+    - Lease Time: an Interval in seconds; 0 or absent selects 1 hour; capped at 24 hours. The
+    Date Time form is not supported.
+    - Request Count: absent means unlimited within the lease; zero or negative is
+    `Invalid Field`. Usage Limits are not supported (`Feature Not Supported`).
+    - At most 10,000 live tickets, 64 per user (`Server Limit Exceeded` beyond).
+- **Logout** invalidates a ticket issued to the same user, whatever requests it has left
+  (else `Invalid Ticket`). Delegated Login (rights-restricted tickets) is not supported.
+- A Request Message carrying a Hashed Password credential is refused with `Feature Not Supported`:
+  the server holds no client password and cannot return the Server Hashed Password.
+- **Set Constraints** replaces the server-wide constraint set; a request without Constraints
+  clears it. **Get Constraints** returns it as set. When roles are configured, only Crypto
+  Officers may set constraints; otherwise any authenticated user may.
+- While constraints are set, every object stored by Create, Create Key Pair, Register,
+  Import, Derive Key, Re-key, Re-key Key Pair (including automatic rotation), Re-certify,
+  Certify, Create Split Key and Join Split Key must satisfy at least one constraint (Object
+  Type listed, Object Group listed, every listed attribute value present), otherwise the
+  operation fails with `Constraint Violation`. Attribute changes on existing objects are not
+  checked.
+- Tickets and constraints are held in memory only: they are lost on restart and not shared
+  between server instances.
+
+PKCS#11 needs an HSM and a configured Crypto Officer; Query lists it only when both are configured.
+"""
 
 
 def generate_support_markdown(
@@ -1308,6 +1379,7 @@ The following table shows operation support across all KMIP versions.
             md += f' {status:^7} |'
         md += '\n'
 
+    md += LOGIN_CONSTRAINTS_SECTION
     md += """\n### Methodology
 
 - Operations marked ✅ are backed by a Rust implementation file under `crate/server/src/core/operations`.
@@ -1764,6 +1836,9 @@ The following table shows transparent key structure support across all KMIP vers
 - `AlwaysSensitive`, `NeverExtractable`, `Extractable`, and `Sensitive` were introduced in **KMIP 1.4**
   and must not appear in responses to KMIP 1.0–1.3 clients (the server enforces this automatically).
 - `Rotate*` attributes were introduced in **KMIP 2.1**.
+- A key registered without its Key Value gets `Key Value Present` = false and keeps its
+  `Key Value Location` (one instance); Get returns it as registered, and a Get or Export asking
+  for a Key Format Type or key wrapping fails with `Key Value Not Present`.
 """
 
     return md

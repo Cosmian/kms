@@ -21,10 +21,7 @@ use cosmian_logger::trace;
 // If no protocol versions are specified in the request payload,
 // the server SHOULD simply return all the protocol versions that are supported by the server.
 pub(crate) async fn discover_versions(request: DiscoverVersions) -> DiscoverVersionsResponse {
-    trace!(
-        "Discover versions: {}",
-        serde_json::to_string(&request).unwrap_or_else(|_| "[N/A]".to_owned())
-    );
+    trace!("DiscoverVersions request");
 
     let supported = vec![
         ProtocolVersion {

@@ -11,17 +11,20 @@ use cosmian_kms_server_database::reexport::{
         self, KmipResultHelper,
         kmip_0::{
             kmip_messages::{
-                RequestMessage, RequestMessageBatchItemVersioned, ResponseMessage,
+                RequestMessageBatchItemVersioned, ResponseMessage,
                 ResponseMessageBatchItemVersioned, ResponseMessageHeader,
             },
-            kmip_types::{BlockCipherMode, ProtocolVersion},
+            kmip_types::{BlockCipherMode, ErrorReason, ProtocolVersion},
         },
         kmip_1_4::kmip_attributes::Attribute as Kmip14Attribute,
-        ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
+        ttlv::{
+            KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, UNKNOWN_ENUMERATION, UNKNOWN_TAG,
+            to_ttlv,
+        },
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
 };
-use cosmian_logger::{debug, error, trace, warn};
+use cosmian_logger::{debug, error, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
@@ -29,7 +32,10 @@ use super::audit::{inject_audit_request, inject_response_uid};
 use crate::{
     core::{
         KMS,
-        operations::{dispatch, message},
+        operations::{
+            BatchItemInput, DecodedRequestMessage, MAX_BATCH_ITEMS, decode_request_message,
+            dispatch, kmip_error_response_fields, process_message,
+        },
     },
     error::KmsError,
     middlewares::UserId,
@@ -47,8 +53,16 @@ const TTLV_ERROR_RESPONSE: [u8; 160] = [
     118, 101, 114, 97, 98, 108, 101, 32, 101, 114, 114, 111, 114, 0, 0, 0, 0, 0,
 ];
 
-/// Generate an "Invalid Message" KMIP error response message in TTLV format
-fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
+/// Maximum UTF-8 byte length of an error message copied into each batch-item response.
+const MAX_ERROR_MESSAGE_BYTES: usize = 512;
+
+/// Generate a KMIP error response message in TTLV format.
+fn error_response_ttlv_with_reason(
+    major: i32,
+    minor: i32,
+    reason: ErrorReason,
+    error_message: &str,
+) -> TTLV {
     TTLV {
         tag: "ResponseMessage".into(),
         value: TTLValue::Structure(vec![
@@ -91,8 +105,12 @@ fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
                     TTLV {
                         tag: "ResultReason".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
-                            value: 0x0000_0004,
-                            name: "Invalid_Message".into(),
+                            #[expect(
+                                clippy::as_conversions,
+                                reason = "ErrorReason has a repr(u32) KMIP wire value"
+                            )]
+                            value: reason as u32,
+                            name: reason.to_string().into(),
                         }),
                     },
                     TTLV {
@@ -105,22 +123,90 @@ fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
     }
 }
 
-/// According to the specs, when a Request Message is invalid, the KMIP server must return a
-/// Response message containing a header and a Batch Item without Operation,
-/// but with the Result Status field set to Operation Failed
-fn invalid_response_message(major: i32, minor: i32, error_message: String) -> ResponseMessage {
+/// Generate an "Invalid Message" KMIP error response message in TTLV format.
+fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
+    error_response_ttlv_with_reason(major, minor, ErrorReason::Invalid_Message, error_message)
+}
+
+/// `Operation` and `Unique Batch Item ID` of each request batch item, read from the raw request
+/// TTLV so message-level errors can echo them (KMIP 2.1 §8.6, Table 399).
+fn request_batch_item_ids(
+    request: Option<&TTLV>,
+) -> Vec<(Option<&KmipEnumerationVariant>, Option<&[u8]>)> {
+    let Some(TTLV {
+        value: TTLValue::Structure(items),
+        ..
+    }) = request
+    else {
+        return vec![];
+    };
+
+    // A valid RequestMessage has one header plus no more than MAX_BATCH_ITEMS batch
+    // items. Reject oversized malformed input before allocating its complete identity list.
+    if items.len() > MAX_BATCH_ITEMS + 1 {
+        return vec![];
+    }
+
+    items
+        .iter()
+        .filter(|item| &*item.tag == "BatchItem")
+        .map(|item| {
+            let TTLValue::Structure(children) = &item.value else {
+                return (None, None);
+            };
+            let operation = children.iter().find_map(|child| {
+                (&*child.tag == "Operation").then_some(match &child.value {
+                    TTLValue::Enumeration(value) => Some(value),
+                    _ => None,
+                })?
+            });
+            let unique_batch_item_id = children.iter().find_map(|child| {
+                (&*child.tag == "UniqueBatchItemID").then_some(match &child.value {
+                    TTLValue::ByteString(value) => Some(value.as_slice()),
+                    _ => None,
+                })?
+            });
+            (operation, unique_batch_item_id)
+        })
+        .collect()
+}
+
+fn truncate_error_message(mut error_message: String) -> String {
+    if error_message.len() > MAX_ERROR_MESSAGE_BYTES {
+        let mut end = MAX_ERROR_MESSAGE_BYTES;
+        while !error_message.is_char_boundary(end) {
+            end -= 1;
+        }
+        error_message.truncate(end);
+    }
+    error_message
+}
+
+/// According to the specification, when a Request Message is invalid, the KMIP server returns a
+/// Response Message containing an Operation Failed batch item for every request batch item.
+/// Each item echoes its `Operation` and `Unique Batch Item ID` when specified by the request.
+fn invalid_response_message_with_reason(
+    major: i32,
+    minor: i32,
+    result_reason: ErrorReason,
+    error_message: String,
+    request: Option<&TTLV>,
+) -> ResponseMessage {
+    let error_message = truncate_error_message(error_message);
+
     macro_rules! error_batch_item {
-        ($variant:ident, $mod:ident) => {
+        ($variant:ident, $mod:ident, $op:expr, $id:expr) => {
             ResponseMessageBatchItemVersioned::$variant(
                 cosmian_kmip::$mod::kmip_messages::ResponseMessageBatchItem {
-                    operation: None,
-                    unique_batch_item_id: None,
+                    operation: $op.and_then(|value: &KmipEnumerationVariant| {
+                        cosmian_kmip::$mod::kmip_types::OperationEnumeration::from_repr(value.value)
+                            .or_else(|| value.name.parse().ok())
+                    }),
+                    unique_batch_item_id: $id.map(<[u8]>::to_vec),
                     result_status:
                         cosmian_kmip::kmip_0::kmip_types::ResultStatusEnumeration::OperationFailed,
-                    result_reason: Some(
-                        cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message,
-                    ),
-                    result_message: Some(error_message),
+                    result_reason: Some(result_reason.into()),
+                    result_message: Some(error_message.clone()),
                     asynchronous_correlation_value: None,
                     response_payload: None,
                     message_extension: None,
@@ -129,11 +215,20 @@ fn invalid_response_message(major: i32, minor: i32, error_message: String) -> Re
         };
     }
 
-    let batch_item = if major == 2 {
-        error_batch_item!(V21, kmip_2_1)
-    } else {
-        error_batch_item!(V14, kmip_1_4)
-    };
+    let mut ids = request_batch_item_ids(request);
+    if ids.is_empty() || ids.len() > MAX_BATCH_ITEMS {
+        ids = vec![(None, None)];
+    }
+    let batch_item = ids
+        .into_iter()
+        .map(|(operation, unique_batch_item_id)| {
+            if major >= 2 {
+                error_batch_item!(V21, kmip_2_1, operation, unique_batch_item_id)
+            } else {
+                error_batch_item!(V14, kmip_1_4, operation, unique_batch_item_id)
+            }
+        })
+        .collect::<Vec<_>>();
 
     ResponseMessage {
         response_header: ResponseMessageHeader {
@@ -141,10 +236,11 @@ fn invalid_response_message(major: i32, minor: i32, error_message: String) -> Re
                 protocol_version_major: major,
                 protocol_version_minor: minor,
             },
-            batch_count: 1,
+            time_stamp: OffsetDateTime::now_utc(),
+            batch_count: i32::try_from(batch_item.len()).unwrap_or(i32::MAX),
             ..Default::default()
         },
-        batch_item: vec![batch_item],
+        batch_item,
     }
 }
 
@@ -191,6 +287,25 @@ pub(crate) async fn kmip_2_1_json(
         .body(buf))
 }
 
+/// Result reason of a request message that cannot be decoded: the spec's specific reasons for
+/// an undefined tag or enumeration value, else Invalid Message (KMIP 2.1 §11.42).
+fn decoding_error_reason(error_message: &str) -> ErrorReason {
+    if error_message.contains(UNKNOWN_TAG) {
+        ErrorReason::Unknown_Tag
+    } else if error_message.contains(UNKNOWN_ENUMERATION) {
+        ErrorReason::Unknown_Enumeration
+    } else {
+        ErrorReason::Invalid_Message
+    }
+}
+
+/// Protocol versions served: the majors advertised by Discover Versions, with any minor.
+/// A request with a supported major and a different minor is processed normally, ignoring
+/// fields the server does not understand (KMIP 1.4 §11.1; KMIP 2.1 §9.16).
+const fn is_supported_version(major: i32, minor: i32) -> bool {
+    matches!(major, 1 | 2) && minor >= 0
+}
+
 /// Handle input TTLV requests
 ///
 /// Process the TTLV-serialized input request and returns
@@ -206,22 +321,23 @@ async fn handle_ttlv(
     minor: i32,
 ) -> KResult<TTLV> {
     if &*ttlv.tag == "RequestMessage" {
-        let req = match from_ttlv::<RequestMessage>(ttlv) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(target: "kmip", "Failed to parse RequestMessage: {}", e);
-                return Ok(error_response_ttlv(major, minor, &e.to_string()));
+        let span = tracing::span!(tracing::Level::TRACE, "message");
+        let processed = match decode_request_message(&ttlv) {
+            Ok(request) => Box::pin(process_message(kms, request, user))
+                .instrument(span)
+                .await
+                .map_err(|error| kmip_error_response_fields(&error)),
+            Err(error) => {
+                let error_message = error.to_string();
+                Err((decoding_error_reason(&error_message), error_message))
             }
         };
-        let span = tracing::span!(tracing::Level::TRACE, "message");
-        let resp = Box::pin(message(kms, req, user))
-            .instrument(span)
-            .await
-            .unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to process request: {}", e);
-                invalid_response_message(major, minor, e.to_string())
-            });
-        let ttlv = to_ttlv(&resp).unwrap_or_else(|e| {
+        let response = processed.unwrap_or_else(|(reason, error_message)| {
+            let error_message = truncate_error_message(error_message);
+            error!(target: "kmip", "Failed to process request: {error_message}");
+            invalid_response_message_with_reason(major, minor, reason, error_message, Some(&ttlv))
+        });
+        let ttlv = to_ttlv(&response).unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
             error_response_ttlv(major, minor, e.to_string().as_str())
         });
@@ -260,12 +376,15 @@ pub(crate) async fn kmip_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let json = kmip_json_inner(req_http, body, kms)
-        .await
-        .unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to process request: {}", e);
-            error_response_ttlv(2, 1, &e.to_string())
-        });
+    let json =
+        kmip_json_inner(req_http, body, kms)
+            .await
+            .unwrap_or_else(|(error, (major, minor))| {
+                let (reason, error_message) = kmip_error_response_fields(&error);
+                let error_message = truncate_error_message(error_message);
+                error!(target: "kmip", "Failed to process request: {error_message}");
+                error_response_ttlv_with_reason(major, minor, reason, &error_message)
+            });
     let mut buf = Vec::with_capacity(512);
     if let Err(e) = serde_json::to_writer(&mut buf, &json) {
         error!(target: "kmip", "Failed to serialize response to JSON: {e}");
@@ -278,16 +397,27 @@ pub(crate) async fn kmip_json(
         .body(buf)
 }
 
-/// Handle KMIP requests with JSON content type
-async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>) -> KResult<TTLV> {
+/// Handle KMIP requests with JSON content type.
+///
+/// An error comes with the protocol version its error response must carry: the request
+/// version when it was read, else the highest supported version.
+async fn kmip_json_inner(
+    req_http: HttpRequest,
+    body: Bytes,
+    kms: Data<Arc<KMS>>,
+) -> Result<TTLV, (KmsError, (i32, i32))> {
+    let invalid = |error: String| {
+        (
+            KmsError::Kmip21Error(ErrorReason::Invalid_Message, error),
+            (2, 1),
+        )
+    };
     let user = kms.get_user(&req_http);
 
     // Deserialize the body directly to TTLV (avoiding intermediate Vec + Value allocations)
-    let body_str =
-        std::str::from_utf8(&body).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
-    let ttlv: TTLV = serde_json::from_str(body_str)?;
-
-    let (major, minor) = get_kmip_version(&ttlv)?;
+    let body_str = std::str::from_utf8(&body).map_err(|error| invalid(error.to_string()))?;
+    let ttlv: TTLV = serde_json::from_str(body_str).map_err(|error| invalid(error.to_string()))?;
+    let (major, minor) = get_kmip_version(&ttlv).map_err(|error| invalid(error.to_string()))?;
 
     debug!(
         target: "kmip",
@@ -298,20 +428,27 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
-    if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
-        let span = tracing::info_span!("kmip", user = user.as_str(), tag = &*ttlv.tag);
-        let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
-            .instrument(span)
-            .await?;
-
-        inject_response_uid(&req_http, &response_ttlv, &op_name);
-
-        Ok(response_ttlv)
-    } else {
-        Err(KmsError::InvalidRequest(
-            "The /kmip endpoint only accepts KMIP 2.1 or 1.4 requests".to_owned(),
-        ))
+    if !is_supported_version(major, minor) {
+        return Err((
+            KmsError::Kmip21Error(
+                ErrorReason::Unsupported_Protocol_Version,
+                format!(
+                    "Unsupported KMIP version {major}.{minor}: the /kmip endpoint only accepts \
+                     KMIP 1.x and 2.x requests"
+                ),
+            ),
+            (major, minor),
+        ));
     }
+    let span = tracing::info_span!("kmip", user = user.as_str(), tag = &*ttlv.tag);
+    let response_ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
+        .instrument(span)
+        .await
+        .map_err(|error| (error, (major, minor)))?;
+
+    inject_response_uid(&req_http, &response_ttlv, &op_name);
+
+    Ok(response_ttlv)
 }
 
 /// Handle KMIP HTTP requests with binary content type
@@ -367,9 +504,17 @@ async fn handle_ttlv_bytes_parsed(
     request_ttlv: Option<TTLV>,
     kms: &Arc<KMS>,
 ) -> (Vec<u8>, Option<TTLV>) {
-    let Ok((major, minor)) = TTLV::find_version(ttlv_bytes) else {
-        error!(target: "kmip", "Failed to find KMIP version");
-        return (vec![], None);
+    let (major, minor) = match TTLV::find_version(ttlv_bytes) {
+        Ok(version) => version,
+        // Not a KMIP request message: answer Invalid Message with the highest version served
+        Err(e) => {
+            return error_response_bytes(
+                2,
+                1,
+                &KmsError::Kmip21Error(ErrorReason::Invalid_Message, e.to_string()),
+                None,
+            );
+        }
     };
     let span = tracing::info_span!("kmip_binary", user = user.as_str());
     match handle_ttlv_bytes_inner(user, ttlv_bytes, request_ttlv, major, minor, kms)
@@ -378,27 +523,52 @@ async fn handle_ttlv_bytes_parsed(
     {
         Ok((response_bytes, response_ttlv)) => (response_bytes, Some(response_ttlv)),
         Err(e) => {
-            let response_message = invalid_response_message(major, minor, e.to_string());
-            warn!(target: "kmip", "Failed to process request:\n{response_message}");
-            let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
-                error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
-                error_response_ttlv(major, minor, e.to_string().as_str())
-            });
             let flavor = if major == 1 {
                 KmipFlavor::Kmip1
             } else {
                 KmipFlavor::Kmip2
             };
-            match TTLV::to_bytes(&response_ttlv, flavor) {
-                Ok(response_bytes) => (response_bytes, Some(response_ttlv)),
-                Err(e) => {
-                    error!(target: "kmip", "Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}", e, response_ttlv);
-                    (
-                        TTLV_ERROR_RESPONSE.to_vec(),
-                        TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1).ok(),
-                    )
-                }
-            }
+            let request = TTLV::from_bytes(ttlv_bytes, flavor).ok();
+            error_response_bytes(major, minor, &e, request.as_ref())
+        }
+    }
+}
+
+/// Encodes the Response Message that fails every item of a request with `error`.
+fn error_response_bytes(
+    major: i32,
+    minor: i32,
+    error: &KmsError,
+    request: Option<&TTLV>,
+) -> (Vec<u8>, Option<TTLV>) {
+    let flavor = if major == 1 {
+        KmipFlavor::Kmip1
+    } else {
+        KmipFlavor::Kmip2
+    };
+    let (reason, error_message) = kmip_error_response_fields(error);
+    let error_message = truncate_error_message(error_message);
+    let response_message =
+        invalid_response_message_with_reason(major, minor, reason, error_message.clone(), request);
+    warn!(
+        target: "kmip",
+        major,
+        minor,
+        batch_count = response_message.batch_item.len(),
+        "Failed to process KMIP request: {error_message}"
+    );
+    let response_ttlv = to_ttlv(&response_message).unwrap_or_else(|e| {
+        error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
+        error_response_ttlv(major, minor, e.to_string().as_str())
+    });
+    match TTLV::to_bytes(&response_ttlv, flavor) {
+        Ok(response_bytes) => (response_bytes, Some(response_ttlv)),
+        Err(e) => {
+            error!(target: "kmip", "Failed to convert Response TTLV to bytes: {e}");
+            (
+                TTLV_ERROR_RESPONSE.to_vec(),
+                TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1).ok(),
+            )
         }
     }
 }
@@ -411,26 +581,27 @@ async fn handle_ttlv_bytes_inner(
     minor: i32,
     kms: &Arc<KMS>,
 ) -> KResult<(Vec<u8>, TTLV)> {
+    if !is_supported_version(major, minor) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Unsupported_Protocol_Version,
+            format!(
+                "Unsupported KMIP version {major}.{minor}: only KMIP 1.x and 2.x requests are \
+                 accepted"
+            ),
+        ));
+    }
     let kmip_flavor = if major == 1 {
         KmipFlavor::Kmip1
-    } else if major == 2 {
-        KmipFlavor::Kmip2
     } else {
-        return Err(KmsError::InvalidRequest(format!(
-            "Unsupported KMIP version: {major}.{minor}",
-        )));
+        KmipFlavor::Kmip2
     };
-
-    debug!(
-        target: "kmip",
-        user = user.as_str(),
-        "Request bytes: {}",
-        hex::encode(ttlv_bytes)
-    );
 
     let ttlv = match request_ttlv {
         Some(ttlv) => ttlv,
-        None => TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?,
+        None => TTLV::from_bytes(ttlv_bytes, kmip_flavor).map_err(|error| {
+            let error_message = format!("Failed to parse TTLV: {error}");
+            KmsError::Kmip21Error(decoding_error_reason(&error_message), error_message)
+        })?,
     };
     let tag = ttlv.tag.clone();
     debug!(
@@ -439,55 +610,24 @@ async fn handle_ttlv_bytes_inner(
         tag = tag.as_ref(),
         "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, tag, user
     );
-    debug!(
-        target: "kmip",
-        user = user.as_str(),
-        tag = tag.as_ref(),
-        "Request TTLV: {ttlv:#?}"
-    );
 
-    let mut request_message = from_ttlv::<RequestMessage>(ttlv)
-        .map_err(|e| KmsError::InvalidRequest(format!("Failed to parse RequestMessage: {e}")))?;
+    let mut request_message = decode_request_message(&ttlv).map_err(|error| {
+        let error_message = format!("Failed to parse RequestMessage: {error}");
+        KmsError::Kmip21Error(decoding_error_reason(&error_message), error_message)
+    })?;
+    drop(ttlv);
 
     perform_request_tweaks(&mut request_message, major, minor);
 
-    trace!(
-        target: "kmip",
-        user = user.as_str(),
-        tag = tag.as_ref(),
-        "Request Message: {request_message}"
-    );
-
-    let mut response_message = message(kms, request_message, user).await?;
+    let mut response_message = Box::pin(process_message(kms, request_message, user)).await?;
 
     perform_response_tweaks(&mut response_message, major, minor);
 
-    trace!(
-        target: "kmip",
-        user = user.as_str(),
-        tag = tag.as_ref(),
-        "Response Message: {response_message}"
-    );
-
     let response_ttlv = to_ttlv(&response_message)
-        .map_err(|e| KmsError::InvalidRequest(format!("Failed to serialize response: {e}")))?;
-
-    debug!(
-        target: "kmip",
-        user = user.as_str(),
-        tag = tag.as_ref(),
-        "Response Message TTLV: {response_ttlv:#?}"
-    );
+        .map_err(|e| KmsError::ServerError(format!("Failed to serialize response: {e}")))?;
 
     let response_bytes = TTLV::to_bytes(&response_ttlv, kmip_flavor)
-        .map_err(|e| KmsError::InvalidRequest(format!("Failed to convert TTLV to bytes: {e}")))?;
-
-    debug!(
-        target: "kmip",
-        user = user.as_str(),
-        tag = tag.as_ref(),
-        "Response Message Bytes: {}", hex::encode(&response_bytes)
-    );
+        .map_err(|e| KmsError::ServerError(format!("Failed to convert TTLV to bytes: {e}")))?;
 
     Ok((response_bytes, response_ttlv))
 }
@@ -563,14 +703,139 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 #[expect(clippy::unwrap_used)]
 mod tests {
     use cosmian_kms_client_utils::reexport::cosmian_kmip;
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::{
+        ResponseMessage, ResponseMessageBatchItemVersioned,
+    };
     use cosmian_logger::{info, log_init};
+
+    #[test]
+    fn invalid_response_preserves_error_reason_and_timestamp() {
+        let response = super::invalid_response_message_with_reason(
+            2,
+            1,
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Feature_Not_Supported,
+            "unsupported operation".to_owned(),
+            None,
+        );
+
+        // 18262 days after the Unix epoch is 2020-01-01.
+        assert!(
+            response.response_header.time_stamp
+                > time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(18262)
+        );
+        assert!(matches!(
+            response.batch_item.first(),
+            Some(ResponseMessageBatchItemVersioned::V21(batch_item))
+                if batch_item.result_reason
+                    == Some(cosmian_kmip::kmip_0::kmip_types::ErrorReason::Feature_Not_Supported)
+        ));
+    }
+
+    #[test]
+    fn json_error_response_preserves_protocol_reason() {
+        let (reason, message) = super::kmip_error_response_fields(&super::KmsError::Kmip21Error(
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Unsupported_Protocol_Version,
+            "unsupported version".to_owned(),
+        ));
+
+        assert_eq!(
+            reason,
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Unsupported_Protocol_Version
+        );
+        assert_eq!(message, "unsupported version");
+
+        let (reason, _) = super::kmip_error_response_fields(&super::KmsError::Kmip21Error(
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message,
+            "malformed request".to_owned(),
+        ));
+        assert_eq!(
+            reason,
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message
+        );
+    }
+
+    #[test]
+    fn error_response_ttlv_preserves_mapped_reason() -> crate::result::KResult<()> {
+        let ttlv = super::error_response_ttlv_with_reason(
+            2,
+            1,
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Feature_Not_Supported,
+            "unsupported operation",
+        );
+        let response: ResponseMessage = cosmian_kmip::ttlv::from_ttlv(ttlv)?;
+
+        if !matches!(
+            response.batch_item.first(),
+            Some(ResponseMessageBatchItemVersioned::V21(batch_item))
+                if batch_item.result_reason
+                    == Some(cosmian_kmip::kmip_0::kmip_types::ErrorReason::Feature_Not_Supported)
+        ) {
+            return Err(super::KmsError::Default(
+                "JSON error response did not preserve FeatureNotSupported".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unsupported_protocol_version_uses_protocol_reason() -> crate::result::KResult<()> {
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let Err(err) = super::handle_ttlv_bytes_inner(
+            &crate::middlewares::UserId::from("unsupported-version@example.com"),
+            &[],
+            None,
+            3,
+            0,
+            &kms,
+        )
+        .await
+        else {
+            return Err(super::KmsError::Default(
+                "unsupported versions must be rejected before parsing TTLV".to_owned(),
+            ));
+        };
+        if !matches!(
+            &err,
+            super::KmsError::Kmip21Error(
+                cosmian_kmip::kmip_0::kmip_types::ErrorReason::Unsupported_Protocol_Version,
+                _
+            )
+        ) {
+            return Err(super::KmsError::Default(format!(
+                "unsupported version returned unexpected error: {err:?}"
+            )));
+        }
+        let response = super::invalid_response_message_with_reason(
+            3,
+            0,
+            cosmian_kmip::kmip_0::kmip_types::ErrorReason::Unsupported_Protocol_Version,
+            "unsupported version".to_owned(),
+            None,
+        );
+        if !matches!(
+            response.batch_item.first(),
+            Some(ResponseMessageBatchItemVersioned::V21(batch_item))
+                if batch_item.result_reason
+                    == Some(cosmian_kmip::kmip_0::kmip_types::ErrorReason::Unsupported_Protocol_Version)
+        ) {
+            return Err(super::KmsError::Default(
+                "unsupported versions must use KMIP 2.x response tags".to_owned(),
+            ));
+        }
+        Ok(())
+    }
 
     #[test]
     fn error_response_message() {
         // log_init(Some("debug"));
         log_init(option_env!("RUST_LOG"));
-        let response = super::invalid_response_message(1, 0, "Unknown Error".to_owned());
+        let response = super::invalid_response_message_with_reason(
+            1,
+            0,
+            super::ErrorReason::Invalid_Message,
+            "Unknown Error".to_owned(),
+            None,
+        );
         assert_eq!(response.response_header.batch_count, 1);
         assert_eq!(response.batch_item.len(), 1);
         #[expect(clippy::panic)]
@@ -590,6 +855,75 @@ mod tests {
         assert_eq!(ttlv.tag, "ResponseMessage");
         let bytes = super::TTLV::to_bytes(&ttlv, cosmian_kmip::ttlv::KmipFlavor::Kmip1).unwrap();
         info!("\n{:?}", &bytes);
+    }
+
+    #[test]
+    fn invalid_response_caps_message_for_every_batch_item() {
+        let request = super::TTLV {
+            tag: "RequestMessage".into(),
+            value: super::TTLValue::Structure(
+                (0..super::MAX_BATCH_ITEMS)
+                    .map(|index| super::TTLV {
+                        tag: "BatchItem".into(),
+                        value: super::TTLValue::Structure(if index == 0 {
+                            vec![super::TTLV {
+                                tag: "Operation".into(),
+                                value: super::TTLValue::ByteString(vec![0; 1024]),
+                            }]
+                        } else {
+                            vec![]
+                        }),
+                    })
+                    .collect(),
+            ),
+        };
+        let error_message = format!(
+            "Expected Integer value, got: {:?}",
+            super::TTLValue::ByteString(vec![0; 1024])
+        );
+        let response = super::invalid_response_message_with_reason(
+            1,
+            0,
+            super::ErrorReason::Invalid_Message,
+            error_message,
+            Some(&request),
+        );
+
+        assert_eq!(response.batch_item.len(), super::MAX_BATCH_ITEMS);
+        assert!(
+            response
+                .batch_item
+                .iter()
+                .all(|item| { matches!(item, super::ResponseMessageBatchItemVersioned::V14(_)) })
+        );
+        let result_message_bytes: usize = response
+            .batch_item
+            .iter()
+            .map(|item| match item {
+                super::ResponseMessageBatchItemVersioned::V14(item) => {
+                    item.result_message.as_ref().map_or(0, String::len)
+                }
+                super::ResponseMessageBatchItemVersioned::V21(_) => 0,
+            })
+            .sum();
+        assert!(result_message_bytes <= super::MAX_BATCH_ITEMS * super::MAX_ERROR_MESSAGE_BYTES);
+    }
+
+    #[test]
+    fn invalid_response_does_not_collect_unbounded_batch_item_ids() {
+        let request = super::TTLV {
+            tag: "RequestMessage".into(),
+            value: super::TTLValue::Structure(
+                (0..=super::MAX_BATCH_ITEMS + 1)
+                    .map(|_| super::TTLV {
+                        tag: "BatchItem".into(),
+                        value: super::TTLValue::Structure(vec![]),
+                    })
+                    .collect(),
+            ),
+        };
+
+        assert!(super::request_batch_item_ids(Some(&request)).is_empty());
     }
 }
 
@@ -621,6 +955,17 @@ mod local_tests {
 fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i32) {
     if major == 1 && minor <= 2 {
         append_auth_tag_to_encrypt_response(response);
+        // Located Items was introduced in KMIP 1.3
+        for item in &mut response.batch_item {
+            if let ResponseMessageBatchItemVersioned::V14(item) = item {
+                if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::LocateResponse(
+                    locate,
+                )) = &mut item.response_payload
+                {
+                    locate.located_items = None;
+                }
+            }
+        }
     }
     if major == 1 {
         strip_asymmetric_key_value_attributes(response);
@@ -794,10 +1139,13 @@ fn retain_kmip1_response_attributes(
 }
 
 /// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
-fn perform_request_tweaks(response: &mut RequestMessage, major: i32, minor: i32) {
+fn perform_request_tweaks(request: &mut DecodedRequestMessage, major: i32, minor: i32) {
     if major == 1 && minor <= 2 {
-        for batch_item in &mut response.batch_item {
-            let RequestMessageBatchItemVersioned::V14(item) = batch_item else {
+        for batch_item in &mut request.batch_item {
+            let BatchItemInput::Item(item) = batch_item else {
+                continue;
+            };
+            let RequestMessageBatchItemVersioned::V14(item) = &mut **item else {
                 continue;
             };
             if let cosmian_kmip::kmip_1_4::kmip_operations::Operation::Decrypt(decrypt) =

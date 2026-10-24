@@ -11,7 +11,8 @@ This operation can be applied to all [supported objects](../objects.md). One or 
 ### Read-only attributes
 
 The following attributes are **read-only** for `SetAttribute` (KMIP 2.1 §6.1.51). Any attempt returns a
-`Read_Only_Attribute` error before the object is touched:
+`Read_Only_Attribute` error before the object is touched; the message begins with
+`DENIED: this attribute is server-managed`:
 
 - `UniqueIdentifier`, `ObjectType`, `ShortUniqueIdentifier`, `KeyFormatType`, `KeyValuePresent`, `OpaqueDataType`
 - `CryptographicAlgorithm`, `CryptographicDomainParameters`, `CryptographicLength`, `DigitalSignatureAlgorithm`,
@@ -26,34 +27,30 @@ The following attributes are **read-only** for `SetAttribute` (KMIP 2.1 §6.1.51
 
 `AddAttribute` refuses the same attributes, plus `RotateAutomatic`, with the same `Read_Only_Attribute` error.
 
-`Sensitive` and `Extractable` can be set only by the object owner or by a user holding an explicit `SetAttribute`
-grant.
+### Attributes requiring a grant
+
+`Sensitive`, `Extractable`, `UsageLimits`, `CryptographicUsageMask`, `ActivationDate`, `DeactivationDate`, `Link`,
+`LinkType`, `RotateInterval` and `RevocationReason` can be set only by the object owner or by a user holding an
+explicit `SetAttribute` grant. A `Get` grant is not enough: the refusal is `Permission_Denied`.
+
+### Other rules
+
+- `ActivationDate` can be set only on a Pre-Active object, else `Wrong_Key_Lifecycle_State` (`Permission_Denied` for KMIP 2.0 clients).
+- Set `Name` replaces the single instance; with more than one instance it returns `Multi_Valued_Attribute`.
+- `Extractable=true` is refused once `Extractable=false` is stored.
+- Every successful Set updates the `LastChangeDate`.
 
 ## Example - A symmetric key
 
 Set an attribute of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
-
-First, create a symmetric key:
+First, create a symmetric key with the [KMS CLI](../../kms_clients/index.md):
 
 ```bash
   ckms sym keys create my_symmetric_key
 ```
 
-```bash
-  ckms attributes set -i my_symmetric_key --activation-date 1726211157791
-```
-
-The request sets the activation date of a symmetric key.
-
-The response contains all the system and user tags associated with the key. This is the hex encoded value of a JSON
-array with value
-
-```json
-Attribute set successfully
-          Unique identifier: 6209aa2a-900f-4a1c-b2ca-9b4af1bbd1d1
-```
+The request below sets a link on that key.
 
 === "Request"
 

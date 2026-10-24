@@ -171,9 +171,9 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`, `test:hsm-luna`
+**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`, `test:hsm-luna`, `test:hsm-crypt2pay-simulator`
 **Orchestrator:** `test:hsm:_default`
-**Matrix:** `test:matrix` (cross-product HSM × DB × variant)
+**Matrix:** `test:matrix` (cross-product HSM × DB × variant; Linux includes `crypt2pay-simulator`)
 
 | Task | HSM Model | Platform | DB param |
 |------|-----------|----------|----------|
@@ -198,6 +198,7 @@ graph TB
         Utimaco[("Utimaco<br/>Simulator")]
         Proteccio[("Proteccio<br/>HSM")]
         Crypt2Pay[("Crypt2Pay<br/>HSM")]
+        Crypt2PaySim[("Crypt2Pay Simulator<br/>software HSM")]
     end
 
     Nix2 --> Cargo2
@@ -205,6 +206,7 @@ graph TB
     Cargo2 --> Utimaco
     Cargo2 --> Proteccio
     Cargo2 --> Crypt2Pay
+    Cargo2 --> Crypt2PaySim
 ```
 
 ### Sequence Diagram (SoftHSM2 example; others analogous)

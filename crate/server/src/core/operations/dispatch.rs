@@ -7,9 +7,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_operations::{
             Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, CreateSplitKey, Decrypt,
             DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
-            GetAttributes, Hash, Import, JoinSplitKey, Locate, MAC, MACVerify, ModifyAttribute,
-            Operation, Query, RNGRetrieve, RNGSeed, ReCertify, ReKey, ReKeyKeyPair, Register,
-            Revoke, SetAttribute, Sign, SignatureVerify, Validate,
+            GetAttributes, GetConstraints, Hash, Import, Interop, JoinSplitKey, Locate, Log, Login,
+            Logout, MAC, MACVerify, ModifyAttribute, Operation, PKCS11, Ping, PingResponse, Query,
+            RNGRetrieve, RNGSeed, ReCertify, ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute,
+            SetConstraints, Sign, SignatureVerify, Validate,
         },
         kmip_types::OperationEnumeration,
     },
@@ -21,7 +22,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
-            attributes::get_attribute_list, check, mac::mac_verify, query::query as query_op,
+            attributes::get_attribute_list, check, mac::mac_verify,
         },
     },
     error::KmsError,
@@ -68,12 +69,6 @@ macro_rules! op {
         let resp = $kms.$method(req, $user).await;
         Operation::$Resp(resp)
     }};
-    // Variant for free functions: fn(req, extra) -> Result<Resp> with boxed response
-    (query $ttlv:expr, $kms:expr, $Req:ty, $func:expr, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
-        let resp = $func(req, $kms.vendor_id()).await?;
-        Operation::$Resp(Box::new(resp))
-    }};
 }
 
 /// Enforce role-based access control before dispatching a KMIP operation.
@@ -104,19 +99,25 @@ pub(crate) async fn check_role_permission(
     operation: OperationEnumeration,
     crypto_officer: &CryptoOfficerConfig,
 ) -> KResult<()> {
+    // PKCS11 controls the server's shared HSM library and requires an explicit Crypto Officer.
+    if operation == OperationEnumeration::PKCS11 && !crypto_officer.is_configured() {
+        kms_bail!(KmsError::Unauthorized(
+            "PKCS11 requires a configured Crypto Officer".to_owned()
+        ));
+    }
+
     // If no role lists are configured, skip role enforcement entirely.
     if !crypto_officer.is_configured() {
         return Ok(());
     }
 
-    // Ceremony candidate exemption: users in crypto_officer.users can perform
-    // Create, Import, CreateSplitKey, and JoinSplitKey even before completing
-    // the ceremony. This breaks the vicious circle where they need to create
-    // a master key and split it to complete the ceremony, but can't create
-    // anything without being CO first.
-    // Security: only ceremony candidates (not arbitrary Operators) are exempt,
-    // and only for operations that are prerequisites for ceremony completion.
-    // Full CO privileges (ownership bypass) still require ceremony completion.
+    // Ceremony candidate exemption: users in crypto_officer.users can perform Create, Import,
+    // SetAttribute, CreateSplitKey, and JoinSplitKey even before completing the ceremony. This
+    // breaks the vicious circle where they need to create, mark, and split a master key before
+    // they can complete the ceremony.
+    // Security: only ceremony candidates (not arbitrary Operators) are exempt, and handler-level
+    // ownership and per-object grants still apply. Full CO privileges (ownership bypass) still
+    // require ceremony completion.
     let is_ceremony_candidate = crypto_officer.require_ceremony
         && crypto_officer.users.iter().any(|u| u == user)
         && CryptoOfficerConfig::is_ceremony_prerequisite(operation);
@@ -284,6 +285,10 @@ async fn dispatch_inner(
         ),
         Op::RNGSeed => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
         Op::Import => op!(ttlv, kms, user, Import, import, ImportResponse),
+        Op::Interop => {
+            drop(from_ttlv::<Interop>(ttlv)?);
+            super::message::process_interop_operation()?
+        }
         Op::JoinSplitKey => {
             op!(
                 ttlv,
@@ -295,11 +300,36 @@ async fn dispatch_inner(
             )
         }
         Op::Locate => op!(ttlv, kms, user, Locate, locate, LocateResponse),
+        Op::Log => super::message::process_log_operation(from_ttlv::<Log>(ttlv)?, user)?,
+        Op::Login => {
+            Operation::LoginResponse(super::login::login(kms, &from_ttlv::<Login>(ttlv)?, user)?)
+        }
+        Op::Logout => Operation::LogoutResponse(super::login::logout(
+            kms,
+            &from_ttlv::<Logout>(ttlv)?,
+            user,
+        )?),
+        Op::SetConstraints => Operation::SetConstraintsResponse(
+            super::constraints::set_constraints(kms, from_ttlv::<SetConstraints>(ttlv)?, user)?,
+        ),
+        Op::GetConstraints => {
+            // The payload is empty: decoding only validates it.
+            from_ttlv::<GetConstraints>(ttlv)?;
+            Operation::GetConstraintsResponse(super::constraints::get_constraints(kms))
+        }
+        Op::Ping => {
+            // The payload is empty: decoding only validates it.
+            from_ttlv::<Ping>(ttlv)?;
+            Operation::PingResponse(PingResponse)
+        }
         Op::MAC => op!(ttlv, kms, user, MAC, mac, MACResponse),
         Op::MACVerify => {
             op!(pin_fn ttlv, kms, user, MACVerify, mac_verify, MACVerifyResponse)
         }
-        Op::Query => op!(query ttlv, kms, Query, query_op, QueryResponse),
+        Op::PKCS11 => op!(ttlv, kms, user, PKCS11, pkcs11, PKCS11Response),
+        Op::Query => {
+            Operation::QueryResponse(Box::new(kms.query(from_ttlv::<Query>(ttlv)?).await?))
+        }
         Op::ModifyAttribute => {
             op!(
                 ttlv,
@@ -346,14 +376,21 @@ async fn dispatch_inner(
             )
         }
         Op::Validate => op!(ttlv, kms, user, Validate, validate, ValidateResponse),
-        // KMIP operations this server does not implement.
-        _ => kms_bail!(KmsError::RouteNotFound(format!("Operation: {operation}"))),
+        x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::to_ttlv;
+
     use super::*;
+    use crate::{
+        config::ServerParams,
+        tests::test_utils::{https_clap_config, test_kms},
+    };
 
     #[test]
     fn parse_operation_accepts_both_mac_spellings_and_rejects_unknown_tags() {
@@ -375,5 +412,97 @@ mod tests {
                 "{tag:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn dispatches_a_bare_log_request() -> KResult<()> {
+        let kms = test_kms().await?;
+        let response = dispatch(
+            &kms,
+            to_ttlv(&Log {
+                log_message: Some("conformance test".to_owned()),
+            })?,
+            &UserId::from("dispatch-log@example.com"),
+        )
+        .await?;
+
+        if !matches!(response, Operation::LogResponse(_)) {
+            return Err(KmsError::Default(
+                "expected a LogResponse for a bare Log request".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// KMIP 2.1 §6.1.36: Ping answers with an empty `PingResponse` (runs in FIPS builds too).
+    #[tokio::test]
+    async fn dispatches_a_ping_request() -> KResult<()> {
+        let kms = test_kms().await?;
+        let response = dispatch(
+            &kms,
+            to_ttlv(&Ping)?,
+            &UserId::from("dispatch-ping@example.com"),
+        )
+        .await?;
+        if response != Operation::PingResponse(PingResponse) {
+            return Err(KmsError::Default(
+                "expected a PingResponse for a Ping request".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn operator_cannot_invoke_administrative_operations() -> KResult<()> {
+        let mut config = https_clap_config();
+        config.roles.crypto_officer_users = Some(vec!["officer@example.com".to_owned()]);
+        let kms = KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?;
+        let operator = UserId::from("operator@example.com");
+
+        for operation in [
+            OperationEnumeration::JoinSplitKey,
+            OperationEnumeration::PKCS11,
+            OperationEnumeration::ReCertify,
+        ] {
+            let result = check_role_permission(
+                &kms,
+                operator.as_str(),
+                operation,
+                &kms.params.crypto_officer,
+            )
+            .await;
+            if !matches!(result, Err(KmsError::Unauthorized(_))) {
+                return Err(KmsError::Default(format!(
+                    "Operator was permitted to invoke {operation}"
+                )));
+            }
+        }
+
+        check_role_permission(
+            &kms,
+            operator.as_str(),
+            OperationEnumeration::Query,
+            &kms.params.crypto_officer,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn pkcs11_requires_a_configured_crypto_officer() -> KResult<()> {
+        let kms = test_kms().await?;
+        let result = check_role_permission(
+            &kms,
+            "unconfigured@example.com",
+            OperationEnumeration::PKCS11,
+            &kms.params.crypto_officer,
+        )
+        .await;
+
+        if !matches!(result, Err(KmsError::Unauthorized(_))) {
+            return Err(KmsError::Default(
+                "PKCS11 was permitted without a configured Crypto Officer".to_owned(),
+            ));
+        }
+        Ok(())
     }
 }

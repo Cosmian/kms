@@ -4,6 +4,15 @@ use serde::{de, ser};
 
 use crate::error::KmipError;
 
+/// Text carried by the decoding error of a tag the KMIP version does not define.
+/// Servers map such errors to the `Unknown Tag` result reason.
+pub const UNKNOWN_TAG: &str = "Unknown tag value";
+
+/// Text carried by the decoding error of an enumeration value the KMIP enumeration does not
+/// define (emitted by `kmip_derive::KmipEnumDeserialize`). Servers map such errors to the
+/// `Unknown Enumeration` result reason.
+pub const UNKNOWN_ENUMERATION: &str = "Unknown enumeration value";
+
 #[derive(Debug)]
 pub struct TtlvError {
     pub error: String,

@@ -8,6 +8,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
         kmip_2_1::{
             KmipOperation,
+            kmip_attributes::Attributes,
             kmip_objects::{Certificate, Object, ObjectType},
             kmip_operations::{Revoke, RevokeResponse},
             kmip_types::{LinkType, UniqueIdentifier},
@@ -28,7 +29,6 @@ use crate::{
         uid_utils::{ObjectHandle, resolve_uids},
     },
     error::KmsError,
-    kms_bail,
     middlewares::UserId,
     result::{KResult, KResultHelper},
 };
@@ -38,7 +38,7 @@ pub(crate) async fn revoke_operation(
     mut request: Revoke,
     user: &UserId,
 ) -> KResult<RevokeResponse> {
-    trace!("{request}");
+    trace!("Revoke request");
     // there must be an identifier
     let unique_identifier = request
         .unique_identifier
@@ -47,6 +47,16 @@ pub(crate) async fn revoke_operation(
 
     let revocation_reason = request.revocation_reason;
     let compromise_occurrence_date = request.compromise_occurrence_date;
+    // KMIP 2.1 Table 295: the Compromise Occurrence Date SHALL NOT be specified for
+    // revocation reasons other than key/CA compromise.
+    if compromise_occurrence_date.is_some() && !is_compromise(&revocation_reason) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            "Revoke: Compromise Occurrence Date is only allowed with a Key Compromise or CA \
+             Compromise revocation reason"
+                .to_owned(),
+        ));
+    }
 
     // For demo purposes, make some keys non-revocable (like Google CSE and MS DKE keys)
     if let Some(non_revocable_key_id) = &kms.params.non_revocable_key_id {
@@ -106,7 +116,11 @@ pub(crate) async fn recursively_revoke_key(
                 }
             }
             // KMIP 2.1 §6.1.44: KeyCompromise/CACompromise → Compromised; all others → Deactivated
-            let revoked_state = revocation_target_state(&revocation_reason);
+            let revoked_state = if is_compromise(&revocation_reason) {
+                State::Compromised
+            } else {
+                State::Deactivated
+            };
             if kms.database.update_state(&uid, revoked_state).await.is_ok() {
                 count += 1;
                 debug!(
@@ -124,65 +138,35 @@ pub(crate) async fn recursively_revoke_key(
             continue;
         };
 
-        let object_type = owm.object().object_type();
-        let uid = owm.id().to_owned();
-        // KMIP 2.1 §6.1.44 state-transition guard:
-        // • Active / PreActive → proceed normally.
-        // • Destroyed / Destroyed_Compromised → allow pass-through (AKLC-M-2-21).
-        // • Deactivated → only proceed for Compromise reasons (transition #8).
-        // • anything else → skip.
-        match owm.state() {
-            State::Active | State::PreActive => {}
-            State::Destroyed | State::Destroyed_Compromised => {
-                trace!(
-                    "[revoke] proceed-destroyed uid={uid} state={:?}",
-                    owm.state()
-                );
-                // AKLC-M-2-21 compatibility: succeed without performing a state
-                // transition. Counting the object prevents a spurious Item_Not_Found
-                // when a cascade Revoke reaches a linked key that was already destroyed.
-                count += 1;
-                continue;
-            }
-            State::Deactivated => {
-                // Transition #8: Deactivated → Compromised is valid only for Compromise reasons.
-                // For all others treat as a no-op so that Revoke → Destroy sequences still succeed.
-                if !matches!(
-                    revocation_reason.revocation_reason_code,
-                    RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise
-                ) {
-                    count += 1;
-                    continue;
-                }
-            }
-            State::Compromised => {
-                trace!(
-                    "[revoke] skip uid={uid} reason=state-not-revocable state={:?}",
-                    owm.state()
-                );
-                continue;
-            }
-        }
-        if !matches!(
-            object_type,
-            ObjectType::PrivateKey
-                | ObjectType::Certificate
-                | ObjectType::SymmetricKey
-                | ObjectType::PublicKey
-                | ObjectType::PGPKey
-                | ObjectType::SecretData
-                | ObjectType::OpaqueObject
-                | ObjectType::SplitKey
-        ) {
-            continue;
-        }
-        // if the user is not the owner, we need to check if the user has the right to revoke
+        // Permission check BEFORE any state inspection (COSMIAN-2026-037 anti-oracle): a
+        // caller without the Revoke right must not distinguish missing, destroyed or
+        // ungranted objects.
         if !kms
             .user_can_perform_operation(&owm, user, &KmipOperation::Revoke)
             .await?
         {
             continue;
         }
+        let object_type = owm.object().object_type();
+        let uid = owm.id().to_owned();
+        if object_type == ObjectType::CertificateRequest {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Object_Type,
+                format!("Revoke: object type {object_type:?} cannot be revoked"),
+            ));
+        }
+        // KMIP 2.1 §4.57: only the listed state transitions are permitted.
+        let current_state = owm.effective_state();
+        let Some(target_state) = revocation_target_state(&revocation_reason, current_state) else {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Wrong_Key_Lifecycle_State,
+                format!(
+                    "Revoke: object {uid} in state {current_state:?} cannot be revoked with \
+                     reason {:?}",
+                    revocation_reason.revocation_reason_code
+                ),
+            ));
+        };
         count += 1;
         // Perform the chain of revoke operations depending on the type of object
         match object_type {
@@ -207,6 +191,7 @@ pub(crate) async fn recursively_revoke_key(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
+                    target_state,
                     kms,
                 ))
                 .await?;
@@ -239,6 +224,7 @@ pub(crate) async fn recursively_revoke_key(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
+                    target_state,
                     kms,
                 ))
                 .await?;
@@ -277,7 +263,7 @@ pub(crate) async fn recursively_revoke_key(
                         .map(|l| l.to_string())
                     {
                         if !ids_to_skip.contains(&linked_id) {
-                            recursively_revoke_key(
+                            match recursively_revoke_key(
                                 &UniqueIdentifier::TextString(linked_id),
                                 revocation_reason.clone(),
                                 compromise_occurrence_date,
@@ -286,7 +272,16 @@ pub(crate) async fn recursively_revoke_key(
                                 user,
                                 ids_to_skip.clone(),
                             )
-                            .await?;
+                            .await
+                            {
+                                // A linked key already in a state this reason cannot
+                                // transition (e.g. already Deactivated) is left as is.
+                                Err(KmsError::Kmip21Error(
+                                    ErrorReason::Wrong_Key_Lifecycle_State,
+                                    msg,
+                                )) => trace!("[revoke] cascade skipped: {msg}"),
+                                other => other?,
+                            }
                             kms.record_cascading_metrics("Revoke", op_start, user);
                         }
                     }
@@ -295,13 +290,13 @@ pub(crate) async fn recursively_revoke_key(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
+                    target_state,
                     kms,
                 ))
                 .await?;
             }
-            x @ ObjectType::CertificateRequest => kms_bail!(KmsError::NotSupported(format!(
-                "revoke operation is not supported for object type {x:?}"
-            ))),
+            // rejected with Invalid_Object_Type above
+            ObjectType::CertificateRequest => {}
         }
 
         info!(
@@ -314,7 +309,7 @@ pub(crate) async fn recursively_revoke_key(
 
     if count == 0 {
         return Err(KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
+            ErrorReason::Object_Not_Found,
             unique_identifier.to_string(),
         ));
     }
@@ -322,37 +317,42 @@ pub(crate) async fn recursively_revoke_key(
     Ok(())
 }
 
-/// Revoke a key, knowing the object and state
+/// Revoke an object, knowing the object and the target state.
+///
+/// KMIP 2.1 §6.1.44 / §4.10 / §4.18: a compromise sets the Compromise Date (and the
+/// Compromise Occurrence Date, defaulting to the Initial Date); any other reason
+/// deactivates the object and sets its Deactivation Date.
 async fn revoke_key_core(
     mut owm: ObjectWithMetadata,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<OffsetDateTime>,
+    state: State,
     kms: &KMS,
 ) -> KResult<()> {
     let now = time_normalize()?;
-    let state = revocation_target_state(&revocation_reason);
-
-    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
-        object_attributes.state = Some(state);
-        // update the deactivation date
-        object_attributes.deactivation_date = Some(now);
-        // update the compromise occurrence date if provided
-        if let Some(date) = compromise_occurrence_date {
-            object_attributes.compromise_occurrence_date = Some(date);
+    let compromised = matches!(state, State::Compromised | State::Destroyed_Compromised);
+    let compromise_occurrence_date = compromise_occurrence_date.or_else(|| {
+        owm.attributes()
+            .initial_date
+            .or_else(|| owm.object().attributes().ok().and_then(|a| a.initial_date))
+    });
+    let apply = |attributes: &mut Attributes| {
+        attributes.state = Some(state);
+        if compromised {
+            attributes.compromise_date = Some(now);
+            if compromise_occurrence_date.is_some() {
+                attributes.compromise_occurrence_date = compromise_occurrence_date;
+            }
+        } else {
+            attributes.deactivation_date = Some(now);
         }
         // persist the revocation reason (needed for CRL generation per RFC 5280 §5.3.1)
-        object_attributes.revocation_reason = Some(revocation_reason.clone());
+        attributes.revocation_reason = Some(revocation_reason.clone());
+    };
+    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+        apply(object_attributes);
     }
-    // Update the state in the "external" attributes
-    owm.attributes_mut().state = Some(state);
-    // Update the deactivation date in the "external" attributes
-    owm.attributes_mut().deactivation_date = Some(now);
-    // Update the compromise occurrence date in the "external" attributes if provided
-    if let Some(date) = compromise_occurrence_date {
-        owm.attributes_mut().compromise_occurrence_date = Some(date);
-    }
-    // Persist the revocation reason in the "external" attributes
-    owm.attributes_mut().revocation_reason = Some(revocation_reason);
+    apply(owm.attributes_mut());
 
     let (id, object, attributes) = owm.into_parts();
     kms.database
@@ -365,21 +365,35 @@ async fn revoke_key_core(
         )
         .await?;
 
+    if compromised {
+        // A compromised key must not keep serving open multi-part operations.
+        kms.multi_part.purge_key(&id);
+    }
     debug!("Object with unique identifier: {id} revoked");
 
     Ok(())
 }
 
-/// Return the [`State`] an object transitions to when revoked for the given `reason`.
+/// Whether the revocation reason is a key or CA compromise.
+const fn is_compromise(reason: &RevocationReason) -> bool {
+    matches!(
+        reason.revocation_reason_code,
+        RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise
+    )
+}
+
+/// Return the [`State`] an object in `current` state transitions to when revoked for
+/// `reason`, or `None` when KMIP 2.1 §4.57 permits no such transition.
 ///
-/// - `KeyCompromise` / `CACompromise` → [`State::Compromised`]
-/// - all other reason codes → [`State::Deactivated`]
-const fn revocation_target_state(reason: &RevocationReason) -> State {
-    match reason.revocation_reason_code {
-        RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
-            State::Compromised
-        }
-        _ => State::Deactivated,
+/// - compromise: Pre-Active / Active / Deactivated → Compromised (transitions 3, 5, 8),
+///   Destroyed → Destroyed Compromised (transition 10)
+/// - any other reason: Active → Deactivated (transition 6)
+const fn revocation_target_state(reason: &RevocationReason, current: State) -> Option<State> {
+    match (is_compromise(reason), current) {
+        (true, State::PreActive | State::Active | State::Deactivated) => Some(State::Compromised),
+        (true, State::Destroyed) => Some(State::Destroyed_Compromised),
+        (false, State::Active) => Some(State::Deactivated),
+        _ => None,
     }
 }
 

@@ -203,3 +203,11 @@ func hasAttr(names []kmip.AttributeName, attrName string) bool {
 func sanitiseName(s string) string {
     return strings.NewReplacer("/", "_", " ", "_", ":", "_").Replace(s)
 }
+
+// aesGCM96 is kmip.AES_GCM with IV Length in bits (KMIP spec): the library's constant
+// sends 12, which the server (correctly) reads as 12 bits.
+var aesGCM96 = func() kmip.CryptographicParameters {
+    p := kmip.AES_GCM
+    p.IVLength = 96
+    return p
+}()

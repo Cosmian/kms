@@ -423,6 +423,7 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     let renewed_id = kms
         .recertify(
             ReCertify {
+                certificate_request_unique_identifier: None,
                 unique_identifier: Some(UniqueIdentifier::TextString(leaf_id)),
                 certificate_request_type: None,
                 certificate_request_value: None,

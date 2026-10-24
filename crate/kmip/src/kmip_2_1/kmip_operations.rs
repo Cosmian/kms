@@ -5,6 +5,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose};
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
+use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use strum_macros::Display;
 use time::OffsetDateTime;
@@ -16,12 +17,12 @@ use super::{
         CapabilityInformation, DefaultsInformation, DerivationParameters, ExtensionInformation,
         KeyWrappingSpecification, ServerInformation,
     },
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::{Certificate, Object, ObjectType},
     kmip_types::{
         AttributeReference, CertificateRequestType, CryptographicParameters, DerivationMethod,
         KeyCompressionType, KeyFormatType, ObjectGroupMember, OperationEnumeration,
         ProtectionStorageMasks, QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier,
-        ValidityIndicator,
+        UsageLimits, ValidityIndicator,
     },
 };
 use crate::{
@@ -32,10 +33,11 @@ use crate::{
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
         kmip_types::{
             AttestationType, CryptographicUsageMask, Direction, KeyWrapType, RevocationReason,
-            SecretDataType,
+            SecretDataType, Ticket,
         },
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
+    ttlv::Interval,
 };
 
 /// Extension trait to add base64 display functionality to byte types
@@ -75,24 +77,6 @@ impl Base64Display for Option<Zeroizing<Vec<u8>>> {
         self.as_ref().map_or_else(
             || "None".to_owned(),
             |bytes| general_purpose::STANDARD.encode(bytes),
-        )
-    }
-}
-
-impl Base64Display for Option<Vec<Vec<u8>>> {
-    fn to_base64(&self) -> String {
-        self.as_ref().map_or_else(
-            || "None".to_owned(),
-            |arrays| {
-                format!(
-                    "[{}]",
-                    arrays
-                        .iter()
-                        .map(|bytes| general_purpose::STANDARD.encode(bytes))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            },
         )
     }
 }
@@ -177,6 +161,8 @@ pub enum Operation {
     GetAttributeListResponse(GetAttributeListResponse),
     GetAttributes(GetAttributes),
     GetAttributesResponse(Box<GetAttributesResponse>),
+    GetConstraints(GetConstraints),
+    GetConstraintsResponse(GetConstraintsResponse),
     GetResponse(GetResponse),
     Hash(Hash),
     HashResponse(HashResponse),
@@ -192,6 +178,10 @@ pub enum Operation {
     LocateResponse(LocateResponse),
     Log(Log),
     LogResponse(LogResponse),
+    Login(Login),
+    LoginResponse(LoginResponse),
+    Logout(Logout),
+    LogoutResponse(LogoutResponse),
     MAC(MAC),
     MACResponse(MACResponse),
     MACVerify(MACVerify),
@@ -200,6 +190,8 @@ pub enum Operation {
     ModifyAttributeResponse(ModifyAttributeResponse),
     PKCS11(PKCS11),
     PKCS11Response(PKCS11Response),
+    Ping(Ping),
+    PingResponse(PingResponse),
     Query(Query),
     QueryResponse(Box<QueryResponse>),
     ReCertify(Box<ReCertify>),
@@ -216,6 +208,8 @@ pub enum Operation {
     RNGRetrieveResponse(RNGRetrieveResponse),
     RNGSeed(RNGSeed),
     RNGSeedResponse(RNGSeedResponse),
+    SetConstraints(SetConstraints),
+    SetConstraintsResponse(SetConstraintsResponse),
     SetAttribute(SetAttribute),
     SetAttributeResponse(SetAttributeResponse),
     Sign(Sign),
@@ -268,6 +262,8 @@ impl Display for Operation {
             Self::GetAttributes(op) => write!(f, "{op}")?,
             Self::GetAttributesResponse(op) => write!(f, "{op}")?,
             Self::GetResponse(op) => write!(f, "{op}")?,
+            Self::GetConstraints(op) => write!(f, "{op}")?,
+            Self::GetConstraintsResponse(op) => write!(f, "{op}")?,
             Self::Hash(op) => write!(f, "{op}")?,
             Self::HashResponse(op) => write!(f, "{op}")?,
             Self::Import(op) => write!(f, "{op}")?,
@@ -282,6 +278,10 @@ impl Display for Operation {
             Self::LocateResponse(op) => write!(f, "{op}")?,
             Self::Log(op) => write!(f, "{op}")?,
             Self::LogResponse(op) => write!(f, "{op}")?,
+            Self::Login(op) => write!(f, "{op}")?,
+            Self::LoginResponse(op) => write!(f, "{op}")?,
+            Self::Logout(op) => write!(f, "{op}")?,
+            Self::LogoutResponse(op) => write!(f, "{op}")?,
             Self::MAC(op) => write!(f, "{op}")?,
             Self::MACResponse(op) => write!(f, "{op}")?,
             Self::MACVerify(op) => write!(f, "{op}")?,
@@ -290,6 +290,8 @@ impl Display for Operation {
             Self::ModifyAttributeResponse(op) => write!(f, "{op}")?,
             Self::PKCS11(op) => write!(f, "{op}")?,
             Self::PKCS11Response(op) => write!(f, "{op}")?,
+            Self::Ping(op) => write!(f, "{op}")?,
+            Self::PingResponse(op) => write!(f, "{op}")?,
             Self::Query(op) => write!(f, "{op}")?,
             Self::QueryResponse(op) => write!(f, "{op}")?,
             Self::ReCertify(op) => write!(f, "{op}")?,
@@ -306,6 +308,8 @@ impl Display for Operation {
             Self::RNGRetrieveResponse(op) => write!(f, "{op}")?,
             Self::RNGSeed(op) => write!(f, "{op}")?,
             Self::RNGSeedResponse(op) => write!(f, "{op}")?,
+            Self::SetConstraints(op) => write!(f, "{op}")?,
+            Self::SetConstraintsResponse(op) => write!(f, "{op}")?,
             Self::SetAttribute(op) => write!(f, "{op}")?,
             Self::SetAttributeResponse(op) => write!(f, "{op}")?,
             Self::Sign(op) => write!(f, "{op}")?,
@@ -340,17 +344,21 @@ impl Operation {
             | Self::EncryptResponse(_)
             | Self::ExportResponse(_)
             | Self::GetAttributeListResponse(_)
+            | Self::GetConstraintsResponse(_)
             | Self::GetAttributesResponse(_)
             | Self::GetResponse(_)
             | Self::HashResponse(_)
             | Self::ImportResponse(_)
             | Self::JoinSplitKeyResponse(_)
             | Self::LocateResponse(_)
+            | Self::LoginResponse(_)
+            | Self::LogoutResponse(_)
             | Self::LogResponse(_)
             | Self::MACResponse(_)
             | Self::MACVerifyResponse(_)
             | Self::ModifyAttributeResponse(_)
             | Self::PKCS11Response(_)
+            | Self::PingResponse(_)
             | Self::QueryResponse(_)
             | Self::ReCertifyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
@@ -359,6 +367,7 @@ impl Operation {
             | Self::RevokeResponse(_)
             | Self::RNGRetrieveResponse(_)
             | Self::RNGSeedResponse(_)
+            | Self::SetConstraintsResponse(_)
             | Self::SetAttributeResponse(_)
             | Self::SignResponse(_)
             | Self::SignatureVerifyResponse(_)
@@ -398,6 +407,9 @@ impl Operation {
             }
             Self::Encrypt(_) | Self::EncryptResponse(_) => OperationEnumeration::Encrypt,
             Self::Export(_) | Self::ExportResponse(_) => OperationEnumeration::Export,
+            Self::GetConstraints(_) | Self::GetConstraintsResponse(_) => {
+                OperationEnumeration::GetConstraints
+            }
             Self::Get(_) | Self::GetResponse(_) => OperationEnumeration::Get,
             Self::GetAttributeList(_) | Self::GetAttributeListResponse(_) => {
                 OperationEnumeration::GetAttributeList
@@ -411,6 +423,8 @@ impl Operation {
                 OperationEnumeration::JoinSplitKey
             }
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
+            Self::Login(_) | Self::LoginResponse(_) => OperationEnumeration::Login,
+            Self::Logout(_) | Self::LogoutResponse(_) => OperationEnumeration::Logout,
             Self::Log(_) | Self::LogResponse(_) => OperationEnumeration::Log,
             Self::MAC(_) | Self::MACResponse(_) => OperationEnumeration::MAC,
             Self::MACVerify(_) | Self::MACVerifyResponse(_) => OperationEnumeration::MACVerify,
@@ -418,6 +432,7 @@ impl Operation {
                 OperationEnumeration::ModifyAttribute
             }
             Self::PKCS11(_) | Self::PKCS11Response(_) => OperationEnumeration::PKCS11,
+            Self::Ping(_) | Self::PingResponse(_) => OperationEnumeration::Ping,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
             Self::ReCertify(_) | Self::ReCertifyResponse(_) => OperationEnumeration::ReCertify,
             Self::Register(_) | Self::RegisterResponse(_) => OperationEnumeration::Register,
@@ -430,6 +445,9 @@ impl Operation {
                 OperationEnumeration::RNGRetrieve
             }
             Self::RNGSeed(_) | Self::RNGSeedResponse(_) => OperationEnumeration::RNGSeed,
+            Self::SetConstraints(_) | Self::SetConstraintsResponse(_) => {
+                OperationEnumeration::SetConstraints
+            }
             Self::SetAttribute(_) | Self::SetAttributeResponse(_) => {
                 OperationEnumeration::SetAttribute
             }
@@ -448,6 +466,13 @@ impl Operation {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct PKCS11 {
+    /// Name of the PKCS#11 interface (KMIP 2.1 Table 273). Absent means the default V3.0 interface.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11Interface"
+    )]
+    pub pkcs11_interface: Option<String>,
     // Accept historical / profile vector forms: PKCS11Function, Pkcs11Function, PKCS_11Function, Pkcs_11Function
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -499,6 +524,13 @@ impl Display for PKCS11 {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct PKCS11Response {
+    /// Name of the PKCS#11 interface (KMIP 2.1 Table 274). Absent means the default V3.0 interface.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "PKCS11Interface"
+    )]
+    pub pkcs11_interface: Option<String>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         rename = "PKCS11Function",
@@ -559,36 +591,102 @@ impl Display for PKCS11Response {
     }
 }
 
+/// PKCS#11 Function enumeration (KMIP 2.1 §11.38): the 1-based offset of the
+/// function in the `CK_FUNCTION_LIST_3_0` structure (the `version` member is not counted).
 #[kmip_enum]
 pub enum PKCS11Function {
     C_Initialize = 0x0000_0001,
-    C_GetInfo = 0x0000_0002,
-    C_Finalize = 0x0000_0003,
-    C_OpenSession = 0x0000_0004,
-    C_CloseSession = 0x0000_0005,
-    C_DestroyObject = 0x0000_0006,
-    C_Decrypt = 0x0000_0007,
-    C_DecryptInit = 0x0000_0008,
-    C_DecryptUpdate = 0x0000_0009,
-    C_DecryptFinal = 0x0000_000A,
-    C_Encrypt = 0x0000_000B,
-    C_EncryptInit = 0x0000_000C,
-    C_EncryptUpdate = 0x0000_000D,
-    C_EncryptFinal = 0x0000_000E,
-    C_FindObjectsInit = 0x0000_000F,
-    C_FindObjects = 0x0000_0010,
-    C_FindObjectsFinal = 0x0000_0011,
-    C_GenerateKey = 0x0000_0012,
-    C_GenerateKeyPair = 0x0000_0013,
-    C_GenerateRandom = 0x0000_0014,
-    C_SeedRandom = 0x0000_0015,
-    C_GetAttributeValue = 0x0000_0016,
-    C_GetMechanismList = 0x0000_0017,
-    C_GetMechanismInfo = 0x0000_0018,
-    C_Login = 0x0000_0019,
-    C_Logout = 0x0000_001A,
-    C_WrapKey = 0x0000_001B,
-    C_UnwrapKey = 0x0000_001C,
+    C_Finalize = 0x0000_0002,
+    C_GetInfo = 0x0000_0003,
+    C_GetFunctionList = 0x0000_0004,
+    C_GetSlotList = 0x0000_0005,
+    C_GetSlotInfo = 0x0000_0006,
+    C_GetTokenInfo = 0x0000_0007,
+    C_GetMechanismList = 0x0000_0008,
+    C_GetMechanismInfo = 0x0000_0009,
+    C_InitToken = 0x0000_000A,
+    C_InitPIN = 0x0000_000B,
+    C_SetPIN = 0x0000_000C,
+    C_OpenSession = 0x0000_000D,
+    C_CloseSession = 0x0000_000E,
+    C_CloseAllSessions = 0x0000_000F,
+    C_GetSessionInfo = 0x0000_0010,
+    C_GetOperationState = 0x0000_0011,
+    C_SetOperationState = 0x0000_0012,
+    C_Login = 0x0000_0013,
+    C_Logout = 0x0000_0014,
+    C_CreateObject = 0x0000_0015,
+    C_CopyObject = 0x0000_0016,
+    C_DestroyObject = 0x0000_0017,
+    C_GetObjectSize = 0x0000_0018,
+    C_GetAttributeValue = 0x0000_0019,
+    C_SetAttributeValue = 0x0000_001A,
+    C_FindObjectsInit = 0x0000_001B,
+    C_FindObjects = 0x0000_001C,
+    C_FindObjectsFinal = 0x0000_001D,
+    C_EncryptInit = 0x0000_001E,
+    C_Encrypt = 0x0000_001F,
+    C_EncryptUpdate = 0x0000_0020,
+    C_EncryptFinal = 0x0000_0021,
+    C_DecryptInit = 0x0000_0022,
+    C_Decrypt = 0x0000_0023,
+    C_DecryptUpdate = 0x0000_0024,
+    C_DecryptFinal = 0x0000_0025,
+    C_DigestInit = 0x0000_0026,
+    C_Digest = 0x0000_0027,
+    C_DigestUpdate = 0x0000_0028,
+    C_DigestKey = 0x0000_0029,
+    C_DigestFinal = 0x0000_002A,
+    C_SignInit = 0x0000_002B,
+    C_Sign = 0x0000_002C,
+    C_SignUpdate = 0x0000_002D,
+    C_SignFinal = 0x0000_002E,
+    C_SignRecoverInit = 0x0000_002F,
+    C_SignRecover = 0x0000_0030,
+    C_VerifyInit = 0x0000_0031,
+    C_Verify = 0x0000_0032,
+    C_VerifyUpdate = 0x0000_0033,
+    C_VerifyFinal = 0x0000_0034,
+    C_VerifyRecoverInit = 0x0000_0035,
+    C_VerifyRecover = 0x0000_0036,
+    C_DigestEncryptUpdate = 0x0000_0037,
+    C_DecryptDigestUpdate = 0x0000_0038,
+    C_SignEncryptUpdate = 0x0000_0039,
+    C_DecryptVerifyUpdate = 0x0000_003A,
+    C_GenerateKey = 0x0000_003B,
+    C_GenerateKeyPair = 0x0000_003C,
+    C_WrapKey = 0x0000_003D,
+    C_UnwrapKey = 0x0000_003E,
+    C_DeriveKey = 0x0000_003F,
+    C_SeedRandom = 0x0000_0040,
+    C_GenerateRandom = 0x0000_0041,
+    C_GetFunctionStatus = 0x0000_0042,
+    C_CancelFunction = 0x0000_0043,
+    C_WaitForSlotEvent = 0x0000_0044,
+    C_GetInterfaceList = 0x0000_0045,
+    C_GetInterface = 0x0000_0046,
+    C_LoginUser = 0x0000_0047,
+    C_SessionCancel = 0x0000_0048,
+    C_MessageEncryptInit = 0x0000_0049,
+    C_EncryptMessage = 0x0000_004A,
+    C_EncryptMessageBegin = 0x0000_004B,
+    C_EncryptMessageNext = 0x0000_004C,
+    C_MessageEncryptFinal = 0x0000_004D,
+    C_MessageDecryptInit = 0x0000_004E,
+    C_DecryptMessage = 0x0000_004F,
+    C_DecryptMessageBegin = 0x0000_0050,
+    C_DecryptMessageNext = 0x0000_0051,
+    C_MessageDecryptFinal = 0x0000_0052,
+    C_MessageSignInit = 0x0000_0053,
+    C_SignMessage = 0x0000_0054,
+    C_SignMessageBegin = 0x0000_0055,
+    C_SignMessageNext = 0x0000_0056,
+    C_MessageSignFinal = 0x0000_0057,
+    C_MessageVerifyInit = 0x0000_0058,
+    C_VerifyMessage = 0x0000_0059,
+    C_VerifyMessageBegin = 0x0000_005A,
+    C_VerifyMessageNext = 0x0000_005B,
+    C_MessageVerifyFinal = 0x0000_005C,
 }
 
 #[kmip_enum]
@@ -640,6 +738,170 @@ impl Display for LogResponse {
     }
 }
 
+/// Object Types of a [`Constraint`] (KMIP 2.1 §7.6 Table 357).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct ObjectTypes {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_type: Vec<ObjectType>,
+}
+
+/// Object Groups of a [`Constraint`] (KMIP 2.1 §7.6 Table 357).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct ObjectGroups {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_group: Vec<String>,
+}
+
+/// A constraint applied to operations that create Managed Objects (KMIP 2.1 §7.6).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Constraint {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_types: Option<ObjectTypes>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_groups: Option<ObjectGroups>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+}
+
+/// A set of [`Constraint`] structures (KMIP 2.1 §7.7).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Constraints {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub constraint: Vec<Constraint>,
+}
+
+impl Display for Constraints {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.constraint)
+    }
+}
+
+/// Login (KMIP 2.1 §6.1.30): requests a ticket that authenticates future requests.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Login {
+    /// Lifetime of the ticket. Only the Interval form is modelled (not Date Time).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_time: Option<Interval>,
+    /// Number of requests the ticket may authenticate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_count: Option<i32>,
+    /// Usage limits of the operations performed with the ticket.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_limits: Option<UsageLimits>,
+}
+
+impl_display!(Login, "Login", { opt lease_time, opt request_count, opt usage_limits });
+
+/// Response to a [`Login`] request.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct LoginResponse {
+    pub ticket: Ticket,
+}
+
+impl Display for LoginResponse {
+    // The ticket value is a bearer credential: never displayed.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "LoginResponse {{ ticket_type: {}, ticket_value: <{} bytes> }}",
+            self.ticket.ticket_type,
+            self.ticket.ticket_value.len()
+        )
+    }
+}
+
+/// Logout (KMIP 2.1 §6.1.31): invalidates a ticket issued by [`Login`].
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct Logout {
+    /// The ticket to invalidate.
+    pub ticket: Ticket,
+}
+
+impl Display for Logout {
+    // The ticket value is a bearer credential: never displayed.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Logout {{ ticket_type: {} }}", self.ticket.ticket_type)
+    }
+}
+
+/// Response to a [`Logout`] request (empty payload).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+pub struct LogoutResponse;
+
+impl Display for LogoutResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "LogoutResponse {{}}")
+    }
+}
+
+/// Set Constraints (KMIP 2.1 §6.1.52): sets the constraints applied to operations that
+/// create Managed Objects. Absent Constraints clear them (as TC-MD-24-21 does).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct SetConstraints {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<Constraints>,
+}
+
+impl_display!(SetConstraints, "SetConstraints", { opt constraints });
+
+/// Response to a [`SetConstraints`] request (empty payload).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+pub struct SetConstraintsResponse;
+
+impl Display for SetConstraintsResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SetConstraintsResponse {{}}")
+    }
+}
+
+/// Get Constraints (KMIP 2.1 §6.1.22): returns the constraints applied to operations that
+/// create Managed Objects (empty payload).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+pub struct GetConstraints;
+
+impl Display for GetConstraints {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GetConstraints {{}}")
+    }
+}
+
+/// KMIP 2.1 §6.1.36 Ping: empty request checking the server is responsive.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+pub struct Ping;
+
+impl Display for Ping {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Ping {{}}")
+    }
+}
+
+/// Response to a [`Ping`] request: an empty payload.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+pub struct PingResponse;
+
+impl Display for PingResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PingResponse {{}}")
+    }
+}
+
+/// Response to a [`GetConstraints`] request.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct GetConstraintsResponse {
+    pub constraints: Constraints,
+}
+
+impl_display!(GetConstraintsResponse, "GetConstraintsResponse", { req constraints });
+
 /// This operation informs the server about the status if interop tests.
 /// It SHALL NOT be available in a production server. The Interop Operation uses three Interop Functions (Begin, End and Reset).
 #[cfg(feature = "interop")]
@@ -660,6 +922,7 @@ impl Display for Interop {
             let func_str = match func {
                 InteropFunction::Begin => "Begin",
                 InteropFunction::End => "End",
+                InteropFunction::Reset => "Reset",
             };
             write!(f, "  InteropFunction: {func_str}")?;
         } else {
@@ -695,6 +958,7 @@ impl Display for InteropResponse {
 pub enum InteropFunction {
     Begin = 0x0000_0001,
     End = 0x0000_0002,
+    Reset = 0x0000_0003,
 }
 
 /// 4.x Check
@@ -860,8 +1124,9 @@ impl_display!(RNGSeed, "RNGSeed", { req_b64 data });
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    /// Number of bytes of seed data accepted by the RNG.
-    #[serde(alias = "DataLength")]
+    /// KMIP 2.1 §6.1.50: the response field is `Data Length`.
+    /// `AmountOfSeedData` is still accepted from servers older than this fix.
+    #[serde(rename = "DataLength", alias = "AmountOfSeedData")]
     pub amount_of_seed_data: i32,
 }
 
@@ -878,6 +1143,10 @@ pub struct ModifyAttribute {
     // a single internal field named `new_attribute` and alias it to
     // "NewAttribute" for XML/TTLV (de)serialization so the parser can map
     // vectors without special casing.
+    /// Identifies which instance of a multi-instance attribute to modify
+    /// (KMIP 2.1 Table 265 Current Attribute).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_attribute: Option<Attribute>,
     #[serde(rename = "NewAttribute")]
     pub new_attribute: Attribute,
 }
@@ -904,8 +1173,9 @@ impl_display!(ModifyAttributeResponse, "ModifyAttributeResponse", { opt unique_i
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Activate {
-    /// Determines the object being activated. If omitted,
-    /// then the ID Placeholder value is used by the server as the Unique Identifier.
+    /// Determines the object being activated. If omitted, then the ID Placeholder
+    /// value is used by the server as the Unique Identifier.
+    #[serde(default = "UniqueIdentifier::id_placeholder")]
     pub unique_identifier: UniqueIdentifier,
 }
 
@@ -930,6 +1200,7 @@ impl_display!(ActivateResponse, "ActivateResponse", { req unique_identifier });
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttribute {
+    #[serde(default = "UniqueIdentifier::id_placeholder")]
     pub unique_identifier: UniqueIdentifier,
     pub new_attribute: Attribute,
 }
@@ -941,6 +1212,10 @@ impl_display!(AddAttribute, "AddAttribute", { req unique_identifier, req new_att
 #[serde(rename_all = "PascalCase")]
 pub struct AddAttributeResponse {
     pub unique_identifier: UniqueIdentifier,
+    /// Attribute value as added; carried for KMIP 1.x response down-conversion only
+    /// (KMIP 1.4 Table 201 requires it). Never on the KMIP 2.1 wire.
+    #[serde(skip)]
+    pub echoed_attribute: Option<Attribute>,
 }
 
 impl_display!(AddAttributeResponse, "AddAttributeResponse", { req unique_identifier });
@@ -1068,6 +1343,9 @@ pub struct ReCertify {
     /// If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
+    /// The Unique Identifier of a managed Certificate Request object to certify.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_unique_identifier: Option<UniqueIdentifier>,
     /// An Enumeration object specifying the type of certificate request.
     /// Required if Certificate Request Value is present.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1078,7 +1356,10 @@ pub struct ReCertify {
     /// An Offset MAY be used to indicate the difference between the Initial Date
     /// and the Activation Date of the new certificate.  Per KMIP 2.1 §6.1.45,
     /// the new certificate's Activation Date = Initial Date + Offset.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::interval::serialize_option_secs"
+    )]
     pub offset: Option<i64>,
     /// Specifies desired attributes to be associated with the new certificate.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1091,6 +1372,7 @@ pub struct ReCertify {
 
 impl_display!(ReCertify, "ReCertify", {
     opt unique_identifier,
+    opt certificate_request_unique_identifier,
     opt certificate_request_type,
     opt_b64 certificate_request_value,
     opt offset,
@@ -1373,6 +1655,7 @@ pub struct DeleteAttribute {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_attribute: Option<Attribute>,
     /// Specifies the reference for the attribute associated with the object to be deleted.
+    #[serde(rename = "AttributeReference", alias = "AttributeReferences")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
@@ -1484,7 +1767,12 @@ pub struct DeriveKey {
     /// Determines the object or objects to be used to derive a new key. Note
     /// that the current value of the ID Placeholder SHALL NOT be used in place
     /// of a Unique Identifier in this operation.
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[serde(
+        rename = "UniqueIdentifier",
+        alias = "ObjectUniqueIdentifier",
+        skip_serializing_if = "Vec::is_empty",
+        default
+    )]
     pub object_unique_identifier: Vec<UniqueIdentifier>,
     /// An Enumeration object specifying the method to be used to derive the new
     /// key.
@@ -2078,6 +2366,9 @@ pub struct CreateSplitKey {
     pub split_key_threshold: i32,
     /// The method to be used to split the key.
     pub split_key_method: SplitKeyMethod,
+    /// Prime field size, REQUIRED only for the Polynomial Sharing Prime Field method.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prime_field_size: Option<BigInt>,
     /// Specifies desired object attributes for the newly created split key parts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
@@ -2401,16 +2692,30 @@ impl_display!(MACResponse, "MacResponse", {
     opt_b64 correlation_value,
 });
 
-/// 4.34 MAC Verify (KMIP 2.1)
+/// MAC Verify (KMIP 2.1 §6.1.33, Table 262)
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerify {
+    #[serde(default = "UniqueIdentifier::id_placeholder")]
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+    /// The data the MAC was computed over (optional; absent means no data in this part).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data: Vec<u8>,
-    #[serde(rename = "MACData")]
+    /// The MAC to verify: required for single-part, optional for multi-part
+    /// (it may be sent on the initial or the final part).
+    #[serde(rename = "MACData", default, skip_serializing_if = "Vec::is_empty")]
     pub mac_data: Vec<u8>,
+    /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
+    /// Initial operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_indicator: Option<bool>,
+    /// Final operation as Boolean
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_indicator: Option<bool>,
 }
 
 impl_display!(MACVerify, "MACVerify", {
@@ -2418,17 +2723,29 @@ impl_display!(MACVerify, "MACVerify", {
     opt cryptographic_parameters,
     req_b64 data,
     req_b64 mac_data,
+    opt_b64 correlation_value,
+    opt init_indicator,
+    opt final_indicator,
 });
 
-/// Response to a MAC Verify request
+/// Response to a MAC Verify request (KMIP 2.1 Table 263)
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct MACVerifyResponse {
     pub unique_identifier: UniqueIdentifier,
-    pub validity_indicator: ValidityIndicator,
+    /// Present for single-part operations and for the final part of a multi-part operation only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validity_indicator: Option<ValidityIndicator>,
+    /// Specifies the stream or by-parts value to be provided in subsequent calls to this operation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
 }
 
-impl_display!(MACVerifyResponse, "MACVerifyResponse", { req unique_identifier, req validity_indicator });
+impl_display!(MACVerifyResponse, "MACVerifyResponse", {
+    req unique_identifier,
+    opt validity_indicator,
+    opt_b64 correlation_value,
+});
 
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -2438,6 +2755,13 @@ pub struct Query {
     /// client is allowed to see.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_function: Option<Vec<QueryFunction>>,
+    /// The Object Group(s) for which the Query is being performed (KMIP 2.1 Table 282).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "ObjectGroup"
+    )]
+    pub object_groups: Option<Vec<String>>,
 }
 
 impl Display for Query {
@@ -2468,6 +2792,7 @@ pub struct QueryResponse {
     pub vendor_identification: Option<String>,
 
     /// List of namespaces supported by the server.
+    #[serde(rename = "ApplicationNamespace", alias = "ApplicationNamespaces")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub application_namespaces: Option<Vec<String>>,
 
@@ -2480,15 +2805,18 @@ pub struct QueryResponse {
     pub extension_information: Option<Vec<ExtensionInformation>>,
 
     /// List of attestation types supported by the server.
+    #[serde(rename = "AttestationType", alias = "AttestationTypes")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_types: Option<Vec<AttestationType>>,
 
     /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm
     /// and a set of OPTIONAL fields that describe a Random Number Generator
+    #[serde(rename = "RNGParameters", alias = "RngParameters")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rng_parameters: Option<Vec<RNGParameters>>,
 
     /// List of profiles supported by the server.
+    #[serde(rename = "ProfileInformation", alias = "ProfilesInformation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profiles_information: Option<Vec<ProfileInformation>>,
 
@@ -2698,7 +3026,10 @@ pub struct ReKey {
     pub unique_identifier: Option<UniqueIdentifier>,
 
     // An Interval object indicating the difference between the Initial Date and the Activation Date of the replacement key to be created.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::interval::serialize_option_secs"
+    )]
     pub offset: Option<i64>,
 
     /// Specifies desired attributes to be associated with the new object.
@@ -2763,7 +3094,10 @@ pub struct ReKeyKeyPair {
 
     // An Interval object indicating the difference between the Initial Date and the Activation
     // Date of the replacement key pair to be created.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::interval::serialize_option_secs"
+    )]
     pub offset: Option<i64>,
 
     // Specifies desired attributes that apply to both the Private and Public Key Objects.
@@ -2862,23 +3196,37 @@ pub struct StatusResponse {
 #[derive(Serialize, Clone, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Validate {
-    /// One or more Certificates.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate: Option<Vec<Vec<u8>>>,
+    /// One or more Certificates (KMIP 2.1 §6.1.57 Table 340: Certificate structures).
+    // The TTLV deserializer reports a `Certificate` structure inside a structure under the
+    // key `Object` (it is a KMIP Object variant), hence the alias.
+    #[serde(alias = "Object", skip_serializing_if = "Option::is_none")]
+    pub certificate: Option<Vec<Certificate>>,
     /// One or more Unique Identifiers of Certificate Objects.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<Vec<UniqueIdentifier>>,
     /// A Date-Time object indicating when the certificate chain needs to be
     /// valid. If omitted, the current date and time SHALL be assumed.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "ValidityDate",
+        alias = "ValidityTime",
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::ttlv::asn1_date_time"
+    )]
     pub validity_time: Option<String>,
 }
 
 impl Display for Validate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Validate {{")?;
-        if self.certificate.is_some() {
-            write!(f, "  certificate: {}", self.certificate.to_base64())?;
+        if let Some(certificates) = &self.certificate {
+            for certificate in certificates {
+                write!(
+                    f,
+                    "  certificate: {}",
+                    certificate.certificate_value.to_base64()
+                )?;
+            }
         }
         if let Some(v) = &self.unique_identifier {
             for uid in v {
@@ -3057,3 +3405,38 @@ impl_display!(SignatureVerifyResponse, "SignatureVerifyResponse", {
     opt_b64 data,
     opt_b64 correlation_value,
 });
+
+#[cfg(test)]
+mod tests {
+    use super::{Activate, PKCS11Function};
+    use crate::kmip_2_1::kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration};
+
+    /// KMIP 2.1 §11.38: codes are the 1-based offsets in `CK_FUNCTION_LIST_3_0`
+    /// (`version` excluded): `C_Initialize`, `C_Finalize`, `C_GetInfo`, ...
+    #[test]
+    fn pkcs11_function_codes_follow_function_list_offsets() {
+        for (code, function) in [
+            (1, PKCS11Function::C_Initialize),
+            (2, PKCS11Function::C_Finalize),
+            (3, PKCS11Function::C_GetInfo),
+            (13, PKCS11Function::C_OpenSession),
+            (30, PKCS11Function::C_EncryptInit),
+            (65, PKCS11Function::C_GenerateRandom),
+            (92, PKCS11Function::C_MessageVerifyFinal),
+        ] {
+            assert_eq!(PKCS11Function::from_repr(code), Some(function));
+        }
+    }
+
+    #[test]
+    fn omitted_activate_identifier_uses_id_placeholder() -> Result<(), String> {
+        let activate: Activate = serde_json::from_str("{}").map_err(|error| error.to_string())?;
+        if activate.unique_identifier
+            == UniqueIdentifier::Enumeration(UniqueIdentifierEnumeration::IDPlaceholder)
+        {
+            Ok(())
+        } else {
+            Err("omitted Activate identifier did not use ID Placeholder".to_owned())
+        }
+    }
+}

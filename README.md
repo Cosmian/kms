@@ -303,7 +303,7 @@ The following table shows operation support across all KMIP versions.
 | Operation | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
 | --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | Activate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Add Attribute          |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Add Attribute          |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Archive                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Cancel                 |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Certify                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
@@ -312,39 +312,75 @@ The following table shows operation support across all KMIP versions.
 | Create Key Pair        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Create Split Key       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Decrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Delete Attribute       |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Delegated Login        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
+| Delete Attribute       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | DeriveKey              |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Destroy                |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Discover Versions      |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Encrypt                |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Export                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
 | Get                    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attribute List     |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Get Attributes         |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Attribute List     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Attributes         |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Get Constraints        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |
 | Get Usage Allocation   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Hash                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Import                 |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |
 | Join Split Key         |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Locate                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+| Login                  |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
+| Logout                 |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
 | MAC                    |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | MAC Verify             |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Notify                 |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
+| Notify                 |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Obtain Lease           |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Poll                   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
-| Put                    |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |
+| Put                    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Query                  |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | RNG Retrieve           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | RNG Seed               |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Re-certify             |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Re-certify             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Re-key                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Re-key Key Pair        |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Recover                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
 | Register               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Revoke                 |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Set Attribute (Modify) |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |
+| Set Constraints        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |    ✅    |
 | Sign                   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Signature Verify       |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Validate               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
+
+#### Login tickets and constraints
+
+- **Login** issues a 32-byte random ticket (Ticket Type `Login`) bound to the user that the
+  transport authenticated (TLS client certificate, JWT, API token or default user). A Request
+  Message whose header carries a `Ticket` credential is processed only if the ticket is known,
+  unexpired and issued to that same user (else `Invalid Ticket`) and has requests left (else
+  `Usage Limit Exceeded`); each message consumes one request. Tickets never replace transport
+  authentication.
+    - Lease Time: an Interval in seconds; 0 or absent selects 1 hour; capped at 24 hours. The
+    Date Time form is not supported.
+    - Request Count: absent means unlimited within the lease; zero or negative is
+    `Invalid Field`. Usage Limits are not supported (`Feature Not Supported`).
+    - At most 10,000 live tickets, 64 per user (`Server Limit Exceeded` beyond).
+- **Logout** invalidates a ticket issued to the same user, whatever requests it has left
+  (else `Invalid Ticket`). Delegated Login (rights-restricted tickets) is not supported.
+- A Request Message carrying a Hashed Password credential is refused with `Feature Not Supported`:
+  the server holds no client password and cannot return the Server Hashed Password.
+- **Set Constraints** replaces the server-wide constraint set; a request without Constraints
+  clears it. **Get Constraints** returns it as set. When roles are configured, only Crypto
+  Officers may set constraints; otherwise any authenticated user may.
+- While constraints are set, every object stored by Create, Create Key Pair, Register,
+  Import, Derive Key, Re-key, Re-key Key Pair (including automatic rotation), Re-certify,
+  Certify, Create Split Key and Join Split Key must satisfy at least one constraint (Object
+  Type listed, Object Group listed, every listed attribute value present), otherwise the
+  operation fails with `Constraint Violation`. Attribute changes on existing objects are not
+  checked.
+- Tickets and constraints are held in memory only: they are lost on restart and not shared
+  between server instances.
+
+PKCS#11 needs an HSM and a configured Crypto Officer; Query lists it only when both are configured.
 
 #### Methodology
 
@@ -392,7 +428,7 @@ The following table shows base object support across all KMIP versions.
 | Transparent Key Structures               |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | Template-Attribute Structures            |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |   N/A   |   N/A   |
 | Server Information                       |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| Extension Information                    |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| Extension Information                    |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Data                                     |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Data Length                              |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Signature Data                           |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
@@ -488,7 +524,7 @@ Note: EC/ECDSA/ECDH support is present; DH/DSA/ECMQV are not implemented.
 | Protect Stop Date                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
 | Protection Level                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
 | Protection Period                        |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
-| Protection Storage Masks                 |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Protection Storage Mask                  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
 | Quantum Safe                             |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
 | Random Number Generator                  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |
 | Revocation Reason                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
@@ -520,6 +556,9 @@ Notes:
 - `AlwaysSensitive`, `NeverExtractable`, `Extractable`, and `Sensitive` were introduced in **KMIP 1.4**
   and must not appear in responses to KMIP 1.0–1.3 clients (the server enforces this automatically).
 - `Rotate*` attributes were introduced in **KMIP 2.1**.
+- A key registered without its Key Value gets `Key Value Present` = false and keeps its
+  `Key Value Location` (one instance); Get returns it as registered, and a Get or Export asking
+  for a Key Format Type or key wrapping fails with `Key Value Not Present`.
 
 <!-- KMIP_SUPPORT_END -->
 

@@ -26,13 +26,18 @@ the key object itself:
 | `x-rotate-generation` | `i32`           | ❌      | Incremented on every rotation; `0` for never-rotated keys. **Server-managed.**       |
 | `x-rotate-date`       | `datetime`      | ❌      | Timestamp of the last rotation. **Server-managed.**                                  |
 | `x-rotate-latest`     | `bool`          | ❌      | `true` on the most-recent keyset member; `false` on all older keys. **Server-managed.** |
+| `x-rotate-automatic`  | `bool`          | ✅      | Set with `SetAttribute` or `ModifyAttribute` only; `AddAttribute` and `DeleteAttribute` are refused. |
 
 ### Read-only attributes
 
 `x-rotate-generation`, `x-rotate-date`, and `x-rotate-latest` are set
 exclusively by the server during the `Re-Key` operation.  Any attempt to
-modify them via `AddAttribute`, `SetAttribute`, `ModifyAttribute`, or
-`DeleteAttribute` is rejected with `Attribute_Read_Only`.
+change them is rejected: `AddAttribute` and `SetAttribute` return
+`Read_Only_Attribute`, `ModifyAttribute` and `DeleteAttribute` return
+`Attribute_Read_Only`.
+
+Changing `x-rotate-interval` needs ownership of the key or an explicit grant
+of the edit operation; a `Get` grant is not enough (`Permission_Denied`).
 
 These restrictions maintain two invariants relied on by the scheduler and the
 keyset resolution logic:
@@ -138,7 +143,7 @@ The scheduler **never returns HSM UIDs** — auto-rotation is SQL-only.
 | Attribute                     | Old key                              | New key                             |
 | ----------------------------- | ------------------------------------ | ----------------------------------- |
 | `Unique Identifier`           | unchanged                            | fresh UUID (or `name@N` for keysets) |
-| `State`                       | **Deactivated** (§4.57)              | Active                              |
+| `State`                       | **Deactivated** (§4.57) if it was Active, unchanged otherwise | Active                              |
 | `Link[ReplacementObjectLink]` | → new key UID                        | —                                   |
 | `Link[ReplacedObjectLink]`    | —                                    | → old key UID                       |
 | `x-rotate-generation`         | unchanged                            | old value + 1                       |
@@ -147,6 +152,9 @@ The scheduler **never returns HSM UIDs** — auto-rotation is SQL-only.
 | `x-rotate-name`               | unchanged                            | inherited from old key              |
 | `x-rotate-offset`             | unchanged                            | inherited from old key              |
 | `x-initial-date`              | cleared                              | set to now (resets next deadline)   |
+| Activation, Process Start, Protect Stop, Deactivation Dates | unchanged | copied from old key (auto-rotation sends no Offset) |
+| `Usage Limits` count          | unchanged                            | reset to the Usage Limits Total     |
+| `Revocation Reason`           | unchanged                            | not copied                          |
 | `Cryptographic Algorithm`     | unchanged                            | copied from old key                 |
 | `Cryptographic Length`        | unchanged                            | copied from old key                 |
 

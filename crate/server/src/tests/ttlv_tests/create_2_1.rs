@@ -4,14 +4,16 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
-        kmip_types::{CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration},
+        kmip_types::{
+            CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+        },
     },
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_messages::RequestMessageBatchItem,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, Operation},
-        kmip_types::{CryptographicAlgorithm, OperationEnumeration},
+        kmip_operations::{Check, Create, Operation},
+        kmip_types::{CryptographicAlgorithm, OperationEnumeration, ProtectionStorageMasks},
     },
     ttlv::KmipFlavor,
 };
@@ -87,4 +89,129 @@ fn test_create_2_1() {
 
     assert_eq!(create_response.object_type, ObjectType::SymmetricKey);
     assert!(!create_response.unique_identifier.to_string().is_empty());
+}
+
+#[test]
+fn test_create_then_check_uses_id_placeholder() {
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 2,
+            ..Default::default()
+        },
+        batch_item: vec![
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+                operation: OperationEnumeration::Create,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Create(Create {
+                    object_type: ObjectType::SymmetricKey,
+                    attributes: Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        cryptographic_usage_mask: Some(
+                            CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+                        ),
+                        cryptographic_length: Some(256),
+                        ..Default::default()
+                    },
+                    protection_storage_masks: None,
+                }),
+                message_extension: None,
+            }),
+            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+                operation: OperationEnumeration::Check,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Check(Check {
+                    unique_identifier: None,
+                    usage_limits_count: None,
+                    cryptographic_usage_mask: None,
+                    lease_time: None,
+                }),
+                message_extension: None,
+            }),
+        ],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)
+        .expect("Failed to send request");
+    assert_eq!(response.batch_item.len(), 2);
+
+    let ResponseMessageBatchItemVersioned::V21(create_item) = &response.batch_item[0] else {
+        panic!("Expected KMIP 2.1 response message");
+    };
+    let Some(Operation::CreateResponse(create_response)) = &create_item.response_payload else {
+        panic!("Expected CreateResponse");
+    };
+    let ResponseMessageBatchItemVersioned::V21(check_item) = &response.batch_item[1] else {
+        panic!("Expected KMIP 2.1 response message");
+    };
+    assert_eq!(check_item.result_status, ResultStatusEnumeration::Success);
+    let Some(Operation::CheckResponse(check_response)) = &check_item.response_payload else {
+        panic!("Expected CheckResponse");
+    };
+    assert_eq!(
+        check_response.unique_identifier.as_ref(),
+        Some(&create_response.unique_identifier)
+    );
+}
+
+#[test]
+fn test_create_2_1_protection_storage_masks_feature_not_supported() {
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Create,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Create(Create {
+                    object_type: ObjectType::SymmetricKey,
+                    attributes: Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        cryptographic_length: Some(256),
+                        ..Default::default()
+                    },
+                    protection_storage_masks: Some(ProtectionStorageMasks::Software),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)
+        .expect("Failed to send request");
+    let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[0] else {
+        panic!("Expected KMIP 2.1 response message");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    assert_eq!(
+        batch_item.result_reason,
+        Some(ErrorReason::Feature_Not_Supported)
+    );
+    assert!(
+        batch_item
+            .result_message
+            .as_deref()
+            .is_some_and(|message| message.contains("protection masks"))
+    );
 }

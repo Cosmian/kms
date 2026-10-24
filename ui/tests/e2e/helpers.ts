@@ -657,6 +657,8 @@ export async function createDerivableSymKey(): Promise<string> {
                     { tag: "CryptographicLength", type: "Integer", value: 256 },
                     // DeriveKey = 0x0000_0200 = 512
                     { tag: "CryptographicUsageMask", type: "Integer", value: 512 },
+                    // DeriveKey requires an Active base key
+                    { tag: "ActivationDate", type: "DateTime", value: "2024-01-01T00:00:00Z" },
                 ],
             },
         ],

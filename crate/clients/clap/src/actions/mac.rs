@@ -216,10 +216,16 @@ impl MacVerifyAction {
                 cryptographic_parameters: Some(cryptographic_parameters),
                 data,
                 mac_data,
+                correlation_value: None,
+                init_indicator: None,
+                final_indicator: None,
             })
             .await?;
 
-        console::Stdout::new(&format!("MAC validity: {}", resp.validity_indicator)).write()?;
+        let validity = resp
+            .validity_indicator
+            .map_or_else(|| "Unknown".to_owned(), |v| v.to_string());
+        console::Stdout::new(&format!("MAC validity: {validity}")).write()?;
         Ok(())
     }
 }

@@ -7,8 +7,9 @@ The socket server will only start if the TLS configuration is provided **and** c
 enabled.
 It accepts at most 1,024 concurrent connections, aborts any TLS handshake not completed within 10 seconds in total
 (however slowly the client sends its bytes), closes a connection that stays idle or stalled for 120 seconds, and
-rejects KMIP messages larger than 64 MiB. KMIP clients that keep a connection open between requests must reconnect
-after an idle period.
+rejects KMIP messages larger than 64 MiB. Requests being read or processed share a 256 MiB memory budget: a request
+that does not fit in the remaining budget is refused and its connection closed. KMIP clients that keep a connection
+open between requests must reconnect after an idle period.
 
 The HTTP server listens to KMIP requests on the `/kmip` and `/kmip/2_1` endpoints.
 It also serves the web UI on the `/ui` endpoint.

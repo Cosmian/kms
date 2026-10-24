@@ -16,7 +16,6 @@ pub(super) const BYTE_LIKE_TAGS: &[&str] = &[
     "derivation_data",
     "initialization_vector",
     // Other byte-like fields encountered across requests/responses
-    "VendorExtension",
     "CertificateValue",
     "OpaqueDataValue",
     "DigestValue",
@@ -36,6 +35,7 @@ pub(super) const BYTE_LIKE_TAGS: &[&str] = &[
     "AttestationMeasurement",
     "AttestationAssertion",
     "ServerHashedPassword",
+    "HashedPassword",
     // Accept both official and commonly cased forms
     "MACData",
     "MacData",

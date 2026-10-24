@@ -486,7 +486,8 @@ fn look_up_cert_status<'a>(
         {
             return Ok(OcspCertStatus::Revoked {
                 revocation_time: attributes
-                    .deactivation_date
+                    .compromise_date
+                    .or(attributes.deactivation_date)
                     .unwrap_or_else(OffsetDateTime::now_utc),
                 reason: attributes
                     .revocation_reason
