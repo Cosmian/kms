@@ -2,6 +2,8 @@ mod audit_middleware;
 mod azure_ekm;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(feature = "non-fips")]
+mod configurable_kem_tests;
+#[cfg(feature = "non-fips")]
 mod cover_crypt_tests;
 mod crl_tests;
 #[cfg(feature = "non-fips")]

@@ -60,7 +60,7 @@ pub fn kem_keygen(
     dk_attributes: Option<Attributes>,
     ek_uid: String,
     ek_attributes: Option<Attributes>,
-    common_attributes: Attributes,
+    common_attributes: &Attributes,
 ) -> Result<KeyPair, CryptoError> {
     let tag = match (
         common_attributes
@@ -89,30 +89,33 @@ pub fn kem_keygen(
         ),
     };
 
-    let access_structure = access_structure_from_attributes(vendor_id, &common_attributes).ok();
+    let access_structure = access_structure_from_attributes(vendor_id, common_attributes).ok();
     let (dk, ek) = ConfigurableKEM::keygen(tag, access_structure)?;
 
+    // Per-key attributes inherit the common ones, as for every other key pair type.
+    let with_common = |attributes: Option<Attributes>| {
+        let mut attributes = attributes.unwrap_or_default();
+        attributes.merge(common_attributes, false);
+        attributes
+    };
     Ok(KeyPair::new(
         create_dk_object(
             vendor_id,
             dk.serialize()?,
-            dk_attributes.unwrap_or_else(|| common_attributes.clone()),
+            with_common(dk_attributes),
             ek_uid,
         )?,
         create_ek_object(
             vendor_id,
             ek.serialize()?,
-            ek_attributes.unwrap_or(common_attributes),
+            with_common(ek_attributes),
             dk_uid,
         )?,
     ))
 }
 
 #[allow(clippy::type_complexity)]
-pub fn kem_encaps(
-    ek: &[u8],
-    _data: Option<&Zeroizing<Vec<u8>>>,
-) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+pub fn kem_encaps(ek: &[u8]) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
             "failed deserializing the configurable-KEM encapsulation: {e}"
@@ -168,7 +171,10 @@ fn create_dk_object(
 
     attributes.object_type = Some(ObjectType::PrivateKey);
     attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMSecretKey);
-    attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
+    // A requested mask is kept as is; decapsulation is a KMIP Decrypt.
+    attributes.cryptographic_usage_mask = attributes
+        .cryptographic_usage_mask
+        .or(Some(CryptographicUsageMask::Decrypt));
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(ek_uid),
@@ -204,7 +210,10 @@ fn create_ek_object(
     attributes.sensitive = None;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMPublicKey);
-    attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Encrypt);
+    // A requested mask is kept as is; encapsulation is a KMIP Encrypt.
+    attributes.cryptographic_usage_mask = attributes
+        .cryptographic_usage_mask
+        .or(Some(CryptographicUsageMask::Encrypt));
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(dk_uid),
