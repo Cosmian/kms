@@ -30,9 +30,8 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_crypto::{
-        crypto::{KeyPair, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair},
-        reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+    cosmian_kms_crypto::crypto::{
+        KeyPair, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair,
     },
 };
 use uuid::Uuid;
@@ -163,18 +162,15 @@ async fn encapsulate(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<(Vec<
     let Operation::EncryptResponse(response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    let data = response
+    let secret = response
         .data
         .clone()
-        .ok_or_else(|| KmsError::ServerError("empty encapsulation data".to_owned()))?;
-    if let Some(enc) = response.i_v_counter_nonce.clone() {
-        // native hybrid KEM
-        return Ok((data, enc));
-    }
-    // ConfigurableKEM: serialized (shared secret, encapsulation)
-    let (secret, enc) = <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&data)
-        .map_err(|e| KmsError::Default(e.to_string()))?;
-    Ok((secret.to_vec(), enc.to_vec()))
+        .ok_or_else(|| KmsError::ServerError("empty shared secret".to_owned()))?;
+    let enc = response
+        .i_v_counter_nonce
+        .clone()
+        .ok_or_else(|| KmsError::ServerError("empty encapsulation".to_owned()))?;
+    Ok((secret, enc))
 }
 
 async fn decapsulate(kms: &Arc<KMS>, owner: &str, sk_uid: &str, enc: &[u8]) -> KResult<Vec<u8>> {
@@ -616,7 +612,7 @@ fn client_key_pair(configurable: bool, sk: &str, pk: &str) -> KResult<KeyPair> {
             None,
             pk.to_owned(),
             None,
-            Attributes {
+            &Attributes {
                 cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                     qlength: Some(256),
                     recommended_curve: Some(RecommendedCurve::P256),

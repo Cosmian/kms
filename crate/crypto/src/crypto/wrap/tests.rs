@@ -491,7 +491,7 @@ fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
         None,
         "ek".to_owned(),
         None,
-        common,
+        &common,
     )?;
     let mut native = create_hybrid_kem_key_pair(
         CryptographicAlgorithm::X25519MLKEM768,

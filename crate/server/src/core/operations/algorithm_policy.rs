@@ -220,7 +220,16 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
         .attributes()
         .unwrap_or_else(|_| owm.attributes());
 
-    if let Some(alg) = attrs.cryptographic_algorithm {
+    // A ConfigurableKEM key also carries its post-quantum component in its parameters.
+    let inner_kem_algorithm = attrs
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|p| p.cryptographic_algorithm)
+        .filter(|_| attrs.cryptographic_algorithm == Some(CryptographicAlgorithm::ConfigurableKEM));
+    for alg in [attrs.cryptographic_algorithm, inner_kem_algorithm]
+        .into_iter()
+        .flatten()
+    {
         validate_algorithm(alg, wl.algorithms.as_ref()).map_err(|e| match e {
             KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
             other => KmsError::Kmip21Error(
@@ -242,10 +251,13 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
         })?;
     }
 
-    // Enforce curves for EC keys when the curve is known.
+    // Enforce curves for EC keys, and for the pre-quantum part of hybrid KEM keys, when known.
     if let Ok(kb) = owm.object().key_block() {
         match kb.key_format_type {
-            KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentECPrivateKey => {
+            KeyFormatType::TransparentECPublicKey
+            | KeyFormatType::TransparentECPrivateKey
+            | KeyFormatType::ConfigurableKEMPublicKey
+            | KeyFormatType::ConfigurableKEMSecretKey => {
                 if let Some(domain) = attrs.cryptographic_domain_parameters.as_ref() {
                     if let Some(curve) = domain.recommended_curve {
                         validate_curve(curve, wl.curves.as_ref()).map_err(|e| match e {
@@ -710,10 +722,12 @@ fn validate_algorithm(
         | CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768
+        | CryptographicAlgorithm::X448MLKEM1024
         | CryptographicAlgorithm::MLDSA_44
         | CryptographicAlgorithm::MLDSA_65
         | CryptographicAlgorithm::MLDSA_87 => {
-            // Configurable KEM, ML-KEM, and ML-DSA variants are in-scope in non-FIPS mode.
+            // Configurable KEM, ML-KEM, hybrid KEM and ML-DSA variants are in-scope in non-FIPS mode.
             // If an allowlist is configured, they must still be explicitly allowed.
         }
         _ => {
