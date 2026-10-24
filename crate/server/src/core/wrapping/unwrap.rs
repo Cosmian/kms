@@ -149,13 +149,12 @@ async fn unwrap_using_kms(
             "The unwrapping key {unwrapping_key_uid} is not active"
         )));
     }
-    // check authorized usage
-    let attributes = unwrapping_key
-        .object()
+    // check authorized usage: the stored attributes are authoritative, the ones embedded in the
+    // key value are absent when the unwrapping key is itself wrapped (mirrors `wrap_using_kms`)
+    if !unwrapping_key
         .attributes()
-        .cloned()
-        .unwrap_or_default();
-    if !attributes.is_usage_authorized_for(CryptographicUsageMask::UnwrapKey)? {
+        .is_usage_authorized_for(CryptographicUsageMask::UnwrapKey)?
+    {
         return Err(KmsError::NotSupported(format!(
             "The key: {unwrapping_key_uid}, is not meant to unwrap keys"
         )));
@@ -176,8 +175,28 @@ async fn unwrap_using_kms(
             )));
         }
     }
+    // If the unwrapping key is itself wrapped (e.g. by the server KEK), unwrap it first
+    let unwrapping_key_object = if unwrapping_key.object().is_wrapped() {
+        debug!("The unwrapping key {unwrapping_key_uid} is itself wrapped, unwrapping it first");
+        let mut object = unwrapping_key.object().clone();
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
+        // the unwrapped key value carries no attributes: reattach the stored ones, which the
+        // crypto layer reads to check the usage mask
+        if let Some(KeyValue::Structure { attributes, .. }) = object
+            .key_block_mut()
+            .ok()
+            .and_then(|key_block| key_block.key_value.as_mut())
+        {
+            if attributes.is_none() {
+                *attributes = Some(unwrapping_key.attributes().clone());
+            }
+        }
+        object
+    } else {
+        unwrapping_key.object().clone()
+    };
     // ok => unwrap
-    unwrap_key_block(object_key_block, unwrapping_key.object())?;
+    unwrap_key_block(object_key_block, &unwrapping_key_object)?;
     Ok(())
 }
 
