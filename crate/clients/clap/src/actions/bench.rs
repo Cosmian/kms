@@ -976,7 +976,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        let ct = enc_resp.i_v_counter_nonce.unwrap_or_default();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
             None,

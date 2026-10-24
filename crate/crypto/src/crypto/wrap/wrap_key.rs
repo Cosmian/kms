@@ -176,6 +176,22 @@ pub fn key_data_to_wrap(
             Object::SecretData(SecretData { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover secret data bytes ")?,
+            Object::PrivateKey(PrivateKey { key_block })
+            | Object::PublicKey(PublicKey { key_block })
+                if matches!(
+                    key_block.key_format_type,
+                    KeyFormatType::Raw
+                        | KeyFormatType::ConfigurableKEMSecretKey
+                        | KeyFormatType::ConfigurableKEMPublicKey
+                        | KeyFormatType::CoverCryptSecretKey
+                        | KeyFormatType::CoverCryptPublicKey
+                ) =>
+            {
+                // No OpenSSL representation for these formats: wrap the stored bytes as-is
+                key_block
+                    .key_bytes()
+                    .context("cannot recover asymmetric key bytes ")?
+            }
             Object::PrivateKey(..) => {
                 let pkey = kmip_private_key_to_openssl(object)?;
                 Zeroizing::new(pkey.private_key_to_pkcs8()?)

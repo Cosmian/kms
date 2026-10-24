@@ -1613,6 +1613,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             | KeyFormatType::PKCS7
             | KeyFormatType::PKCS8
             | KeyFormatType::X509
+            | KeyFormatType::ConfigurableKEMSecretKey
+            | KeyFormatType::ConfigurableKEMPublicKey
             | KeyFormatType::CoverCryptPublicKey
             | KeyFormatType::CoverCryptSecretKey => {
                 trace!(

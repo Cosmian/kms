@@ -2,7 +2,6 @@ use std::fmt;
 
 use clap::ValueEnum;
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
@@ -173,7 +172,7 @@ pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl
         cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
         key_format_type: Some(KeyFormatType::ConfigurableKEMSecretKey),
         vendor_attributes,
-        cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+        // no usage mask: the server defaults to Decrypt (private) and Encrypt (public)
         sensitive: sensitive.then_some(true),
         activation_date: Some(time_normalize().map_err(|e| UtilsError::Default(e.to_string()))?),
         cryptographic_domain_parameters,

@@ -9,4 +9,6 @@ ignore = [
   "RUSTSEC-2025-0009",
   "RUSTSEC-2025-0010",
   "RUSTSEC-2023-0071",
+  # crypto-bigint 0.5.5 via elliptic-curve 0.13 (k256, p256, p384); no 0.5.x patch, see deny.toml
+  "RUSTSEC-2026-0387",
 ]
