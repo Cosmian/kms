@@ -1,15 +1,11 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kms_client::{KmsClient, kmip_2_1::requests::encrypt_request};
 
 use crate::{
     actions::{console, labels::KEY_ID, shared::get_key_uid},
-    error::{
-        KmsCliError,
-        result::{KmsCliResult, KmsCliResultHelper},
-    },
+    error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
 /// Encapsulate using a PQC public key (ML-KEM-512/768/1024, X25519MLKEM768,
@@ -48,22 +44,11 @@ impl EncapsulateAction {
             .await
             .with_context(|| "KEM encapsulation failed")?;
 
-        let (shared_secret, ciphertext) = if let Some(ciphertext) = response.i_v_counter_nonce {
-            // Standard PQC KEM: shared_secret in data, ciphertext in iv_counter_nonce
-            let shared_secret = response.data.context("shared secret is empty")?;
-            (shared_secret, ciphertext)
-        } else {
-            // ConfigurableKEM: both packed as a serialized tuple in data
-            let data = response.data.context("encrypted data is empty")?;
-            let (session_key, encapsulation) =
-                <(zeroize::Zeroizing<Vec<u8>>, zeroize::Zeroizing<Vec<u8>>)>::deserialize(&data)
-                    .map_err(|e| {
-                        KmsCliError::Conversion(format!(
-                            "failed deserializing KEM encapsulation from response data: {e}"
-                        ))
-                    })?;
-            (session_key.to_vec(), encapsulation.to_vec())
-        };
+        // Every KEM returns the shared secret in data and the ciphertext in iv_counter_nonce
+        let shared_secret = response.data.context("shared secret is empty")?;
+        let ciphertext = response
+            .i_v_counter_nonce
+            .context("encapsulation is empty")?;
 
         let output_file = self
             .output_file
