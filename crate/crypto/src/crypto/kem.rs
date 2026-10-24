@@ -7,7 +7,7 @@ use cosmian_cover_crypt::{
     ConfigurableKEM, ConfigurableKemDk, ConfigurableKemEk, ConfigurableKemEnc, KemTag,
     PostQuantumKemTag, PreQuantumKemTag,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -142,6 +142,32 @@ pub fn kem_encaps(ek: &[u8]) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>),
             ))
         })?,
     ))
+}
+
+/// Return the pre-quantum curve and the post-quantum algorithm of a serialized
+/// `ConfigurableKEM` key (public or private), as encoded in the key itself, whatever its
+/// KMIP attributes claim. Policy checks must rely on this, since attributes can be relabelled.
+pub fn kem_key_components(
+    key: &[u8],
+) -> Result<(Option<RecommendedCurve>, Option<CryptographicAlgorithm>), CryptoError> {
+    // Both key types serialize their `KemTag` first: read only that.
+    let tag: KemTag = Deserializer::new(key).read().map_err(|e| {
+        CryptoError::ConversionError(format!("failed reading the configurable-KEM key tag: {e}"))
+    })?;
+    let curve = |c| match c {
+        PreQuantumKemTag::P256 => RecommendedCurve::P256,
+        PreQuantumKemTag::R25519 => RecommendedCurve::CURVE25519,
+    };
+    let algorithm = |a| match a {
+        PostQuantumKemTag::MlKem512 => CryptographicAlgorithm::MLKEM_512,
+        PostQuantumKemTag::MlKem768 => CryptographicAlgorithm::MLKEM_768,
+    };
+    Ok(match tag {
+        KemTag::PreQuantum(c) => (Some(curve(c)), None),
+        KemTag::PostQuantum(a) => (None, Some(algorithm(a))),
+        KemTag::Hybridized(c, a) => (Some(curve(c)), Some(algorithm(a))),
+        KemTag::Abe => (None, Some(CryptographicAlgorithm::CoverCrypt)),
+    })
 }
 
 pub fn kem_decaps(dk: &[u8], enc: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {

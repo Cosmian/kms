@@ -672,10 +672,20 @@ fn encrypt_with_public_key(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::ConfigurableKEMPublicKey => {
-            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_encaps;
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::{
+                kem_encaps, kem_key_components,
+            };
+
+            use crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_kem_components;
 
             reject_kem_plaintext(request)?;
             let (ek_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            enforce_kmip_algorithm_policy_for_kem_components(
+                server_params,
+                "Encrypt",
+                owm.id(),
+                kem_key_components(&ek_bytes)?,
+            )?;
             let (shared_secret, encapsulation) = kem_encaps(&ek_bytes)?;
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
