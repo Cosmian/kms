@@ -339,6 +339,12 @@ start = "2025-08-06"
 end = "2027-10-15"
 notes = "Cosmian-maintained crate (own organisation)"
 
+[[trusted.crypto-bigint]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/crypto-bigint"
+start = "2026-02-12"
+end = "2027-10-24"
+
 [[trusted.csv]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
@@ -352,6 +358,12 @@ user-id = 189 # Andrew Gallant (BurntSushi)
 start = "2019-06-26"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ctutils]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-04-02"
+end = "2027-10-24"
 
 [[trusted.derive_more]]
 criteria = "safe-to-deploy"
