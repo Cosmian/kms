@@ -40,7 +40,7 @@ use cosmian_kms_server_database::reexport::{
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, Digest, Link, LinkType,
-                LinkedObjectIdentifier, Tag, UniqueIdentifier,
+                LinkedObjectIdentifier, ProtectionStorageMasks, Tag, UniqueIdentifier,
             },
             requests::create_symmetric_key_kmip_object,
         },
@@ -131,7 +131,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     .expect_err("setting InitialDate must fail as read-only");
     assert!(matches!(
         error,
-        KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+        KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
     ));
     assert_eq!(
         get_attributes(&kms, &uid, Tag::InitialDate)
@@ -143,29 +143,9 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
 
     // Start tests
     //
-    let timestamp = 42;
-    let offset_datetime = OffsetDateTime::from_unix_timestamp(timestamp).unwrap();
-    set_activation_date_and_remove_it(
-        &kms,
-        &uid,
-        DeleteAttribute {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            current_attribute: Some(Attribute::ActivationDate(offset_datetime)),
-            attribute_references: None,
-        },
-    )
-    .await?;
-    set_activation_date_and_remove_it(
-        &kms,
-        &uid,
-        DeleteAttribute {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            current_attribute: None,
-            attribute_references: Some(vec![AttributeReference::Standard(Tag::ActivationDate)]),
-        },
-    )
-    .await?;
-    set_cryptographic_algorithm_and_remove_it(&kms, &uid).await?;
+    set_activation_date_whose_deletion_is_refused(&kms, &uid).await?;
+    set_protection_storage_mask_and_remove_it(&kms, &uid).await?;
+    cryptographic_algorithm_is_server_managed(&kms, &uid).await?;
     set_cryptographic_length_is_rejected_as_read_only(&kms, &uid).await?;
     set_server_managed_attributes_are_rejected(&kms, &uid).await?;
     set_link_attribute_and_remove_it(&kms, &uid, Tag::LinkType, LinkType::CertificateLink).await?;
@@ -177,32 +157,85 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     Ok(())
 }
 
-async fn set_activation_date_and_remove_it(
-    kms: &Arc<KMS>,
-    uid: &str,
-    delete_request: DeleteAttribute,
-) -> KResult<()> {
+/// KMIP 2.1 §4.1: the Activation Date may be set on a Pre-Active object, but is not
+/// deletable by the client.
+async fn set_activation_date_whose_deletion_is_refused(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
     // Check no activation date is set
     let get_response = get_attributes(kms, uid, Tag::ActivationDate).await?;
     assert!(get_response.attributes.activation_date.is_none());
 
     // Set activation date
-    let timestamp = 42;
-    let offset_datetime = OffsetDateTime::from_unix_timestamp(timestamp).unwrap();
-
+    let offset_datetime = OffsetDateTime::from_unix_timestamp(42).unwrap();
     set_attribute(kms, uid, Attribute::ActivationDate(offset_datetime)).await?;
-    // and check if it is set correctly
     let get_response = get_attributes(kms, uid, Tag::ActivationDate).await?;
     assert_eq!(
         get_response.attributes.activation_date,
         Some(offset_datetime)
     );
-    // Remove activation date
-    delete_attribute(kms, delete_request).await?;
-    // and check if it is removed
-    let get_response = get_attributes(kms, uid, Tag::ActivationDate).await?;
-    assert!(get_response.attributes.activation_date.is_none());
 
+    // Neither by value nor by reference can it be deleted
+    for delete_request in [
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            current_attribute: Some(Attribute::ActivationDate(offset_datetime)),
+            attribute_references: None,
+        },
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            current_attribute: None,
+            attribute_references: Some(vec![AttributeReference::Standard(Tag::ActivationDate)]),
+        },
+    ] {
+        let error = delete_attribute(kms, delete_request)
+            .await
+            .expect_err("deleting ActivationDate must fail");
+        assert!(
+            matches!(
+                error,
+                KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+            ),
+            "{error}"
+        );
+    }
+    let get_response = get_attributes(kms, uid, Tag::ActivationDate).await?;
+    assert_eq!(
+        get_response.attributes.activation_date,
+        Some(offset_datetime)
+    );
+
+    Ok(())
+}
+
+async fn set_protection_storage_mask_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
+    let mask = ProtectionStorageMasks::Software;
+    set_attribute(kms, uid, Attribute::ProtectionStorageMask(mask.clone())).await?;
+    assert_eq!(
+        get_attributes(kms, uid, Tag::ProtectionStorageMask)
+            .await?
+            .attributes
+            .protection_storage_masks,
+        Some(mask)
+    );
+
+    delete_attribute(
+        kms,
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            attribute_references: Some(vec![AttributeReference::Standard(
+                Tag::ProtectionStorageMask,
+            )]),
+            ..DeleteAttribute::default()
+        },
+    )
+    .await?;
+
+    assert!(
+        get_attributes(kms, uid, Tag::ProtectionStorageMask)
+            .await?
+            .attributes
+            .protection_storage_masks
+            .is_none()
+    );
     Ok(())
 }
 
@@ -241,29 +274,31 @@ async fn set_link_attribute_and_remove_it(
     Ok(())
 }
 
-async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
-    // Check no cryptographic algorithm is set
+/// KMIP 2.1 §4.10: the Cryptographic Algorithm is neither modifiable nor deletable by the
+/// client.
+async fn cryptographic_algorithm_is_server_managed(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
     let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
-
     assert_eq!(
         get_response.attributes.cryptographic_algorithm,
         Some(CryptographicAlgorithm::AES)
     );
 
-    set_attribute(
+    let error = set_attribute(
         kms,
         uid,
         Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
     )
-    .await?;
-
-    let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
-    assert_eq!(
-        get_response.attributes.cryptographic_algorithm,
-        Some(CryptographicAlgorithm::AES)
+    .await
+    .expect_err("setting CryptographicAlgorithm must fail");
+    assert!(
+        matches!(
+            error,
+            KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
+        ),
+        "{error}"
     );
 
-    delete_attribute(
+    let error = delete_attribute(
         kms,
         DeleteAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
@@ -273,10 +308,21 @@ async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMS>, uid: &str) ->
             attribute_references: None,
         },
     )
-    .await?;
+    .await
+    .expect_err("deleting CryptographicAlgorithm must fail");
+    assert!(
+        matches!(
+            error,
+            KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+        ),
+        "{error}"
+    );
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
-    assert!(get_response.attributes.cryptographic_algorithm.is_none());
+    assert_eq!(
+        get_response.attributes.cryptographic_algorithm,
+        Some(CryptographicAlgorithm::AES)
+    );
 
     Ok(())
 }
@@ -294,7 +340,7 @@ async fn set_cryptographic_length_is_rejected_as_read_only(
         .expect_err("setting CryptographicLength must fail as read-only");
     assert!(matches!(
         error,
-        KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+        KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
     ));
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
@@ -351,7 +397,7 @@ async fn set_server_managed_attributes_are_rejected(kms: &Arc<KMS>, uid: &str) -
         assert!(
             matches!(
                 error,
-                KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+                KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
             ),
             "{attribute}: {error}"
         );

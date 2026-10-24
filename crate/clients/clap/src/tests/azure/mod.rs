@@ -8,6 +8,7 @@ use test_kms_server::start_default_test_kms_server;
 use crate::{
     actions::{
         azure::byok::{ExportByokAction, ImportKekAction},
+        rsa::keys::create_key_pair::CreateKeyPairAction as CreateRsaKeyPairAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::{KmsCliError, result::KmsCliResult},
@@ -96,5 +97,54 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
         "Unwrapped key should match original"
     );
 
+    Ok(())
+}
+
+/// Azure expects a private key as PKCS#8, whatever format the KMS stores it in.
+#[tokio::test]
+async fn test_azure_byok_export_rsa_private_key_is_pkcs8() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let kms_client = ctx.get_owner_client();
+    let tmp_dir = TempDir::new()?;
+    let kek_pem_path = tmp_dir.path().join("kek_pub.pem");
+    let (kek_private_key, kek_public_key) = generate_rsa_keypair()?;
+    fs::write(
+        &kek_pem_path,
+        kek_public_key.public_key_to_pem().map_err(|e| {
+            KmsCliError::Default(format!("Failed to serialize public key PEM: {e}"))
+        })?,
+    )?;
+    let kek_id = Box::pin(
+        ImportKekAction {
+            kek_file: kek_pem_path,
+            kid: "https://unit.test/keys/KEK/00000000000000000000000000000001".to_owned(),
+            key_id: None,
+        }
+        .run(kms_client.clone()),
+    )
+    .await?;
+
+    let (private_key_id, _) = CreateRsaKeyPairAction {
+        key_size: 2048,
+        ..Default::default()
+    }
+    .run(kms_client.clone())
+    .await?;
+    let byok_file = tmp_dir.path().join("rsa.byok");
+    ExportByokAction {
+        wrapped_key_id: private_key_id.to_string(),
+        kek_id: kek_id.to_string(),
+        byok_file: Some(byok_file.clone()),
+    }
+    .run(kms_client)
+    .await?;
+
+    let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&byok_file)?)?;
+    let ciphertext = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(json["ciphertext"].as_str().unwrap_or_default())
+        .map_err(|e| KmsCliError::Default(format!("Failed to decode BASE64URL: {e}")))?;
+    let unwrapped = rsa_aes_key_wrap_sha1_unwrap(&ciphertext, &kek_private_key).unwrap();
+    openssl::pkey::PKey::private_key_from_pkcs8(&unwrapped)
+        .map_err(|e| KmsCliError::Default(format!("the wrapped key is not PKCS#8: {e}")))?;
     Ok(())
 }

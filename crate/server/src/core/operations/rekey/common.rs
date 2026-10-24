@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{ErrorReason, State},
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_data_structures::KeyWrappingSpecification,
@@ -44,47 +44,24 @@ use crate::{
 };
 
 impl KMS {
-    /// Retrieve all eligible objects matching the given identifier, filtered by state and type.
+    /// Retrieve all objects of `object_type` matching the given identifier.
     ///
-    /// Filters by:
-    /// - State: `Active`, `Deactivated`, or `Compromised`.
-    /// - Object type: the specified `object_type`
-    ///
-    /// When a specific UID resolves to a key of the correct type but in an
-    /// ineligible state, an explicit error is returned rather than silently
-    /// skipping. For tag-based queries, ineligible keys are filtered out.
+    /// Lifecycle-state filtering is left to [`KMS::select_unique_key`], which runs it
+    /// after the permission check so that the state of an object the caller may not use
+    /// never leaks (COSMIAN-2026-037).
     pub(crate) async fn retrieve_eligible_keys(
         &self,
         object_handle: ObjectHandle<'_>,
         object_type: ObjectType,
     ) -> KResult<Vec<ObjectWithMetadata>> {
-        let is_tag_query = matches!(object_handle, ObjectHandle::Tags(_));
-        let objects = self.database.retrieve_objects(object_handle).await?;
-        let mut eligible = Vec::new();
-
-        for owm in objects.into_values() {
-            if owm.object().object_type() != object_type {
-                continue;
-            }
-            let owm = std::sync::Arc::unwrap_or_clone(owm);
-            let is_eligible = matches!(
-                owm.state(),
-                State::Active | State::Deactivated | State::Compromised
-            );
-            if !is_eligible {
-                if !is_tag_query {
-                    return Err(KmsError::InvalidRequest(format!(
-                        "key '{}' is in state '{}' — only Active, Deactivated, or Compromised \
-                         keys can be rotated",
-                        owm.id(),
-                        owm.state()
-                    )));
-                }
-                continue;
-            }
-            eligible.push(owm);
-        }
-        Ok(eligible)
+        Ok(self
+            .database
+            .retrieve_objects(object_handle)
+            .await?
+            .into_values()
+            .filter(|owm| owm.object().object_type() == object_type)
+            .map(std::sync::Arc::unwrap_or_clone)
+            .collect())
     }
 
     /// Returns `true` if `attrs` represents the latest generation in its named keyset.
@@ -146,11 +123,13 @@ impl KMS {
                 old_attributes,
                 None,
             )));
-            // KMIP §4.57 transition 6: old key becomes Deactivated after Re-Key
-            operations.push(AtomicOperation::UpdateState((
-                c.owm.id().to_owned(),
-                State::Deactivated,
-            )));
+            // see `retire_old_key`: only an Active object is moved to Deactivated
+            if c.owm.effective_state() == State::Active {
+                operations.push(AtomicOperation::UpdateState((
+                    c.owm.id().to_owned(),
+                    State::Deactivated,
+                )));
+            }
             if let Some(ref new_wrapping_uid) = r.rewrap_to {
                 Box::pin(self.rewrap_dependants(
                     user,
@@ -378,6 +357,7 @@ impl ReplacementObject {
     pub(crate) fn finalize(
         &mut self,
         new_attrs: &Attributes,
+        requested: Option<&Attributes>,
         object_type: ObjectType,
         old_uid: &str,
         paired_key: Option<(&str, LinkType)>,
@@ -386,6 +366,7 @@ impl ReplacementObject {
         setup_new_key(
             &mut self.object,
             new_attrs,
+            requested,
             object_type,
             old_uid,
             paired_key,
@@ -442,12 +423,14 @@ pub(crate) trait RekeyOperation {
 
     /// Step 3: Generate replacement material (new key/cert + fresh UIDs).
     ///
+    /// Any object read here is authorized as `user`, the requester.
     /// Returns [`Self::Replacements`] — one replacement per candidate.
     fn generate_replacement(
         &self,
         kms: &KMS,
+        user: &UserId,
         candidates: &Self::Candidates,
-    ) -> impl std::future::Future<Output = KResult<Self::Replacements>>;
+    ) -> impl Future<Output = KResult<Self::Replacements>>;
 
     /// Step 4: Prepare attributes — links, lifecycle dates, rotation metadata.
     fn prepare_attributes(
@@ -511,7 +494,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
         .iter()
         .map(|c| c.owm.object().rewrap_spec())
         .collect();
-    let mut replacements = op.generate_replacement(kms, &candidates).await?;
+    let mut replacements = op.generate_replacement(kms, user, &candidates).await?;
     op.prepare_attributes(kms, &candidates, &mut replacements)?;
     op.rewrap_new_objects(kms, user, &mut replacements, &wrap_specs)
         .await?;
@@ -528,6 +511,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
             ))
         })
         .collect();
+    kms.constraints.check_new_objects(&persist_ops)?;
     // `Database::atomic` invalidates the keyset-resolution cache for every created
     // member's `rotate_name`, so the new generation is visible immediately.
     kms.database.atomic(user, &persist_ops).await?;
@@ -542,10 +526,13 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
 ///
 /// Applies the `ReplacedObjectLink` pointing to the old UID, an optional
 /// paired-key cross-link, and the Name from the replacement attributes.
-/// Then calls [`ObjectLifecycleExt::setup_with_lifecycle`] to set state / dates / digest.
+/// Then calls [`ObjectLifecycleExt::setup_with_lifecycle`] to set state / digest, keeps
+/// the dates computed by [`Attributes::for_replacement`] (KMIP 2.1 Tables 298/303/308)
+/// and applies the `requested` attributes of the request (Tables 300/305/310).
 pub(crate) fn setup_new_key(
     key_object: &mut Object,
     replacement_attrs: &Attributes,
+    requested: Option<&Attributes>,
     object_type: ObjectType,
     old_uid: &str,
     paired_key: Option<(&str, LinkType)>,
@@ -568,6 +555,30 @@ pub(crate) fn setup_new_key(
 
     key_object.setup_with_lifecycle(object_type, replacement_attrs.activation_date)?;
 
+    if let Ok(key_attrs) = key_object.attributes_mut() {
+        // copied (or offset-shifted) from the existing object
+        if replacement_attrs.activation_date.is_some() {
+            key_attrs.activation_date = replacement_attrs.activation_date;
+        }
+        key_attrs.deactivation_date = replacement_attrs.deactivation_date;
+        key_attrs.process_start_date = replacement_attrs.process_start_date;
+        key_attrs.protect_stop_date = replacement_attrs.protect_stop_date;
+        if let Some(usage_limits) = &replacement_attrs.usage_limits {
+            key_attrs.usage_limits = Some(usage_limits.clone());
+        }
+        if let Some(requested) = requested {
+            key_attrs.merge(&requested_non_managed_attributes(requested), true);
+            // The replacement takes over the existing names (Table 304); requested names are
+            // desired attributes of the new object (Table 305), added as in Create.
+            for name in requested.name.iter().flatten() {
+                let names = key_attrs.name.get_or_insert_with(Vec::new);
+                if !names.contains(name) {
+                    names.push(name.clone());
+                }
+            }
+        }
+    }
+
     // For SymmetricKey, PrivateKey, and SecretData, re-initialize NeverExtractable
     // for the fresh key object based on its new Extractable setting (KMIP 2.1 §4.33).
     if matches!(
@@ -580,6 +591,52 @@ pub(crate) fn setup_new_key(
     }
 
     Ok(())
+}
+
+/// The request's desired attributes without those the server manages on a replacement
+/// object (identity, links, names, lifecycle dates and state: KMIP 2.1 Tables 299/304/309)
+/// and without vendor attributes (tags, wrapping and rotation metadata).
+fn requested_non_managed_attributes(requested: &Attributes) -> Attributes {
+    Attributes {
+        unique_identifier: None,
+        link: None,
+        name: None,
+        state: None,
+        object_type: None,
+        initial_date: None,
+        last_change_date: None,
+        original_creation_date: None,
+        activation_date: None,
+        deactivation_date: None,
+        process_start_date: None,
+        protect_stop_date: None,
+        destroy_date: None,
+        compromise_date: None,
+        compromise_occurrence_date: None,
+        revocation_reason: None,
+        digest: None,
+        key_format_type: None,
+        vendor_attributes: None,
+        rotate_automatic: None,
+        rotate_date: None,
+        rotate_generation: None,
+        rotate_interval: None,
+        rotate_latest: None,
+        rotate_name: None,
+        rotate_offset: None,
+        ..requested.clone()
+    }
+}
+
+/// KMIP 2.1 Tables 307/312 do not list Wrong Key Lifecycle State: a key whose state
+/// does not allow it to be re-keyed is refused with Permission Denied.
+pub(in crate::core::operations::rekey) fn rekey_state_error(e: KmsError) -> KmsError {
+    match e {
+        KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, message) => {
+            KmsError::Kmip21Error(ErrorReason::Permission_Denied, message)
+        }
+        e => e,
+    }
 }
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
@@ -602,17 +659,80 @@ pub(in crate::core::operations::rekey) fn reject_hsm_uid(
     Ok(())
 }
 
+/// Record on the existing object that it has been replaced by `new_uid`.
+///
+/// An Active object is retired by setting its Deactivation Date to now, which the
+/// server may do while the object is Active (KMIP 2.1 §4.18) and which moves it to
+/// Deactivated (§4.57 transition 6). Objects in any other state keep their state and
+/// Deactivation Date: no other state transition is permitted to Re-key.
 fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, Attributes)> {
+    let deactivate = owm.effective_state() == State::Active;
     let mut old_object = owm.object().clone();
     let mut old_attributes = owm.attributes().clone();
-    old_attributes.retire_for_replacement(new_uid)?;
+    old_attributes.retire_for_replacement(new_uid, deactivate)?;
     old_attributes.clear_rotation_flags();
-    // KMIP §4.57 transition 6: persist Deactivated in all attribute layers so that
-    // destroy.rs effective-state logic reads Deactivated (not the stale Active value).
-    old_attributes.state = Some(State::Deactivated);
+    if deactivate {
+        old_attributes.state = Some(State::Deactivated);
+    }
     if let Ok(obj_attrs) = old_object.attributes_mut() {
-        obj_attrs.retire_for_replacement(new_uid)?;
-        obj_attrs.state = Some(State::Deactivated);
+        obj_attrs.retire_for_replacement(new_uid, deactivate)?;
+        if deactivate {
+            obj_attrs.state = Some(State::Deactivated);
+        }
     }
     Ok((old_object, old_attributes))
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_types::{CryptographicAlgorithm, Name, NameType},
+        requests::create_symmetric_key_kmip_object,
+    };
+
+    use super::setup_new_key;
+
+    fn name(value: &str) -> Name {
+        Name {
+            name_value: value.to_owned(),
+            name_type: NameType::UninterpretedTextString,
+        }
+    }
+
+    /// The replacement keeps the existing names and adds the requested ones once (KMIP 2.1
+    /// Tables 304/305), as the OASIS TC-REKEY-1 test cases expect.
+    #[test]
+    fn replacement_adds_requested_names_to_existing_ones() {
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            ..Attributes::default()
+        };
+        let mut key = create_symmetric_key_kmip_object("cosmian", &[0_u8; 32], &attributes)
+            .expect("symmetric key");
+        let replacement = Attributes {
+            name: Some(vec![name("original")]),
+            ..Attributes::default()
+        };
+        let requested = Attributes {
+            name: Some(vec![name("original"), name("first-rekey")]),
+            ..Attributes::default()
+        };
+        setup_new_key(
+            &mut key,
+            &replacement,
+            Some(&requested),
+            ObjectType::SymmetricKey,
+            "old-uid",
+            None,
+        )
+        .expect("setup_new_key");
+        assert_eq!(
+            key.attributes().expect("attributes").name,
+            Some(vec![name("original"), name("first-rekey")])
+        );
+    }
 }

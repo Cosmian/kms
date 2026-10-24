@@ -34,6 +34,8 @@ When requesting the export of an Object without specifying the Key Format Type, 
 - The `Q String` field of the `Transparent EC Public Key` is:
     - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
     - the raw bytes of the public key for Curve 25519 and Curve 448
+- A Key Compression Type other than `EC Public Key Type Uncompressed` gives `Key_Compression_Type_Not_Supported`.
+- Export of a Destroyed object succeeds without key material, while Get fails with `Object_Destroyed`.
 
 ### CLI Key Formats
 

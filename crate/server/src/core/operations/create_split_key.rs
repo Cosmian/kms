@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashSet};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode, State},
+        kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
         kmip_2_1::{
             KmipOperation,
             extra::VENDOR_ID_COSMIAN,
@@ -44,13 +44,22 @@ pub(crate) async fn create_split_key(
     request: CreateSplitKey,
     user: &UserId,
 ) -> KResult<CreateSplitKeyResponse> {
-    trace!("{request}");
+    trace!("CreateSplitKey request");
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+
+    // Prime Field Size is only meaningful for polynomial prime-field sharing, which is not
+    // implemented: reject it whenever present rather than silently ignoring it.
+    if request.prime_field_size.is_some() {
+        kms_bail!(KmsError::NotSupported(
+            "CreateSplitKey: Prime Field Size is not supported".to_owned()
+        ));
+    }
 
     let uid_str = match request.unique_identifier.as_ref() {
         Some(UniqueIdentifier::TextString(s)) => s.clone(),
         Some(other) => other.to_string(),
         None => {
-            return Err(KmsError::InvalidRequest(
+            return Err(KmsError::NotSupported(
                 "CreateSplitKey: unique_identifier is required (server-side key generation is not yet supported)".to_owned(),
             ));
         }
@@ -63,7 +72,28 @@ pub(crate) async fn create_split_key(
         kms,
         user,
     ))
-    .await?;
+    .await
+    .map_err(|e| match e {
+        // Table 195 lists Item Not Found, not Object Not Found, for this operation.
+        KmsError::Kmip21Error(ErrorReason::Object_Not_Found, message) => {
+            KmsError::Kmip21Error(ErrorReason::Item_Not_Found, message)
+        }
+        other => other,
+    })?;
+
+    // The requested Object Type must be Split Key or the type of the key being split
+    // (the CLI and the UI send the type of the source key).
+    let source_type = owm.object().object_type();
+    if request.object_type != ObjectType::SplitKey && request.object_type != source_type {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
+            format!(
+                "CreateSplitKey: requested Object Type {} is neither Split Key nor the type of \
+                 the key to split ({source_type})",
+                request.object_type
+            )
+        ));
+    }
 
     // The actual stored UID of the source key — used for share naming and attributes.
     // This differs from `uid_str` when the caller resolves by tag (e.g. `["my-tag"]`)
@@ -200,6 +230,8 @@ pub(crate) async fn create_split_key(
         ))
     })?;
     let mut share_uids: Vec<UniqueIdentifier> = Vec::with_capacity(total_parts_usize);
+    let (requested_attrs, requested_tags) =
+        requested_share_attributes(request.attributes.as_ref(), kms.vendor_id());
 
     let now = time::OffsetDateTime::now_utc();
 
@@ -312,13 +344,20 @@ pub(crate) async fn create_split_key(
         // GetAttributes and the WebUI Locate table can display algorithm / length / format.
         // `sensitive = true` ensures Get/Export of a share require explicit key-wrapping
         // (same protection as any other raw key material — CWE-312).
+        // KMIP 2.1 §4.57 / §6.1.10: a requested future Activation Date leaves the share Pre-Active.
+        let activation_date = requested_attrs.activation_date.unwrap_or(now);
+        let state = if activation_date > now {
+            State::PreActive
+        } else {
+            State::Active
+        };
         let share_attrs = Attributes {
-            state: Some(State::Active),
+            state: Some(state),
             object_type: Some(ObjectType::SplitKey),
             initial_date: Some(now),
             original_creation_date: Some(now),
             last_change_date: Some(now),
-            activation_date: Some(now),
+            activation_date: Some(activation_date),
             cryptographic_algorithm: owm
                 .object()
                 .key_block()
@@ -334,6 +373,7 @@ pub(crate) async fn create_split_key(
             ..Attributes::default()
         };
         let mut share_attrs = share_attrs;
+        share_attrs.merge(&requested_attrs, false);
 
         // Always stamp the source key UID on every share.
         // This lets JoinSplitKey detect cross-key mixing (e.g. A-1 + B-1) regardless
@@ -363,12 +403,14 @@ pub(crate) async fn create_split_key(
         }
 
         // Build a tag set for discoverability
-        let mut tags: HashSet<String> = HashSet::new();
+        let mut tags: HashSet<String> = requested_tags.clone();
         tags.insert(format!("split-key-of:{source_uid}"));
         tags.insert(format!("split-key-part:{part_identifier}"));
         // Include total count so the UI can render "Share X/Y" without a second request.
         tags.insert(format!("split-key-total:{total_parts}"));
 
+        // Shares share their constraint-relevant attributes: the first share decides.
+        kms.constraints.check(ObjectType::SplitKey, &share_attrs)?;
         let share_uid = match kms
             .database
             .create(
@@ -437,34 +479,37 @@ pub(crate) async fn create_split_key(
     if is_co_ceremony_key {
         use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Destroy;
 
-        // Revoke the source key before destroying — the destroy operation requires
-        // prior revocation for keys with an explicit activation_date.
+        // KMIP 2.1 §4.57: an Active key is revoked (Active → Deactivated) before
+        // destruction; a Pre-Active key goes straight to Destroyed, as Revoke with
+        // a non-compromise reason is not a valid transition from Pre-Active.
         // CessationOfOperation is the correct reason: the key is not compromised,
         // it has been superseded by its split-key shares (KMIP §6.18 / SP 800-57 §4.2.3).
         // Using KeyCompromise here would generate false-positive alerts in SIEM systems.
-        let revoke_req = Revoke {
-            unique_identifier: request.unique_identifier.clone(),
-            revocation_reason: RevocationReason {
-                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
-                revocation_message: Some(
-                    "Ceremony source key superseded by split key shares".to_owned(),
-                ),
-            },
-            compromise_occurrence_date: None,
-            cascade: false,
-        };
         let destroy_user = user;
-        if let Err(e) = Box::pin(super::revoke::revoke_operation(
-            kms,
-            revoke_req,
-            destroy_user,
-        ))
-        .await
-        {
-            return Err(KmsError::InvalidRequest(format!(
-                "CreateSplitKey: failed to revoke ceremony source key \
-                 '{uid_str}' before destruction: {e}"
-            )));
+        if owm.state() == State::Active {
+            let revoke_req = Revoke {
+                unique_identifier: request.unique_identifier.clone(),
+                revocation_reason: RevocationReason {
+                    revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                    revocation_message: Some(
+                        "Ceremony source key superseded by split key shares".to_owned(),
+                    ),
+                },
+                compromise_occurrence_date: None,
+                cascade: false,
+            };
+            if let Err(e) = Box::pin(super::revoke::revoke_operation(
+                kms,
+                revoke_req,
+                destroy_user,
+            ))
+            .await
+            {
+                return Err(KmsError::InvalidRequest(format!(
+                    "CreateSplitKey: failed to revoke ceremony source key \
+                     '{uid_str}' before destruction: {e}"
+                )));
+            }
         }
 
         let destroy_req = Destroy {
@@ -529,11 +574,30 @@ pub(crate) fn extract_key_bytes_ref(object: &Object) -> KResult<&[u8]> {
             ))
         })?),
         Object::OpaqueObject(oo) => Ok(oo.opaque_data_value.as_slice()),
-        other => kms_bail!(KmsError::NotSupported(format!(
-            "CreateSplitKey: unsupported object type {:?}",
-            other.object_type()
-        ))),
+        other => kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Object_Type,
+            format!(
+                "CreateSplitKey: unsupported object type {:?}",
+                other.object_type()
+            )
+        )),
     }
+}
+
+/// Attributes and user tags requested for the shares (KMIP 2.1 §6.1.10: the attributes of the
+/// split key take precedence, so they are merged without overwriting). Vendor attributes,
+/// the Unique Identifier and Links are server-owned on shares and are dropped.
+pub(super) fn requested_share_attributes(
+    requested: Option<&Attributes>,
+    vendor_id: &str,
+) -> (Attributes, HashSet<String>) {
+    let mut attributes = requested.cloned().unwrap_or_default();
+    let mut tags = attributes.get_tags(vendor_id);
+    tags.retain(|t| !t.starts_with('_'));
+    attributes.vendor_attributes = None;
+    attributes.unique_identifier = None;
+    attributes.link = None;
+    (attributes, tags)
 }
 
 #[cfg(test)]
@@ -612,7 +676,10 @@ mod tests {
             result.is_err(),
             "PrivateKey should not be supported by extract_key_bytes_ref"
         );
-        assert!(matches!(result.unwrap_err(), KmsError::NotSupported(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            KmsError::Kmip21Error(ErrorReason::Invalid_Object_Type, _)
+        ));
     }
 
     #[test]
@@ -622,6 +689,115 @@ mod tests {
         assert!(u32::try_from(negative).is_err());
         let valid: i32 = 5;
         assert_eq!(u32::try_from(valid).unwrap(), 5_u32);
+    }
+
+    /// KMIP 2.1 §4.57 / §6.1.10 / §6.1.1: a requested future Activation Date keeps the shares
+    /// Pre-Active, and Add Attribute works on a `SplitKey` (its key block holds no attributes).
+    #[tokio::test]
+    async fn split_key_shares_keep_future_activation_and_accept_add_attribute() -> KResult<()> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::{
+            kmip_2_1::{
+                kmip_attributes::Attribute,
+                kmip_operations::{AddAttribute, Create, GetAttributes, Locate},
+                kmip_types::{Name, NameType},
+            },
+            time_normalize,
+        };
+
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let user = UserId::from("split-attrs@example.com");
+        let source = kms
+            .create(
+                Create {
+                    object_type: ObjectType::SymmetricKey,
+                    attributes: Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        cryptographic_length: Some(256),
+                        ..Attributes::default()
+                    },
+                    protection_storage_masks: None,
+                },
+                &user,
+            )
+            .await?;
+        let name = vec![Name {
+            name_value: "split-attrs".to_owned(),
+            name_type: NameType::UninterpretedTextString,
+        }];
+        let activation_date = time_normalize()? + time::Duration::hours(1);
+        let shares = kms
+            .create_split_key(
+                CreateSplitKey {
+                    object_type: ObjectType::SplitKey,
+                    unique_identifier: Some(source.unique_identifier),
+                    split_key_parts: 2,
+                    split_key_threshold: 2,
+                    split_key_method: SplitKeyMethod::XOR,
+                    attributes: Some(Attributes {
+                        name: Some(name.clone()),
+                        activation_date: Some(activation_date),
+                        ..Attributes::default()
+                    }),
+                    prime_field_size: None,
+                    protection_storage_masks: None,
+                },
+                &user,
+            )
+            .await?
+            .unique_identifier;
+        let share = shares
+            .first()
+            .cloned()
+            .ok_or_else(|| KmsError::Default("no share returned".to_owned()))?;
+
+        let attributes = kms
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(share.clone()),
+                    attribute_reference: None,
+                },
+                &user,
+            )
+            .await?
+            .attributes;
+        if attributes.state != Some(State::PreActive)
+            || attributes.activation_date != Some(activation_date)
+        {
+            return Err(KmsError::Default(format!(
+                "share must stay Pre-Active with the requested date: {:?} {:?}",
+                attributes.state, attributes.activation_date
+            )));
+        }
+
+        kms.add_attribute(
+            AddAttribute {
+                unique_identifier: share,
+                new_attribute: Attribute::Comment("c".to_owned()),
+            },
+            &user,
+        )
+        .await?;
+
+        let located = kms
+            .locate(
+                Locate {
+                    maximum_items: Some(100),
+                    attributes: Attributes {
+                        name: Some(name),
+                        object_type: Some(ObjectType::SplitKey),
+                        ..Attributes::default()
+                    },
+                    ..Locate::default()
+                },
+                &user,
+            )
+            .await?;
+        if located.located_items != Some(2) {
+            return Err(KmsError::Default(format!(
+                "expected both shares to be located: {located:?}"
+            )));
+        }
+        Ok(())
     }
 
     /// Verify the `#` share UID naming convention.

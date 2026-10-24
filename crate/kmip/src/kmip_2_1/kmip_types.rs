@@ -184,7 +184,8 @@ pub enum CryptographicAlgorithm {
     GOST2814789 = 0x0000_0031,
     XMSS = 0x0000_0032,
     SPHINCS_256 = 0x0000_0033,
-    Page166Of230McEliece = 0x0000_0034,
+    #[strum(to_string = "McEliece", serialize = "Page166Of230McEliece")]
+    McEliece = 0x0000_0034,
     McEliece6960119 = 0x0000_0035,
     McEliece8192128 = 0x0000_0036,
     Ed25519 = 0x0000_0037,
@@ -331,6 +332,7 @@ pub enum RecommendedCurve {
     SECP224K1 = 0x0000_0018,
     SECP256K1 = 0x0000_0019,
     SECT113R1 = 0x0000_001A,
+    SECT113R2 = 0x0000_001B,
     SECT131R1 = 0x0000_001C,
     SECT131R2 = 0x0000_001D,
     SECT163R1 = 0x0000_001E,
@@ -865,56 +867,77 @@ impl Display for VendorAttributeValue {
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
+///
+/// Fields use the KMIP tag names (`CertificateSubjectCN`, ...) so binary TTLV round-trips;
+/// the former `PascalCase` names (`CertificateSubjectCn`, ...) are still read from stored JSON.
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertificateAttributes {
     // Certificate Subject CN
+    #[serde(rename = "CertificateSubjectCN", alias = "CertificateSubjectCn")]
     pub certificate_subject_cn: String,
     // Certificate Subject O
     pub certificate_subject_o: String,
     // Certificate Subject OU
+    #[serde(rename = "CertificateSubjectOU", alias = "CertificateSubjectOu")]
     pub certificate_subject_ou: String,
     // Certificate Subject Email
     pub certificate_subject_email: String,
     // Certificate Subject C
     pub certificate_subject_c: String,
     // Certificate Subject ST
+    #[serde(rename = "CertificateSubjectST", alias = "CertificateSubjectSt")]
     pub certificate_subject_st: String,
     // Certificate Subject L
     pub certificate_subject_l: String,
     // Certificate Subject UID
+    #[serde(rename = "CertificateSubjectUID", alias = "CertificateSubjectUid")]
     pub certificate_subject_uid: String,
     // Certificate Subject Serial Number
     pub certificate_subject_serial_number: String,
     // Certificate Subject Title
     pub certificate_subject_title: String,
     // Certificate Subject DC
+    #[serde(rename = "CertificateSubjectDC", alias = "CertificateSubjectDc")]
     pub certificate_subject_dc: String,
     // Certificate Subject DN Qualifier
+    #[serde(
+        rename = "CertificateSubjectDNQualifier",
+        alias = "CertificateSubjectDnQualifier"
+    )]
     pub certificate_subject_dn_qualifier: String,
     // Certificate Issuer CN
+    #[serde(rename = "CertificateIssuerCN", alias = "CertificateIssuerCn")]
     pub certificate_issuer_cn: String,
     // Certificate Issuer O
     pub certificate_issuer_o: String,
     // Certificate Issuer OU
+    #[serde(rename = "CertificateIssuerOU", alias = "CertificateIssuerOu")]
     pub certificate_issuer_ou: String,
     // Certificate Issuer Email
     pub certificate_issuer_email: String,
     // Certificate Issuer C
     pub certificate_issuer_c: String,
     // Certificate Issuer ST
+    #[serde(rename = "CertificateIssuerST", alias = "CertificateIssuerSt")]
     pub certificate_issuer_st: String,
     // Certificate Issuer L
     pub certificate_issuer_l: String,
     // Certificate Issuer UID
+    #[serde(rename = "CertificateIssuerUID", alias = "CertificateIssuerUid")]
     pub certificate_issuer_uid: String,
     // Certificate Issuer Serial Number
     pub certificate_issuer_serial_number: String,
     // Certificate Issuer Title
     pub certificate_issuer_title: String,
     // Certificate Issuer DC
+    #[serde(rename = "CertificateIssuerDC", alias = "CertificateIssuerDc")]
     pub certificate_issuer_dc: String,
     // Certificate Issuer DN Qualifier
+    #[serde(
+        rename = "CertificateIssuerDNQualifier",
+        alias = "CertificateIssuerDnQualifier"
+    )]
     pub certificate_issuer_dn_qualifier: String,
 }
 
@@ -1370,13 +1393,23 @@ pub enum Tag {
     CommonProtectionStorageMasks = 0x42_0163,
     PrivateProtectionStorageMasks = 0x42_0164,
     PublicProtectionStorageMasks = 0x42_0165,
+    ObjectGroups = 0x42_0166,
+    ObjectTypes = 0x42_0167,
+    Constraints = 0x42_0168,
+    Constraint = 0x42_0169,
     RotateInterval = 0x42_016A,
     RotateAutomatic = 0x42_016B,
     RotateOffset = 0x42_016C,
     RotateDate = 0x42_016D,
     RotateGeneration = 0x42_016E,
     RotateName = 0x42_016F,
+    RotateNameValue = 0x42_0170,
+    RotateNameType = 0x42_0171,
     RotateLatest = 0x42_0172,
+    AsynchronousRequest = 0x42_0173,
+    SubmissionDate = 0x42_0174,
+    ProcessingStage = 0x42_0175,
+    AsynchronousCorrelationValues = 0x42_0176,
     // Extensions 540000 – 54FFFF
     /// Cosmian vendor extension: not part of the KMIP 2.1 Tag Enumeration
     /// (§11.56). Used internally to TTLV-serialize the composite
@@ -1466,8 +1499,10 @@ pub struct CryptographicParameters {
     pub digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(rename = "RandomIV", alias = "RandomIv")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_iv: Option<bool>,
+    #[serde(rename = "IVLength", alias = "IvLength")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1756,6 +1791,12 @@ impl From<&str> for UniqueIdentifier {
 }
 
 impl UniqueIdentifier {
+    /// Construct the KMIP ID Placeholder enumeration value.
+    #[must_use]
+    pub const fn id_placeholder() -> Self {
+        Self::Enumeration(UniqueIdentifierEnumeration::IDPlaceholder)
+    }
+
     /// Returns the value as a string if it is a `TextString`
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
@@ -1888,24 +1929,52 @@ impl ValidityIndicator {
     }
 }
 
-/// `NistKeyType` enumeration used with NIST SP 800-56 and SP 800-108 operations
+/// NIST Key Type enumeration (KMIP 2.1 §11.33, NIST SP 800-57 Part 1 key types)
+///
+/// Earlier releases persisted non-spec names for codes 0x1–0xF (`AESP1` … `HMACSHA512`);
+/// they still deserialize, as the variant with the same code.
 #[kmip_enum]
 pub enum NistKeyType {
-    AESP1 = 0x1,
-    AESP2 = 0x2,
-    AESP3 = 0x3,
-    AESP4 = 0x4,
-    AESP5 = 0x5,
-    TDES2 = 0x6,
-    TDES3 = 0x7,
-    DESRW128 = 0x8,
-    DESRW192 = 0x9,
-    DESRW256 = 0xA,
-    HMACSHA1 = 0xB,
-    HMACSHA224 = 0xC,
-    HMACSHA256 = 0xD,
-    HMACSHA384 = 0xE,
-    HMACSHA512 = 0xF,
+    #[strum(to_string = "PrivateSignatureKey", serialize = "AESP1")]
+    PrivateSignatureKey = 0x1,
+    #[strum(to_string = "PublicSignatureVerificationKey", serialize = "AESP2")]
+    PublicSignatureVerificationKey = 0x2,
+    #[strum(to_string = "SymmetricAuthenticationKey", serialize = "AESP3")]
+    SymmetricAuthenticationKey = 0x3,
+    #[strum(to_string = "PrivateAuthenticationKey", serialize = "AESP4")]
+    PrivateAuthenticationKey = 0x4,
+    #[strum(to_string = "PublicAuthenticationKey", serialize = "AESP5")]
+    PublicAuthenticationKey = 0x5,
+    #[strum(to_string = "SymmetricDataEncryptionKey", serialize = "TDES2")]
+    SymmetricDataEncryptionKey = 0x6,
+    #[strum(to_string = "SymmetricKeyWrappingKey", serialize = "TDES3")]
+    SymmetricKeyWrappingKey = 0x7,
+    #[strum(
+        to_string = "SymmetricRandomNumberGenerationKey",
+        serialize = "DESRW128"
+    )]
+    SymmetricRandomNumberGenerationKey = 0x8,
+    #[strum(to_string = "SymmetricMasterKey", serialize = "DESRW192")]
+    SymmetricMasterKey = 0x9,
+    #[strum(to_string = "PrivateKeyTransportKey", serialize = "DESRW256")]
+    PrivateKeyTransportKey = 0xA,
+    #[strum(to_string = "PublicKeyTransportKey", serialize = "HMACSHA1")]
+    PublicKeyTransportKey = 0xB,
+    #[strum(to_string = "SymmetricKeyAgreementKey", serialize = "HMACSHA224")]
+    SymmetricKeyAgreementKey = 0xC,
+    #[strum(to_string = "PrivateStaticKeyAgreementKey", serialize = "HMACSHA256")]
+    PrivateStaticKeyAgreementKey = 0xD,
+    #[strum(to_string = "PublicStaticKeyAgreementKey", serialize = "HMACSHA384")]
+    PublicStaticKeyAgreementKey = 0xE,
+    #[strum(
+        to_string = "PrivateEphemeralKeyAgreementKey",
+        serialize = "HMACSHA512"
+    )]
+    PrivateEphemeralKeyAgreementKey = 0xF,
+    PublicEphemeralKeyAgreementKey = 0x10,
+    SymmetricAuthorizationKey = 0x11,
+    PrivateAuthorizationKey = 0x12,
+    PublicAuthorizationKey = 0x13,
 }
 
 /// `ProtectionLevel` enumeration indicates the level of protection required for an object (KMIP 2.1 Profiles test vectors use Low/High)
@@ -1922,7 +1991,7 @@ pub struct RandomNumberGenerator {
     // Ensure KMIP-compliant field name RNGAlgorithm instead of the default RngAlgorithm
     // produced by rename_all = "PascalCase" so that tag mapping remains consistent and
     // avoids Unknown Tag errors when round-tripping through XML/TTLV.
-    #[serde(rename = "RNGAlgorithm")]
+    #[serde(rename = "RNGAlgorithm", alias = "RngAlgorithm")]
     pub rng_algorithm: RNGAlgorithm,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
@@ -1930,10 +1999,12 @@ pub struct RandomNumberGenerator {
     pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(rename = "DRBGAlgorithm", alias = "DrbgAlgorithm")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drbg_algorithm: Option<DRBGAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(rename = "FIPS186Variation", alias = "Fips186Variation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fips186_variation: Option<FIPS186Variation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2023,21 +2094,14 @@ pub enum RNGMode {
     NonSharedInstantiation = 0x03,
 }
 
-/// Methods by which clients can register with a KMIP server.
+/// Methods by which clients can register with a KMIP server (KMIP 2.1 §11.10).
 #[kmip_enum]
 pub enum ClientRegistrationMethod {
-    /// The client is not required to register.
     Unspecified = 0x0000_0001,
-    /// The client must register using server-defined method.
-    ServerPreRegistered = 0x0000_0002,
-    /// The client registers by providing a password to the server.
-    ServerPreregisteredPadding = 0x0000_0003,
-    /// The server accepts clients with specific platform configurations.
-    ServerTrustedPlatformModule = 0x0000_0004,
-    /// The server validates the client based on attestation data.
-    ServerClientAttestation = 0x0000_0005,
-    /// Server-specific registration method.
-    ServerCustom = 0x0000_0006,
+    ServerPreGenerated = 0x0000_0002,
+    ServerOnDemand = 0x0000_0003,
+    ClientGenerated = 0x0000_0004,
+    ClientRegistered = 0x0000_0005,
 }
 
 /// Supported profile identifiers in the KMIP specification.
@@ -2061,8 +2125,16 @@ pub enum ProfileName {
     IntermediateSymmetricKeyFoundryClient = 0x0000_0113,
     AdvancedSymmetricKeyFoundryClient = 0x0000_0114,
     SymmetricKeyFoundryServer = 0x0000_0115,
-    OpaqueMangedObjectStoreClient = 0x0000_0116,
-    OpaqueMangedObjectStoreServer = 0x0000_0117,
+    #[strum(
+        to_string = "OpaqueManagedObjectStoreClient",
+        serialize = "OpaqueMangedObjectStoreClient"
+    )]
+    OpaqueManagedObjectStoreClient = 0x0000_0116,
+    #[strum(
+        to_string = "OpaqueManagedObjectStoreServer",
+        serialize = "OpaqueMangedObjectStoreServer"
+    )]
+    OpaqueManagedObjectStoreServer = 0x0000_0117,
     Reserved118 = 0x0000_0118,
     Reserved119 = 0x0000_0119,
     Reserved11A = 0x0000_011A,
@@ -2126,14 +2198,14 @@ pub enum BatchErrorContinuationOption {
 // Usage Limits (KMIP 2.1)
 // --------------------------
 
-/// `UsageLimitsUnit` for KMIP 2.x extends the 1.x set with Block and Operation.
-/// Spec text (2.1) indicates units can be Byte, Block, Object, Operation.
+/// Usage Limits Unit enumeration (KMIP 2.1 §11.58): the same two values as KMIP 1.x.
 #[kmip_enum]
 pub enum UsageLimitsUnit {
     Byte = 0x1,
-    Block = 0x2,
-    Object = 0x3,
-    Operation = 0x4,
+    // Earlier releases persisted the non-spec units `Block` and `Operation`, which were
+    // counted per object; they still deserialize, as `Object`.
+    #[strum(to_string = "Object", serialize = "Block", serialize = "Operation")]
+    Object = 0x2,
 }
 
 /// KMIP 2.1 `UsageLimits` structure. Count MAY be omitted in requests (e.g. Locate test vectors
@@ -2158,10 +2230,9 @@ impl Display for UsageLimits {
     }
 }
 
-// Conversions with KMIP 1.x structure (which requires count & only supports Byte/Object units)
+// Conversions with the KMIP 1.x structure (same units and codes)
 impl From<crate::kmip_0::kmip_types::UsageLimits> for UsageLimits {
     fn from(v: crate::kmip_0::kmip_types::UsageLimits) -> Self {
-        // Map 1.x units (Byte=0x1, Object=0x2) to 2.x (Byte=0x1, Object=0x3)
         let unit = match v.usage_limits_unit {
             crate::kmip_0::kmip_types::UsageLimitsUnit::Byte => UsageLimitsUnit::Byte,
             crate::kmip_0::kmip_types::UsageLimitsUnit::Object => UsageLimitsUnit::Object,
@@ -2176,13 +2247,9 @@ impl From<crate::kmip_0::kmip_types::UsageLimits> for UsageLimits {
 
 impl From<UsageLimits> for crate::kmip_0::kmip_types::UsageLimits {
     fn from(v: UsageLimits) -> Self {
-        // Collapse unsupported units for 1.x to Object when not Byte/Object
         let unit = match v.usage_limits_unit {
             UsageLimitsUnit::Byte => crate::kmip_0::kmip_types::UsageLimitsUnit::Byte,
             UsageLimitsUnit::Object => crate::kmip_0::kmip_types::UsageLimitsUnit::Object,
-            UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-                crate::kmip_0::kmip_types::UsageLimitsUnit::Object
-            }
         };
         Self {
             usage_limits_unit: unit,

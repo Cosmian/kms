@@ -81,9 +81,16 @@ async function findRowByUid(page: Page, uidSubstring: string): Promise<{ type: s
             const cells = row.locator("td");
             const uidText = (await cells.nth(0).textContent()) ?? "";
             if (uidText.includes(uidSubstring)) {
-                const typeText = (await cells.nth(1).textContent()) ?? "";
-                const kftText = (await cells.nth(4).textContent()) ?? "";
-                return { type: typeText.trim(), keyFormatType: kftText.trim() };
+                // Type/format are filled in asynchronously by per-row GetAttributes calls.
+                let typeText = "";
+                let kftText = "";
+                for (let attempt = 0; attempt < 30; attempt++) {
+                    typeText = ((await cells.nth(1).textContent()) ?? "").trim();
+                    kftText = ((await cells.nth(4).textContent()) ?? "").trim();
+                    if (typeText !== "N/A" && kftText !== "N/A") break;
+                    await page.waitForTimeout(500);
+                }
+                return { type: typeText, keyFormatType: kftText };
             }
         }
         return null;

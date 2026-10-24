@@ -34,7 +34,8 @@ fn test_enumeration() {
 #[test]
 fn test_serialization_deserialization() {
     log_init(option_env!("RUST_LOG"));
-    let now = OffsetDateTime::now_utc();
+    // A KMIP Date-Time carries whole seconds.
+    let now = OffsetDateTime::now_utc().replace_nanosecond(0).unwrap();
     let ttlv = TTLV {
         tag: "Test".into(),
         value: TTLValue::Structure(vec![

@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason, kmip_2_1::kmip_types::UniqueIdentifier,
+};
 
 use super::locate_usk;
 use crate::{
     core::{KMS, operations::recursively_destroy_object},
+    error::KmsError,
     middlewares::UserId,
     result::KResult,
 };
@@ -21,7 +24,7 @@ pub(crate) async fn destroy_user_decryption_keys(
 ) -> KResult<()> {
     if let Some(ids) = locate_usk(kms, msk_uid, None, None, owner).await? {
         for id in ids.into_iter().filter(|id| !ids_to_skip.contains(id)) {
-            recursively_destroy_object(
+            match recursively_destroy_object(
                 &UniqueIdentifier::TextString(id),
                 remove,
                 cascade,
@@ -29,7 +32,12 @@ pub(crate) async fn destroy_user_decryption_keys(
                 owner,
                 ids_to_skip.clone(),
             )
-            .await?;
+            .await
+            {
+                // already destroyed user keys are left as is
+                Err(KmsError::Kmip21Error(ErrorReason::Object_Destroyed, _)) => {}
+                other => other?,
+            }
         }
     }
     Ok(())

@@ -534,15 +534,14 @@ async fn test_operator_needs_explicit_grant() -> CosmianResult<()> {
         "Operator should NOT be able to export without explicit grant"
     );
 
-    // CO grants export access
+    // An object grant lets an Operator retrieve metadata, but never key material.
     let granted = co_grant_access(&co_conf, Some(&key_id), "kmserver.acme.com", &["get"]);
     assert!(granted, "CO should be able to grant access");
 
-    // Now Operator should be able to export
     let can_export_after_grant = co_export_key(&op_conf, &key_id, &export_path);
     assert!(
-        can_export_after_grant,
-        "Operator should be able to export after explicit grant"
+        !can_export_after_grant,
+        "Operator must not be able to export key material after an explicit grant"
     );
 
     // Cleanup

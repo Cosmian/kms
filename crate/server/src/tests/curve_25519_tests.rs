@@ -10,7 +10,8 @@ use cosmian_kms_server_database::reexport::{
                 ResponseMessageBatchItemVersioned,
             },
             kmip_types::{
-                CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+                BatchErrorContinuationOption, CryptographicUsageMask, ErrorReason, ProtocolVersion,
+                ResultStatusEnumeration,
             },
         },
         kmip_2_1::{
@@ -256,6 +257,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
+            batch_error_continuation_option: Some(BatchErrorContinuationOption::Continue),
             batch_count: 4,
             ..Default::default()
         },
@@ -344,7 +346,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
     assert_eq!(
         batch_item.result_reason,
-        Some(ErrorReason::Operation_Not_Supported)
+        Some(ErrorReason::Feature_Not_Supported)
     );
     assert_eq!(
         batch_item.result_message,

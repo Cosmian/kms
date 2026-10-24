@@ -14,7 +14,8 @@ and encryption clients.
     - Optional TLS security
     - Multiple [authentication mechanisms](../../configuration/authentication.md) supported
     - Endpoints:
-        - `/kmip`: Handles KMIP 1.x and 2.x `RequestMessage`
+        - `/kmip`: KMIP 1.x and 2.x `RequestMessage` (any minor version of majors 1 and 2; other majors get
+          `Unsupported_Protocol_Version`)
         - `/kmip/2_1`: Specifically for KMIP 2.1 `RequestMessage` or operations like `Create`, `Encrypt`, `Decrypt`,
           etc.
 

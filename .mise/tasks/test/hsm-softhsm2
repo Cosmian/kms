@@ -116,6 +116,29 @@ else
   print_status "Skipping cosmian_pkcs11 HSM-KEK conformance tests (non-fips only)"
 fi
 
+# ── Run OASIS PKCS11 XML vectors ────────────────────────────────────────────
+# PKCS11-M-1-20/21 need an HSM; the XML vector harness is non-fips only.
+if [ "${VARIANT:-}" = "non-fips" ]; then
+  print_header "Running OASIS PKCS11 XML vectors"
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="$LIB_PATH" \
+    DYLD_LIBRARY_PATH="$LIB_PATH" \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    cargo test \
+    -p cosmian_kms_cli_actions \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored tests::xml::kmip::kmip_xml_pkcs11 --exact
+
+  print_status "OASIS PKCS11 XML vectors completed"
+else
+  print_status "Skipping OASIS PKCS11 XML vectors (non-fips only)"
+fi
+
 # ── Run softhsm2 loader tests ───────────────────────────────────────────────
 # The loader crate forwards the variant feature to `cosmian_kms_base_hsm`.
 print_header "Running softhsm2_pkcs11_loader tests"

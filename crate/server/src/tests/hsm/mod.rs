@@ -324,7 +324,8 @@ async fn revoke_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let revoke_request = Revoke {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         revocation_reason: RevocationReason {
-            revocation_reason_code: RevocationReasonCode::Unspecified,
+            // Keys here are never activated; only a compromise revoke is valid from PreActive.
+            revocation_reason_code: RevocationReasonCode::KeyCompromise,
             revocation_message: Some("revoke".to_owned()),
         },
         compromise_occurrence_date: None,

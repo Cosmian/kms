@@ -19,11 +19,17 @@ When a stream or by-parts operation is requested:
 
 The Eviden KMS server supports the following hashing algorithms:
 
-- SHA256
-- SHA384
-- SHA512
+- SHA-224, SHA-256, SHA-384, SHA-512
+- SHA3-224, SHA3-256, SHA3-384, SHA3-512
+
+Other algorithms return `Feature_Not_Supported`.
 
 For the complete list of supported hashing algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
+
+A request with both `Init Indicator` and `Final Indicator` but no `Correlation Value` is a single-part request.
+A single-part Hash without `Data` returns `Invalid_Field`. An unknown, expired or foreign `Correlation Value`
+returns `Invalid_Correlation_Value`. The limits on open multi-part operations are described in
+[Multi-part decryption](./_decrypt.md#multi-part-decryption).
 
 ## Example - Simple hash
 
@@ -90,17 +96,18 @@ ckms hash --algorithm sha3-512 --data 0011223344556677889900
 
 ## Example - Stream hash
 
-Hashing a large file in multiple parts using SHA256.
+Hashing a large file in multiple parts using SHA-256. The Init response returns a 16-byte random Correlation Value;
+every later part sends it back unchanged. The three parts `61`, `62`, `63` (`abc`) give SHA-256(`abc`).
 
 Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 # First part with init indicator
-ckms hash --algorithm sha3-512 --data 0011223344556677889900 -i
+ckms hash --algorithm sha256 --data 61 -i
 # Middle part using correlation value
-ckms hash --algorithm sha3-512 --correlation-value F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA --data 0011223344556677889900
+ckms hash --algorithm sha256 --correlation-value 0123456789ABCDEF0123456789ABCDEF --data 62
 # Final part with final indicator
-ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F -f --data 0011223344556677889900
+ckms hash --algorithm sha256 --correlation-value 0123456789ABCDEF0123456789ABCDEF -f --data 63
 ```
 
 === "Request 1 (Init)"
@@ -117,14 +124,14 @@ ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28
             {
               "tag": "HashingAlgorithm",
               "type": "Enumeration",
-              "value": "SHA3512"
+              "value": "SHA256"
             }
           ]
         },
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "0011223344556677889900"
+          "value": "61"
         },
         {
           "tag": "InitIndicator",
@@ -150,7 +157,7 @@ ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         }
       ]
     }
@@ -170,19 +177,19 @@ ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28
             {
               "tag": "HashingAlgorithm",
               "type": "Enumeration",
-              "value": "SHA3512"
+              "value": "SHA256"
             }
           ]
         },
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "0011223344556677889900"
+          "value": "62"
         },
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "F91DDB96D12CF8FAB0AA72224836D3F5F659A6634E3508A7C31DBC3727D2030254C57AD90AA5FB7F27FB3AAFABEAEB1204E4AF62BA2DE44E33E761B2C39DBACA"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         },
         {
           "tag": "InitIndicator",
@@ -193,6 +200,22 @@ ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28
           "tag": "FinalIndicator",
           "type": "Boolean",
           "value": false
+        }
+      ]
+    }
+    ```
+
+=== "Response 2"
+
+    ```json
+    {
+      "tag": "HashResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "CorrelationValue",
+          "type": "ByteString",
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         }
       ]
     }
@@ -212,19 +235,19 @@ ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28
             {
               "tag": "HashingAlgorithm",
               "type": "Enumeration",
-              "value": "SHA3512"
+              "value": "SHA256"
             }
           ]
         },
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "0011223344556677889900"
+          "value": "63"
         },
         {
           "tag": "CorrelationValue",
           "type": "ByteString",
-          "value": "51A2F7FCA8DECFC106031BE935F28F6EEE7E3850BCDB9D9B41B0F623146D7F51E399FC8F76A8B14EB71463DB0F6D421EF431E33F8CE1897FF988237C890C808F"
+          "value": "0123456789ABCDEF0123456789ABCDEF"
         },
         {
           "tag": "InitIndicator",
@@ -250,7 +273,7 @@ ckms hash --algorithm sha3-512 --correlation-value 51A2F7FCA8DECFC106031BE935F28
         {
           "tag": "Data",
           "type": "ByteString",
-          "value": "511BDAFDB2D059BD94FC72B8301ABF01DB9E02127420AED072B891A83952B88063DF3470225ACC6D46AD503E5E86B16BAEB581F218A148472120A9B541E1AF5D"
+          "value": "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD"
         }
       ]
     }

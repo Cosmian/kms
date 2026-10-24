@@ -210,13 +210,23 @@ pub fn key_data_to_wrap(
             Object::SecretData(SecretData { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover secret data bytes ")?,
-            Object::PrivateKey(..) => {
-                let pkey = kmip_private_key_to_openssl(object)?;
-                Zeroizing::new(pkey.private_key_to_pkcs8()?)
+            // Keep a byte-string key in its own format: re-deriving PKCS#8 would silently change
+            // the format that the unwrap side restores from the key block.
+            Object::PrivateKey(PrivateKey { key_block }) => {
+                if let Ok(bytes) = key_block.key_bytes() {
+                    bytes
+                } else {
+                    let pkey = kmip_private_key_to_openssl(object)?;
+                    Zeroizing::new(pkey.private_key_to_pkcs8()?)
+                }
             }
-            Object::PublicKey(..) => {
-                let pkey = kmip_public_key_to_openssl(object)?;
-                Zeroizing::new(pkey.public_key_to_der()?)
+            Object::PublicKey(PublicKey { key_block }) => {
+                if let Ok(bytes) = key_block.key_bytes() {
+                    bytes
+                } else {
+                    let pkey = kmip_public_key_to_openssl(object)?;
+                    Zeroizing::new(pkey.public_key_to_der()?)
+                }
             }
             o => {
                 crypto_bail!("Unable to wrap the object: its type is not supported: {o}")

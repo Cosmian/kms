@@ -24,12 +24,14 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
-        kmip_types::{ProtocolVersion, ResultStatusEnumeration},
+        kmip_types::{
+            AlternativeName, AlternativeNameType, ProtocolVersion, ResultStatusEnumeration,
+        },
     },
     kmip_1_4::{
         kmip_attributes::Attribute,
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Get, GetAttributes, Operation},
+        kmip_operations::{AddAttribute, Get, GetAttributes, Operation},
         kmip_types::OperationEnumeration,
     },
     ttlv::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, from_ttlv, to_ttlv},
@@ -64,6 +66,7 @@ fn kmip1_get_response_bytes(
                 request_payload: Operation::Get(Get {
                     unique_identifier: Some(key_id.to_owned()),
                     key_format_type: None,
+                    key_wrap_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
                 }),
@@ -496,6 +499,8 @@ fn test_get_attribute_list_kmip12_version_boundaries() {
 
     let client = get_client();
     let key_id = create_symmetric_key(&client, "test_get_attr_list_12_versions");
+    // Get Attribute List only lists attributes the object has (KMIP 1.4 §4.13).
+    kmip14_add_alternative_name(&client, &key_id);
 
     let attribute_names = kmip1_get_attribute_list_names(&client, &key_id, 2);
 
@@ -512,6 +517,41 @@ fn test_get_attribute_list_kmip12_version_boundaries() {
             "KMIP 1.2 GetAttributeList MUST advertise '{required}': got {attribute_names:?}"
         );
     }
+}
+
+fn kmip14_add_alternative_name(client: &SocketClient, key_id: &str) {
+    let request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::AddAttribute,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::AddAttribute(AddAttribute {
+                    unique_identifier: Some(key_id.to_owned()),
+                    attribute: Attribute::AlternativeName(AlternativeName {
+                        alternative_name_type: AlternativeNameType::UninterpretedTextString,
+                        alternative_name_value: "gating-test".to_owned(),
+                    }),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+    let response: ResponseMessage = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request)
+        .expect("Failed to send KMIP 1.4 AddAttribute request");
+    let ResponseMessageBatchItemVersioned::V14(item) = &response.batch_item[0] else {
+        panic!("Unexpected V21 response for a KMIP 1.4 AddAttribute");
+    };
+    assert_eq!(item.result_status, ResultStatusEnumeration::Success);
 }
 
 // ---------------------------------------------------------------------------

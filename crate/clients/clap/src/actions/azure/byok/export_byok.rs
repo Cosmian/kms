@@ -6,7 +6,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
         kmip_data_structures::KeyValue,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, Tag},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Tag},
     },
 };
 use cosmian_kms_client::{ExportObjectParams, KmsClient, export_object};
@@ -68,13 +68,21 @@ impl ExportByokAction {
         )?[4..]
             .to_string();
 
+        // Azure expects a private key as PKCS#8: a key stored in another format (e.g. PKCS#1)
+        // is wrapped as it is stored unless converted.
+        let (_, key_attributes) =
+            get_attributes(&kms_client, &self.wrapped_key_id, &[Tag::ObjectType], &[]).await?;
+        let key_format_type = (key_attributes.get("ObjectType").and_then(|v| v.as_str())
+            == Some("PrivateKey"))
+        .then_some(KeyFormatType::PKCS8);
+
         // Export the key wrapped with the KEK
         // export the object
         let export_params = ExportObjectParams {
             unwrap: false, // `wrapping_key_id` is ignored if `unwrap` is true
             wrapping_key_id: Some(&self.kek_id),
             allow_revoked: false,
-            key_format_type: None,
+            key_format_type,
             encode_to_ttlv: false,
             wrapping_cryptographic_parameters: Some(CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

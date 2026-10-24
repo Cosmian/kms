@@ -90,6 +90,7 @@ async fn modify_attribute(
 ) -> KResult<ModifyAttributeResponse> {
     kms.modify_attribute(
         ModifyAttribute {
+            current_attribute: None,
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             new_attribute: attribute,
         },

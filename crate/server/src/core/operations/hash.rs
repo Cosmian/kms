@@ -1,18 +1,24 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
     kmip_2_1::kmip_operations::{Hash, HashResponse},
 };
 use cosmian_logger::trace;
 use openssl::hash::{Hasher, MessageDigest};
 
-use crate::{core::KMS, error::KmsError, kms_bail, middlewares::UserId, result::KResult};
+use crate::{
+    core::{
+        KMS,
+        operations::key_ops::multi_part::{Part, StreamOwner},
+    },
+    error::KmsError,
+    kms_bail,
+    middlewares::UserId,
+    result::KResult,
+};
 
-fn compute_hash(
-    data: &[u8],
-    algorithm: HashingAlgorithm,
-    additional_data: Option<Vec<u8>>,
-) -> KResult<Vec<u8>> {
-    let message_digest = match algorithm {
+fn message_digest(algorithm: HashingAlgorithm) -> KResult<MessageDigest> {
+    Ok(match algorithm {
+        HashingAlgorithm::SHA224 => MessageDigest::sha224(),
         HashingAlgorithm::SHA256 => MessageDigest::sha256(),
         HashingAlgorithm::SHA384 => MessageDigest::sha384(),
         HashingAlgorithm::SHA512 => MessageDigest::sha512(),
@@ -20,22 +26,20 @@ fn compute_hash(
         HashingAlgorithm::SHA3256 => MessageDigest::sha3_256(),
         HashingAlgorithm::SHA3384 => MessageDigest::sha3_384(),
         HashingAlgorithm::SHA3512 => MessageDigest::sha3_512(),
-        algorithm => kms_bail!("Unsupported hashing algorithm: {:?}", algorithm),
-    };
-
-    let mut h = Hasher::new(message_digest)?;
-    if let Some(additional_data) = additional_data {
-        h.update(&additional_data)?;
-    }
-    h.update(data)?;
-
-    Ok(h.finish()?.to_vec())
+        algorithm => {
+            kms_bail!(KmsError::NotSupported(format!(
+                "Unsupported hashing algorithm: {algorithm:?}"
+            )))
+        }
+    })
 }
 
+/// KMIP Hash, single-part or multi-part (KMIP 2.1 §6.1.24): the running digest state of a
+/// multi-part hash is kept server-side under the returned Correlation Value.
 pub(crate) async fn hash_operation(
-    _kms: &KMS,
+    kms: &KMS,
     request: Hash,
-    _user: &UserId,
+    user: &UserId,
 ) -> KResult<HashResponse> {
     trace!(
         "algorithm={:?}, data_len={}",
@@ -43,24 +47,48 @@ pub(crate) async fn hash_operation(
         request.data.as_ref().map_or(0, Vec::len)
     );
 
-    let algorithm = request
-        .cryptographic_parameters
-        .hashing_algorithm
-        .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?;
-
-    let data = request.data.unwrap_or_default();
-
-    if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
-        kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
-    }
-
-    let hash = compute_hash(&data, algorithm, request.correlation_value)?;
-
-    let (data, correlation_value) = if request.init_indicator.unwrap_or(false) {
-        (None, Some(hash))
-    } else {
-        (Some(hash), None)
+    let part = Part::classify(
+        request.init_indicator,
+        request.final_indicator,
+        request.correlation_value.as_deref(),
+    )?;
+    let data: &[u8] = match (&request.data, part) {
+        (Some(data), _) => data,
+        (None, Part::Single) => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                "Hash: Data is required for a single-part operation".to_owned(),
+            ));
+        }
+        (None, _) => &[],
     };
+    let owner = StreamOwner {
+        op: "Hash",
+        user,
+        key_uid: "",
+    };
+    let (data, correlation_value) = kms.multi_part.run(
+        &kms.rng,
+        part,
+        owner,
+        || {
+            let algorithm = request
+                .cryptographic_parameters
+                .hashing_algorithm
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest("Hashing algorithm is required".to_owned())
+                })?;
+            Ok(Hasher::new(message_digest(algorithm)?)?)
+        },
+        |hasher, last| {
+            hasher.update(data)?;
+            Ok(if last {
+                Some(hasher.finish()?.to_vec())
+            } else {
+                None
+            })
+        },
+    )?;
 
     Ok(HashResponse {
         data,
@@ -74,14 +102,32 @@ mod tests {
     use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
         kmip_2_1::{kmip_operations::Hash, kmip_types::CryptographicParameters},
     };
 
     use crate::{
-        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+        config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
         tests::test_utils::https_clap_config,
     };
+
+    fn sha256_request(
+        data: Option<&[u8]>,
+        correlation_value: Option<Vec<u8>>,
+        init_indicator: Option<bool>,
+        final_indicator: Option<bool>,
+    ) -> Hash {
+        Hash {
+            cryptographic_parameters: CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..Default::default()
+            },
+            data: data.map(<[u8]>::to_vec),
+            correlation_value,
+            init_indicator,
+            final_indicator,
+        }
+    }
 
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
@@ -95,12 +141,13 @@ mod tests {
             205, 151, 13, 29, 185, 22, 18, 198, 109, 244, 81, 91, 10, 10,
         ];
 
-        // Test different combinations of init_indicator and final_indicator
+        // Single-part forms, including Init + Final without a Correlation Value (KMIP 2.1 §6.1)
         for (init_indicator, final_indicator) in [
             (None, None),
             (Some(false), None),
             (Some(false), Some(true)),
             (None, Some(true)),
+            (Some(true), Some(true)),
         ] {
             let request = Hash {
                 cryptographic_parameters: CryptographicParameters {
@@ -120,6 +167,56 @@ mod tests {
         Ok(())
     }
 
+    /// TC-STREAM-HASH-2-20: SHA-256 over "a" | "b" | "c" | "" equals SHA-256("abc").
+    #[tokio::test]
+    async fn test_server_hash_multi_part_known_answer() -> KResult<()> {
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
+        );
+        let user = UserId::from("test");
+        let abc_sha256 =
+            hex::decode("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+                .unwrap();
+
+        let init = kms
+            .hash(sha256_request(Some(b"a"), None, Some(true), None), &user)
+            .await?;
+        assert!(init.data.is_none());
+        let cv = init.correlation_value.unwrap();
+        for chunk in [b"b", b"c"] {
+            let next = kms
+                .hash(
+                    sha256_request(Some(chunk), Some(cv.clone()), None, None),
+                    &user,
+                )
+                .await?;
+            assert!(next.data.is_none());
+            assert_eq!(next.correlation_value.as_ref(), Some(&cv));
+        }
+        let last = kms
+            .hash(
+                sha256_request(Some(b""), Some(cv.clone()), None, Some(true)),
+                &user,
+            )
+            .await?;
+        assert_eq!(last.data, Some(abc_sha256));
+        assert!(last.correlation_value.is_none());
+
+        // The stream is closed; an unknown Correlation Value is rejected.
+        let err = kms
+            .hash(
+                sha256_request(Some(b"d"), Some(cv), None, Some(true)),
+                &user,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Invalid_Correlation_Value, _)
+        ));
+        Ok(())
+    }
+
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation_with_correlation() -> KResult<()> {
@@ -127,17 +224,13 @@ mod tests {
             KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
         );
 
-        // Test with correlation value and init indicator
-        let request = Hash {
-            cryptographic_parameters: CryptographicParameters {
-                hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                ..Default::default()
-            },
-            data: Some(vec![1, 2, 3]),
-            correlation_value: Some(vec![4, 5, 6]),
-            init_indicator: Some(true),
-            final_indicator: Some(true),
-        };
+        // Init Indicator combined with a Correlation Value is invalid
+        let request = sha256_request(
+            Some(&[1, 2, 3]),
+            Some(vec![4, 5, 6]),
+            Some(true),
+            Some(true),
+        );
         kms.hash(request, &UserId::from("test")).await.unwrap_err();
 
         // Test different hashing algorithms
@@ -163,20 +256,18 @@ mod tests {
             assert_eq!(response.correlation_value, None);
         }
 
-        // Test invalid request (missing data)
-        let request = Hash {
-            cryptographic_parameters: CryptographicParameters {
-                hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                ..Default::default()
-            },
-            data: None,
-            correlation_value: None,
-            init_indicator: None,
-            final_indicator: None,
-        };
-        let response = kms.hash(request, &UserId::from("test")).await?;
-        assert!(response.data.is_some());
-        assert!(response.correlation_value.is_none());
+        // Data is required for a single-part Hash (KMIP 2.1 §6.1.24, Table 235)
+        let err = kms
+            .hash(
+                sha256_request(None, None, None, None),
+                &UserId::from("test"),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
+        ));
 
         // Test invalid request (missing algorithm)
         let request = Hash {
@@ -191,6 +282,30 @@ mod tests {
         };
         kms.hash(request, &UserId::from("test")).await.unwrap_err();
 
+        Ok(())
+    }
+
+    /// SHA-224 is a KMIP 2.1 Hashing Algorithm: FIPS 180-4 known answer for "abc".
+    #[tokio::test]
+    async fn test_server_hash_sha224_known_answer() -> KResult<()> {
+        let kms = Arc::new(
+            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
+        );
+        let request = Hash {
+            cryptographic_parameters: CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA224),
+                ..Default::default()
+            },
+            data: Some(b"abc".to_vec()),
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        };
+        let response = kms.hash(request, &UserId::from("test")).await?;
+        assert_eq!(
+            response.data,
+            Some(hex::decode("23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7").unwrap())
+        );
         Ok(())
     }
 }

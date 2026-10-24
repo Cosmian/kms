@@ -59,7 +59,13 @@ static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_
 
 use crate::{
     config::{AuditBackendParams, OpenTelemetryConfig, ServerParams},
-    core::{OtelMetrics, audit::AuditStore},
+    core::{
+        OtelMetrics,
+        audit::AuditStore,
+        operations::{
+            constraints::ConstraintStore, key_ops::multi_part::MultiPartStore, login::TicketStore,
+        },
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -129,6 +135,15 @@ pub struct KMS {
 
     /// Abuse controls (lockout, replay cache, concurrency cap) of the EST / SCEP endpoints.
     pub(crate) enrollment_guard: EnrollmentGuard,
+
+    /// State of in-progress multi-part (streaming) cryptographic operations.
+    pub(crate) multi_part: MultiPartStore,
+
+    /// Tickets issued by the KMIP Login operation (in memory only).
+    pub(crate) tickets: TicketStore,
+
+    /// Constraints set by the KMIP Set Constraints operation (in memory only).
+    pub(crate) constraints: ConstraintStore,
 }
 
 impl KMS {
@@ -327,6 +342,9 @@ impl KMS {
             audit_store: Self::create_audit_store(&server_params).await?,
             rng,
             enrollment_guard: EnrollmentGuard::default(),
+            multi_part: MultiPartStore::default(),
+            tickets: TicketStore::default(),
+            constraints: ConstraintStore::default(),
         })
     }
 

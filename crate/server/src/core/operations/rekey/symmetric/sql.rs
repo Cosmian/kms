@@ -17,7 +17,9 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 
-use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid};
+use super::super::common::{
+    RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid, rekey_state_error,
+};
 use crate::{
     core::{KMS, operations::key_ops::KeySelectionSpec, uid_utils::from_request},
     middlewares::UserId,
@@ -30,6 +32,8 @@ pub(in crate::core::operations::rekey) struct SqlSymmetricRekeyer {
     /// The `Offset` from the `ReKey` request — an interval added to the new key's
     /// `Initial Date` to compute its `Activation Date` (KMIP 2.1 §6.1.46 Table 305).
     pub offset: Option<i64>,
+    /// Desired attributes of the replacement key (KMIP 2.1 Table 305).
+    pub attributes: Option<Attributes>,
 }
 
 impl KeySelectionSpec for SqlSymmetricRekeyer {
@@ -82,7 +86,8 @@ impl RekeyOperation for SqlSymmetricRekeyer {
                     .validate_no_crypto_param_change([request.attributes.as_ref()], "ReKey")?;
                 Ok(())
             })
-            .await?;
+            .await
+            .map_err(rekey_state_error)?;
 
         // Reject Re-Key on a retired (non-latest) member of a named keyset.
         kms.enforce_keyset_latest(owm.id(), owm.attributes(), user, "ReKey")
@@ -95,6 +100,7 @@ impl RekeyOperation for SqlSymmetricRekeyer {
     fn generate_replacement(
         &self,
         kms: &KMS,
+        _user: &UserId,
         candidates: &[RotationCandidate; 1],
     ) -> impl Future<Output = KResult<[ReplacementObject; 1]>> {
         // Key generation is synchronous CPU work: no suspension point is needed.
@@ -117,6 +123,7 @@ impl RekeyOperation for SqlSymmetricRekeyer {
 
         replacement.finalize(
             &new_attrs,
+            self.attributes.as_ref(),
             ObjectType::SymmetricKey,
             &candidate.uid,
             None,

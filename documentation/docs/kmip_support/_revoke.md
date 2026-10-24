@@ -15,14 +15,19 @@ the current date and time.
 
 ## Implementation
 
-The state of the object is kept as specified. The revocation reason is also persisted
-in the object's attributes (both internal and external), as required by RFC 5280 §5.3.1
-to populate the `CRLReason` extension in generated CRLs.
+Permission is checked before the object state. If nothing is revoked, the server returns `Object_Not_Found`.
 
-Once an Object is revoked, it can only be retrieved using the `Export` operation. The `Get` operation will return an
-error.
+- A compromise reason moves `Pre-Active`, `Active` or `Deactivated` objects to `Compromised`, and `Destroyed` objects
+  to `Destroyed Compromised`. It sets the Compromise Date and the Compromise Occurrence Date (request value, default
+  Initial Date) and leaves the Deactivation Date alone.
+- Any other reason moves only `Active` objects to `Deactivated`
+  and sets the Deactivation Date.
+- Every other case returns `Wrong_Key_Lifecycle_State`.
+- A Compromise Occurrence Date with a non-compromise reason returns `Invalid_Field`.
+- Certificate Requests return `Invalid_Object_Type`.
 
-A `Revoked` object can be destroyed using the `Destroy` operation.
+The revocation reason is also persisted in the object's attributes (both internal and external), as required by
+RFC 5280 §5.3.1 to populate the `CRLReason` extension in generated CRLs.
 
 ## Example - Symmetric key
 
@@ -31,7 +36,7 @@ Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was comprom
 Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
-  ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
+  ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db --reason-code key-compromise "key was compromised"
 ```
 
 === "Request"
@@ -48,8 +53,19 @@ Corresponding [KMS CLI](../kms_clients/index.md) command:
         },
         {
           "tag": "RevocationReason",
-          "type": "TextString",
-          "value": "key was compromised"
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "RevocationReasonCode",
+              "type": "Enumeration",
+              "value": "KeyCompromise"
+            },
+            {
+              "tag": "RevocationMessage",
+              "type": "TextString",
+              "value": "key was compromised"
+            }
+          ]
         }
       ]
     }

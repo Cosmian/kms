@@ -313,6 +313,7 @@ pub(super) async fn test_hsm_modify_attribute_sensitive_key() -> KResult<()> {
         kms.clone(),
         &admin,
         vec![Operation::ModifyAttribute(ModifyAttribute {
+            current_attribute: None,
             unique_identifier: Some(UniqueIdentifier::TextString(kek_uid.clone())),
             new_attribute: Attribute::Name(Name {
                 name_value: new_name.to_owned(),

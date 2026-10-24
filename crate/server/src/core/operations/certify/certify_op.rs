@@ -26,8 +26,6 @@ use crate::{
             key_ops::ObjectLifecycleExt,
         },
     },
-    error::KmsError,
-    kms_bail,
     middlewares::UserId,
     result::KResult,
 };
@@ -83,9 +81,7 @@ pub(crate) async fn certify_for_owner(
             .as_ref()
             .map_or(0, Vec::len)
     );
-    if request.protection_storage_masks.is_some() {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
     // To generate the certificate, we really want to compose the following functions
     // generate_x509(get_issuer(get_subject)))
@@ -96,13 +92,22 @@ pub(crate) async fn certify_for_owner(
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
-    let (certificate, tags, attributes) = build_and_sign_certificate(
+    let (certificate, tags, mut attributes) = build_and_sign_certificate(
         kms,
         &issuer,
         &subject,
         request,
         kms.params.kms_public_url.as_deref(),
     )?;
+    // KMIP 2.1 §4.57 transition 1: a new object starts Pre-Active unless the request
+    // carries an Activation Date that has already occurred.
+    let activation_date = attributes.activation_date;
+    let state = if activation_date.is_some_and(|d| d <= time::OffsetDateTime::now_utc()) {
+        State::Active
+    } else {
+        State::PreActive
+    };
+    attributes.state = Some(state);
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
@@ -115,17 +120,14 @@ pub(crate) async fn certify_for_owner(
                         certificate,
                         attributes,
                         Some(tags),
-                        State::Active,
+                        state,
                     )),
                 ],
                 unique_identifier,
             )
         }
         Subject::PublicKeyAndSubjectName(unique_identifier, from_public_key, _) => {
-            trace!(
-                "Certify PublicKeyAndSubjectName:{unique_identifier}: public key: \
-                 {from_public_key}"
-            );
+            trace!("Certify public-key subject {unique_identifier}");
             // update the public key attributes with a link to the certificate
             let mut public_key_attributes = from_public_key.attributes().to_owned();
             public_key_attributes.set_link(
@@ -150,7 +152,7 @@ pub(crate) async fn certify_for_owner(
                         certificate,
                         certificate_attributes,
                         Some(tags),
-                        State::Active,
+                        state,
                     )),
                     // update the public key
                     AtomicOperation::UpdateObject((
@@ -164,26 +166,22 @@ pub(crate) async fn certify_for_owner(
             )
         }
         Subject::KeypairAndSubjectName(unique_identifier, mut keypair_data, _) => {
-            trace!(
-                "Certify KeypairAndSubjectName:{unique_identifier} : keypair data: {keypair_data}"
-            );
+            trace!("Certify key-pair subject {unique_identifier}");
             // Initialise lifecycle attributes (state, initial_date, activation_date, digest)
             // on both keys.  Without this call, `initial_date` is `None` in the stored
             // `attributes_json`, which causes `is_due_for_rotation` to return `false`
             // forever — the auto-rotation scheduler silently skips the key.
-            // Pass `Some(now)` so the embedded state matches the `State::Active` value
-            // supplied to `AtomicOperation::Upsert` below.
-            let now = time::OffsetDateTime::now_utc();
+            // The keys follow the request's Activation Date like the certificate.
             keypair_data
                 .private_key_object
-                .setup_with_lifecycle(ObjectType::PrivateKey, Some(now))?;
+                .setup_with_lifecycle(ObjectType::PrivateKey, activation_date)?;
             keypair_data
                 .private_key_object
                 .attributes_mut()?
                 .initialize_never_extractable();
             keypair_data
                 .public_key_object
-                .setup_with_lifecycle(ObjectType::PublicKey, Some(now))?;
+                .setup_with_lifecycle(ObjectType::PublicKey, activation_date)?;
             // update the private key attributes with the public key identifier
             keypair_data.private_key_object.attributes_mut()?.set_link(
                 LinkType::PublicKeyLink,
@@ -232,7 +230,7 @@ pub(crate) async fn certify_for_owner(
                         keypair_data.private_key_object,
                         private_key_attrs,
                         Some(keypair_data.private_key_tags),
-                        State::Active,
+                        state,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
@@ -240,7 +238,7 @@ pub(crate) async fn certify_for_owner(
                         keypair_data.public_key_object,
                         public_key_attrs,
                         Some(keypair_data.public_key_tags),
-                        State::Active,
+                        state,
                     )),
                     // upsert the certificate
                     AtomicOperation::Upsert((
@@ -248,7 +246,7 @@ pub(crate) async fn certify_for_owner(
                         certificate,
                         certificate_attributes,
                         Some(tags),
-                        State::Active,
+                        state,
                     )),
                 ],
                 unique_identifier,
@@ -256,6 +254,7 @@ pub(crate) async fn certify_for_owner(
         }
     };
 
+    kms.constraints.check_new_objects(&operations)?;
     // perform DB operations
     kms.database.atomic(owner, &operations).await?;
 
