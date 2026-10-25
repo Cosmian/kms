@@ -2,6 +2,7 @@ import { Button, Card, Form, Select, Space } from "antd";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
+import { unpackKemEncapsulation } from "../../utils/kem";
 import { encrypt_ec_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
@@ -30,19 +31,14 @@ const PqcEncapsulateForm: React.FC = () => {
                 const response = await parse_encrypt_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;
 
-                // shared_secret is in Data, ciphertext is in IVCounterNonce
-                const sharedSecret = respObj.Data as Uint8Array | number[] | undefined;
-                const ciphertext = respObj.IVCounterNonce as Uint8Array | number[] | undefined;
-
-                if (ciphertext) {
-                    const ctBytes = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext);
-                    downloadFile(ctBytes, "encapsulation.bin", "application/octet-stream");
+                // Data packs (shared secret, encapsulation); IVCounterNonce is empty for every KEM
+                const data = respObj.Data as Uint8Array | number[] | undefined;
+                if (!data) {
+                    throw new Error("Invalid KEM response: no data");
                 }
-
-                if (sharedSecret) {
-                    const ssBytes = sharedSecret instanceof Uint8Array ? sharedSecret : new Uint8Array(sharedSecret);
-                    downloadFile(ssBytes, "shared_secret.key", "application/octet-stream");
-                }
+                const { sharedSecret, encapsulation } = unpackKemEncapsulation(data);
+                downloadFile(encapsulation, "encapsulation.bin", "application/octet-stream");
+                downloadFile(sharedSecret, "shared_secret.key", "application/octet-stream");
 
                 return t("pqcEncapsulate.success");
             }
