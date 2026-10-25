@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**655 vectors** across 16 categories (including KAT):
+**715 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -134,9 +134,9 @@ replays the steps sequentially.
 | KMIP Operations | `attribute_management` | Tests GetAttributes, SetAttribute, AddAttribute, DeleteAttribute, ModifyAttribute, GetAttributeList | 9 |
 | KMIP Operations | `batch_create_get` | Sends a single JSON RequestMessage with BatchCount=2: first BatchItem creates an AES-256 key, second BatchItem gets it back. Both items must succeed. Exercises the JSON batch endpoint. | 2 |
 | KMIP Operations | `batch_hash_query` | Sends a single binary KMIP RequestMessage with BatchCount=3: Hash(SHA-256), Hash(SHA-384), and Query in one binary request. All three BatchItems must succeed. Exercises the binary batch endpoint with BatchOrderOption=true and stateless independent operations. | 1 |
-| KMIP Operations | `certify_chain` | Creates a 3-level X.509 chain: | 22 |
+| KMIP Operations | `certify_chain` | Creates a 3-level X.509 chain: | 26 |
 | KMIP Operations | `certify_revoke_validate` | Creates a self-signed certificate, validates it (valid), revokes it, then re-validates (invalid) | 10 |
-| KMIP Operations | `certify_validate` | Creates an EC key pair, self-signs a certificate, validates it, then cleans up | 8 |
+| KMIP Operations | `certify_validate` | Creates an EC key pair, self-signs a certificate, validates it, then cleans up | 9 |
 | KMIP Operations | `check` | Creates a key, checks its usage mask, activates it, checks again | 4 |
 | KMIP Operations | `create_split_key_sss` | Creates an AES-256 symmetric key, splits it into 2 shares using XOR-based split knowledge | 14 |
 | KMIP Operations | `create_split_key_xor` | Creates an AES-256 symmetric key, splits it into 2 shares using XOR splitting (both shares | 12 |
@@ -175,7 +175,7 @@ replays the steps sequentially.
 | KMIP Operations | `register_export` | Registers a pre-existing AES key, retrieves it with Get, exports it, then destroys | 5 |
 | KMIP Operations | `rekey` | Creates an AES key, re-keys it, and verifies the new key works for encryption | 5 |
 | KMIP Operations | `rekey_compromised_succeeds` | Verifies that ReKey on a Compromised key succeeds. Per the spec, Active, Deactivated, and Compromised keys can be rotated. Only PreActive and Destroyed states are rejected. | 8 |
-| KMIP Operations | `rekey_deactivated_fails` | Verifies that ReKey on a Destroyed symmetric key fails with Wrong_Key_Lifecycle_State. | 4 |
+| KMIP Operations | `rekey_deactivated_fails` | Verifies that ReKey on a Destroyed symmetric key fails: a Destroyed key behaves as not found. | 4 |
 | KMIP Operations | `rekey_deactivated_succeeds` | Verifies that ReKey on a Deactivated key succeeds. Per KMIP §6.1.46, Wrong_Key_Lifecycle_State is NOT listed in the Re-Key error table, meaning Deactivated keys are eligible for rotation. | 9 |
 | KMIP Operations | `rekey_double_chain` | Verifies that re-keying twice creates a proper chain: K1→K2→K3. K1.ReplacementObjectLink=K2, K2.ReplacedObjectLink=K1, K2.ReplacementObjectLink=K3, K3.ReplacedObjectLink=K2. | 12 |
 | KMIP Operations | `rekey_keypair_change_algo_fails` | Verifies that ReKeyKeyPair rejects a request that tries to change the cryptographic algorithm (from EC to RSA). | 4 |
@@ -219,8 +219,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_with_links` | Verifies that ReKey properly sets ReplacementObjectLink on the old key and ReplacedObjectLink on the new key, forming a bidirectional chain. | 8 |
 | KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
 | KMIP Operations | `rekey_with_offset_state` | Verifies that ReKey with Offset=0 produces an Active key, and ReKey with Offset=86400 (24h future) produces a PreActive key. | 13 |
-| KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Creates a wrapping key and a wrapped dependent key, verifies wrapping, revokes the dependent, then verifies that ReKey on the deactivated wrapped key succeeds per KMIP §6.1.46. | 12 |
-| KMIP Operations | `rekey_wrapped_fails` | Verifies that ReKey on a wrapped key fails with an appropriate error. The server cannot safely rekey a wrapped object. | 6 |
+| KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Creates a wrapping key and a wrapped dependent key, verifies wrapping, revokes the dependent, then verifies that ReKey on the deactivated wrapped key succeeds per KMIP §6.1.46. | 10 |
 | KMIP Operations | `rekey_wrapped_key` | Creates a wrapping key and a wrapped dependent key, then re-keys the wrapped key. Verifies the new key has fresh material, is still wrapped, and works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key` | Creates a wrapping key, creates a dependent key wrapped by it, then re-keys the wrapping key and verifies the dependent key was automatically re-wrapped and still works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key_double_chain` | Creates a wrapping key K0 with two wrapped dependants. Rotates K0 → K1, then K1 → K2. Verifies the full link chain (K0 → K1 → K2) and that both dependants are re-wrapped each time and still work for encryption. | 24 |
@@ -372,21 +371,23 @@ replays the steps sequentially.
 | OPA | `opa/mode_exclusive_user_wrong_domain` | OPA exclusive mode — multi-tenant isolation. | 3 |
 | OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
 | **Negative** | | | |
-| Negative / Activate | `negative/activate/item_not_found` | Tests that Activate returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Activate | `negative/activate/wrong_key_lifecycle_state` | Tests that Activate returns Wrong_Key_Lifecycle_State error as per KMIP spec | 3 |
-| Negative / AddAttribute | `negative/add_attribute/item_not_found` | Tests that Add Attribute returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / AddAttribute | `negative/add_attribute/read_only_attribute` | Tests that Add Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
-| Negative / Certify | `negative/certify/invalid_object_type` | Tests that Certify returns Invalid_Object_Type error as per KMIP spec | 2 |
-| Negative / Certify | `negative/certify/item_not_found` | Tests that Certify returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Check | `negative/check/item_not_found` | Tests that Check returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Create | `negative/create/invalid_attribute` | Tests that Create returns Invalid_Attribute error as per KMIP spec | 1 |
-| Negative / Create | `negative/create/invalid_attribute_value` | Tests that Create returns Invalid_Attribute_Value error as per KMIP spec | 1 |
-| Negative / Create | `negative/create/invalid_field` | Tests that Create returns Invalid_Field error as per KMIP spec | 1 |
-| Negative / Create | `negative/create/invalid_message` | Tests that Create returns Invalid_Message error as per KMIP spec | 1 |
-| Negative / Create | `negative/create/read_only_attribute` | Tests that Create returns Read_Only_Attribute error as per KMIP spec | 2 |
-| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute` | Tests that Create Key Pair returns Invalid_Attribute error as per KMIP spec | 1 |
-| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute_value` | Tests that Create Key Pair returns Invalid_Attribute_Value error as per KMIP spec | 1 |
-| Negative / CreateKeyPair | `negative/create_key_pair/invalid_message` | Tests that Create Key Pair returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Activate | `negative/activate/item_not_found` | Tests that Activate expects Object_Not_Found | 1 |
+| Negative / Activate | `negative/activate/wrong_key_lifecycle_state` | Tests that Activate expects Wrong_Key_Lifecycle_State | 3 |
+| Negative / AddAttribute | `negative/add_attribute/item_not_found` | Tests that Add Attribute expects Object_Not_Found | 1 |
+| Negative / AddAttribute | `negative/add_attribute/read_only_attribute` | Tests that Add Attribute expects Read_Only_Attribute | 2 |
+| Negative / Certify | `negative/certify/invalid_object_type` | Tests that Certify expects Invalid_Object_Type | 2 |
+| Negative / Certify | `negative/certify/item_not_found` | Tests that Certify expects Item_Not_Found | 1 |
+| Negative / Check | `negative/check/item_not_found` | Tests that Check expects Object_Not_Found | 1 |
+| Negative / Create | `negative/create/feature_not_supported` | Tests that Create rejects an unsupported algorithm (Blowfish) with Feature_Not_Supported, listed in the KMIP 2.1 Create error table | 1 |
+| Negative / Create | `negative/create/invalid_attribute` | Tests that Create rejects an attribute that does not apply to the requested object type (Cryptographic Domain Parameters on a Symmetric Key, KMIP 2.1 §4.14) with Invalid_Attribute | 1 |
+| Negative / Create | `negative/create/invalid_attribute_value` | Tests that Create expects Invalid_Attribute_Value | 1 |
+| Negative / Create | `negative/create/invalid_message` | Tests that Create expects Invalid_Message | 1 |
+| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute` | Tests that Create Key Pair rejects different Cryptographic Algorithms for the private and public key (KMIP 2.1 Table 191) with Invalid_Attribute | 1 |
+| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute_value` | Tests that Create Key Pair rejects an RSA Cryptographic Length of 0 with Invalid_Attribute_Value (KMIP 2.1 Table 192) | 1 |
+| Negative / CreateKeyPair | `negative/create_key_pair/invalid_field` | Tests that Create Key Pair rejects a request without a Cryptographic Algorithm with Invalid_Field (KMIP 2.1 Table 192) | 1 |
+| Negative / Protocol | `negative/create_split_key_item_not_found` | A CreateSplitKey request for a Unique Identifier that does not exist fails with Item_Not_Found (KMIP 2.1 Table 195) | 1 |
+| Negative / Protocol | `negative/create_split_key_no_unique_identifier` | A CreateSplitKey request without a Unique Identifier asks the server to generate the key to split, which is not supported: Feature_Not_Supported (KMIP 2.1 Table 195) | 1 |
+| Negative / Protocol | `negative/create_split_key_object_type_mismatch` | A CreateSplitKey request whose Object Type is neither Split Key nor the type of the key to split fails with Invalid_Object_Type (KMIP 2.1 Table 195) | 2 |
 | Negative / Protocol | `negative/create_split_key_parts_less_than_threshold` | A CreateSplitKey request where split_key_parts < split_key_threshold must be rejected. | 3 |
 | Negative / Protocol | `negative/create_split_key_threshold_too_low` | A CreateSplitKey request with split_key_threshold = 1 must be rejected by the server. | 3 |
 | Negative / CryptoParams | `negative/crypto_params/decrypt_wrong_mode` | Tests that decryption fails when using CBC mode to decrypt data that was encrypted with GCM | 3 |
@@ -404,34 +405,41 @@ replays the steps sequentially.
 | Negative / Decrypt | `negative/decrypt/decrypt_missing_iv_cbc` | When IVCounterNonce is absent from a CBC Decrypt request the KMS must return | 2 |
 | Negative / Decrypt | `negative/decrypt/decrypt_truncated_ciphertext` | Tests that AES-GCM decryption fails when ciphertext is too short (1 byte) | 2 |
 | Negative / Decrypt | `negative/decrypt/decrypt_wrong_key` | Tests that AES-GCM decryption fails when using a different key than the one used for encryption | 4 |
-| Negative / Decrypt | `negative/decrypt/invalid_message` | Tests that Decrypt returns Invalid_Message error as per KMIP spec | 1 |
-| Negative / Decrypt | `negative/decrypt/wrong_key_lifecycle_state` | Tests that Decrypt returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
-| Negative / DeleteAttribute | `negative/delete_attribute/item_not_found` | Tests that Delete Attribute returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Decrypt | `negative/decrypt/invalid_message` | Tests that Decrypt expects Invalid_Message | 1 |
+| Negative / Decrypt | `negative/decrypt/wrong_key_lifecycle_state` | Tests that Decrypt expects Wrong_Key_Lifecycle_State | 2 |
+| Negative / DeleteAttribute | `negative/delete_attribute/item_not_found` | Tests that Delete Attribute expects Object_Not_Found | 1 |
 | Negative / DeriveKey | `negative/derive_key/derive_key_negative_iterations` | Tests that PBKDF2 key derivation fails when IterationCount is negative | 2 |
+| Negative / DeriveKey | `negative/derive_key/derive_key_no_usage_mask` | Tests that DeriveKey refuses a base key whose Cryptographic Usage Mask lacks Derive Key with Incompatible_Cryptographic_Usage_Mask (KMIP 2.1 Table 207) | 2 |
 | Negative / DeriveKey | `negative/derive_key/derive_key_pbkdf2_no_salt` | Tests that PBKDF2 key derivation fails when Salt is not provided | 2 |
-| Negative / Destroy | `negative/destroy/item_not_found` | Tests that Destroy returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Destroy | `negative/destroy/wrong_key_lifecycle_state` | Tests that Destroy returns Wrong_Key_Lifecycle_State error as per KMIP spec | 3 |
+| Negative / DeriveKey | `negative/derive_key/derive_key_preactive_base` | Tests that DeriveKey refuses a Pre-Active base key with Wrong_Key_Lifecycle_State (KMIP 2.1 Table 207) | 2 |
+| Negative / DeriveKey | `negative/derive_key/derive_key_unsupported_method` | Tests that DeriveKey rejects an unsupported Derivation Method with Feature_Not_Supported (KMIP 2.1 Table 207) | 2 |
+| Negative / Destroy | `negative/destroy/item_not_found` | Tests that Destroy expects Object_Not_Found | 1 |
+| Negative / Destroy | `negative/destroy/wrong_key_lifecycle_state` | Tests that Destroy expects Wrong_Key_Lifecycle_State | 3 |
 | Negative / Protocol | `negative/destroy_then_encrypt` | Tests that encrypt fails when the key has been destroyed | 5 |
 | Negative / Protocol | `negative/duplicate_tags_encrypt` | Creates two AES-256 keys with the same tag ["dup-test-enc"], then attempts | 7 |
 | Negative / Protocol | `negative/empty_data_encrypt` | Tests that GCM encryption with empty data succeeds (GCM allows empty plaintext) | 2 |
 | Negative / Protocol | `negative/empty_request` | Tests that the server handles an empty JSON body gracefully | 1 |
-| Negative / Encrypt | `negative/encrypt/bad_cryptographic_parameters` | Tests that Encrypt returns Bad_Cryptographic_Parameters error as per KMIP spec | 3 |
-| Negative / Encrypt | `negative/encrypt/incompatible_cryptographic_usage_mask` | Tests that Encrypt returns Incompatible_Cryptographic_Usage_Mask error as per KMIP spec | 3 |
-| Negative / Encrypt | `negative/encrypt/invalid_field` | Tests that Encrypt returns Invalid_Field error as per KMIP spec | 3 |
-| Negative / Encrypt | `negative/encrypt/invalid_message` | Tests that Encrypt returns Invalid_Message error as per KMIP spec | 1 |
-| Negative / Encrypt | `negative/encrypt/invalid_object_type` | Tests that Encrypt returns Invalid_Object_Type error as per KMIP spec | 3 |
-| Negative / Encrypt | `negative/encrypt/unsupported_cryptographic_parameters` | Tests that Encrypt returns Unsupported_Cryptographic_Parameters error as per KMIP spec | 3 |
-| Negative / Encrypt | `negative/encrypt/wrong_key_lifecycle_state` | Tests that Encrypt returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
-| Negative / Export | `negative/export/item_not_found` | Tests that Export returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Export | `negative/export/key_format_type_not_supported` | Tests that Export returns Key_Format_Type_Not_Supported error as per KMIP spec | 2 |
-| Negative / Get | `negative/get/item_not_found` | Tests that Get returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Get | `negative/get/key_format_type_not_supported` | Tests that Get returns Key_Format_Type_Not_Supported error as per KMIP spec | 2 |
-| Negative / GetAttributeList | `negative/get_attribute_list/item_not_found` | Tests that Get Attribute List returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / GetAttributes | `negative/get_attributes/item_not_found` | Tests that Get Attributes returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Hash | `negative/hash/hash_init_and_final_both_true` | Tests that Hash operation fails when both InitIndicator and FinalIndicator are set to true | 1 |
+| Negative / Encrypt | `negative/encrypt/bad_cryptographic_parameters` | Tests that Encrypt expects Bad_Cryptographic_Parameters | 3 |
+| Negative / Encrypt | `negative/encrypt/incompatible_cryptographic_usage_mask` | Tests that Encrypt expects Incompatible_Cryptographic_Usage_Mask | 3 |
+| Negative / Encrypt | `negative/encrypt/invalid_field` | Tests that Encrypt rejects an unsupported field value (OFB mode) with Unsupported_Cryptographic_Parameters, listed in the KMIP 2.1 Encrypt error table | 3 |
+| Negative / Encrypt | `negative/encrypt/invalid_message` | Tests that Encrypt expects Invalid_Message | 1 |
+| Negative / Encrypt | `negative/encrypt/invalid_object_type` | Tests that Encrypt expects Invalid_Object_Type | 3 |
+| Negative / Encrypt | `negative/encrypt/unsupported_cryptographic_parameters` | Tests that Encrypt expects Unsupported_Cryptographic_Parameters | 3 |
+| Negative / Encrypt | `negative/encrypt/wrong_key_lifecycle_state` | Tests that Encrypt expects Wrong_Key_Lifecycle_State | 2 |
+| Negative / Export | `negative/export/item_not_found` | Tests that Export expects Object_Not_Found | 1 |
+| Negative / Export | `negative/export/key_format_type_not_supported` | Tests that Export expects Key_Format_Type_Not_Supported | 2 |
+| Negative / Get | `negative/get/item_not_found` | Tests that Get expects Object_Not_Found | 1 |
+| Negative / Get | `negative/get/key_format_type_not_supported` | Tests that Get expects Key_Format_Type_Not_Supported | 2 |
+| Negative / GetAttributeList | `negative/get_attribute_list/item_not_found` | Tests that Get Attribute List expects Object_Not_Found | 1 |
+| Negative / GetAttributes | `negative/get_attributes/item_not_found` | Tests that Get Attributes expects Object_Not_Found | 1 |
 | Negative / Hash | `negative/hash/hash_missing_algorithm` | Tests that Hash operation fails when CryptographicParameters has no HashingAlgorithm | 1 |
-| Negative / Import | `negative/import/invalid_message` | Tests that Import returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Hash | `negative/hash/hash_unknown_correlation_value` | KMIP 2.1 §6.1.24.1: a Correlation Value the server never issued returns Invalid_Correlation_Value | 1 |
+| Negative / Import | `negative/import/invalid_field` | Tests that Import rejects a request whose Object Type differs from the type of the supplied object with Invalid_Field (KMIP 2.1 Table 240) | 1 |
+| Negative / Import | `negative/import/invalid_message` | Tests that Import expects Invalid_Message | 1 |
+| Negative / Import | `negative/import/object_already_exists` | Tests that Import of an existing Unique Identifier without Replace Existing fails with Object_Already_Exists (KMIP 2.1 Table 240) | 2 |
 | Negative / Protocol | `negative/invalid_iv_length` | Tests that AES-CBC encryption fails when an IV with incorrect length (8 bytes instead of 16) is provided | 2 |
+| Negative / Protocol | `negative/join_split_key_not_a_split_key` | A JoinSplitKey request referencing an object that is not a Split Key fails with Invalid_Object_Type (KMIP 2.1 Table 246) | 2 |
+| Negative / Protocol | `negative/join_split_key_too_few_shares` | A JoinSplitKey request with fewer shares than the Split Key Parts of an XOR (n-of-n) split is rejected with Invalid_Field | 3 |
 | Negative / Lifecycle | `negative/lifecycle/create_hsm_key_without_hsm` | Attempts to create an AES-256 key with an HSM-prefixed UID (hsm::0::no_hsm_key) | 1 |
 | Negative / Lifecycle | `negative/lifecycle/create_invalid_algorithm` | Tests that key creation fails when specifying an unsupported cryptographic algorithm | 1 |
 | Negative / Lifecycle | `negative/lifecycle/create_zero_length_key` | Tests that key creation fails when CryptographicLength is set to zero | 1 |
@@ -439,52 +447,100 @@ replays the steps sequentially.
 | Negative / Lifecycle | `negative/lifecycle/double_activate` | Tests that activating an already-active key fails | 3 |
 | Negative / Lifecycle | `negative/lifecycle/encrypt_pre_active_key` | Tests that encryption fails when using a key that has not been activated (no ActivationDate) | 2 |
 | Negative / Lifecycle | `negative/lifecycle/reactivate_deactivated` | Tests that activating a deactivated (revoked) key fails | 4 |
-| Negative / MAC | `negative/mac/item_not_found` | Tests that MAC returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / MAC | `negative/mac/item_not_found` | Tests that MAC expects Item_Not_Found | 1 |
 | Negative / MAC | `negative/mac/mac_verify_wrong_data` | Tests that MAC verification returns Invalid when data does not match the MAC | 3 |
 | Negative / MAC | `negative/mac/mac_with_non_hmac_key` | Tests that MAC operation fails when using an AES key without proper HMAC algorithm parameters | 2 |
-| Negative / MAC | `negative/mac/wrong_key_lifecycle_state` | Tests that MAC returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
-| Negative / MAC | `negative/mac_verify/item_not_found` | Tests that MAC Verify returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / MAC | `negative/mac_verify/wrong_key_lifecycle_state` | Tests that MAC Verify returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / MAC | `negative/mac/wrong_key_lifecycle_state` | Tests that MAC expects Wrong_Key_Lifecycle_State | 2 |
+| Negative / MAC | `negative/mac_verify/item_not_found` | Tests that MAC Verify expects Item_Not_Found | 1 |
+| Negative / MAC | `negative/mac_verify/wrong_key_lifecycle_state` | Tests that MAC Verify expects Wrong_Key_Lifecycle_State | 2 |
 | Negative / Protocol | `negative/missing_data_decrypt` | Tests that decrypt fails when no Data field is provided | 2 |
 | Negative / Protocol | `negative/missing_data_encrypt` | Tests that encrypt fails when no Data field is provided | 2 |
 | Negative / Protocol | `negative/missing_uid_encrypt` | Tests that encrypt fails when no UniqueIdentifier is provided | 1 |
-| Negative / ModifyAttribute | `negative/modify_attribute/item_not_found` | Tests that Modify Attribute returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / ModifyAttribute | `negative/modify_attribute/read_only_attribute` | Tests that Modify Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / ModifyAttribute | `negative/modify_attribute/item_not_found` | Tests that Modify Attribute expects Object_Not_Found | 1 |
+| Negative / ModifyAttribute | `negative/modify_attribute/read_only_attribute` | Tests that Modify Attribute expects Read_Only_Attribute | 2 |
 | Negative / Protocol | `negative/nonexistent_key_decrypt` | Tests that decrypt fails when referencing a key ID that does not exist | 1 |
 | Negative / Protocol | `negative/nonexistent_key_encrypt` | Tests that encrypt fails when referencing a key ID that does not exist | 1 |
 | Negative / Protocol | `negative/recertify_missing_uid` | Tests that ReCertify fails — ReCertify is a KMIP 1.4 operation not supported in KMIP 2.1 | 1 |
 | Negative / Protocol | `negative/recertify_nonexistent` | Tests that ReCertify fails when the certificate UID does not exist in the database | 1 |
 | Negative / Protocol | `negative/recertify_not_a_certificate` | Tests that ReCertify fails when given a symmetric key instead of a certificate | 4 |
-| Negative / Register | `negative/register/invalid_attribute` | Tests that Register returns Invalid_Attribute error as per KMIP spec | 1 |
-| Negative / Register | `negative/register/invalid_attribute_value` | Tests that Register returns Invalid_Attribute_Value error as per KMIP spec | 1 |
-| Negative / Register | `negative/register/invalid_message` | Tests that Register returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Register | `negative/register/invalid_attribute` | Tests that Register rejects an attribute that does not apply to the object type (Cryptographic Domain Parameters on a Symmetric Key, KMIP 2.1 §4.14) with Invalid_Attribute | 1 |
+| Negative / Register | `negative/register/invalid_attribute_value` | Tests that Register rejects a Cryptographic Length of 0 with Invalid_Attribute_Value (KMIP 2.1 Table 294) | 1 |
+| Negative / Register | `negative/register/invalid_message` | Tests that Register expects Invalid_Message | 1 |
 | Negative / Protocol | `negative/rekey_keypair_non_latest` | Tests that ReKeyKeyPair on a retired (non-latest) keyset member is rejected. | 7 |
 | Negative / Protocol | `negative/rekey_keypair_preactive_fails` | Creates an EC P-256 key pair without ActivationDate (enters PreActive state), then verifies that ReKeyKeyPair on a PreActive private key is rejected. Only Active keys can be rotated. | 5 |
 | Negative / Protocol | `negative/rekey_offset_preactive_cannot_encrypt` | When ReKey uses Offset=86400, the new key enters PreActive state. A PreActive key must not be usable for Encrypt operations. | 6 |
 | Negative / Protocol | `negative/rekey_preactive_fails` | Creates a symmetric key without ActivationDate (enters PreActive state), then verifies that ReKey on a PreActive key is rejected. Only Active keys can be rotated. | 4 |
-| Negative / Revoke | `negative/revoke/item_not_found` | Tests that Revoke returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Revoke | `negative/revoke/item_not_found` | Tests that Revoke expects Object_Not_Found | 1 |
+| Negative / Robustness | `negative/robustness/bin_bigint_length_7` | BigInteger whose length is not a multiple of 8 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/bin_boolean_value_2` | Boolean value other than 0 or 1 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/bin_depth_65` | Binary TTLV nested to depth 65 exceeds the depth limit of 64 | 2 |
+| Negative / Robustness | `negative/robustness/bin_integer_length_5` | Integer whose length is not 4 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/bin_item_count_over_limit` | Binary TTLV structure with 100001 items exceeds the item count limit | 2 |
+| Negative / Robustness | `negative/robustness/bin_length_overflow` | Binary TTLV declaring a ~4 GiB structure but carrying 32 bytes is rejected | 2 |
+| Negative / Robustness | `negative/robustness/bin_textstring_invalid_utf8` | TextString holding invalid UTF-8 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/bin_truncated` | Binary TTLV declaring 256 content bytes but carrying 32 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/bin_unknown_item_type` | Unknown TTLV item type 0x0B is rejected | 2 |
+| Negative / Robustness | `negative/robustness/create_aes_length_over_max` | Create AES with a CryptographicLength above 8192 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/create_rsa_modulus_over_max` | CreateKeyPair RSA above the 16384-bit maximum is rejected promptly | 2 |
+| Negative / Robustness | `negative/robustness/derive_key_pbkdf2_iterations_over_max` | PBKDF2 IterationCount above the upper bound is rejected | 3 |
+| Negative / Robustness | `negative/robustness/import_garbage_pkcs8_4mib` | A 4 MiB blob of zeros imported as PKCS8 is rejected without hanging | 2 |
+| Negative / Robustness | `negative/robustness/json_bigint_1mib` | A 1 MiB BigInteger modulus is answered promptly (no hang) and the resulting key is unusable | 3 |
+| Negative / Robustness | `negative/robustness/json_body_over_payload_limit` | A body one byte over the 64 MiB payload limit is rejected with HTTP 413 | 2 |
+| Negative / Robustness | `negative/robustness/json_bytestring_not_hex` | ByteString value that is not hexadecimal is rejected | 2 |
+| Negative / Robustness | `negative/robustness/json_datetime_out_of_range` | DateTime far outside the representable range is rejected | 2 |
+| Negative / Robustness | `negative/robustness/json_integer_overflow` | Integer value 2^32 does not fit KMIP's 32-bit Integer | 2 |
+| Negative / Robustness | `negative/robustness/json_invalid_utf8` | JSON body with invalid UTF-8 is rejected | 2 |
+| Negative / Robustness | `negative/robustness/json_nesting_over_serde_limit` | JSON nested 200 levels deep hits the parser recursion limit instead of overflowing the stack | 2 |
+| Negative / Robustness | `negative/robustness/json_truncated` | Truncated JSON body is rejected and the server stays alive | 2 |
+| Negative / Robustness | `negative/robustness/json_ttlv_nesting_55` | TTLV nested 55 levels deep inside a Create request does not crash the typed decoder | 2 |
+| Negative / Robustness | `negative/robustness/json_wrong_content_type` | JSON endpoint rejects a non application/json Content-Type | 2 |
+| Negative / Robustness | `negative/robustness/msg_batch_count_mismatch` | BatchCount 2 with a single batch item is rejected | 2 |
+| Negative / Robustness | `negative/robustness/msg_batch_items_over_limit` | 10001 batch items exceed the 10000 limit | 2 |
+| Negative / Robustness | `negative/robustness/msg_critical_extension` | A critical Message Extension the server does not know is refused | 2 |
+| Negative / Robustness | `negative/robustness/msg_hashed_password_credential` | Hashed Password credentials are refused | 2 |
+| Negative / Robustness | `negative/robustness/msg_max_response_size_negative` | Negative MaximumResponseSize is rejected | 2 |
+| Negative / Robustness | `negative/robustness/msg_response_too_large` | A response larger than MaximumResponseSize is refused | 2 |
+| Negative / Robustness | `negative/robustness/msg_undo_items_over_limit` | 1001 batch items with the Undo option exceed the 1000 limit | 2 |
+| Negative / Robustness | `negative/robustness/multipart_correlation_value_bad_length` | A 15-byte Correlation Value is refused | 3 |
+| Negative / Robustness | `negative/robustness/multipart_sign_over_budget` | A multi-part Sign stream beyond the 16 MiB budget is refused | 4 |
+| Negative / Robustness | `negative/robustness/register_rsa_modulus_oversized` | An RSA public key above the 16384-bit maximum cannot be registered and used | 3 |
+| Negative / Robustness | `negative/robustness/rng_retrieve_bounds` | RNG Retrieve rejects a DataLength above 65536 and a negative one | 3 |
+| Negative / Robustness | `negative/robustness/validate_chain_over_max` | Validate rejects a chain of 33 certificates | 2 |
 | Negative / RSA | `negative/rsa/rsa_decrypt_garbage` | Tests that RSA-OAEP decryption fails when ciphertext is random garbage data | 2 |
 | Negative / RSA | `negative/rsa/rsa_decrypt_with_public_key` | Tests that RSA decryption fails when attempting to use a public key for decryption | 2 |
 | Negative / RSA | `negative/rsa/rsa_encrypt_oversized_data` | Tests that RSA-OAEP encryption fails when plaintext exceeds modulus size limit | 2 |
+| Negative / Security | `negative/security/constraints_enforced` | Server constraints restrict Create and Register for every user until cleared | 8 |
+| Negative / Security | `negative/security/foreign_key_operations_hidden` | A user with no grant cannot read or alter another user's key | 7 |
+| Negative / Security | `negative/security/import_replace_existing_foreign` | Import with ReplaceExisting cannot overwrite another user's object | 3 |
+| Negative / Security | `negative/security/locate_cross_tenant` | Locate by Name does not reveal another user's object | 4 |
+| Negative / Security | `negative/security/multipart_correlation_value_theft` | A user granted Sign cannot continue another user's multi-part Sign stream | 6 |
+| Negative / Security | `negative/security/not_extractable_get_export_wrap` | A key created Extractable=false cannot be Got, Exported or Got wrapped | 6 |
+| Negative / Security | `negative/security/operator_set_constraints_denied` | An Operator cannot change the server constraints | 2 |
+| Negative / Security | `negative/security/sensitive_plaintext_get` | A Sensitive key can be neither Got nor Exported in plaintext, even by its owner | 4 |
+| Negative / Security | `negative/security/tag_handle_cross_tenant` | A tag handle never resolves to, nor reveals, another user's key | 6 |
+| Negative / Security | `negative/security/ticket_bound_to_user` | A Login ticket cannot be used or logged out by another user | 4 |
+| Negative / Security | `negative/security/ticket_forged` | Guessed tickets of 32 and 16 zero bytes are refused | 3 |
+| Negative / Security | `negative/security/ticket_request_count_exhausted` | A ticket limited to one request is refused on the second use | 4 |
+| Negative / Security | `negative/security/wrap_with_unusable_kek` | Wrapping with a KEK that cannot wrap, is not active, or belongs to another user is refused | 8 |
 | Negative / SetAttribute | `negative/set_attribute/hsm_rotate_offset_rejected` | Tests that SetAttribute rotate_offset on an HSM-resident key is rejected | 4 |
-| Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute expects Object_Not_Found | 1 |
+| Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute expects Read_Only_Attribute | 2 |
 | Negative / SetAttribute | `negative/set_attribute/readonly_initial_date` | Checks that InitialDate is read-only and remains unchanged after a rejected SetAttribute request. | 6 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
-| Negative / Sign | `negative/sign/invalid_message` | Tests that Sign returns Invalid_Message error as per KMIP spec | 1 |
-| Negative / Sign | `negative/sign/item_not_found` | Tests that Sign returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / Sign | `negative/sign/invalid_message` | Tests that Sign expects Invalid_Message | 1 |
+| Negative / Sign | `negative/sign/item_not_found` | Tests that Sign expects Item_Not_Found | 1 |
+| Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign expects Wrong_Key_Lifecycle_State | 2 |
 | Negative / Sign | `negative/sign_verify/sign_with_public_key` | Tests that signing fails when attempting to use a public key instead of private key | 2 |
 | Negative / Sign | `negative/sign_verify/verify_corrupted_signature` | Tests that signature verification returns Invalid when the signature is fabricated | 3 |
 | Negative / Sign | `negative/sign_verify/verify_wrong_key` | Tests that signature verification returns Invalid when verifying with a different key pair | 4 |
 | Negative / Protocol | `negative/sign_with_encrypt_key` | Tests that signing fails when the private key only has Decrypt usage mask (no Sign permission) | 2 |
-| Negative / SignatureVerify | `negative/signature_verify/item_not_found` | Tests that Signature Verify returns Item_Not_Found error as per KMIP spec | 1 |
-| Negative / SignatureVerify | `negative/signature_verify/wrong_key_lifecycle_state` | Tests that Signature Verify returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / SignatureVerify | `negative/signature_verify/item_not_found` | Tests that Signature Verify expects Item_Not_Found | 1 |
+| Negative / SignatureVerify | `negative/signature_verify/wrong_key_lifecycle_state` | Tests that Signature Verify expects Wrong_Key_Lifecycle_State | 2 |
 | Negative / TypeMismatch | `negative/type_mismatch/encrypt_with_secret_data` | Tests that encryption fails when attempting to use a Secret Data object instead of a cryptographic key | 2 |
 | Negative / TypeMismatch | `negative/type_mismatch/import_malformed_key` | Tests that importing a key with mismatched key material size and declared CryptographicLength fails | 1 |
 | Negative / TypeMismatch | `negative/type_mismatch/revoke_already_destroyed` | Documents that the server allows revoking a key that has already been destroyed (surprising but accepted behavior) | 4 |
-| Negative / Validate | `negative/validate/item_not_found` | Tests that Validate returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Validate | `negative/validate/item_not_found` | Tests that Validate expects Object_Not_Found | 1 |
 | Negative / Protocol | `negative/wrong_key_type_encrypt` | Tests that encrypt fails when using a private key (wrong key type for encryption) | 2 |
 | **non-FIPS CryptographicParameters** | | | |
 | non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_aad` | Creates an AES-128 key, encrypts with additional authenticated data (AAD) using AES-GCM-SIV (server-generated nonce), then decrypts with the same AAD and verifies the plaintext | 3 |
@@ -549,6 +605,8 @@ MAC, or derived-key values.
 | Derive Key | `kat/derive_key/pbkdf2_sha512` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
 | **Hash** | | NIST FIPS 180-4 / FIPS 202 | | |
 | Hash | `kat/hash/sha256` | FIPS 180-4 | Hash | `Data` |
+| Hash | `kat/hash/sha256_init_and_final_single_part` | FIPS 180-4 | Hash | `Data` |
+| Hash | `kat/hash/sha256_multi_part` | FIPS 180-4 | Hash, Hash, Hash | `Data` |
 | Hash | `kat/hash/sha384` | FIPS 202 | Hash | `Data` |
 | Hash | `kat/hash/sha3_256` | FIPS 202 | Hash | `Data` |
 | Hash | `kat/hash/sha3_384` | FIPS 202 | Hash | `Data` |
@@ -557,6 +615,7 @@ MAC, or derived-key values.
 | **MAC** | | RFC 4231 / RFC 2202 / NIST HMAC-SHA3 | | |
 | Mac | `kat/mac/hmac_sha1` | RFC 2202 §3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha256` | RFC 4231 §4.2 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha256_multi_part` | RFC 4231 §4.2 | Import, Mac, Mac, Mac, MACVerify, MACVerify | `MACData`, `ValidityIndicator` |
 | Mac | `kat/mac/hmac_sha384` | RFC 4231 §4.2 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha3_256` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha3_384` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
@@ -587,6 +646,7 @@ MAC, or derived-key values.
 | Symmetric | `kat/symmetric/aes128_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes128_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes128_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric | `kat/symmetric/aes128_gcm_multi_part` | SP 800-38D TC7 | Import, Encrypt, Encrypt, Decrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
 | Symmetric (non-FIPS) | `kat/symmetric/aes128_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
 | Symmetric (non-FIPS) | `kat/symmetric/aes128_xts` | IEEE 1619-2007 | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes192_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
@@ -662,13 +722,13 @@ request = "step_batch.json"             # must be a full RequestMessage JSON
 raw_request = true
 assert_success = true                   # asserts ALL BatchItem ResultStatus == Success
 
-# Error testing: assert failure and inspect reason
+# Error testing: assert failure and its required result reason
 [[steps]]
 operation = "Encrypt"
 request = "step_encrypt_after_revoke.json"
 assert_success = false
-assert_error_reason = "PermissionDenied"          # match ResultReason tag
-# assert_error_contains = "partial message match" # alternative: substring in ResultMessage
+assert_error_reason = "PermissionDenied"          # required ResultReason tag
+# assert_error_contains = "partial message match" # optional ResultMessage substring
 
 # Negative assertions: verify fields are absent from response
 [steps.assert_fields_absent]
