@@ -20,3 +20,4 @@
 
 - Add a SoftHSM2-backed hybrid KEM lifecycle test (`tests::hsm::hybrid_kem_dek`), TTLV-wrapped import tests (export wrapped by a software AES key, and client-side wrap by the HSM KEK), a wrap/unwrap unit test (`NoEncoding` and TTLV) for `ByteString`-only KEM keys, and a TTLV round-trip test for `ConfigurableKEM*` key values.
 - Add `tests::configurable_kem_tests` (usage masks, encapsulation round trip, plaintext and `Sign` refusal, `Locate`, `ReKeyKeyPair`, revocation, policy on use including relabelled and stripped imports) and make `ckms pqc` KEM tests compare the decapsulated secret with the encapsulated one.
+- Test vectors: the vector runner can capture one part of a packed KEM `Encrypt` response (`Data:kem_shared_secret`, `Data:kem_encapsulation`); the ML-KEM encapsulate/decapsulate vectors in `test_data` use it instead of `IVCounterNonce`.
