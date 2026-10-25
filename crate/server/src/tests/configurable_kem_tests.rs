@@ -9,7 +9,7 @@ use cosmian_kms_client_utils::configurable_kem_utils::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
-        extra::tagging::VENDOR_ID_COSMIAN,
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{
@@ -19,7 +19,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
             RecommendedCurve, UniqueIdentifier,
         },
-        requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
+        requests::{
+            create_pqc_key_pair_request, decrypt_request, encrypt_request,
+            symmetric_key_create_request,
+        },
     },
     ttlv::to_ttlv,
 };
@@ -199,6 +202,122 @@ async fn locate_by_tag(kms: &KMS, owner: &str, tag: &str) -> KResult<Vec<String>
         .iter()
         .map(ToString::to_string)
         .collect())
+}
+
+/// Every KEM key type returns the shared secret in `Data` and the encapsulation in
+/// `IVCounterNonce`, and decapsulating it returns that same secret. Run with keys stored in
+/// clear and wrapped by a software KEK, with a restart in between so that wrapped keys are
+/// unwrapped from the database to be used.
+#[tokio::test]
+async fn test_kem_encrypt_decrypt_round_trip_all_algorithms() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    let requests = || -> KResult<Vec<(&'static str, CreateKeyPair)>> {
+        let mut requests = Vec::new();
+        for (name, algorithm) in [
+            ("ML-KEM-512/P-256", KemAlgorithm::MlKem512P256),
+            ("ML-KEM-768/P-256", KemAlgorithm::MlKem768P256),
+            ("ML-KEM-512/X25519", KemAlgorithm::MlKem512Curve25519),
+            ("ML-KEM-768/X25519", KemAlgorithm::MlKem768Curve25519),
+        ] {
+            requests.push((
+                name,
+                build_create_configurable_kem_keypair_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    [name],
+                    algorithm,
+                    false,
+                    None,
+                )
+                .map_err(|e| KmsError::InvalidRequest(e.to_string()))?,
+            ));
+        }
+        for (name, algorithm) in [
+            ("ML-KEM-512", CryptographicAlgorithm::MLKEM_512),
+            ("ML-KEM-768", CryptographicAlgorithm::MLKEM_768),
+            ("ML-KEM-1024", CryptographicAlgorithm::MLKEM_1024),
+            ("X25519MLKEM768", CryptographicAlgorithm::X25519MLKEM768),
+            ("X448MLKEM1024", CryptographicAlgorithm::X448MLKEM1024),
+        ] {
+            requests.push((
+                name,
+                create_pqc_key_pair_request(VENDOR_ID_COSMIAN, [name], algorithm, false)?,
+            ));
+        }
+        Ok(requests)
+    };
+
+    for with_kek in [false, true] {
+        let owner = "kem_round_trip";
+        let sqlite_path = https_clap_config().db.sqlite_path;
+        let conf_with = |kek: Option<String>| {
+            let mut conf = https_clap_config();
+            conf.db.sqlite_path.clone_from(&sqlite_path);
+            conf.key_encryption_key = kek;
+            conf
+        };
+        let kms = kms_from(conf_with(None)).await?;
+        let kek = if with_kek {
+            Some(
+                kms.create(
+                    symmetric_key_create_request(
+                        VENDOR_ID_COSMIAN,
+                        None,
+                        256,
+                        CryptographicAlgorithm::AES,
+                        EMPTY_TAGS,
+                        false,
+                        None,
+                    )?,
+                    owner,
+                    None,
+                )
+                .await?
+                .unique_identifier
+                .to_string(),
+            )
+        } else {
+            None
+        };
+        // keys created by a server that wraps them with the KEK, if any
+        drop(kms);
+        let kms = kms_from(conf_with(kek.clone())).await?;
+        let mut pairs = Vec::new();
+        for (name, request) in requests()? {
+            let (sk, pk) = create(&kms, owner, request).await?;
+            assert_round_trip(&kms, owner, &sk, &pk)
+                .await
+                .map_err(|e| KmsError::Default(format!("{name} (kek: {with_kek}): {e}")))?;
+            pairs.push((name, sk, pk));
+        }
+        // restart: the keys are read back from the database, and unwrapped if wrapped
+        drop(kms);
+        let kms = kms_from(conf_with(kek)).await?;
+        for (name, sk, pk) in &pairs {
+            for uid in [sk, pk] {
+                let stored =
+                    kms.database.retrieve_object(uid).await?.ok_or_else(|| {
+                        KmsError::ItemNotFound(format!("{name}: {uid} not stored"))
+                    })?;
+                assert_eq!(
+                    stored.object().is_wrapped(),
+                    with_kek,
+                    "{name}: {uid} wrapped at rest"
+                );
+            }
+            let (secret, enc) = encapsulate(&kms, owner, pk).await?;
+            assert_eq!(
+                decapsulate(&kms, owner, sk, enc.clone()).await?,
+                secret,
+                "{name} (kek: {with_kek}) after restart"
+            );
+            // a fresh encapsulation is not a replay of the previous one
+            let (secret2, enc2) = encapsulate(&kms, owner, pk).await?;
+            assert_ne!(enc, enc2, "{name}: deterministic encapsulation");
+            assert_ne!(secret, secret2, "{name}: repeated shared secret");
+        }
+    }
+    Ok(())
 }
 
 /// A per-key usage mask is honoured, not OR-ed with `Unrestricted`, and the per-key

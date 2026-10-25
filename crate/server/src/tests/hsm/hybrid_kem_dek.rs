@@ -56,6 +56,8 @@ enum Alg {
     MlKem512P256,
     MlKem768P256,
     X25519MlKem768,
+    MlKem768X25519,
+    X448MlKem1024,
     /// Pure (non hybrid) ML-KEM, stored as PKCS#8
     MlKem768,
 }
@@ -89,10 +91,25 @@ impl Alg {
                 None,
             )
             .map_err(|e| KmsError::Default(e.to_string()))?,
+            Self::MlKem768X25519 => build_create_configurable_kem_keypair_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                [tag],
+                KemAlgorithm::MlKem768Curve25519,
+                false,
+                None,
+            )
+            .map_err(|e| KmsError::Default(e.to_string()))?,
             Self::X25519MlKem768 => create_pqc_key_pair_request(
                 VENDOR_ID_COSMIAN,
                 [tag],
                 CryptographicAlgorithm::X25519MLKEM768,
+                false,
+            )?,
+            Self::X448MlKem1024 => create_pqc_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                [tag],
+                CryptographicAlgorithm::X448MLKEM1024,
                 false,
             )?,
             Self::MlKem768 => create_pqc_key_pair_request(
@@ -107,13 +124,18 @@ impl Alg {
     /// Stored algorithm, private key format, public key format
     const fn stored(self) -> (CryptographicAlgorithm, KeyFormatType, KeyFormatType) {
         match self {
-            Self::MlKem512P256 | Self::MlKem768P256 => (
+            Self::MlKem512P256 | Self::MlKem768P256 | Self::MlKem768X25519 => (
                 CryptographicAlgorithm::ConfigurableKEM,
                 KeyFormatType::ConfigurableKEMSecretKey,
                 KeyFormatType::ConfigurableKEMPublicKey,
             ),
             Self::X25519MlKem768 => (
                 CryptographicAlgorithm::X25519MLKEM768,
+                KeyFormatType::Raw,
+                KeyFormatType::Raw,
+            ),
+            Self::X448MlKem1024 => (
+                CryptographicAlgorithm::X448MLKEM1024,
                 KeyFormatType::Raw,
                 KeyFormatType::Raw,
             ),
@@ -127,7 +149,14 @@ impl Alg {
 }
 
 pub(super) async fn test_hybrid_kem_lifecycle() -> KResult<()> {
-    for alg in [Alg::MlKem512P256, Alg::MlKem768P256, Alg::X25519MlKem768] {
+    for alg in [
+        Alg::MlKem512P256,
+        Alg::MlKem768P256,
+        Alg::MlKem768X25519,
+        Alg::X25519MlKem768,
+        Alg::X448MlKem1024,
+        Alg::MlKem768,
+    ] {
         Box::pin(lifecycle(alg)).await?;
     }
     Ok(())
