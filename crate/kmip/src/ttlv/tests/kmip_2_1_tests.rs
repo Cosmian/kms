@@ -1844,6 +1844,28 @@ fn test_key_value_ttlv() {
 }
 
 #[test]
+fn test_key_value_ttlv_round_trip_configurable_kem() {
+    for key_format_type in [
+        KeyFormatType::ConfigurableKEMSecretKey,
+        KeyFormatType::ConfigurableKEMPublicKey,
+    ] {
+        let kv = KeyValue::Structure {
+            key_material: KeyMaterial::ByteString(Zeroizing::new(vec![3, 1, 2, 193, 9])),
+            attributes: Some(Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
+                ..Default::default()
+            }),
+        };
+        assert_eq!(
+            kv,
+            KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+                .unwrap(),
+            "TTLV round trip failed for {key_format_type:?}"
+        );
+    }
+}
+
+#[test]
 fn test_set_attribute() {
     // log_init(Some("trace"));
     log_init(option_env!("RUST_LOG"));
