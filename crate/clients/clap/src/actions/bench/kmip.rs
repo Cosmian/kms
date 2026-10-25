@@ -1,4 +1,6 @@
 #[cfg(feature = "non-fips")]
+use cosmian_crypto_core::bytes_ser_de::Serializable as _;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::configurable_kem_utils::{
@@ -755,7 +757,11 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
-        let ct = enc_resp.i_v_counter_nonce.unwrap_or_default();
+        // ConfigurableKEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
+        let packed = enc_resp.data.unwrap_or_default();
+        let (_, ct) = <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&packed)
+            .expect("ConfigurableKEM encapsulation tuple");
+        let ct = ct.to_vec();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
             None,
