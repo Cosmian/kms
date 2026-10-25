@@ -2,9 +2,10 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
+            extra::VENDOR_ATTR_X509_EXTENSION,
             kmip_objects::ObjectType,
             kmip_operations::{Certify, CertifyResponse},
-            kmip_types::{LinkType, LinkedObjectIdentifier},
+            kmip_types::{LinkType, LinkedObjectIdentifier, VendorAttributeValue},
         },
     },
     cosmian_kms_interfaces::AtomicOperation,
@@ -37,10 +38,37 @@ use crate::{
 /// The certificate can be self-signed or signed by another certificate.
 pub(crate) async fn certify(
     kms: &KMS,
-    request: Certify,
+    mut request: Certify,
     user: &UserId,
 ) -> KResult<CertifyResponse> {
+    normalize_kmip1_x509_extension(&mut request, kms.vendor_id());
     Box::pin(certify_for_owner(kms, request, user, user)).await
+}
+
+/// KMIP 1.x clients carry the X.509 extension config as the custom attribute
+/// `y-<vendor_id>::x509-extension` (KMIP 1.4 §3.39; the same name the KMIP 1.x attribute
+/// conversion emits for a vendor attribute), converted to a `KMIP1` vendor attribute.
+/// Rewrite it to the vendor attribute the certify pipeline reads. The pipeline expects a
+/// `ByteString`, so a `TextString` value (the natural 1.x form of the config) is converted.
+fn normalize_kmip1_x509_extension(request: &mut Certify, vendor_id: &str) {
+    let kmip1_name = format!("y-{vendor_id}::{VENDOR_ATTR_X509_EXTENSION}");
+    if let Some(vas) = request
+        .attributes
+        .as_mut()
+        .and_then(|a| a.vendor_attributes.as_mut())
+    {
+        for va in vas
+            .iter_mut()
+            .filter(|va| va.vendor_identification == "KMIP1" && va.attribute_name == kmip1_name)
+        {
+            vendor_id.clone_into(&mut va.vendor_identification);
+            VENDOR_ATTR_X509_EXTENSION.clone_into(&mut va.attribute_name);
+            if let VendorAttributeValue::TextString(text) = &mut va.attribute_value {
+                va.attribute_value =
+                    VendorAttributeValue::ByteString(std::mem::take(text).into_bytes());
+            }
+        }
+    }
 }
 
 /// Certify: the certified key (and a PKCS#10 request's signature) must satisfy the active

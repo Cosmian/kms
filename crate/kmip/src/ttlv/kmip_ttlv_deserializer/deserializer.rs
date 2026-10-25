@@ -1131,9 +1131,12 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
 
         if self.map_state == MapAccessState::Key {
             // if the deserializer is deserializing the key of a map, the tag is the key
-            // except for the corner case of Objects inside another structure, where the key is always "Object"
-            if kmip_2_1::kmip_objects::Object::VARIANTS.contains(&&*element.tag)
-                || kmip_1_4::kmip_objects::Object::VARIANTS.contains(&&*element.tag)
+            // except for the corner case of Objects inside another structure, where the key is always "Object".
+            // An Object is always a Structure: a scalar value under a tag that is also an Object
+            // name (KMIP 1.x `CertificateRequest`, tag 0x420018) is a regular field.
+            if matches!(element.value, TTLValue::Structure(_))
+                && (kmip_2_1::kmip_objects::Object::VARIANTS.contains(&&*element.tag)
+                    || kmip_1_4::kmip_objects::Object::VARIANTS.contains(&&*element.tag))
             {
                 trace!("... => This is an Object => identifier: key: Object");
                 return visitor.visit_str("Object");

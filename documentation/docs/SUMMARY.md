@@ -99,7 +99,7 @@
     - [S/MIME Email encryption](integrations/smime.md)
     - [SPIRE / SPIFFE (Zero-Trust M2M)]()
       - [Vault-compatible integration](integrations/spire_spiffe.md)
-      - [Native KMIP 2.1 plugins](integrations/spire_spiffe_kmip_plugin.md)
+      - [Native KMIP 1.4 KeyManager plugin](integrations/spire_spiffe_kmip_plugin.md)
       - [Web UI gateway SPIFFE authentication](integrations/spire_webui.md)
       - [CLI (ckms) SPIFFE authentication](integrations/spire_ckms.md)
 - [Installation]()
