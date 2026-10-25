@@ -199,44 +199,27 @@ async fn encrypt_response(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<
     Ok(response.clone())
 }
 
-/// Returns (shared secret, encapsulation). `ConfigurableKEM` packs both in `Data` as a
-/// serialized tuple; the other KEMs return the secret in `Data` and the encapsulation in
-/// `IVCounterNonce`.
+/// Returns (shared secret, encapsulation). Every KEM packs both in `Data` as a serialized
+/// tuple: an encapsulation is a ciphertext and never travels in `IVCounterNonce`.
 async fn encapsulate(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<(Vec<u8>, Vec<u8>)> {
     let response = encrypt_response(kms, owner, pk_uid).await?;
+    assert!(response.i_v_counter_nonce.is_none());
     let data = response
         .data
         .ok_or_else(|| KmsError::ServerError("empty encrypt data".to_owned()))?;
-    if let Some(enc) = response.i_v_counter_nonce {
-        return Ok((data, enc));
-    }
     let (secret, enc) = <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&data)
         .map_err(|e| KmsError::Default(e.to_string()))?;
     Ok((secret.to_vec(), enc.to_vec()))
 }
 
-/// The `ConfigurableKEM` `Encrypt` contract: no `IVCounterNonce`, and `Data` is the serialized
+/// The KEM `Encrypt` contract: no `IVCounterNonce`, and `Data` is the serialized
 /// `(shared secret, encapsulation)` tuple, of which only the encapsulation can be decapsulated.
-/// Every other KEM returns the secret in `Data` and the encapsulation in `IVCounterNonce`.
-async fn assert_encrypt_contract(
-    kms: &Arc<KMS>,
-    owner: &str,
-    pk: &str,
-    sk: &str,
-    configurable: bool,
-) -> KResult<()> {
+async fn assert_encrypt_contract(kms: &Arc<KMS>, owner: &str, pk: &str, sk: &str) -> KResult<()> {
     let response = encrypt_response(kms, owner, pk).await?;
+    assert!(response.i_v_counter_nonce.is_none());
     let data = response
         .data
         .ok_or_else(|| KmsError::ServerError("empty encrypt data".to_owned()))?;
-    if !configurable {
-        let enc = response
-            .i_v_counter_nonce
-            .ok_or_else(|| KmsError::ServerError("missing IVCounterNonce".to_owned()))?;
-        assert_eq!(data, decapsulate(kms, owner, sk, &enc).await?);
-        return Ok(());
-    }
-    assert!(response.i_v_counter_nonce.is_none());
     let (secret, enc) = <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&data)
         .map_err(|e| KmsError::Default(e.to_string()))?;
     assert_eq!(
@@ -411,14 +394,7 @@ async fn lifecycle(alg: Alg) -> KResult<()> {
     assert_wrapped_by(&export_object(&kms, &owner, &sk).await?, &kek_uid)?;
     assert_wrapped_by(&export_object(&kms, &owner, &pk).await?, &kek_uid)?;
     assert_roundtrip(&kms, &owner, &pk, &sk).await?;
-    assert_encrypt_contract(
-        &kms,
-        &owner,
-        &pk,
-        &sk,
-        stored_algorithm == CryptographicAlgorithm::ConfigurableKEM,
-    )
-    .await?;
+    assert_encrypt_contract(&kms, &owner, &pk, &sk).await?;
 
     // 2. Restart: cold cache, the HSM unwraps
     drop(kms);

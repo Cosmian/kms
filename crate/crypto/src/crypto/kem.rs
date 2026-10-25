@@ -144,6 +144,30 @@ pub fn kem_encaps(ek: &[u8]) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>),
     ))
 }
 
+/// Pack a KEM result as the `Data` of a KMIP `Encrypt` response: the serialized
+/// `(shared secret, encapsulation)` tuple. The encapsulation is a KEM ciphertext, not an
+/// IV/counter/nonce, so `IVCounterNonce` stays empty for every KEM.
+pub fn pack_kem_encapsulation(
+    shared_secret: Zeroizing<Vec<u8>>,
+    encapsulation: Zeroizing<Vec<u8>>,
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    (shared_secret, encapsulation).serialize().map_err(|e| {
+        CryptoError::ConversionError(format!("failed serializing the KEM encapsulation: {e}"))
+    })
+}
+
+/// Inverse of [`pack_kem_encapsulation`]: returns `(shared secret, encapsulation)`.
+#[allow(clippy::type_complexity)]
+pub fn unpack_kem_encapsulation(
+    data: &[u8],
+) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+    <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(data).map_err(|e| {
+        CryptoError::ConversionError(format!(
+            "the KEM response data is not a (shared secret, encapsulation) tuple: {e}"
+        ))
+    })
+}
+
 /// Return the pre-quantum curve and the post-quantum algorithm of a serialized
 /// `ConfigurableKEM` key (public or private), as encoded in the key itself, whatever its
 /// KMIP attributes claim. Policy checks must rely on this, since attributes can be relabelled.
@@ -265,4 +289,26 @@ fn create_ek_object(
             key_wrapping_data: None,
         },
     }))
+}
+
+#[expect(clippy::unwrap_used)]
+#[cfg(test)]
+mod tests {
+    use zeroize::Zeroizing;
+
+    use super::{pack_kem_encapsulation, unpack_kem_encapsulation};
+
+    #[test]
+    fn kem_encapsulation_pack_round_trip() {
+        // a ciphertext longer than 127 bytes has a multi-byte length prefix
+        let secret = Zeroizing::new(vec![7_u8; 32]);
+        let encapsulation = Zeroizing::new(vec![9_u8; 1088]);
+        let packed = pack_kem_encapsulation(secret.clone(), encapsulation.clone()).unwrap();
+        let (s, e) = unpack_kem_encapsulation(&packed).unwrap();
+        assert_eq!((s, e), (secret, encapsulation));
+        // truncated data is refused, not silently shortened
+        let (_, truncated) = packed.split_last().unwrap();
+        unpack_kem_encapsulation(truncated).unwrap_err();
+        unpack_kem_encapsulation(&[]).unwrap_err();
+    }
 }

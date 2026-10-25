@@ -11,10 +11,10 @@
 - `ConfigurableKEM` hybrid keys (ML-KEM + P-256/X25519) follow least privilege and the KMIP usage-mask rules:
     - A requested `CryptographicUsageMask` is kept as is instead of being OR-ed with `Unrestricted`. Without one, the private key gets `Decrypt` and the public key `Encrypt`; `ckms pqc keys create` no longer requests `Unrestricted`. Existing keys keep their mask.
     - Per-key `PrivateKeyAttributes`/`PublicKeyAttributes` inherit the `CommonAttributes` (tags, curve, ML-KEM variant) instead of replacing them, which also applies to `ReKeyKeyPair`.
-- KMIP `Encrypt` with a `ConfigurableKEM` public key keeps its response contract: `Data` is the serialized `(shared secret, encapsulation)` tuple and `IVCounterNonce` is empty; only the encapsulation component is decapsulated. This is now covered by regression tests, in software and with an HSM KEK. ML-KEM and native hybrid KEMs keep returning the secret in `Data` and the encapsulation in `IVCounterNonce`.
+- KMIP `Encrypt` with any KEM public key (ML-KEM, `X25519MLKEM768`, `X448MLKEM1024`, `ConfigurableKEM`) returns one response layout: `Data` is the serialized `(shared secret, encapsulation)` tuple (LEB128 length + bytes, twice) and `IVCounterNonce` is empty. ML-KEM and the native hybrid KEMs used to return the encapsulation, a ciphertext, in `IVCounterNonce`, a field meant for IVs, counters and nonces. **Breaking for KMIP clients of ML-KEM and native hybrid KEMs**: unpack `Data` instead of reading `IVCounterNonce`; `ckms pqc encapsulate`, `ckms bench` and the Web UI encapsulation page already do. Only the encapsulation component is decapsulated. Covered by regression tests, in software and with an HSM KEK.
 - KEM `Encrypt` (ML-KEM, native hybrid, `ConfigurableKEM`) rejects non-empty `Data` instead of silently ignoring it.
 - Algorithm policy: a `ConfigurableKEM` key is checked on every use, not only at creation, against both its ML-KEM variant and its curve, read from the serialized key rather than from its KMIP attributes, so an imported key with relabelled or stripped attributes cannot bypass the policy; `X25519MLKEM768` and `X448MLKEM1024` are in the policy scope and in the `DEFAULT` allowlist (non-FIPS), where they were previously always denied.
-- `ckms bench`: the configurable KEM decapsulation benchmark now decapsulates the encapsulation component of the packed result instead of the whole tuple.
+- `ckms bench`: the KEM decapsulation benchmarks decapsulate the encapsulation component of the packed result instead of the whole tuple or the IV field.
 
 ## Testing
 

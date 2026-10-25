@@ -605,9 +605,8 @@ fn encrypt_with_public_key(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::ConfigurableKEMPublicKey => {
-            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
-                crypto::kem::{kem_encaps, kem_key_components},
-                reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::{
+                kem_encaps, kem_key_components,
             };
 
             use crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_kem_components;
@@ -621,26 +620,7 @@ fn encrypt_with_public_key(
                 kem_key_components(&ek_bytes)?,
             )?;
             let (key, enc) = kem_encaps(&ek_bytes)?;
-            // Published `ConfigurableKEM` contract: `Data` holds the serialized
-            // `(shared secret, encapsulation)` tuple and `IVCounterNonce` is empty.
-            // Do not align it with the ML-KEM layout.
-            Ok(EncryptResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                data: Some(
-                    (key, enc)
-                        .serialize()
-                        .map_err(|e| {
-                            KmsError::ConversionError(format!(
-                                "failed serializing the configurable-KEM encapsulation \
-                                 results: {e}"
-                            ))
-                        })?
-                        .to_vec(),
-                ),
-                i_v_counter_nonce: None,
-                correlation_value: None,
-                authenticated_encryption_tag: None,
-            })
+            kem_encrypt_response(owm.id(), request, key, enc)
         }
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptPublicKey => {
@@ -673,13 +653,12 @@ fn encrypt_with_public_key(
                     reject_kem_plaintext(request)?;
                     let (pub_bytes, _) = key_block.key_bytes_and_attributes()?;
                     let (shared_secret, ciphertext) = ml_kem_encapsulate(&pub_bytes)?;
-                    return Ok(EncryptResponse {
-                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(shared_secret),
-                        i_v_counter_nonce: Some(ciphertext),
-                        correlation_value: request.correlation_value.clone(),
-                        authenticated_encryption_tag: None,
-                    });
+                    return kem_encrypt_response(
+                        owm.id(),
+                        request,
+                        Zeroizing::new(shared_secret),
+                        Zeroizing::new(ciphertext),
+                    );
                 }
                 if let Some(
                     algo @ (CryptographicAlgorithm::X25519MLKEM768
@@ -690,13 +669,12 @@ fn encrypt_with_public_key(
                     reject_kem_plaintext(request)?;
                     let (pub_bytes, _) = key_block.key_bytes_and_attributes()?;
                     let (shared_secret, ciphertext) = hybrid_kem_encapsulate(algo, &pub_bytes)?;
-                    return Ok(EncryptResponse {
-                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(shared_secret),
-                        i_v_counter_nonce: Some(ciphertext),
-                        correlation_value: request.correlation_value.clone(),
-                        authenticated_encryption_tag: None,
-                    });
+                    return kem_encrypt_response(
+                        owm.id(),
+                        request,
+                        Zeroizing::new(shared_secret),
+                        Zeroizing::new(ciphertext),
+                    );
                 }
             }
 
@@ -737,6 +715,27 @@ fn reject_kem_plaintext(request: &Encrypt) -> KResult<()> {
         ));
     }
     Ok(())
+}
+
+/// The `Encrypt` response of every KEM public key: the shared secret and the encapsulation
+/// packed as a serialized tuple in `Data`. The encapsulation is a ciphertext, so it must not
+/// travel in `IVCounterNonce`, which carries public cipher metadata (an IV/counter/nonce).
+#[cfg(feature = "non-fips")]
+fn kem_encrypt_response(
+    uid: &str,
+    request: &Encrypt,
+    shared_secret: Zeroizing<Vec<u8>>,
+    encapsulation: Zeroizing<Vec<u8>>,
+) -> KResult<EncryptResponse> {
+    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::pack_kem_encapsulation;
+
+    Ok(EncryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        data: Some(pack_kem_encapsulation(shared_secret, encapsulation)?.to_vec()),
+        i_v_counter_nonce: None,
+        correlation_value: request.correlation_value.clone(),
+        authenticated_encryption_tag: None,
+    })
 }
 
 fn encrypt_with_pkey(

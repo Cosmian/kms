@@ -95,29 +95,22 @@ fn unpack(data: &[u8]) -> KResult<(Vec<u8>, Vec<u8>)> {
     Ok((secret.to_vec(), enc.to_vec()))
 }
 
-/// Returns (shared secret, encapsulation). `ConfigurableKEM` packs both in `Data` as a
-/// serialized tuple; the other KEMs return the secret in `Data` and the encapsulation in
-/// `IVCounterNonce`.
+/// Returns (shared secret, encapsulation). Every KEM packs both in `Data` as a serialized
+/// tuple: an encapsulation is a ciphertext and never travels in `IVCounterNonce`.
 async fn encapsulate(kms: &KMS, owner: &UserId, pk: &str) -> KResult<(Vec<u8>, Vec<u8>)> {
     let response = encrypt_raw(kms, owner, pk).await?;
-    let data = response
-        .data
-        .ok_or_else(|| KmsError::ServerError("no data".to_owned()))?;
-    match response.i_v_counter_nonce {
-        Some(enc) => Ok((data, enc)),
-        None => unpack(&data),
-    }
+    assert_eq!(response.i_v_counter_nonce, None);
+    unpack(
+        &response
+            .data
+            .ok_or_else(|| KmsError::ServerError("no data".to_owned()))?,
+    )
 }
 
-/// The `ConfigurableKEM` `Encrypt` contract, which must not be aligned with ML-KEM's:
-/// `IVCounterNonce` is empty and `Data` is the serialized `(shared secret, encapsulation)`
-/// tuple. Only its encapsulation component can be decapsulated, to the packed secret.
-async fn assert_configurable_kem_contract(
-    kms: &KMS,
-    owner: &UserId,
-    sk: &str,
-    pk: &str,
-) -> KResult<()> {
+/// The KEM `Encrypt` contract: `IVCounterNonce` is empty and `Data` is the serialized
+/// `(shared secret, encapsulation)` tuple. Only its encapsulation component can be
+/// decapsulated, to the packed secret.
+async fn assert_kem_encrypt_contract(kms: &KMS, owner: &UserId, sk: &str, pk: &str) -> KResult<()> {
     let response = encrypt_raw(kms, owner, pk).await?;
     assert_eq!(response.i_v_counter_nonce, None);
     assert_eq!(response.authenticated_encryption_tag, None);
@@ -174,7 +167,7 @@ async fn test_configurable_kem_lifecycle() -> KResult<()> {
     );
 
     assert_round_trip(&kms, &owner, &sk, &pk).await?;
-    assert_configurable_kem_contract(&kms, &owner, &sk, &pk).await?;
+    assert_kem_encrypt_contract(&kms, &owner, &sk, &pk).await?;
 
     // plaintext is refused instead of being silently ignored
     let encrypt_with_data = kms
@@ -268,8 +261,8 @@ async fn locate_by_tag(kms: &KMS, owner: &UserId, tag: &str) -> KResult<Vec<Stri
         .collect())
 }
 
-/// Every KEM key type returns the shared secret in `Data` and the encapsulation in
-/// `IVCounterNonce`, and decapsulating it returns that same secret. Run with keys stored in
+/// Every KEM key type packs the shared secret and the encapsulation in `Data` (empty
+/// `IVCounterNonce`), and decapsulating the encapsulation returns that same secret. Run with keys stored in
 /// clear and wrapped by a software KEK, with a restart in between so that wrapped keys are
 /// unwrapped from the database to be used.
 #[tokio::test]
@@ -351,13 +344,9 @@ async fn test_kem_encrypt_decrypt_round_trip_all_algorithms() -> KResult<()> {
             assert_round_trip(&kms, &owner, &sk, &pk)
                 .await
                 .map_err(|e| KmsError::Default(format!("{name} (kek: {with_kek}): {e}")))?;
-            // only the `ConfigurableKEM` names contain a `/`: they keep the packed layout
-            if name.contains('/') {
-                assert_configurable_kem_contract(&kms, &owner, &sk, &pk).await?;
-            } else {
-                let response = encrypt_raw(&kms, &owner, &pk).await?;
-                assert!(response.i_v_counter_nonce.is_some(), "{name}: no IV");
-            }
+            assert_kem_encrypt_contract(&kms, &owner, &sk, &pk)
+                .await
+                .map_err(|e| KmsError::Default(format!("{name} (kek: {with_kek}): {e}")))?;
             pairs.push((name, sk, pk));
         }
         // restart: the keys are read back from the database, and unwrapped if wrapped
