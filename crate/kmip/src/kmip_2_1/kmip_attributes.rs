@@ -2294,8 +2294,9 @@ mod tests {
                 "CertificateIssuerDnQualifier",
             ),
         ] {
-            let value = cert.remove(new).ok_or(new)?;
-            cert.insert(old.to_owned(), value);
+            // JSON keeps the historical name; the KMIP tag name is accepted as an alias.
+            let value = cert.remove(old).ok_or(old)?;
+            cert.insert(new.to_owned(), value);
         }
         let decoded: Attributes = serde_json::from_value(legacy).map_err(|e| e.to_string())?;
         if decoded == attributes {

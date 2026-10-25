@@ -2,9 +2,7 @@ use cosmian_kms_interfaces::ObjectWithMetadata;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
-        KmipOperation,
-        attribute_policy::AttributeEditPolicy,
-        kmip_attributes::{Attribute, Attributes},
+        KmipOperation, attribute_policy::AttributeEditPolicy, kmip_attributes::Attribute,
         kmip_types::Tag,
     },
 };
@@ -65,21 +63,6 @@ pub(crate) fn check_vendor_attribute(
 /// Rejects attributes the server manages for this operation.
 pub(crate) fn check_read_only(tag: Option<Tag>, operation: KmipOperation) -> KResult<()> {
     if tag.map(|tag| tag.edit_policy(operation)) == Some(AttributeEditPolicy::ServerManaged) {
-        return Err(read_only_error(operation));
-    }
-    Ok(())
-}
-
-/// Rejects re-enabling `Extractable` on an object created non-extractable: otherwise its owner
-/// could flip the attribute back and read key material the object was created to never expose.
-pub(crate) fn check_extractable_latch(
-    attributes: &Attributes,
-    extractable: bool,
-    operation: KmipOperation,
-) -> KResult<()> {
-    if extractable
-        && (attributes.never_extractable == Some(true) || attributes.extractable == Some(false))
-    {
         return Err(read_only_error(operation));
     }
     Ok(())
@@ -191,28 +174,5 @@ mod tests {
                 "{operation:?}"
             );
         }
-    }
-
-    #[test]
-    #[allow(clippy::assertions_on_result_states)]
-    fn extractable_cannot_be_reenabled_once_disabled() {
-        let created_non_extractable = Attributes {
-            extractable: Some(false),
-            never_extractable: Some(true),
-            ..Attributes::default()
-        };
-        let latch = |attributes: &Attributes, extractable| {
-            check_extractable_latch(attributes, extractable, KmipOperation::SetAttribute)
-        };
-        assert!(latch(&created_non_extractable, true).is_err());
-        assert!(latch(&created_non_extractable, false).is_ok());
-        // `never_extractable` alone (Extractable unset, as AddAttribute sees it) also latches.
-        let never_only = Attributes {
-            never_extractable: Some(true),
-            ..Attributes::default()
-        };
-        assert!(latch(&never_only, true).is_err());
-        // Extractable keys may still be toggled.
-        assert!(latch(&Attributes::default(), true).is_ok());
     }
 }

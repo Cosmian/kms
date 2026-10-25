@@ -157,6 +157,17 @@ pub(crate) async fn recursively_revoke_key(
         }
         // KMIP 2.1 §4.57: only the listed state transitions are permitted.
         let current_state = owm.effective_state();
+        // A non-compromise Revoke of an object that is already Deactivated or Destroyed changes
+        // nothing and succeeds, so that Revoke -> Destroy sequences stay idempotent.
+        if !is_compromise(&revocation_reason)
+            && matches!(
+                current_state,
+                State::Deactivated | State::Destroyed | State::Destroyed_Compromised
+            )
+        {
+            count += 1;
+            continue;
+        }
         let Some(target_state) = revocation_target_state(&revocation_reason, current_state) else {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,

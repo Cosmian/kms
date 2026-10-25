@@ -21,8 +21,8 @@ use time::OffsetDateTime;
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
 use super::policy::{
-    check_extractable_latch, check_grant, check_read_only, check_rotate_name,
-    check_sql_rotate_name, check_vendor_attribute, read_only_error,
+    check_grant, check_read_only, check_rotate_name, check_sql_rotate_name, check_vendor_attribute,
+    read_only_error,
 };
 use crate::{
     core::{
@@ -175,7 +175,6 @@ pub(crate) async fn set_attribute(
             }
             Attribute::Extractable(extractable) => {
                 trace!("Set Attribute: Extractable: {:?}", extractable);
-                check_extractable_latch(&attributes, extractable, KmipOperation::SetAttribute)?;
                 attributes.apply_extractable(extractable);
             }
             Attribute::Link(link) => {

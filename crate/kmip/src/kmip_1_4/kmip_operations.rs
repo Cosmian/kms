@@ -557,7 +557,6 @@ impl From<Certify> for kmip_2_1::kmip_operations::Certify {
     }
 }
 
-
 /// 4.8 Re-certify
 /// This operation requests the server to generate a new Certificate object for an existing public key.
 /// Per KMIP 1.4 §4.8 Table 188, all fields are optional.

@@ -39,13 +39,6 @@ pub(crate) async fn query(
 ) -> KResult<QueryResponse> {
     trace!("Query request");
 
-    // Query Function is REQUIRED (KMIP 2.1 Table 282).
-    if request.query_function.as_ref().is_none_or(Vec::is_empty) {
-        return Err(KmsError::Kmip21Error(
-            ErrorReason::Invalid_Field,
-            "Query: at least one Query Function is required".to_owned(),
-        ));
-    }
     // The server defines no Object Groups specific information (KMIP 2.1 Table 284).
     if request
         .object_groups
@@ -290,13 +283,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_requires_a_function_and_rejects_object_groups() {
-        let missing = query(Query::default(), "Cosmian", false).await;
-        assert!(matches!(
-            missing,
-            Err(KmsError::Kmip21Error(ErrorReason::Invalid_Field, _))
-        ));
-
+    async fn query_rejects_object_groups() {
         let groups = query(
             Query {
                 query_function: Some(vec![QueryFunction::QueryOperations]),

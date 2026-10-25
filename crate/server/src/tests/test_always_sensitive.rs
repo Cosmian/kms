@@ -574,30 +574,18 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
         "expected Not_Extractable even with wrapping spec, got: {err_wrapped:?}"
     );
 
-    // 4. Latch behavior: a key created non-extractable can never be re-enabled.
-    let err_reenable = kms
-        .set_attribute(
+    // 4. Extractable is client-modifiable (KMIP 2.1 Table 74): re-enabling is accepted, as
+    // before; the key is made non-extractable again for the checks below.
+    for extractable in [true, false] {
+        kms.set_attribute(
             SetAttribute {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-                new_attribute: Attribute::Extractable(true),
+                new_attribute: Attribute::Extractable(extractable),
             },
             &user,
         )
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(
-            err_reenable,
-            KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
-        ),
-        "re-enabling Extractable must be refused, got: {err_reenable:?}"
-    );
-    let resp = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
-    assert_eq!(
-        resp.attributes.never_extractable,
-        Some(true),
-        "NeverExtractable must stay true after a refused re-enable"
-    );
+        .await?;
+    }
 
     // Defensive latch check: If an object somehow has NeverExtractable=true while
     // Extractable is absent/true, export must STILL be denied with Not_Extractable.

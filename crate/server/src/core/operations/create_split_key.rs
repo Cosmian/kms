@@ -486,7 +486,7 @@ pub(crate) async fn create_split_key(
         // it has been superseded by its split-key shares (KMIP §6.18 / SP 800-57 §4.2.3).
         // Using KeyCompromise here would generate false-positive alerts in SIEM systems.
         let destroy_user = user;
-        if owm.state() == State::Active {
+        if owm.effective_state() == State::Active {
             let revoke_req = Revoke {
                 unique_identifier: request.unique_identifier.clone(),
                 revocation_reason: RevocationReason {

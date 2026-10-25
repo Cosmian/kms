@@ -108,9 +108,9 @@ impl Role {
     ///
     /// An `Operator` may use approved security functions, observe server state, call the
     /// stateless server services, and retrieve (`Get`) or `Export` an object it owns or was
-    /// granted. It cannot manage the lifecycle or attributes of objects, reassemble split keys,
-    /// or reach server-wide administration (`PKCS11`, `SetConstraints`, `RNGSeed`). Creating
-    /// objects needs the Create right.
+    /// granted, and manage the lifecycle and attributes of such objects. It cannot reach
+    /// server-wide administration (`PKCS11`, `SetConstraints`, `RNGSeed`). Creating objects
+    /// needs the Create right.
     #[must_use]
     pub const fn decide(self, operation: OperationEnumeration) -> RoleDecision {
         use OperationEnumeration as Op;
@@ -140,11 +140,8 @@ impl Role {
             | Op::Ping
             | Op::GetConstraints
             | Op::Get
-            | Op::Export => RoleDecision::Allow,
-            // Lifecycle, attribute management, share reassembly and server-wide
-            // administration: Crypto Officer only (the handler requires ownership or a grant;
-            // an active Crypto Officer bypasses ownership there).
-            Op::Certify
+            | Op::Export
+            | Op::Certify
             | Op::ReCertify
             | Op::ReKey
             | Op::DeriveKey
@@ -155,10 +152,9 @@ impl Role {
             | Op::ModifyAttribute
             | Op::AddAttribute
             | Op::DeleteAttribute
-            | Op::JoinSplitKey
-            | Op::PKCS11
-            | Op::RNGSeed
-            | Op::SetConstraints => match self {
+            | Op::JoinSplitKey => RoleDecision::Allow,
+            // Server-wide administration: Crypto Officer only.
+            Op::PKCS11 | Op::RNGSeed | Op::SetConstraints => match self {
                 Self::Operator => RoleDecision::Deny,
                 Self::CryptoOfficer => RoleDecision::Allow,
             },
@@ -428,9 +424,11 @@ mod tests {
             (Role::Operator, Op::Get, Allow),
             (Role::Operator, Op::Export, Allow),
             (Role::CryptoOfficer, Op::Get, Allow),
-            (Role::Operator, Op::JoinSplitKey, Deny),
+            (Role::Operator, Op::JoinSplitKey, Allow),
+            (Role::Operator, Op::Revoke, Allow),
+            (Role::Operator, Op::Destroy, Allow),
             (Role::Operator, Op::PKCS11, Deny),
-            (Role::Operator, Op::ReCertify, Deny),
+            (Role::Operator, Op::ReCertify, Allow),
             (Role::Operator, Op::SetConstraints, Deny),
             (Role::CryptoOfficer, Op::SetConstraints, Allow),
             (Role::Operator, Op::GetConstraints, Allow),

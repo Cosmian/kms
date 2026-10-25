@@ -14,8 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{debug, trace};
 
 use super::policy::{
-    check_extractable_latch, check_grant, check_read_only, check_rotate_name,
-    check_vendor_attribute, read_only_error,
+    check_grant, check_read_only, check_rotate_name, check_vendor_attribute, read_only_error,
 };
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
@@ -172,7 +171,6 @@ pub(crate) async fn modify_attribute(
                 // Setting Extractable also (re)computes the server-managed
                 // NeverExtractable attribute (KMIP 2.1 §4.33).
                 trace!("ModifyAttribute: Extractable: {:?}", extractable);
-                check_extractable_latch(&attributes, extractable, KmipOperation::ModifyAttribute)?;
                 attributes.apply_extractable(extractable);
             }
             Attribute::ActivationDate(activation_date) => {

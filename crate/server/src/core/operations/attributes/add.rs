@@ -14,8 +14,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{debug, trace};
 
 use super::policy::{
-    check_extractable_latch, check_grant, check_read_only, check_rotate_name,
-    check_sql_rotate_name, check_vendor_attribute, read_only_error, single_valued,
+    check_grant, check_read_only, check_rotate_name, check_sql_rotate_name, check_vendor_attribute,
+    read_only_error, single_valued,
 };
 use crate::{
     core::{
@@ -151,7 +151,6 @@ pub(crate) async fn add_attribute(
                 if attributes.extractable.is_some() {
                     return Err(single_valued("Extractable already exists"));
                 }
-                check_extractable_latch(&attributes, extractable, KmipOperation::AddAttribute)?;
                 attributes.apply_extractable(extractable);
             }
         }

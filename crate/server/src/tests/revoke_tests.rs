@@ -350,9 +350,10 @@ where
 }
 
 /// KMIP 2.1 §4.57: a non-compromise reason only moves Active to Deactivated, so revoking a
-/// Deactivated object with `Unspecified` is `Wrong_Key_Lifecycle_State` and keeps it Deactivated.
+/// Deactivated object with `Unspecified` succeeds without changing its state (as before), so
+/// that Revoke -> Destroy sequences stay idempotent.
 #[tokio::test]
-async fn test_deactivated_unspecified_is_refused() -> KResult<()> {
+async fn test_deactivated_unspecified_is_a_no_op() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -365,18 +366,14 @@ async fn test_deactivated_unspecified_is_refused() -> KResult<()> {
     .await?;
     assert_eq!(get_state(&app, &uid).await?, Some(State::Deactivated));
 
-    assert_revoke_refused(
-        &app,
-        &uid,
-        RevocationReasonCode::Unspecified,
-        State::Deactivated,
-    )
-    .await
+    revoke(&app, &uid, RevocationReasonCode::Unspecified, false).await?;
+    assert_eq!(get_state(&app, &uid).await?, Some(State::Deactivated));
+    Ok(())
 }
 
-/// KMIP 2.1 §4.57: `Deactivated + Superseded` is `Wrong_Key_Lifecycle_State`.
+/// KMIP 2.1 §4.57: `Deactivated + Superseded` succeeds without a state change (kept idempotent).
 #[tokio::test]
-async fn test_deactivated_superseded_is_refused() -> KResult<()> {
+async fn test_deactivated_superseded_is_a_no_op() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -387,21 +384,17 @@ async fn test_deactivated_superseded_is_refused() -> KResult<()> {
         false,
     )
     .await?;
-    assert_revoke_refused(
-        &app,
-        &uid,
-        RevocationReasonCode::Superseded,
-        State::Deactivated,
-    )
-    .await
+    revoke(&app, &uid, RevocationReasonCode::Superseded, false).await?;
+    assert_eq!(get_state(&app, &uid).await?, Some(State::Deactivated));
+    Ok(())
 }
 
 // ── Section C: Destroyed keys ────────────────────────────────────────────────
 
 /// KMIP 2.1 §4.57: only a compromise moves a Destroyed object (to Destroyed Compromised,
-/// as in AKLC-M-2-21); a non-compromise reason is `Wrong_Key_Lifecycle_State`.
+/// as in AKLC-M-2-21); a non-compromise reason succeeds without a state change.
 #[tokio::test]
-async fn test_revoke_on_destroyed_key_non_compromise_is_refused() -> KResult<()> {
+async fn test_revoke_on_destroyed_key_non_compromise_is_a_no_op() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -409,13 +402,14 @@ async fn test_revoke_on_destroyed_key_non_compromise_is_refused() -> KResult<()>
     destroy_key(&app, &uid).await?;
     assert_eq!(get_state(&app, &uid).await?, Some(State::Destroyed));
 
-    assert_revoke_refused(
+    revoke(
         &app,
         &uid,
         RevocationReasonCode::CessationOfOperation,
-        State::Destroyed,
+        false,
     )
     .await?;
+    assert_eq!(get_state(&app, &uid).await?, Some(State::Destroyed));
 
     // A compromise is accepted and moves it to Destroyed Compromised.
     revoke(&app, &uid, RevocationReasonCode::KeyCompromise, false).await?;
@@ -426,9 +420,9 @@ async fn test_revoke_on_destroyed_key_non_compromise_is_refused() -> KResult<()>
     Ok(())
 }
 
-/// KMIP 2.1 §4.57: a Destroyed Compromised object accepts no further revocation.
+/// KMIP 2.1 §4.57: a non-compromise Revoke of a Destroyed Compromised object changes nothing.
 #[tokio::test]
-async fn test_revoke_on_destroyed_compromised_key_is_refused() -> KResult<()> {
+async fn test_revoke_on_destroyed_compromised_key_is_a_no_op() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
     let uid = create_aes_key(&app).await?;
 
@@ -450,13 +444,18 @@ async fn test_revoke_on_destroyed_compromised_key_is_refused() -> KResult<()> {
         Some(State::Destroyed_Compromised)
     );
 
-    assert_revoke_refused(
+    revoke(
         &app,
         &uid,
         RevocationReasonCode::CessationOfOperation,
-        State::Destroyed_Compromised,
+        false,
     )
-    .await
+    .await?;
+    assert_eq!(
+        get_state(&app, &uid).await?,
+        Some(State::Destroyed_Compromised)
+    );
+    Ok(())
 }
 
 // ── Section D: EC key-pair cascade ───────────────────────────────────────────

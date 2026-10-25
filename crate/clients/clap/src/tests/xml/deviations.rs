@@ -529,12 +529,6 @@ const VENDOR_SINGLE_INSTANCE: &str = "Add Attribute of a second instance of Vend
                                       Attribute_Single_Valued); KMIP 1.4 Table 138 permits \
                                       multiple Custom Attribute instances, KMIP 2.0/2.1 §4.60 \
                                       states no rule";
-const REKEY_RETIRES_KEY: &str = "Re-key retires the existing Active key (Deactivation Date set \
-                                 to now, KMIP 2.1 §4.18/§4.57 transition 6, rekey/common.rs \
-                                 retire_old_key); the vector's reference server leaves it Active \
-                                 and then Revokes it with Cessation Of Operation, for which \
-                                 §4.57 has no transition from Deactivated: Wrong_Key_Lifecycle_\
-                                 State (Revoke Errors, Table 297)";
 const VENDOR_STRUCT: &str = "x-ID Custom/Vendor Attribute with a Structure value (a Name): \
                              VendorAttributeValue (2.x) and CustomAttributeValue (1.4) have no \
                              Structure variant by design (kmip_2_1/kmip_types.rs), so the vector \
@@ -850,36 +844,6 @@ pub(crate) const KNOWN_FAILING: &[(&str, &str, &str)] = &[
         "TC-OFFSET-2-20",
         "located_items expected=Some(1) actual=None",
         LOCATED_ITEMS_BACKFILL,
-    ),
-    (
-        "TC-REKEY-1-10",
-        "cannot be revoked with reason",
-        REKEY_RETIRES_KEY,
-    ),
-    (
-        "TC-REKEY-1-11",
-        "cannot be revoked with reason",
-        REKEY_RETIRES_KEY,
-    ),
-    (
-        "TC-REKEY-1-12",
-        "cannot be revoked with reason",
-        REKEY_RETIRES_KEY,
-    ),
-    (
-        "TC-REKEY-1-13",
-        "cannot be revoked with reason",
-        REKEY_RETIRES_KEY,
-    ),
-    (
-        "TC-REKEY-1-14",
-        "cannot be revoked with reason",
-        REKEY_RETIRES_KEY,
-    ),
-    (
-        "TC-REKEY-1-20",
-        "cannot be revoked with reason",
-        REKEY_RETIRES_KEY,
     ),
     (
         "TC-SETATTR-3-20",

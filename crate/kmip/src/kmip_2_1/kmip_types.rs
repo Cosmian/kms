@@ -868,75 +868,76 @@ impl Display for VendorAttributeValue {
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
 ///
-/// Fields use the KMIP tag names (`CertificateSubjectCN`, ...) so binary TTLV round-trips;
-/// the former `PascalCase` names (`CertificateSubjectCn`, ...) are still read from stored JSON.
+/// JSON keeps the historical `PascalCase` names (`CertificateSubjectCn`, ...) that deployed
+/// clients require; the KMIP tag names (`CertificateSubjectCN`, ...) are accepted as aliases and
+/// resolved to tags by the binary TTLV lookup.
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertificateAttributes {
     // Certificate Subject CN
-    #[serde(rename = "CertificateSubjectCN", alias = "CertificateSubjectCn")]
+    #[serde(rename = "CertificateSubjectCn", alias = "CertificateSubjectCN")]
     pub certificate_subject_cn: String,
     // Certificate Subject O
     pub certificate_subject_o: String,
     // Certificate Subject OU
-    #[serde(rename = "CertificateSubjectOU", alias = "CertificateSubjectOu")]
+    #[serde(rename = "CertificateSubjectOu", alias = "CertificateSubjectOU")]
     pub certificate_subject_ou: String,
     // Certificate Subject Email
     pub certificate_subject_email: String,
     // Certificate Subject C
     pub certificate_subject_c: String,
     // Certificate Subject ST
-    #[serde(rename = "CertificateSubjectST", alias = "CertificateSubjectSt")]
+    #[serde(rename = "CertificateSubjectSt", alias = "CertificateSubjectST")]
     pub certificate_subject_st: String,
     // Certificate Subject L
     pub certificate_subject_l: String,
     // Certificate Subject UID
-    #[serde(rename = "CertificateSubjectUID", alias = "CertificateSubjectUid")]
+    #[serde(rename = "CertificateSubjectUid", alias = "CertificateSubjectUID")]
     pub certificate_subject_uid: String,
     // Certificate Subject Serial Number
     pub certificate_subject_serial_number: String,
     // Certificate Subject Title
     pub certificate_subject_title: String,
     // Certificate Subject DC
-    #[serde(rename = "CertificateSubjectDC", alias = "CertificateSubjectDc")]
+    #[serde(rename = "CertificateSubjectDc", alias = "CertificateSubjectDC")]
     pub certificate_subject_dc: String,
     // Certificate Subject DN Qualifier
     #[serde(
-        rename = "CertificateSubjectDNQualifier",
-        alias = "CertificateSubjectDnQualifier"
+        rename = "CertificateSubjectDnQualifier",
+        alias = "CertificateSubjectDNQualifier"
     )]
     pub certificate_subject_dn_qualifier: String,
     // Certificate Issuer CN
-    #[serde(rename = "CertificateIssuerCN", alias = "CertificateIssuerCn")]
+    #[serde(rename = "CertificateIssuerCn", alias = "CertificateIssuerCN")]
     pub certificate_issuer_cn: String,
     // Certificate Issuer O
     pub certificate_issuer_o: String,
     // Certificate Issuer OU
-    #[serde(rename = "CertificateIssuerOU", alias = "CertificateIssuerOu")]
+    #[serde(rename = "CertificateIssuerOu", alias = "CertificateIssuerOU")]
     pub certificate_issuer_ou: String,
     // Certificate Issuer Email
     pub certificate_issuer_email: String,
     // Certificate Issuer C
     pub certificate_issuer_c: String,
     // Certificate Issuer ST
-    #[serde(rename = "CertificateIssuerST", alias = "CertificateIssuerSt")]
+    #[serde(rename = "CertificateIssuerSt", alias = "CertificateIssuerST")]
     pub certificate_issuer_st: String,
     // Certificate Issuer L
     pub certificate_issuer_l: String,
     // Certificate Issuer UID
-    #[serde(rename = "CertificateIssuerUID", alias = "CertificateIssuerUid")]
+    #[serde(rename = "CertificateIssuerUid", alias = "CertificateIssuerUID")]
     pub certificate_issuer_uid: String,
     // Certificate Issuer Serial Number
     pub certificate_issuer_serial_number: String,
     // Certificate Issuer Title
     pub certificate_issuer_title: String,
     // Certificate Issuer DC
-    #[serde(rename = "CertificateIssuerDC", alias = "CertificateIssuerDc")]
+    #[serde(rename = "CertificateIssuerDc", alias = "CertificateIssuerDC")]
     pub certificate_issuer_dc: String,
     // Certificate Issuer DN Qualifier
     #[serde(
-        rename = "CertificateIssuerDNQualifier",
-        alias = "CertificateIssuerDnQualifier"
+        rename = "CertificateIssuerDnQualifier",
+        alias = "CertificateIssuerDNQualifier"
     )]
     pub certificate_issuer_dn_qualifier: String,
 }

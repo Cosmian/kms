@@ -21,10 +21,11 @@ use crate::{
     result::KResult,
 };
 
-/// Server-side ceiling for Locate results and offsets (A04-3 / EXT2-4).
+/// Server-side ceiling for Locate results per page (A04-3 / EXT2-4). Offsets are not capped so
+/// that clients can page through larger result sets.
 ///
 /// Prevents unbounded database queries and oversized response payloads when a client omits
-/// `MaximumItems`, requests more objects than this threshold, or supplies an excessive offset.
+/// `MaximumItems` or requests more objects than this threshold.
 const MAX_LOCATE_ITEMS: i32 = 1000;
 
 pub(crate) async fn locate(
@@ -60,12 +61,6 @@ pub(crate) async fn locate(
             KmsError::InvalidRequest(format!("OffsetItems must be non-negative: {error}"))
         })
     })?;
-    if offset > server_cap {
-        return Err(KmsError::Kmip21Error(
-            ErrorReason::Invalid_Field,
-            format!("OffsetItems must not exceed {MAX_LOCATE_ITEMS}"),
-        ));
-    }
     if effective_max == 0 {
         return Ok(LocateResponse {
             located_items: None,
@@ -244,7 +239,7 @@ mod tests {
     use async_trait::async_trait;
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
-            kmip_0::kmip_types::{ErrorReason, State},
+            kmip_0::kmip_types::State,
             kmip_2_1::{
                 KmipOperation,
                 kmip_attributes::Attributes,
@@ -262,7 +257,7 @@ mod tests {
     };
     use time::OffsetDateTime;
 
-    use super::{MAX_LOCATE_ITEMS, locate};
+    use super::locate;
     use crate::{
         config::{HsmInstanceParams, ServerParams},
         core::KMS,
@@ -567,31 +562,6 @@ mod tests {
             return Err(KmsError::Default(format!(
                 "offset Locate must omit the count: {response:?}"
             )));
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn locate_rejects_an_excessive_offset() -> KResult<()> {
-        let kms = test_kms().await?;
-        let user = UserId::from("locate-offset@example.com");
-        let result = locate(
-            &kms,
-            Locate {
-                offset_items: Some(MAX_LOCATE_ITEMS + 1),
-                ..Locate::default()
-            },
-            None,
-            &user,
-        )
-        .await;
-        if !matches!(
-            result,
-            Err(KmsError::Kmip21Error(ErrorReason::Invalid_Field, _))
-        ) {
-            return Err(KmsError::Default(
-                "Locate accepted an OffsetItems value above the page cap".to_owned(),
-            ));
         }
         Ok(())
     }

@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm, State},
+        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -56,10 +56,9 @@ impl CryptoOpSpec for MacOp {
     }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
-        // KMIP 2.1 §4.1: an Active object SHALL only be used for the purposes allowed by its
-        // Cryptographic Usage Mask (a key without any mask is accepted).
+        // The usage mask is deliberately not checked: keys created by earlier versions (and by
+        // external clients) carry no MAC bit, and §4.17 only says the mask "indicates" usage.
         matches!(owm.object(), Object::SymmetricKey { .. })
-            && owm.has_usage_mask(CryptographicUsageMask::MACGenerate, true)
     }
 
     fn execute_local(
@@ -162,7 +161,6 @@ impl CryptoOpSpec for MacVerifyOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         matches!(owm.object(), Object::SymmetricKey { .. })
-            && owm.has_usage_mask(CryptographicUsageMask::MACVerify, true)
     }
 
     fn execute_local(
@@ -659,7 +657,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_server_mac_requires_usage_mask() -> KResult<()> {
+    async fn test_server_mac_accepts_a_key_without_mac_usage_bit() -> KResult<()> {
         let kms = test_kms().await?;
         let user = UserId::from("user");
         // AES keys created with the default mask (Encrypt|Decrypt|...) have no MACGenerate bit
@@ -678,17 +676,9 @@ mod tests {
             )
             .await?
             .unique_identifier;
-        let err = kms
-            .mac(mac_request(&uid, Some(&[1]), None, None, None), &user)
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(
-                err,
-                KmsError::Kmip21Error(ErrorReason::Incompatible_Cryptographic_Usage_Mask, _)
-            ),
-            "{err:?}"
-        );
+        // Keys created by earlier versions and by external clients carry no MAC bit: still usable.
+        kms.mac(mac_request(&uid, Some(&[1]), None, None, None), &user)
+            .await?;
         Ok(())
     }
 

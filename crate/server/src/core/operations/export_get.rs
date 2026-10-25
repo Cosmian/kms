@@ -720,9 +720,14 @@ async fn post_process_active_private_key(
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         // The Key Format Type designates the format of the key before it is wrapped
         // (KMIP 2.1 §6.1.19: wrapped keys may be returned in any supported format)
+        // An RSA key wrapped without a requested format is wrapped as PKCS#8 / SPKI, which is
+        // what deployed clients (e.g. the AWS and Azure BYOK imports) expect.
+        let wrapped_format = key_format_type.or_else(|| {
+            (openssl_key.id() == openssl::pkey::Id::RSA).then_some(KeyFormatType::PKCS8)
+        });
         let mut object = private_key_object(
             &openssl_key,
-            *key_format_type,
+            wrapped_format,
             attributes.cryptographic_usage_mask,
         )?;
 
@@ -920,9 +925,14 @@ async fn process_public_key(
 
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         // The Key Format Type designates the format of the key before it is wrapped
+        // An RSA key wrapped without a requested format is wrapped as PKCS#8 / SPKI, which is
+        // what deployed clients (e.g. the AWS and Azure BYOK imports) expect.
+        let wrapped_format = key_format_type.or_else(|| {
+            (openssl_key.id() == openssl::pkey::Id::RSA).then_some(KeyFormatType::PKCS8)
+        });
         let mut object = public_key_object(
             &openssl_key,
-            *key_format_type,
+            wrapped_format,
             attributes.cryptographic_usage_mask,
         )?;
         // add the attributes back

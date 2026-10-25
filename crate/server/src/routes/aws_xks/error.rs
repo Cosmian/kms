@@ -164,9 +164,7 @@ pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorRe
             | ErrorReason::Invalid_Object_Type
             | ErrorReason::Incompatible_Cryptographic_Usage_Mask,
             msg,
-        ) => {
-            (XksErrorName::InvalidKeyUsageException, msg)
-        }
+        ) => (XksErrorName::InvalidKeyUsageException, msg),
         KmsError::ItemNotFound(msg) | KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg) => {
             (XksErrorName::KeyNotFoundException, msg)
         }
@@ -184,9 +182,7 @@ pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorRe
             ErrorReason::Operation_Not_Supported
             | ErrorReason::Unsupported_Cryptographic_Parameters,
             msg,
-        ) => {
-            (XksErrorName::UnsupportedOperationException, msg)
-        }
+        ) => (XksErrorName::UnsupportedOperationException, msg),
         // Validation / bad request errors (cryptographic errors, invalid requests, and all
         // remaining KMIP 2.1 error reasons not explicitly handled above)
         KmsError::CryptographicError(msg)

@@ -686,7 +686,10 @@ pub(crate) async fn process_message(
 
         if let Some(maximum_response_size) = maximum_response_size {
             let mut item_size = encoded_size(None, Some(&response_item), kmip_version).unwrap_or(0);
-            if response_size.saturating_add(item_size) > maximum_response_size
+            // Enforced for Query only, as before: deployed clients send a fixed value (9999 bytes
+            // or 1 MiB) on every operation without expecting it to be applied.
+            if operation == OperationEnumeration::Query
+                && response_size.saturating_add(item_size) > maximum_response_size
                 && status_of(&response_item) == ResultStatusEnumeration::Success
             {
                 response_item = failed_item(

@@ -424,7 +424,7 @@ async fn ephemeral_encrypt_omits_ciphertext() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn maximum_response_size_applies_to_rng_retrieve() -> KResult<()> {
+async fn maximum_response_size_is_ignored_outside_query() -> KResult<()> {
     let kms = test_kms().await?;
     let owner = UserId::from("response-size@example.com");
     let response = kms
@@ -454,9 +454,9 @@ async fn maximum_response_size_applies_to_rng_retrieve() -> KResult<()> {
             "response-size test did not return one KMIP 2.1 batch item".to_owned(),
         ));
     };
-    if batch_item.result_status != ResultStatusEnumeration::OperationFailed
-        || batch_item.result_reason != Some(ErrorReason::Response_Too_Large)
-        || batch_item.response_payload.is_some()
+    // Deployed clients send a fixed Maximum Response Size on every operation: only Query applies it.
+    if batch_item.result_status != ResultStatusEnumeration::Success
+        || batch_item.response_payload.is_none()
     {
         return Err(KmsError::Default(format!(
             "Maximum Response Size result: status={:?}, reason={:?}, payload={}",

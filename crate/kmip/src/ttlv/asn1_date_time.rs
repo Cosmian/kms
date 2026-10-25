@@ -68,7 +68,10 @@ pub(crate) fn serialize<S: Serializer>(
 pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<String>, D::Error> {
-    Option::<OffsetDateTime>::deserialize(deserializer).map(|value| value.map(format))
+    // A Date-Time node reads as an RFC 3339 string; earlier clients sent a TextString (already
+    // ASN.1 GeneralizedTime), which is kept as is.
+    Ok(Option::<String>::deserialize(deserializer)?
+        .map(|value| OffsetDateTime::parse(&value, &Rfc3339).map_or(value, format)))
 }
 
 #[cfg(test)]

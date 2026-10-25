@@ -100,6 +100,8 @@ pub(crate) async fn check_role_permission(
     crypto_officer: &CryptoOfficerConfig,
 ) -> KResult<()> {
     // PKCS11 controls the server's shared HSM library and requires an explicit Crypto Officer.
+    // (SetConstraints does not: the OASIS vectors, e.g. TC-MD-24-21, call it on a server without
+    // roles; it is refused to Operators once roles are configured.)
     if operation == OperationEnumeration::PKCS11 && !crypto_officer.is_configured() {
         kms_bail!(KmsError::Unauthorized(
             "PKCS11 requires a configured Crypto Officer".to_owned()
@@ -453,6 +455,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn operator_can_manage_the_lifecycle_of_its_objects() -> KResult<()> {
+        let mut config = https_clap_config();
+        config.roles.crypto_officer_users = Some(vec!["officer@example.com".to_owned()]);
+        let kms = KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?;
+        for operation in [
+            OperationEnumeration::Activate,
+            OperationEnumeration::Revoke,
+            OperationEnumeration::Destroy,
+            OperationEnumeration::ReKey,
+            OperationEnumeration::DeriveKey,
+            OperationEnumeration::Certify,
+            OperationEnumeration::ModifyAttribute,
+            OperationEnumeration::JoinSplitKey,
+        ] {
+            check_role_permission(
+                &kms,
+                "operator@example.com",
+                operation,
+                &kms.params.crypto_officer,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn operator_cannot_invoke_administrative_operations() -> KResult<()> {
         let mut config = https_clap_config();
         config.roles.crypto_officer_users = Some(vec!["officer@example.com".to_owned()]);
@@ -460,9 +488,9 @@ mod tests {
         let operator = UserId::from("operator@example.com");
 
         for operation in [
-            OperationEnumeration::JoinSplitKey,
             OperationEnumeration::PKCS11,
-            OperationEnumeration::ReCertify,
+            OperationEnumeration::SetConstraints,
+            OperationEnumeration::RNGSeed,
         ] {
             let result = check_role_permission(
                 &kms,
