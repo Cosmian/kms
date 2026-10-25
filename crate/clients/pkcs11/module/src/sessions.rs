@@ -994,7 +994,11 @@ impl Session {
                 if matches!(object.as_ref(), Object::Profile(_)) {
                     return Err(ModuleError::ActionProhibited(handle));
                 }
-                backend()?.revoke_object(&object.remote_id())?;
+                // A Pre-Active object cannot be revoked but can be destroyed directly
+                // (KMIP 2.1 §4.57): a failed Revoke is left for Destroy to report.
+                if let Err(e) = backend()?.revoke_object(&object.remote_id()) {
+                    debug!("destroy_object: revoke skipped: {e}");
+                }
                 backend()?.destroy_object(&object.remote_id())?;
             }
             None => return Err(ModuleError::ObjectHandleInvalid(handle)),
