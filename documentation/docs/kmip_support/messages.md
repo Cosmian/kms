@@ -28,7 +28,7 @@ along with any relevant result data or error messages.
   `Operation Undone`; the others keep `Success`.
 - A critical Message Extension fails every item with `Unknown_Message_Extension`.
 - A Hashed Password credential returns `Feature_Not_Supported`.
-- Maximum Response Size bounds the whole encoded response. An item that would exceed it becomes `Response_Too_Large`.
+- Maximum Response Size is applied to Query only: a Query response that would exceed it becomes `Response_Too_Large`.
   A negative value returns `Invalid_Field`.
 - An unimplemented operation fails only its own item with `Operation_Not_Supported`.
 - A message-level error fails every item with that reason.

@@ -87,7 +87,7 @@ Locate allows finding objects:
 When `Maximum Items`, `Offset Items`, or the server result cap limits a response, Eviden KMS omits `Located Items` rather than report a partial count.
 
 Results are returned newest first: descending Initial Date, ties broken by ascending Unique Identifier, merged across
-the database and HSMs. A request returns at most 1000 identifiers. `Offset Items` outside 0..1000 returns
+the database and HSMs. A request returns at most 1000 identifiers. A negative `Offset Items` returns
 `Invalid_Field`. `Maximum Items` set to 0 returns an empty response.
 
 ## Example - Symmetric Keys using the `_kk` tag

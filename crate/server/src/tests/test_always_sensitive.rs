@@ -586,6 +586,10 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
         )
         .await?;
     }
+    // The key was extractable for a moment, so NeverExtractable is now false (§4.33), while
+    // Extractable=false still blocks Get.
+    let resp = get_attributes(&kms, &uid, Tag::NeverExtractable).await?;
+    assert_eq!(resp.attributes.never_extractable, Some(false));
 
     // Defensive latch check: If an object somehow has NeverExtractable=true while
     // Extractable is absent/true, export must STILL be denied with Not_Extractable.

@@ -20,9 +20,9 @@ Permission is checked before the object state. If nothing is revoked, the server
 - A compromise reason moves `Pre-Active`, `Active` or `Deactivated` objects to `Compromised`, and `Destroyed` objects
   to `Destroyed Compromised`. It sets the Compromise Date and the Compromise Occurrence Date (request value, default
   Initial Date) and leaves the Deactivation Date alone.
-- Any other reason moves only `Active` objects to `Deactivated`
-  and sets the Deactivation Date.
-- Every other case returns `Wrong_Key_Lifecycle_State`.
+- Any other reason moves `Active` objects to `Deactivated` and sets the Deactivation Date. On an object that is
+  already `Deactivated`, `Destroyed` or `Destroyed Compromised` it succeeds without any change.
+- Every other case (for example a `Pre-Active` object) returns `Wrong_Key_Lifecycle_State`.
 - A Compromise Occurrence Date with a non-compromise reason returns `Invalid_Field`.
 - Certificate Requests return `Invalid_Object_Type`.
 

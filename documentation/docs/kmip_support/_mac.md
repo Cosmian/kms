@@ -32,9 +32,8 @@ The hash function is taken from the request `Hashing Algorithm`, else from the r
 (`HMACSHA*`; any other value returns `Bad_Cryptographic_Parameters`), else from the key's algorithm. Unsupported
 hash functions return `Feature_Not_Supported`.
 
-The key's Cryptographic Usage Mask must contain `MAC Generate` (MAC) or `MAC Verify` (MAC Verify), or the key must
-have no mask at all; otherwise the request fails with `Incompatible_Cryptographic_Usage_Mask`. HMAC keys created by
-the server get both bits; older HMAC keys need their mask updated. A key in the wrong state returns
+The key's Cryptographic Usage Mask is not enforced, so keys created by earlier versions or by other clients keep
+working. HMAC keys created by the server get the `MAC Generate` and `MAC Verify` bits. A key in the wrong state returns
 `Wrong_Key_Lifecycle_State` and a usable object of the wrong type `Invalid_Object_Type`.
 
 A request with both `Init Indicator` and `Final Indicator` but no `Correlation Value` is a single-part request.
@@ -50,10 +49,6 @@ may be sent on the Init or the Final part, and a missing `MACData` at the end re
 ## Example - Simple MAC
 
 Computing MAC with SHA3-512 using a MAC key.
-
-!!! warning "The key must allow MAC"
-    The key must have the `MAC Generate` (and, for MAC Verify, `MAC Verify`) bit in its Cryptographic Usage Mask.
-    An AES key created with the default mask (see [Create](./_create.md)) does not; use an HMAC key instead.
 
 Corresponding [KMS CLI](../kms_clients/index.md) command:
 
