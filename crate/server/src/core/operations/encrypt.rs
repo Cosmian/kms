@@ -605,8 +605,9 @@ fn encrypt_with_public_key(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::ConfigurableKEMPublicKey => {
-            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::{
-                kem_encaps, kem_key_components,
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
+                crypto::kem::{kem_encaps, kem_key_components},
+                reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
             };
 
             use crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_kem_components;
@@ -619,12 +620,25 @@ fn encrypt_with_public_key(
                 owm.id(),
                 kem_key_components(&ek_bytes)?,
             )?;
-            let (shared_secret, encapsulation) = kem_encaps(&ek_bytes)?;
+            let (key, enc) = kem_encaps(&ek_bytes)?;
+            // Published `ConfigurableKEM` contract: `Data` holds the serialized
+            // `(shared secret, encapsulation)` tuple and `IVCounterNonce` is empty.
+            // Do not align it with the ML-KEM layout.
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                data: Some(shared_secret.to_vec()),
-                i_v_counter_nonce: Some(encapsulation.to_vec()),
-                correlation_value: request.correlation_value.clone(),
+                data: Some(
+                    (key, enc)
+                        .serialize()
+                        .map_err(|e| {
+                            KmsError::ConversionError(format!(
+                                "failed serializing the configurable-KEM encapsulation \
+                                 results: {e}"
+                            ))
+                        })?
+                        .to_vec(),
+                ),
+                i_v_counter_nonce: None,
+                correlation_value: None,
                 authenticated_encryption_tag: None,
             })
         }
