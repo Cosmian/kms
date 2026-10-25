@@ -114,8 +114,10 @@ pub fn kem_keygen(
     ))
 }
 
-#[allow(clippy::type_complexity)]
-pub fn kem_encaps(ek: &[u8]) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+/// A KEM result: `(shared secret, encapsulation)`.
+pub type KemEncapsulation = (Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>);
+
+pub fn kem_encaps(ek: &[u8]) -> Result<KemEncapsulation, CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
             "failed deserializing the configurable-KEM encapsulation: {e}"
@@ -157,11 +159,8 @@ pub fn pack_kem_encapsulation(
 }
 
 /// Inverse of [`pack_kem_encapsulation`]: returns `(shared secret, encapsulation)`.
-#[allow(clippy::type_complexity)]
-pub fn unpack_kem_encapsulation(
-    data: &[u8],
-) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
-    <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(data).map_err(|e| {
+pub fn unpack_kem_encapsulation(data: &[u8]) -> Result<KemEncapsulation, CryptoError> {
+    KemEncapsulation::deserialize(data).map_err(|e| {
         CryptoError::ConversionError(format!(
             "the KEM response data is not a (shared secret, encapsulation) tuple: {e}"
         ))
@@ -306,9 +305,17 @@ mod tests {
         let packed = pack_kem_encapsulation(secret.clone(), encapsulation.clone()).unwrap();
         let (s, e) = unpack_kem_encapsulation(&packed).unwrap();
         assert_eq!((s, e), (secret, encapsulation));
-        // truncated data is refused, not silently shortened
+        // golden layout, shared with the Web UI parser and the vector runner:
+        // LEB128 length + secret, LEB128 length (1088 = 0xC0 0x08) + encapsulation
+        assert_eq!(packed.len(), 1 + 32 + 2 + 1088);
+        assert_eq!(packed.get(..1).unwrap(), &[32]);
+        assert_eq!(packed.get(33..35).unwrap(), &[0xC0, 0x08]);
+        // truncated and trailing data are refused, not silently shortened or ignored
         let (_, truncated) = packed.split_last().unwrap();
         unpack_kem_encapsulation(truncated).unwrap_err();
         unpack_kem_encapsulation(&[]).unwrap_err();
+        let mut trailing = packed.to_vec();
+        trailing.push(0);
+        unpack_kem_encapsulation(&trailing).unwrap_err();
     }
 }
