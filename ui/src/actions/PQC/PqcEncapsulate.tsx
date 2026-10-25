@@ -2,7 +2,7 @@ import { Button, Card, Form, Select, Space } from "antd";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
-import { unpackKemEncapsulation } from "../../utils/kem";
+import { type KemEncapsulation, unpackKemEncapsulation } from "../../utils/kem";
 import { encrypt_ec_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
@@ -33,12 +33,17 @@ const PqcEncapsulateForm: React.FC = () => {
 
                 // Data packs (shared secret, encapsulation); IVCounterNonce is empty for every KEM
                 const data = respObj.Data as Uint8Array | number[] | undefined;
-                if (!data) {
-                    throw new Error("Invalid KEM response: no data");
+                let unpacked: KemEncapsulation;
+                try {
+                    if (!data) {
+                        throw new Error("no data");
+                    }
+                    unpacked = unpackKemEncapsulation(data);
+                } catch {
+                    throw new Error(t("pqcEncapsulate.invalidResponse"));
                 }
-                const { sharedSecret, encapsulation } = unpackKemEncapsulation(data);
-                downloadFile(encapsulation, "encapsulation.bin", "application/octet-stream");
-                downloadFile(sharedSecret, "shared_secret.key", "application/octet-stream");
+                downloadFile(unpacked.encapsulation, "encapsulation.bin", "application/octet-stream");
+                downloadFile(unpacked.sharedSecret, "shared_secret.key", "application/octet-stream");
 
                 return t("pqcEncapsulate.success");
             }

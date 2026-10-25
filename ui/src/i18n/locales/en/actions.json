@@ -1550,6 +1550,7 @@
         "tagsHelp": "Alternative to Key ID: specify tags to identify the key",
         "submit": "Encapsulate",
         "missingKeyId": "Missing key identifier.",
+        "invalidResponse": "Invalid KEM response: expected the shared secret and the encapsulation.",
         "success": "Encapsulation successful. Ciphertext and shared secret downloaded.",
         "responseTitle": "PQC KEM encapsulate response"
     },
