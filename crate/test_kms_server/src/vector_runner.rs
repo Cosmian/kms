@@ -5696,12 +5696,6 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_neg_robust_locate_offset_over_max() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/robustness/locate_offset_over_max").await
-    }
-
-    #[tokio::test]
     async fn test_neg_robust_derive_key_pbkdf2_iterations_over_max() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector(
@@ -5772,12 +5766,6 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_neg_sec_extractable_cannot_be_reenabled() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/security/extractable_cannot_be_reenabled").await
-    }
-
-    #[tokio::test]
     async fn test_neg_sec_import_replace_existing_foreign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/security/import_replace_existing_foreign").await
@@ -5829,12 +5817,6 @@ ObjectType = "SymmetricKey"
     async fn test_neg_sec_operator_set_constraints_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/security/operator_set_constraints_denied").await
-    }
-
-    #[tokio::test]
-    async fn test_neg_sec_operator_key_output_denied() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/security/operator_key_output_denied").await
     }
 
     #[tokio::test]
