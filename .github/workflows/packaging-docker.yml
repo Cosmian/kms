@@ -94,6 +94,9 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          # 5.22 is a maintenance line: never move `latest` to a patch of an older release
+          flavor: |
+            latest=false
 
       - name: Append arch suffix to tags
         id: arch_tags
@@ -219,6 +222,8 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=false
 
       - name: Create and push manifest list
         id: manifest

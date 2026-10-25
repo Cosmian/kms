@@ -235,6 +235,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type != 'pkcs11-zip'
         uses: softprops/action-gh-release@v3
         with:
+          # 5.22 is a maintenance line: never mark a patch of an older release as the latest
+          make_latest: false
           files: |
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
@@ -244,6 +246,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type == 'pkcs11-zip'
         uses: softprops/action-gh-release@v3
         with:
+          make_latest: false
           files: |
             result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
             ./nix/signing-keys/cosmian-kms-public.asc
