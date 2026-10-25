@@ -194,6 +194,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
+          make_latest: false
           files: |
             cosmian-kms-server*.exe
             cosmian-kms-cli*.exe
