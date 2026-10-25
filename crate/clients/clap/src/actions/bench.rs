@@ -25,6 +25,8 @@ use std::{
 
 use clap::{Parser, ValueEnum};
 #[cfg(feature = "non-fips")]
+use cosmian_crypto_core::bytes_ser_de::Serializable;
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::{
@@ -976,7 +978,12 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime) {
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        // ConfigurableKEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
+        let packed = enc_resp.data.unwrap_or_default();
+        let (_, ct) =
+            <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>) as Serializable>::deserialize(&packed)
+                .expect("ConfigurableKEM encapsulation tuple");
+        let ct = ct.to_vec();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
             None,

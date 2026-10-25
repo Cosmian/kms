@@ -45,6 +45,8 @@ use crate::{
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
+#[cfg(feature = "non-fips")]
+mod hybrid_kem_dek;
 mod issues;
 mod rsa_dek;
 mod search;
@@ -76,6 +78,18 @@ async fn test_hsm_all() {
     {
         info!("HSM: wrapped_ec_dek");
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
+        info!("HSM: hybrid_kem_lifecycle");
+        Box::pin(hybrid_kem_dek::test_hybrid_kem_lifecycle())
+            .await
+            .unwrap();
+        info!("HSM: hybrid_kem_ttlv_wrapped_import");
+        Box::pin(hybrid_kem_dek::test_ttlv_wrapped_kem_import())
+            .await
+            .unwrap();
+        info!("HSM: hybrid_kem_client_wrapped_import");
+        Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
+            .await
+            .unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
