@@ -11,7 +11,7 @@
                   - [COSMIAN-2026-052 — ReKeyKeyPair retired another user's linked public key](#cosmian-2026-052--rekeykeypair-retired-another-users-linked-public-key)
                   - [COSMIAN-2026-051 — KMIP certificate chains and Locate offsets permit excessive server work](#cosmian-2026-051--kmip-certificate-chains-and-locate-offsets-permit-excessive-server-work)
                   - [COSMIAN-2026-050 — KMIP payloads written to debug logs](#cosmian-2026-050--kmip-payloads-written-to-debug-logs)
-                  - [COSMIAN-2026-049 — Configured Operator role permitted key output and PKCS#11 administration](#cosmian-2026-049--configured-operator-role-permitted-key-output-and-pkcs11-administration)
+                  - [COSMIAN-2026-049 — Configured Operator role permitted PKCS#11 administration](#cosmian-2026-049--configured-operator-role-permitted-pkcs11-administration)
                   - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
                   - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
                   - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
@@ -204,11 +204,11 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
-**Summary:** PKCS#12 and PKCS#7 export followed a certificate's `CertificateLink` chain without cycle detection or a depth limit. `Locate` accepted arbitrary positive `OffsetItems`, which was added to the store query limit. When HSMs were configured, a `Locate` by a user who is not an HSM administrator ran without any store limit and enumerated every HSM key and its metadata before discarding the keys not granted to that user.
+**Summary:** PKCS#12 and PKCS#7 export followed a certificate's `CertificateLink` chain without cycle detection or a depth limit. When HSMs were configured, a `Locate` by a user who is not an HSM administrator ran without any store limit and enumerated every HSM key and its metadata before discarding the keys not granted to that user.
 
-**Impact:** An authenticated caller able to create or link managed certificates could make an export loop indefinitely. A request with a very large Locate offset could force excessive database work. On a server with HSMs, any authenticated user could make each Locate read the metadata of every key on the HSMs.
+**Impact:** An authenticated caller able to create or link managed certificates could make an export loop indefinitely. On a server with HSMs, any authenticated user could make each Locate read the metadata of every key on the HSMs.
 
-**Mitigation:** Upgrade to 5.29.0. Certificate chains reject cycles and chains above 100 certificates. Locate rejects offsets above 1,000 and does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `locate_rejects_an_excessive_offset`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
+**Mitigation:** Upgrade to 5.29.0. Certificate chains reject cycles and chains above 100 certificates. Locate does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
 
 ---
 
@@ -231,7 +231,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ---
 
-#### COSMIAN-2026-049 — Configured Operator role permitted key output and PKCS#11 administration
+#### COSMIAN-2026-049 — Configured Operator role permitted PKCS#11 administration
 
 | Field      | Value                                                      |
 | ---------- | ---------------------------------------------------------- |
@@ -242,11 +242,11 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
-**Summary:** When Crypto Officer roles were configured, dispatch let Operators invoke role-disallowed per-object operations and unmapped operations. Object ownership or grants could therefore authorize `Get` and `Export`, and the `PKCS11` management operation bypassed the role policy entirely.
+**Summary:** When Crypto Officer roles were configured, the `PKCS11` management operation bypassed the role policy, and the `RNGSeed` and `SetConstraints` operations were not restricted to Crypto Officers.
 
-**Impact:** An Operator who owned a key or held an object-level grant could retrieve key material despite the configured role policy. An Operator could also access PKCS#11 administration.
+**Impact:** An Operator could access PKCS#11 administration, including functions acting on the HSM library shared by all users.
 
-**Mitigation:** Upgrade to 5.29.0. Dispatch now denies all role-disallowed and unmapped operations except the explicitly safe non-lifecycle operations, and regression test `operator_cannot_invoke_key_output_or_administrative_operations` covers the boundary.
+**Mitigation:** Upgrade to 5.29.0. `PKCS11` requires a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and `SetConstraints` once roles are configured; regression test `operator_cannot_invoke_administrative_operations` covers the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions. Where roles are not configured, `SetConstraints` remains available to every authenticated user.
 
 ---
 
@@ -1447,7 +1447,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | COSMIAN-2026-052    | High     | before 5.29.0           | 5.29.0   | ReKeyKeyPair retired another user's linked public key                                               |
 | COSMIAN-2026-051    | Moderate | before 5.29.0           | 5.29.0   | KMIP certificate chains and Locate offsets permit excessive server work                             |
 | COSMIAN-2026-050    | High     | before 5.29.0           | 5.29.0   | KMIP payloads written to debug logs                                                                 |
-| COSMIAN-2026-049    | High     | before 5.29.0           | 5.29.0   | Configured Operator role permitted key output and PKCS#11 administration                            |
+| COSMIAN-2026-049    | High     | before 5.29.0           | 5.29.0   | Configured Operator role permitted PKCS#11 administration                            |
 | COSMIAN-2026-048    | High     | 5.27.0 – 5.28.0         | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |
 | COSMIAN-2026-047    | Moderate | 5.16.0 – 5.28.0         | 5.29.0   | Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check               |
 | COSMIAN-2026-046    | High     | 5.13.0 – 5.28.0         | 5.29.0   | Server key encryption key usable as a decryption oracle through pre-wrapped `Import`                |
