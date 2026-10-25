@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         HashingAlgorithm, PaddingMethod,
     },
     kmip_2_1::{
-        extra::tagging::{SYSTEM_TAG_PUBLIC_KEY, VENDOR_ID_COSMIAN},
+        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{
@@ -22,10 +22,16 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     time_normalize,
 };
 
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::Serializable;
+#[cfg(feature = "non-fips")]
+use zeroize::Zeroizing;
+
 use crate::{
     error::KmsError,
     tests::test_utils::{https_clap_config_opts, post_2_1, test_app_with_clap_config},
 };
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 
 async fn create_kek_and_target_for_export<B, S>(app: &S) -> (String, String)
 where
@@ -293,17 +299,16 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
     )
     .expect("encrypt_request should build");
     let enc_resp: EncryptResponse = post_2_1(&app, &enc_req).await.unwrap();
-    let expected_key = enc_resp
-        .data
-        .expect("encrypt response should include the secret");
-    let encapsulation = enc_resp
-        .i_v_counter_nonce
-        .expect("encrypt response should include the encapsulation");
+    let enc_data = enc_resp.data.expect("encrypt response should include data");
+
+    let (expected_key, encapsulation) =
+        <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&enc_data)
+            .expect("configurable-kem encrypt response should deserialize");
 
     let dec_req = decrypt_request(
         &sk_uid,
         None,
-        encapsulation,
+        encapsulation.to_vec(),
         None,
         None,
         Some(CryptographicParameters {
@@ -314,5 +319,5 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
     let dec_resp: DecryptResponse = post_2_1(&app, &dec_req).await.unwrap();
     let recovered_key = dec_resp.data.expect("decrypt response should include data");
 
-    assert_eq!(recovered_key.to_vec(), expected_key);
+    assert_eq!(recovered_key.to_vec(), expected_key.to_vec());
 }

@@ -16,7 +16,8 @@ use cosmian_kms_server_database::reexport::{
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyValue, KeyWrappingData, KeyWrappingSpecification},
             kmip_operations::{
-                Activate, CreateKeyPair, Destroy, Export, GetAttributes, Import, Operation, Revoke,
+                Activate, CreateKeyPair, Destroy, EncryptResponse, Export, GetAttributes, Import,
+                Operation, Revoke,
             },
             kmip_types::{
                 CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
@@ -30,8 +31,9 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_crypto::crypto::{
-        KeyPair, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair,
+    cosmian_kms_crypto::{
+        crypto::{KeyPair, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair},
+        reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
     },
 };
 use uuid::Uuid;
@@ -179,8 +181,8 @@ async fn restart(
     ))
 }
 
-/// Returns (shared secret, encapsulation)
-async fn encapsulate(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<(Vec<u8>, Vec<u8>)> {
+/// The raw KMIP `Encrypt` response of a KEM public key
+async fn encrypt_response(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<EncryptResponse> {
     let request = encrypt_request(pk_uid, None, Vec::new(), None, None, None)?;
     let response = send_message(
         kms.clone(),
@@ -191,15 +193,59 @@ async fn encapsulate(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<(Vec<
     let Operation::EncryptResponse(response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    let secret = response
+    Ok(response.clone())
+}
+
+/// Returns (shared secret, encapsulation). `ConfigurableKEM` packs both in `Data` as a
+/// serialized tuple; the other KEMs return the secret in `Data` and the encapsulation in
+/// `IVCounterNonce`.
+async fn encapsulate(kms: &Arc<KMS>, owner: &str, pk_uid: &str) -> KResult<(Vec<u8>, Vec<u8>)> {
+    let response = encrypt_response(kms, owner, pk_uid).await?;
+    let data = response
         .data
-        .clone()
-        .ok_or_else(|| KmsError::ServerError("empty shared secret".to_owned()))?;
-    let enc = response
-        .i_v_counter_nonce
-        .clone()
-        .ok_or_else(|| KmsError::ServerError("empty encapsulation".to_owned()))?;
-    Ok((secret, enc))
+        .ok_or_else(|| KmsError::ServerError("empty encrypt data".to_owned()))?;
+    if let Some(enc) = response.i_v_counter_nonce {
+        return Ok((data, enc));
+    }
+    let (secret, enc) = <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&data)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
+    Ok((secret.to_vec(), enc.to_vec()))
+}
+
+/// The `ConfigurableKEM` `Encrypt` contract: no `IVCounterNonce`, and `Data` is the serialized
+/// `(shared secret, encapsulation)` tuple, of which only the encapsulation can be decapsulated.
+/// Every other KEM returns the secret in `Data` and the encapsulation in `IVCounterNonce`.
+async fn assert_encrypt_contract(
+    kms: &Arc<KMS>,
+    owner: &str,
+    pk: &str,
+    sk: &str,
+    configurable: bool,
+) -> KResult<()> {
+    let response = encrypt_response(kms, owner, pk).await?;
+    let data = response
+        .data
+        .ok_or_else(|| KmsError::ServerError("empty encrypt data".to_owned()))?;
+    if !configurable {
+        let enc = response
+            .i_v_counter_nonce
+            .ok_or_else(|| KmsError::ServerError("missing IVCounterNonce".to_owned()))?;
+        assert_eq!(data, decapsulate(kms, owner, sk, &enc).await?);
+        return Ok(());
+    }
+    assert!(response.i_v_counter_nonce.is_none());
+    let (secret, enc) = <(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>)>::deserialize(&data)
+        .map_err(|e| KmsError::Default(e.to_string()))?;
+    assert_eq!(
+        secret.to_vec(),
+        decapsulate(kms, owner, sk, &enc).await?,
+        "decapsulating the encapsulation component must return the packed secret"
+    );
+    assert!(
+        decapsulate(kms, owner, sk, &data).await.is_err(),
+        "the packed tuple is not itself an encapsulation"
+    );
+    Ok(())
 }
 
 async fn decapsulate(kms: &Arc<KMS>, owner: &str, sk_uid: &str, enc: &[u8]) -> KResult<Vec<u8>> {
@@ -362,6 +408,14 @@ async fn lifecycle(alg: Alg) -> KResult<()> {
     assert_wrapped_by(&export_object(&kms, &owner, &sk).await?, &kek_uid)?;
     assert_wrapped_by(&export_object(&kms, &owner, &pk).await?, &kek_uid)?;
     assert_roundtrip(&kms, &owner, &pk, &sk).await?;
+    assert_encrypt_contract(
+        &kms,
+        &owner,
+        &pk,
+        &sk,
+        stored_algorithm == CryptographicAlgorithm::ConfigurableKEM,
+    )
+    .await?;
 
     // 2. Restart: cold cache, the HSM unwraps
     drop(kms);
