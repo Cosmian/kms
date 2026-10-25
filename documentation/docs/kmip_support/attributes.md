@@ -35,7 +35,7 @@ The IV used with counter modes of operation (e.g., CTR and GCM) cannot repeat fo
 
 Initial Counter Value is the starting counter value for CTR mode (for \[RFC3686] it is 1).
 
-In the Eviden KMS, `IV Length` is in bits, a multiple of 8 and at most 1024. A server-generated GCM IV is at least 96 bits. `Fixed Field Length`, `Invocation Field Length`, `Counter Length` and `Initial Counter Value` are rejected as unsupported (`Unsupported_Cryptographic_Parameters`).
+In the Eviden KMS, `IV Length` is in bits, a multiple of 8 and at most 1024; it is ignored when the client supplies the IV. A server-generated GCM IV is at least 96 bits. `Fixed Field Length`, `Invocation Field Length`, `Counter Length` and `Initial Counter Value` are rejected as unsupported (`Unsupported_Cryptographic_Parameters`).
 
 ### Extensions
 

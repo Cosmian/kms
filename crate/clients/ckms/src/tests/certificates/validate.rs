@@ -162,7 +162,10 @@ async fn test_validate_cli() -> CosmianResult<()> {
         "Validate chain with leaf1: result supposed to be invalid, as leaf1 was revoked. \
          test1_res: {test1_res:?}"
     );
-    assert!(test1_res.is_err());
+    assert!(
+        format!("{test1_res:?}").contains("the certificate chain is not valid: Invalid"),
+        "{test1_res:?}"
+    );
 
     let test2_res = validate_certificate(
         &owner_client_conf_path,
@@ -184,13 +187,16 @@ async fn test_validate_cli() -> CosmianResult<()> {
         "certificates",
         vec![intermediate_certificate_id, root_certificate_id.clone()],
         // Date: 15/04/2048
-        Some("4804152030Z".to_owned()),
+        Some("20480415203000Z".to_owned()),
     );
     info!(
         "validate chain with leaf2: result supposed to be invalid, as date is posthumous to \
          leaf2's expiration date. test3_res: {test3_res:?}"
     );
-    assert!(test3_res.is_err());
+    assert!(
+        format!("{test3_res:?}").contains("the certificate chain is not valid: Invalid"),
+        "{test3_res:?}"
+    );
 
     let test4_res = validate_certificate(
         &owner_client_conf_path,

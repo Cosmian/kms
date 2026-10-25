@@ -318,6 +318,33 @@ async fn test_deactivated_ca_compromise_yields_compromised() -> KResult<()> {
     Ok(())
 }
 
+/// KMIP 2.1 §4.57 lists no Pre-Active -> Deactivated transition: a non-compromise Revoke of a
+/// Pre-Active object is `Wrong_Key_Lifecycle_State` and leaves it Pre-Active.
+#[tokio::test]
+async fn test_revoke_of_a_pre_active_key_is_refused() -> KResult<()> {
+    let app = test_utils::setup_app(None).await;
+    let mut req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    req.attributes.activation_date = None;
+    let resp: CreateResponse = test_utils::post_2_1(&app, req).await?;
+    let uid = resp.unique_identifier.to_string();
+    assert_eq!(get_state(&app, &uid).await?, Some(State::PreActive));
+    assert_revoke_refused(
+        &app,
+        &uid,
+        RevocationReasonCode::CessationOfOperation,
+        State::PreActive,
+    )
+    .await
+}
+
 /// Asserts that a Revoke with `reason_code` fails with `Wrong_Key_Lifecycle_State` and
 /// leaves the object in `state`.
 async fn assert_revoke_refused<S, B>(

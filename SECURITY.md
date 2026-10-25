@@ -9,11 +9,10 @@
                   - [COSMIAN-2026-054 — Batch Undo could restore objects of another user](#cosmian-2026-054--batch-undo-could-restore-objects-of-another-user)
                   - [COSMIAN-2026-053 — ReCertify authorized the issuer key as the certificate owner](#cosmian-2026-053--recertify-authorized-the-issuer-key-as-the-certificate-owner)
                   - [COSMIAN-2026-052 — ReKeyKeyPair retired another user's linked public key](#cosmian-2026-052--rekeykeypair-retired-another-users-linked-public-key)
-                  - [COSMIAN-2026-051 — KMIP certificate chains and Locate offsets permit excessive server work](#cosmian-2026-051--kmip-certificate-chains-and-locate-offsets-permit-excessive-server-work)
+                  - [COSMIAN-2026-051 — KMIP certificate chains and unbounded HSM Locate permit excessive server work](#cosmian-2026-051--kmip-certificate-chains-and-unbounded-hsm-locate-permit-excessive-server-work)
                   - [COSMIAN-2026-050 — KMIP payloads written to debug logs](#cosmian-2026-050--kmip-payloads-written-to-debug-logs)
                   - [COSMIAN-2026-049 — Configured Operator role permitted PKCS#11 administration](#cosmian-2026-049--configured-operator-role-permitted-pkcs11-administration)
                   - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
-                  - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
                   - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
                   - [COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`](#cosmian-2026-046--server-key-encryption-key-usable-as-a-decryption-oracle-through-pre-wrapped-import)
                   - [COSMIAN-2026-045 — Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent](#cosmian-2026-045--sensitive-opaque-objects-and-split-keys-exported-in-plaintext-when-a-wrapping-specification-is-sent)
@@ -193,7 +192,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ---
 
-#### COSMIAN-2026-051 — KMIP certificate chains and Locate offsets permit excessive server work
+#### COSMIAN-2026-051 — KMIP certificate chains and unbounded HSM Locate permit excessive server work
 
 | Field      | Value                                                      |
 | ---------- | ---------------------------------------------------------- |
@@ -242,11 +241,11 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
-**Summary:** When Crypto Officer roles were configured, the `PKCS11` management operation bypassed the role policy, and the `RNGSeed` and `SetConstraints` operations were not restricted to Crypto Officers.
+**Summary:** When Crypto Officer roles were configured, the `PKCS11` management operation bypassed the role policy.
 
 **Impact:** An Operator could access PKCS#11 administration, including functions acting on the HSM library shared by all users.
 
-**Mitigation:** Upgrade to 5.29.0. `PKCS11` requires a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and `SetConstraints` once roles are configured; regression test `operator_cannot_invoke_administrative_operations` covers the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions. Where roles are not configured, `SetConstraints` remains available to every authenticated user.
+**Mitigation:** Upgrade to 5.29.0. `PKCS11` requires a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and the new `SetConstraints` once roles are configured; regression test `operator_cannot_invoke_administrative_operations` covers the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions. Where roles are not configured, `SetConstraints` remains available to every authenticated user.
 
 ---
 
@@ -1445,7 +1444,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 | COSMIAN-2026-054    | Moderate | unreleased              | 5.29.0   | Batch Undo could restore objects of another user                                                    |
 | COSMIAN-2026-053    | High     | before 5.29.0           | 5.29.0   | ReCertify authorized the issuer key as the certificate owner                                        |
 | COSMIAN-2026-052    | High     | before 5.29.0           | 5.29.0   | ReKeyKeyPair retired another user's linked public key                                               |
-| COSMIAN-2026-051    | Moderate | before 5.29.0           | 5.29.0   | KMIP certificate chains and Locate offsets permit excessive server work                             |
+| COSMIAN-2026-051    | Moderate | before 5.29.0           | 5.29.0   | KMIP certificate chains and unbounded HSM Locate permit excessive server work                             |
 | COSMIAN-2026-050    | High     | before 5.29.0           | 5.29.0   | KMIP payloads written to debug logs                                                                 |
 | COSMIAN-2026-049    | High     | before 5.29.0           | 5.29.0   | Configured Operator role permitted PKCS#11 administration                            |
 | COSMIAN-2026-048    | High     | 5.27.0 – 5.28.0         | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |

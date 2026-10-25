@@ -541,8 +541,8 @@ pub(super) fn encryption_nonce<'a>(
     };
     match request.i_v_counter_nonce.as_deref() {
         Some(iv) if !iv.is_empty() => {
-            let expected = iv_length.unwrap_or_else(|| cipher.nonce_size());
-            if iv.len() != expected && (iv_length.is_some() || !cipher.allows_variable_nonce()) {
+            let expected = cipher.nonce_size();
+            if iv.len() != expected && !cipher.allows_variable_nonce() {
                 return Err(KmsError::InvalidRequest(format!(
                     "Encrypt: invalid IV/nonce length: expected {expected} bytes for {cipher:?}, \
                      got {}",

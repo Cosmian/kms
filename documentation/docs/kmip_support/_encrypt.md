@@ -35,9 +35,10 @@ items always uses a fresh random IV per item: a request that supplies an IV for 
 
 IV and tag rules:
 
-- `IV Length` is in bits: a multiple of 8, at most 1024, and equal to the cipher's nonce size except for GCM;
-  otherwise the request fails with `Bad Cryptographic Parameters`. A client that sends the length in bytes (for
-  example `12`) must send `96` instead. A server-generated GCM IV is at least 96 bits long.
+- `IV Length` sizes a server-generated IV and is ignored when the request carries an IV. It is in bits: a multiple of 8,
+  at most 1024, and equal to the cipher's nonce size except for GCM; otherwise the request fails with
+  `Bad Cryptographic Parameters`. A length in bytes equal to the nonce size (for example `12`) is also accepted. A
+  server-generated GCM IV is at least 96 bits long.
 - `Random IV` set to false with no IV in the request fails with `Missing Initialization Vector`.
 - `Fixed Field Length`, `Invocation Field Length`, `Counter Length` and `Initial Counter Value` fail with
   `Unsupported Cryptographic Parameters`.

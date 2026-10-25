@@ -2254,8 +2254,8 @@ mod tests {
         same(&decoded, &single, "legacy JSON object")
     }
 
-    /// Certificate Attributes survive binary TTLV (spec tag names such as
-    /// `CertificateSubjectCN`) and stored JSON written with the former names still decodes.
+    /// Certificate Attributes survive binary TTLV; JSON keeps the historical names
+    /// (`CertificateSubjectCn`) and also decodes the spec tag names (`CertificateSubjectCN`).
     #[test]
     fn certificate_attributes_round_trip_binary_ttlv() -> Result<(), String> {
         use super::Attributes;

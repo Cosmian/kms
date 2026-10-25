@@ -37,7 +37,6 @@ explicit `SetAttribute` grant. A `Get` grant is not enough: the refusal is `Perm
 
 - `ActivationDate` can be set only on a Pre-Active object, else `Wrong_Key_Lifecycle_State` (`Permission_Denied` for KMIP 2.0 clients).
 - Set `Name` replaces the single instance; with more than one instance it returns `Multi_Valued_Attribute`.
-- `Extractable=true` is refused once `Extractable=false` is stored.
 - Every successful Set updates the `LastChangeDate`.
 
 ## Example - A symmetric key
