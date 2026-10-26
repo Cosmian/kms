@@ -82,7 +82,7 @@ saml_certificate = "/conf/saml-sp.cert.pem"
 TOML
 
   SP_CERT=$(grep -v -- '-----' "${SAML_SSO_DIR}/saml-sp.cert.pem" | tr -d '\n') \
-    PUBLIC_ORIGIN="${PUBLIC_ORIGIN}" SAML_REALM="${SAML_REALM}" \
+  PUBLIC_ORIGIN="${PUBLIC_ORIGIN}" SAML_REALM="${SAML_REALM}" \
     envsubst "\${PUBLIC_ORIGIN} \${SAML_REALM} \${SP_CERT}" \
     <"${SCRIPT_DIR}/keycloak-realm.json.tmpl" >"${SAML_SSO_DIR}/keycloak-realm.json"
 
@@ -112,9 +112,9 @@ TOML
 
 # Wait until an HTTPS endpoint answers successfully.
 wait_for_url() {
-  local name="$1" url="$2" tries="${3:-90}" i
+  local name="$1" url="$2" tries="${3:-90}"
   print_status "Waiting for ${name} (${url})..."
-  for i in $(seq 1 "${tries}"); do
+  for _ in $(seq 1 "${tries}"); do
     if curl -ksf -o /dev/null "${url}"; then
       return 0
     fi

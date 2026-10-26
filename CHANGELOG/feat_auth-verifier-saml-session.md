@@ -7,6 +7,12 @@
   Authentication Verifier `_ea_` session cookie on the KMIP, REST crypto and tokenize APIs and in `GET /ui/whoami`
 - Revoke the Authentication Verifier session and expire its `_ea_` cookie on `GET /ui/logout`
 
+### UI
+
+- Add a **Single sign-on (SSO)** login option when the KMS advertises `AUTH_VERIFIER_SAML`: it starts the
+  Authentication Verifier SAML sign-in at `/ui/login_saml`, and the SAML session user is shown in the header with a
+  **Logout** button
+
 ## Security
 
 - Accept the Authentication Verifier `_ea_` session cookie only when `auth_verifier_saml_realm` is configured and
