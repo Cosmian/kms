@@ -520,15 +520,8 @@ async fn post_process_active_private_key(
     #[cfg(feature = "non-fips")]
     if is_pqc_algorithm(key_block.cryptographic_algorithm) {
         let stored_fmt = key_block.key_format_type;
-        if key_format_type.is_some()
-            && !matches!(
-                key_format_type,
-                Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
-            )
-        {
-            kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
-        }
-        // Convert PKCS#8 → Raw when requested
+        // Convert PKCS#8 → Raw when requested; any other format must be the stored one
+        // (these keys have no OpenSSL round-trip)
         if let Some(requested) = key_format_type {
             if *requested == KeyFormatType::Raw && stored_fmt == KeyFormatType::PKCS8 {
                 let key_bytes = key_block.key_bytes()?;
@@ -836,15 +829,8 @@ async fn process_public_key(
         #[cfg(feature = "non-fips")]
         if is_pqc_algorithm(key_block.cryptographic_algorithm) {
             let stored_fmt = key_block.key_format_type;
-            if key_format_type.is_some()
-                && !matches!(
-                    key_format_type,
-                    Some(KeyFormatType::PKCS8 | KeyFormatType::Raw)
-                )
-            {
-                kms_bail!("export: PQC keys only support PKCS#8 or Raw format")
-            }
-            // Convert SPKI (stored as PKCS8 format type) → Raw when requested
+            // Convert SPKI (stored as PKCS8 format type) → Raw when requested; any other format
+            // must be the stored one (these keys have no OpenSSL round-trip)
             if let Some(requested) = key_format_type {
                 if *requested == KeyFormatType::Raw && stored_fmt == KeyFormatType::PKCS8 {
                     let key_bytes = key_block.key_bytes()?;

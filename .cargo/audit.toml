@@ -5,4 +5,6 @@
 # List of advisory IDs to ignore (extracted from deny.toml)
 ignore = [
   "RUSTSEC-2023-0071",
+  # crypto-bigint 0.5.5 via elliptic-curve 0.13 (jsonwebtoken, pkcs11 p256, optional pgp); no 0.5.x patch, see deny.toml
+  "RUSTSEC-2026-0387",
 ]

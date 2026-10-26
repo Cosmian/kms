@@ -582,6 +582,8 @@ assert_success = true                   # HTTP 200 + ResultStatus check
 
 [steps.capture]
 key_id = "UniqueIdentifier"             # capture tag value for use in later steps
+# ciphertext = "Data:kem_encapsulation"  # one part of a packed KEM Encrypt `Data`
+# shared_secret = "Data:kem_shared_secret"
 
 [[steps]]
 operation = "Get"

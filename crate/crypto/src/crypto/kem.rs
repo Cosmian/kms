@@ -7,7 +7,7 @@ use cosmian_cover_crypt::{
     ConfigurableKEM, ConfigurableKemDk, ConfigurableKemEk, ConfigurableKemEnc, KemTag,
     PostQuantumKemTag, PreQuantumKemTag,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -60,7 +60,7 @@ pub fn kem_keygen(
     dk_attributes: Option<Attributes>,
     ek_uid: String,
     ek_attributes: Option<Attributes>,
-    common_attributes: Attributes,
+    common_attributes: &Attributes,
 ) -> Result<KeyPair, CryptoError> {
     let tag = match (
         common_attributes
@@ -89,30 +89,35 @@ pub fn kem_keygen(
         ),
     };
 
-    let access_structure = access_structure_from_attributes(vendor_id, &common_attributes).ok();
+    let access_structure = access_structure_from_attributes(vendor_id, common_attributes).ok();
     let (dk, ek) = ConfigurableKEM::keygen(tag, access_structure)?;
 
+    // Per-key attributes inherit the common ones, as for every other key pair type.
+    let with_common = |attributes: Option<Attributes>| {
+        let mut attributes = attributes.unwrap_or_default();
+        attributes.merge(common_attributes, false);
+        attributes
+    };
     Ok(KeyPair::new(
         create_dk_object(
             vendor_id,
             dk.serialize()?,
-            dk_attributes.unwrap_or_else(|| common_attributes.clone()),
+            with_common(dk_attributes),
             ek_uid,
         )?,
         create_ek_object(
             vendor_id,
             ek.serialize()?,
-            ek_attributes.unwrap_or(common_attributes),
+            with_common(ek_attributes),
             dk_uid,
         )?,
     ))
 }
 
-#[allow(clippy::type_complexity)]
-pub fn kem_encaps(
-    ek: &[u8],
-    _data: Option<&Zeroizing<Vec<u8>>>,
-) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), CryptoError> {
+/// A KEM result: `(shared secret, encapsulation)`.
+pub type KemEncapsulation = (Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>);
+
+pub fn kem_encaps(ek: &[u8]) -> Result<KemEncapsulation, CryptoError> {
     let ek = ConfigurableKemEk::deserialize(ek).map_err(|e| {
         CryptoError::ConversionError(format!(
             "failed deserializing the configurable-KEM encapsulation: {e}"
@@ -139,6 +144,53 @@ pub fn kem_encaps(
             ))
         })?,
     ))
+}
+
+/// Pack a KEM result as the `Data` of a KMIP `Encrypt` response: the serialized
+/// `(shared secret, encapsulation)` tuple. The encapsulation is a KEM ciphertext, not an
+/// IV/counter/nonce, so `IVCounterNonce` stays empty for every KEM.
+pub fn pack_kem_encapsulation(
+    shared_secret: Zeroizing<Vec<u8>>,
+    encapsulation: Zeroizing<Vec<u8>>,
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    (shared_secret, encapsulation).serialize().map_err(|e| {
+        CryptoError::ConversionError(format!("failed serializing the KEM encapsulation: {e}"))
+    })
+}
+
+/// Inverse of [`pack_kem_encapsulation`]: returns `(shared secret, encapsulation)`.
+pub fn unpack_kem_encapsulation(data: &[u8]) -> Result<KemEncapsulation, CryptoError> {
+    KemEncapsulation::deserialize(data).map_err(|e| {
+        CryptoError::ConversionError(format!(
+            "the KEM response data is not a (shared secret, encapsulation) tuple: {e}"
+        ))
+    })
+}
+
+/// Return the pre-quantum curve and the post-quantum algorithm of a serialized
+/// `ConfigurableKEM` key (public or private), as encoded in the key itself, whatever its
+/// KMIP attributes claim. Policy checks must rely on this, since attributes can be relabelled.
+pub fn kem_key_components(
+    key: &[u8],
+) -> Result<(Option<RecommendedCurve>, Option<CryptographicAlgorithm>), CryptoError> {
+    // Both key types serialize their `KemTag` first: read only that.
+    let tag: KemTag = Deserializer::new(key).read().map_err(|e| {
+        CryptoError::ConversionError(format!("failed reading the configurable-KEM key tag: {e}"))
+    })?;
+    let curve = |c| match c {
+        PreQuantumKemTag::P256 => RecommendedCurve::P256,
+        PreQuantumKemTag::R25519 => RecommendedCurve::CURVE25519,
+    };
+    let algorithm = |a| match a {
+        PostQuantumKemTag::MlKem512 => CryptographicAlgorithm::MLKEM_512,
+        PostQuantumKemTag::MlKem768 => CryptographicAlgorithm::MLKEM_768,
+    };
+    Ok(match tag {
+        KemTag::PreQuantum(c) => (Some(curve(c)), None),
+        KemTag::PostQuantum(a) => (None, Some(algorithm(a))),
+        KemTag::Hybridized(c, a) => (Some(curve(c)), Some(algorithm(a))),
+        KemTag::Abe => (None, Some(CryptographicAlgorithm::CoverCrypt)),
+    })
 }
 
 pub fn kem_decaps(dk: &[u8], enc: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
@@ -168,7 +220,10 @@ fn create_dk_object(
 
     attributes.object_type = Some(ObjectType::PrivateKey);
     attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMSecretKey);
-    attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Unrestricted);
+    // A requested mask is kept as is; decapsulation is a KMIP Decrypt.
+    attributes.cryptographic_usage_mask = attributes
+        .cryptographic_usage_mask
+        .or(Some(CryptographicUsageMask::Decrypt));
     attributes.link = Some(vec![Link {
         link_type: LinkType::PublicKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(ek_uid),
@@ -204,7 +259,10 @@ fn create_ek_object(
     attributes.sensitive = None;
     attributes.object_type = Some(ObjectType::PublicKey);
     attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMPublicKey);
-    attributes.set_cryptographic_usage_mask_bits(CryptographicUsageMask::Encrypt);
+    // A requested mask is kept as is; encapsulation is a KMIP Encrypt.
+    attributes.cryptographic_usage_mask = attributes
+        .cryptographic_usage_mask
+        .or(Some(CryptographicUsageMask::Encrypt));
     attributes.link = Some(vec![Link {
         link_type: LinkType::PrivateKeyLink,
         linked_object_identifier: LinkedObjectIdentifier::TextString(dk_uid),
@@ -230,4 +288,34 @@ fn create_ek_object(
             key_wrapping_data: None,
         },
     }))
+}
+
+#[expect(clippy::unwrap_used)]
+#[cfg(test)]
+mod tests {
+    use zeroize::Zeroizing;
+
+    use super::{pack_kem_encapsulation, unpack_kem_encapsulation};
+
+    #[test]
+    fn kem_encapsulation_pack_round_trip() {
+        // a ciphertext longer than 127 bytes has a multi-byte length prefix
+        let secret = Zeroizing::new(vec![7_u8; 32]);
+        let encapsulation = Zeroizing::new(vec![9_u8; 1088]);
+        let packed = pack_kem_encapsulation(secret.clone(), encapsulation.clone()).unwrap();
+        let (s, e) = unpack_kem_encapsulation(&packed).unwrap();
+        assert_eq!((s, e), (secret, encapsulation));
+        // golden layout, shared with the Web UI parser and the vector runner:
+        // LEB128 length + secret, LEB128 length (1088 = 0xC0 0x08) + encapsulation
+        assert_eq!(packed.len(), 1 + 32 + 2 + 1088);
+        assert_eq!(packed.get(..1).unwrap(), &[32]);
+        assert_eq!(packed.get(33..35).unwrap(), &[0xC0, 0x08]);
+        // truncated and trailing data are refused, not silently shortened or ignored
+        let (_, truncated) = packed.split_last().unwrap();
+        unpack_kem_encapsulation(truncated).unwrap_err();
+        unpack_kem_encapsulation(&[]).unwrap_err();
+        let mut trailing = packed.to_vec();
+        trailing.push(0);
+        unpack_kem_encapsulation(&trailing).unwrap_err();
+    }
 }

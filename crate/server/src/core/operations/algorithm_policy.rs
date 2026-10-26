@@ -447,6 +447,8 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
     }
 
     // Enforce curves for EC keys when the curve is known.
+    // `ConfigurableKEM` components are enforced from the key bytes, see
+    // `enforce_kmip_algorithm_policy_for_kem_components`.
     if let Ok(kb) = owm.object().key_block() {
         match kb.key_format_type {
             KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentECPrivateKey => {
@@ -481,6 +483,36 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
     }
 
     Ok(())
+}
+
+/// Enforce the policy on the components of a `ConfigurableKEM` key as read from the key
+/// bytes (see `kem_key_components`), not from its KMIP attributes, which an importer
+/// controls: a key relabelled or stripped of its component attributes cannot bypass it.
+#[cfg(feature = "non-fips")]
+pub(crate) fn enforce_kmip_algorithm_policy_for_kem_components(
+    params: &ServerParams,
+    operation_tag: &str,
+    uid_for_error: &str,
+    (curve, algorithm): (Option<RecommendedCurve>, Option<CryptographicAlgorithm>),
+) -> KResult<()> {
+    if params.kmip_policy.policy_id.is_none() {
+        return Ok(());
+    }
+    let wl = KmipWhitelists::from_params(&params.kmip_policy);
+    [Some(CryptographicAlgorithm::ConfigurableKEM), algorithm]
+        .into_iter()
+        .flatten()
+        .try_for_each(|alg| validate_algorithm(alg, wl.algorithms.as_ref()))
+        .and_then(|()| curve.map_or(Ok(()), |c| validate_curve(c, wl.curves.as_ref())))
+        .map_err(|e| match e {
+            KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
+            other => KmsError::Kmip21Error(
+                ErrorReason::Cryptographic_Failure,
+                format!(
+                    "{operation_tag} denied by algorithm policy (uid={uid_for_error}): {other}"
+                ),
+            ),
+        })
 }
 
 fn allow<T: Eq + std::hash::Hash>(wl: Option<&HashSet<T>>, token: &T) -> bool {
@@ -914,10 +946,12 @@ fn validate_algorithm(
         | CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768
+        | CryptographicAlgorithm::X448MLKEM1024
         | CryptographicAlgorithm::MLDSA_44
         | CryptographicAlgorithm::MLDSA_65
         | CryptographicAlgorithm::MLDSA_87 => {
-            // Configurable KEM, ML-KEM, and ML-DSA variants are in-scope in non-FIPS mode.
+            // Configurable KEM, ML-KEM, hybrid KEM and ML-DSA variants are in-scope in non-FIPS mode.
             // If an allowlist is configured, they must still be explicitly allowed.
         }
         _ => {

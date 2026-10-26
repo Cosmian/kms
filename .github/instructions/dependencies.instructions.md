@@ -41,6 +41,7 @@ Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.y
         - otherwise: `cargo vet add-exemption <crate> <version> --criteria <criteria> --notes "<why the workspace needs it> — unaudited, pending review"`
     4. Re-run `cargo vet check --locked` until it prints `Vetting Succeeded`.
 - [ ] Change `supply-chain/` only through the `cargo vet` commands above. Never run `cargo vet certify` (it records a human audit under the git user's name), `cargo vet trust` or `cargo vet regenerate exemptions` (it silently exempts everything new), and never edit `[imports.*]`/`[policy.*]` of `supply-chain/config.toml` or `[[trusted.*]]` of `supply-chain/audits.toml`: those are human decisions.
+- [ ] Dependabot cargo PRs are security updates only (`.github/dependabot.yml`: `open-pull-requests-limit: 0`). It cannot edit `supply-chain/`, so on such a PR run `cargo vet check` without `--locked` (fetches imported audits, which may already cover the bump), then `cargo vet suggest` and the exemption procedure above for what is still reported, and push to the PR branch.
 - [ ] `Cargo.lock` changed → also `lockfile-hashes.instructions.md` (Nix vendor hashes).
 
 ## 3. JavaScript (pnpm, `ui/`)

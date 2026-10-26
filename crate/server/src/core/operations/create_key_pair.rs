@@ -523,7 +523,7 @@ pub(super) fn generate_key_pair(
             request.private_key_attributes,
             public_key_uid.to_owned(),
             request.public_key_attributes,
-            common_attributes,
+            &common_attributes,
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::CoverCrypt => {

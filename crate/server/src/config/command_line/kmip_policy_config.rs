@@ -240,6 +240,9 @@ impl KmipAllowlistsConfig {
             CryptographicAlgorithm::MLKEM_512,
             CryptographicAlgorithm::MLKEM_768,
             CryptographicAlgorithm::MLKEM_1024,
+            // Native hybrid KEM groups (classical ECDH + ML-KEM).
+            CryptographicAlgorithm::X25519MLKEM768,
+            CryptographicAlgorithm::X448MLKEM1024,
             // ML-DSA (post-quantum lattice-based signature) variants.
             CryptographicAlgorithm::MLDSA_44,
             CryptographicAlgorithm::MLDSA_65,

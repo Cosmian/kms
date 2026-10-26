@@ -340,9 +340,19 @@ fn decrypt_single(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::ConfigurableKEMSecretKey => {
-            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_decaps;
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::{
+                kem_decaps, kem_key_components,
+            };
+
+            use crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_kem_components;
 
             let (dk_bytes, _) = owm.object().key_block()?.key_bytes_and_attributes()?;
+            enforce_kmip_algorithm_policy_for_kem_components(
+                server_params,
+                "Decrypt",
+                owm.id(),
+                kem_key_components(&dk_bytes)?,
+            )?;
             let enc = request
                 .data
                 .as_ref()
