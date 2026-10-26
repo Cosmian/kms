@@ -725,14 +725,6 @@ repos:
         always_run: true
         stages: [manual]
 
-      - id: release-git-cliff
-        name: Release - update CHANGELOG with git cliff
-        entry: mise run release:changelog
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)
         entry: mise run release:nix-update-hashes

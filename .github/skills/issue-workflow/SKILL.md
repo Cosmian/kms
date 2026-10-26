@@ -94,7 +94,7 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 - Hooks: `pre-commit install --install-hooks -t pre-commit -t commit-msg -t pre-push` (once per clone). Never use `--no-verify`.
 - For a multi-layer feature, commit in the layer order defined in `AGENTS.md` "Feature rollout order & commit layering".
 - Each commit must remain independently buildable and limited to its layer.
-- Message: Conventional Commits (the `conventional-pre-commit` hook enforces this; `cliff.toml` groups by type). Use `fix:` for bugs, `feat:` for enhancements, and `test:`, `docs:`, `refactor:`, `ci:`, `build:`, or `chore:` for commits limited to that kind of change. Add the footer `Refs #<N>`.
+- Message: Conventional Commits (the `conventional-pre-commit` hook enforces this). Use `fix:` for bugs, `feat:` for enhancements, and `test:`, `docs:`, `refactor:`, `ci:`, `build:`, or `chore:` for commits limited to that kind of change. Add the footer `Refs #<N>`.
 - If a hook rewrites files, re-stage and commit again. Once a commit is pushed, never amend or rebase it.
 
 ## 10. Push and open the PR
