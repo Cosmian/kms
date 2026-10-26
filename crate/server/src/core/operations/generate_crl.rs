@@ -268,13 +268,20 @@ pub(crate) async fn generate_crl(
     // server-triggered CRL, as the issuer certificate's owner. The `PrivateKeyLink` of an
     // imported certificate is user-controlled, so the server must never sign on its behalf
     // with a key that its owner cannot use (this also applies to `hsm::` keys).
+    // HSM grants are per operation and the oracle never exports the key: signing needs the
+    // `Certify` grant (as for issuing certificates), not `Get`/`Export`. Database keys keep `Get`.
     let key_user = match requester {
         CrlRequester::User(user) => user,
         CrlRequester::Server => issuer_owm.owner_id(),
     };
+    let key_operation = if ObjectHandle::from(issuer_private_key_id.as_str()).is_hsm() {
+        KmipOperation::Certify
+    } else {
+        KmipOperation::Get
+    };
     let issuer_key_owm = retrieve_object_for_operation(
         ObjectHandle::Uid(&issuer_private_key_id),
-        KmipOperation::Get,
+        key_operation,
         kms,
         key_user,
     )

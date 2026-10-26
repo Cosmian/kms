@@ -19,7 +19,13 @@ use openssl::{
     x509::{X509Name, X509NameBuilder, X509Req, X509ReqBuilder},
 };
 
-use super::dispatch::check_role_permission;
+use super::{
+    algorithm_policy::{
+        enforce_kmip_algorithm_policy_for_public_key,
+        enforce_kmip_algorithm_policy_for_retrieved_key,
+    },
+    dispatch::check_role_permission,
+};
 use crate::{
     core::{
         KMS, ObjectHandle,
@@ -76,13 +82,9 @@ fn parse_distinguished_name(subject: &str) -> KResult<X509Name> {
         if key.contains('\0') || value.contains('\0') {
             return Err(invalid("NUL characters are not allowed"));
         }
-        // `append_entry_by_text` picks the narrowest valid string type, but only for ASCII
-        let result = if value.is_ascii() {
-            builder.append_entry_by_text(key, value)
-        } else {
-            builder.append_entry_by_text_with_type(key, value, openssl::asn1::Asn1Type::UTF8STRING)
-        };
-        result.map_err(|e| invalid(&e.to_string()))?;
+        builder
+            .append_entry_by_text(key, value)
+            .map_err(|e| invalid(&e.to_string()))?;
     }
     Ok(builder.build())
 }
@@ -168,6 +170,13 @@ pub(crate) async fn generate_csr(
                 .await
                 .with_context(|| format!("CSR generation: retrieving public key '{pk_id}'"))?;
         let public_key = kmip_public_key_to_openssl(&pk_object)?;
+        // HSM keys have no loadable material: the policy is checked on the public key only
+        enforce_kmip_algorithm_policy_for_public_key(
+            &kms.params,
+            "Sign",
+            &public_key,
+            sk.object().attributes().ok(),
+        )?;
         let key = OracleSigningKey::for_hsm_uid(sk.id(), public_key.clone())?.ok_or_else(|| {
             KmsError::ServerError(format!("CSR generation: '{}' is not an HSM key", sk.id()))
         })?;
@@ -184,9 +193,17 @@ pub(crate) async fn generate_csr(
         let signature = Box::pin(oracle_sign(kms, &key, &tbs)).await?;
         (assemble_csr(req, &signature)?, public_key)
     } else {
+        enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Sign", sk.id(), &sk)?;
         let unwrapped = Box::pin(kms.get_unwrapped(sk.id(), sk.object(), user)).await?;
         let private_key = kmip_private_key_to_openssl(&unwrapped)?;
         let public_key = PKey::public_key_from_der(&private_key.public_key_to_der()?)?;
+        // The retrieved-key check trusts KMIP attributes, which may be absent: check the real key
+        enforce_kmip_algorithm_policy_for_public_key(
+            &kms.params,
+            "Sign",
+            &public_key,
+            sk.object().attributes().ok(),
+        )?;
         let mut builder = X509ReqBuilder::new()?;
         builder.set_version(0)?;
         builder.set_subject_name(&name)?;
@@ -256,8 +273,33 @@ mod tests {
     }
 
     #[test]
+    fn subject_accepts_non_ascii_values() {
+        let name = parse_distinguished_name("C=FR, CN=Société").unwrap();
+        assert_eq!(
+            entries(&name),
+            vec![
+                ("countryName".to_owned(), "FR".to_owned()),
+                ("commonName".to_owned(), "Société".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
     fn subject_rejects_malformed_components() {
-        for bad in ["CN=", "=x", "CN", "bogusAttr=x", "CN=a\0b", "C\0N=a"] {
+        let too_long_ascii = format!("CN={}", "a".repeat(65));
+        let too_long_non_ascii = format!("CN={}", "é".repeat(65));
+        for bad in [
+            "CN=",
+            "=x",
+            "CN",
+            "bogusAttr=x",
+            "CN=a\0b",
+            "C\0N=a",
+            "C=Fé",
+            "C=FRA",
+            too_long_ascii.as_str(),
+            too_long_non_ascii.as_str(),
+        ] {
             assert!(
                 matches!(
                     parse_distinguished_name(bad),

@@ -109,7 +109,8 @@ pub(crate) async fn get_issuer<'a>(
     .await?;
     // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
     ensure_issuer_key_active(&issuer_private_key)?;
-    // HSM keys are represented by a metadata stub that is not a loadable key: for them the
+    // Non-sensitive HSM keys are returned exported, sensitive ones as metadata stubs; either way
+    // an HSM key always signs through the oracle, so the retrieved-key check is skipped and the
     // policy is enforced on the issuer public key below.
     if !ObjectHandle::from(issuer_private_key.id()).is_hsm() {
         enforce_kmip_algorithm_policy_for_retrieved_key(

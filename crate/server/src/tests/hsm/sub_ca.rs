@@ -4,14 +4,16 @@
 use std::sync::Arc;
 
 use actix_web::{App, test, web::Data};
+use cosmian_kms_access::access::Access;
 use cosmian_kms_interfaces::{ObjectHandle, as_hsm_uid};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::RecommendedCurve, requests::create_ec_key_pair_request,
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
+        KmipOperation,
         extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
         kmip_attributes::{Attribute, Attributes},
         kmip_objects::Object,
@@ -223,6 +225,99 @@ async fn ocsp_status(
         .status)
 }
 
+/// Offline-root stand-in: a self-signed root whose non-extractable key pair `root_sk_id` is in
+/// the HSM. Returns the root certificate id.
+async fn create_hsm_root(kms: &KMS, owner: &UserId, root_sk_id: &str) -> KResult<String> {
+    kms.create_key_pair(
+        create_rsa_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            Some(UniqueIdentifier::TextString(root_sk_id.to_owned())),
+            EMPTY_TAGS,
+            2048,
+            true,
+            None,
+        )?,
+        owner,
+    )
+    .await?;
+    // self-signed from the HSM public key: the private key is derived from `<sk>_pk`
+    let mut root_request = certify_request(Some("C=FR, O=KMS Test, CN=HSM Root"), &[])?;
+    root_request.unique_identifier = Some(UniqueIdentifier::TextString(format!("{root_sk_id}_pk")));
+    let root_id = kms
+        .certify(root_request, owner)
+        .await?
+        .unique_identifier
+        .to_string();
+    // the root certificate keeps its link to the HSM key (HSM objects carry no links)
+    assert_eq!(
+        kms.get_attributes(GetAttributes::from(root_id.clone()), owner)
+            .await?
+            .attributes
+            .get_link(LinkType::PrivateKeyLink)
+            .map(|link| link.to_string()),
+        Some(root_sk_id.to_owned())
+    );
+    Ok(root_id)
+}
+
+/// A non-admin user needs an explicit grant per operation on an HSM key (`Get` is no wildcard):
+/// `Sign` for a CSR, `Certify` for a CRL (plus `Get` on the CA certificate).
+async fn non_admin_grants(kms: &KMS, owner: &UserId, sub_id: &str, sub_sk_id: &str) -> KResult<()> {
+    let operator_name = Uuid::new_v4().to_string();
+    let operator = UserId::from(operator_name.as_str());
+    let access = |id: &str, operation: KmipOperation| Access {
+        unique_identifier: Some(UniqueIdentifier::TextString(id.to_owned())),
+        user_id: operator_name.clone(),
+        operation_types: vec![operation],
+    };
+
+    kms.grant_access(&access(sub_sk_id, KmipOperation::Get), owner)
+        .await?;
+    let result = generate_csr(kms, sub_sk_id, "CN=Operator", &operator).await;
+    assert!(
+        matches!(
+            result,
+            Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        ),
+        "Get on an HSM key does not allow a CSR, got {:?}",
+        result.map(|_csr| ())
+    );
+    kms.grant_access(&access(sub_sk_id, KmipOperation::Sign), owner)
+        .await?;
+    let csr = generate_csr(kms, sub_sk_id, "CN=Operator", &operator).await?;
+    assert!(csr.verify(csr.public_key()?.as_ref())?);
+
+    // CRL: reading the CA certificate and holding Sign on its HSM key is not enough
+    kms.grant_access(&access(sub_id, KmipOperation::Get), owner)
+        .await?;
+    let result = Box::pin(generate_crl(
+        kms,
+        sub_id,
+        None,
+        CrlRequester::User(&operator),
+    ))
+    .await;
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("object not found")),
+        "a CRL needs the Certify grant on the HSM key, got {:?}",
+        result.map(|_crl| ())
+    );
+    kms.grant_access(&access(sub_sk_id, KmipOperation::Certify), owner)
+        .await?;
+    let crl = Box::pin(generate_crl(
+        kms,
+        sub_id,
+        None,
+        CrlRequester::User(&operator),
+    ))
+    .await?;
+    let sub = certificate(kms, owner, sub_id).await?;
+    assert!(crl.verify(sub.public_key()?.as_ref())?);
+    Ok(())
+}
+
 pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     let owner_name = Uuid::new_v4().to_string();
     let owner = UserId::from(owner_name.as_str());
@@ -232,37 +327,7 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     let slot = clap_config.hsm.hsm_slot[0];
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
-    // Offline-root stand-in: a self-signed root whose non-extractable key pair is in the HSM.
-    let root_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
-    kms.create_key_pair(
-        create_rsa_key_pair_request(
-            VENDOR_ID_COSMIAN,
-            Some(UniqueIdentifier::TextString(root_sk_id.clone())),
-            EMPTY_TAGS,
-            2048,
-            true,
-            None,
-        )?,
-        &owner,
-    )
-    .await?;
-    // self-signed from the HSM public key: the private key is derived from `<sk>_pk`
-    let mut root_request = certify_request(Some("C=FR, O=KMS Test, CN=HSM Root"), &[])?;
-    root_request.unique_identifier = Some(UniqueIdentifier::TextString(format!("{root_sk_id}_pk")));
-    let root_id = kms
-        .certify(root_request, &owner)
-        .await?
-        .unique_identifier
-        .to_string();
-    // the root certificate keeps its link to the HSM key (HSM objects carry no links)
-    assert_eq!(
-        kms.get_attributes(GetAttributes::from(root_id.clone()), &owner)
-            .await?
-            .attributes
-            .get_link(LinkType::PrivateKeyLink)
-            .map(|link| link.to_string()),
-        Some(root_sk_id.clone())
-    );
+    let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
 
     // Sub-CA with a non-extractable RSA key pair inside the HSM.
     let sub_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
@@ -283,27 +348,28 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     ))
     .await?;
 
-    // Sub-CA with an Ed25519 HSM key.
-    #[cfg(feature = "non-fips")]
-    {
-        let ed_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
-        Box::pin(sub_ca_flow(
-            &kms,
-            &owner,
-            &root_id,
-            &ed_sk_id,
-            create_ec_key_pair_request(
-                VENDOR_ID_COSMIAN,
-                Some(UniqueIdentifier::TextString(ed_sk_id.clone())),
-                EMPTY_TAGS,
-                RecommendedCurve::CURVEED25519,
-                true,
-                None,
-            )
-            .map_err(KmsError::from),
-        ))
-        .await?;
-    }
+    // An extractable (non-sensitive) HSM key never signs a CSR: the key must stay in the HSM.
+    let extractable_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
+    kms.create_key_pair(
+        create_rsa_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            Some(UniqueIdentifier::TextString(extractable_sk_id.clone())),
+            EMPTY_TAGS,
+            2048,
+            false,
+            None,
+        )?,
+        &owner,
+    )
+    .await?;
+    let result = generate_csr(&kms, &extractable_sk_id, "CN=Extractable", &owner).await;
+    assert!(
+        matches!(&result, Err(KmsError::InvalidRequest(msg)) if msg.contains("is extractable")),
+        "an extractable HSM key must be refused, got {:?}",
+        result.map(|_csr| ())
+    );
+
+    Box::pin(non_admin_grants(&kms, &owner, &sub_id, &sub_sk_id)).await?;
 
     // OCSP responses signed by the HSM sub-CA key: restart on the same database with OCSP on.
     drop(kms);
@@ -337,5 +403,36 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
         ocsp_status(&kms, &root, &sub, &leaf).await?,
         OpenSslOcspStatus::REVOKED
     );
+    Ok(())
+}
+
+/// Sub-CA with an Ed25519 HSM key, signed by an RSA HSM root.
+#[cfg(feature = "non-fips")]
+pub(super) async fn test_hsm_sub_ca_ed25519() -> KResult<()> {
+    let owner_name = Uuid::new_v4().to_string();
+    let owner = UserId::from(owner_name.as_str());
+    let mut clap_config = hsm_clap_config(&owner_name, None)?;
+    clap_config.db.sqlite_path = get_tmp_sqlite_path();
+    let slot = clap_config.hsm.hsm_slot[0];
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+
+    let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
+    let ed_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
+    Box::pin(sub_ca_flow(
+        &kms,
+        &owner,
+        &root_id,
+        &ed_sk_id,
+        create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            Some(UniqueIdentifier::TextString(ed_sk_id.clone())),
+            EMPTY_TAGS,
+            RecommendedCurve::CURVEED25519,
+            true,
+            None,
+        )
+        .map_err(KmsError::from),
+    ))
+    .await?;
     Ok(())
 }

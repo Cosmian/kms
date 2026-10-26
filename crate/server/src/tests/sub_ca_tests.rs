@@ -5,24 +5,28 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{
-        CertificateType, CryptographicUsageMask, RevocationReason, RevocationReasonCode,
-    },
-    kmip_2_1::{
-        extra::{
-            VENDOR_ATTR_X509_EXTENSION,
-            tagging::{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, VENDOR_ID_COSMIAN},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{
+            CertificateType, CryptographicUsageMask, ErrorReason, RevocationReason,
+            RevocationReasonCode,
         },
-        kmip_attributes::{Attribute, Attributes},
-        kmip_objects::{Certificate, Object, ObjectType},
-        kmip_operations::{Certify, Get, GetAttributes, Import, ModifyAttribute, Revoke},
-        kmip_types::{
-            CertificateRequestType, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier, VendorAttribute, VendorAttributeValue,
+        kmip_2_1::{
+            extra::{
+                VENDOR_ATTR_X509_EXTENSION,
+                tagging::{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, VENDOR_ID_COSMIAN},
+            },
+            kmip_attributes::{Attribute, Attributes},
+            kmip_objects::{Certificate, Object, ObjectType},
+            kmip_operations::{Certify, Get, GetAttributes, Import, ModifyAttribute, Revoke},
+            kmip_types::{
+                CertificateRequestType, CryptographicAlgorithm, Link, LinkType,
+                LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, VendorAttributeValue,
+            },
+            requests::create_rsa_key_pair_request,
         },
-        requests::create_rsa_key_pair_request,
     },
+    cosmian_kms_crypto::openssl::kmip_public_key_to_openssl,
 };
 use openssl::x509::{X509, X509Req};
 
@@ -32,6 +36,7 @@ use crate::{
         KMS,
         operations::{generate_crl::get_cached_crl, generate_csr::generate_csr},
     },
+    error::KmsError,
     middlewares::UserId,
     openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
@@ -205,7 +210,10 @@ async fn sub_ca_csr_is_signed_by_root_and_certificate_is_tagged_by_serial() -> K
             &owner,
         )
         .await?;
-    assert!(matches!(pk.object, Object::PublicKey(_)));
+    assert!(
+        kmip_public_key_to_openssl(&pk.object)?.public_eq(&sub_public_key),
+        "the CSR key is the public key of the stored KMS key pair"
+    );
 
     // Serial tag: `_serial=<UPPERCASE HEX>`
     let tags: HashSet<String> = kms.database.retrieve_tags(&sub_id).await?;
@@ -222,11 +230,14 @@ async fn csr_generation_is_denied_without_sign_permission() -> KResult<()> {
     let kms = make_kms().await?;
     let owner = user("pki-admin@example.com");
     let (sk_id, _) = make_key_pair(&kms, &owner).await?;
+    let result = generate_csr(&kms, &sk_id, "CN=x", &user("intruder@example.com")).await;
     assert!(
-        generate_csr(&kms, &sk_id, "CN=x", &user("intruder@example.com"))
-            .await
-            .is_err(),
-        "a user without Sign on the key must not obtain a CSR"
+        matches!(
+            result,
+            Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        ),
+        "a user without Sign on the key must not obtain a CSR, got {:?}",
+        result.map(|_csr| ())
     );
     Ok(())
 }
@@ -237,20 +248,27 @@ async fn csr_generation_rejects_bad_input() -> KResult<()> {
     let owner = user("pki-admin@example.com");
     let (sk_id, pk_id) = make_key_pair(&kms, &owner).await?;
     for subject in ["", "   ", "no-equals-sign", "CN="] {
+        let result = generate_csr(&kms, &sk_id, subject, &owner).await;
         assert!(
-            generate_csr(&kms, &sk_id, subject, &owner).await.is_err(),
-            "subject '{subject}' must be rejected"
+            matches!(result, Err(KmsError::InvalidRequest(_))),
+            "subject '{subject}' must be rejected as InvalidRequest, got {:?}",
+            result.map(|_csr| ())
         );
     }
+    let result = generate_csr(&kms, &pk_id, "CN=x", &owner).await;
     assert!(
-        generate_csr(&kms, &pk_id, "CN=x", &owner).await.is_err(),
-        "a public key cannot sign a CSR"
+        matches!(result, Err(KmsError::InvalidRequest(_))),
+        "a public key cannot sign a CSR, got {:?}",
+        result.map(|_csr| ())
     );
+    let result = generate_csr(&kms, "does-not-exist", "CN=x", &owner).await;
     assert!(
-        generate_csr(&kms, "does-not-exist", "CN=x", &owner)
-            .await
-            .is_err(),
-        "unknown key"
+        matches!(
+            result,
+            Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        ),
+        "unknown key, got {:?}",
+        result.map(|_csr| ())
     );
     // a CSR generated for a valid input still parses back
     let csr = generate_csr(&kms, &sk_id, "CN=ok", &owner).await?;
@@ -379,7 +397,6 @@ async fn csr_generation_refuses_an_x25519_key() -> KResult<()> {
         kmip_types::RecommendedCurve, requests::create_ec_key_pair_request,
     };
 
-    use crate::error::KmsError;
     let kms = make_kms().await?;
     let owner = user("pki-admin@example.com");
     let response = kms

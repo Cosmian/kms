@@ -538,13 +538,17 @@ impl PgPool {
                 )
                 .await
                 .map_err(DbError::from)?;
+            let insert_tag_stmt = tx
+                .prepare(get_pgsql_query!("insert-tags-if-absent"))
+                .await
+                .map_err(DbError::from)?;
             for row in &missing_rows {
                 let id: String = row.get(0);
                 let object_json: String = row.get(1);
                 match serde_json::from_str::<Object>(&object_json) {
                     Ok(obj) => {
                         if let Some(tag) = certificate_serial_tag(&obj) {
-                            tx.execute(get_pgsql_query!("insert-tags-if-absent"), &[&id, &tag])
+                            tx.execute(&insert_tag_stmt, &[&id, &tag])
                                 .await
                                 .map_err(DbError::from)?;
                         }

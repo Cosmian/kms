@@ -2436,7 +2436,8 @@ paths:
         '422':
           description: >-
             Invalid request — private key not found or caller lacks the `Sign` permission on it,
-            key not Active, empty or malformed subject, not a private key, or extractable HSM key
+            key not Active, empty or malformed subject, not a private key, extractable HSM key,
+            or key refused by the server KMIP algorithm policy
         '500':
           description: Internal server error — signing failed
 

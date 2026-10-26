@@ -109,6 +109,8 @@ async fn test_hsm_all() {
         Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
             .await
             .unwrap();
+        info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");

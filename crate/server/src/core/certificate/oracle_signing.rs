@@ -7,11 +7,12 @@
 //! (or their SHA-256 digest, for RSA and ECDSA) are signed by the HSM, and the signature is
 //! re-inserted. The result is verified against the real public key before being returned.
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Sign,
-    kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, UniqueIdentifier},
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+        UniqueIdentifier,
+    },
 };
 use openssl::{
     bn::BigNum,
@@ -72,13 +73,11 @@ impl X509SignatureAlgorithm {
         match key.id() {
             Id::RSA => Ok(Self::Sha256WithRsa),
             Id::EC => Ok(Self::EcdsaWithSha256),
-            #[cfg(feature = "non-fips")]
-            Id::ED25519 => Ok(Self::Ed25519),
-            #[cfg(feature = "non-fips")]
-            Id::ED448 => Ok(Self::Ed448),
-            id => Err(KmsError::NotSupported(format!(
-                "X.509 signing with an HSM key supports RSA, EC and EdDSA keys only, got {id:?}"
-            ))),
+            id => Self::from_eddsa_key_id(id).ok_or_else(|| {
+                KmsError::NotSupported(format!(
+                    "X.509 signing with an HSM key supports RSA, EC and EdDSA keys only, got {id:?}"
+                ))
+            }),
         }
     }
 
@@ -87,20 +86,20 @@ impl X509SignatureAlgorithm {
     /// They must always be explicit: without them the crypto oracle picks a hash from the key
     /// (e.g. SHA-384 for P-384) that would not match the OID.
     pub(crate) fn sign_parameters(self) -> CryptographicParameters {
-        let (digital_signature_algorithm, cryptographic_algorithm) = match self {
-            Self::Sha256WithRsa => (
-                Some(DigitalSignatureAlgorithm::SHA256WithRSAEncryption),
-                None,
-            ),
-            Self::EcdsaWithSha256 => (Some(DigitalSignatureAlgorithm::ECDSAWithSHA256), None),
-            #[cfg(feature = "non-fips")]
-            Self::Ed25519 => (None, Some(CryptographicAlgorithm::Ed25519)),
-            #[cfg(feature = "non-fips")]
-            Self::Ed448 => (None, Some(CryptographicAlgorithm::Ed448)),
+        if let Some(algorithm) = self.eddsa_algorithm() {
+            return CryptographicParameters {
+                cryptographic_algorithm: Some(algorithm),
+                ..CryptographicParameters::default()
+            };
+        }
+        // shortcut: only RSA and ECDSA remain after the `EdDSA` case, extend when adding a variant
+        let digital_signature_algorithm = if self == Self::Sha256WithRsa {
+            DigitalSignatureAlgorithm::SHA256WithRSAEncryption
+        } else {
+            DigitalSignatureAlgorithm::ECDSAWithSHA256
         };
         CryptographicParameters {
-            digital_signature_algorithm,
-            cryptographic_algorithm,
+            digital_signature_algorithm: Some(digital_signature_algorithm),
             ..CryptographicParameters::default()
         }
     }
@@ -112,26 +111,72 @@ impl X509SignatureAlgorithm {
     }
 
     fn algorithm_identifier(self) -> AlgorithmIdentifierOwned {
-        match self {
-            Self::Sha256WithRsa => AlgorithmIdentifierOwned {
+        // RFC 8410 §3: EdDSA parameters MUST be absent
+        if let Some(oid) = self.eddsa_oid() {
+            return AlgorithmIdentifierOwned {
+                oid,
+                parameters: None,
+            };
+        }
+        // shortcut: only RSA and ECDSA remain here, extend this when adding a classic variant
+        if self == Self::Sha256WithRsa {
+            AlgorithmIdentifierOwned {
                 oid: SHA256_WITH_RSA,
                 parameters: Some(Any::null()),
-            },
-            Self::EcdsaWithSha256 => AlgorithmIdentifierOwned {
+            }
+        } else {
+            AlgorithmIdentifierOwned {
                 oid: ECDSA_WITH_SHA256,
                 parameters: None,
-            },
-            // RFC 8410 §3: parameters MUST be absent
-            #[cfg(feature = "non-fips")]
-            Self::Ed25519 => AlgorithmIdentifierOwned {
-                oid: ED25519,
-                parameters: None,
-            },
-            #[cfg(feature = "non-fips")]
-            Self::Ed448 => AlgorithmIdentifierOwned {
-                oid: ED448,
-                parameters: None,
-            },
+            }
+        }
+    }
+}
+
+/// `EdDSA` support (Ed25519, Ed448): non-FIPS builds only.
+#[cfg(feature = "non-fips")]
+impl X509SignatureAlgorithm {
+    const fn from_eddsa_key_id(id: Id) -> Option<Self> {
+        match id {
+            Id::ED25519 => Some(Self::Ed25519),
+            Id::ED448 => Some(Self::Ed448),
+            _ => None,
+        }
+    }
+
+    const fn eddsa_algorithm(self) -> Option<CryptographicAlgorithm> {
+        match self {
+            Self::Ed25519 => Some(CryptographicAlgorithm::Ed25519),
+            Self::Ed448 => Some(CryptographicAlgorithm::Ed448),
+            Self::Sha256WithRsa | Self::EcdsaWithSha256 => None,
+        }
+    }
+
+    const fn eddsa_oid(self) -> Option<ObjectIdentifier> {
+        match self {
+            Self::Ed25519 => Some(ED25519),
+            Self::Ed448 => Some(ED448),
+            Self::Sha256WithRsa | Self::EcdsaWithSha256 => None,
+        }
+    }
+}
+
+/// FIPS builds have no `EdDSA` variant.
+#[cfg(not(feature = "non-fips"))]
+impl X509SignatureAlgorithm {
+    const fn from_eddsa_key_id(_id: Id) -> Option<Self> {
+        None
+    }
+
+    const fn eddsa_algorithm(self) -> Option<CryptographicAlgorithm> {
+        match self {
+            Self::Sha256WithRsa | Self::EcdsaWithSha256 => None,
+        }
+    }
+
+    const fn eddsa_oid(self) -> Option<ObjectIdentifier> {
+        match self {
+            Self::Sha256WithRsa | Self::EcdsaWithSha256 => None,
         }
     }
 }
@@ -374,8 +419,9 @@ pub(crate) async fn sign_certificate_with_oracle(
     let der = sign_with_oracle::<Certificate>(kms, key, &placeholder_der).await?;
     let certificate = X509::from_der(&der)?;
     if !certificate.verify(&key.public_key)? {
-        return Err(KmsError::ServerError(
-            "HSM signature over the certificate does not verify with the issuer public key"
+        return Err(KmsError::InvalidRequest(
+            "HSM signature over the certificate does not verify with the issuer certificate \
+             public key: the HSM private key does not match the issuer certificate"
                 .to_owned(),
         ));
     }
@@ -392,8 +438,10 @@ pub(crate) async fn sign_crl_with_oracle(
     let der = sign_with_oracle::<CertificateList>(kms, key, &placeholder_der).await?;
     let crl = X509Crl::from_der(&der)?;
     if !crl.verify(&key.public_key)? {
-        return Err(KmsError::ServerError(
-            "HSM signature over the CRL does not verify with the issuer public key".to_owned(),
+        return Err(KmsError::InvalidRequest(
+            "HSM signature over the CRL does not verify with the issuer certificate public key: \
+             the HSM private key does not match the issuer certificate"
+                .to_owned(),
         ));
     }
     Ok(crl)
