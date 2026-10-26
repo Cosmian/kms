@@ -19,8 +19,19 @@ Override it when needed:
 ```bash
 export AZURE_CLOUD_HSM_PKCS11_LIB=/path/to/libazcloudhsm_pkcs11.so
 export HSM_USER_PASSWORD='<user>:<password>'
-export HSM_SLOT_ID=0
+export HSM_SLOT_ID=<slot_id>
 ```
+
+`<slot_id>` is the PKCS#11 slot id for the partition, **not** the position of the slot in
+`C_GetSlotList`. Discover it with:
+
+```bash
+pkcs11-tool --module /opt/azurecloudhsm/lib64/libazcloudhsm_pkcs11.so --list-slots
+```
+
+`pkcs11-tool` prints each entry as `Slot <index> (0x<slot_id>)`; use the hexadecimal value in
+parentheses (e.g. `Slot 0 (0x1)` means `HSM_SLOT_ID=1`). Passing the list index instead of the
+real slot id fails with `CKR_SLOT_ID_INVALID`.
 
 Select the backend in the KMS configuration:
 
@@ -87,10 +98,12 @@ prepare script and call the test directly:
 ```bash
 AZURE_CLOUD_HSM_PKCS11_LIB=/opt/azurecloudhsm/lib64/libazcloudhsm_pkcs11.so \
   HSM_USER_PASSWORD='<user>:<password>' \
-  HSM_SLOT_ID=0 \
+  HSM_SLOT_ID=<slot_id> \
   cargo test -p azure_cloud_hsm_pkcs11_loader --features azure_cloud_hsm,non-fips \
   -- --nocapture tests::test_hsm_azure_cloud_hsm_all --ignored --exact
 ```
+
+See [Configuration](#configuration) above to discover `<slot_id>` with `pkcs11-tool`.
 
 ## Live test
 
