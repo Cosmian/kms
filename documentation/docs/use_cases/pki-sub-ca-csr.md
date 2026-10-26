@@ -35,9 +35,10 @@ ckms certificates generate-csr \
   --output-file subca.csr
 ```
 
-The CSR is signed inside the KMS (for an HSM key, by the HSM through PKCS#11); the private key
-is never loaded into the server. The caller needs the `Sign` permission on the key, not `Get`.
-Web UI: **Certificates > Generate CSR**. REST: `POST /certificates/csr`.
+The CSR is signed inside the KMS (for an HSM key, by the HSM through PKCS#11); for an HSM key the private key
+is never loaded into the server. The caller needs the `Sign` permission on the key, not `Get`, and the
+configured KMIP algorithm policy is enforced.
+Web UI: **Certificates > Certs > Generate CSR**. REST: `POST /certificates/csr`.
 
 An HSM key that is **extractable** is refused: create it with `--sensitive`.
 
@@ -51,14 +52,32 @@ ckms certificates certify \
   --certificate-extensions subca_ext.cnf
 ```
 
-with `basicConstraints=critical,CA:TRUE` and `keyUsage=critical,keyCertSign,crlSign` in the
-extension file.
+with the following extension file (`subca_ext.cnf`):
+
+```ini
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,crlSign
+```
+
+Export the signed sub-CA certificate from the offline KMS, and transfer it to the online KMS:
+
+```bash
+ckms certificates export --certificate-id <SUBCA_CERT_ID> -f pem subca.pem
+```
 
 ## 4. Use the sub-CA
 
 Import the signed certificate on the online KMS and link it to the HSM key
-(`PrivateKeyLink`). The sub-CA can then issue certificates (`certify` with the sub-CA as issuer)
-and CRLs (`generate-crl`): the signatures are computed by the HSM.
+(`PrivateKeyLink`):
+
+```bash
+ckms certificates import -f pem -k hsm::0::subca subca.pem
+```
+
+The sub-CA can then issue certificates (`certify` with the sub-CA as issuer)
+and CRLs (`generate-crl`): the signatures are computed by the HSM. Issuing certificates and signing CRLs with an
+HSM CA key need the `Certify` permission on that key (HSM grants are per operation); `Sign` alone is not enough.
 
 ## Limits
 
@@ -66,8 +85,9 @@ and CRLs (`generate-crl`): the signatures are computed by the HSM.
   Ed25519/Ed448 keys. ML-DSA and SLH-DSA HSM keys are not supported.
 - The SCEP enrollment endpoint refuses a non-extractable HSM CA key (clear error, no fallback to an exported key).
   EST works, as it issues through `certify`.
-- Automatic CRL regeneration after a revocation reads the issuer certificate directly and authorizes the signing
-  key as that certificate's owner: for an `hsm::` key, the owner must be an HSM admin or hold a grant on the key.
+- Automatic CRL regeneration (after a revocation and from the refresh cron) signs as the owner of the issuer
+  certificate, whoever triggered it: for an `hsm::` key, that owner must be an HSM admin or hold a `Certify` grant
+  on the key.
 
 ## Finding certificates by serial number
 

@@ -49,7 +49,8 @@ changes, see NEG-001.
    `Issuer`. Database keys follow the unchanged in-process path; HSM keys (`ObjectHandle::is_hsm`) use the oracle.
    `build_and_sign_certificate` becomes `async`. `generate_crl` makes the same split.
 3. **New CSR operation:** `POST /certificates/csr` (authenticated), `ckms certificates generate-csr`, and a Web UI page.
-   Only the `Sign` permission is required on the private key (never `Get`): the public key is read without a per-user
+   Only the `Sign` permission is required on the private key (never `Get`), and the configured KMIP algorithm policy is
+   enforced on the key and its public key before signing (as `Certify` does): the public key is read without a per-user
    `Get` check, and the final `csr.verify(public_key)` guards that the pair matches. An extractable HSM key is refused,
    so the non-disclosure guarantee holds from the sub-CA's creation. Database-stored keys of any signing type work:
    RSA and EC use SHA-256, while Ed25519 and ML-DSA/SLH-DSA sign with no digest; HSM keys are limited to RSA, EC and
@@ -105,8 +106,9 @@ Out of scope: the Auditor role of issue #651 (delivered with the OPA authorizati
 
 ### Negative
 
-- **NEG-001**: Oracle (HSM) signing supports RSA and EC keys with SHA-256, and Ed25519/Ed448 (non-FIPS builds only).
-  RSA-PSS and SHA-384/512 HSM CA keys are rejected with `NotSupported`. Database-stored keys are not affected.
+- **NEG-001**: Oracle (HSM) signing supports RSA and EC keys, and Ed25519/Ed448 (non-FIPS builds only). RSA and EC
+  always sign with SHA-256 (PKCS#1 v1.5 for RSA, ECDSA for EC, whatever the curve). RSA-PSS keys and any HSM CA key
+  that is not RSA, EC or EdDSA are rejected with `NotSupported`. Database-stored keys are not affected.
   **Behaviour change for existing HSM users:** every `hsm::` issuer key now goes through the oracle in `Certify`,
   `ReCertify`, `GenerateCrl` and the OCSP responder, *including non-sensitive keys* that previously signed by export.
   A P-384 HSM CA now signs `ecdsa-with-SHA256` instead of the digest the old path chose.
@@ -115,15 +117,18 @@ Out of scope: the Auditor role of issue #651 (delivered with the OPA authorizati
 - **NEG-002**: Automatic CRL regeneration (post-Revoke, refresh cron) reads only the issuer *certificate* without an
   ACL check (a certificate is public; destroyed ones are refused). The signing key is still authorized as the issuer
   certificate's **owner**, never as the caller, because the `PrivateKeyLink` of an imported certificate is
-  user-controlled and the server must not sign with a key its owner cannot use. Consequence: for an `hsm::` key the
-  issuer certificate's owner must be an HSM admin or hold a grant on the key, otherwise regeneration fails (logged)
-  and the CRL goes stale; this limitation remains.
+  user-controlled and the server must not sign with a key its owner cannot use. HSM grants are per operation and the
+  oracle never exports: CSR generation needs the `Sign` grant on an HSM key, while certificate issuance and CRL
+  signing with an HSM CA key need the `Certify` grant (not `Get` or `Export`). Consequence: for an `hsm::` key the
+  issuer certificate's owner must be an HSM admin or hold a `Certify` grant on the key, otherwise regeneration fails
+  (logged) and the CRL goes stale; this limitation remains.
 - **NEG-003**: A throwaway placeholder signature plus DER re-encoding adds a second parser (`x509-cert`) on the signing
   path. `x509-cert` is already in the workspace and the OCSP response types are defined locally with `der`, so no new
   third-party package is introduced.
 - **NEG-004**: The `_serial=` tag is not unique across issuers; renewal replaces it. Its backfill is a one-time
-  startup write on the first boot after upgrade; a certificate whose serial cannot be read is skipped with a warning
-  and left untagged.
+  startup write on the first boot after upgrade; a certificate whose serial cannot be read is skipped and left
+  untagged. A warning is logged only on the SQL backends (SQLite, PostgreSQL, MySQL/MariaDB), and only when the stored
+  object cannot be deserialized; Redis-Findex skips such certificates silently.
 - **NEG-005**: ML-DSA and SLH-DSA HSM CA keys are not supported: the HSM layer has no PQC key types, so they are
   rejected with `NotSupported`. Database-stored PQC keys are unaffected.
 - **NEG-006**: SCEP cannot use a non-extractable HSM CA key (`NotSupported`, "SCEP cannot use a non-extractable HSM CA

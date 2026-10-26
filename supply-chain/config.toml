@@ -493,7 +493,6 @@ criteria = "safe-to-deploy"
 [[exemptions.ctr]]
 version = "0.9.2"
 criteria = "safe-to-deploy"
-notes = "needed by crypto-bigint (k256/sec1) via cosmian_kms_crypto; bump from 0.4.2 fixes RUSTSEC-2026-0385 - unaudited, pending review"
 
 [[exemptions.curve25519-dalek]]
 version = "4.1.3"
