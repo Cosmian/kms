@@ -8,6 +8,8 @@
   `Verify` only publishes `use=sig` with `alg=RS256/384/512`, `Encrypt`/`WrapKey` only publishes `use=enc` without
   `alg`, and keys carrying both (or neither, such as HSM public keys) publish neither. Keys without a usage mask are
   unchanged. Clients that assumed every RSA JWK is `use=sig`/`RS*` must select keys by `kid`.
+- `POST /v1/crypto/keys` with RSA `n` and `e` but no `d` now imports a public key instead of generating a key
+  pair, and a `kid` on a generation request is rejected with HTTP 400.
 
 ## Features
 
