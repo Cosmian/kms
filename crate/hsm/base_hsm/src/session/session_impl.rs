@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
     HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
@@ -34,7 +35,6 @@ use pkcs11_sys::{
     CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
     CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
-use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -60,8 +60,8 @@ const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    SysRng
-        .try_fill_bytes(&mut bytes)
+    KmsRng::new()
+        .fill_public_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)
 }
@@ -209,6 +209,28 @@ pub struct Session {
     hsm_capabilities: HsmCapabilities,
 }
 
+/// HKDF (RFC 5869) parameters for [`Session::derive_hkdf_key`].
+#[derive(Debug, Clone, Copy)]
+pub struct HkdfParams<'a> {
+    /// HMAC hash mechanism used as the HKDF PRF (e.g. `CKM_SHA256`).
+    pub prf_hash: CK_MECHANISM_TYPE,
+    /// Optional HKDF salt bytes (`None` uses the all-zero salt).
+    pub salt: Option<&'a [u8]>,
+    /// HKDF "info" context bytes.
+    pub info: &'a [u8],
+}
+
+/// Description of the key produced by [`Session::derive_hkdf_key`].
+#[derive(Debug, Clone, Copy)]
+pub struct DerivedKeySpec<'a> {
+    /// The `CKA_ID`/`CKA_LABEL` to assign to the derived key.
+    pub id: &'a [u8],
+    /// Length in bytes of the derived key.
+    pub len_bytes: usize,
+    /// If `true`, the derived key is marked non-extractable.
+    pub sensitive: bool,
+}
+
 impl Session {
     pub fn new(
         hsm: Arc<crate::hsm_lib::HsmLib>,
@@ -311,7 +333,7 @@ impl Session {
             sk_id.as_bytes(),
             pk_id.as_bytes(),
             RsaKeySize::Rsa2048,
-            false,
+            true, // sensitive: some HSMs (e.g. Luna) refuse extractable private keys
             None,
         )?;
 
@@ -884,26 +906,8 @@ impl Session {
             pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
             ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
         };
-        let ciphertext = self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
-        let split_at = ciphertext
-            .len()
-            .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
-            .ok_or_else(|| {
-                HError::Default("Failed to extract GCM authentication tag".to_owned())
-            })?;
-        Ok(EncryptedContent {
-            iv: Some(nonce.to_vec()),
-            ciphertext: ciphertext
-                .get(..split_at)
-                .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
-                .to_vec(),
-            tag: Some(
-                ciphertext
-                    .get(split_at..)
-                    .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
-                    .to_vec(),
-            ),
-        })
+        let output = self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?;
+        split_aes_gcm_output(nonce, plaintext.len(), &output)
     }
 
     /// Encrypt data using the specified key and algorithm
@@ -1286,7 +1290,6 @@ impl Session {
                 key_handle,
                 &mut mechanism,
                 padded_plaintext
-                    .as_slice()
                     .get(processed_length..processed_length + round_length)
                     .ok_or_else(|| HError::Default("Failed to round data".to_owned()))?,
             )?;
@@ -1399,6 +1402,215 @@ impl Session {
             }
         }
         Self::pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
+    }
+
+    /// Encrypt data with AES-CBC using a single PKCS#11 multi-part operation:
+    /// one `C_EncryptInit`, one `C_EncryptUpdate` per part of at most `max_part_length`
+    /// bytes, then `C_EncryptFinal`.
+    ///
+    /// Unlike [`Session::encrypt_aes_cbc_multi_round`], which re-initializes the
+    /// operation for every round and chains the IV by hand, the HSM keeps the CBC
+    /// chaining state across the parts. This avoids one `C_EncryptInit` per round on
+    /// very large inputs, and yields exactly the ciphertext of a single-shot
+    /// [`Session::encrypt`] using the same IV (PKCS#7 padding is applied here).
+    ///
+    /// # Errors
+    /// * Returns an error if `max_part_length` is zero.
+    /// * Returns an error if any of the HSM calls fails; the operation is then
+    ///   terminated so that the session can be reused.
+    pub fn encrypt_aes_cbc_multi_part(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: [u8; AES_CBC_IV_LENGTH],
+        plaintext: &[u8],
+        max_part_length: usize,
+    ) -> HResult<EncryptedContent> {
+        if max_part_length == 0 {
+            return Err(HError::Default(
+                "Maximum part length must be greater than zero".to_owned(),
+            ));
+        }
+        let mut padded_plaintext: Zeroizing<Vec<u8>> = Zeroizing::new(plaintext.to_vec());
+        Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
+
+        let mut iv_param = iv;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv_param.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(iv.len())?,
+        };
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize encryption",
+            C_EncryptInit,
+            self.handle,
+            &raw mut mechanism,
+            key_handle
+        );
+
+        let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext.len());
+        for part in padded_plaintext.chunks(max_part_length) {
+            if let Err(e) = self.encrypt_update(part, &mut ciphertext) {
+                self.abort_encrypt();
+                return Err(e);
+            }
+        }
+        self.encrypt_final(&mut ciphertext)?;
+        Ok(EncryptedContent {
+            iv: Some(iv.to_vec()),
+            ciphertext, // no separate tag for CBC
+            tag: None,
+        })
+    }
+
+    /// Decrypt data with AES-CBC using a single PKCS#11 multi-part operation
+    /// (`C_DecryptInit`, one `C_DecryptUpdate` per part of at most `max_part_length`
+    /// bytes, `C_DecryptFinal`), then remove the PKCS#7 padding.
+    ///
+    /// See [`Session::encrypt_aes_cbc_multi_part`].
+    ///
+    /// # Errors
+    /// * Returns an error if `max_part_length` is zero.
+    /// * Returns an error if the ciphertext length is not a multiple of 16.
+    /// * Returns an error if the IV length is not exactly 16 bytes.
+    /// * Returns an error if PKCS#7 unpadding fails.
+    /// * Returns an error if any of the HSM calls fails; the operation is then
+    ///   terminated so that the session can be reused.
+    pub fn decrypt_aes_cbc_multi_part(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: &[u8],
+        ciphertext: &[u8],
+        max_part_length: usize,
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        if max_part_length == 0 {
+            return Err(HError::Default(
+                "Maximum part length must be greater than zero".to_owned(),
+            ));
+        }
+        if !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE) {
+            return Err(HError::Default(format!(
+                "AES CBC ciphertext must be multiple of block size ({AES_BLOCK_SIZE})"
+            )));
+        }
+        let mut iv_param: [u8; AES_CBC_IV_LENGTH] = iv.try_into().map_err(|_e| {
+            HError::Default(format!(
+                "Wrong IV length. Must be {AES_CBC_IV_LENGTH} bytes long"
+            ))
+        })?;
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv_param.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(iv_param.len())?,
+        };
+        hsm_call!(
+            self.hsm,
+            "Failed to initialize decryption",
+            C_DecryptInit,
+            self.handle,
+            &raw mut mechanism,
+            key_handle
+        );
+
+        let mut plaintext: Zeroizing<Vec<u8>> =
+            Zeroizing::new(Vec::with_capacity(ciphertext.len()));
+        for part in ciphertext.chunks(max_part_length) {
+            if let Err(e) = self.decrypt_update(part, &mut plaintext) {
+                self.abort_decrypt();
+                return Err(e);
+            }
+        }
+        self.decrypt_final(&mut plaintext)?;
+        Self::pkcs7_unpad(plaintext, AES_BLOCK_SIZE)
+    }
+
+    /// Feed one part to the active encryption operation and append the produced bytes.
+    fn encrypt_update(&self, part: &[u8], ciphertext: &mut Vec<u8>) -> HResult<()> {
+        let mut out = vec![0_u8; part.len() + AES_BLOCK_SIZE];
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to encrypt data part",
+            C_EncryptUpdate,
+            self.handle,
+            part.as_ptr().cast_mut(),
+            CK_ULONG::try_from(part.len())?,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        ciphertext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Finish the active encryption operation and append any remaining bytes.
+    fn encrypt_final(&self, ciphertext: &mut Vec<u8>) -> HResult<()> {
+        let mut out = vec![0_u8; AES_BLOCK_SIZE];
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to finalize encryption",
+            C_EncryptFinal,
+            self.handle,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        ciphertext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Terminate the active encryption operation after a failed update, so the
+    /// session does not stay in the "operation active" state.
+    fn abort_encrypt(&self) {
+        let mut discarded = Vec::new();
+        if let Err(e) = self.encrypt_final(&mut discarded) {
+            debug!("Could not terminate the encryption operation after an error: {e}");
+        }
+    }
+
+    /// Feed one part to the active decryption operation and append the produced bytes.
+    fn decrypt_update(&self, part: &[u8], plaintext: &mut Zeroizing<Vec<u8>>) -> HResult<()> {
+        let mut out: Zeroizing<Vec<u8>> = Zeroizing::new(vec![0_u8; part.len() + AES_BLOCK_SIZE]);
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to decrypt data part",
+            C_DecryptUpdate,
+            self.handle,
+            part.as_ptr().cast_mut(),
+            CK_ULONG::try_from(part.len())?,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        plaintext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Finish the active decryption operation and append any remaining bytes.
+    fn decrypt_final(&self, plaintext: &mut Zeroizing<Vec<u8>>) -> HResult<()> {
+        let mut out: Zeroizing<Vec<u8>> = Zeroizing::new(vec![0_u8; AES_BLOCK_SIZE]);
+        let mut out_len = CK_ULONG::try_from(out.len())?;
+        hsm_call!(
+            self.hsm,
+            "Failed to finalize decryption",
+            C_DecryptFinal,
+            self.handle,
+            out.as_mut_ptr(),
+            &raw mut out_len
+        );
+        out.truncate(usize::try_from(out_len)?);
+        plaintext.extend_from_slice(&out);
+        Ok(())
+    }
+
+    /// Terminate the active decryption operation after a failed update.
+    fn abort_decrypt(&self) {
+        let mut discarded: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::new());
+        if let Err(e) = self.decrypt_final(&mut discarded) {
+            debug!("Could not terminate the decryption operation after an error: {e}");
+        }
     }
 
     fn encrypt_with_mechanism(
@@ -2238,23 +2450,24 @@ impl Session {
     ///
     /// # Arguments
     /// * `base_key_handle` - handle of the secret key to derive from (the HKDF "IKM").
-    /// * `prf_hash` - the HMAC hash mechanism to use as the HKDF PRF (e.g. `CKM_SHA256`).
-    /// * `salt` - optional HKDF salt bytes.
-    /// * `info` - HKDF "info" context bytes.
-    /// * `derived_key_len_bytes` - length in bytes of the derived AES key (16 or 32).
-    /// * `derived_key_id` - the `CKA_ID`/`CKA_LABEL` to assign to the derived key.
-    /// * `sensitive` - if `true`, the derived key is marked non-extractable.
-    #[expect(clippy::too_many_arguments)]
+    /// * `hkdf` - HKDF PRF hash, optional salt and info context.
+    /// * `derived` - identifier, length and sensitivity of the derived key.
     pub fn derive_hkdf_key(
         &self,
         base_key_handle: CK_OBJECT_HANDLE,
-        prf_hash: CK_MECHANISM_TYPE,
-        salt: Option<&[u8]>,
-        info: &[u8],
-        derived_key_len_bytes: usize,
-        derived_key_id: &[u8],
-        sensitive: bool,
+        hkdf: HkdfParams<'_>,
+        derived: DerivedKeySpec<'_>,
     ) -> HResult<CK_OBJECT_HANDLE> {
+        let HkdfParams {
+            prf_hash,
+            salt,
+            info,
+        } = hkdf;
+        let DerivedKeySpec {
+            id: derived_key_id,
+            len_bytes: derived_key_len_bytes,
+            sensitive,
+        } = derived;
         let mut salt_bytes = salt.unwrap_or(&[]).to_vec();
         let mut info_bytes = info.to_vec();
         let mut hkdf_params = CK_HKDF_PARAMS {
@@ -3709,9 +3922,78 @@ impl Drop for Session {
     }
 }
 
+/// Split a `CKM_AES_GCM` encryption output into IV, ciphertext and tag.
+///
+/// Standard PKCS#11 output is `ciphertext || tag` and the IV is the `pIv` buffer.
+/// Thales Luna in FIPS mode ignores the caller IV, generates its own and appends it:
+/// `ciphertext || tag || iv`. Only a 96-bit generated IV (Luna firmware >= 7.9.3 with
+/// `ulIvBits = 96`) fits the 12-byte IV of the KMS ciphertext format; any other output
+/// length is rejected instead of being split at the wrong offset.
+fn split_aes_gcm_output(
+    nonce: [u8; AES_GCM_IV_LENGTH],
+    plaintext_len: usize,
+    output: &[u8],
+) -> HResult<EncryptedContent> {
+    let tag_end = plaintext_len + AES_GCM_AUTH_TAG_LENGTH;
+    let iv = if output.len() == tag_end {
+        nonce.to_vec()
+    } else if output.len() == tag_end + AES_GCM_IV_LENGTH {
+        output
+            .get(tag_end..)
+            .ok_or_else(|| HError::Default("Failed to extract HSM-generated IV".to_owned()))?
+            .to_vec()
+    } else {
+        return Err(HError::Default(format!(
+            "Unexpected AES-GCM output length {} for a {plaintext_len}-byte plaintext: \
+             HSM-generated IVs other than 96 bits (e.g. Luna FIPS mode before firmware 7.9.3) \
+             are not supported",
+            output.len()
+        )));
+    };
+    Ok(EncryptedContent {
+        iv: Some(iv),
+        ciphertext: output
+            .get(..plaintext_len)
+            .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?
+            .to_vec(),
+        tag: Some(
+            output
+                .get(plaintext_len..tag_end)
+                .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
+                .to_vec(),
+        ),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_aes_gcm_output_handles_standard_and_hsm_appended_iv() {
+        let nonce = [7_u8; AES_GCM_IV_LENGTH];
+        let ct = [1_u8; 5];
+        let tag = [2_u8; AES_GCM_AUTH_TAG_LENGTH];
+        let hsm_iv = [3_u8; AES_GCM_IV_LENGTH];
+        let split = |out: &[u8]| {
+            split_aes_gcm_output(nonce, ct.len(), out)
+                .ok()
+                .map(|c| (c.iv, c.ciphertext, c.tag))
+        };
+
+        // Standard PKCS#11: IV is the caller nonce.
+        assert_eq!(
+            split(&[ct.as_slice(), &tag].concat()),
+            Some((Some(nonce.to_vec()), ct.to_vec(), Some(tag.to_vec())))
+        );
+        // Luna FIPS mode: the HSM-generated IV appended after the tag wins over the nonce.
+        assert_eq!(
+            split(&[ct.as_slice(), &tag, &hsm_iv].concat()),
+            Some((Some(hsm_iv.to_vec()), ct.to_vec(), Some(tag.to_vec())))
+        );
+        // 16-byte HSM IV (Luna FIPS before firmware 7.9.3) does not fit the format.
+        assert_eq!(split(&[ct.as_slice(), &tag, &[3_u8; 16]].concat()), None);
+    }
 
     #[test]
     fn rsa_pkcs_pss_params_defaults_salt_length_to_digest_length() {

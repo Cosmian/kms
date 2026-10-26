@@ -23,14 +23,14 @@ use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
 use jsonwebtoken::dangerous;
 #[cfg(all(not(test), not(feature = "insecure")))]
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header, jwk::Jwk};
 use serde::Deserialize;
 
 use crate::{
     error::KmsError,
     middlewares::{
-        AuthMethod, AuthenticatedUser, JwksManager, UserId, extract_bearer_token,
-        reject_reserved_aws_xks_identity,
+        AuthMethod, AuthenticatedUser, JwksManager, JwtTokenHeaders, UserId, extract_bearer_token,
+        reject_reserved_service_identity,
     },
     result::KResult,
 };
@@ -97,7 +97,7 @@ pub(super) async fn handle_auth_verifier(
     };
 
     let username = UserId::from(verify_auth_verifier_jwt_subject(jwks_manager, token).await?);
-    reject_reserved_aws_xks_identity(&username)?;
+    reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
         auth_method: AuthMethod::AuthVerifierJwt,
@@ -122,7 +122,7 @@ pub(crate) async fn authenticate_auth_verifier_session_cookie(
     }
     let username = UserId::try_new(claims.sub)
         .map_err(|e| KmsError::Unauthorized(format!("Auth Verifier: {e}")))?;
-    reject_reserved_aws_xks_identity(&username)?;
+    reject_reserved_service_identity(&username)?;
     Ok(username)
 }
 
@@ -152,6 +152,10 @@ async fn verify_auth_verifier_jwt(
     jwks_manager: &Arc<JwksManager>,
     token: &str,
 ) -> KResult<AuthVerifierClaims> {
+    // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here, in every build
+    // (the signature check below is skipped in test/insecure builds).
+    JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
+
     // In test/insecure builds skip signature validation — decode only.
     #[cfg(any(test, feature = "insecure"))]
     {
@@ -175,9 +179,8 @@ async fn verify_auth_verifier_jwt(
             )));
         }
 
-        // Fetch all public keys — Cosmian tokens have no `kid` so we try them all.
-        let jwks = jwks_manager.find_any()?;
-        if jwks.is_empty() {
+        // Look up key by kid if header provides it, otherwise try all keys without cloning the cache.
+        if jwks_manager.is_empty()? {
             // JWKS cache is empty — the initial fetch at startup may have failed, or the
             // IdP may have been unreachable. Force a refresh, bypassing the normal
             // throttle: a plain `refresh()` call could be a no-op here for up to
@@ -185,18 +188,13 @@ async fn verify_auth_verifier_jwt(
             // failed attempt, even though the cache never got populated.
             jwks_manager.force_refresh().await?;
         }
-        let jwks = jwks_manager.find_any()?;
 
         let mut last_error: Option<String> = None;
+        let mut tried_keys = 0_usize;
 
-        for jwk in &jwks {
-            let decoding_key = match DecodingKey::from_jwk(jwk) {
-                Ok(k) => k,
-                Err(e) => {
-                    last_error = Some(format!("cannot build decoding key: {e}"));
-                    continue;
-                }
-            };
+        let validate_with_jwk = |jwk: &Jwk| -> Result<AuthVerifierClaims, String> {
+            let decoding_key = DecodingKey::from_jwk(jwk)
+                .map_err(|e| format!("cannot build decoding key: {e}"))?;
 
             let mut validation = Validation::new(header.alg);
             validation.algorithms = vec![header.alg];
@@ -207,19 +205,38 @@ async fn verify_auth_verifier_jwt(
             validation.required_spec_claims.clear();
             validation.set_required_spec_claims(&["sub", "exp"]);
 
-            match decode::<AuthVerifierClaims>(token, &decoding_key, &validation) {
-                Ok(data) => {
-                    return Ok(data.claims);
+            decode::<AuthVerifierClaims>(token, &decoding_key, &validation)
+                .map(|data| data.claims)
+                .map_err(|e| format!("{e}"))
+        };
+
+        if let Some(kid) = header.kid.as_deref() {
+            if let Some(jwk) = jwks_manager.find(kid)? {
+                match validate_with_jwk(&jwk) {
+                    Ok(claims) => return Ok(claims),
+                    Err(e) => last_error = Some(e),
                 }
-                Err(e) => {
-                    last_error = Some(format!("{e}"));
+                tried_keys = 1;
+            }
+        } else {
+            let verified = jwks_manager.find_map_key(|jwk| {
+                tried_keys += 1;
+                match validate_with_jwk(jwk) {
+                    Ok(claims) => Some(claims),
+                    Err(e) => {
+                        last_error = Some(e);
+                        None
+                    }
                 }
+            })?;
+            if let Some(claims) = verified {
+                return Ok(claims);
             }
         }
 
         Err(KmsError::Unauthorized(format!(
             "Auth Verifier: token signature validation failed against all {} JWKS key(s): {}",
-            jwks.len(),
+            tried_keys,
             last_error.unwrap_or_else(|| "no keys available".to_owned())
         )))
     }
@@ -230,14 +247,51 @@ async fn verify_auth_verifier_jwt(
 pub(crate) mod tests {
     use std::sync::Arc;
 
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
-    use super::authenticate_auth_verifier_session_cookie;
+    use super::{authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt_subject};
     use crate::{
         error::KmsError,
         middlewares::{JwksManager, UserId},
         routes::aws_xks::AWS_XKS_SERVICE_USER,
     };
+
+    fn token(header: &str) -> String {
+        format!(
+            "{}.{}.c2ln",
+            URL_SAFE_NO_PAD.encode(header),
+            URL_SAFE_NO_PAD.encode(r#"{"sub":"alice"}"#)
+        )
+    }
+
+    async fn verify(header: &str) -> crate::result::KResult<String> {
+        verify_auth_verifier_jwt_subject(&empty_jwks_manager().await, &token(header)).await
+    }
+
+    #[tokio::test]
+    async fn token_with_crit_header_is_rejected() {
+        let err = verify(r#"{"alg":"RS256","crit":["b64"],"b64":false}"#)
+            .await
+            .expect_err("a token with `crit` must be rejected");
+        assert!(err.to_string().contains("critical"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn nested_jwt_is_rejected() {
+        let err = verify(r#"{"alg":"RS256","cty":"JWT"}"#)
+            .await
+            .expect_err("a nested JWT must be rejected");
+        assert!(err.to_string().contains("Nested"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn plain_token_still_yields_its_subject() {
+        let sub = verify(r#"{"alg":"RS256","typ":"JWT"}"#)
+            .await
+            .expect("a plain token must be accepted in test builds");
+        assert_eq!(sub, "alice");
+    }
 
     /// An Auth Verifier-shaped JWT; signatures are not checked in test builds.
     pub(crate) fn auth_verifier_token(sub: &str, realm: Option<&str>) -> String {

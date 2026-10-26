@@ -10,12 +10,13 @@ The SignatureVerify operation validates a digital signature against provided dat
 
 ## Implementation
 
-The Eviden KMS server supports signing with RSA and EC private keys. The signature algorithms supported include:
+The Eviden KMS server supports signing with RSA and EC private keys, as well as OpenPGP keys (`PGPKey`, non-FIPS mode). The signature algorithms supported include:
 
 - RSA-PKCS#1 v1.5 with SHA-256, SHA-384, SHA-512
 - RSA-PSS with SHA-256, SHA-384, SHA-512
 - ECDSA with SHA-256, SHA-384, SHA-512
 - Ed25519 (signature verification only for imported keys)
+- OpenPGP detached signatures (SHA-256, RSA or Ed25519)
 
 ## Example - Sign with RSA Private Key
 
@@ -206,3 +207,5 @@ Both Sign and SignatureVerify operations support streaming for large data:
 - Set `InitIndicator: true` to start streaming
 - Use `CorrelationValue` to continue streaming sessions
 - Set `FinalIndicator: true` to complete the operation
+
+Streaming is not supported for OpenPGP (`PGPKey`) keys: supplying `InitIndicator` or `CorrelationValue` returns an error, as does `DigestedData`.

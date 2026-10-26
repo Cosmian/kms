@@ -1,9 +1,9 @@
-use std::str::FromStr;
-
+use cosmian_kms_crypto::openssl::oid::{asn1_object, nid_of};
+use openssl::{nid::Nid, pkey::Id};
 use pkcs1::ObjectIdentifier;
 use pkcs11_sys::{CK_KEY_TYPE, CKK_AES, CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_RSA};
 
-use crate::ModuleResult;
+use crate::{ModuleError, ModuleResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyAlgorithm {
@@ -21,6 +21,21 @@ pub enum KeyAlgorithm {
 }
 
 impl KeyAlgorithm {
+    /// All key algorithms, to look one up by NID.
+    const ALL: [Self; 11] = [
+        Self::Aes256,
+        Self::Rsa,
+        Self::EccP256,
+        Self::EccP384,
+        Self::EccP521,
+        Self::Ed25519,
+        Self::X25519,
+        Self::X448,
+        Self::Ed448,
+        Self::Secp224k1,
+        Self::Secp256k1,
+    ];
+
     /// Maps this key algorithm to its PKCS#11 `CKA_KEY_TYPE` value.
     ///
     /// PKCS#11 v2.40 introduced `CKK_EC_EDWARDS` and `CKK_EC_MONTGOMERY` as the
@@ -64,50 +79,50 @@ impl KeyAlgorithm {
         )
     }
 
+    /// The `OpenSSL` NID of the OID that identifies this key algorithm: the algorithm OID
+    /// for AES, RSA and the Edwards/Montgomery curves, the curve OID for the other EC keys.
     #[must_use]
-    pub const fn to_oid_str(&self) -> &'static str {
+    pub fn nid(&self) -> Nid {
         match self {
-            Self::Aes256 => "2.16.840.1.101.3.4.1.41",
-            Self::Rsa => "1.2.840.113549.1.1.1",
-            Self::EccP256 => "1.2.840.10045.3.1.7",
-            Self::EccP384 => "1.3.132.0.34",
-            Self::EccP521 => "1.3.132.0.35",
-            Self::Ed25519 => "1.3.101.112",
-            Self::X25519 => "1.3.101.110",
-            Self::X448 => "1.3.101.111",
-            Self::Ed448 => "1.3.101.113",
-            Self::Secp224k1 => "1.3.132.0.32",
-            // SEC 2-registered OID for secp256k1. NOT "1.3.132.0.33" (that OID is
-            // secp224r1/NIST P-224) — see crate/hsm/base_hsm/src/session/ec.rs,
-            // which documents both OIDs correctly.
-            Self::Secp256k1 => "1.3.132.0.10",
+            Self::Aes256 => Nid::AES_256_ECB,
+            Self::Rsa => Nid::RSAENCRYPTION,
+            Self::EccP256 => Nid::X9_62_PRIME256V1,
+            Self::EccP384 => Nid::SECP384R1,
+            Self::EccP521 => Nid::SECP521R1,
+            // rust-openssl has no `Nid` constant for these: `EVP_PKEY_<alg>` is defined as
+            // `NID_<alg>` in OpenSSL's `evp.h`.
+            Self::Ed25519 => Nid::from_raw(Id::ED25519.as_raw()),
+            Self::X25519 => Nid::from_raw(Id::X25519.as_raw()),
+            Self::X448 => Nid::from_raw(Id::X448.as_raw()),
+            Self::Ed448 => Nid::from_raw(Id::ED448.as_raw()),
+            Self::Secp224k1 => Nid::SECP224K1,
+            Self::Secp256k1 => Nid::SECP256K1,
         }
     }
 
     pub fn to_oid(&self) -> ModuleResult<ObjectIdentifier> {
-        Ok(ObjectIdentifier::from_str(self.to_oid_str())?)
+        let object =
+            asn1_object(self.nid()).map_err(|e| ModuleError::Cryptography(e.to_string()))?;
+        Ok(ObjectIdentifier::from_bytes(object.as_slice())?)
     }
 
     #[must_use]
     pub fn from_oid_str(oid: &str) -> Option<Self> {
-        match oid {
-            "2.16.840.1.101.3.4.1.41" => Some(Self::Aes256),
-            "1.2.840.113549.1.1.1" => Some(Self::Rsa),
-            "1.2.840.10045.3.1.7" => Some(Self::EccP256),
-            "1.3.132.0.34" => Some(Self::EccP384),
-            "1.3.132.0.35" => Some(Self::EccP521),
-            "1.3.101.112" => Some(Self::Ed25519),
-            "1.3.101.110" => Some(Self::X25519),
-            "1.3.101.111" => Some(Self::X448),
-            "1.3.101.113" => Some(Self::Ed448),
-            "1.3.132.0.32" => Some(Self::Secp224k1),
-            "1.3.132.0.10" => Some(Self::Secp256k1),
-            _ => None,
-        }
+        let nid = nid_of(oid);
+        Self::ALL
+            .into_iter()
+            .find(|algorithm| algorithm.nid() == nid)
     }
 
     #[must_use]
     pub fn from_oid(oid: &ObjectIdentifier) -> Option<Self> {
         Self::from_oid_str(&oid.to_string())
+    }
+
+    /// `true` for `id-ecPublicKey`, the SPKI algorithm of EC keys, whose curve OID is carried
+    /// in the SPKI parameters.
+    #[must_use]
+    pub fn is_ec_public_key_oid(oid: &ObjectIdentifier) -> bool {
+        nid_of(&oid.to_string()) == Nid::X9_62_ID_ECPUBLICKEY
     }
 }

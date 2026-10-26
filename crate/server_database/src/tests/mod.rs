@@ -21,8 +21,9 @@ use self::{
 use crate::stores::RedisWithFindex;
 #[cfg(feature = "non-fips")]
 use crate::stores::additional_redis_findex_tests::{
-    test_active_key_count_counter, test_corner_case, test_live_count_counter, test_objects_db,
-    test_permissions_db, test_wrapped_by_backfill,
+    issue_940_repro::test_issue_940, test_active_key_count_counter, test_corner_case,
+    test_live_count_counter, test_migration_state_markers, test_objects_db, test_permissions_db,
+    test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
@@ -79,12 +80,10 @@ async fn get_mysql() -> DbResult<MySqlPool> {
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
 #[cfg(feature = "non-fips")]
 async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
-    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng, Secret, reexport::rand_core::SeedableRng,
-    };
+    use cosmian_kms_crypto::{crypto::KmsRng, reexport::cosmian_crypto_core::Secret};
 
     use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     let redis_url = get_redis_url();
     let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
@@ -105,6 +104,8 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_live_count_counter().await?;
     test_active_key_count_counter().await?;
     test_wrapped_by_backfill().await?;
+    Box::pin(test_issue_940()).await?;
+    test_migration_state_markers().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
     owner(&get_redis_with_findex().await?).await?;

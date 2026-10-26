@@ -118,6 +118,18 @@ pub struct DecryptAction {
     pub(crate) authentication_data: Option<String>,
 }
 
+/// Parameters for client-side (KEM/DEM) file decryption.
+struct ClientSideDecryptParams<'a> {
+    /// Identifier of the key-encryption key used to unwrap the ephemeral key.
+    key_id: &'a str,
+    /// Algorithm used to unwrap the ephemeral key.
+    key_encryption_algorithm: KeyEncryptionAlgorithm,
+    /// Algorithm used to decrypt the file data.
+    data_encryption_algorithm: DataEncryptionAlgorithm,
+    /// Optional additional authenticated data.
+    aad: Option<Vec<u8>>,
+}
+
 impl DecryptAction {
     pub(crate) async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         // Recover the unique identifier or set of tags
@@ -135,15 +147,18 @@ impl DecryptAction {
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
             self.client_side_decrypt_with_file(
                 kms_rest_client,
-                key_encryption_algorithm,
-                self.data_encryption_algorithm,
-                &id,
+                ClientSideDecryptParams {
+                    key_id: &id,
+                    key_encryption_algorithm,
+                    data_encryption_algorithm: self.data_encryption_algorithm,
+                    aad: self
+                        .authentication_data
+                        .as_deref()
+                        .map(hex::decode)
+                        .transpose()?,
+                },
                 &self.input_file,
                 &mut output_file,
-                self.authentication_data
-                    .as_deref()
-                    .map(hex::decode)
-                    .transpose()?,
             )
             .await?;
         } else {
@@ -217,17 +232,20 @@ impl DecryptAction {
         decrypt_response.data.context("the plain text is empty")
     }
 
-    #[expect(clippy::too_many_arguments, clippy::indexing_slicing)]
+    #[expect(clippy::indexing_slicing)]
     async fn client_side_decrypt_with_file(
         &self,
         kms_rest_client: KmsClient,
-        key_encryption_algorithm: KeyEncryptionAlgorithm,
-        data_encryption_algorithm: DataEncryptionAlgorithm,
-        key_id: &str,
+        params: ClientSideDecryptParams<'_>,
         input_file_name: &Path,
         output_file: &mut File,
-        aad: Option<Vec<u8>>,
     ) -> KmsCliResult<()> {
+        let ClientSideDecryptParams {
+            key_id,
+            key_encryption_algorithm,
+            data_encryption_algorithm,
+            aad,
+        } = params;
         // Additional authenticated data (AAD) for AEAD ciphers
         let aad = resolve_aad(data_encryption_algorithm, aad);
         // Open the input file

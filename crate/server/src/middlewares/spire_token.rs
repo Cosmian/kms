@@ -26,7 +26,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use super::{AuthMethod, AuthenticatedUser, reject_reserved_aws_xks_identity};
+use super::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity};
 
 /// The `X-Vault-Token` header name (wire protocol used by the SPIRE vault plugin).
 pub(crate) const VAULT_TOKEN_HEADER: &str = "X-Vault-Token";
@@ -35,7 +35,9 @@ pub(crate) const VAULT_TOKEN_HEADER: &str = "X-Vault-Token";
 #[derive(Debug, Clone)]
 pub(crate) struct SpireAuthenticatedUser {
     pub(crate) entity: String,
-    #[allow(dead_code)] // populated from auth-verifier; available for future policy enforcement
+    /// Policies attached to the token by the auth-verifier (`lookup-self`).
+    /// Logged on every successful authentication for auditability; access control
+    /// is enforced by the KMS permission system, not by these policies.
     pub(crate) policies: Vec<String>,
 }
 
@@ -291,11 +293,14 @@ where
 {
     match check_vault_token(&req, cache, auth_verifier_url, client, default_username).await {
         VaultTokenResult::Valid(user) => {
-            debug!("{log_prefix}: validated entity={}", user.entity);
-            let username = user.entity.clone().into();
-            if let Err(error) = reject_reserved_aws_xks_identity(&username) {
+            debug!(
+                "{log_prefix}: validated entity={} policies={:?}",
+                user.entity, user.policies
+            );
+            let username: UserId = user.entity.as_str().into();
+            if let Err(error) = reject_reserved_service_identity(&username) {
                 warn!(
-                    "{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth: \
+                    "{log_prefix}: rejecting reserved service identity in SPIRE auth: \
                      {error}"
                 );
                 return Ok(req
@@ -573,6 +578,121 @@ mod tests {
             1,
             "expired entries swept, only the newest insert remains"
         );
+    }
+
+    // ── auth-verifier lookup-self ────────────────────────────────────────
+
+    /// Start a local auth-verifier answering `GET /auth/token/lookup-self` with `body`
+    /// for token `good-token` only (HTTP 403 otherwise). Returns its base URL.
+    fn spawn_mock_auth_verifier(body: serde_json::Value) -> Url {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = actix_web::HttpServer::new(move || {
+            let body = body.clone();
+            App::new().route(
+                "/auth/token/lookup-self",
+                web::get().to(move |req: actix_web::HttpRequest| {
+                    let body = body.clone();
+                    async move {
+                        if req
+                            .headers()
+                            .get(VAULT_TOKEN_HEADER)
+                            .and_then(|v| v.to_str().ok())
+                            == Some("good-token")
+                        {
+                            HttpResponse::Ok().json(body)
+                        } else {
+                            HttpResponse::Forbidden().finish()
+                        }
+                    }
+                }),
+            )
+        })
+        .listen(listener)
+        .unwrap()
+        .run();
+        actix_web::rt::spawn(server);
+        Url::parse(&format!("http://127.0.0.1:{port}")).unwrap()
+    }
+
+    /// The `policies` returned by `lookup-self` are surfaced on the authenticated user.
+    #[actix_web::test]
+    async fn lookup_self_surfaces_policies() {
+        let url = spawn_mock_auth_verifier(serde_json::json!({
+            "data": {"entity_id": "alice", "policies": ["default", "kms-admin"], "ttl": 60}
+        }));
+        let user =
+            validate_against_auth_verifier("good-token", &url, &reqwest::Client::new(), "admin")
+                .await
+                .unwrap();
+        assert_eq!(user.entity, "spire:alice");
+        assert_eq!(user.policies, vec!["default", "kms-admin"]);
+    }
+
+    /// A `lookup-self` payload without `policies` still authenticates (empty policy list).
+    #[actix_web::test]
+    async fn lookup_self_without_policies_defaults_to_empty() {
+        let url = spawn_mock_auth_verifier(serde_json::json!({"data": {"entity_id": "bob"}}));
+        let user =
+            validate_against_auth_verifier("good-token", &url, &reqwest::Client::new(), "admin")
+                .await
+                .unwrap();
+        assert_eq!(user.entity, "spire:bob");
+        assert!(user.policies.is_empty());
+    }
+
+    /// An auth-verifier rejection is an error, never an empty-policy user.
+    #[actix_web::test]
+    async fn lookup_self_rejected_token_is_an_error() {
+        let url = spawn_mock_auth_verifier(serde_json::json!({
+            "data": {"entity_id": "alice", "policies": ["default"]}
+        }));
+        let err =
+            validate_against_auth_verifier("bad-token", &url, &reqwest::Client::new(), "admin")
+                .await
+                .unwrap_err();
+        assert!(err.contains("403"), "unexpected error: {err}");
+    }
+
+    /// End to end: on a cache miss the middleware validates against the auth-verifier,
+    /// injects the `SpireAuthenticatedUser` with its policies, and caches it.
+    #[actix_web::test]
+    async fn middleware_cache_miss_injects_policies_and_caches() {
+        let url = spawn_mock_auth_verifier(serde_json::json!({
+            "data": {"entity_id": "carol", "policies": ["p1", "p2"]}
+        }));
+        let cache = SpireTokenCache::new(30);
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(spire_token_middleware(
+                    cache.clone(),
+                    url,
+                    Arc::new(reqwest::Client::new()),
+                    Arc::from("admin"),
+                ))
+                .route(
+                    "/policies",
+                    web::get().to(|req: actix_web::HttpRequest| async move {
+                        let extensions = req.extensions();
+                        let spire = extensions.get::<SpireAuthenticatedUser>().unwrap();
+                        HttpResponse::Ok().body(spire.policies.join(","))
+                    }),
+                ),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/policies")
+            .insert_header((VAULT_TOKEN_HEADER, "good-token"))
+            .to_request();
+        let body = actix_web::test::call_and_read_body(&app, req).await;
+        assert_eq!(body, &b"p1,p2"[..]);
+
+        let cached = cache
+            .lookup(&compute_hash("good-token"))
+            .expect("validated user must be cached");
+        assert_eq!(cached.entity, "spire:carol");
+        assert_eq!(cached.policies, vec!["p1", "p2"]);
     }
 
     // ── Middleware unit tests ────────────────────────────────────────────

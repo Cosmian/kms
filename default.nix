@@ -87,13 +87,51 @@ let
     config.allowUnfree = true;
   };
   # Use minimal Rust profile (no docs) and add only needed components to save disk space
+  # musl targets are added for the Alpine-compatible release tarballs (server + CLI);
+  # see nix/kms-server-musl.nix / nix/cli-musl.nix.
   rustToolchain = pkgsWithRust.rust-bin.stable."1.97.0".minimal.override {
     extensions = [
       "rustfmt"
       "clippy"
     ];
-    targets = [ "wasm32-unknown-unknown" ];
+    targets = [
+      "wasm32-unknown-unknown"
+      "x86_64-unknown-linux-musl"
+      "aarch64-unknown-linux-musl"
+    ];
   };
+
+  # musl cross package set matching the *current build machine's own CPU architecture*
+  # (x86_64 builder -> musl64 == x86_64-unknown-linux-musl; aarch64 builder ->
+  # aarch64-multiplatform-musl == aarch64-unknown-linux-musl). Deliberately never
+  # cross-architecture (e.g. building aarch64-musl from an x86_64 host): the FIPS
+  # provider's `make install_sw`/`fipsinstall` self-test step in nix/openssl.nix
+  # actually executes the freshly-built `openssl` binary during the Nix build, which
+  # only works without QEMU when the target CPU architecture matches the builder's
+  # (musl userspace binaries run natively on any same-arch Linux kernel — only a
+  # different libc, not a different ISA). This mirrors how CI already builds glibc
+  # aarch64 artifacts natively on an `ubuntu-24.04-arm` runner rather than
+  # cross-compiling from amd64. Linux-only: musl/Alpine targets are not meaningful on
+  # Darwin.
+  pkgsMuslNative =
+    if pkgs.stdenv.isLinux then
+      (
+        if pkgs.stdenv.hostPlatform.isAarch64 then
+          pkgsWithRust.pkgsCross.aarch64-multiplatform-musl
+        else
+          pkgsWithRust.pkgsCross.musl64
+      )
+    else
+      null;
+
+  rustPlatformMusl =
+    if pkgsMuslNative == null then
+      null
+    else
+      pkgsMuslNative.makeRustPlatform {
+        cargo = rustToolchain;
+        rustc = rustToolchain;
+      };
 
   # For Linux, pin nixpkgs 22.05 (glibc 2.34) to get its stdenv while using a modern
   # Rust toolchain (1.97.0) from rust-overlay. Rocky Linux 9 compatibility requires GLIBC <= 2.34.
@@ -370,6 +408,62 @@ let
     openssl312 = openssl312-static-228;
   };
 
+  # Alpine-compatible musl builds packaged as .apk (server + CLI). See nix/kms-server-musl.nix
+  # for why FIPS uses dynamic musl linkage and non-FIPS uses fully static musl linkage.
+  # `null` on Darwin (pkgsMuslNative is null there — these targets are Linux-only).
+  mkKmsServerMusl =
+    {
+      features,
+      ui,
+      muslCrtStatic,
+    }:
+    if pkgsMuslNative == null then
+      null
+    else
+      pkgsMuslNative.callPackage ./nix/kms-server-musl.nix {
+        pkgsMusl = pkgsMuslNative;
+        rustPlatform = rustPlatformMusl;
+        version = kmsVersion;
+        inherit features ui muslCrtStatic;
+      };
+
+  mkKmsCliMusl =
+    {
+      features,
+      muslCrtStatic,
+    }:
+    if pkgsMuslNative == null then
+      null
+    else
+      pkgsMuslNative.callPackage ./nix/cli-musl.nix {
+        pkgsMusl = pkgsMuslNative;
+        rustPlatform = rustPlatformMusl;
+        version = kmsVersion;
+        inherit features muslCrtStatic;
+      };
+
+  kms-server-fips-musl-dynamic = mkKmsServerMusl {
+    features = [ ];
+    ui = ui-fips;
+    muslCrtStatic = false;
+  };
+
+  kms-server-non-fips-musl-static = mkKmsServerMusl {
+    features = [ "non-fips" ];
+    ui = ui-non-fips;
+    muslCrtStatic = true;
+  };
+
+  kms-cli-fips-musl-dynamic = mkKmsCliMusl {
+    features = [ ];
+    muslCrtStatic = false;
+  };
+
+  kms-cli-non-fips-musl-static = mkKmsCliMusl {
+    features = [ "non-fips" ];
+    muslCrtStatic = true;
+  };
+
   # Docker images for in-cluster Kubernetes components.
   k8s-images = pkgs.callPackage ./nix/k8s-images.nix {
     operatorDrv = k8s-operator-bin;
@@ -396,6 +490,14 @@ rec {
 
   # Export UI builds for debugging/development
   inherit ui-fips ui-non-fips;
+
+  # Alpine-compatible musl builds packaged as .apk (server + CLI); null on Darwin.
+  inherit
+    kms-server-fips-musl-dynamic
+    kms-server-non-fips-musl-static
+    kms-cli-fips-musl-dynamic
+    kms-cli-non-fips-musl-static
+    ;
 
   # Docker images
   inherit

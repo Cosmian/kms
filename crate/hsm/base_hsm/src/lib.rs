@@ -7,7 +7,8 @@ pub use error::{HError, HResult};
 pub use hsm_lib::{HsmLib, Info};
 pub use pkcs11_v3::InterfaceDescriptor;
 pub use session::{
-    AesKeySize, HsmEncryptionAlgorithm, HsmSigningAlgorithm, RsaKeySize, RsaOaepDigest, Session,
+    AesKeySize, DerivedKeySpec, HkdfParams, HsmEncryptionAlgorithm, HsmSigningAlgorithm,
+    RsaKeySize, RsaOaepDigest, Session,
 };
 pub(crate) use slots::SessionGuard;
 pub use slots::{ObjectHandlesCache, SlotManager};
@@ -264,8 +265,8 @@ macro_rules! hsm_call {
             #[expect(unsafe_code)]
             #[expect(clippy::macro_metavars_in_unsafe)]
             let rv = match hsm_lib_ref.$fn_name {
-                Some(func) => unsafe { func($($args),*) },
-                None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
+                ::core::option::Option::Some(func) => unsafe { func($($args),*) },
+                ::core::option::Option::None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
             };
             if rv != pkcs11_sys::CKR_OK $( && rv != $allowed_rv)? {
                 return Err($crate::HError::Default(format!(

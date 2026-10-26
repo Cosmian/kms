@@ -141,8 +141,9 @@ dispatch.
 
 ## Implementation Notes
 
-- **IMP-001**: Middleware: `crate/server/src/middlewares/audit.rs`
-- **IMP-002**: Extension types exported from `crate/server/src/middlewares/mod.rs`
+- **IMP-001**: Middleware: `crate/server/src/middlewares/audit/mod.rs`
+- **IMP-002**: Extension types: `crate/server/src/middlewares/audit/extensions.rs`,
+  re-exported from `crate/server/src/middlewares/mod.rs`
 - **IMP-003**: Injection site: `crate/server/src/routes/kmip/audit.rs`
   (`inject_audit_request()` called from `crate/server/src/routes/kmip/handlers.rs`)
 - **IMP-004**: Middleware registration: `crate/server/src/start_kms_server.rs`
@@ -154,5 +155,5 @@ dispatch.
 
 - **REF-001**: [ADR-2026-07-09: Tamper-Evident JSONL Audit Log — Single-Writer Architecture](2026-07-09-audit-log-single-writer-design.md) (storage layer decisions)
 - **REF-002**: Actix-web middleware docs — `Transform` / `Service` pattern
-- **REF-003**: `crate/server/src/middlewares/audit.rs`
+- **REF-003**: `crate/server/src/middlewares/audit/mod.rs`
 - **REF-004**: `crate/server/src/start_kms_server.rs` — middleware registration order

@@ -10,9 +10,8 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use uuid::Uuid;
@@ -25,7 +24,7 @@ use crate::{
 pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let mut symmetric_key_bytes = vec![0; 32];
@@ -187,7 +186,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         )
         .await
         .context("find (bad cryptographic_algorithm)")?;
-    assert!(found.is_empty());
+    assert_eq!(found.len(), 0);
 
     // Find bad key format type
 
@@ -206,7 +205,7 @@ pub(super) async fn json_access<DB: ObjectsStore + PermissionsStore>(db: &DB) ->
         )
         .await
         .context("find (bad key_format_type)")?;
-    assert!(found.is_empty());
+    assert_eq!(found.len(), 0);
 
     Ok(())
 }

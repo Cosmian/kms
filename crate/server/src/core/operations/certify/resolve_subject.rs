@@ -169,7 +169,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
                     ));
                 }
                 // If the user passed a public key, it is a new certificate signing this public key
-                ObjectType::PublicKey => Some(owm),
+                ObjectType::PublicKey => Some(std::sync::Arc::unwrap_or_clone(owm)),
                 // Invalid request
                 x => kms_bail!("Invalid Certify request for object type {x:?}"),
             }
@@ -257,6 +257,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         create_key_pair_request,
         &sk_uid.to_string(),
         &pk_uid.to_string(),
+        &kms.rng,
     )?;
     info!("Key pair created for certification");
 

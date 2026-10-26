@@ -20,28 +20,19 @@ use actix_web::dev::{Service, ServiceResponse};
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{BlockCipherMode, KeyWrapType},
-        kmip_2_1::{
-            KmipOperation,
-            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
-            kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
-            kmip_operations::{Certify, Get, GetResponse, Import, ImportResponse},
-            kmip_types::{
-                CertificateAttributes, CryptographicParameters, EncodingOption,
-                EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-                UniqueIdentifier, VendorAttribute, VendorAttributeValue, WrappingMethod,
-            },
-            requests::create_rsa_key_pair_request,
-        },
-        ttlv::{TTLV, from_ttlv},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType, PrivateKey},
+        kmip_operations::{Get, GetResponse, Import, ImportResponse},
+        kmip_types::{KeyFormatType, UniqueIdentifier},
     },
-    cosmian_kms_crypto::crypto::certificates::EXTENSION_CONFIG,
+    ttlv::{TTLV, from_ttlv},
 };
-use cosmian_logger::{debug, log_init, trace};
+use cosmian_logger::{debug, log_init};
 use hex::{FromHex, ToHex};
 use jsonwebtoken::jwk::JwkSet;
 use openssl::{
@@ -57,10 +48,8 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use crate::routes::google_cse::operations::StatusResponse;
 use crate::{
-    config::ServerParams,
-    core::KMS,
     error::KmsError,
-    middlewares::{JwksManager, JwtConfig, UserId},
+    middlewares::{JwksManager, JwtConfig},
     result::{KResult, KResultHelper},
     routes::google_cse::{
         GoogleCseConfig,
@@ -73,21 +62,24 @@ use crate::{
         },
         validate_cse_authentication_token,
     },
-    tests::{
-        google_cse::utils::generate_google_jwt,
-        test_utils::{self, https_clap_config, post_2_1},
-    },
+    tests::test_utils::{self, post_2_1},
 };
 
+mod crypto_paths;
+#[cfg(feature = "non-fips")]
+mod pkcs12_certify;
+mod server_setup;
+mod token_validation;
 pub(crate) mod utils;
 
-// Default JWT issuer URI for Gmail endpoint
-#[cfg(test)]
-const JWT_ISSUER_URI: &str = "https://accounts.google.com";
-
-// Default JWT Set URI for Gmail endpoint
-#[cfg(test)]
-const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
+/// Placeholder token, never checked: `test_app` disables Google CSE token validation, and test
+/// builds do not verify authentication-token signatures. It is a structurally valid JWT
+/// (`{"aud":"unchecked","email":"user@example.com","iss":"unchecked"}`) because
+/// `privilegedwrap` and `privilegedprivatekeydecrypt` always decode the authentication token
+/// and read its `aud` and `email` claims.
+pub(crate) const DUMMY_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.\
+     eyJhdWQiOiJ1bmNoZWNrZWQiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJpc3MiOiJ1bmNoZWNrZWQifQ.\
+     dW5jaGVja2Vk";
 
 /// Read all bytes from a file
 pub(crate) fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
@@ -110,14 +102,29 @@ pub(crate) fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> KResult<Object> 
     Ok(object)
 }
 
-async fn import_google_cse_symmetric_key_with_access<B, S>(app: &S) -> KResult<()>
+pub(crate) async fn import_google_cse_symmetric_key_with_access<B, S>(app: &S) -> KResult<()>
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
-    let symmetric_key = read_bytes_from_file(&PathBuf::from(
+    import_google_cse_key_file_with_access(
+        app,
         "../../documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.json",
-    ))?;
+    )
+    .await
+}
+
+/// Import the KMIP JSON TTLV symmetric key stored in `key_file` as the `google_cse` key and
+/// grant everyone the operations the CSE endpoints need.
+pub(crate) async fn import_google_cse_key_file_with_access<B, S>(
+    app: &S,
+    key_file: &str,
+) -> KResult<()>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let symmetric_key = read_bytes_from_file(&PathBuf::from(key_file))?;
 
     let object = read_object_from_json_ttlv_bytes(&symmetric_key)?;
 
@@ -262,12 +269,7 @@ async fn test_google_cse_status() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_private_key_sign() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    };
     log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
@@ -279,9 +281,7 @@ async fn test_google_cse_private_key_sign() -> KResult<()> {
         include_str!("../../../../../documentation/docs/google_cse/test_wrapped_private_key");
     let digest = "gXIjp2D7tR4WvHJBXaINWLekf5k5AeKRw4zkySYDDYs=";
 
-    let token: String = generate_google_jwt()
-        .await
-        .expect("Error on token generation");
+    let token: String = DUMMY_TOKEN.to_owned();
 
     let pksr = PrivateKeySignRequest {
         authentication: token.clone(),
@@ -308,12 +308,18 @@ async fn test_google_cse_private_key_sign() -> KResult<()> {
     // Convert the RSA public key into a PKey<Public>
     let public_key = PKey::from_rsa(rsa_public_key)?;
 
+    // The server signs the digest with `SHA256withRSA`: PKCS#1 v1.5 with a SHA-256 `DigestInfo`
     let mut ctx = PkeyCtx::new(&public_key)?;
     ctx.verify_init()?;
-    ctx.verify(
-        &general_purpose::STANDARD.decode(digest)?,
-        &general_purpose::STANDARD.decode(pksr_response.signature)?,
-    )?;
+    ctx.set_rsa_padding(Padding::PKCS1)?;
+    ctx.set_signature_md(openssl::md::Md::sha256())?;
+    assert!(
+        ctx.verify(
+            &general_purpose::STANDARD.decode(digest)?,
+            &general_purpose::STANDARD.decode(pksr_response.signature)?,
+        )?,
+        "the private key signature does not verify"
+    );
 
     Ok(())
 }
@@ -360,219 +366,15 @@ pub(crate) fn build_private_key_from_der_bytes(
     })
 }
 
-#[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
-async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
-    log_init(Some("debug"));
-
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
-
-    // Create google_cse key
-    let google_cse_object =
-        read_object_from_json_ttlv_bytes(&read_bytes_from_file(&PathBuf::from(
-            "../../documentation/docs/google_cse/17fd53a2-a753-4ec4-800b-ccc68bc70480.demo.key.\
-             json",
-        ))?)?;
-
-    // Set activation_date to current time to ensure key is immediately active
-    // Note: Import operation truncates now to remove milliseconds, so we do the same
-    let activation_time = time_normalize()?;
-    let mut google_cse_attributes = google_cse_object.attributes().cloned().unwrap_or_default();
-    google_cse_attributes.activation_date = Some(activation_time);
-
-    let google_cse_key = kms
-        .import(
-            Import {
-                unique_identifier: UniqueIdentifier::TextString(GOOGLE_CSE_ID.to_owned()),
-                object_type: google_cse_object.object_type(),
-                replace_existing: Some(false),
-                key_wrap_type: None,
-                attributes: google_cse_attributes,
-                object: google_cse_object,
-            },
-            &owner,
-        )
-        .await?;
-
-    // Create RSA key pair for Google GMail
-    let created_key_pair = kms
-        .create_key_pair(
-            create_rsa_key_pair_request(
-                VENDOR_ID_COSMIAN,
-                None,
-                Vec::<String>::new(),
-                4096,
-                false,
-                None,
-            )?,
-            &owner,
-        )
-        .await?;
-
-    // Wrap the created private key with the google_cse key
-    let wrapped_key_bytes = kms
-        .get(
-            Get::new(
-                created_key_pair.private_key_unique_identifier.clone(),
-                false,
-                Some(KeyWrappingSpecification {
-                    wrapping_method: WrappingMethod::Encrypt,
-                    encryption_key_information: Some(EncryptionKeyInformation {
-                        unique_identifier: google_cse_key.unique_identifier,
-                        cryptographic_parameters: Some(CryptographicParameters {
-                            block_cipher_mode: Some(BlockCipherMode::GCM),
-                            ..CryptographicParameters::default()
-                        }),
-                    }),
-                    attribute_name: None,
-                    encoding_option: Some(EncodingOption::NoEncoding),
-                    ..KeyWrappingSpecification::default()
-                }),
-                None,
-            ),
-            &owner,
-        )
-        .await?
-        .object
-        .key_block()?
-        .wrapped_key_bytes()?;
-    debug!(
-        "wrapped_key_bytes: {}",
-        general_purpose::STANDARD.encode(&wrapped_key_bytes)
-    );
-
-    // Import the intermediate certificate as PKCS12 file
-    let private_key = build_private_key_from_der_bytes(
-        KeyFormatType::PKCS12,
-        Zeroizing::from(read_bytes_from_file(
-            &"../../test_data/certificates/gmail_cse/int.p12".to_owned(),
-        )?),
-    );
-
-    let mut attributes = private_key.attributes().cloned().unwrap_or_default();
-    attributes.set_link(
-        LinkType::PKCS12PasswordLink,
-        LinkedObjectIdentifier::TextString("secret".to_owned()),
-    );
-
-    let import_request = Import {
-        unique_identifier: UniqueIdentifier::TextString("intermediate_cse_cert".to_owned()),
-        object_type: ObjectType::PrivateKey,
-        replace_existing: Some(true),
-        key_wrap_type: None,
-        attributes,
-        object: private_key,
-    };
-    let intermediate_cert = kms.import(import_request, &owner).await?;
-
-    // Certify the public key: sign created public key with issuer private key
-    let attributes = Attributes {
-        object_type: Some(ObjectType::Certificate),
-        certificate_attributes: Some(CertificateAttributes::parse_subject_line(
-            "CN=Google CSE Gmail",
-        )?),
-        link: Some(vec![Link {
-            link_type: LinkType::PrivateKeyLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                intermediate_cert.unique_identifier.to_string(),
-            ),
-        }]),
-        vendor_attributes: Some(vec![VendorAttribute {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-            attribute_name: VENDOR_ATTR_X509_EXTENSION.to_owned(),
-            attribute_value: VendorAttributeValue::ByteString(EXTENSION_CONFIG.to_vec()),
-        }]),
-        ..Attributes::default()
-    };
-
-    let certify_request = Certify {
-        unique_identifier: Some(created_key_pair.public_key_unique_identifier.clone()),
-        attributes: Some(attributes),
-        ..Certify::default()
-    };
-
-    let certificate_unique_identifier = kms
-        .certify(certify_request, &owner)
-        .await?
-        .unique_identifier;
-
-    // Export the certificate and chain in PKCS7 format (just checking that it works)
-    let pkcs7 = kms
-        .get(
-            Get::new(
-                certificate_unique_identifier.clone(),
-                false,
-                None,
-                Some(KeyFormatType::PKCS7),
-            ),
-            &owner,
-        )
-        .await?;
-
-    if let Object::Certificate(Certificate {
-        certificate_value, ..
-    }) = &pkcs7.object
-    {
-        trace!(
-            "pkcs7_format: {:?}",
-            general_purpose::STANDARD.encode(certificate_value)
-        );
-    }
-
-    // Encrypt with RSA public key
-    let rsa_public_key = kms
-        .get(
-            Get::new(
-                created_key_pair.public_key_unique_identifier.clone(),
-                false,
-                None,
-                None,
-            ),
-            &owner,
-        )
-        .await?;
-
-    // The dek in clear
-    let dek = vec![1_u8; 16];
-
-    // Encrypt with the RSA public key
-    let rsa_public_key =
-        Rsa::public_key_from_der_pkcs1(&rsa_public_key.object.key_block()?.pkcs_der_bytes()?)?;
-
-    let encrypted_data_encryption_key = rsa_encrypt(rsa_public_key, &dek)?;
-    debug!(
-        "encrypted_data_encryption_key: {:?}",
-        encrypted_data_encryption_key
-    );
-
-    let data_encryption_key = test_cse_private_key_decrypt(
-        &encrypted_data_encryption_key,
-        &general_purpose::STANDARD.encode(wrapped_key_bytes),
-    )
-    .await?;
-
-    assert_eq!(general_purpose::STANDARD.encode(dek), data_encryption_key);
-    Ok(())
-}
-
 async fn test_cse_private_key_decrypt(
     encrypted_data_encryption_key: &str,
     wrapped_private_key: &str,
 ) -> KResult<String> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
 
-    let token: String = generate_google_jwt()
-        .await
-        .expect("Error on token generation");
+    let token: String = DUMMY_TOKEN.to_owned();
 
     let request = PrivateKeyDecryptRequest {
         authentication: token.clone(),
@@ -593,13 +395,8 @@ async fn test_cse_private_key_decrypt(
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_encrypt_and_private_key_decrypt() -> KResult<()> {
     log_init(None);
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    };
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
     // Import google CSE key
@@ -625,13 +422,7 @@ async fn test_google_cse_encrypt_and_private_key_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
@@ -641,9 +432,7 @@ async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
 
     let dek = "wHrlNOTI9mU6PBdqiq7EQA==";
 
-    let token: String = generate_google_jwt()
-        .await
-        .expect("Error on token generation");
+    let token: String = DUMMY_TOKEN.to_owned();
 
     let wrap_request = WrapRequest {
         authentication: token.clone(),
@@ -677,13 +466,7 @@ async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
@@ -693,9 +476,7 @@ async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 
     let dek = "wHrlNOTI9mU6PBdqiq7EQA==";
 
-    let token: String = generate_google_jwt()
-        .await
-        .expect("Error on token generation");
+    let token: String = DUMMY_TOKEN.to_owned();
 
     let wrap_request = PrivilegedWrapRequest {
         authentication: token.clone(),
@@ -730,13 +511,7 @@ async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     log_init(None);
 
     let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
@@ -776,9 +551,7 @@ async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
     let wrapped_private_key =
         include_str!("../../../../../documentation/docs/google_cse/test_wrapped_private_key");
 
-    let token: String = generate_google_jwt()
-        .await
-        .expect("Error on token generation");
+    let token: String = DUMMY_TOKEN.to_owned();
 
     let private_key_decrypt_request = PrivilegedPrivateKeyDecryptRequest {
         authentication: token.clone(),
@@ -811,13 +584,7 @@ async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_custom_jwt() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     log_init(None);
 
     let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned())).await;
@@ -908,18 +675,13 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     log_init(None);
 
     let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned())).await;
 
-    let resource_name = "resource_name_test".to_owned();
+    // a Drive resource: the authentication audience is only checked for Drive resources
+    let resource_name = "//googleapis.com/drive/files/resource_name_test".to_owned();
     let kacls_url = "https://127.0.0.1:9998/google_cse";
 
     // Retrieve RSA Private Key
@@ -999,17 +761,12 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
 }
 
 #[tokio::test]
-#[ignore = "Requires Google OAuth credentials and access to Google CSE endpoints"]
 async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
-    unsafe {
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
-        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
-    };
-
     log_init(None);
 
     let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned())).await;
-    let resource_name = "resource_name_test".to_owned();
+    // a Drive resource: the authentication audience is only checked for Drive resources
+    let resource_name = "//googleapis.com/drive/files/resource_name_test".to_owned();
     let kacls_url = "https://127.0.0.1:9998/google_cse";
 
     // Retrieve RSA Private Key

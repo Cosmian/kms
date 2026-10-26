@@ -5,6 +5,9 @@ The KMS activates two internal listeners: a socket server and an HTTP server.
 The socket server listens to KMIP binary requests on the IANA-registered 5696 port.
 The socket server will only start if the TLS configuration is provided **and** client certificate authentication is
 enabled.
+It accepts at most 1,024 concurrent connections, aborts TLS handshakes that take more than 10 seconds, closes a
+connection that stays idle or stalled for 120 seconds, and rejects KMIP messages larger than 64 MiB. KMIP clients
+that keep a connection open between requests must reconnect after an idle period.
 
 The HTTP server listens to KMIP requests on the `/kmip` and `/kmip/2_1` endpoints.
 It also serves the web UI on the `/ui` endpoint.

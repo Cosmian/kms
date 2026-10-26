@@ -21,10 +21,10 @@ The **Eviden KMS** presents some unique features, such as:
 - **Storage integrations**: [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [VAST Data](./documentation/docs/integrations/storage/vast_data.md), and [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md).
 - **Container Orchestration**: [Kubernetes KMS Provider Plugin](./documentation/docs/integrations/kubernetes/index.md) — etcd Secrets encrypted at rest via the KMS v2 API.
 - **Infrastructure as Code**: [Terraform / OpenTofu Provider](./documentation/docs/integrations/terraform.md) — manage keys, certificates, and access rights as code; published on the [Terraform Registry](https://registry.terraform.io/providers/Cosmian/kms).
-- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [GnuPG / OpenPGP keys](./documentation/docs/integrations/gnupg/openpgp.md) (create, import, export, encrypt, decrypt, sign, verify; non-FIPS builds) and [GnuPG smartcard](./documentation/docs/integrations/gnupg/smartcard.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, AWS CloudHSM, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
-- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/key_management_system/kms_clients/index.html), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
 - **Supported Database Backends**: [SQLite, PostgreSQL, MySQL / MariaDB / Percona XtraDB Cluster, and Redis with Findex](./documentation/docs/configuration/database/configuration.md) for persistent cryptographic key and metadata storage.
 
 The **Eviden KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
@@ -102,7 +102,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 - Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
 - Enterprise integrations: Google Workspace CSE, Microsoft DKE, Microsoft SQL Server External (EKM), AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
-- PKI operations: issue, sign, validate, and automate certificate lifecycles.
+- PKI operations: issue, sign, validate, and automate certificate lifecycles, including device enrollment over EST (RFC 7030) and SCEP (RFC 8894) ([docs](./documentation/docs/use_cases/pki-enrollment.md)).
 
 ## 🔒 Security & Compliance
 
@@ -254,6 +254,8 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | FortiGate / FortiOS | External KMS via KMIP 1.0–1.4 ([docs](./documentation/docs/integrations/fortigate.md))                         | 1.0          | ✅      |
 | OpenSSH             | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                        | —            | ✅      |
 | S/MIME              | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                          | —            | ✅      |
+| GnuPG / OpenPGP     | OpenPGP keys (`PGPKey`): create, import, export, encrypt, decrypt, sign, verify; non-FIPS only ([docs](./documentation/docs/integrations/gnupg/openpgp.md)) | 2.1 | ✅      |
+| GnuPG smartcard     | KMS RSA keys as a GnuPG smartcard via gnupg-pkcs11-scd ([docs](./documentation/docs/integrations/gnupg/smartcard.md)) | —            | ✅      |
 | PyKMIP              | PyKMIP-compatible interface for testing and Synology DSM ([docs](./documentation/docs/integrations/pykmip.md)) | 1.2          | ✅      |
 
 ---
@@ -367,12 +369,12 @@ The following table shows managed object support across all KMIP versions.
 | Template       |    🚫    |    🚫    |    🚫    |    🚫    |    🚫    |   N/A   |   N/A   |
 | Secret Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Opaque Data    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
-| PGP Key        |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
+| PGP Key        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 
 Notes:
 
 - Opaque Object import support is present (see `import.rs`).
-- PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
+- PGP Key objects are supported (Create, Import, Export, Encrypt, Decrypt, Sign, SignatureVerify) in non-FIPS mode.
 - Template objects are deprecated in newer KMIP versions.
 
 #### Base Objects
@@ -399,7 +401,7 @@ The following table shows base object support across all KMIP versions.
 | Correlation Value                        |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 | Init Indicator                           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
 | Final Indicator                          |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
-| RNG Parameters                           |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
+| RNG Parameters                           |   N/A   |   N/A   |   N/A   |    ✅    |    ✅    |    ✅    |    ✅    |
 | Profile Information                      |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
 | Validation Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
 | Capability Information                   |   N/A   |   N/A   |   N/A   |    ❌    |    ❌    |    ❌    |    ❌    |
@@ -635,6 +637,22 @@ The following table shows the GLIBC versions and distribution support for **Evid
 | **Ubuntu**      | 18.04 LTS (Bionic) | 2.27  | ❌       | Apr 2023       |
 
 **Note:** Cosmian KMS requires **GLIBC 2.34** or higher (available in Debian 12+, Rocky Linux 9+, and Ubuntu 22.04+).
+
+#### Alpine Linux (musl)
+
+In addition to the GLIBC packages above, Cosmian KMS publishes Alpine **`.apk`** packages
+(musl builds) for `cosmian_kms` (server, with an OpenRC service) and `ckms` (CLI) that run natively on Alpine Linux — tested against
+Alpine 3.20, 3.21, and `latest` — with no `gcompat` shim required. See the
+[Getting started guide](documentation/docs/installation/installation_getting_started.md)
+for install instructions and a Dockerfile example.
+
+| Variant  | musl linking                 | Alpine requirement        | Notes                                                                 |
+| -------- | ----------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| FIPS     | Dynamic (`ld-musl-<arch>.so.1`) | `libgcc` (pulled in automatically by `apk`) | Full feature parity with the GLIBC build (FIPS provider loads via `dlopen`). |
+| non-FIPS | Fully static (`+crt-static`)   | None — zero extra packages | Old PKCS#12/RC2 import is unsupported (musl's static libc cannot `dlopen` the legacy OpenSSL provider); all other algorithms, including PQC and Covercrypt, are unaffected. |
+
+**Note:** HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are **not supported**
+on the Alpine packages — vendor PKCS#11 drivers are glibc-only shared libraries.
 
 #### OpenSSL prerequisite
 

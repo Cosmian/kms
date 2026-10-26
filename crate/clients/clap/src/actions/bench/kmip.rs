@@ -28,6 +28,8 @@ use cosmian_kms_client::{
         },
     },
 };
+#[cfg(feature = "non-fips")]
+use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
@@ -35,8 +37,9 @@ use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use super::helpers::{
-    aes_gcm_siv_params, chacha20_params, kem_params, rsa_pkcs15_params, try_create_ec_kp_no_fips,
-    try_create_pqc_kp, try_create_sym_key,
+    aes_gcm_siv_params, bench_uid, chacha20_params, kem_params, remove_leftover_key,
+    rsa_pkcs15_params, try_create_ec_kp_no_fips, try_create_pqc_kp, try_create_sym_key,
+    with_private_key_uid,
 };
 use super::{
     helpers::{
@@ -123,7 +126,13 @@ pub(super) fn bench_encrypt_aes_gcm(
     let params = aes_gcm_params();
 
     for bits in [128, 192, 256] {
-        let key_id = create_sym_key(rt, client, bits, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            &format!("encrypt-aes-gcm-{bits}"),
+            bits,
+            CryptographicAlgorithm::AES,
+        );
 
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
@@ -177,7 +186,13 @@ pub(super) fn bench_encrypt_chacha20(
     transport: Transport,
 ) {
     let slug = transport.slug();
-    let Some(key_id) = try_create_sym_key(rt, client, 256, CryptographicAlgorithm::ChaCha20) else {
+    let Some(key_id) = try_create_sym_key(
+        rt,
+        client,
+        "encrypt-chacha20",
+        256,
+        CryptographicAlgorithm::ChaCha20,
+    ) else {
         eprintln!("[bench] ChaCha20 not supported by server, skipping");
         bench_ko(format!("{slug}/encrypt/chacha20-poly1305"));
         return;
@@ -235,7 +250,7 @@ fn bench_rsa_encrypt_family(
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/encrypt/{label}"));
     for &bits in key_sizes {
-        let (pub_id, priv_id) = create_rsa_kp(rt, client, bits);
+        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("encrypt-{label}-{bits}"), bits);
         let pub_str = pub_id.to_string();
 
         // Test that the algorithm is actually supported by the server
@@ -308,7 +323,13 @@ pub(super) fn bench_encrypt_aes_xts(
 
     // AES-XTS requires double-sized keys: 256-bit key = AES-128-XTS, 512-bit = AES-256-XTS
     for (label, bits) in [("128", 256), ("256", 512)] {
-        let key_id = create_sym_key(rt, client, bits, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            &format!("encrypt-aes-xts-{label}"),
+            bits,
+            CryptographicAlgorithm::AES,
+        );
 
         // AES-XTS needs a 16-byte tweak as IV
         let enc_req = Encrypt {
@@ -371,7 +392,13 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
     let params = aes_gcm_siv_params();
 
     for bits in [128, 256] {
-        let key_id = create_sym_key(rt, client, bits, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            &format!("encrypt-aes-gcm-siv-{bits}"),
+            bits,
+            CryptographicAlgorithm::AES,
+        );
 
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
@@ -435,7 +462,9 @@ pub(super) fn bench_encrypt_ecies(
         ("P-384", RecommendedCurve::P384),
         ("P-521", RecommendedCurve::P521),
     ] {
-        let Some((pub_id, priv_id)) = try_create_ec_kp_no_fips(rt, client, curve) else {
+        let Some((pub_id, priv_id)) =
+            try_create_ec_kp_no_fips(rt, client, &format!("encrypt-ecies-{label}"), curve)
+        else {
             eprintln!("[bench] ECIES {label} not supported by server, skipping");
             bench_ko(format!("{slug}/encrypt/ecies"));
             continue;
@@ -488,7 +517,7 @@ pub(super) fn bench_encrypt_salsa(
 ) {
     let slug = transport.slug();
     let Some((pub_id, priv_id)) =
-        try_create_ec_kp_no_fips(rt, client, RecommendedCurve::CURVE25519)
+        try_create_ec_kp_no_fips(rt, client, "encrypt-salsa", RecommendedCurve::CURVE25519)
     else {
         eprintln!("[bench] Salsa Sealed Box (X25519) not supported by server, skipping");
         bench_ko(format!("{slug}/encrypt/salsa-sealed-box"));
@@ -546,20 +575,27 @@ pub(super) fn bench_encrypt_covercrypt(
 
     let vid = client.config.vendor_id.clone();
     let result = rt.block_on(async {
-        let kp_req = build_create_covercrypt_master_keypair_request(
-            &vid,
-            access_structure,
-            ["bench"],
-            false,
-            None,
-        )
-        .map_err(|e| format!("CC key pair request: {e}"))?;
+        let kp_uid = bench_uid(None, "encrypt-covercrypt-master");
+        remove_leftover_key(client, &kp_uid).await;
+        let kp_req = with_private_key_uid(
+            build_create_covercrypt_master_keypair_request(
+                &vid,
+                access_structure,
+                ["bench"],
+                false,
+                None,
+            )
+            .map_err(|e| format!("CC key pair request: {e}"))?,
+            kp_uid,
+        );
         let kp_resp = client
             .create_key_pair(kp_req)
             .await
             .map_err(|e| format!("CC key pair creation: {e}"))?;
 
-        let usk_req = build_create_covercrypt_usk_request(
+        let usk_uid = bench_uid(None, "encrypt-covercrypt-usk");
+        remove_leftover_key(client, &usk_uid).await;
+        let mut usk_req = build_create_covercrypt_usk_request(
             &vid,
             decryption_policy,
             &kp_resp.private_key_unique_identifier.to_string(),
@@ -568,6 +604,7 @@ pub(super) fn bench_encrypt_covercrypt(
             None,
         )
         .map_err(|e| format!("CC USK request: {e}"))?;
+        usk_req.attributes.unique_identifier = Some(usk_uid);
         let usk_resp = client
             .create(usk_req)
             .await
@@ -664,15 +701,20 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
     let mut group = timed_group(c, format!("{slug}/kem/configurable"));
     for (label, algo) in algorithms {
         let result = rt.block_on(async {
-            let kp_req = build_create_configurable_kem_keypair_request(
-                &vid,
-                None,
-                ["bench"],
-                algo,
-                false,
-                None,
-            )
-            .map_err(|e| format!("KEM key pair request ({label}): {e}"))?;
+            let kp_uid = bench_uid(None, &format!("kem-{label}"));
+            remove_leftover_key(client, &kp_uid).await;
+            let kp_req = with_private_key_uid(
+                build_create_configurable_kem_keypair_request(
+                    &vid,
+                    None,
+                    ["bench"],
+                    algo,
+                    false,
+                    None,
+                )
+                .map_err(|e| format!("KEM key pair request ({label}): {e}"))?,
+                kp_uid,
+            );
             let kp_resp = client
                 .create_key_pair(kp_req)
                 .await
@@ -715,7 +757,10 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
+        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
+            .expect("KEM encapsulation tuple");
+        let ct = ct.to_vec();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
             None,
@@ -750,7 +795,9 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
 
     let mut group = timed_group(c, format!("{slug}/kem/pqc"));
     for &(label, algo) in algorithms {
-        let Some((pub_id, priv_id)) = try_create_pqc_kp(rt, client, algo) else {
+        let Some((pub_id, priv_id)) =
+            try_create_pqc_kp(rt, client, &format!("pqc-kem-{label}"), algo)
+        else {
             eprintln!("[bench] PQC KEM {label} not supported by server, skipping");
             bench_ko(format!("{slug}/kem/pqc"));
             continue;
@@ -776,10 +823,10 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             Operation::Encrypt(Box::new(enc_req)),
         );
 
-        // Standard PQC KEM: ciphertext is in i_v_counter_nonce
-        let ct = enc_resp
-            .i_v_counter_nonce
-            .unwrap_or_else(|| enc_resp.data.map_or_else(Vec::new, |z| z.to_vec()));
+        // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
+        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
+            .expect("KEM encapsulation tuple");
+        let ct = ct.to_vec();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
             &mut group,
@@ -835,7 +882,15 @@ pub(super) fn bench_key_creation(
             );
         }
         #[cfg(feature = "non-fips")]
-        if try_create_sym_key(rt, client, 256, CryptographicAlgorithm::ChaCha20).is_some() {
+        if try_create_sym_key(
+            rt,
+            client,
+            "probe-chacha20",
+            256,
+            CryptographicAlgorithm::ChaCha20,
+        )
+        .is_some()
+        {
             let req = symmetric_key_create_request(
                 &vid,
                 None,
@@ -907,7 +962,7 @@ pub(super) fn bench_key_creation(
             ("ed448", RecommendedCurve::CURVEED448),
             ("secp256k1", RecommendedCurve::SECP256K1),
         ] {
-            if try_create_ec_kp(rt, client, curve).is_some() {
+            if try_create_ec_kp(rt, client, &format!("probe-ec-{label}"), curve).is_some() {
                 let req = with_fips_ec_masks(
                     create_ec_key_pair_request(
                         &vid,
@@ -1195,7 +1250,8 @@ fn bench_ec_sign(
     sign_algo: Option<DigitalSignatureAlgorithm>,
 ) {
     let slug = transport.slug();
-    let Some((pub_id, priv_id)) = try_create_ec_kp(rt, client, curve) else {
+    let Some((pub_id, priv_id)) = try_create_ec_kp(rt, client, &format!("sign-{label}"), curve)
+    else {
         eprintln!("[bench] {label} not supported by server, skipping");
         bench_ko(format!("{slug}/sign-verify/{label}"));
         return;
@@ -1258,7 +1314,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
 
     let mut group = timed_group(c, format!("{slug}/sign-verify/rsa-pss"));
     for bits in [4096] {
-        let (pub_id, priv_id) = create_rsa_kp(rt, client, bits);
+        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("sign-rsa-pss-{bits}"), bits);
 
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
@@ -1317,7 +1373,9 @@ fn bench_pqc_sign(
     let mut group = timed_group(c, format!("{slug}/{group_name}"));
 
     for &(label, algo) in algorithms {
-        let Some((pub_id, priv_id)) = try_create_pqc_kp(rt, client, algo) else {
+        let Some((pub_id, priv_id)) =
+            try_create_pqc_kp(rt, client, &format!("sign-pqc-{label}"), algo)
+        else {
             eprintln!("[bench] {label} not supported by server, skipping");
             bench_ko(format!("{slug}/{group_name}"));
             continue;
@@ -1426,6 +1484,7 @@ pub(super) fn bench_hsm_encrypt(
         rt,
         client,
         hsm_prefix,
+        "encrypt-aes-gcm-256",
         256,
         CryptographicAlgorithm::AES,
         &ledger,
@@ -1456,6 +1515,7 @@ pub(super) fn bench_hsm_encrypt(
         rt,
         client,
         hsm_prefix,
+        "encrypt-aes-cbc-256",
         256,
         CryptographicAlgorithm::AES,
         &ledger,
@@ -1486,7 +1546,9 @@ pub(super) fn bench_hsm_encrypt(
     // key). One RSA-2048 key pair is created and reused for all three
     // variants — RSA key generation is comparatively slow, and `CryptoAlgorithm`
     // does not vary by key size, so there is no benefit to separate key pairs.
-    if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, &ledger) {
+    if let Some((pub_id, _priv_id)) =
+        try_create_hsm_rsa_kp(rt, client, hsm_prefix, "encrypt-rsa-2048", 2048, &ledger)
+    {
         for (label, params) in [
             ("hsm-rsa-oaep", rsa_oaep_params()),
             ("hsm-rsa-oaep-sha1", rsa_oaep_sha1_params()),
@@ -1533,7 +1595,9 @@ pub(super) fn bench_hsm_sign_verify(
     let ledger = HsmKeyLedger::new();
     let message = Zeroizing::new(vec![0x42_u8; 32]);
     // RSA-PSS
-    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, &ledger) {
+    if let Some((_pub_id, priv_id)) =
+        try_create_hsm_rsa_kp(rt, client, hsm_prefix, "sign-rsa-pss-2048", 2048, &ledger)
+    {
         let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-rsa-pss"));
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
@@ -1561,7 +1625,14 @@ pub(super) fn bench_hsm_sign_verify(
     // RSA PKCS#1 v1.5 hash-and-sign (SigningAlgorithm::Sha1WithRsa/
     // Sha256WithRsa/Sha384WithRsa/Sha512WithRsa on the oracle). One RSA-2048
     // key pair is reused for all four hash variants.
-    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(rt, client, hsm_prefix, 2048, &ledger) {
+    if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(
+        rt,
+        client,
+        hsm_prefix,
+        "sign-rsa-pkcs1v15-2048",
+        2048,
+        &ledger,
+    ) {
         for (label, dsa) in [
             (
                 "hsm-rsa-pkcs1v15-sha1",
@@ -1611,8 +1682,14 @@ pub(super) fn bench_hsm_sign_verify(
         ("ecdsa-p256", RecommendedCurve::P256),
         ("ecdsa-p384", RecommendedCurve::P384),
     ] {
-        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve, &ledger)
-        else {
+        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+            rt,
+            client,
+            hsm_prefix,
+            &format!("sign-{label}"),
+            curve,
+            &ledger,
+        ) else {
             eprintln!("[bench] HSM {label} not available, skipping");
             bench_ko(format!("{slug}/sign-verify/hsm-{label}"));
             continue;
@@ -1657,8 +1734,14 @@ pub(super) fn bench_hsm_sign_verify(
             CryptographicAlgorithm::Ed448,
         ),
     ] {
-        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(rt, client, hsm_prefix, curve, &ledger)
-        else {
+        let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+            rt,
+            client,
+            hsm_prefix,
+            &format!("sign-{label}"),
+            curve,
+            &ledger,
+        ) else {
             eprintln!("[bench] HSM {label} not available, skipping");
             bench_ko(format!("{slug}/sign-verify/hsm-{label}"));
             continue;
@@ -1715,7 +1798,7 @@ pub(super) fn bench_hsm_key_creation(
                         256,
                         CryptographicAlgorithm::AES,
                         Vec::<String>::new(),
-                        false,
+                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable keys
                         None,
                     )
                     .expect("HSM sym key request");
@@ -1740,7 +1823,7 @@ pub(super) fn bench_hsm_key_creation(
                         Some(UniqueIdentifier::TextString(uid)),
                         Vec::<String>::new(),
                         2048,
-                        false,
+                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
                         None,
                     )
                     .expect("HSM RSA kp request");
@@ -1765,7 +1848,7 @@ pub(super) fn bench_hsm_key_creation(
                         Some(UniqueIdentifier::TextString(uid)),
                         Vec::<String>::new(),
                         RecommendedCurve::P256,
-                        false,
+                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
                         None,
                     )
                     .expect("HSM EC kp request");
@@ -1795,7 +1878,7 @@ pub(super) fn bench_hsm_key_creation(
                         Some(UniqueIdentifier::TextString(uid)),
                         Vec::<String>::new(),
                         curve,
-                        false,
+                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
                         None,
                     )
                     .expect("HSM EdDSA kp request");
@@ -1870,7 +1953,13 @@ pub(super) fn bench_batch_aes_bulk(
     };
 
     for bits in [128, 256] {
-        let key_id = create_sym_key(rt, client, bits, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            &format!("batch-aes-{bits}"),
+            bits,
+            CryptographicAlgorithm::AES,
+        );
         let key_str = key_id.to_string();
 
         for n in batch_sizes.iter().copied() {
@@ -1941,7 +2030,7 @@ pub(super) fn bench_batch_rsa_message(
     let mut group = timed_group(c, format!("{slug}/{group_name}"));
 
     for bits in [4096] {
-        let (pub_id, priv_id) = create_rsa_kp(rt, client, bits);
+        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("batch-rsa-{bits}"), bits);
         let pub_str = pub_id.to_string();
         let priv_str = priv_id.to_string();
 

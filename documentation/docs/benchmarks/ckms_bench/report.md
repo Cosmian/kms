@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-08
+**Generated**: 2026-10-21
 
 ---
 
@@ -9,14 +9,16 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-10-08 00:43:34 UTC |
+| Date | 2026-10-21 00:00:12 UTC |
+| HSM backend | None (Software) |
+| Command | `mise run bench:load` |
 | Build | release / non-fips |
 | Database | SQLite (temporary, single benchmark run) |
-| CPU | Intel(R) Core(TM) i9-14900T @ 1,435 MHz |
+| CPU | Intel(R) Core(TM) i9-14900T @ 800 MHz |
 | CPU cores | 24 physical / 32 logical (HT) |
 | RAM | 31.1 GB |
 | OS | Ubuntu 24.04.5 LTS |
-| Kernel | 6.8.0-146-generic |
+| Kernel | 6.8.0-147-generic |
 
 ### Load test parameters
 
@@ -46,7 +48,7 @@ Thread(s) per core:                      2
 Core(s) per socket:                      24
 Socket(s):                               1
 Stepping:                                1
-CPU(s) scaling MHz:                      22%
+CPU(s) scaling MHz:                      28%
 CPU max MHz:                             5500,0000
 CPU min MHz:                             800,0000
 BogoMIPS:                                2227,20
@@ -152,7 +154,7 @@ All encrypt/decrypt benchmarks use a **fixed-size random payload**. Sizes repres
 | Sign / Verify — all algorithms | 32 bytes | Message is hashed internally |
 | JOSE JWS / MAC | 32 bytes | |
 
-### Load test (`ckms bench --load`)
+### Load test (`mise run bench:load`)
 
 The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side KMS latency from client-side encoding overhead.
 Recorded metrics per *(protocol, operation, concurrency)* triple:
@@ -175,11 +177,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) | ttlv-bytes (req/s) | jose (req/s) |
 |---|---|---|---|
-| 1 | 2,953 | 3,881 | 23,798 |
-| 2 | 5,327 | 6,928 | 40,920 |
-| 4 | 9,080 | 10,936 | 66,398 |
-| 8 | 13,091 | 16,007 | 84,753 |
-| 16 | 18,328 | 21,956 | 105,014 |
+| 1 | 6,237 | 10,650 | 28,038 |
+| 2 | 10,797 | 17,267 | 48,887 |
+| 4 | 18,378 | 27,891 | 75,160 |
+| 8 | 25,032 | 37,336 | 97,895 |
+| 16 | 35,154 | 50,283 | 123,612 |
 
 ![Throughput — encrypt/aes-gcm](load/encrypt_aes-gcm.svg)
 
@@ -189,11 +191,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) | ttlv-bytes (req/s) | jose (req/s) |
 |---|---|---|---|
-| 1 | 2,127 | 2,347 | 2,497 |
-| 2 | 3,864 | 4,187 | 4,528 |
-| 4 | 6,487 | 6,860 | 7,385 |
-| 8 | 10,181 | 10,280 | 11,040 |
-| 16 | 14,630 | 14,685 | 15,736 |
+| 1 | 8,177 | 9,023 | 15,921 |
+| 2 | 14,228 | 15,016 | 27,648 |
+| 4 | 22,697 | 23,787 | 43,478 |
+| 8 | 31,234 | 32,051 | 56,520 |
+| 16 | 42,170 | 43,370 | 78,438 |
 
 ![Throughput — sign-verify/ecdsa-p256](load/sign-verify_ecdsa-p256.svg)
 
@@ -203,11 +205,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) | ttlv-bytes (req/s) | jose (req/s) |
 |---|---|---|---|
-| 1 | 10,184 | 10,953 | 14,522 |
-| 2 | 17,411 | 17,131 | 25,489 |
-| 4 | 30,464 | 30,526 | 40,361 |
-| 8 | 44,048 | 42,809 | 56,244 |
-| 16 | 60,962 | 58,908 | 77,952 |
+| 1 | 8,776 | 9,260 | 15,120 |
+| 2 | 15,217 | 15,309 | 27,474 |
+| 4 | 24,312 | 25,514 | 42,844 |
+| 8 | 33,549 | 35,016 | 58,802 |
+| 16 | 46,815 | 48,142 | 83,175 |
 
 ![Throughput — sign-verify/eddsa-ed25519](load/sign-verify_eddsa-ed25519.svg)
 
@@ -217,11 +219,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) | ttlv-bytes (req/s) |
 |---|---|---|
-| 1 | 2,669 | 2,625 |
-| 2 | 4,635 | 4,757 |
-| 4 | 7,836 | 7,714 |
-| 8 | 11,067 | 11,058 |
-| 16 | 15,048 | 14,972 |
+| 1 | 2,684 | 2,727 |
+| 2 | 4,779 | 4,790 |
+| 4 | 7,464 | 7,625 |
+| 8 | 10,931 | 10,888 |
+| 16 | 15,557 | 15,697 |
 
 ![Throughput — sign-verify/ecdsa-secp256k1](load/sign-verify_ecdsa-secp256k1.svg)
 
@@ -231,11 +233,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 2,869 |
-| 2 | 2,802 |
-| 4 | 3,914 |
-| 8 | 3,141 |
-| 16 | 3,674 |
+| 1 | 3,790 |
+| 2 | 2,610 |
+| 4 | 3,181 |
+| 8 | 4,341 |
+| 16 | 3,246 |
 
 ![Throughput — key-creation/aes-sym](load/key-creation_aes-sym.svg)
 
@@ -245,11 +247,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 353 |
-| 2 | 661 |
-| 4 | 1,047 |
-| 8 | 1,586 |
-| 16 | 2,159 |
+| 1 | 997 |
+| 2 | 1,810 |
+| 4 | 3,063 |
+| 8 | 4,611 |
+| 16 | 6,498 |
 
 ![Throughput — batch/aes-gcm-10](load/batch_aes-gcm-10.svg)
 
@@ -261,24 +263,24 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json | ttlv-bytes | jose |
 |---|---|---|---|
-| aes-gcm-siv/decrypt/128 | 64.5 µs | 70.6 µs | — |
-| aes-gcm-siv/decrypt/256 | 73.7 µs | 65.2 µs | — |
-| aes-gcm-siv/encrypt/128 | 63.3 µs | 71.9 µs | — |
-| aes-gcm-siv/encrypt/256 | 68.3 µs | 67.6 µs | — |
-| aes-gcm/decrypt/128 | 65.9 µs | 76.8 µs | 34.3 µs |
-| aes-gcm/decrypt/192 | 65.9 µs | 69.3 µs | 35.7 µs |
-| aes-gcm/decrypt/256 | 66.8 µs | 73.5 µs | 36.4 µs |
-| aes-gcm/encrypt/128 | 65.5 µs | 73.3 µs | 40.5 µs |
-| aes-gcm/encrypt/192 | 63.9 µs | 119.2 µs | 35.5 µs |
-| aes-gcm/encrypt/256 | 69.9 µs | 64.6 µs | 35.3 µs |
-| aes-xts/decrypt/128 | 59.8 µs | 60.3 µs | — |
-| aes-xts/decrypt/256 | 59.0 µs | 59.4 µs | — |
-| aes-xts/encrypt/128 | 71.4 µs | 67.9 µs | — |
-| aes-xts/encrypt/256 | 78.6 µs | 69.2 µs | — |
-| chacha20-poly1305/decrypt/256 | 62.9 µs | 70.7 µs | — |
-| chacha20-poly1305/encrypt/256 | 63.5 µs | 64.7 µs | — |
-| salsa-sealed-box/decrypt | 132.5 µs | 183.1 µs | — |
-| salsa-sealed-box/encrypt | 142.9 µs | 176.9 µs | — |
+| aes-gcm-siv/decrypt/128 | 101.8 µs | 80.4 µs | — |
+| aes-gcm-siv/decrypt/256 | 88.8 µs | 101.7 µs | — |
+| aes-gcm-siv/encrypt/128 | 75.7 µs | 74.0 µs | — |
+| aes-gcm-siv/encrypt/256 | 87.3 µs | 84.5 µs | — |
+| aes-gcm/decrypt/128 | 101.0 µs | 83.0 µs | 29.9 µs |
+| aes-gcm/decrypt/192 | 80.5 µs | 80.1 µs | 33.0 µs |
+| aes-gcm/decrypt/256 | 86.9 µs | 114.5 µs | 30.5 µs |
+| aes-gcm/encrypt/128 | 92.4 µs | 93.3 µs | 63.4 µs |
+| aes-gcm/encrypt/192 | 80.9 µs | 172.2 µs | 53.3 µs |
+| aes-gcm/encrypt/256 | 71.8 µs | 91.1 µs | 31.9 µs |
+| aes-xts/decrypt/128 | 68.1 µs | 80.4 µs | — |
+| aes-xts/decrypt/256 | 88.5 µs | 102.1 µs | — |
+| aes-xts/encrypt/128 | 118.1 µs | 87.1 µs | — |
+| aes-xts/encrypt/256 | 84.4 µs | 111.0 µs | — |
+| chacha20-poly1305/decrypt/256 | 92.2 µs | 119.6 µs | — |
+| chacha20-poly1305/encrypt/256 | 79.2 µs | 122.2 µs | — |
+| salsa-sealed-box/decrypt | 163.1 µs | 163.5 µs | — |
+| salsa-sealed-box/encrypt | 186.4 µs | 174.9 µs | — |
 
 ---
 
@@ -286,22 +288,22 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json | ttlv-bytes | jose |
 |---|---|---|---|
-| covercrypt/decrypt | 11.88 ms | 11.64 ms | — |
-| covercrypt/encrypt | 5.21 ms | 4.95 ms | — |
-| ecies/decrypt/P-256 | 134.3 µs | 138.1 µs | — |
-| ecies/decrypt/P-384 | 1.30 ms | 955.1 µs | — |
-| ecies/decrypt/P-521 | 2.23 ms | 2.34 ms | — |
-| ecies/encrypt/P-256 | 184.7 µs | 176.7 µs | — |
-| ecies/encrypt/P-384 | 1.53 ms | 1.03 ms | — |
-| ecies/encrypt/P-521 | 2.32 ms | 2.97 ms | — |
-| rsa-aes-kwp/decrypt/4096 | 165.57 ms | 167.22 ms | — |
-| rsa-aes-kwp/encrypt/4096 | 174.7 µs | 159.4 µs | — |
-| rsa-oaep/decrypt/2048 | — | — | 22.70 ms |
-| rsa-oaep/decrypt/4096 | 167.38 ms | 167.01 ms | 165.10 ms |
-| rsa-oaep/encrypt/2048 | — | — | 125.5 µs |
-| rsa-oaep/encrypt/4096 | 196.0 µs | 165.2 µs | 183.2 µs |
-| rsa-pkcs1v15/decrypt/4096 | 164.97 ms | 166.02 ms | — |
-| rsa-pkcs1v15/encrypt/4096 | 167.9 µs | 161.2 µs | — |
+| covercrypt/decrypt | 11.88 ms | 12.46 ms | — |
+| covercrypt/encrypt | 5.30 ms | 5.24 ms | — |
+| ecies/decrypt/P-256 | 199.9 µs | 157.7 µs | — |
+| ecies/decrypt/P-384 | 1.07 ms | 1.02 ms | — |
+| ecies/decrypt/P-521 | 2.20 ms | 2.94 ms | — |
+| ecies/encrypt/P-256 | 195.2 µs | 164.8 µs | — |
+| ecies/encrypt/P-384 | 1.03 ms | 1.08 ms | — |
+| ecies/encrypt/P-521 | 2.51 ms | 2.20 ms | — |
+| rsa-aes-kwp/decrypt/4096 | 167.05 ms | 166.11 ms | — |
+| rsa-aes-kwp/encrypt/4096 | 170.3 µs | 265.3 µs | — |
+| rsa-oaep/decrypt/2048 | — | — | 22.68 ms |
+| rsa-oaep/decrypt/4096 | 166.52 ms | 172.91 ms | 161.67 ms |
+| rsa-oaep/encrypt/2048 | — | — | 72.4 µs |
+| rsa-oaep/encrypt/4096 | 157.9 µs | 146.9 µs | 108.2 µs |
+| rsa-pkcs1v15/decrypt/4096 | 169.09 ms | 166.31 ms | — |
+| rsa-pkcs1v15/encrypt/4096 | 227.3 µs | 167.6 µs | — |
 
 ---
 
@@ -309,22 +311,22 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json | ttlv-bytes |
 |---|---|---|
-| configurable/decapsulate/ML-KEM-512 | 135.2 µs | 125.7 µs |
-| configurable/decapsulate/ML-KEM-512/P-256 | 149.4 µs | 117.1 µs |
-| configurable/decapsulate/ML-KEM-768 | 148.7 µs | 136.7 µs |
-| configurable/decapsulate/ML-KEM-768/P-256 | 157.5 µs | 155.9 µs |
-| configurable/encapsulate/ML-KEM-512 | 169.6 µs | 181.5 µs |
-| configurable/encapsulate/ML-KEM-512/P-256 | 332.3 µs | 328.8 µs |
-| configurable/encapsulate/ML-KEM-768 | 284.0 µs | 216.4 µs |
-| configurable/encapsulate/ML-KEM-768/P-256 | 374.3 µs | 445.0 µs |
-| pqc/decapsulate/ML-KEM-1024 | 211.3 µs | 199.9 µs |
-| pqc/decapsulate/ML-KEM-512 | 159.3 µs | 127.3 µs |
-| pqc/decapsulate/ML-KEM-768 | 182.9 µs | 163.6 µs |
-| pqc/decapsulate/X25519MLKEM768 | 242.0 µs | 227.4 µs |
-| pqc/encapsulate/ML-KEM-1024 | 181.4 µs | 143.1 µs |
-| pqc/encapsulate/ML-KEM-512 | 121.4 µs | 125.9 µs |
-| pqc/encapsulate/ML-KEM-768 | 159.6 µs | 122.0 µs |
-| pqc/encapsulate/X25519MLKEM768 | 180.0 µs | 177.4 µs |
+| configurable/decapsulate/ML-KEM-512 | 94.7 µs | 226.8 µs |
+| configurable/decapsulate/ML-KEM-512/P-256 | 121.1 µs | 108.7 µs |
+| configurable/decapsulate/ML-KEM-768 | 115.2 µs | 90.1 µs |
+| configurable/decapsulate/ML-KEM-768/P-256 | 113.3 µs | 114.4 µs |
+| configurable/encapsulate/ML-KEM-512 | 171.5 µs | 157.0 µs |
+| configurable/encapsulate/ML-KEM-512/P-256 | 330.2 µs | 380.2 µs |
+| configurable/encapsulate/ML-KEM-768 | 219.2 µs | 241.8 µs |
+| configurable/encapsulate/ML-KEM-768/P-256 | 369.2 µs | 358.1 µs |
+| pqc/decapsulate/ML-KEM-1024 | 183.6 µs | 152.6 µs |
+| pqc/decapsulate/ML-KEM-512 | 126.2 µs | 120.0 µs |
+| pqc/decapsulate/ML-KEM-768 | 145.5 µs | 159.8 µs |
+| pqc/decapsulate/X25519MLKEM768 | 217.9 µs | 192.2 µs |
+| pqc/encapsulate/ML-KEM-1024 | 156.3 µs | 140.6 µs |
+| pqc/encapsulate/ML-KEM-512 | 126.6 µs | 109.9 µs |
+| pqc/encapsulate/ML-KEM-768 | 119.0 µs | 143.5 µs |
+| pqc/encapsulate/X25519MLKEM768 | 180.4 µs | 201.4 µs |
 
 ---
 
@@ -337,32 +339,32 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 | RSA/2048 | — |
 | aes-gcm/oct/128 | — |
 | aes-gcm/oct/256 | — |
-| covercrypt/master-keypair | 21.63 ms |
-| ec/ed25519 | 420.2 µs |
-| ec/ed448 | 540.1 µs |
-| ec/p256 | 419.5 µs |
-| ec/p384 | 895.3 µs |
-| ec/p521 | 1.37 ms |
-| ec/secp256k1 | 518.8 µs |
-| kem/ML-KEM-512 | 805.6 µs |
-| kem/ML-KEM-512/P-256 | 775.9 µs |
-| kem/ML-KEM-512/X25519 | 1.75 ms |
-| kem/ML-KEM-768 | 967.7 µs |
-| kem/ML-KEM-768/P-256 | 635.7 µs |
+| covercrypt/master-keypair | 22.22 ms |
+| ec/ed25519 | 384.5 µs |
+| ec/ed448 | 441.2 µs |
+| ec/p256 | 488.9 µs |
+| ec/p384 | 951.9 µs |
+| ec/p521 | 1.35 ms |
+| ec/secp256k1 | 551.7 µs |
+| kem/ML-KEM-512 | 610.9 µs |
+| kem/ML-KEM-512/P-256 | 528.2 µs |
+| kem/ML-KEM-512/X25519 | 2.18 ms |
+| kem/ML-KEM-768 | 477.7 µs |
+| kem/ML-KEM-768/P-256 | 634.6 µs |
 | kem/ML-KEM-768/X25519 | 2.23 ms |
-| pqc/ML-DSA-44 | 646.5 µs |
-| pqc/ML-DSA-65 | 636.9 µs |
-| pqc/ML-DSA-87 | 901.0 µs |
-| pqc/ML-KEM-1024 | 569.6 µs |
-| pqc/ML-KEM-512 | 603.7 µs |
-| pqc/ML-KEM-768 | 1.21 ms |
-| pqc/X25519MLKEM768 | 621.9 µs |
-| pqc/X448MLKEM1024 | 598.7 µs |
-| rsa/rsa-4096 | 408.93 ms |
-| symmetric/aes-128 | 229.1 µs |
-| symmetric/aes-192 | 213.4 µs |
-| symmetric/aes-256 | 513.0 µs |
-| symmetric/chacha20-256 | 235.8 µs |
+| pqc/ML-DSA-44 | 451.7 µs |
+| pqc/ML-DSA-65 | 624.5 µs |
+| pqc/ML-DSA-87 | 754.6 µs |
+| pqc/ML-KEM-1024 | 470.0 µs |
+| pqc/ML-KEM-512 | 498.5 µs |
+| pqc/ML-KEM-768 | 469.9 µs |
+| pqc/X25519MLKEM768 | 500.9 µs |
+| pqc/X448MLKEM1024 | 609.8 µs |
+| rsa/rsa-4096 | 284.72 ms |
+| symmetric/aes-128 | 228.8 µs |
+| symmetric/aes-192 | 253.5 µs |
+| symmetric/aes-256 | 184.7 µs |
+| symmetric/chacha20-256 | 183.1 µs |
 
 ---
 
@@ -370,37 +372,37 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json | ttlv-bytes | jose |
 |---|---|---|---|
-| ecdsa-p256/sign | 434.4 µs | 426.4 µs | 416.2 µs |
-| ecdsa-p256/verify | 180.3 µs | 220.3 µs | 121.6 µs |
-| ecdsa-p384/sign | 1.11 ms | 1.27 ms | 952.1 µs |
-| ecdsa-p384/verify | 675.3 µs | 576.8 µs | 556.4 µs |
-| ecdsa-p521/sign | 2.23 ms | 2.36 ms | — |
-| ecdsa-p521/verify | 1.23 ms | 1.14 ms | — |
-| ecdsa-secp256k1/sign | 422.8 µs | 379.4 µs | — |
-| ecdsa-secp256k1/verify | 362.4 µs | 374.8 µs | — |
-| eddsa-ed25519/sign | 102.9 µs | 109.9 µs | 85.5 µs |
-| eddsa-ed25519/verify | 159.3 µs | 175.2 µs | 133.5 µs |
-| eddsa-ed448/sign | 279.6 µs | 274.7 µs | — |
-| eddsa-ed448/verify | 226.7 µs | 214.5 µs | — |
-| ml-dsa/sign/44 | 518.2 µs | 499.9 µs | — |
-| ml-dsa/sign/65 | 774.7 µs | 741.1 µs | — |
-| ml-dsa/sign/87 | 932.5 µs | 997.1 µs | — |
-| ml-dsa/verify/44 | 339.3 µs | 297.4 µs | — |
-| ml-dsa/verify/65 | 422.5 µs | 395.9 µs | — |
-| ml-dsa/verify/87 | 547.1 µs | 507.2 µs | — |
-| rsa-pkcs1v15/sign | — | — | 23.34 ms |
-| rsa-pkcs1v15/verify | — | — | 81.2 µs |
-| rsa-pss/sign | — | — | 23.66 ms |
-| rsa-pss/sign/4096 | 166.36 ms | 166.95 ms | — |
-| rsa-pss/verify | — | — | 117.5 µs |
-| rsa-pss/verify/4096 | 190.0 µs | 181.0 µs | — |
-| slh-dsa/sign/SHA2-128f | 9.65 ms | 9.67 ms | — |
-| slh-dsa/sign/SHA2-256f | 34.79 ms | 38.00 ms | — |
-| slh-dsa/sign/SHAKE-128f | 25.19 ms | 24.63 ms | — |
-| slh-dsa/sign/SHAKE-256f | 79.82 ms | 81.92 ms | — |
-| slh-dsa/verify/SHA2-128f | 1.65 ms | 1.56 ms | — |
-| slh-dsa/verify/SHA2-256f | 3.82 ms | 3.42 ms | — |
-| slh-dsa/verify/SHAKE-128f | 2.55 ms | 2.36 ms | — |
-| slh-dsa/verify/SHAKE-256f | 5.16 ms | — | — |
+| ecdsa-p256/sign | 115.1 µs | 123.8 µs | 130.5 µs |
+| ecdsa-p256/verify | 171.5 µs | 175.0 µs | 169.4 µs |
+| ecdsa-p384/sign | 1.32 ms | 1.38 ms | 1.14 ms |
+| ecdsa-p384/verify | 592.1 µs | 531.2 µs | 501.6 µs |
+| ecdsa-p521/sign | 2.23 ms | 2.38 ms | — |
+| ecdsa-p521/verify | 1.04 ms | 1.05 ms | — |
+| ecdsa-secp256k1/sign | 388.8 µs | 376.9 µs | — |
+| ecdsa-secp256k1/verify | 382.6 µs | 345.1 µs | — |
+| eddsa-ed25519/sign | 137.7 µs | 118.5 µs | 76.0 µs |
+| eddsa-ed25519/verify | 166.8 µs | 150.7 µs | 174.6 µs |
+| eddsa-ed448/sign | 338.8 µs | 295.3 µs | — |
+| eddsa-ed448/verify | 221.7 µs | 223.8 µs | — |
+| ml-dsa/sign/44 | 542.6 µs | 513.9 µs | — |
+| ml-dsa/sign/65 | 813.5 µs | 825.6 µs | — |
+| ml-dsa/sign/87 | 1.12 ms | 952.9 µs | — |
+| ml-dsa/verify/44 | 197.8 µs | 162.9 µs | — |
+| ml-dsa/verify/65 | 244.4 µs | 216.0 µs | — |
+| ml-dsa/verify/87 | 336.7 µs | 273.3 µs | — |
+| rsa-pkcs1v15/sign | — | — | 23.87 ms |
+| rsa-pkcs1v15/verify | — | — | 104.9 µs |
+| rsa-pss/sign | — | — | 23.72 ms |
+| rsa-pss/sign/4096 | 168.07 ms | 169.38 ms | — |
+| rsa-pss/verify | — | — | 98.3 µs |
+| rsa-pss/verify/4096 | 173.8 µs | 155.3 µs | — |
+| slh-dsa/sign/SHA2-128f | 9.83 ms | 9.79 ms | — |
+| slh-dsa/sign/SHA2-256f | 36.97 ms | 35.37 ms | — |
+| slh-dsa/sign/SHAKE-128f | 27.22 ms | 26.42 ms | — |
+| slh-dsa/sign/SHAKE-256f | 83.44 ms | 83.72 ms | — |
+| slh-dsa/verify/SHA2-128f | 971.9 µs | 787.0 µs | — |
+| slh-dsa/verify/SHA2-256f | 1.80 ms | 1.20 ms | — |
+| slh-dsa/verify/SHAKE-128f | 1.83 ms | 1.74 ms | — |
+| slh-dsa/verify/SHAKE-256f | 3.17 ms | — | — |
 
 ---

@@ -137,13 +137,17 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 
 ## Implementation Notes
 
-- **IMP-001**: Core implementation: `crate/server/src/core/audit/file_store.rs`
+- **IMP-001**: Core implementation, split across `crate/server/src/core/audit/`: `writer.rs`
+  (the shared writer loop, generic over every backend via the `AuditSink` trait — see
+  `crate/interfaces/src/stores/audit_sink.rs`), `store.rs` (`AuditStore`, the cloneable
+  handle), `file_sink.rs` (`FileSink`, the file backend's own `AuditSink` impl), and
+  `recovery.rs` (tail classification and recovery, see ADR-2026-08-14).
 - **IMP-002**: Config structs: `crate/server/src/config/command_line/audit_config.rs`;
   resolved params: `crate/server/src/config/params/server_params.rs`
 - **IMP-003**: Wiring point: `crate/server/src/core/kms/mod.rs` →
   `create_audit_store(&server_params)` →
-  `AuditFileStore::start_with_max_size(path, channel_capacity, max_size_bytes)`
-- **IMP-004**: Middleware enqueue: `crate/server/src/middlewares/audit.rs`
+  `AuditStore::start_with_max_size(path, channel_capacity, max_size_bytes)`
+- **IMP-004**: Middleware enqueue: `crate/server/src/middlewares/audit/mod.rs`
 - **IMP-005**: Offline verification CLI: `crate/clients/clap/src/actions/audit.rs`
   (`ckms audit verify --path <file>`)
 - **IMP-006**: Saturation monitoring — alert on `"AuditFileStore: channel full"` in server

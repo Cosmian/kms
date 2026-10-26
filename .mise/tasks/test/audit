@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run audit log integration test (JSONL, hash chain, fields)"
+#MISE description="Run audit log integration tests (JSONL, hash chain, fields, OpenSearch/Splunk compat, PostgreSQL backend)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -26,5 +26,8 @@ if [ -n "${SPLUNK_PASSWORD:-}" ]; then
 else
   print_warning "SPLUNK_PASSWORD not set: skipping Splunk compatibility test"
 fi
+
+print_header "Running PostgreSQL audit backend tests"
+mise run test:audit-postgres --variant "${VARIANT}"
 
 print_success "Audit log integration test completed"

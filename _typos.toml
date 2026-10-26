@@ -36,8 +36,19 @@ SIEM = "SIEM"
 SIEMs = "SIEMs"
 SIE = "SIE"
 sie = "sie"
+# GnuPG with-colons output record tag for key fingerprints
+fpr = "fpr"
 # Real pkcs11-sys constant names (PKCS#11 spec), not typos: EDE (Encrypt-Decrypt-
 # Encrypt) triple-DES naming, and PROBABLISTIC is a legacy spec misspelling kept
 # verbatim in pkcs11-sys as a distinct compat-alias constant.
 EDE = "EDE"
 PROBABLISTIC = "PROBABLISTIC"
+
+[files]
+# Generated/machine-managed supply-chain data: crate names and hashes, never prose.
+# (typos would "fix" the `flate2` crate name to `flat2`.)
+extend-exclude = [
+  "supply-chain/",
+  ".mise/scripts/test/requirements-*.txt",
+  ".mise/scripts/docs/requirements.txt",
+]

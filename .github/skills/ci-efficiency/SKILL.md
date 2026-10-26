@@ -17,8 +17,7 @@ mise run [--variant fips|non-fips] [--link static|dynamic] <task>
 
 Key workflows:
 
-- `.github/workflows/pr.yml` — pull request CI
-- `.github/workflows/main.yml` + `main_base.yml` — push CI
+- `.github/workflows/main.yml` + `main_base.yml` — push and pull-request CI
 - `.github/workflows/test_all.yml` — full test matrix
 - `.github/workflows/release.yml` — release automation
 - `.github/workflows/packaging.yml`, `packaging-docker.yml`, `packaging-tests.yml` — packaging
@@ -42,7 +41,7 @@ Look for:
 - Missing dependency caches (Rust `~/.cargo`, `target/`, nix store, pnpm store)
 - Missing `concurrency` groups to cancel stale runs on the same PR
 - Over-broad triggers (full matrix on every push to any branch)
-- Duplicate workflow coverage (same job in both `pr.yml` and `main.yml`)
+- Duplicate workflow coverage (same job in both `main.yml` and `test_all.yml`)
 - Expensive jobs running regardless of what changed (e.g. UI E2E triggered by Rust-only changes)
 - Jobs that are unused and matrix entries that duplicate existing coverage
 
@@ -65,7 +64,7 @@ From these candidates, keep only those supported by audit evidence AND passing a
 3. **Path-based triggers** — Use `paths:` filters so Rust-only changes don't trigger the full UI E2E suite and vice versa
 4. **Matrix reduction** — Recommend only when a matrix leg is proven redundant and all required coverage remains
 5. **Job parallelism or splitting** — Use observed durations to identify safe parallel work or split slow jobs; preserve every required check
-6. **Duplicate workflow removal** — Merge overlapping jobs between `pr.yml` and `main.yml`
+6. **Duplicate workflow removal** — Merge overlapping jobs between `main.yml` and `test_all.yml`
 7. **Redundant test detection** — Identify semantic overlap in test logic, not only textual repetition
 
 ## Step 4 — Verify

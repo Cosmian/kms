@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Apple SCEP interoperability (macOS, interactive): native macOS SCEP client against a live KMS, capturing a regression fixture"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# Interactive: the user approves the generated profile in System Settings (macOS no longer
+# installs configuration profiles from the command line) and runs `sudo profiles renew` for the
+# renewal step. Not for CI: CI replays the stored capture through `cargo test ... apple_scep`.
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_scep_apple.sh" \
+  --variant "${usage_variant:-fips}" --link "${usage_link:-static}"
+
+print_success "Apple SCEP interoperability capture completed"

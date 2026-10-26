@@ -22,6 +22,9 @@ pub mod access;
 pub mod aws_xks;
 pub(crate) mod azure_ekm;
 pub(crate) mod crl;
+pub(crate) mod enrollment;
+pub(crate) mod enrollment_guard;
+pub(crate) mod est;
 pub mod google_cse;
 pub mod health;
 pub(crate) mod jose;
@@ -30,6 +33,7 @@ pub mod kmip;
 pub mod ms_dke;
 pub(crate) mod ocsp;
 pub mod root_redirect;
+pub(crate) mod scep;
 pub(crate) mod spire;
 pub mod swagger;
 #[cfg(feature = "non-fips")]
@@ -96,17 +100,14 @@ impl actix_web::error::ResponseError for KmsError {
             warn!("{status_code} - {message}");
         }
 
-        // For 5xx errors, return a generic message to avoid leaking internal
-        // details (database errors, file paths, stack traces) to clients.
-        let body = if status_code >= StatusCode::INTERNAL_SERVER_ERROR {
-            "Internal server error".to_owned()
-        } else {
-            message
-        };
-
+        // Return the actual error message for visibility, even for 5xx errors.
+        // The error is already logged server-side; clients need to see the real issue.
+        // Plain text + nosniff: messages can quote request data (e.g. an EST CSR Subject), and
+        // this origin also serves the Web UI, so they must never be rendered as HTML.
         HttpResponseBuilder::new(status_code)
-            .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
-            .body(body)
+            .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
+            .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
+            .body(message)
     }
 }
 

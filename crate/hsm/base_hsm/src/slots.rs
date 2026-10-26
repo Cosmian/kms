@@ -1,7 +1,7 @@
 use std::{
     num::NonZeroUsize,
     ptr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use cosmian_logger::{debug, warn};
@@ -207,6 +207,9 @@ pub struct SlotManager {
     /// Bounds the number of PKCS#11 sessions concurrently checked out for this slot.
     /// Acquired (async) before every pooled session checkout; see `acquire_session_permit`.
     session_semaphore: Arc<Semaphore>,
+    /// Supported algorithms, computed once: the mechanism list does not change while the
+    /// slot is open, and querying it costs a session open/close plus PKCS#11 round-trips.
+    pub(crate) supported_algorithms: OnceLock<Vec<cosmian_kms_interfaces::CryptoAlgorithm>>,
 }
 
 impl SlotManager {
@@ -248,6 +251,7 @@ impl SlotManager {
             session_pool,
             hsm_capabilities,
             session_semaphore,
+            supported_algorithms: OnceLock::new(),
         })
     }
 

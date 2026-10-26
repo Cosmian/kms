@@ -14,8 +14,10 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 ## Verifying release signatures
 
-All Eviden KMS release packages (DEB, RPM, DMG) are GPG-signed.
+All Eviden KMS release packages (DEB, RPM, APK, DMG) are GPG-signed.
 Each package is accompanied by a `.asc` signature file that can be used to verify its authenticity and integrity.
+For Alpine `.apk` packages this is the only authenticity check: they are not signed with an `abuild` key,
+so `apk` must be run with `--allow-untrusted` and cannot verify them itself.
 
 ### Import the Eviden public key**
 
@@ -42,6 +44,10 @@ gpg --verify cosmian-kms-server-non-fips-static-openssl_5.28.0_amd64.deb.asc \
 gpg --verify cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.rpm.asc \
              cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.rpm
 
+# APK package (Alpine Linux)
+gpg --verify cosmian-kms-server-non-fips_5.28.0-r0_x86_64.apk.asc \
+             cosmian-kms-server-non-fips_5.28.0-r0_x86_64.apk
+
 # DMG package
 gpg --verify cosmian-kms-server-non-fips-static-openssl-5.28.0_arm64.dmg.asc \
              cosmian-kms-server-non-fips-static-openssl-5.28.0_arm64.dmg
@@ -59,7 +65,7 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 ## Installation
 
 !!!info "KMS CLI"
-    The KMS CLI lets you interact with the KMS from the command line. Install it from [KMS CLI](https://package.cosmian.com/kms/) and [configure it](../kms_clients/index.md).
+    The KMS CLI lets you interact with the KMS from the command line. Install and configure it from [KMS CLI](../kms_clients/index.md).
 
 === "Docker"
 
@@ -146,6 +152,75 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
     - The server uses the configuration file located at `/etc/cosmian/kms.toml`.
     - The KMS UI is available at `http://localhost:9998/ui`.
+
+=== "Alpine Linux"
+
+    Eviden KMS publishes an Alpine **`.apk`** server package (musl build) that runs
+    natively on Alpine — no `gcompat` shim required. The package is GPG-signed
+    out-of-band (`.apk.asc`) rather than with an `abuild` key, so `apk` cannot verify it
+    itself and `--allow-untrusted` is required. **Verify the detached signature with `gpg`
+    first (the snippets below do, and only install if the verification succeeds); it is the
+    only authenticity check.** Obtain `cosmian-kms-public.asc` from a source independent of
+    the package download (see [Verifying release signatures](#verifying-release-signatures)).
+    The `ckms` CLI is packaged and
+    documented separately — see [KMS CLI](../kms_clients/index.md) for the Alpine CLI
+    package.
+
+    ```sh
+    apk add --no-cache gnupg wget
+    gpg --import cosmian-kms-public.asc
+    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk.asc
+    gpg --verify cosmian-kms-server-fips_5.28.0-r0_x86_64.apk.asc cosmian-kms-server-fips_5.28.0-r0_x86_64.apk \
+      && apk add --allow-untrusted ./cosmian-kms-server-fips_5.28.0-r0_x86_64.apk
+    rc-update add cosmian_kms default
+    rc-service cosmian_kms start
+    ```
+
+    The server package installs `/usr/sbin/cosmian_kms`, the configuration file
+    `/etc/cosmian/kms.toml`, the web UI, and an OpenRC service (`/etc/init.d/cosmian_kms`,
+    options in `/etc/conf.d/cosmian_kms`).
+
+    The OpenRC service runs as a dedicated, unprivileged `kms` system user (not root), created automatically on install.
+    `/etc/cosmian/kms.toml` is owned by `root:kms`, mode `0640` (readable by the service, writable only by root).
+    `/var/lib/cosmian` and `/var/log/cosmian` are owned by `kms:kms`.
+    If you bind-mount a custom config file or data directory, ensure it is readable/writable by the `kms` user (or its group).
+
+    - **FIPS** (dynamically-linked musl): the package depends on `libgcc`, which `apk`
+      installs automatically.
+    - **non-FIPS** (fully static musl): no dependencies. Use the `non-fips` path and
+      package name (`cosmian-kms-server-non-fips_…`).
+
+    In a Dockerfile, copy the public key from your build context (obtained independently of
+    the package download, e.g. from a pinned, reviewed copy of the
+    [GitHub repository](https://github.com/Cosmian/kms/blob/develop/nix/signing-keys/cosmian-kms-public.asc)),
+    download the package and its signature, and install only if `gpg --verify` succeeds:
+
+    ```dockerfile
+    FROM alpine:3.21
+    COPY cosmian-kms-public.asc /tmp/cosmian-kms-public.asc
+    ADD https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk /tmp/kms.apk
+    ADD https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk.asc /tmp/kms.apk.asc
+    RUN apk add --no-cache ca-certificates gnupg \
+        && gpg --batch --import /tmp/cosmian-kms-public.asc \
+        && gpg --batch --verify /tmp/kms.apk.asc /tmp/kms.apk \
+        && apk add --no-cache --allow-untrusted /tmp/kms.apk \
+        && apk del gnupg \
+        && rm -rf /tmp/kms.apk /tmp/kms.apk.asc /tmp/cosmian-kms-public.asc /root/.gnupg
+    ENV OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf
+    ENV OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules
+    EXPOSE 9998
+    ENTRYPOINT ["/usr/sbin/cosmian_kms"]
+    ```
+
+    - The KMS UI is available at `http://localhost:9998/ui`.
+    - **Known limitations** on the Alpine packages (see the
+      [Alpine support note](../../../README.md#alpine-linux-musl) for details):
+        - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported —
+          vendor PKCS#11 drivers are glibc-only.
+        - non-FIPS: old PKCS#12/RC2 import is unsupported (musl's static libc cannot
+          `dlopen` the legacy OpenSSL provider). All other algorithms, including PQC and
+          Covercrypt, are unaffected — the server logs a warning and continues.
 
 === "macOS"
 

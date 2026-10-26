@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
@@ -9,6 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::trace;
 
+use super::policy::{check_read_only, read_only_error};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -26,52 +29,25 @@ pub(crate) async fn delete_attribute(
     // there must be an identifier
     let object_handle = from_request(request.unique_identifier.as_ref(), "Delete Attribute")?;
 
-    let mut owm = Box::pin(retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
         KmipOperation::DeleteAttribute,
         kms,
         user,
     ))
     .await?;
-    trace!("Retrieved object for: {}", owm.object());
+    let (id, mut object, mut attributes) = Arc::unwrap_or_clone(owm).into_parts();
+    trace!("Retrieved object for: {object}");
 
-    let mut attributes = owm.attributes().to_owned();
     // Snapshot the attribute set so the response can echo the attribute that was
     // actually removed: KMIP 1.4 §4.16 Table 205 requires the deleted `Attribute`
     // in the response payload (KMIP 2.1 §6.1.13 Table 203 requires only the UID).
     let attributes_before = attributes.clone();
-    // The attribute actually removed, echoed back in the response.
     let mut removed_attribute: Option<Attribute> = None;
 
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
-        match &attribute {
-            Attribute::UniqueIdentifier(_)
-            | Attribute::ObjectType(_)
-            | Attribute::CryptographicLength(_)
-            | Attribute::CertificateLength(_)
-            | Attribute::Digest(_)
-            | Attribute::State(_)
-            | Attribute::InitialDate(_)
-            | Attribute::Fresh(_)
-            | Attribute::LastChangeDate(_)
-            | Attribute::OriginalCreationDate(_)
-            | Attribute::AlwaysSensitive(_)
-            | Attribute::Sensitive(_)
-            | Attribute::NeverExtractable(_)
-            | Attribute::Extractable(_)
-            | Attribute::RotateAutomatic(_)
-            | Attribute::RotateGeneration(_)
-            | Attribute::RotateDate(_)
-            | Attribute::RotateLatest(_) => {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: this attribute is server-managed and cannot be deleted by the user"
-                        .to_owned(),
-                ));
-            }
-            _ => {}
-        }
+        check_read_only(attribute.tag(), KmipOperation::DeleteAttribute)?;
         match_delete_attribute! {
             attribute, attributes,
             simple {
@@ -138,30 +114,17 @@ pub(crate) async fn delete_attribute(
                 X509CertificateSubject => x_509_certificate_subject,
             }
             custom {
-                Attribute::AlwaysSensitive(_) => {
-                    // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Attribute_Read_Only,
-                        "DENIED: AlwaysSensitive is server-managed and cannot be deleted by the \
-                         user"
-                            .to_owned(),
-                    ));
-                }
-                Attribute::CryptographicLength(_) => {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Attribute_Read_Only,
-                        "DENIED: CryptographicLength is server-managed and cannot be deleted by the \
-                         user"
-                            .to_owned(),
-                    ));
+                Attribute::AlwaysSensitive(_) | Attribute::CryptographicLength(_) => {
+                    // Defensive: already refused by `check_read_only`.
+                    return Err(read_only_error(KmipOperation::DeleteAttribute));
                 }
                 Attribute::Link(requested_link) => {
                     attributes.remove_link(requested_link.link_type);
                 }
                 Attribute::Name(name) => {
-                    attributes.name = attributes
-                        .name
-                        .map(|v| v.into_iter().filter(|n| n != &name).collect());
+                    if let Some(names) = &mut attributes.name {
+                        names.retain(|n| n != &name);
+                    }
                 }
                 Attribute::VendorAttribute(vendor_attribute) => {
                     attributes.remove_vendor_attribute(
@@ -172,56 +135,12 @@ pub(crate) async fn delete_attribute(
             }
         }
     }
-
     if let Some(attribute_references) = request.attribute_references {
         for attribute_reference in attribute_references {
             match attribute_reference {
                 AttributeReference::Standard(tag) => {
-                    // Read-only guard — every tag below is marked
-                    // "Deletable by client: No" in its KMIP Attribute Rules table.
-                    if matches!(
-                        tag,
-                        // KMIP 1.4 §3.1  — Unique Identifier
-                        Tag::UniqueIdentifier
-                        // KMIP 1.4 §3.3  — Object Type
-                            | Tag::ObjectType
-                        // KMIP 1.4 §3.5  — Cryptographic Length
-                            | Tag::CryptographicLength
-                        // KMIP 1.4 §3.9  — Certificate Length
-                            | Tag::CertificateLength
-                        // KMIP 1.4 §3.17 — Digest
-                            | Tag::Digest
-                        // KMIP 1.4 §3.22 — State
-                            | Tag::State
-                        // KMIP 1.4 §3.23 — Initial Date
-                            | Tag::InitialDate
-                        // KMIP 1.4 §3.34 — Fresh
-                            | Tag::Fresh
-                        // KMIP 1.4 §3.38 — Last Change Date
-                            | Tag::LastChangeDate
-                        // KMIP 1.4 §3.43 — Original Creation Date
-                            | Tag::OriginalCreationDate
-                        // KMIP 1.4 §3.49 — Always Sensitive
-                            | Tag::AlwaysSensitive
-                        // KMIP 1.4 §3.48 — Sensitive
-                            | Tag::Sensitive
-                        // KMIP 1.4 §3.51 — Never Extractable
-                            | Tag::NeverExtractable
-                        // KMIP 1.4 §3.50 — Extractable
-                            | Tag::Extractable
-                        // Cosmian keyset rotation metadata is server-managed.
-                            | Tag::RotateAutomatic
-                            | Tag::RotateGeneration
-                            | Tag::RotateDate
-                            | Tag::RotateLatest
-                    ) {
-                        return Err(KmsError::Kmip21Error(
-                            ErrorReason::Attribute_Read_Only,
-                            "DENIED: this attribute is server-managed and cannot be deleted by \
-                             the user"
-                                .to_owned(),
-                        ));
-                    }
+                    // Read-only guard — server-managed tags cannot be deleted by the user.
+                    check_read_only(Some(tag), KmipOperation::DeleteAttribute)?;
                     match_delete_attribute_by_tag! {
                         tag, attributes,
                         simple {
@@ -313,18 +232,18 @@ pub(crate) async fn delete_attribute(
         }
     }
 
-    let tags = kms.database.retrieve_tags(owm.id()).await?;
+    let tags = kms.database.retrieve_tags(&id).await?;
 
-    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
-        *object_attributes = attributes.clone();
+    if let Ok(object_attributes) = object.attributes_mut() {
+        object_attributes.clone_from(&attributes);
     }
 
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
+        .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
 
     Ok(DeleteAttributeResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(id),
         echoed_attribute: removed_attribute
             .or_else(|| deleted_attribute(&attributes_before, &attributes)),
     })
@@ -336,6 +255,7 @@ pub(crate) async fn delete_attribute(
 /// deleted attribute. Diffing the two attribute sets keeps this generic: no
 /// per-tag bookkeeping is needed and it stays correct as new attributes are added.
 fn deleted_attribute(before: &Attributes, after: &Attributes) -> Option<Attribute> {
+    // Only convert before into attributes list, check after field-by-field or contains
     let after_attributes: Vec<Attribute> = after.clone().into();
     Vec::<Attribute>::from(before.clone())
         .into_iter()

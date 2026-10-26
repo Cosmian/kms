@@ -49,7 +49,9 @@ graph TB
 | Role              | Config key                 | Allowed KMIP operations                                                                                                                                                       | Can access other users' objects? |
 | ----------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------: |
 | **Operator**      | _(default, no config key)_ | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, GetAttributes, Locate, Validate                                                                                           |                No                |
-| **CryptoOfficer** | `crypto_officer_users`     | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute, CreateSplitKey, JoinSplitKey |    **Yes, ownership bypass**     |
+| **CryptoOfficer** | `crypto_officer_users`     | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute, CreateSplitKey, JoinSplitKey, RNGSeed |    **Yes, ownership bypass**     |
+
+`RNGSeed` (additional input to the server DRBG) is restricted to Crypto Officers once roles are configured; `RNGRetrieve` stays available to every authenticated user.
 
 !!! note "Fail-secure default"
     When `crypto_officer_users` is configured but a user is not in the list, the server

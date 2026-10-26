@@ -19,9 +19,9 @@ use cosmian_kms_client::{
         create_utils::SymmetricAlgorithm, import_utils::ImportKeyFormat,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::CsRng;
+use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_logger::log_init;
-use sha2::digest::crypto_common::rand_core::{RngCore, SeedableRng};
+use sha2::digest::crypto_common::rand_core::RngCore;
 use test_kms_server::start_default_test_kms_server;
 use uuid::Uuid;
 
@@ -70,7 +70,7 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
     // Generate a random symmetric key to be wrapped (simulating the key material to be imported)
     let cosmian_key_id = "test-symmetric-key";
     let mut cosmian_key_bytes = [0_u8; 32];
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     rng.fill_bytes(&mut cosmian_key_bytes);
 
     let cosmian_key_file = temp_dir.join(format!("cosmian_key_test_{}.bin", uuid::Uuid::new_v4()));
@@ -95,7 +95,7 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
 
     // Step 2: export the wrapped key
     let export_action = ExportByokAction {
@@ -149,7 +149,7 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
     .expect("Failed to write KEK file");
 
     let key_sizes = [224, 256, 384, 512];
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
 
     // Generate a random symmetric key in the kms.
@@ -181,7 +181,7 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
 
     // Step 2: Export the wrapped key
     let export_action = ExportByokAction {
@@ -234,7 +234,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
 
     // Generate an RSA keypair in the KMS (the key material to wrap will be the private key)
     let key_sizes = [2048, 3072, 4096];
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
 
     let create_keypair_action = CreateRsaKeyPairAction {
@@ -265,7 +265,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
     let output_file_path = temp_dir.join(format!("wrapped_key_test_{private_key_id}.bin"));
 
     // Step 2: Export the wrapped key
@@ -337,7 +337,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
         key_id: None,
     };
 
-    let kek_id = import_action.run(ctx.get_owner_client()).await?;
+    let kek_id = Box::pin(import_action.run(ctx.get_owner_client())).await?;
 
     let output_file_path = temp_dir.join(format!("wrapped_key_test_{private_key_id}.bin"));
 

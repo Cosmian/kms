@@ -3,11 +3,12 @@ use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         extra::tagging::EMPTY_TAGS,
         kmip_attributes::Attributes,
-        kmip_types::CryptographicAlgorithm,
+        kmip_operations::Revoke,
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
         requests::{
             create_rsa_key_pair_request, create_symmetric_key_kmip_object, import_object_request,
             symmetric_key_create_request,
@@ -16,9 +17,8 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::{log_init, warn};
@@ -284,7 +284,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 
     // For info, the rfc document has no test vector with a 256-bit KEK, so we generate our own
     for _ in 0..5 {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let mut rfc_kek_bytes = vec![0_u8; 32];
         rng.fill_bytes(&mut rfc_kek_bytes);
 
@@ -385,7 +385,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         key_id_private
     );
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let plaintext_len = 1 + (rng.next_u32() as usize % 190); // OAEP with SHA-256 and 2048-bit key max
     let mut valid_random_plaintext = vec![0_u8; plaintext_len];
     rng.fill_bytes(&mut valid_random_plaintext);
@@ -431,5 +431,230 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         "Unwrapped test must match original plaintext"
     );
 
+    Ok(())
+}
+
+/// Only `Active` keys can wrap (a never-activated `PreActive` key is refused with
+/// `KeyDisabled`); once `Compromised` a key can no longer wrap but can still unwrap data
+/// that was protected earlier.
+#[tokio::test]
+async fn test_wrap_unwrap_respects_key_state() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let kms =
+        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let owner = UserId::from("ekm_owner");
+
+    let create = |activate: bool| -> KResult<_> {
+        let mut request = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        if !activate {
+            request.attributes.activation_date = None;
+        }
+        Ok(request)
+    };
+    let pre_active_kek_id = kms
+        .create(create(false)?, &owner)
+        .await?
+        .unique_identifier
+        .to_string();
+    let kek_id = kms
+        .create(create(true)?, &owner)
+        .await?
+        .unique_identifier
+        .to_string();
+
+    let plaintext = hex::decode("00112233445566778899AABBCCDDEEFF").expect("valid hex");
+    let wrap = |kms: Arc<KMS>, owner: UserId, kek_id: String, value: String| async move {
+        wrap_key_handler(
+            &kms,
+            &kek_id,
+            &owner,
+            WrapKeyRequest {
+                request_context: RequestContext {
+                    request_id: Some("test-state-wrap".to_owned()),
+                    correlation_id: "test-state-wrap-corr".to_owned(),
+                    pool_name: "test-pool".to_owned(),
+                },
+                alg: WrapAlgorithm::A256KWP,
+                value,
+            },
+        )
+        .await
+    };
+
+    // A key that was never activated (`PreActive`) is refused with a clear `KeyDisabled`
+    // reply (the KMIP Encrypt operation only accepts `Active` keys).
+    let refused_pre_active = wrap(
+        kms.clone(),
+        owner.clone(),
+        pre_active_kek_id,
+        URL_SAFE_NO_PAD.encode(&plaintext),
+    )
+    .await
+    .expect_err("a PreActive key must not wrap");
+    assert!(
+        refused_pre_active.to_string().contains("KeyDisabled"),
+        "unexpected error: {refused_pre_active}"
+    );
+
+    // Active key: wrap works.
+    let wrapped = wrap(
+        kms.clone(),
+        owner.clone(),
+        kek_id.clone(),
+        URL_SAFE_NO_PAD.encode(&plaintext),
+    )
+    .await
+    .expect("an Active key must be usable for wrap");
+
+    // Compromised key: wrap is refused, unwrap still works.
+    kms.revoke(
+        Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        },
+        &owner,
+    )
+    .await?;
+
+    let refused = wrap(
+        kms.clone(),
+        owner.clone(),
+        kek_id.clone(),
+        URL_SAFE_NO_PAD.encode(&plaintext),
+    )
+    .await
+    .expect_err("a Compromised key must not wrap");
+    assert!(
+        refused.to_string().contains("KeyDisabled"),
+        "unexpected error: {refused}"
+    );
+
+    let unwrapped = unwrap_key_handler(
+        &kms,
+        &kek_id,
+        &owner,
+        UnwrapKeyRequest {
+            request_context: RequestContext {
+                request_id: Some("test-state-unwrap".to_owned()),
+                correlation_id: "test-state-unwrap-corr".to_owned(),
+                pool_name: "test-pool".to_owned(),
+            },
+            alg: WrapAlgorithm::A256KWP,
+            value: wrapped.value,
+        },
+    )
+    .await
+    .expect("a Compromised key must still unwrap");
+    assert_eq!(URL_SAFE_NO_PAD.decode(&unwrapped.value)?, plaintext);
+    Ok(())
+}
+
+/// A deactivated key is refused with `KeyDisabled` (HTTP 403), not a generic internal
+/// error: the KMIP `Get` that precedes the wrap/unwrap refuses `Deactivated` keys.
+#[tokio::test]
+async fn test_wrap_unwrap_refuse_deactivated_key_with_key_disabled() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let kms =
+        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let owner = UserId::from("ekm_owner");
+    let kek_id = kms
+        .create(
+            symmetric_key_create_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                256,
+                CryptographicAlgorithm::AES,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?,
+            &owner,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+    let value =
+        URL_SAFE_NO_PAD.encode(hex::decode("00112233445566778899AABBCCDDEEFF").expect("hex"));
+    let request_context = || RequestContext {
+        request_id: Some("test-deactivated".to_owned()),
+        correlation_id: "test-deactivated-corr".to_owned(),
+        pool_name: "test-pool".to_owned(),
+    };
+
+    let wrapped = wrap_key_handler(
+        &kms,
+        &kek_id,
+        &owner,
+        WrapKeyRequest {
+            request_context: request_context(),
+            alg: WrapAlgorithm::A256KWP,
+            value: value.clone(),
+        },
+    )
+    .await
+    .expect("an Active key must be usable for wrap");
+
+    kms.revoke(
+        Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        },
+        &owner,
+    )
+    .await?;
+
+    let wrap_err = wrap_key_handler(
+        &kms,
+        &kek_id,
+        &owner,
+        WrapKeyRequest {
+            request_context: request_context(),
+            alg: WrapAlgorithm::A256KWP,
+            value,
+        },
+    )
+    .await
+    .expect_err("a Deactivated key must not wrap");
+    assert!(
+        wrap_err.to_string().contains("KeyDisabled"),
+        "unexpected error: {wrap_err}"
+    );
+
+    let unwrap_err = unwrap_key_handler(
+        &kms,
+        &kek_id,
+        &owner,
+        UnwrapKeyRequest {
+            request_context: request_context(),
+            alg: WrapAlgorithm::A256KWP,
+            value: wrapped.value,
+        },
+    )
+    .await
+    .expect_err("a Deactivated key is refused by Get, hence by unwrap");
+    assert!(
+        unwrap_err.to_string().contains("KeyDisabled"),
+        "unexpected error: {unwrap_err}"
+    );
     Ok(())
 }

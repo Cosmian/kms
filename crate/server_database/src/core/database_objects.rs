@@ -62,7 +62,7 @@ impl Database {
     /// wall-clock duration and outcome (`"success"` / `"error"`).
     ///
     /// When no recorder is present the future is awaited directly with no overhead.
-    pub(super) async fn record<T, Fut>(&self, operation: &str, fut: Fut) -> DbResult<T>
+    pub(super) async fn record<T, Fut>(&self, operation: &'static str, fut: Fut) -> DbResult<T>
     where
         Fut: Future<Output = DbResult<T>>,
     {
@@ -78,7 +78,6 @@ impl Database {
         result
     }
 
-    #[allow(dead_code)]
     /// Register an Objects store for Objects `uid` starting with `<prefix>::`.
     ///
     /// This function registers an `ObjectsStore` for objects whose unique identifiers
@@ -105,7 +104,6 @@ impl Database {
         map.insert(prefix.to_owned(), objects_store);
     }
 
-    #[allow(dead_code)]
     /// Unregister the default objects store or a store for the given prefix
     pub async fn unregister_object_store(&self, prefix: Option<&str>) {
         let mut map = self.objects.write().await;
@@ -238,25 +236,27 @@ impl Database {
     ///
     /// # Returns
     ///
-    /// * `DbResult<HashMap<String, ObjectWithMetadata>>` - A result containing a map of `uid`s to `ObjectWithMetadata`.
+    /// * `DbResult<HashMap<String, Arc<ObjectWithMetadata>>>` - A result containing a map of `uid`s to shared `ObjectWithMetadata`.
     pub async fn retrieve_objects(
         &self,
         object_handle: ObjectHandle<'_>,
-    ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
+    ) -> DbResult<HashMap<String, Arc<ObjectWithMetadata>>> {
         Box::pin(self.record("retrieve_objects", async move {
-            let uids = match object_handle {
-                ObjectHandle::Tags(json) => {
-                    let tags: HashSet<String> = serde_json::from_str(json)?;
-                    self.list_uids_for_tags(&tags).await?
+            if let ObjectHandle::Tags(json) = object_handle {
+                let tags: HashSet<String> = serde_json::from_str(json)?;
+                let uids = self.list_uids_for_tags(&tags).await?;
+                let mut results = HashMap::with_capacity(uids.len());
+                for uid in uids {
+                    if let Some(owm) = self.retrieve_object_arc(&uid).await? {
+                        results.insert(uid, owm);
+                    }
                 }
-                handle => HashSet::from([handle.as_str().to_owned()]),
-            };
-            let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
-            for uid in &uids {
-                let owm = self.retrieve_object(uid).await?;
-                if let Some(owm) = owm {
-                    results.insert(uid.to_owned(), owm);
-                }
+                return Ok(results);
+            }
+            let uid = object_handle.as_str();
+            let mut results = HashMap::with_capacity(1);
+            if let Some(owm) = self.retrieve_object_arc(uid).await? {
+                results.insert(uid.to_owned(), owm);
             }
             Ok(results)
         }))
@@ -284,48 +284,10 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        // Fast path: check in-memory cache first.
-        // Cross-node consistency is maintained via bounded revalidation: cache hits within
-        // DEFAULT_REVALIDATION_INTERVAL skip DB round-trips entirely, while entries older than
-        // the interval re-verify their lifecycle state against the database.
-        if let Some((cached_owm, needs_revalidation)) = self
-            .object_cache
-            .get_with_validation_status(
-                uid,
-                crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL,
-            )
-            .await
-        {
-            if !needs_revalidation {
-                return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
-            }
-            // Revalidate state and security-sensitive attributes against DB
-            let db = self.get_object_store(uid).await?;
-            if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
-                if cached_owm.state() == current_state
-                    && cached_owm.attributes().sensitive == current_attrs.sensitive
-                {
-                    self.object_cache.touch_validated(uid).await;
-                    return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
-                }
-            }
-            // Invalidate stale cache entry and fall through to full fetch
-            self.object_cache.invalidate(uid).await;
-        }
-        // Cache miss: fetch from the backing store and record the operation.
-        let result: Option<ObjectWithMetadata> = self
-            .record("retrieve", async move {
-                let db = self.get_object_store(uid).await?;
-                db.retrieve(uid).await.map_err(DbError::from)
-            })
-            .await?;
-        // Populate cache on successful retrieval.
-        if let Some(ref owm) = result {
-            self.object_cache
-                .insert(uid.to_owned(), owm.clone())
-                .await?;
-        }
-        Ok(result)
+        Ok(self
+            .retrieve_object_arc(uid)
+            .await?
+            .map(Arc::unwrap_or_clone))
     }
 
     /// Retrieve a cached object as `Arc<ObjectWithMetadata>` without deep-cloning.
@@ -630,7 +592,7 @@ impl Database {
                 .await?;
 
             for (uid, obj_state, attrs) in candidates {
-                if let Some(owm) = self.retrieve_object(&uid).await? {
+                if let Some(owm) = self.retrieve_object_arc(&uid).await? {
                     let found_serial = extract_serial_hex_from_object(owm.object());
                     if let Some(s) = found_serial {
                         if s.eq_ignore_ascii_case(serial_hex) {
@@ -682,7 +644,7 @@ impl Database {
                 .await?;
 
             for (uid, obj_state, _attrs) in candidates {
-                if let Some(owm) = self.retrieve_object(&uid).await? {
+                if let Some(owm) = self.retrieve_object_arc(&uid).await? {
                     if let cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(cert) =
                         owm.object()
                     {
@@ -749,17 +711,17 @@ impl Database {
         name: &str,
         generation: Option<i32>,
         owner: &UserId,
-    ) -> DbResult<Vec<(String, Attributes)>> {
+    ) -> DbResult<crate::core::rotate_name_cache::RotateNameResults> {
         if let Some(cached) = self.rotate_name_cache.get(name, generation, owner).await {
             return Ok(cached);
         }
         let results = self
             .find_by_rotate_name_uncached(name, generation, owner)
             .await?;
-        self.rotate_name_cache
-            .insert(name, generation, owner, results.clone())
-            .await;
-        Ok(results)
+        Ok(self
+            .rotate_name_cache
+            .insert(name, generation, owner, results)
+            .await)
     }
 
     /// Same as [`Self::find_by_rotate_name`], but always queries the object stores,
@@ -1098,6 +1060,52 @@ mod tests {
         }
     }
 
+    /// `unregister_object_store` must undo `register_objects_store`: UIDs under the
+    /// prefix stop routing to the registered store (here falling back to the
+    /// "no HSM configured" error for `hsm::` prefixes), and unregistering the default
+    /// store (`None`) leaves no store for unprefixed UIDs.
+    #[tokio::test]
+    async fn test_unregister_object_store() {
+        let db = test_db().await;
+        let default_store = db
+            .get_object_store("plain-uid")
+            .await
+            .expect("default store is registered");
+
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let extra: Arc<dyn cosmian_kms_interfaces::ObjectsStore + Sync + Send> = Arc::new(
+            crate::stores::SqlitePool::instantiate(&tmp.path().join("extra.db"), true, None)
+                .await
+                .expect("Failed to instantiate extra store"),
+        );
+        db.register_objects_store("hsm::extra", Arc::clone(&extra))
+            .await;
+
+        let routed = db
+            .get_object_store("hsm::extra::0::key")
+            .await
+            .expect("registered prefix must route to the extra store");
+        assert!(Arc::ptr_eq(&routed, &extra));
+
+        db.unregister_object_store(Some("hsm::extra")).await;
+        match db.get_object_store("hsm::extra::0::key").await {
+            Ok(_) => panic!("unregistered hsm prefix must no longer resolve"),
+            Err(e) => assert!(
+                e.to_string().contains("No HSM is configured"),
+                "unexpected error: {e}"
+            ),
+        }
+        // The default store is untouched by removing a prefixed one.
+        let still_default = db
+            .get_object_store("plain-uid")
+            .await
+            .expect("default store must remain");
+        assert!(Arc::ptr_eq(&still_default, &default_store));
+
+        db.unregister_object_store(None).await;
+        assert!(db.get_object_store("plain-uid").await.is_err());
+    }
+
     /// Verify that the `DbMetricsRecorder` injected into `Database` is called when
     /// DB facade methods are invoked.
     ///
@@ -1113,9 +1121,9 @@ mod tests {
         impl DbMetricsRecorder for MockRecorder {
             fn record_operation(
                 &self,
-                operation: &str,
+                operation: &'static str,
                 backend: MainDbKind,
-                outcome: &str,
+                outcome: &'static str,
                 _duration_seconds: f64,
             ) {
                 self.calls.lock().expect("mutex poisoned").push((

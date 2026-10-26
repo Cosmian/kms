@@ -3,7 +3,7 @@ import { Badge, Button, Card, Space, Table, Tag, Tooltip, message } from "antd";
 import type { TFunction } from "i18next";
 import React, { useCallback, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest } from "../../utils/utils";
 
 interface HsmSlotStatus {

@@ -87,6 +87,7 @@ exclude = [
   'kms\.different\.com',
   'pkce_auth_example\.md',
   'login\.microsoftonline\.com',
+  'compliance\.microsoft\.com',
   'googleapis\.com/oauth2',
   'test_data/blob/main/configs/client/jwt\.toml',
   # Non-routable IPs used in forward proxy tests

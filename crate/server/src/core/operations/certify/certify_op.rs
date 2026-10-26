@@ -16,7 +16,16 @@ use super::{
     resolve_subject::get_subject, subject::Subject,
 };
 use crate::{
-    core::{KMS, operations::key_ops::ObjectLifecycleExt},
+    config::ServerParams,
+    core::{
+        KMS,
+        operations::{
+            algorithm_policy::{
+                enforce_kmip_algorithm_policy_for_csr, enforce_kmip_algorithm_policy_for_public_key,
+            },
+            key_ops::ObjectLifecycleExt,
+        },
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -31,7 +40,49 @@ pub(crate) async fn certify(
     request: Certify,
     user: &UserId,
 ) -> KResult<CertifyResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    Box::pin(certify_for_owner(kms, request, user, user)).await
+}
+
+/// Certify: the certified key (and a PKCS#10 request's signature) must satisfy the active
+/// algorithm policy; the issuer key is checked when it is resolved.
+fn enforce_subject_algorithm_policy(params: &ServerParams, subject: &Subject) -> KResult<()> {
+    if params.kmip_policy.policy_id.is_none() {
+        return Ok(());
+    }
+    let hint = match subject {
+        Subject::X509Req(_, req) => return enforce_kmip_algorithm_policy_for_csr(params, req),
+        Subject::PublicKeyAndSubjectName(_, owm, _) => owm.object().attributes().ok(),
+        Subject::KeypairAndSubjectName(_, keypair, _) => {
+            keypair.public_key_object.attributes().ok()
+        }
+        Subject::Certificate(..) => None,
+    };
+    let key = subject.public_key()?;
+    enforce_kmip_algorithm_policy_for_public_key(params, "Certify", &key, hint)
+}
+
+/// [`certify`] with the authorization checks (issuer `Certify` grant, `Create` right) evaluated
+/// for `user` while the created objects are stored, in the same atomic write, under `owner`.
+///
+/// Used by EST/SCEP enrollment: the reserved enrollment service identity is authorized through
+/// its explicit grant on the CA, and the issued certificate belongs to the CA owner, who can
+/// therefore revoke and manage it without any post-issuance grant.
+pub(crate) async fn certify_for_owner(
+    kms: &KMS,
+    request: Certify,
+    user: &UserId,
+    owner: &UserId,
+) -> KResult<CertifyResponse> {
+    // The CSR is not logged: a SCEP PKCSReq carries the enrollment challengePassword in it.
+    trace!(
+        "Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes",
+        request.unique_identifier,
+        request.certificate_request_type,
+        request
+            .certificate_request_value
+            .as_ref()
+            .map_or(0, Vec::len)
+    );
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
@@ -41,11 +92,12 @@ pub(crate) async fn certify(
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
     let subject = Box::pin(get_subject(kms, &request, user)).await?;
+    enforce_subject_algorithm_policy(&kms.params, &subject)?;
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
     let (certificate, tags, attributes) = build_and_sign_certificate(
-        kms.vendor_id(),
+        kms,
         &issuer,
         &subject,
         request,
@@ -170,21 +222,23 @@ pub(crate) async fn certify(
             } else {
                 trace!("Certificate attributes links: None");
             }
+            let private_key_attrs = keypair_data.private_key_object.attributes()?.clone();
+            let public_key_attrs = keypair_data.public_key_object.attributes()?.clone();
             (
                 vec![
                     // upsert the private key
                     AtomicOperation::Upsert((
                         keypair_data.private_key_id.to_string(),
-                        keypair_data.private_key_object.clone(),
-                        keypair_data.private_key_object.attributes()?.clone(),
+                        keypair_data.private_key_object,
+                        private_key_attrs,
                         Some(keypair_data.private_key_tags),
                         State::Active,
                     )),
                     // upsert the public key
                     AtomicOperation::Upsert((
                         keypair_data.public_key_id.to_string(),
-                        keypair_data.public_key_object.clone(),
-                        keypair_data.public_key_object.attributes()?.clone(),
+                        keypair_data.public_key_object,
+                        public_key_attrs,
                         Some(keypair_data.public_key_tags),
                         State::Active,
                     )),
@@ -203,7 +257,7 @@ pub(crate) async fn certify(
     };
 
     // perform DB operations
-    kms.database.atomic(user, &operations).await?;
+    kms.database.atomic(owner, &operations).await?;
 
     Ok(CertifyResponse { unique_identifier })
 }

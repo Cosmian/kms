@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use itertools::Itertools;
 
@@ -26,7 +26,7 @@ pub(crate) const fn min_plaintext_length(alphabet_len: usize) -> usize {
 /// Built-in alphabet presets for AES-256 FF1 Format-Preserving Encryption.
 ///
 /// Each variant corresponds to a predefined character set. To build a custom
-/// alphabet use [`Alphabet::try_from`] or [`Alphabet::from_preset_or_custom`].
+/// alphabet use [`str::parse::<Alphabet>`] or [`Alphabet::from_preset_or_custom`].
 // DEV NOTE (not shown in docs): When adding or renaming a preset, keep
 // PRESET_NAMES array below (canonical name used by the CLI) in sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,8 +130,8 @@ impl Display for AlphabetPreset {
 ///
 /// Pre-defined alphabets are available via [`AlphabetPreset`]; convert a preset
 /// with [`Alphabet::from`] or use the convenience constructors such as
-/// [`Alphabet::numeric`]. To build a custom alphabet use [`Alphabet::try_from`],
-/// e.g. `Alphabet::try_from("0123456789abcdef").unwrap()`.
+/// [`Alphabet::numeric`]. To build a custom alphabet parse a string,
+/// e.g. `"0123456789abcdef".parse::<Alphabet>().unwrap()`.
 ///
 /// See the `encrypt()` and `decrypt()` methods for usage
 #[derive(Debug, Clone)]
@@ -140,11 +140,11 @@ pub struct Alphabet {
     pub(crate) min_text_length: usize,
 }
 
-impl TryFrom<&str> for Alphabet {
-    type Error = FPEError;
+impl FromStr for Alphabet {
+    type Err = FPEError;
 
     /// Returns an error if the alphabet contains fewer than 2 or 2^16 or more characters.
-    fn try_from(alphabet: &str) -> Result<Self, Self::Error> {
+    fn from_str(alphabet: &str) -> Result<Self, Self::Err> {
         let chars = alphabet.chars().sorted().unique().collect_vec();
         if chars.len() < 2 || chars.len() >= 1 << 16 {
             return Err(FPEError::AlphabetError(format!(
@@ -160,17 +160,9 @@ impl TryFrom<&str> for Alphabet {
     }
 }
 
-impl TryFrom<&String> for Alphabet {
-    type Error = FPEError;
-
-    fn try_from(value: &String) -> Result<Self, Self::Error> {
-        Self::try_from(value.as_str())
-    }
-}
-
 impl Alphabet {
     pub fn instantiate(alphabet: &str) -> Result<Self, FPEError> {
-        Self::try_from(alphabet)
+        alphabet.parse()
     }
 
     /// Resolves `s` as a preset name first, then falls back to treating `s` as
@@ -181,8 +173,7 @@ impl Alphabet {
     /// Returns an error if `s` is neither a known preset name nor a valid
     /// character set (fewer than 2 or 2^16 or more unique characters).
     pub fn from_preset_or_custom(s: &str) -> Result<Self, FPEError> {
-        AlphabetPreset::from_name(s)
-            .map_or_else(|| Self::try_from(s), |preset| Ok(Self::from(preset)))
+        AlphabetPreset::from_name(s).map_or_else(|| s.parse(), |preset| Ok(Self::from(preset)))
     }
 
     fn extend_(&mut self, additional_characters: Vec<char>) {
@@ -279,7 +270,7 @@ impl Alphabet {
     /// ```
     /// use cosmian_kms_crypto::crypto::fpe::Alphabet;
     ///
-    /// let alphabet = Alphabet::try_from("abcdefghijklmnopqrstuvwxyz").unwrap();
+    /// let alphabet: Alphabet = "abcdefghijklmnopqrstuvwxyz".parse().unwrap();
     /// let alphabet = Alphabet::alpha_lower(); //same as above
     /// let key = [0_u8; 32];
     /// let tweak = b"unique tweak";
@@ -332,7 +323,7 @@ impl Alphabet {
     /// ```
     /// use cosmian_kms_crypto::crypto::fpe::Alphabet;
     ///
-    /// let alphabet = Alphabet::try_from("abcdefghijklmnopqrstuvwxyz").unwrap();
+    /// let alphabet: Alphabet = "abcdefghijklmnopqrstuvwxyz".parse().unwrap();
     /// let alphabet = Alphabet::alpha_lower(); //same as above
     /// let key = [0_u8; 32];
     /// let tweak = b"unique tweak";

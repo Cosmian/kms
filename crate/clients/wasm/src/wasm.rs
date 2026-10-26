@@ -5,7 +5,10 @@ use cosmian_kms_client_utils::{
     attributes_utils::{
         LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
     },
-    certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
+    certificate_utils::{
+        Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
+        build_re_certify_request,
+    },
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
@@ -14,15 +17,16 @@ use cosmian_kms_client_utils::{
     error::UtilsError,
     export_utils::{
         CertificateExportFormat, ExportKeyFormat, WrappingAlgorithm, der_to_pem, export_request,
-        get_export_key_format_type, prepare_certificate_export_elements,
+        get_export_key_format_type, openpgp_key_to_binary, prepare_certificate_export_elements,
         prepare_key_export_elements, tag_from_object,
     },
     import_utils::{
-        CertificateInputFormat, ImportKeyFormat, KeyUsage, build_private_key_from_der_bytes,
-        build_usage_mask_from_key_usage, prepare_certificate_attributes,
-        prepare_key_import_elements, read_object_from_json_ttlv_bytes,
+        CertificateInputFormat, ImportKeyFormat, KeyMaterialSource, KeyUsage,
+        build_private_key_from_der_bytes, build_usage_mask_from_key_usage,
+        prepare_certificate_attributes, prepare_key_import_elements,
+        read_object_from_json_ttlv_bytes,
     },
-    locate_utils::build_locate_request,
+    locate_utils::{LocateCriteria, ObjectLinkIds, build_locate_request},
     reexport::cosmian_kmip::{
         kmip_0::{
             self,
@@ -55,12 +59,12 @@ use cosmian_kms_client_utils::{
                 VendorAttributeValue,
             },
             requests::{
-                build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
-                create_rsa_key_pair_request, create_secret_data_kmip_object,
-                create_symmetric_key_kmip_object, decrypt_request, encrypt_request,
-                get_ec_private_key_request, get_ec_public_key_request, get_rsa_private_key_request,
-                get_rsa_public_key_request, import_object_request, secret_data_create_request,
-                symmetric_key_create_request,
+                PgpKeyCreateCommon, build_revoke_key_request, create_ec_key_pair_request,
+                create_pqc_key_pair_request, create_rsa_key_pair_request,
+                create_secret_data_kmip_object, create_symmetric_key_kmip_object, decrypt_request,
+                encrypt_request, get_ec_private_key_request, get_ec_public_key_request,
+                get_rsa_private_key_request, get_rsa_public_key_request, import_object_request,
+                pgp_key_create_request, secret_data_create_request, symmetric_key_create_request,
             },
         },
         ttlv::{TTLV, from_ttlv, to_ttlv},
@@ -583,6 +587,8 @@ pub fn get_key_format_types() -> Result<JsValue, JsValue> {
         KeyFormatType::PKCS12,
         KeyFormatType::CoverCryptSecretKey,
         KeyFormatType::CoverCryptPublicKey,
+        KeyFormatType::OpenPgpSecretKey,
+        KeyFormatType::OpenPgpPublicKey,
     ];
 
     let formats: Vec<AlgoOption> = variants
@@ -592,6 +598,8 @@ pub fn get_key_format_types() -> Result<JsValue, JsValue> {
             let label = match k {
                 KeyFormatType::CoverCryptSecretKey => String::from("CoverCrypt Secret Key"),
                 KeyFormatType::CoverCryptPublicKey => String::from("CoverCrypt Public Key"),
+                KeyFormatType::OpenPgpSecretKey => String::from("OpenPGP Secret Key"),
+                KeyFormatType::OpenPgpPublicKey => String::from("OpenPGP Public Key"),
                 _ => value.clone(),
             };
             AlgoOption { value, label }
@@ -774,13 +782,17 @@ pub fn locate_ttlv_request(
     let request = build_locate_request(
         vendor_id,
         tags,
-        cryptographic_algorithm,
-        cryptographic_length,
-        key_format_type,
-        object_type,
-        public_key_id.as_deref(),
-        private_key_id.as_deref(),
-        certificate_id.as_deref(),
+        &LocateCriteria {
+            cryptographic_algorithm,
+            cryptographic_length,
+            key_format_type,
+            object_type,
+        },
+        &ObjectLinkIds {
+            certificate_id,
+            private_key_id,
+            public_key_id,
+        },
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
     to_wasm_ttlv(&request)
@@ -1131,6 +1143,88 @@ pub fn create_secret_data_ttlv_request(
         .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
         to_wasm_ttlv(&request)
     }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn create_pgp_key_ttlv_request(
+    key_id: Option<String>,
+    tags: Vec<String>,
+    algorithm: &str,
+    cryptographic_length: Option<i32>,
+    user_id: Option<String>,
+    sensitive: bool,
+    wrap_key_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let key_id = none_if_empty(key_id).map(UniqueIdentifier::TextString);
+    let user_id = none_if_empty(user_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+
+    let algo = match algorithm.to_ascii_lowercase().as_str() {
+        "ed25519" => CryptographicAlgorithm::Ed25519,
+        "rsa" => CryptographicAlgorithm::RSA,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Invalid OpenPGP algorithm: {other}. Expected 'Ed25519' or 'RSA'"
+            )));
+        }
+    };
+
+    let request = pgp_key_create_request(
+        key_id,
+        algo,
+        cryptographic_length,
+        user_id.as_deref(),
+        PgpKeyCreateCommon {
+            vendor_id,
+            tags: &tags,
+            sensitive,
+            wrap_key_id: wrap_key_id.as_ref(),
+        },
+    )
+    .map_err(|e| JsValue::from_str(&format!("OpenPGP Key request creation failed: {e}")))?;
+
+    to_wasm_ttlv(&request)
+}
+
+/// Returns the `OpenPGP` key algorithms supported by this build.
+#[wasm_bindgen]
+pub fn get_pgp_algorithms() -> Result<JsValue, JsValue> {
+    let algos = vec![
+        AlgoOption {
+            value: "Ed25519".to_owned(),
+            label: "Ed25519 (Curve25519)".to_owned(),
+        },
+        AlgoOption {
+            value: "RSA".to_owned(),
+            label: "RSA".to_owned(),
+        },
+    ];
+    serde_wasm_bindgen::to_value(&algos).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Encrypt to an `OpenPGP` key. No cryptographic parameters: the server always uses
+/// `SEIPDv1` / AES-256 to the certificate's encryption subkey.
+#[wasm_bindgen]
+pub fn encrypt_pgp_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(key_unique_identifier, None, plaintext, None, None, None)
+        .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
+    to_wasm_ttlv(&request)
+}
+
+/// Decrypt an `OpenPGP` message (binary or ASCII-armored).
+#[wasm_bindgen]
+pub fn decrypt_pgp_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(key_unique_identifier, None, ciphertext, None, None, None);
+    to_wasm_ttlv(&request)
 }
 
 wasm_response_parser!(parse_create_ttlv_response, CreateResponse);
@@ -1587,7 +1681,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
         ExportKeyFormat::JsonTtlv => {
             let kmip_object = response.object;
             let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
-            ttlv.tag = tag_from_object(&kmip_object);
+            ttlv.tag = tag_from_object(&kmip_object).into();
             let bytes = serde_json::to_vec::<TTLV>(&ttlv)
                 .map_err(|e| JsValue::from_str(&format!("{e}")))?;
             JsValue::from(Uint8Array::from(bytes.as_slice()))
@@ -1598,6 +1692,13 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
                 .encode(get_object_bytes(&kmip_object)?)
                 .to_lowercase();
             JsValue::from(string)
+        }
+        ExportKeyFormat::PgpSecretBinary | ExportKeyFormat::PgpPublicBinary => {
+            let kmip_object = response.object;
+            let armored = get_object_bytes(&kmip_object)?;
+            let binary =
+                openpgp_key_to_binary(&armored).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            JsValue::from(Uint8Array::from(binary.as_slice()))
         }
         _ => {
             let kmip_object = response.object;
@@ -1712,11 +1813,15 @@ pub fn import_ttlv_request(
     let (object, import_attributes) = prepare_key_import_elements(
         vendor_id,
         &key_usage,
-        &key_format,
-        key_bytes,
-        &certificate_id,
-        &private_key_id,
-        &public_key_id,
+        KeyMaterialSource {
+            format: &key_format,
+            bytes: key_bytes,
+        },
+        &ObjectLinkIds {
+            certificate_id,
+            private_key_id,
+            public_key_id,
+        },
         wrapping_key_id.as_ref(),
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
@@ -2015,7 +2120,7 @@ pub fn parse_export_certificate_ttlv_response(
             let data = match output_format {
                 CertificateExportFormat::JsonTtlv => {
                     let mut ttlv = to_ttlv(&object).map_err(|e| JsValue::from(e.to_string()))?;
-                    ttlv.tag = tag_from_object(&object);
+                    ttlv.tag = tag_from_object(&object).into();
                     let bytes = serde_json::to_vec::<TTLV>(&ttlv)
                         .map_err(|e| JsValue::from_str(&format!("{e}")))?;
                     JsValue::from(Uint8Array::from(bytes.as_slice()))
@@ -2158,21 +2263,44 @@ pub fn certify_ttlv_request(
     let issuer_certificate_id = none_if_empty(issuer_certificate_id);
     let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
         .map_err(|e| JsValue::from(e.to_string()))?;
+    let source = if let Some(request) = certificate_signing_request {
+        CertificationSource::Csr {
+            request,
+            format: certificate_signing_request_format,
+        }
+    } else if let Some(id) = public_key_id_to_certify {
+        CertificationSource::PublicKey {
+            id,
+            subject_name: subject_name.ok_or_else(|| {
+                JsValue::from("subject name is required when certifying a public key")
+            })?,
+        }
+    } else if let Some(certificate_id) = certificate_id_to_re_certify {
+        CertificationSource::ReCertify { certificate_id }
+    } else if generate_key_pair {
+        CertificationSource::GenerateKeyPair {
+            subject_name: subject_name.ok_or_else(|| {
+                JsValue::from("subject name is required when generating a keypair")
+            })?,
+            algorithm,
+        }
+    } else {
+        return Err(JsValue::from(
+            "Supply a certificate signing request, a public key id or an existing certificate id \
+             or request a keypair to be generated",
+        ));
+    };
     let request = build_certify_request(
         vendor_id,
-        &certificate_id,
-        &certificate_signing_request_format,
-        &certificate_signing_request,
-        &public_key_id_to_certify,
-        &certificate_id_to_re_certify,
-        generate_key_pair,
-        &subject_name,
-        algorithm,
-        &issuer_private_key_id,
-        &issuer_certificate_id,
-        number_of_days,
-        &certificate_extensions,
-        &tags,
+        &CertifyRequestParams {
+            certificate_id,
+            source,
+            issuer_private_key_id,
+            issuer_certificate_id,
+            number_of_days,
+            certificate_extensions,
+            tags,
+        },
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
     to_wasm_ttlv(&request)

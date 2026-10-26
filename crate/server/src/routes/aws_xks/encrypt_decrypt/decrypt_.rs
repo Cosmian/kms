@@ -145,7 +145,7 @@ pub(crate) async fn decrypt(
         request.requestMetadata.kmsRequestId,
         request.requestMetadata.awsPrincipalArn
     );
-    debug!("decrypt request: {:?}", request.requestMetadata);
+    debug!("decrypt request: {}", request.requestMetadata);
     let kms = kms.into_inner();
     match decrypt_inner(req_http, request, key_id, &kms)
         .await
@@ -247,11 +247,11 @@ pub(crate) async fn decrypt_inner(
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
                 cryptographic_parameters: Some(cryptographic_parameters),
                 data: Some(data),
-                i_v_counter_nonce: Some(nonce.clone()),
+                i_v_counter_nonce: Some(nonce),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: aead.clone(),
+                authenticated_encryption_additional_data: aead,
                 authenticated_encryption_tag: Some(tag),
             },
             &user,

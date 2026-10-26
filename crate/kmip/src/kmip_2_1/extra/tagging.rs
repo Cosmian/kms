@@ -25,6 +25,8 @@ pub const SYSTEM_TAG_CERTIFICATE: &str = "_cert";
 pub const SYSTEM_TAG_SECRET_DATA: &str = "_sd";
 /// System tag automatically added by the KMS server to opaque objects on Import
 pub const SYSTEM_TAG_OPAQUE_OBJECT: &str = "_oo";
+/// System tag automatically added by the KMS server to `OpenPGP` keys on Create/Import
+pub const SYSTEM_TAG_PGP_KEY: &str = "_pgp";
 /// System tag automatically added by the KMS server to `CoverCrypt` user decryption keys
 pub const SYSTEM_TAG_COVER_CRYPT_USER_KEY: &str = "_uk";
 

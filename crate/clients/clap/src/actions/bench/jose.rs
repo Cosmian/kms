@@ -86,8 +86,9 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
     let mut group = timed_group(c, "jose/encrypt");
     let payload = b64url(&[1_u8; 64]);
 
-    for enc in ["A128GCM", "A192GCM", "A256GCM"] {
-        if !bench_filter_matches(enc, None) {
+    for (enc, bits) in [("A128GCM", "128"), ("A192GCM", "192"), ("A256GCM", "256")] {
+        // Accept the KMIP vocabulary (`-a aes-gcm -k 256`) as well as the JWA name.
+        if !bench_filter_matches("aes-gcm", Some(bits)) && !bench_filter_matches(enc, None) {
             continue;
         }
         let Some(kid) = jose_create_sym_key(rt, client, enc) else {
@@ -97,7 +98,7 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
         };
 
         let enc_req = JoseEncReq {
-            kid: kid.clone(),
+            kid,
             alg: "dir",
             enc,
             data: payload.clone(),
@@ -110,7 +111,7 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
             continue;
         };
 
-        let enc_req_clone = enc_req.clone();
+        let enc_req_clone = enc_req;
         group.bench_function(BenchmarkId::new("encrypt", enc), |b| {
             b.to_async(rt)
                 .iter(|| client.jose_encrypt(enc_req_clone.clone()));
@@ -172,7 +173,7 @@ fn bench_jose_encrypt_rsa_oaep(c: &mut Criterion, client: &KmsClient, rt: &Runti
             continue;
         };
 
-        let enc_req_clone = enc_req.clone();
+        let enc_req_clone = enc_req;
         group.bench_function(BenchmarkId::new("encrypt", bits), |b| {
             b.to_async(rt)
                 .iter(|| client.jose_encrypt(enc_req_clone.clone()));
@@ -320,7 +321,7 @@ pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime
             continue;
         };
 
-        let mac_req_clone = mac_req.clone();
+        let mac_req_clone = mac_req;
         group.bench_function(BenchmarkId::new("compute", alg), |b| {
             b.to_async(rt)
                 .iter(|| client.jose_mac_compute(mac_req_clone.clone()));

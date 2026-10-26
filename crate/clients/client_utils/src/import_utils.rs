@@ -3,7 +3,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{CertificateType, CryptographicUsageMask},
     kmip_2_1::{
         kmip_attributes::Attributes,
-        kmip_objects::{Certificate, ObjectType, PrivateKey, PublicKey, SymmetricKey},
+        kmip_objects::{Certificate, ObjectType, PGPKey, PrivateKey, PublicKey, SymmetricKey},
         kmip_types::{CryptographicAlgorithm, LinkType, LinkedObjectIdentifier},
     },
     time_normalize,
@@ -27,6 +27,7 @@ pub enum ImportKeyFormat {
     Pkcs8Pub,
     Aes,
     Chacha20,
+    Pgp,
 }
 
 #[derive(Deserialize, Debug, Clone, EnumIter, PartialEq, Eq, EnumString, ValueEnum)]
@@ -145,6 +146,26 @@ fn build_public_key_from_der_bytes(
     })
 }
 
+/// Wrap raw `OpenPGP` key bytes (armored or binary, secret or public) into a `PGPKey`
+/// managed object. The server normalizes and classifies the material during Import,
+/// so the client only has to produce a well-formed envelope.
+const fn build_pgp_key_from_bytes(bytes: Zeroizing<Vec<u8>>) -> Object {
+    Object::PGPKey(PGPKey {
+        pgp_key_version: 4,
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::OpenPgpSecretKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(bytes),
+                attributes: None,
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    })
+}
+
 fn build_symmetric_key_from_bytes(
     cryptographic_algorithm: CryptographicAlgorithm,
     bytes: Zeroizing<Vec<u8>>,
@@ -208,7 +229,7 @@ use cosmian_kmip::kmip_2_1::{
 };
 use zeroize::Zeroizing;
 
-use crate::error::UtilsError;
+use crate::{error::UtilsError, locate_utils::ObjectLinkIds};
 
 /// Build KMIP Objects from a PEM file.
 /// The PEM file can contain multiple objects.
@@ -327,23 +348,32 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
     }
 }
 
-#[expect(clippy::too_many_arguments)]
+/// Key material to import, together with the format describing how to decode it.
+pub struct KeyMaterialSource<'a> {
+    /// Format of the key bytes
+    pub format: &'a ImportKeyFormat,
+    /// Raw key bytes, as read from the input
+    pub bytes: Vec<u8>,
+}
+
+/// Prepare the KMIP object and import attributes for a key import.
+///
+/// # Errors
+/// Returns an error if the key bytes cannot be decoded according to the format
+/// or if the activation date cannot be computed.
 pub fn prepare_key_import_elements(
     vendor_id: &str,
     key_usage: &Option<Vec<KeyUsage>>,
-    key_format: &ImportKeyFormat,
-    key_bytes: Vec<u8>,
-    certificate_id: &Option<String>,
-    private_key_id: &Option<String>,
-    public_key_id: &Option<String>,
+    key_source: KeyMaterialSource<'_>,
+    link_ids: &ObjectLinkIds,
     wrapping_key_id: Option<&String>,
 ) -> Result<(Object, Attributes), UtilsError> {
     let cryptographic_usage_mask = key_usage
         .as_deref()
         .and_then(build_usage_mask_from_key_usage);
-    let bytes = Zeroizing::from(key_bytes);
+    let bytes = Zeroizing::from(key_source.bytes);
 
-    let object = match &key_format {
+    let object = match key_source.format {
         ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
         ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
         ImportKeyFormat::Sec1 => {
@@ -357,6 +387,7 @@ pub fn prepare_key_import_elements(
         ImportKeyFormat::Chacha20 => {
             build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)?
         }
+        ImportKeyFormat::Pgp => build_pgp_key_from_bytes(bytes),
     };
 
     // Generate the import attributes if links are specified.
@@ -367,19 +398,19 @@ pub fn prepare_key_import_elements(
         import_attributes.set_cryptographic_usage_mask(Some(cryptographic_usage_mask));
     }
 
-    if let Some(issuer_certificate_id) = &certificate_id {
+    if let Some(issuer_certificate_id) = &link_ids.certificate_id {
         import_attributes.set_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
         );
     }
-    if let Some(private_key_id) = &private_key_id {
+    if let Some(private_key_id) = &link_ids.private_key_id {
         import_attributes.set_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(private_key_id.clone()),
         );
     }
-    if let Some(public_key_id) = &public_key_id {
+    if let Some(public_key_id) = &link_ids.public_key_id {
         import_attributes.set_link(
             LinkType::PublicKeyLink,
             LinkedObjectIdentifier::TextString(public_key_id.clone()),

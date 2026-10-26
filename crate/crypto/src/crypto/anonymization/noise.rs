@@ -1,10 +1,11 @@
 use chrono::{DateTime, TimeZone};
-use rand::{Rng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use rand_distr::{
     Distribution, Normal, StandardNormal, StandardUniform, Uniform, num_traits::Float,
 };
 
 use super::{AnoError, datetime_to_rfc3339};
+use crate::crypto::KmsRng;
 
 pub enum NoiseMethod<F>
 where
@@ -91,6 +92,18 @@ where
     }
 }
 
+/// The noise only protects the anonymized data while it cannot be predicted, so its generator
+/// is seeded from the *private* DRBG (`fill_bytes`) like every other seed: the public DRBG is
+/// observable (`RNGRetrieve`) and would make the seed guessable. `KmsRng` is the only entropy
+/// source the workspace allows.
+fn kms_seeded_rng() -> Result<StdRng, AnoError> {
+    let mut seed = [0_u8; 32];
+    KmsRng::new().fill_bytes(&mut seed).map_err(|e| {
+        AnoError::AnonymizationError(format!("noise generator seeding failed: {e}"))
+    })?;
+    Ok(StdRng::from_seed(seed))
+}
+
 pub struct NoiseGenerator<F>
 where
     F: Float + rand_distr::uniform::SampleUniform,
@@ -142,7 +155,7 @@ where
         }?;
         Ok(Self {
             method,
-            rng: rand::make_rng(),
+            rng: kms_seeded_rng()?,
         })
     }
 
@@ -198,7 +211,7 @@ where
         }?;
         Ok(Self {
             method,
-            rng: rand::make_rng(),
+            rng: kms_seeded_rng()?,
         })
     }
 

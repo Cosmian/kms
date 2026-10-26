@@ -8,8 +8,9 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
             extra::tagging::{
-                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PRIVATE_KEY,
-                SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
+                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY,
+                SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA,
+                SYSTEM_TAG_SYMMETRIC_KEY,
             },
             kmip_attributes::Attributes,
             kmip_data_structures::KeyValue,
@@ -33,6 +34,7 @@ use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 
+use super::pgp_ops;
 use crate::{
     core::{
         KMS,
@@ -72,13 +74,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
     // user's object. The ownership check must happen before any processing or cache mutation.
     if request.replace_existing.unwrap_or(false) {
         if let Some(uid_str) = request.unique_identifier.as_str().filter(|s| !s.is_empty()) {
-            if let Some(existing) = kms
-                .database
-                .retrieve_objects(ObjectHandle::from(uid_str))
-                .await?
-                .values()
-                .next()
-            {
+            if let Some(existing) = kms.database.retrieve_object_arc(uid_str).await? {
                 if existing.owner() != user {
                     kms_bail!(KmsError::Unauthorized(format!(
                         "User '{user}' does not own object '{uid_str}' and cannot replace it"
@@ -153,6 +149,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
         ObjectType::PublicKey => Box::pin(process_public_key(kms, request, user)).await?,
         ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, user)).await?,
         ObjectType::SecretData => Box::pin(process_secret_data(kms, request, user)).await?,
+        ObjectType::PGPKey => Box::pin(process_pgp_key(kms, request, user)).await?,
         ObjectType::OpaqueObject => process_opaque_object(kms.vendor_id(), request, user)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
@@ -206,11 +203,10 @@ pub(super) async fn process_symmetric_key(
     let replace_existing = request.replace_existing.unwrap_or(false);
 
     // Generate a new UID if none is provided.
-    let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
     };
-
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
@@ -229,7 +225,7 @@ pub(super) async fn process_symmetric_key(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // set the tags in the attributes
-    attributes.set_tags(kms.vendor_id(), tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), &tags)?;
     // merge the object attributes with the request attributes without overwriting
     // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
@@ -316,25 +312,26 @@ pub(super) fn process_certificate(
     tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
 
     // The specification says that this should be DER bytes
-    let certificate_der_bytes = match request.object {
+    let certificate_der_bytes = match &request.object {
         Object::Certificate(Certificate {
             certificate_value, ..
-        }) => Ok(certificate_value),
+        }) => Ok(certificate_value.as_slice()),
         o => Err(KmsError::Certificate(format!(
             "invalid object type {:?} on import",
             o.object_type()
         ))),
     }?;
 
-    // parse the certificate as an OpenSSL object to convert it to the pivot
-    let certificate = X509::from_der(&certificate_der_bytes)?;
-    // convert the certificate to a KMIP object
-    let object = openssl_certificate_to_kmip(&certificate)?;
+    // parse the certificate as an OpenSSL object to extract attributes
+    let certificate = X509::from_der(certificate_der_bytes)?;
+    let cert_attrs = openssl_x509_to_certificate_attributes(&certificate);
+    let cert_len = i32::try_from(certificate_der_bytes.len()).ok();
+    let object = request.object;
 
     // Set the unique identifier, if not provided, generate a new one
-    let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
     };
 
     // build attributes from the request attributes
@@ -344,12 +341,11 @@ pub(super) fn process_certificate(
     attributes.object_type = Some(ObjectType::Certificate);
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
     // set the certificate attributes
-    attributes.certificate_attributes = Some(openssl_x509_to_certificate_attributes(&certificate));
+    attributes.certificate_attributes = Some(cert_attrs);
     // Set Certificate Length as the DER length, per KMIP guidance
-    attributes.certificate_length = i32::try_from(certificate_der_bytes.len()).ok();
+    attributes.certificate_length = cert_len;
     // set the tags in the attributes
-    attributes.set_tags(vendor_id, tags.clone())?;
-
+    attributes.set_tags(vendor_id, &tags)?;
     // Merge the object attributes with the request attributes without overwriting
     // Certificates do not hold attributes at this stage
     if let Ok(object_attributes) = object.attributes() {
@@ -401,9 +397,9 @@ pub(super) async fn process_public_key(
     tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
-    let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
     };
 
     // build the attributes from the request attributes
@@ -421,14 +417,25 @@ pub(super) async fn process_public_key(
         attributes.initialize_always_sensitive();
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
-    // import it as a PKCS8
-    // TODO: add Covercrypt keys when support for SPKI is added
+    // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
+    // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
+    // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
+    // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
+    // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
+    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
-            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+            && !matches!(
+                object_key_block.cryptographic_algorithm,
+                Some(
+                    CryptographicAlgorithm::CoverCrypt
+                        | CryptographicAlgorithm::ConfigurableKEM
+                        | CryptographicAlgorithm::X25519MLKEM768
+                        | CryptographicAlgorithm::X448MLKEM1024
+                )
+            )
         {
             object = openssl_public_key_to_kmip(
                 &kmip_public_key_to_openssl(&object)?,
@@ -455,7 +462,7 @@ pub(super) async fn process_public_key(
         attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
     // set the tags in the attributes
-    attributes.set_tags(kms.vendor_id(), tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), &tags)?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
@@ -532,9 +539,9 @@ pub(super) async fn process_private_key(
     tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
 
     // Set the unique identifier, if not provided, generate a new one
-    let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
     };
 
     // Recover user tags and original cryptographic parameters provided by the client.
@@ -548,14 +555,25 @@ pub(super) async fn process_private_key(
         attributes.merge(object_attributes, false);
     }
 
-    // If the key is not wrapped and not a Covercrypt Key, try to parse it as an OpenSSL object and
-    // import it as a PKCS8
-    // TODO: remove Covercrypt keys from this exception when support for PKCS#8 is added
+    // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
+    // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
+    // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
+    // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
+    // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
+    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
     // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
-            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+            && !matches!(
+                object_key_block.cryptographic_algorithm,
+                Some(
+                    CryptographicAlgorithm::CoverCrypt
+                        | CryptographicAlgorithm::ConfigurableKEM
+                        | CryptographicAlgorithm::X25519MLKEM768
+                        | CryptographicAlgorithm::X448MLKEM1024
+                )
+            )
         {
             // Skip OpenSSL re-encoding for Transparent DSA private keys; retain original structure.
             if object_key_block.key_format_type != KeyFormatType::TransparentDSAPrivateKey {
@@ -591,7 +609,7 @@ pub(super) async fn process_private_key(
         attributes.cryptographic_usage_mask = Some(CryptographicUsageMask::Unrestricted);
     }
     // set the tags in the attributes
-    attributes.set_tags(kms.vendor_id(), tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), &tags)?;
     // set the unique identifier
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
@@ -650,10 +668,12 @@ fn single_operation(
     uid: String,
     owner: &UserId,
 ) -> AtomicOperation {
-    // Sync the Object::Attributes with input Attributes
+    // Sync the Object::Attributes with input Attributes only when they differ
     let mut object = object;
     if let Ok(object_attributes) = object.attributes_mut() {
-        object_attributes.clone_from(&attributes);
+        if object_attributes != &attributes {
+            object_attributes.clone_from(&attributes);
+        }
     }
     // Use the state from attributes, defaulting to PreActive if not set
     let state = attributes.state.unwrap_or(State::PreActive);
@@ -699,9 +719,9 @@ async fn process_pkcs12(
     trace!("PKCS12 parsed successfully");
 
     // build the leaf certificate id
-    let leaf_certificate_id = match unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let leaf_certificate_id = match unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s.clone(),
+        _ => Uuid::new_v4().to_string(),
     };
     // Build the private key ID
     let private_key_id = format!("{leaf_certificate_id}{SYSTEM_TAG_PRIVATE_KEY}");
@@ -980,7 +1000,7 @@ async fn process_pkcs12(
             // (according to the KMIP spec, this would be LinkType::CertificateLink)
             chain_attributes.set_link(
                 LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(parent_certificate_id.clone()),
+                LinkedObjectIdentifier::TextString(parent_certificate_id),
             );
         }
         operations.push(single_operation(
@@ -1008,9 +1028,9 @@ pub(super) async fn process_secret_data(
     let replace_existing = request.replace_existing.unwrap_or(false);
 
     // Generate a new UID if none is provided.
-    let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
     };
 
     let mut object = request.object;
@@ -1031,7 +1051,7 @@ pub(super) async fn process_secret_data(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // set the tags in the attributes
-    attributes.set_tags(kms.vendor_id(), tags.clone())?;
+    attributes.set_tags(kms.vendor_id(), &tags)?;
     // merge the object attributes with the request attributes without overwriting
     // This will recover existing links, for instance
     if let Ok(object_attributes) = object.key_block()?.attributes() {
@@ -1092,6 +1112,77 @@ pub(super) async fn process_secret_data(
         )],
     ))
 }
+pub(super) async fn process_pgp_key(
+    kms: &KMS,
+    request: Import,
+    user: &UserId,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    trace!("import pgp_key: uid={}", request.unique_identifier);
+    let replace_existing = request.replace_existing.unwrap_or(false);
+
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
+    };
+
+    let mut object = request.object;
+    if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
+    }
+
+    let mut tags = recover_tags(kms.vendor_id(), &request.attributes, &object);
+    tags.insert(SYSTEM_TAG_PGP_KEY.to_owned());
+
+    let mut attributes = request.attributes;
+    attributes.object_type = Some(ObjectType::PGPKey);
+    attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
+
+    pgp_ops::pgp_normalize_for_import(&mut object, &mut attributes)?;
+
+    attributes.set_tags(kms.vendor_id(), &tags)?;
+    if let Ok(object_attributes) = object.key_block()?.attributes() {
+        attributes.merge(object_attributes, false);
+    }
+
+    if attributes.initial_date.is_none() {
+        attributes.initial_date = Some(time_normalize()?);
+    }
+
+    if attributes.always_sensitive.is_none() {
+        attributes.initialize_always_sensitive();
+    }
+    attributes.initialize_never_extractable();
+
+    if let Ok(key_block) = object.key_block_mut() {
+        if let Some(KeyValue::Structure {
+            attributes: attrs, ..
+        }) = key_block.key_value.as_mut()
+        {
+            *attrs = Some(attributes.clone());
+        }
+    }
+
+    Box::pin(wrap_and_cache(
+        kms,
+        user,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut object,
+    ))
+    .await?;
+    object.copy_wrapping_key_link_to(&mut attributes);
+
+    Ok((
+        uid.clone(),
+        vec![single_operation(
+            tags,
+            replace_existing,
+            object,
+            attributes,
+            uid,
+            user,
+        )],
+    ))
+}
 
 pub(super) fn process_opaque_object(
     vendor_id: &str,
@@ -1103,9 +1194,9 @@ pub(super) fn process_opaque_object(
     let replace_existing = request.replace_existing.unwrap_or(false);
 
     // Generate a new UID if none is provided.
-    let uid = match request.unique_identifier.to_string() {
-        uid if uid.is_empty() => Uuid::new_v4().to_string(),
-        uid => uid,
+    let uid = match request.unique_identifier {
+        UniqueIdentifier::TextString(s) if !s.is_empty() => s,
+        _ => Uuid::new_v4().to_string(),
     };
 
     // Tag the object as a opaque object
@@ -1120,7 +1211,7 @@ pub(super) fn process_opaque_object(
     attributes.unique_identifier = Some(UniqueIdentifier::TextString(uid.clone()));
 
     // set the tags in the attributes
-    attributes.set_tags(vendor_id, tags.clone())?;
+    attributes.set_tags(vendor_id, &tags)?;
 
     Ok((
         uid.clone(),

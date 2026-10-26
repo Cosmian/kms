@@ -24,8 +24,6 @@ pub(super) trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
-    #[allow(dead_code)]
-    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
@@ -112,9 +110,8 @@ pub(super) trait PlaceholderTrait {
     }
 }
 
-pub(super) enum MySqlPlaceholder {}
+pub(super) struct MySqlPlaceholder;
 impl PlaceholderTrait for MySqlPlaceholder {
-    const JSON_ARRAY_LENGTH: &'static str = "JSON_LENGTH";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$[*].LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$[*].LinkType'";
@@ -185,9 +182,8 @@ impl PlaceholderTrait for MySqlPlaceholder {
 /// While JSONB has slightly slower inserts (due to binary conversion), the query
 /// performance improvement is substantial, especially for complex JSON operations
 /// like those used in attribute searches and link/name evaluations.
-pub(super) enum PgSqlPlaceholder {}
+pub(super) struct PgSqlPlaceholder;
 impl PlaceholderTrait for PgSqlPlaceholder {
-    const JSON_ARRAY_LENGTH: &'static str = "jsonb_array_length";
     const JSON_FN_EACH_ELEMENT: &'static str = "jsonb_array_elements";
     const JSON_FN_EXTRACT_PATH: &'static str = "jsonb_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "jsonb_extract_path_text";
@@ -228,7 +224,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     }
 }
 
-pub(super) enum SqlitePlaceholder {}
+pub(super) struct SqlitePlaceholder;
 impl PlaceholderTrait for SqlitePlaceholder {
     /// `SQLite` `json_extract` returns the integer `1` for a JSON `true` value.
     const BOOL_TRUE_LITERAL: &'static str = "1";
@@ -306,20 +302,19 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
     if let Some(UniqueIdentifier::TextString(id)) = &attributes.unique_identifier {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} objects.id = {}",
-            qb.bind_text(id.clone())
-        );
+        let id_bind = qb.bind_text(id.as_str());
+        let _ = write!(query, " {keyword} objects.id = {id_bind}");
     }
 
     // ObjectGroup
     if let Some(object_group) = &attributes.object_group {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} {} = {}",
+        let og_bind = qb.bind_text(object_group.as_str());
+        let _ = write!(
+            query,
+            " {keyword} {} = {og_bind}",
             P::extract_attribute_path(&["ObjectGroup"]),
-            qb.bind_text(object_group.clone())
         );
     }
 
@@ -327,10 +322,12 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
     if let Some(object_group_member) = attributes.object_group_member {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} {} = {}",
+        let member_str: &'static str = object_group_member.into();
+        let ogm_bind = qb.bind_text(member_str);
+        let _ = write!(
+            query,
+            " {keyword} {} = {ogm_bind}",
             P::extract_attribute_path(&["ObjectGroupMember"]),
-            qb.bind_text(object_group_member.to_string())
         );
     }
 
@@ -338,10 +335,12 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
     if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} {} = {}",
+        let algo_str: &'static str = cryptographic_algorithm.into();
+        let algo_bind = qb.bind_text(algo_str);
+        let _ = write!(
+            query,
+            " {keyword} {} = {algo_bind}",
             P::extract_attribute_path(&["CryptographicAlgorithm"]),
-            qb.bind_text(cryptographic_algorithm.to_string())
         );
     }
 
@@ -351,15 +350,17 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
         if P::NEEDS_INTEGER_CAST {
-            *query = format!(
-                "{query} {keyword} CAST ({} AS {}) = {}",
+            let _ = write!(
+                query,
+                " {keyword} CAST ({} AS {}) = {}",
                 P::extract_attribute_path(&["CryptographicLength"]),
                 P::TYPE_INTEGER,
                 qb.bind_i64(len_i64)
             );
         } else {
-            *query = format!(
-                "{query} {keyword} {} = {}",
+            let _ = write!(
+                query,
+                " {keyword} {} = {}",
                 P::extract_attribute_path(&["CryptographicLength"]),
                 qb.bind_i64(len_i64)
             );
@@ -370,10 +371,12 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
     if let Some(key_format_type) = attributes.key_format_type {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} {} = {}",
+        let kft_str: &'static str = key_format_type.into();
+        let kft_bind = qb.bind_text(kft_str);
+        let _ = write!(
+            query,
+            " {keyword} {} = {kft_bind}",
             P::extract_attribute_path(&["KeyFormatType"]),
-            qb.bind_text(key_format_type.to_string())
         );
     }
 
@@ -381,27 +384,27 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
     if let Some(object_type) = attributes.object_type {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} {} = {}",
-            P::extract_object_type(),
-            qb.bind_text(object_type.to_string())
-        );
+        let ot_str: &'static str = object_type.into();
+        let ot_bind = qb.bind_text(ot_str);
+        let _ = write!(query, " {keyword} {} = {ot_bind}", P::extract_object_type());
     }
 
     // ApplicationSpecificInformation
     if let Some(app) = &attributes.application_specific_information {
         let keyword = if where_added { "AND" } else { "WHERE" };
         where_added = true;
-        *query = format!(
-            "{query} {keyword} {} = {}",
+        let ns_bind = qb.bind_text(app.application_namespace.as_str());
+        let _ = write!(
+            query,
+            " {keyword} {} = {ns_bind}",
             P::extract_attribute_path(&["ApplicationSpecificInformation", "ApplicationNamespace"]),
-            qb.bind_text(app.application_namespace.clone())
         );
         if let Some(data) = &app.application_data {
-            *query = format!(
-                "{query} AND {} = {}",
+            let data_bind = qb.bind_text(data.as_str());
+            let _ = write!(
+                query,
+                " AND {} = {data_bind}",
                 P::extract_attribute_path(&["ApplicationSpecificInformation", "ApplicationData"]),
-                qb.bind_text(data.clone())
             );
         }
     }
@@ -411,18 +414,14 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
         for link in links {
             let keyword = if where_added { "AND" } else { "WHERE" };
             where_added = true;
-            *query = format!(
-                "{query} {keyword} {}",
-                P::link_evaluation(
-                    P::JSON_TEXT_LINK_TYPE,
-                    &qb.bind_text(link.link_type.to_string())
-                )
-            );
+            let lt_str: &'static str = link.link_type.into();
+            let lt_bind = qb.bind_text(lt_str);
+            let link_eval = P::link_evaluation(P::JSON_TEXT_LINK_TYPE, &lt_bind);
+            let _ = write!(query, " {keyword} {link_eval}");
             if let TextString(uid) = &link.linked_object_identifier {
-                *query = format!(
-                    "{query} AND {}",
-                    P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, &qb.bind_text(uid.clone()))
-                );
+                let uid_bind = qb.bind_text(uid.as_str());
+                let obj_eval = P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, &uid_bind);
+                let _ = write!(query, " AND {obj_eval}");
             }
         }
     }
@@ -432,23 +431,16 @@ fn apply_attribute_conditions<P: PlaceholderTrait>(
         for name in names {
             let keyword = if where_added { "AND" } else { "WHERE" };
             where_added = true;
-            *query = format!(
-                "{query} {keyword} {}",
-                P::name_evaluation(
-                    P::JSON_TEXT_NAME_TYPE,
-                    &qb.bind_text(match &name.name_type {
-                        NameType::UninterpretedTextString => "UninterpretedTextString",
-                        NameType::URI => "URI",
-                    })
-                )
-            );
-            *query = format!(
-                "{query} AND {}",
-                P::name_evaluation(
-                    P::JSON_TEXT_NAME_VALUE,
-                    &qb.bind_text(name.name_value.clone())
-                )
-            );
+            let nt_str = match &name.name_type {
+                NameType::UninterpretedTextString => "UninterpretedTextString",
+                NameType::URI => "URI",
+            };
+            let nt_bind = qb.bind_text(nt_str);
+            let name_type_eval = P::name_evaluation(P::JSON_TEXT_NAME_TYPE, &nt_bind);
+            let _ = write!(query, " {keyword} {name_type_eval}");
+            let name_val_bind = qb.bind_text(name.name_value.as_str());
+            let name_val_eval = P::name_evaluation(P::JSON_TEXT_NAME_VALUE, &name_val_bind);
+            let _ = write!(query, " AND {name_val_eval}");
         }
     }
 

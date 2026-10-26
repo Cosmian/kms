@@ -72,7 +72,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   prepare:
     name: Prepare release branch & bump versions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       release_branch: ${{ steps.vars.outputs.release_branch }}
 
@@ -94,7 +94,7 @@ jobs:
           fi
 
       # Use PAT_TOKEN so commits and tag pushes re-trigger other workflows.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: develop
           fetch-depth: 0
@@ -159,7 +159,7 @@ jobs:
         run: |
           git checkout -b "release/${{ inputs.new_version }}"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: 1.97.0
 
@@ -268,7 +268,7 @@ jobs:
     needs: [prepare, update-nix-hashes, update-log-index]
     # nix-update-hashes.yml runs a Linux+macOS matrix internally; GitHub waits
     # for all instances before starting trigger-packaging.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
 
@@ -364,10 +364,10 @@ jobs:
   commit-sbom:
     name: Retrieve & commit SBOM
     needs: [prepare, trigger-packaging]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.prepare.outputs.release_branch }}
           fetch-depth: 0
@@ -413,11 +413,11 @@ jobs:
   sync-branches:
     name: git-flow release finish ${{ inputs.new_version }}
     needs: [prepare, trigger-packaging, commit-sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
           fetch-depth: 0

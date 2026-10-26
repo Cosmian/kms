@@ -9,8 +9,9 @@
 //! Each share is a raw byte vector of the same length as the secret.
 //! `secret = share_0 XOR share_1 XOR ... XOR share_{n-1}`.
 
-use rand_core::CryptoRng;
 use zeroize::Zeroizing;
+
+use crate::crypto::KmsRng;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -23,16 +24,15 @@ use zeroize::Zeroizing;
 /// Each share is wrapped in [`Zeroizing`] so heap memory is wiped on drop.
 ///
 /// # Cryptographic requirement
-/// `rng` must be a cryptographically-secure RNG. The `CryptoRng` bound enforces
-/// this at compile time — passing `SmallRng` or any other non-CSPRNG is a
-/// type error.
+/// Shares are drawn from [`KmsRng`] (OpenSSL AES-256 CTR-DRBG, fail-closed). Taking a
+/// `&KmsRng` rather than a generic RNG makes this a compile-time guarantee.
 ///
 /// # Errors
-/// Returns [`SplitKeyError`] if `total_parts < 2` or `secret` is empty.
+/// Returns [`SplitKeyError`] if `total_parts < 2`, `secret` is empty, or the RNG fails.
 pub fn xor_split(
     secret: &[u8],
     total_parts: u32,
-    rng: &mut impl CryptoRng,
+    rng: &KmsRng,
 ) -> Result<Vec<Zeroizing<Vec<u8>>>, SplitKeyError> {
     if total_parts < 2 {
         return Err(SplitKeyError::InvalidTotalParts(
@@ -51,11 +51,12 @@ pub fn xor_split(
     // Generate n-1 uniformly random shares.
     let mut shares: Vec<Zeroizing<Vec<u8>>> = (0..n - 1)
         .map(|_| {
-            let mut s = vec![0_u8; m];
-            rng.fill_bytes(&mut s);
-            Zeroizing::new(s)
+            let mut s = Zeroizing::new(vec![0_u8; m]);
+            rng.fill_bytes(&mut s)
+                .map_err(|e| SplitKeyError::Rng(e.to_string()))?;
+            Ok(s)
         })
-        .collect();
+        .collect::<Result<_, SplitKeyError>>()?;
 
     // Last share = secret XOR share_0 XOR share_1 XOR ... XOR share_{n-2}
     let mut last = vec![0_u8; m];
@@ -121,6 +122,10 @@ pub enum SplitKeyError {
     /// Shares have different lengths.
     #[error("shares have inconsistent lengths")]
     InconsistentShareLength,
+
+    /// The random number generator failed to produce share material.
+    #[error("RNG failure: {0}")]
+    Rng(String),
 }
 
 // ─── Unit tests ─────────────────────────────────────────────────────────────
@@ -128,20 +133,12 @@ pub enum SplitKeyError {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
-    use rand_chacha::ChaCha20Rng;
-    use rand_core::SeedableRng;
-
     use super::*;
-
-    fn deterministic_rng() -> ChaCha20Rng {
-        ChaCha20Rng::from_seed([42_u8; 32])
-    }
 
     #[test]
     fn test_xor_roundtrip_2_of_2() {
         let secret = b"super secret key material 12345!";
-        let mut rng = deterministic_rng();
-        let shares = xor_split(secret, 2, &mut rng).unwrap();
+        let shares = xor_split(secret, 2, &KmsRng::new()).unwrap();
         assert_eq!(shares.len(), 2);
         let rec = xor_join(&shares).unwrap();
         assert_eq!(&*rec, secret.as_slice());
@@ -150,8 +147,7 @@ mod tests {
     #[test]
     fn test_xor_roundtrip_3_of_3() {
         let secret = b"three-way split test";
-        let mut rng = deterministic_rng();
-        let shares = xor_split(secret, 3, &mut rng).unwrap();
+        let shares = xor_split(secret, 3, &KmsRng::new()).unwrap();
         assert_eq!(shares.len(), 3);
         let rec = xor_join(&shares).unwrap();
         assert_eq!(&*rec, secret.as_slice());
@@ -160,8 +156,7 @@ mod tests {
     #[test]
     fn test_xor_roundtrip_5_of_5() {
         let secret = vec![0xAB; 32];
-        let mut rng = deterministic_rng();
-        let shares = xor_split(&secret, 5, &mut rng).unwrap();
+        let shares = xor_split(&secret, 5, &KmsRng::new()).unwrap();
         assert_eq!(shares.len(), 5);
         let rec = xor_join(&shares).unwrap();
         assert_eq!(&*rec, secret.as_slice());
@@ -170,8 +165,7 @@ mod tests {
     #[test]
     fn test_xor_share_lengths() {
         let secret = b"hello";
-        let mut rng = deterministic_rng();
-        let shares = xor_split(secret, 4, &mut rng).unwrap();
+        let shares = xor_split(secret, 4, &KmsRng::new()).unwrap();
         for share in &shares {
             assert_eq!(share.len(), secret.len());
         }
@@ -180,8 +174,7 @@ mod tests {
     #[test]
     fn test_xor_missing_share_fails() {
         let secret = b"missing share test";
-        let mut rng = deterministic_rng();
-        let shares = xor_split(secret, 3, &mut rng).unwrap();
+        let shares = xor_split(secret, 3, &KmsRng::new()).unwrap();
         // Only 2 of 3 shares — should produce wrong result
         let partial = xor_join(&shares[0..2]).unwrap();
         assert_ne!(&*partial, secret.as_slice());
@@ -189,15 +182,14 @@ mod tests {
 
     #[test]
     fn test_xor_invalid_total_parts() {
-        let mut rng = deterministic_rng();
-        xor_split(b"key", 1, &mut rng).unwrap_err();
-        xor_split(b"key", 0, &mut rng).unwrap_err();
+        let rng = KmsRng::new();
+        xor_split(b"key", 1, &rng).unwrap_err();
+        xor_split(b"key", 0, &rng).unwrap_err();
     }
 
     #[test]
     fn test_xor_empty_secret() {
-        let mut rng = deterministic_rng();
-        xor_split(b"", 2, &mut rng).unwrap_err();
+        xor_split(b"", 2, &KmsRng::new()).unwrap_err();
     }
 
     #[test]

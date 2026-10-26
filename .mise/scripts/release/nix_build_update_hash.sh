@@ -50,6 +50,12 @@ else
     k8s-plugin-bin
     k8s-operator-bin
     k8s-csi-provider-bin
+    # Alpine/.apk musl builds (Linux-only). Vendor hashes:
+    #   server.vendor.musl-{fips,non-fips}.sha256, cli.vendor.musl-{fips,non-fips}.sha256
+    kms-server-fips-musl-dynamic
+    kms-server-non-fips-musl-static
+    kms-cli-fips-musl-dynamic
+    kms-cli-non-fips-musl-static
   )
 fi
 
@@ -73,6 +79,23 @@ drv_to_hash_file() {
   if [[ "$drv_name" =~ ui-wasm-fips.*vendor ]]; then
     [[ "$OS" != "Linux" ]] && echo "" && return
     echo "$EXPECTED_DIR/ui.vendor.fips.sha256"
+    return
+  fi
+  # Alpine/.apk musl builds (server + CLI). Unlike the glibc builds below (where
+  # FIPS="static", non-FIPS="dynamic"), musl uses the opposite convention: FIPS is
+  # dynamically-linked musl libc (keeps dlopen for the FIPS provider module) and
+  # non-FIPS is fully static musl libc. See nix/kms-server-musl.nix.
+  # Must precede the generic cli/server vendor checks below.
+  if [[ "$drv_name" =~ cosmian-kms-server-musl ]]; then
+    local musl_variant="fips"
+    [[ "$drv_name" == *musl-static* ]] && musl_variant="non-fips"
+    echo "$EXPECTED_DIR/server.vendor.musl-${musl_variant}.sha256"
+    return
+  fi
+  if [[ "$drv_name" =~ cosmian-kms-cli-musl ]]; then
+    local musl_variant="fips"
+    [[ "$drv_name" == *musl-static* ]] && musl_variant="non-fips"
+    echo "$EXPECTED_DIR/cli.vendor.musl-${musl_variant}.sha256"
     return
   fi
   if [[ "$drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then

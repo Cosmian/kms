@@ -380,6 +380,12 @@ Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
 - Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
 - Wrong MAC → `invalid`
 
+## OpenPGP (non-FIPS only)
+
+`pgp-key-flow.spec.ts` verifies armored and binary GnuPG secret/public key imports and exports through
+the Web UI. `mise test:gnupg` exercises CKMS import/export interoperability with GnuPG-generated
+armored and binary transferable keys.
+
 ## FPE — Format-Preserving Encryption (non-FIPS only)
 
 _Skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`). FPE is feature-gated by `non-fips`._
@@ -668,7 +674,7 @@ Covers:
 - Navigation to get/set/modify/delete attribute pages
 - `child_id` link: set+delete; set+modify
 - Name attribute (KMIP standard, issue #746): set; set → get (not hex); set → modify → delete
-- `cryptographic_length`: set → get → modify
+- `cryptographic_length`: set rejected → get (unchanged) → modify rejected
 - `key_usage`: set → delete
 - `cryptographic_algorithm`: set
 - Multiple link attributes on one key

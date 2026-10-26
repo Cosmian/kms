@@ -194,9 +194,9 @@ fn get_cert_path(relative_path: &str) -> PathBuf {
 /// Test real mTLS connection to `PostgreSQL`
 ///
 /// This test validates that the KMS server can connect to `PostgreSQL` using mutual TLS
-/// (client certificates). It uses `sslmode=require` which enforces TLS encryption but
-/// does not verify the server certificate hostname (since we're connecting to 127.0.0.1
-/// but the certificate has CN=postgres).
+/// (client certificates). It uses `sslmode=require` with `sslrootcert`, which makes TLS mandatory
+/// and verifies the server certificate chain, but not its hostname (we connect to 127.0.0.1
+/// while the certificate has CN=postgres).
 ///
 /// This test requires the postgres-mtls service from docker-compose.yml to be running:
 /// ```bash

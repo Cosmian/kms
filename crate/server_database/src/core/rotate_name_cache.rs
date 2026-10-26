@@ -36,7 +36,7 @@ use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 use cosmian_logger::warn;
-use moka::future::Cache;
+use moka::{Equivalent, future::Cache};
 
 /// Bounded staleness window for cached `find_by_rotate_name` results.
 ///
@@ -63,7 +63,24 @@ struct RotateNameKey {
     owner: String,
 }
 
-type RotateNameResults = Arc<Vec<(String, Attributes)>>;
+/// Borrowed form of [`RotateNameKey`] used for allocation-free lookups.
+///
+/// Field order and types must mirror [`RotateNameKey`] so the derived `Hash` is identical.
+#[derive(Hash)]
+struct RotateNameKeyRef<'a> {
+    name: &'a str,
+    generation: Option<i32>,
+    owner: &'a str,
+}
+
+impl Equivalent<RotateNameKey> for RotateNameKeyRef<'_> {
+    fn equivalent(&self, key: &RotateNameKey) -> bool {
+        self.name == key.name && self.generation == key.generation && self.owner == key.owner
+    }
+}
+
+/// Shared, immutable list of `(uid, attributes)` members of a keyset.
+pub(crate) type RotateNameResults = Arc<Vec<(String, Attributes)>>;
 
 /// Concurrent cache for [`crate::Database::find_by_rotate_name`] results.
 ///
@@ -89,7 +106,7 @@ impl RotateNameCache {
         hsm_negative_ttl: Duration,
         max_capacity: NonZeroUsize,
     ) -> Self {
-        let max_capacity = u64::try_from(max_capacity.get()).map_or(u64::MAX, |capacity| capacity);
+        let max_capacity = u64::try_from(max_capacity.get()).unwrap_or(u64::MAX);
         Self {
             inner: Cache::builder()
                 .max_capacity(max_capacity)
@@ -105,24 +122,28 @@ impl RotateNameCache {
     }
 
     /// Look up a cached result for `(name, generation, owner)`.
+    ///
+    /// The lookup borrows `name`/`owner` and returns the shared cached list, so a hit
+    /// allocates nothing.
     pub async fn get(
         &self,
         name: &str,
         generation: Option<i32>,
         owner: &str,
-    ) -> Option<Vec<(String, Attributes)>> {
-        let key = RotateNameKey {
-            name: name.to_owned(),
+    ) -> Option<RotateNameResults> {
+        let key = RotateNameKeyRef {
+            name,
             generation,
-            owner: owner.to_owned(),
+            owner,
         };
         if let Some(res) = self.hsm_negative.get(&key).await {
-            return Some((*res).clone());
+            return Some(res);
         }
-        self.inner.get(&key).await.map(|results| (*results).clone())
+        self.inner.get(&key).await
     }
 
-    /// Insert a freshly computed result for `(name, generation, owner)`.
+    /// Insert a freshly computed result for `(name, generation, owner)` and return the
+    /// shared list (cached or not) so the caller does not need to clone it.
     ///
     /// Empty results are cached only for `hsm::` identifiers: a non-rotated HSM key
     /// will never match a keyset label, and re-querying the slot on every operation
@@ -134,7 +155,8 @@ impl RotateNameCache {
         generation: Option<i32>,
         owner: &str,
         results: Vec<(String, Attributes)>,
-    ) {
+    ) -> RotateNameResults {
+        let results = Arc::new(results);
         let key = RotateNameKey {
             name: name.to_owned(),
             generation,
@@ -142,11 +164,12 @@ impl RotateNameCache {
         };
         if results.is_empty() {
             if name.starts_with("hsm::") {
-                self.hsm_negative.insert(key, Arc::new(results)).await;
+                self.hsm_negative.insert(key, Arc::clone(&results)).await;
             }
-            return;
+            return results;
         }
-        self.inner.insert(key, Arc::new(results)).await;
+        self.inner.insert(key, Arc::clone(&results)).await;
+        results
     }
 
     /// Invalidate every cached entry for keyset `name`, for all owners and all
@@ -242,7 +265,7 @@ mod tests {
 
         assert_eq!(
             cache.get("keyset-a", None, "alice").await,
-            Some(vec![("keyset-a-uid".to_owned(), attrs())])
+            Some(Arc::new(vec![("keyset-a-uid".to_owned(), attrs())]))
         );
         // Different owner, different generation, different name: all distinct keys.
         assert!(cache.get("keyset-a", None, "bob").await.is_none());
@@ -265,7 +288,7 @@ mod tests {
             .await;
         assert_eq!(
             cache.get("hsm::softhsm2::0::my-key", None, "alice").await,
-            Some(vec![])
+            Some(Arc::new(vec![]))
         );
     }
 

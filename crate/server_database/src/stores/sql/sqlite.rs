@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -38,16 +38,25 @@ use crate::{
         sql::database::SqlDatabase,
     },
 };
+static SQLITE_CONVERTED_QUERIES: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    for (k, v) in PGSQL_QUERIES.iter() {
+        map.insert(k.clone(), replace_dollars_with_qn(v));
+    }
+    for (k, v) in SQLITE_QUERIES.iter() {
+        map.insert(k.clone(), replace_dollars_with_qn(v));
+    }
+    map
+});
 
 macro_rules! get_sqlite_query {
     ($name:literal) => {
-        SQLITE_QUERIES
+        SQLITE_CONVERTED_QUERIES
             .get($name)
-            .or_else(|| PGSQL_QUERIES.get($name))
+            .map(|s| s.as_str())
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
 }
-
 /// Returns whether `error` indicates a transient `SQLite` lock (`SQLITE_BUSY`/`SQLITE_LOCKED`),
 /// as opposed to a genuine, non-recoverable failure.
 fn is_transient_lock_error(error: &DbError) -> bool {
@@ -199,6 +208,7 @@ impl SqlitePool {
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
+        let clean_crls = pool.get_query("clean-table-crls")?.to_owned();
         // The schema-bootstrap transaction needs a write lock; retry on a transient lock
         // (see `retry_on_transient_lock`) in case a previous writer connection to the same
         // file (e.g. from an immediately-preceding `KMS` instance in the same process) has
@@ -220,6 +230,7 @@ impl SqlitePool {
             let clean_objects = clean_objects.clone();
             let clean_read_access = clean_read_access.clone();
             let clean_tags = clean_tags.clone();
+            let clean_crls = clean_crls.clone();
             async {
                 pool.writer
                     .call(
@@ -245,6 +256,7 @@ impl SqlitePool {
                                 tx.execute(&clean_objects, [])?;
                                 tx.execute(&clean_read_access, [])?;
                                 tx.execute(&clean_tags, [])?;
+                                tx.execute(&clean_crls, [])?;
                             }
                             tx.commit()?;
                             Ok(())
@@ -418,12 +430,12 @@ impl SqlitePool {
 
     /// Read a value from the `parameters` table by name, or `None` if absent.
     async fn get_parameter(&self, name: &'static str) -> DbResult<Option<String>> {
-        let select_param = replace_dollars_with_qn(get_sqlite_query!("select-parameter"));
+        let select_param: &'static str = get_sqlite_query!("select-parameter");
         let res = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&select_param)?;
+                    let mut stmt = c.prepare_cached(select_param)?;
                     stmt.query_row(params_from_iter([&name]), |row| row.get::<_, String>(0))
                         .optional()
                 },
@@ -435,20 +447,16 @@ impl SqlitePool {
 
     /// Upsert a `name`/`value` pair into the `parameters` table.
     async fn set_parameter(&self, name: &'static str, value: &str) -> DbResult<()> {
-        let upsert_param = replace_dollars_with_qn(get_sqlite_query!("upsert-parameter"));
+        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
         let value_s = value.to_owned();
         retry_on_transient_lock(|| {
-            let upsert_param = upsert_param.clone();
             let value_s = value_s.clone();
             async move {
                 self.writer
                     .call(
                         move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                             let tx = c.transaction()?;
-                            tx.execute(
-                                &upsert_param,
-                                params_from_iter([&name, &value_s.as_str()]),
-                            )?;
+                            tx.execute(upsert_param, params_from_iter([&name, &value_s.as_str()]))?;
                             tx.commit()?;
                             Ok(())
                         },
@@ -560,19 +568,19 @@ impl ObjectsStore for SqlitePool {
         let owner_s: String = owner.as_str().to_owned();
         let wrapping_key_id = object.wrapping_key_uid();
 
-        let insert_object = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
-        let insert_tag = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
+        let insert_object = get_sqlite_query!("insert-objects");
+        let insert_tag = get_sqlite_query!("insert-tags");
 
-        let uid_clone = uid.clone();
         let tags_owned: HashSet<String> = tags.clone();
+        let uid_for_closure = uid.clone();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
                     tx.execute(
-                        &insert_object,
+                        insert_object,
                         rusqlite::params![
-                            uid_clone,
+                            uid_for_closure,
                             object_json,
                             attributes_json,
                             state_s,
@@ -581,7 +589,10 @@ impl ObjectsStore for SqlitePool {
                         ],
                     )?;
                     for tag in &tags_owned {
-                        tx.execute(&insert_tag, params_from_iter([&uid_clone, tag.as_str()]))?;
+                        tx.execute(
+                            insert_tag,
+                            params_from_iter([&uid_for_closure, tag.as_str()]),
+                        )?;
                     }
                     tx.commit()?;
                     Ok(())
@@ -670,9 +681,9 @@ impl ObjectsStore for SqlitePool {
             .map_err(|e| InterfaceError::Db(format!("failed serializing attributes: {e}")))?;
         let wrapping_key_id = object.wrapping_key_uid();
 
-        let sql_update = replace_dollars_with_qn(get_sqlite_query!("update-object-with-object"));
-        let sql_delete_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
-        let sql_insert_tag = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
+        let sql_update: &'static str = get_sqlite_query!("update-object-with-object");
+        let sql_delete_tags: &'static str = get_sqlite_query!("delete-tags");
+        let sql_insert_tag: &'static str = get_sqlite_query!("insert-tags");
 
         let uid_s = uid.to_owned();
         let tags_owned: Option<HashSet<String>> = tags.cloned();
@@ -681,13 +692,13 @@ impl ObjectsStore for SqlitePool {
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
                     tx.execute(
-                        &sql_update,
+                        sql_update,
                         rusqlite::params![object_json, attributes_json, wrapping_key_id, uid_s],
                     )?;
                     if let Some(tags) = tags_owned.as_ref() {
-                        tx.execute(&sql_delete_tags, params_from_iter([&uid_s]))?;
+                        tx.execute(sql_delete_tags, params_from_iter([&uid_s]))?;
                         for tag in tags {
-                            tx.execute(&sql_insert_tag, params_from_iter([&uid_s, tag.as_str()]))?;
+                            tx.execute(sql_insert_tag, params_from_iter([&uid_s, tag.as_str()]))?;
                         }
                     }
                     tx.commit()?;
@@ -700,14 +711,14 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("update-object-with-state"));
+        let sql: &'static str = get_sqlite_query!("update-object-with-state");
         let state_s = state.to_string();
         let uid_s = uid.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([state_s, uid_s]))?;
+                    tx.execute(sql, params_from_iter([state_s, uid_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -718,18 +729,17 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
-        let del_obj = replace_dollars_with_qn(get_sqlite_query!("delete-object"));
-        let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
-        let del_access =
-            replace_dollars_with_qn(get_sqlite_query!("delete-read-access-for-object"));
+        let del_obj: &'static str = get_sqlite_query!("delete-object");
+        let del_tags: &'static str = get_sqlite_query!("delete-tags");
+        let del_access: &'static str = get_sqlite_query!("delete-read-access-for-object");
         let uid_s = uid.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&del_obj, params_from_iter([&uid_s]))?;
-                    tx.execute(&del_tags, params_from_iter([&uid_s]))?;
-                    tx.execute(&del_access, params_from_iter([&uid_s]))?;
+                    tx.execute(del_obj, params_from_iter([&uid_s]))?;
+                    tx.execute(del_tags, params_from_iter([&uid_s]))?;
+                    tx.execute(del_access, params_from_iter([&uid_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -745,7 +755,10 @@ impl ObjectsStore for SqlitePool {
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         let user_s: String = user.as_str().to_owned();
-        let ops_owned: Vec<OwnedOp> = operations.iter().map(OwnedOp::from).collect();
+        let mut ops_owned = Vec::with_capacity(operations.len());
+        for op in operations {
+            ops_owned.push(OwnedOp::from_atomic(op)?);
+        }
         let v = self
             .writer
             .call(
@@ -765,14 +778,14 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
-        let sql = get_sqlite_query!("has-row-objects").to_string();
+        let sql: &'static str = get_sqlite_query!("has-row-objects");
         let uid_s = uid.to_owned();
         let owner_s: String = owner.as_str().to_owned();
         let owned = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut stmt = c.prepare_cached(sql)?;
                     let exists = stmt.exists(params_from_iter([&uid_s, &owner_s]))?;
                     Ok(exists)
                 },
@@ -863,7 +876,7 @@ impl ObjectsStore for SqlitePool {
         wrapping_key_uid: &str,
         user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("find-wrapped-by"));
+        let sql: &'static str = get_sqlite_query!("find-wrapped-by");
         let uid_s = wrapping_key_uid.to_owned();
         let user_s: String = user.as_str().to_owned();
         let rows = self
@@ -873,7 +886,7 @@ impl ObjectsStore for SqlitePool {
                     Vec<(String, State, Attributes)>,
                     rusqlite::Error,
                 > {
-                    let mut stmt = c.prepare(&sql)?;
+                    let mut stmt = c.prepare(sql)?;
                     let mut q =
                         stmt.query(params_from_iter([uid_s.as_str(), user_s.as_str()]))?;
                     let mut out = Vec::new();
@@ -926,7 +939,7 @@ impl ObjectsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
 
-        let mut due = Vec::new();
+        let mut due = Vec::with_capacity(rows.len());
         for (uid, owner, attrs_json) in rows {
             let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
             if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
@@ -977,7 +990,7 @@ impl ObjectsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
 
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(rows.len());
         for (uid, attrs_json) in rows {
             let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
             results.push((uid, attrs));
@@ -1049,42 +1062,10 @@ impl ObjectsStore for SqlitePool {
 
 #[async_trait(?Send)]
 impl Migrate for SqlitePool {
-    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
-        let select_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("select-parameter")
-                .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
-        );
-        let res: Option<String> = self
-            .reader()
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&select_param)?;
-                    let row = stmt
-                        .query_row(params_from_iter([&"db_state"]), |row| {
-                            row.get::<_, String>(0)
-                        })
-                        .optional()?;
-                    Ok(row)
-                },
-            )
-            .await
-            .map_err(DbError::from)?;
-        match res {
-            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
-            None => Ok(None),
-        }
-    }
-
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
-        let upsert_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("upsert-parameter")
-                .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
-        );
+        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
         let state_json = serde_json::to_string(&state)?;
         retry_on_transient_lock(|| {
-            let upsert_param = upsert_param.clone();
             let state_json = state_json.clone();
             async move {
                 self.writer
@@ -1092,7 +1073,7 @@ impl Migrate for SqlitePool {
                         move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                             let tx = c.transaction()?;
                             tx.execute(
-                                &upsert_param,
+                                upsert_param,
                                 params_from_iter([&"db_state", &state_json.as_str()]),
                             )?;
                             tx.commit()?;
@@ -1107,39 +1088,10 @@ impl Migrate for SqlitePool {
         Ok(())
     }
 
-    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let select_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("select-parameter")
-                .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
-        );
-        let res: Option<String> = self
-            .reader()
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&select_param)?;
-                    let row = stmt
-                        .query_row(params_from_iter([&"db_version"]), |row| {
-                            row.get::<_, String>(0)
-                        })
-                        .optional()?;
-                    Ok(row)
-                },
-            )
-            .await
-            .map_err(DbError::from)?;
-        Ok(res)
-    }
-
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
-        let upsert_param = replace_dollars_with_qn(
-            PGSQL_QUERIES
-                .get("upsert-parameter")
-                .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
-        );
+        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
         let version_s = version.to_owned();
         retry_on_transient_lock(|| {
-            let upsert_param = upsert_param.clone();
             let version_s = version_s.clone();
             async move {
                 self.writer
@@ -1147,7 +1099,7 @@ impl Migrate for SqlitePool {
                         move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                             let tx = c.transaction()?;
                             tx.execute(
-                                &upsert_param,
+                                upsert_param,
                                 params_from_iter([&"db_version", &version_s.as_str()]),
                             )?;
                             tx.commit()?;
@@ -1169,7 +1121,7 @@ impl PermissionsStore for SqlitePool {
         &self,
         user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
-        let sql = get_sqlite_query!("select-objects-access-obtained").to_string();
+        let sql: &'static str = get_sqlite_query!("select-objects-access-obtained");
         let user_s: String = user.as_str().to_owned();
         let list = self
             .reader()
@@ -1178,7 +1130,7 @@ impl PermissionsStore for SqlitePool {
                     HashMap<String, (String, State, HashSet<KmipOperation>)>,
                     rusqlite::Error,
                 > {
-                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut stmt = c.prepare_cached(sql)?;
                     let mut rows = stmt.query(params_from_iter([&user_s]))?;
                     let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
                         HashMap::new();
@@ -1212,11 +1164,11 @@ impl PermissionsStore for SqlitePool {
         &self,
         uid: &str,
     ) -> InterfaceResult<HashMap<String, HashSet<KmipOperation>>> {
-        let sql = get_sqlite_query!("select-rows-read_access-with-object-id").to_string();
+        let sql: &'static str = get_sqlite_query!("select-rows-read_access-with-object-id");
         let uid_s = uid.to_owned();
         let map = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<HashMap<String, HashSet<KmipOperation>>, rusqlite::Error> {
-                let mut stmt = c.prepare_cached(&sql)?;
+                let mut stmt = c.prepare_cached(sql)?;
                 let mut rows = stmt.query(params_from_iter([&uid_s]))?;
                 let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::new();
                 while let Some(r) = rows.next()? {
@@ -1239,14 +1191,14 @@ impl PermissionsStore for SqlitePool {
         user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
-        let sql_select = get_sqlite_query!("select-user-accesses-for-object").to_string();
-        let sql_upsert = replace_dollars_with_qn(get_sqlite_query!("upsert-row-read_access"));
+        let sql_select: &'static str = get_sqlite_query!("select-user-accesses-for-object");
+        let sql_upsert: &'static str = get_sqlite_query!("upsert-row-read_access");
         let uid_s = uid.to_owned();
         let user_s: String = user.as_str().to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&sql_select)?;
+                    let mut stmt = c.prepare_cached(sql_select)?;
                     let mut perms: HashSet<KmipOperation> = stmt
                         .query_row(params_from_iter([&uid_s, &user_s]), |row| {
                             let raw: String = row.get(0)?;
@@ -1262,7 +1214,7 @@ impl PermissionsStore for SqlitePool {
                     perms.extend(operations.iter().copied());
                     let json_str = serde_json::to_string(&perms)
                         .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                    c.execute(&sql_upsert, params_from_iter([&uid_s, &user_s, &json_str]))?;
+                    c.execute(sql_upsert, params_from_iter([&uid_s, &user_s, &json_str]))?;
                     Ok(())
                 },
             )
@@ -1277,17 +1229,16 @@ impl PermissionsStore for SqlitePool {
         user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
-        let sql_select = get_sqlite_query!("select-user-accesses-for-object").to_string();
-        let sql_delete = replace_dollars_with_qn(get_sqlite_query!("delete-rows-read_access"));
-        let sql_update =
-            replace_dollars_with_qn(get_sqlite_query!("update-rows-read_access-with-permission"));
+        let sql_select: &'static str = get_sqlite_query!("select-user-accesses-for-object");
+        let sql_delete: &'static str = get_sqlite_query!("delete-rows-read_access");
+        let sql_update: &'static str = get_sqlite_query!("update-rows-read_access-with-permission");
         let uid_s = uid.to_owned();
         let user_s: String = user.as_str().to_owned();
         let operations = operations.clone();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&sql_select)?;
+                    let mut stmt = c.prepare_cached(sql_select)?;
                     let perms: HashSet<KmipOperation> = stmt
                         .query_row(params_from_iter([&uid_s, &user_s]), |row| {
                             let raw: String = row.get(0)?;
@@ -1300,12 +1251,12 @@ impl PermissionsStore for SqlitePool {
                     let perms: HashSet<KmipOperation> =
                         perms.difference(&operations).copied().collect();
                     if perms.is_empty() {
-                        c.execute(&sql_delete, params_from_iter([&uid_s, &user_s]))?;
+                        c.execute(sql_delete, params_from_iter([&uid_s, &user_s]))?;
                         return Ok(());
                     }
                     let json_str = serde_json::to_string(&perms)
                         .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                    c.execute(&sql_update, params_from_iter([&uid_s, &user_s, &json_str]))?;
+                    c.execute(sql_update, params_from_iter([&uid_s, &user_s, &json_str]))?;
                     Ok(())
                 },
             )
@@ -1333,10 +1284,8 @@ impl PermissionsStore for SqlitePool {
         activated_by: &str,
         revoked_by: &str,
     ) -> InterfaceResult<()> {
-        let revoke_sql =
-            replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
-        let insert_sql =
-            replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
+        let revoke_sql: &'static str = get_sqlite_query!("revoke-crypto-officer-activation");
+        let insert_sql: &'static str = get_sqlite_query!("insert-crypto-officer-activation");
         let sealed = sealed_record.to_owned();
         let activated_by_s = activated_by.to_owned();
         let revoked_by_s = revoked_by.to_owned();
@@ -1346,10 +1295,10 @@ impl PermissionsStore for SqlitePool {
                     let tx = c.transaction()?;
                     // Revoke only this user's prior active record (0 rows affected is fine).
                     tx.execute(
-                        &revoke_sql,
+                        revoke_sql,
                         params_from_iter([&revoked_by_s, &activated_by_s]),
                     )?;
-                    tx.execute(&insert_sql, params_from_iter([&sealed, &activated_by_s]))?;
+                    tx.execute(insert_sql, params_from_iter([&sealed, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -1363,15 +1312,13 @@ impl PermissionsStore for SqlitePool {
         &self,
         user: &str,
     ) -> InterfaceResult<Option<String>> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!(
-            "select-active-crypto-officer-activation-by"
-        ));
+        let sql: &'static str = get_sqlite_query!("select-active-crypto-officer-activation-by");
         let user_s = user.to_owned();
         let result: Option<String> = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    c.query_row(&sql, params_from_iter([&user_s]), |row| row.get(0))
+                    c.query_row(sql, params_from_iter([&user_s]), |row| row.get(0))
                         .optional()
                 },
             )
@@ -1381,14 +1328,12 @@ impl PermissionsStore for SqlitePool {
     }
 
     async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!(
-            "select-any-active-crypto-officer-activation"
-        ));
+        let sql: &'static str = get_sqlite_query!("select-any-active-crypto-officer-activation");
         let count: i64 = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<i64, rusqlite::Error> {
-                    c.query_row(&sql, [], |row| row.get(0))
+                    c.query_row(sql, [], |row| row.get(0))
                 },
             )
             .await
@@ -1401,14 +1346,14 @@ impl PermissionsStore for SqlitePool {
         revoked_by: &str,
         activated_by: &str,
     ) -> InterfaceResult<()> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
+        let sql: &'static str = get_sqlite_query!("revoke-crypto-officer-activation");
         let revoked_by_s = revoked_by.to_owned();
         let activated_by_s = activated_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([&revoked_by_s, &activated_by_s]))?;
+                    tx.execute(sql, params_from_iter([&revoked_by_s, &activated_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -1426,7 +1371,7 @@ impl PermissionsStore for SqlitePool {
         generated_at: &str,
         next_update: &str,
     ) -> InterfaceResult<()> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-crl"));
+        let sql: &'static str = get_sqlite_query!("upsert-crl");
         let issuer_id_s = issuer_id.to_owned();
         let crl_der_v = crl_der.to_vec();
 
@@ -1438,7 +1383,7 @@ impl PermissionsStore for SqlitePool {
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
                     tx.execute(
-                        &sql,
+                        sql,
                         rusqlite::params![
                             issuer_id_s,
                             crl_der_v,
@@ -1457,7 +1402,7 @@ impl PermissionsStore for SqlitePool {
     }
 
     async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("select-crl"));
+        let sql: &'static str = get_sqlite_query!("select-crl");
         let issuer_id_s = issuer_id.to_owned();
         let result: Option<(Vec<u8>, String)> = self
             .reader()
@@ -1466,7 +1411,7 @@ impl PermissionsStore for SqlitePool {
                     Option<(Vec<u8>, String)>,
                     rusqlite::Error,
                 > {
-                    c.query_row(&sql, rusqlite::params![issuer_id_s], |row| {
+                    c.query_row(sql, rusqlite::params![issuer_id_s], |row| {
                         Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?))
                     })
                     .optional()
@@ -1478,12 +1423,12 @@ impl PermissionsStore for SqlitePool {
     }
 
     async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!("list-crl-issuers"));
+        let sql: &'static str = get_sqlite_query!("list-crl-issuers");
         let result: Vec<(String, String)> = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Vec<(String, String)>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut stmt = c.prepare_cached(sql)?;
                     let mut q = stmt.query([])?;
                     let mut out = Vec::new();
                     while let Some(r) = q.next()? {
@@ -1563,12 +1508,12 @@ impl SqlitePool {
     }
 
     async fn perms(&self, uid: &str, userid: &str) -> DbResult<HashSet<KmipOperation>> {
-        let sql = get_sqlite_query!("select-user-accesses-for-object").to_string();
+        let sql: &'static str = get_sqlite_query!("select-user-accesses-for-object");
         let uid_s = uid.to_owned();
         let user_s = userid.to_owned();
         self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<HashSet<KmipOperation>, rusqlite::Error> {
-                let mut stmt = c.prepare_cached(&sql)?;
+                let mut stmt = c.prepare_cached(sql)?;
                 let res = stmt
                     .query_row(params_from_iter([&uid_s, &user_s]), |row| {
                         let raw: String = row.get(0)?;
@@ -1584,162 +1529,106 @@ impl SqlitePool {
     }
 }
 
-fn create_sqlite(
-    tx: &rusqlite::Transaction<'_>,
-    uid: Option<String>,
-    owner: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: &HashSet<String>,
-) -> DbResult<String> {
-    // If an explicit UID is provided and already exists, return a clear error
-    if let Some(ref explicit_uid) = uid {
-        let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
-        let exists = stmt.exists(params_from_iter([explicit_uid]))?;
-        if exists {
-            return Err(DbError::DatabaseError(
-                "one or more objects already exist".to_owned(),
-            ));
-        }
-    }
-    let object_json = serde_json::to_string(object).map_err(|e| {
-        DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
-    })?;
-    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
-        DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
-    })?;
-    let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-    let wrapping_key_id = object.wrapping_key_uid();
-
-    let sql = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
-    let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
-    let owner_s: String = owner.to_owned();
-    tx.execute(
-        &sql,
-        rusqlite::params![
-            uid,
-            object_json,
-            attributes_json,
-            state_s,
-            owner_s,
-            wrapping_key_id
-        ],
-    )?;
-
-    let sql = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
-    for tag in tags {
-        tx.execute(&sql, params_from_iter([&uid, tag.as_str()]))?;
-    }
-    Ok(uid)
-}
-
-fn update_object_sqlite(
-    tx: &rusqlite::Transaction<'_>,
-    uid: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: Option<&HashSet<String>>,
-) -> DbResult<()> {
-    let object_json = serde_json::to_string(object).map_err(|e| {
-        DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
-    })?;
-    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
-        DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
-    })?;
-    let wrapping_key_id = object.wrapping_key_uid();
-    let sql = replace_dollars_with_qn(get_sqlite_query!("update-object-with-object"));
-    let uid_s = uid.to_owned();
-    tx.execute(
-        &sql,
-        rusqlite::params![object_json, attributes_json, wrapping_key_id, uid_s],
-    )?;
-    if let Some(tags) = tags {
-        let del = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
-        tx.execute(&del, params_from_iter([&uid_s]))?;
-        let ins = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
-        for tag in tags {
-            tx.execute(&ins, params_from_iter([&uid_s, tag.as_str()]))?;
-        }
-    }
-    Ok(())
-}
-
-fn upsert_sqlite(
-    tx: &rusqlite::Transaction<'_>,
-    uid: &str,
-    owner: &str,
-    object: &Object,
-    attributes: &Attributes,
-    tags: Option<&HashSet<String>>,
-    state: State,
-) -> DbResult<()> {
-    let object_json = serde_json::to_string(object).map_err(|e| {
-        DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
-    })?;
-    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
-        DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
-    })?;
-    let wrapping_key_id = object.wrapping_key_uid();
-    let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-object"));
-    let state_s = state.to_string();
-    let uid_s = uid.to_owned();
-    let owner_s: String = owner.to_owned();
-    let rows_affected = tx.execute(
-        &sql,
-        rusqlite::params![
-            uid_s,
-            object_json,
-            attributes_json,
-            state_s,
-            owner_s,
-            wrapping_key_id
-        ],
-    )?;
-    if rows_affected == 0 {
-        return Err(DbError::Unauthorized(format!(
-            "User '{owner_s}' does not own object '{uid_s}' and cannot overwrite it"
-        )));
-    }
-    if let Some(tags) = tags {
-        let del = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
-        tx.execute(&del, params_from_iter([&uid_s]))?;
-        let ins = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
-        for tag in tags {
-            tx.execute(&ins, params_from_iter([&uid_s, tag.as_str()]))?;
-        }
-    }
-    Ok(())
-}
-
 // atomic_sqlite replaced by apply_owned_ops using an owned op representation
 
 #[derive(Clone)]
 enum OwnedOp {
-    Create((String, Object, Attributes, HashSet<String>)),
-    Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
-    UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
-    UpdateState((String, State)),
+    Create {
+        uid: String,
+        object_json: String,
+        attributes_json: String,
+        wrapping_key_id: Option<String>,
+        state_s: String,
+        tags: HashSet<String>,
+    },
+    Upsert {
+        uid: String,
+        object_json: String,
+        attributes_json: String,
+        wrapping_key_id: Option<String>,
+        tags: Option<HashSet<String>>,
+        state_s: String,
+    },
+    UpdateObject {
+        uid: String,
+        object_json: String,
+        attributes_json: String,
+        wrapping_key_id: Option<String>,
+        tags: Option<HashSet<String>>,
+    },
+    UpdateState {
+        uid: String,
+        state_s: String,
+    },
     Delete(String),
 }
 
-impl From<&AtomicOperation> for OwnedOp {
-    fn from(op: &AtomicOperation) -> Self {
+impl OwnedOp {
+    fn from_atomic(op: &AtomicOperation) -> DbResult<Self> {
         match op {
             AtomicOperation::Create((uid, _owner, obj, attrs, tags)) => {
-                Self::Create((uid.clone(), obj.clone(), attrs.clone(), tags.clone()))
+                let object_json = serde_json::to_string(obj).map_err(|e| {
+                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                })?;
+                let attributes_json = serde_json::to_string(attrs).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "failed serializing the attributes to JSON: {e}"
+                    ))
+                })?;
+                let wrapping_key_id = obj.wrapping_key_uid();
+                let state_s = attrs.state.unwrap_or(State::PreActive).to_string();
+                Ok(Self::Create {
+                    uid: uid.clone(),
+                    object_json,
+                    attributes_json,
+                    wrapping_key_id,
+                    state_s,
+                    tags: tags.clone(),
+                })
             }
-            AtomicOperation::Upsert((uid, obj, attrs, tags, state)) => Self::Upsert((
-                uid.clone(),
-                obj.clone(),
-                attrs.clone(),
-                tags.clone(),
-                *state,
-            )),
+            AtomicOperation::Upsert((uid, obj, attrs, tags, state)) => {
+                let object_json = serde_json::to_string(obj).map_err(|e| {
+                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                })?;
+                let attributes_json = serde_json::to_string(attrs).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "failed serializing the attributes to JSON: {e}"
+                    ))
+                })?;
+                let wrapping_key_id = obj.wrapping_key_uid();
+                let state_s = state.to_string();
+                Ok(Self::Upsert {
+                    uid: uid.clone(),
+                    object_json,
+                    attributes_json,
+                    wrapping_key_id,
+                    tags: tags.clone(),
+                    state_s,
+                })
+            }
             AtomicOperation::UpdateObject((uid, obj, attrs, tags)) => {
-                Self::UpdateObject((uid.clone(), obj.clone(), attrs.clone(), tags.clone()))
+                let object_json = serde_json::to_string(obj).map_err(|e| {
+                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                })?;
+                let attributes_json = serde_json::to_string(attrs).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "failed serializing the attributes to JSON: {e}"
+                    ))
+                })?;
+                let wrapping_key_id = obj.wrapping_key_uid();
+                Ok(Self::UpdateObject {
+                    uid: uid.clone(),
+                    object_json,
+                    attributes_json,
+                    wrapping_key_id,
+                    tags: tags.clone(),
+                })
             }
-            AtomicOperation::UpdateState((uid, state)) => Self::UpdateState((uid.clone(), *state)),
-            AtomicOperation::Delete(uid) => Self::Delete(uid.clone()),
+            AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
+                uid: uid.clone(),
+                state_s: state.to_string(),
+            }),
+            AtomicOperation::Delete(uid) => Ok(Self::Delete(uid.clone())),
         }
     }
 }
@@ -1750,37 +1639,211 @@ fn apply_owned_ops(
     ops: &[OwnedOp],
 ) -> DbResult<Vec<String>> {
     let mut uids = Vec::with_capacity(ops.len());
+    let ins_obj_sql = get_sqlite_query!("insert-objects");
+    let ins_tag_sql = get_sqlite_query!("insert-tags");
+    let upd_obj_sql = get_sqlite_query!("update-object-with-object");
+    let del_tag_sql = get_sqlite_query!("delete-tags");
+    let ups_obj_sql = get_sqlite_query!("upsert-object");
+    let upd_st_sql = get_sqlite_query!("update-object-with-state");
+    let del_obj_sql = get_sqlite_query!("delete-object");
+    let del_acc_sql = get_sqlite_query!("delete-read-access-for-object");
+
     for op in ops {
         match op {
-            OwnedOp::Create((uid, obj, attrs, tags)) => {
-                create_sqlite(tx, Some(uid.clone()), owner, obj, attrs, tags)?;
+            OwnedOp::Create {
+                uid,
+                object_json,
+                attributes_json,
+                wrapping_key_id,
+                state_s,
+                tags,
+            } => {
+                let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+                let exists = stmt.exists(params_from_iter([uid]))?;
+                if exists {
+                    return Err(DbError::DatabaseError(
+                        "one or more objects already exist".to_owned(),
+                    ));
+                }
+                tx.execute(
+                    ins_obj_sql,
+                    rusqlite::params![
+                        uid,
+                        object_json,
+                        attributes_json,
+                        state_s,
+                        owner,
+                        wrapping_key_id,
+                    ],
+                )?;
+                for tag in tags {
+                    tx.execute(ins_tag_sql, params_from_iter([uid, tag.as_str()]))?;
+                }
                 uids.push(uid.clone());
             }
-            OwnedOp::Upsert((uid, obj, attrs, tags, state)) => {
-                upsert_sqlite(tx, uid, owner, obj, attrs, tags.as_ref(), *state)?;
+            OwnedOp::Upsert {
+                uid,
+                object_json,
+                attributes_json,
+                wrapping_key_id,
+                tags,
+                state_s,
+            } => {
+                let rows_affected = tx.execute(
+                    ups_obj_sql,
+                    rusqlite::params![
+                        uid,
+                        object_json,
+                        attributes_json,
+                        state_s,
+                        owner,
+                        wrapping_key_id,
+                    ],
+                )?;
+                if rows_affected == 0 {
+                    return Err(DbError::Unauthorized(format!(
+                        "User '{owner}' does not own object '{uid}' and cannot overwrite it"
+                    )));
+                }
+                if let Some(tags) = tags {
+                    tx.execute(del_tag_sql, params_from_iter([uid]))?;
+                    for tag in tags {
+                        tx.execute(ins_tag_sql, params_from_iter([uid, tag.as_str()]))?;
+                    }
+                }
                 uids.push(uid.clone());
             }
-            OwnedOp::UpdateObject((uid, obj, attrs, tags)) => {
-                update_object_sqlite(tx, uid, obj, attrs, tags.as_ref())?;
+            OwnedOp::UpdateObject {
+                uid,
+                object_json,
+                attributes_json,
+                wrapping_key_id,
+                tags,
+            } => {
+                tx.execute(
+                    upd_obj_sql,
+                    rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
+                )?;
+                if let Some(tags) = tags {
+                    tx.execute(del_tag_sql, params_from_iter([uid]))?;
+                    for tag in tags {
+                        tx.execute(ins_tag_sql, params_from_iter([uid, tag.as_str()]))?;
+                    }
+                }
                 uids.push(uid.clone());
             }
-            OwnedOp::UpdateState((uid, state)) => {
-                let sql = replace_dollars_with_qn(get_sqlite_query!("update-object-with-state"));
-                let state_s = state.to_string();
-                tx.execute(&sql, params_from_iter([&state_s, uid]))?;
+            OwnedOp::UpdateState { uid, state_s } => {
+                tx.execute(upd_st_sql, params_from_iter([state_s, uid]))?;
                 uids.push(uid.clone());
             }
             OwnedOp::Delete(uid) => {
-                let del_obj = replace_dollars_with_qn(get_sqlite_query!("delete-object"));
-                tx.execute(&del_obj, params_from_iter([uid]))?;
-                let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
-                tx.execute(&del_tags, params_from_iter([uid]))?;
-                let del_access =
-                    replace_dollars_with_qn(get_sqlite_query!("delete-read-access-for-object"));
-                tx.execute(&del_access, params_from_iter([uid]))?;
+                tx.execute(del_obj_sql, params_from_iter([uid]))?;
+                tx.execute(del_tag_sql, params_from_iter([uid]))?;
+                tx.execute(del_acc_sql, params_from_iter([uid]))?;
                 uids.push(uid.clone());
             }
         }
     }
     Ok(uids)
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kms_interfaces::PermissionsStore;
+    use tempfile::TempDir;
+
+    use super::SqlitePool;
+    use crate::{
+        DbError,
+        error::DbResult,
+        stores::migrate::{DbState, Migrate},
+    };
+
+    /// Fail unless the `parameters` row `name` currently holds `expected`.
+    async fn expect_parameter(
+        pool: &SqlitePool,
+        name: &'static str,
+        expected: &str,
+    ) -> DbResult<()> {
+        let actual = pool.get_parameter(name).await?;
+        if actual.as_deref() != Some(expected) {
+            return Err(DbError::DatabaseError(format!(
+                "parameter '{name}': expected {expected:?}, got {actual:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// A freshly initialised database records its version and a `ready` state in the
+    /// `parameters` table, and `set_db_state` / `set_current_db_version` overwrite them
+    /// using the serialized (`snake_case`) representation read back by other backends.
+    #[tokio::test]
+    async fn test_migration_markers_roundtrip() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let pool = SqlitePool::instantiate(&dir.path().join("markers.db"), true, None).await?;
+
+        expect_parameter(&pool, "db_version", env!("CARGO_PKG_VERSION")).await?;
+        expect_parameter(&pool, "db_state", "\"ready\"").await?;
+
+        pool.set_db_state(DbState::Upgrading).await?;
+        expect_parameter(&pool, "db_state", "\"upgrading\"").await?;
+
+        pool.set_current_db_version("0.0.1-test").await?;
+        expect_parameter(&pool, "db_version", "0.0.1-test").await
+    }
+
+    /// Re-opening an existing database (`clear_database == false`) must not reset the
+    /// recorded state or version.
+    #[tokio::test]
+    async fn test_migration_markers_survive_reopen() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let file = dir.path().join("reopen.db");
+        {
+            let pool = SqlitePool::instantiate(&file, true, None).await?;
+            pool.set_db_state(DbState::Upgrading).await?;
+            pool.set_current_db_version("0.0.2-test").await?;
+        }
+        let reopened = SqlitePool::instantiate(&file, false, None).await?;
+        expect_parameter(&reopened, "db_state", "\"upgrading\"").await?;
+        expect_parameter(&reopened, "db_version", "0.0.2-test").await
+    }
+
+    /// Fail unless the `crls` table holds exactly `expected` issuers.
+    async fn expect_crl_issuers(pool: &SqlitePool, expected: usize) -> DbResult<()> {
+        let actual = pool
+            .list_crl_issuers()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?
+            .len();
+        if actual != expected {
+            return Err(DbError::DatabaseError(format!(
+                "crls: expected {expected} issuer(s), got {actual}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `clear_database` must also empty the `crls` table, not leave stale CRLs behind.
+    #[tokio::test]
+    async fn test_clear_database_empties_crls() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let file = dir.path().join("crls.db");
+        {
+            let pool = SqlitePool::instantiate(&file, true, None).await?;
+            pool.upsert_crl(
+                "issuer",
+                &[1, 2, 3],
+                1,
+                "2026-01-01T00:00:00Z",
+                "2026-01-02T00:00:00Z",
+            )
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+            expect_crl_issuers(&pool, 1).await?;
+        }
+        // Re-opening without clearing keeps the CRL...
+        expect_crl_issuers(&SqlitePool::instantiate(&file, false, None).await?, 1).await?;
+        // ...clearing removes it.
+        expect_crl_issuers(&SqlitePool::instantiate(&file, true, None).await?, 0).await
+    }
 }

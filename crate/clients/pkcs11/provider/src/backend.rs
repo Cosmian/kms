@@ -28,8 +28,9 @@ use crate::{
     kms_object::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_import_object,
-        kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
+        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_generate_random,
+        kms_import_object, kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify,
+        locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -41,6 +42,7 @@ use crate::{
 
 pub(crate) const COSMIAN_PKCS11_DISK_ENCRYPTION_TAG: &str = "disk-encryption";
 pub(crate) const COSMIAN_PKCS11_SSH_KEY_TAG: &str = "ssh-auth";
+pub(crate) const COSMIAN_PKCS11_GNUPG_KEY_TAG: &str = "gnupg-card";
 
 /// Extract the `Id` from a `SearchOptions`, returning an error if `All` was passed.
 /// Centralises the "find requires an ID" check shared by four `Backend` methods.
@@ -106,12 +108,7 @@ impl CliBackend {
     }
 
     fn create_public_key_from_id(&self, id: &str) -> Option<Arc<dyn PublicKey>> {
-        let kms_object = match get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            id,
-            KeyFormatType::PKCS8,
-        ) {
+        let kms_object = match get_kms_object(&self.kms_rest_client, id, KeyFormatType::PKCS8) {
             Ok(o) => o,
             Err(e) => {
                 warn!("create_public_key_from_id: failed to export public key {id}: {e}, skipping");
@@ -281,15 +278,24 @@ impl Backend for CliBackend {
         trace!("find_all_certificates");
         let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
-        let kms_objects = get_kms_certificate_objects(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &[disk_encryption_tag, SYSTEM_TAG_CERTIFICATE.to_owned()],
-        )?;
-        let mut result = Vec::with_capacity(kms_objects.len());
-        for dao in kms_objects {
-            let data_object: Arc<dyn Certificate> = Arc::new(Pkcs11Certificate::try_from(dao)?);
-            result.push(data_object);
+        let gnupg_key_tag = std::env::var("COSMIAN_PKCS11_GNUPG_KEY_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned());
+
+        let mut seen = std::collections::HashSet::new();
+        let mut result = vec![];
+        for tag in [disk_encryption_tag, gnupg_key_tag] {
+            let kms_objects = get_kms_certificate_objects(
+                &self.kms_rest_client,
+                &self.vendor_id,
+                &[tag, SYSTEM_TAG_CERTIFICATE.to_owned()],
+            )?;
+            for dao in kms_objects {
+                if seen.insert(dao.remote_id.clone()) {
+                    let certificate: Arc<dyn Certificate> =
+                        Arc::new(Pkcs11Certificate::try_from(dao)?);
+                    result.push(certificate);
+                }
+            }
         }
         Ok(result)
     }
@@ -297,12 +303,7 @@ impl Backend for CliBackend {
     fn find_private_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
         let id = require_id(query, "find_private_key")?;
-        let kms_object = get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &id,
-            KeyFormatType::PKCS8,
-        )?;
+        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
     }
 
@@ -344,18 +345,29 @@ impl Backend for CliBackend {
             }
         }
 
+        let gnupg_key_tag = std::env::var("COSMIAN_PKCS11_GNUPG_KEY_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned());
+        let gnupg_ids = locate_kms_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &[gnupg_key_tag, SYSTEM_TAG_PRIVATE_KEY.to_owned()],
+        )
+        .unwrap_or_default();
+        for id in gnupg_ids {
+            if seen.insert(id.clone()) {
+                if let Some(private_key) = self.create_private_key_from_id(&id) {
+                    private_keys.push(private_key);
+                }
+            }
+        }
+
         Ok(private_keys)
     }
 
     fn find_public_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
         trace!("find_public_key: {:?}", query);
         let id = require_id(query, "find_public_key")?;
-        let kms_object = get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &id,
-            KeyFormatType::PKCS8,
-        )?;
+        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
         Ok(Arc::new(Pkcs11PublicKey::try_from_kms_object(&kms_object)?))
     }
 
@@ -424,7 +436,6 @@ impl Backend for CliBackend {
         let id = require_id(query, "find_symmetric_key")?;
         let kms_object = get_kms_object(
             &self.kms_rest_client,
-            &self.vendor_id,
             &id,
             KeyFormatType::TransparentSymmetricKey,
         )?;
@@ -454,12 +465,7 @@ impl Backend for CliBackend {
     fn find_data_object(&self, query: SearchOptions) -> ModuleResult<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
         let id = require_id(query, "find_data_object")?;
-        match get_kms_object(
-            &self.kms_rest_client,
-            &self.vendor_id,
-            &id,
-            KeyFormatType::Raw,
-        ) {
+        match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::Raw) {
             Ok(kms_object) => Ok(Some(Arc::new(Pkcs11DataObject::try_from_kms_object(
                 kms_object,
             )?))),
@@ -596,6 +602,10 @@ impl Backend for CliBackend {
         Ok(Arc::new(Pkcs11SymmetricKey::try_from_kms_object(
             kms_object,
         )?))
+    }
+
+    fn generate_random(&self, buf: &mut [u8]) -> ModuleResult<()> {
+        Ok(kms_generate_random(&self.kms_rest_client, buf)?)
     }
 
     fn create_object(&self, label: &str, data: &[u8]) -> ModuleResult<Arc<dyn DataObject>> {

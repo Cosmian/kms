@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Public};
 
+use super::pgp_ops;
 use crate::{
     core::{
         KMS,
@@ -72,16 +73,20 @@ impl CryptoOpSpec for SignatureVerifyOp {
             Object::PublicKey { .. } | Object::PrivateKey { .. } => {
                 owm.has_usage_mask(CryptographicUsageMask::Verify, true)
             }
+            Object::PGPKey { .. } => owm.has_usage_mask(CryptographicUsageMask::Verify, true),
             _ => false,
         }
     }
 
-    async fn execute_local(
+    fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
         _user: &UserId,
     ) -> KResult<Self::Response> {
+        if matches!(owm.object(), Object::PGPKey { .. }) {
+            return pgp_ops::pgp_signature_verify(owm, request);
+        }
         let verification_key = extract_verification_key(owm.object())?;
 
         // Resolve cryptographic parameters: prefer request values, but fall back to
@@ -103,9 +108,9 @@ impl CryptoOpSpec for SignatureVerifyOp {
             .ok_or_else(|| KmsError::InvalidRequest("Missing signature_data".to_owned()))?;
 
         // Validate input data
-        let data_to_verify = match (&request.data, &request.digested_data) {
-            (Some(data), None) => data.clone(),
-            (None, Some(digested_data)) => digested_data.clone(),
+        let data_to_verify: &[u8] = match (&request.data, &request.digested_data) {
+            (Some(data), None) => data.as_slice(),
+            (None, Some(digested_data)) => digested_data.as_slice(),
             (Some(_), Some(_)) => {
                 return Err(KmsError::InvalidRequest(
                     "Cannot provide both data and digested_data".to_owned(),
@@ -136,7 +141,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
                 .is_some_and(|a| a.is_pqc_signature())
             {
                 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_verify;
-                let valid = ml_dsa_verify(&verification_key, &data_to_verify, signature_data)?;
+                let valid = ml_dsa_verify(&verification_key, data_to_verify, signature_data)?;
                 let vi = if valid {
                     ValidityIndicator::Valid
                 } else {
@@ -153,7 +158,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
 
         let validity_indicator = verify_signature(
             &verification_key,
-            &data_to_verify,
+            data_to_verify,
             signature_data,
             &crypto_params,
             request.digested_data.is_some(),
@@ -363,9 +368,9 @@ fn handle_streaming_verification(
     };
 
     // Get data to process
-    let data_to_process = match (&request.data, &request.digested_data) {
-        (Some(data), None) => data.clone(),
-        (None, Some(digested_data)) => digested_data.clone(),
+    let data_to_process: &[u8] = match (&request.data, &request.digested_data) {
+        (Some(data), None) => data.as_slice(),
+        (None, Some(digested_data)) => digested_data.as_slice(),
         (Some(_), Some(_)) => {
             return Err(KmsError::InvalidRequest(
                 "Cannot provide both data and digested_data".to_owned(),
@@ -373,7 +378,7 @@ fn handle_streaming_verification(
         }
         (None, None) if request.final_indicator == Some(true) => {
             // Final call may have no data if all data was processed in previous calls
-            Vec::new()
+            &[]
         }
         (None, None) => {
             return Err(KmsError::InvalidRequest(
@@ -390,7 +395,7 @@ fn handle_streaming_verification(
 
         // Combine all accumulated data with current data
         let mut all_data = correlation_data;
-        all_data.extend_from_slice(&data_to_process);
+        all_data.extend_from_slice(data_to_process);
 
         let validity_indicator = verify_signature(
             verification_key,
@@ -409,8 +414,7 @@ fn handle_streaming_verification(
     } else {
         // Intermediate call - accumulate data
         let mut accumulated_data = correlation_data;
-        accumulated_data.extend_from_slice(&data_to_process);
-
+        accumulated_data.extend_from_slice(data_to_process);
         Ok(SignatureVerifyResponse {
             unique_identifier: UniqueIdentifier::TextString(unique_identifier),
             validity_indicator: None, // No verification result until final call

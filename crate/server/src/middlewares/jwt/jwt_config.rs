@@ -6,6 +6,7 @@
 
 use std::{fmt, sync::Arc};
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_logger::trace;
 #[cfg(not(feature = "insecure"))]
 use jsonwebtoken::Algorithm;
@@ -132,8 +133,12 @@ pub(crate) struct UserClaim {
     pub google_email: Option<String>,
 }
 
+/// Registered JOSE header parameters (RFC 7515 §4.1) of a JWT.
+///
+/// Parsed from the raw first segment of the compact token so that parameters
+/// unknown to the `jsonwebtoken` crate (notably `crit`) are visible to the
+/// server and can be enforced by [`JwtTokenHeaders::validate`].
 #[derive(Debug, Deserialize)]
-#[expect(dead_code)]
 pub(crate) struct JwtTokenHeaders {
     typ: Option<String>,
     cty: Option<String>,
@@ -142,7 +147,85 @@ pub(crate) struct JwtTokenHeaders {
     x5t: Option<String>,
     x5u: Option<String>,
     x5c: Option<Vec<String>>,
-    crit: Option<String>,
+    crit: Option<Vec<String>>,
+}
+
+impl JwtTokenHeaders {
+    /// Parse the JOSE header of a compact-serialized JWT.
+    pub(crate) fn from_token(token: &str) -> KResult<Self> {
+        let segment = token
+            .split('.')
+            .next()
+            .filter(|segment| !segment.is_empty())
+            .ok_or_else(|| KmsError::Unauthorized("JWT headers are missing".to_owned()))?;
+        let raw = URL_SAFE_NO_PAD
+            .decode(segment)
+            .map_err(|err| KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}")))?;
+        serde_json::from_slice(&raw)
+            .map_err(|err| KmsError::Unauthorized(format!("JWT headers are malformed: {err:?}")))
+    }
+
+    /// Reject JOSE header extensions this server does not implement, whatever the
+    /// authenticator:
+    /// - `crit` must be absent: RFC 7515 §4.1.11 requires rejecting tokens that
+    ///   carry critical extensions the recipient does not understand, and none is
+    ///   implemented (`jsonwebtoken` parses `crit` but never enforces it);
+    /// - `cty` must not announce a nested JWT (RFC 7519 §5.2), which is not supported.
+    pub(crate) fn reject_unsupported_extensions(&self) -> KResult<()> {
+        if let Some(crit) = &self.crit {
+            return Err(KmsError::Unauthorized(format!(
+                "Unsupported critical JWT header parameters: {crit:?}"
+            )));
+        }
+        if self
+            .cty
+            .as_deref()
+            .is_some_and(|cty| cty.eq_ignore_ascii_case("JWT"))
+        {
+            return Err(KmsError::Unauthorized(
+                "Nested JWTs (cty=JWT) are not supported".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Enforce the header rules of the JWKS-keyed authenticators:
+    /// - `alg` and `kid` must be present and non-blank (the key is always selected
+    ///   from the configured JWKS, never from the token);
+    /// - unsupported extensions are rejected, see
+    ///   [`JwtTokenHeaders::reject_unsupported_extensions`].
+    ///
+    /// Embedded key material (`x5u`, `x5c`, `x5t`) is never trusted; its presence is
+    /// only logged.
+    pub(crate) fn validate(&self) -> KResult<()> {
+        kms_ensure!(
+            self.alg
+                .as_deref()
+                .is_some_and(|alg| !alg.trim().is_empty()),
+            KmsError::Unauthorized("No 'alg' header present in token".to_owned())
+        );
+        kms_ensure!(
+            self.kid
+                .as_deref()
+                .is_some_and(|kid| !kid.trim().is_empty()),
+            KmsError::Unauthorized("No 'kid' header present in token".to_owned())
+        );
+        self.reject_unsupported_extensions()?;
+        if self.x5u.is_some() || self.x5c.is_some() || self.x5t.is_some() {
+            trace!(
+                "ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), \
+                 x5t: {:?}); the key is taken from the configured JWKS",
+                self.x5u,
+                self.x5c.as_ref().map_or(0, Vec::len),
+                self.x5t
+            );
+        }
+        trace!(
+            "valid_jwt headers: typ={:?} alg={:?} kid={:?}",
+            self.typ, self.alg, self.kid
+        );
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -160,18 +243,14 @@ pub struct JwtConfig {
 impl JwtConfig {
     /// Decode a JWT bearer header
     pub(crate) fn decode_bearer_header(&self, authorization_content: &str) -> KResult<UserClaim> {
-        let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
+        let (scheme, token) = authorization_content.split_once(' ').ok_or_else(|| {
+            KmsError::Unauthorized("Bad authorization header content (missing bearer)".to_owned())
+        })?;
         kms_ensure!(
-            bearer.first().ok_or_else(|| KmsError::Unauthorized(
-                "Bad authorization header content (missing bearer)".to_owned()
-            ))? == &"Bearer"
-                && bearer.get(1).is_some(),
+            scheme.eq_ignore_ascii_case("Bearer"),
             KmsError::Unauthorized("Bad authorization header content (bad bearer)".to_owned())
         );
 
-        let token: &str = bearer.get(1).ok_or_else(|| {
-            KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
-        })?;
         self.validate_authentication_token(token, true)
     }
 
@@ -222,6 +301,9 @@ impl JwtConfig {
     ) -> KResult<UserClaim> {
         let header = decode_header(token)
             .map_err(|e| KmsError::Unauthorized(format!("Failed to decode token header: {e}")))?;
+
+        // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here.
+        JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
 
         // Reject symmetric / unknown algorithms before touching the JWKS key material.
         check_jwt_algorithm(header.alg)?;
@@ -276,6 +358,93 @@ impl JwtConfig {
             .map_err(|e| KmsError::Unauthorized(format!("Cannot validate token: {e}")))?;
 
         Ok(token_data.claims)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod jwt_headers_tests {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
+    use super::JwtTokenHeaders;
+    fn token_with_header(header: &str) -> String {
+        format!("{}.e30.c2ln", URL_SAFE_NO_PAD.encode(header))
+    }
+
+    fn rejection(header: &str) -> String {
+        let headers = JwtTokenHeaders::from_token(&token_with_header(header)).unwrap();
+        headers
+            .validate()
+            .err()
+            .map_or_else(String::new, |error| error.to_string())
+    }
+
+    /// A regular Google-style header validates.
+    #[test]
+    fn valid_header_is_accepted() {
+        let headers = JwtTokenHeaders::from_token(&token_with_header(
+            r#"{"alg":"RS256","typ":"JWT","kid":"k1"}"#,
+        ))
+        .unwrap();
+        headers.validate().unwrap();
+    }
+
+    /// `alg` and `kid` are mandatory and must not be blank.
+    #[test]
+    fn missing_or_blank_alg_and_kid_are_rejected() {
+        assert!(rejection(r#"{"kid":"k1"}"#).contains("'alg'"));
+        assert!(rejection(r#"{"alg":"RS256"}"#).contains("'kid'"));
+        assert!(rejection(r#"{"alg":"RS256","kid":"  "}"#).contains("'kid'"));
+        assert!(rejection(r#"{"alg":"","kid":"k1"}"#).contains("'alg'"));
+    }
+
+    /// Any `crit` parameter is rejected (RFC 7515 §4.1.11): no extension is understood.
+    #[test]
+    fn crit_is_rejected() {
+        let message = rejection(r#"{"alg":"RS256","kid":"k1","crit":["b64"],"b64":false}"#);
+        assert!(message.contains("critical"), "{message}");
+    }
+
+    /// The extension check shared by every authenticator must not require `kid`
+    /// (auth-verifier tokens carry none) but must still reject `crit` and nested JWTs.
+    #[test]
+    fn extension_check_is_independent_of_kid() {
+        let check = |header: &str| {
+            JwtTokenHeaders::from_token(&token_with_header(header))
+                .unwrap()
+                .reject_unsupported_extensions()
+                .err()
+                .map_or_else(String::new, |error| error.to_string())
+        };
+        assert!(check(r#"{"alg":"RS256"}"#).is_empty());
+        assert!(check(r#"{"alg":"RS256","crit":["exp"]}"#).contains("critical"));
+        assert!(check(r#"{"alg":"RS256","cty":"JWT"}"#).contains("Nested"));
+    }
+
+    /// Nested JWTs are not supported, whatever the case of `cty`.
+    #[test]
+    fn nested_jwt_is_rejected() {
+        assert!(rejection(r#"{"alg":"RS256","kid":"k1","cty":"jwt"}"#).contains("Nested"));
+        // other content types are not nested JWTs
+        assert!(rejection(r#"{"alg":"RS256","kid":"k1","cty":"application/json"}"#).is_empty());
+    }
+
+    /// Embedded key material and unknown parameters do not affect validation.
+    #[test]
+    fn embedded_key_material_is_tolerated() {
+        let message = rejection(
+            r#"{"alg":"ES256","kid":"k1","x5u":"https://e.example/c.pem","x5c":["QUJD"],"x5t":"t","unknown":1}"#,
+        );
+        assert!(message.is_empty(), "{message}");
+    }
+
+    /// Structurally invalid tokens never produce headers.
+    #[test]
+    fn malformed_tokens_are_rejected() {
+        for token in ["", ".e30.c2ln", "!!!.e30.c2ln", "bm90LWpzb24.e30.c2ln"] {
+            let result = JwtTokenHeaders::from_token(token);
+            assert!(result.is_err(), "{token:?} must be rejected");
+        }
     }
 }
 

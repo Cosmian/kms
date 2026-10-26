@@ -20,6 +20,9 @@ pub struct TlsWizardResult {
     /// Populated when self-signed certs were generated; clients need the CA
     /// cert to authenticate the server.
     pub generated_client_cert: Option<PathBuf>,
+    /// Private key matching `generated_client_cert`; the client needs both to
+    /// authenticate via mTLS. Populated together with `generated_client_cert`.
+    pub generated_client_key: Option<PathBuf>,
 }
 
 pub fn configure_tls() -> KResult<TlsWizardResult> {
@@ -36,6 +39,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
             tls: TlsConfig::default(),
             generated_ca_cert: None,
             generated_client_cert: None,
+            generated_client_key: None,
         });
     }
 
@@ -145,6 +149,11 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
             } else {
                 None
             },
+            generated_client_key: if enable_mtls {
+                Some(paths.client_key)
+            } else {
+                None
+            },
         });
     }
 
@@ -192,6 +201,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
                 },
                 generated_ca_cert: None,
                 generated_client_cert: None,
+                generated_client_key: None,
             });
         }
     }
@@ -243,6 +253,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
         },
         generated_ca_cert: None,
         generated_client_cert: None,
+        generated_client_key: None,
     })
 }
 

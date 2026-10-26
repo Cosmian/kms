@@ -29,6 +29,8 @@ mod test_jwt;
 
 pub mod test_env;
 
+pub mod mock_gmail;
+
 pub mod vector_runner;
 
 use std::sync::Once;
@@ -64,6 +66,14 @@ mod auth_verifier_tests;
 
 #[cfg(test)]
 mod openapi_validation;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pgp_gnupg_tests;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pgp_tests;
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]

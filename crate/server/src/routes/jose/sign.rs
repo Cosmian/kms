@@ -64,8 +64,10 @@ pub(crate) async fn sign(
     let payload_b64 = body.data.as_str();
 
     // RFC 7515 §2: signing_input = ASCII(protected_b64 + "." + payload_b64)
-    let signing_input = format!("{protected_b64}.{payload_b64}");
-    let signing_input_bytes = signing_input.as_bytes().to_vec();
+    let mut signing_input_bytes = Vec::with_capacity(protected_b64.len() + 1 + payload_b64.len());
+    signing_input_bytes.extend_from_slice(protected_b64.as_bytes());
+    signing_input_bytes.push(b'.');
+    signing_input_bytes.extend_from_slice(payload_b64.as_bytes());
 
     let kmip_params = jose_to_kmip_params(body.alg, None)?;
     let sign_req = KmipSign {

@@ -20,6 +20,9 @@ pub struct GmailApiConf {
     pub auth_provider_x509_cert_url: String,
     pub client_x509_cert_url: String,
     pub universe_domain: String,
+    /// Gmail API base URL (default: `https://gmail.googleapis.com/gmail/v1/users/`). Override only for testing or a private Google universe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gmail_api_base_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]

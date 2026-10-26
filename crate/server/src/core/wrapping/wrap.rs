@@ -197,7 +197,7 @@ async fn wrap_using_kms(
     // fetch the wrapping key
     let wrapping_key = kms
         .database
-        .retrieve_object(wrapping_key_uid)
+        .retrieve_object_arc(wrapping_key_uid)
         .await
         .context("wrap using KMS")?;
     let wrapping_key = wrapping_key.ok_or_else(|| {
@@ -221,7 +221,7 @@ async fn wrap_using_kms(
             // fetch the private key
             let wrapping_key = kms
                 .database
-                .retrieve_object(&pk_id)
+                .retrieve_object_arc(&pk_id)
                 .await
                 .context("wrapping using the KMS")?;
             wrapping_key.ok_or_else(|| {
@@ -265,9 +265,9 @@ async fn wrap_using_kms(
     // If the wrapping key is itself wrapped, we must unwrap it first
     let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
         debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
-        let mut wrapping_key_object = wrapping_key.object().clone();
-        Box::pin(unwrap_object(&mut wrapping_key_object, kms, user)).await?;
-        wrapping_key_object.clone()
+        let mut obj = wrapping_key.object().clone();
+        Box::pin(unwrap_object(&mut obj, kms, user)).await?;
+        obj
     } else {
         wrapping_key.object().clone()
     };
@@ -310,7 +310,12 @@ async fn wrap_using_kms(
         object.key_block()?.key_format_type
     );
     // wrap the object
-    wrap_object_with_key(object, &wrapping_key_object, key_wrapping_specification)?;
+    wrap_object_with_key(
+        object,
+        &wrapping_key_object,
+        key_wrapping_specification,
+        &kms.rng,
+    )?;
     Ok(())
 }
 
@@ -370,12 +375,13 @@ async fn wrap_using_crypto_oracle(
         metrics.record_hsm_operation("Wrap", model);
     }
 
-    let wrapped_key = [
-        encrypted_content.iv.clone().unwrap_or_default(),
-        encrypted_content.ciphertext.clone(),
-        encrypted_content.tag.unwrap_or_default(),
-    ]
-    .concat();
+    let iv = encrypted_content.iv.as_deref().unwrap_or(b"");
+    let tag = encrypted_content.tag.as_deref().unwrap_or(b"");
+    let mut wrapped_key =
+        Vec::with_capacity(iv.len() + encrypted_content.ciphertext.len() + tag.len());
+    wrapped_key.extend_from_slice(iv);
+    wrapped_key.extend_from_slice(&encrypted_content.ciphertext);
+    wrapped_key.extend_from_slice(tag);
 
     // update the key block with the wrapped key
     let object_key_block = object.key_block_mut()?;

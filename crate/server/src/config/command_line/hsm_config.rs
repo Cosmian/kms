@@ -8,6 +8,7 @@ const HSM_ADMIN_DEFAULT: &str = "admin";
 /// Supported HSM models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HsmModel {
+    Luna,
     Proteccio,
     Crypt2pay,
     Utimaco,
@@ -21,6 +22,7 @@ pub enum HsmModel {
 
 impl HsmModel {
     pub const VARIANTS: &'static [Self] = &[
+        Self::Luna,
         Self::Proteccio,
         Self::Crypt2pay,
         Self::Utimaco,
@@ -35,6 +37,7 @@ impl HsmModel {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Luna => "luna",
             Self::Proteccio => "proteccio",
             Self::Crypt2pay => "crypt2pay",
             Self::Utimaco => "utimaco",
@@ -58,13 +61,14 @@ impl fmt::Display for HsmModel {
 #[serde(default)]
 pub struct HsmConfig {
     /// The HSM model.
-    /// `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+    /// `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
     /// `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
     /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
         verbatim_doc_comment,
         long,
         value_parser([
+            "luna",
             "proteccio",
             "crypt2pay",
             "utimaco",
@@ -81,7 +85,7 @@ pub struct HsmConfig {
 
     /// List of KMS usernames that are granted HSM admin privileges.
     /// HSM admins can create, destroy, and potentially export objects on the HSM.
-    /// Use `"*"` as the only entry to grant all authenticated users admin access.
+    /// Use "*" as the only entry to grant all authenticated users admin access.
     /// Repeat the option or use a comma-separated list to specify multiple admins:
     ///   `--hsm-admin alice@example.com --hsm-admin bob@example.com`
     ///   or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`

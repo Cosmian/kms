@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use actix_web::{
     HttpRequest, post,
@@ -65,7 +65,7 @@ pub(crate) async fn encrypt(
             .await
         }
         JoseAlgorithm::Dir => {
-            encrypt_dir(&kms, &user, body.kid, body.enc, &plaintext, body.aad).await
+            encrypt_dir(&kms, &user, body.kid, body.enc, plaintext, body.aad).await
         }
         _ => Err(CryptoApiError::UnsupportedAlgorithm(format!(
             "Algorithm '{}' is not a key-management algorithm. Supported: dir, RSA-OAEP, \
@@ -81,7 +81,7 @@ async fn encrypt_dir(
     user: &UserId,
     kid: String,
     enc: super::JoseEncAlgorithm,
-    plaintext: &[u8],
+    plaintext: Vec<u8>,
     aad: Option<String>,
 ) -> CryptoResult<CryptoEncryptResponse> {
     let kmip_params = jose_to_kmip_params(JoseAlgorithm::Dir, Some(enc))?;
@@ -90,12 +90,12 @@ async fn encrypt_dir(
     let protected_json = format!(r#"{{"alg":"dir","enc":"{enc}","kid":"{kid}"}}"#);
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
-    let aad_bytes = build_jwe_aad(&protected_b64, aad.as_deref())?;
+    let aad_bytes = build_jwe_aad(&protected_b64, aad.as_deref())?.into_owned();
 
     let encrypt_req = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(kid)),
         cryptographic_parameters: Some(kmip_params),
-        data: Some(Zeroizing::new(plaintext.to_vec())),
+        data: Some(Zeroizing::new(plaintext)),
         i_v_counter_nonce: None,
         authenticated_encryption_additional_data: Some(aad_bytes),
         ..Default::default()
@@ -235,7 +235,7 @@ async fn encrypt_rsa_oaep(
     let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
 
     // Step 1: Generate random CEK
-    let cek = generate_cek(enc)?;
+    let cek = generate_cek(enc, &kms.rng)?;
 
     // Step 2: Wrap CEK with RSA-OAEP
     let wrapped_cek = ckm_rsa_pkcs_oaep_key_wrap(&public_key, oaep_hash, mgf1_hash, None, &cek)
@@ -262,7 +262,7 @@ async fn encrypt_rsa_oaep(
     let aad_bytes = build_jwe_aad(&protected_b64, aad.as_deref())?;
 
     // Step 3: AES-GCM encrypt plaintext with the ephemeral CEK
-    let output = aes_gcm_encrypt(&cek, enc, plaintext, &aad_bytes)?;
+    let output = aes_gcm_encrypt(&cek, enc, plaintext, aad_bytes.as_ref(), &kms.rng)?;
 
     // CEK is Zeroizing — dropped automatically here
 
@@ -280,16 +280,19 @@ async fn encrypt_rsa_oaep(
 ///
 /// - No external `aad`: `ASCII(protected_b64)`
 /// - With external `aad`: `ASCII(protected_b64 + "." + aad_b64)`
-pub(crate) fn build_jwe_aad(
-    protected_b64: &str,
+pub(crate) fn build_jwe_aad<'a>(
+    protected_b64: &'a str,
     external_aad_b64: Option<&str>,
-) -> Result<Vec<u8>, CryptoApiError> {
+) -> Result<Cow<'a, [u8]>, CryptoApiError> {
     match external_aad_b64 {
-        None => Ok(protected_b64.as_bytes().to_vec()),
+        None => Ok(Cow::Borrowed(protected_b64.as_bytes())),
         Some(aad_b64) => {
             b64_decode("aad", aad_b64)?;
-            let aad_string = format!("{protected_b64}.{aad_b64}");
-            Ok(aad_string.into_bytes())
+            let mut aad = Vec::with_capacity(protected_b64.len() + 1 + aad_b64.len());
+            aad.extend_from_slice(protected_b64.as_bytes());
+            aad.push(b'.');
+            aad.extend_from_slice(aad_b64.as_bytes());
+            Ok(Cow::Owned(aad))
         }
     }
 }

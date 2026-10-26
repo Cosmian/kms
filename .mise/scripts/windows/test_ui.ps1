@@ -252,7 +252,7 @@ try {
     # from being overwhelmed by concurrent crypto operations, which saturates the
     # tokio reactor and causes actix-web to return 408 Request Timeout before it
     # can even read incoming request bodies.
-    $env:PLAYWRIGHT_WORKERS = "4"
+    $env:PLAYWRIGHT_WORKERS = "2"
     try {
         Invoke-Checked $pnpmCmd @("run", "test:e2e")
     }

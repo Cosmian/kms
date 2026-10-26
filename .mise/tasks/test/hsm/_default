@@ -22,8 +22,26 @@ bash "${TASK_DIR}/hsm-softhsm2" --variant "$VARIANT" --link "$LINK" --db "$DB"
 bash "${TASK_DIR}/hsm-kryoptic" --variant "$VARIANT" --link "$LINK" --db "$DB"
 if [ "$(uname)" = "Linux" ]; then
   bash "${TASK_DIR}/hsm-utimaco" --variant "$VARIANT" --link "$LINK" --db "$DB"
-  bash "${TASK_DIR}/hsm-proteccio" --variant "$VARIANT" --link "$LINK" --db "$DB"
-  bash "${TASK_DIR}/hsm-crypt2pay" --variant "$VARIANT" --link "$LINK" --db "$DB"
+
+  # Proteccio and Crypt2Pay talk to real hardware and need credentials that are only
+  # available in CI (or in an optional ~/.cosmian/<hsm>.sh for local runs). Skip them with
+  # a warning when the credentials are absent instead of failing the whole group.
+  for hsm_model in proteccio crypt2pay; do
+    if [[ -f "${HOME}/.cosmian/${hsm_model}.sh" ]]; then
+      # shellcheck source=/dev/null
+      source "${HOME}/.cosmian/${hsm_model}.sh"
+    fi
+  done
+  if has_env_vars PROTECCIO_PASSWORD PROTECCIO_SLOT; then
+    bash "${TASK_DIR}/hsm-proteccio" --variant "$VARIANT" --link "$LINK" --db "$DB"
+  else
+    print_warning "Skipping proteccio — required env vars not set: PROTECCIO_PASSWORD PROTECCIO_SLOT"
+  fi
+  if has_env_vars CRYPT2PAY_PASSWORD; then
+    bash "${TASK_DIR}/hsm-crypt2pay" --variant "$VARIANT" --link "$LINK" --db "$DB"
+  else
+    print_warning "Skipping crypt2pay — required env vars not set: CRYPT2PAY_PASSWORD"
+  fi
 fi
 
 print_success "All HSM tests completed"

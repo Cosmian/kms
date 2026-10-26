@@ -90,7 +90,7 @@ pub(crate) async fn list_accesses(
     let span = tracing::span!(tracing::Level::ERROR, "list_accesses");
     let _enter = span.enter();
 
-    let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
+    let object_id = UniqueIdentifier::TextString(object_id.into_inner().0);
     let user = kms.get_user(&req);
     info!(user = user.as_str(), "GET /access/list/{object_id} {user}");
 

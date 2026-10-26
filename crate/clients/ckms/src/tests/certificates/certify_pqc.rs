@@ -302,12 +302,9 @@ async fn test_certify_ml_kem_512_ca_issued() -> CosmianResult<()> {
     let (_, attrs, _) = fetch_pqc_certificate(&owner_conf, &cert_id, "ML-KEM-512 Subject");
     let issuer_link = attrs.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(issuer_link.to_string(), ca_cert_id);
-    assert!(
-        !attrs
-            .get_link(LinkType::PublicKeyLink)
-            .unwrap()
-            .to_string()
-            .is_empty()
+    assert_ne!(
+        attrs.get_link(LinkType::PublicKeyLink).unwrap().to_string(),
+        ""
     );
     Ok(())
 }
@@ -662,12 +659,12 @@ async fn test_certify_pqc_slh_dsa_ca_signs_ml_dsa_leaf() -> CosmianResult<()> {
     let (_, leaf_attributes, _) = fetch_pqc_certificate(&owner_conf, &leaf_cert_id, "ML-DSA Leaf");
     let cert_link = leaf_attributes.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(cert_link.to_string(), ca_cert_id);
-    assert!(
-        !leaf_attributes
+    assert_ne!(
+        leaf_attributes
             .get_link(LinkType::PublicKeyLink)
             .unwrap()
-            .to_string()
-            .is_empty()
+            .to_string(),
+        ""
     );
     Ok(())
 }

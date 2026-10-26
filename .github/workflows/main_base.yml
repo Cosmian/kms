@@ -16,20 +16,78 @@ jobs:
     secrets: inherit
 
   cargo-clippy:
-    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
     with:
       toolchain: ${{ inputs.toolchain }}
 
   cargo-deny:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
     name: Security Audit
     with:
       toolchain: ${{ inputs.toolchain }}
 
   cargo-machete:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
     with:
       toolchain: ${{ inputs.toolchain }}
+
+  cargo-vet:
+    name: Supply chain — cargo vet
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - name: Install cargo-vet
+        run: cargo install --locked cargo-vet@0.10.2
+
+      - name: cargo vet check
+        run: cargo vet check --locked
+
+  python-dependency-audit:
+    name: Supply chain — pip-audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Audit Python requirements
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/pip-audit-venv
+          source /tmp/pip-audit-venv/bin/activate
+          pip install --quiet pip-audit==2.10.1
+          for f in \
+            .mise/scripts/test/requirements-pkcs11-check.txt \
+            .mise/scripts/test/requirements-jose.txt \
+            .mise/scripts/test/requirements-cef.txt \
+            .mise/scripts/test/requirements-audit-compat.txt \
+            .mise/scripts/docs/requirements.txt; do
+            echo "::group::pip-audit $f"
+            pip-audit -r "$f"
+            echo "::endgroup::"
+          done
+
+  govulncheck:
+    name: Supply chain — govulncheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+      - name: Run govulncheck
+        working-directory: .mise/scripts/kmip-go
+        run: govulncheck -test ./...
 
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
@@ -48,12 +106,12 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
 
     steps:
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: 1.97.0
           components: rustfmt, clippy
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -81,14 +139,14 @@ jobs:
 
   build-documentation:
     name: Build documentation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - name: Install mdBook toolchain
-        run: curl -fsSL https://raw.githubusercontent.com/Cosmian/doc-theme/main/scripts/setup-mdbook.sh | sh
+        run: bash documentation/theme/scripts/setup-mdbook.sh
 
       - name: Build documentation
         run: |
@@ -97,14 +155,14 @@ jobs:
 
   linkcheck:
     name: Check documentation links
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - name: Link check
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
         with:
           args: --config lychee.toml 'documentation/docs/**/*.md'
           fail: false
@@ -112,16 +170,16 @@ jobs:
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
       || startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - name: Deploy documentation in staging
         if: ${{ github.ref_name == 'develop' }}
-        uses: benc-uk/workflow-dispatch@v1
+        uses: benc-uk/workflow-dispatch@d004979be141727c7a17c28f603e2facc40d0855 # v1
         with:
           workflow: staging.yml
           repo: Cosmian/public_documentation
@@ -130,7 +188,7 @@ jobs:
 
       - name: Deploy documentation in prod
         if: startsWith(github.ref, 'refs/tags')
-        uses: benc-uk/workflow-dispatch@v1
+        uses: benc-uk/workflow-dispatch@d004979be141727c7a17c28f603e2facc40d0855 # v1
         with:
           workflow: prod.yml
           repo: Cosmian/public_documentation

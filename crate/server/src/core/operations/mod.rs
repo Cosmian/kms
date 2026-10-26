@@ -1,7 +1,7 @@
 mod activate;
 mod attributes;
 mod auto_rotate;
-mod certify;
+pub(crate) mod certify;
 mod check;
 mod create;
 mod create_key_pair;
@@ -24,6 +24,7 @@ pub(crate) mod key_ops;
 mod locate;
 mod mac;
 mod message;
+pub(crate) mod pgp_ops;
 mod pkcs11;
 mod query;
 mod recertify;
@@ -46,14 +47,16 @@ pub(crate) use check::check;
 pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use create_split_key::create_split_key;
-pub(crate) use decrypt::decrypt;
+pub(crate) use decrypt::{DecryptOp, decrypt};
 pub(crate) use derive_key::derive_key;
 pub(crate) use destroy::destroy_operation;
 #[cfg(feature = "non-fips")]
 pub(crate) use destroy::recursively_destroy_object;
 pub(crate) use discover_versions::discover_versions;
+#[cfg(test)]
+pub(crate) use dispatch::check_role_permission;
 pub(crate) use dispatch::dispatch;
-pub(crate) use encrypt::encrypt;
+pub(crate) use encrypt::{EncryptOp, encrypt};
 pub(crate) use export::export;
 pub(crate) use export_get::export_get;
 pub(crate) use get::get;
@@ -62,6 +65,8 @@ pub(crate) use import::import;
 pub(crate) use join_split_key::{join_split_key, perform_crypto_officer_ceremony_activation};
 pub(crate) use locate::locate;
 pub(crate) use mac::{mac, mac_verify};
+#[cfg(test)]
+pub(crate) use message::MAX_BATCH_ITEMS;
 pub(crate) use message::message;
 pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;

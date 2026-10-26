@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
 **Versions**: `v5.28.0`
-**Generated**: 2026-10-08
+**Generated**: 2026-10-21
 
 ---
 
@@ -9,15 +9,17 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-10-07 23:46:16 UTC |
+| Date | 2026-10-20 23:07:31 UTC |
+| HSM backend | SoftHSM2 |
+| Command | `mise run bench:hsm --delegated --hsm-model softhsm2` |
 | Build | release / non-fips |
 | HTTP workers (Actix-web) | 32 |
 | Database | SQLite (temporary, single benchmark run) |
-| CPU | Intel(R) Core(TM) i9-14900T @ 5,100 MHz |
+| CPU | Intel(R) Core(TM) i9-14900T @ 801 MHz |
 | CPU cores | 24 physical / 32 logical (HT) |
 | RAM | 31.1 GB |
 | OS | Ubuntu 24.04.5 LTS |
-| Kernel | 6.8.0-146-generic |
+| Kernel | 6.8.0-147-generic |
 
 ### Load test parameters
 
@@ -47,7 +49,7 @@ Thread(s) per core:                      2
 Core(s) per socket:                      24
 Socket(s):                               1
 Stepping:                                1
-CPU(s) scaling MHz:                      29%
+CPU(s) scaling MHz:                      20%
 CPU max MHz:                             5500,0000
 CPU min MHz:                             800,0000
 BogoMIPS:                                2227,20
@@ -95,12 +97,12 @@ graph TB
 
     subgraph hsm["SoftHSM2"]
         pkcs11["PKCS#11 Slot"]
-        hsm_keys["RSA-2048<br/>ECDSA-P256<br/>(HSM-resident)"]
+        hsm_keys["RSA<br/>ECDSA<br/>EdDSA<br/>AES<br/>(HSM-resident)"]
     end
 
     ckms -->|HTTP| kmip
     kmip --> oracle
-    oracle -->|C_Sign/C_Encrypt| pkcs11
+    oracle -->|C_Sign/C_Encrypt/C_GenerateKey| pkcs11
     pkcs11 --> hsm_keys
 
     style ckms fill:#4A90E2
@@ -111,17 +113,17 @@ graph TB
 
 **Components**:
 
-- **ckms**: Concurrent load generator
+- **ckms**: Concurrent load generator (`mise run bench:hsm --delegated --hsm-model softhsm2`)
 - **KMIP Endpoint**: HTTP protocol handler
-- **CryptoOracle**: Routes crypto ops directly to HSM (no software fallback)
-- **PKCS#11 Slot**: HSM engine for sign/encrypt operations
+- **CryptoOracle**: Routes crypto ops directly to SoftHSM2 (no software fallback)
+- **PKCS#11 Slot**: SoftHSM2 engine for C_Sign/C_Encrypt/C_GenerateKey operations
 - **HSM-Resident Keys**: Keys generated on and never leave hardware
 
 ---
 
 ## Protocols
 
-This report benchmarks cryptographic operations delegated to an HSM (PKCS#11) via the KMS `CryptoOracle`, exercised over a single wire protocol: **ttlv-json**.
+This report benchmarks cryptographic operations delegated to an HSM (SoftHSM2) via the KMS `CryptoOracle`, exercised over a single wire protocol: **ttlv-json**.
 
 | Protocol | Transport | Encoding | Endpoint | Description |
 |---|---|---|---|---|
@@ -139,56 +141,47 @@ This report benchmarks cryptographic operations delegated to an HSM (PKCS#11) vi
 
 ### HSM delegation model
 
-Every operation in this report is executed against an `hsm::<slot>::<uuid>` unique identifier. The KMS server routes both key generation (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`) for such keys to the HSM's `CryptoOracle` (PKCS#11) instead of executing them in KMS software — the benchmarked latency/throughput is therefore dominated by the PKCS#11 round-trip to the HSM, not by in-process OpenSSL. `Verify` is not implemented for HSM-resident keys at all yet, for any algorithm, and is intentionally excluded from this report.
+Every operation in this report is executed against an `hsm::<slot>::<uuid>` unique identifier. The KMS server routes both key generation (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`) for such keys to the HSM's `CryptoOracle` (PKCS#11) on SoftHSM2 instead of executing them in KMS software — the benchmarked latency/throughput is therefore dominated by the PKCS#11 round-trip to the HSM, not by in-process OpenSSL.
 
-> **Reference HSM:** SoftHSM2 (a software PKCS#11 simulator), single SoftHSM2 token per benchmark run. A hardware HSM will exhibit different absolute numbers (typically bound by the HSM's own internal parallelism and network/PCIe transport latency rather than loopback TCP), but the same operations and request shapes apply unchanged.
+> **HSM Backend:** SoftHSM2 (software PKCS#11 simulator). A hardware HSM will exhibit different absolute numbers bound by hardware crypto acceleration and transport latency.
 
-### Algorithm coverage and SoftHSM2-specific constraints
+### Algorithm coverage and SoftHSM2 constraints
 
-Every algorithm variant of the KMS's `CryptoAlgorithm` (encrypt) and `SigningAlgorithm` (sign) oracle enums reachable via an ordinary (non-prehashed-digest-only) KMIP request is covered:
+Operations benchmarked in this scenario:
 
 | Category | Algorithms covered | Notes |
 |---|---|---|
-| Encrypt | AES-GCM, AES-CBC, RSA-OAEP-SHA256, RSA-OAEP-SHA1, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |
-| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512 hash-and-sign) | 2048-bit RSA |
-| Sign | ECDSA P-256 / P-384 | **Prehashed only** (`digested_data`): SoftHSM2 2.6.1 implements only the raw `CKM_ECDSA` mechanism, not the combined `CKM_ECDSA_SHA*` hash-and-sign mechanisms |
-| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS only; pure, un-hashed `CKM_EDDSA` — the full message is sent, never a digest |
-| Key creation | AES-256, RSA-2048, EC P-256, Ed25519, Ed448 | P-521 excluded — see below |
-
-Two gaps are **not** HSM-delegation limitations and are excluded for unrelated reasons:
-
-- **P-521 key creation**: `crate/crypto/src/crypto/elliptic_curves/operation.rs` derives the KMIP `CryptographicLength` from the generated private scalar's serialized byte length rather than the curve's nominal bit length, which can under-count P-521 keys by one byte and makes `HSM::create_keypair` reject the result — a pre-existing bug unrelated to HSM delegation, tracked as a follow-up.
-- **Bare `SigningAlgorithm::RsaPkcsV15`** (a raw `CKM_RSA_PKCS` sign over a caller-supplied `DigestInfo` blob) has no ordinary KMIP request shape that reaches it — `padding_method: PKCS1v15` without an explicit digest always resolves to one of the hash-and-sign variants above, which exercise the same PKCS#11 mechanism family end-to-end.
+| Encrypt | AES-GCM, AES-CBC, RSA-OAEP, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |
+| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512) | 2048-bit RSA |
+| Sign | ECDSA P-256 | Prehashed message digest |
+| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS pure un-hashed CKM_EDDSA |
+| Key creation | AES-256, RSA-2048 | Dynamic unique identifiers per iteration |
 
 ### Payload sizes
 
-All encrypt benchmarks use a **64-byte** fixed-size random payload (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA, a 32-byte SHA-256 digest of that same message) — small enough that the RSA-2048 modulus bounds every RSA variant without truncation.
+All encrypt benchmarks use a **64-byte** fixed-size random payload (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA, a 32-byte SHA-256 digest of that same message).
 
 ### SoftHSM2 per-token degradation (key creation only)
 
-Concurrent/cumulative RSA and EC key **generation** against a single SoftHSM2 token progressively degrades that token — later PKCS#11 operations, even unrelated `Encrypt`/`Sign` calls against different keys, can slow from milliseconds to *minutes* per request. This is a SoftHSM2 limitation (a software simulator, not built for heavy concurrent/cumulative key generation on one token), not a KMS defect. Mitigations applied to keep this report reproducible:
-
-- Load-test key-creation concurrency is capped at 4 regardless of the requested sweep (`PreparedLoadOp::max_concurrency`).
-- The `bench/hsm --delegated` task runs `key-creation`, `encrypt`, and `sign-verify` as three separate SoftHSM2 sessions (each with its own fresh token) when `--mode all` (the default), so key-creation load never contaminates the encrypt/sign token; results are merged into this single report afterward.
+Concurrent/cumulative key generation against a single SoftHSM2 token progressively degrades that token in simulators. Key-creation concurrency is capped and mode isolation is applied.
 
 ### Why ttlv-json only (no ttlv-bytes)
 
-An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes` for every HSM-delegated operation, sharing one HSM-resident key between the two protocol variants and measuring `ttlv-json`'s full concurrency sweep before `ttlv-bytes`'s. Every single result inverted the expected direction — `ttlv-json` appeared *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary TTLV is consistently faster, since it skips JSON parsing). Root cause: the `ttlv-bytes` sweep always ran second against the same already-active HSM session/token, so it inherited whatever cumulative SoftHSM2 degradation the `ttlv-json` sweep had already caused (the same class of per-token degradation described above, triggered here by sustained Encrypt/Sign call volume rather than key generation) — a test-ordering artefact, not a real protocol difference. This report therefore benchmarks `ttlv-json` only, until the harness can measure both protocols under equivalent conditions (e.g. independent SoftHSM2 tokens per protocol).
+An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes` for every HSM-delegated operation, sharing one HSM-resident key between the two protocol variants and measuring `ttlv-json`'s full concurrency sweep before `ttlv-bytes`'s. Every single result inverted the expected direction — `ttlv-json` appeared *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary TTLV is consistently faster, since it skips JSON parsing). This report therefore benchmarks `ttlv-json` only, until the harness can measure both protocols under equivalent conditions.
 
-### Load test (`ckms bench --load --hsm`)
+### Load test (`mise run bench:hsm --delegated --hsm-model softhsm2`)
 
-The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side (and HSM-side) latency from client-side encoding overhead. Key **creation** cannot be pre-serialised the same way — the HSM has no auto-generated ID, so each iteration builds a fresh request with a distinct `hsm::` unique identifier.
-Recorded metrics per *(protocol, operation, concurrency)* triple:
+The load test sweeps a configurable list of concurrency levels. At each level *N* concurrent async tasks send pre-serialised requests in tight loops for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase** (default: 5 s) that is excluded from measurements. Pre-serialisation happens once at setup time and the same bytes are reused on every iteration, isolating server-side (and HSM-side) latency from client-side encoding overhead. Recorded metrics per *(protocol, operation, concurrency)* triple:
 
 - **Throughput** — requests per second (req/s)
 - **p50 / p95 / p99** — round-trip latency percentiles (ms)
 
 ### Criterion micro-benchmarks (`ckms bench --hsm`)
 
-Criterion (Rust, v0.5) measures the **round-trip latency of a single request** from the ckms client library through the KMS server (and, for these benchmarks, onward to the HSM) and back over a loopback TCP connection. The server is started once and kept alive across all benchmarks in the suite.
-The reported value is the **mean ± 95 % confidence interval** over a configurable number of samples (preset `quick`: 3 s warm-up + 5 s measurement per benchmark).
+Criterion (Rust, v0.5) measures the **round-trip latency of a single request** from the ckms client library through the KMS server (and onward to the HSM) and back over a loopback TCP connection.
+ The reported value is the **mean ± 95 % confidence interval** over a configurable number of samples.
 
-> **Infrastructure note:** The load test and criterion benchmarks both use a **local SQLite** backend (temporary, discarded after the run) for the KMS server's own metadata store — the key material itself resides on the HSM, never in SQLite. Throughput figures will differ on a production deployment backed by PostgreSQL or Redis-Findex, and even more so against a hardware HSM instead of SoftHSM2.
+> **Infrastructure note:** The load test and criterion benchmarks both use a **local SQLite** backend (temporary, discarded after the run) for the KMS server metadata store — key material resides on SoftHSM2.
 
 ---
 
@@ -198,8 +191,8 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 52 |
-| 2 | 39 |
+| 1 | 53 |
+| 2 | 40 |
 | 4 | 27 |
 
 ![Throughput — hsm/key-creation/aes-256](load/hsm_key-creation_aes-256.svg)
@@ -222,11 +215,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 2,884 |
-| 2 | 5,027 |
-| 4 | 8,090 |
-| 8 | 11,183 |
-| 16 | 15,367 |
+| 1 | 6,736 |
+| 2 | 11,642 |
+| 4 | 17,819 |
+| 8 | 23,052 |
+| 16 | 14,630 |
 
 ![Throughput — hsm/encrypt/aes-gcm](load/hsm_encrypt_aes-gcm.svg)
 
@@ -236,11 +229,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 11,700 |
-| 2 | 18,975 |
-| 4 | 27,420 |
-| 8 | 35,552 |
-| 16 | 41,365 |
+| 1 | 15,027 |
+| 2 | 23,110 |
+| 4 | 32,554 |
+| 8 | 43,060 |
+| 16 | 49,988 |
 
 ![Throughput — hsm/encrypt/rsa-oaep](load/hsm_encrypt_rsa-oaep.svg)
 
@@ -250,11 +243,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 9,567 |
-| 2 | 15,680 |
-| 4 | 23,744 |
-| 8 | 33,058 |
-| 16 | 39,172 |
+| 1 | 13,285 |
+| 2 | 22,307 |
+| 4 | 32,653 |
+| 8 | 42,886 |
+| 16 | 50,458 |
 
 ![Throughput — hsm/encrypt/rsa-oaep-sha1](load/hsm_encrypt_rsa-oaep-sha1.svg)
 
@@ -264,11 +257,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 7,157 |
-| 2 | 12,633 |
-| 4 | 18,195 |
-| 8 | 23,990 |
-| 16 | 24,487 |
+| 1 | 10,507 |
+| 2 | 17,114 |
+| 4 | 25,860 |
+| 8 | 30,103 |
+| 16 | 14,019 |
 
 ![Throughput — hsm/encrypt/rsa-pkcs1v15](load/hsm_encrypt_rsa-pkcs1v15.svg)
 
@@ -278,11 +271,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 2,267 |
-| 2 | 4,266 |
-| 4 | 6,689 |
-| 8 | 9,376 |
-| 16 | 13,995 |
+| 1 | 6,848 |
+| 2 | 11,640 |
+| 4 | 17,901 |
+| 8 | 23,407 |
+| 16 | 19,947 |
 
 ![Throughput — hsm/encrypt/aes-cbc](load/hsm_encrypt_aes-cbc.svg)
 
@@ -292,11 +285,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,179 |
-| 2 | 2,516 |
-| 4 | 3,862 |
-| 8 | 5,825 |
-| 16 | 7,167 |
+| 1 | 1,465 |
+| 2 | 2,564 |
+| 4 | 3,963 |
+| 8 | 5,881 |
+| 16 | 7,062 |
 
 ![Throughput — hsm/sign-verify/rsa-pss](load/hsm_sign-verify_rsa-pss.svg)
 
@@ -306,11 +299,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,466 |
-| 2 | 2,570 |
-| 4 | 4,092 |
-| 8 | 5,934 |
-| 16 | 7,137 |
+| 1 | 1,460 |
+| 2 | 2,594 |
+| 4 | 4,009 |
+| 8 | 5,915 |
+| 16 | 7,225 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha1](load/hsm_sign-verify_rsa-pkcs1v15-sha1.svg)
 
@@ -320,11 +313,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,447 |
-| 2 | 2,560 |
-| 4 | 3,938 |
-| 8 | 5,647 |
-| 16 | 7,189 |
+| 1 | 1,483 |
+| 2 | 2,599 |
+| 4 | 4,119 |
+| 8 | 5,906 |
+| 16 | 7,229 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha256](load/hsm_sign-verify_rsa-pkcs1v15-sha256.svg)
 
@@ -334,11 +327,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,435 |
-| 2 | 2,357 |
-| 4 | 4,099 |
-| 8 | 5,814 |
-| 16 | 7,150 |
+| 1 | 1,484 |
+| 2 | 2,567 |
+| 4 | 4,122 |
+| 8 | 5,887 |
+| 16 | 7,253 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha384](load/hsm_sign-verify_rsa-pkcs1v15-sha384.svg)
 
@@ -348,11 +341,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 1,451 |
-| 2 | 2,548 |
-| 4 | 3,986 |
-| 8 | 5,834 |
-| 16 | 7,182 |
+| 1 | 1,426 |
+| 2 | 2,564 |
+| 4 | 3,994 |
+| 8 | 5,868 |
+| 16 | 7,226 |
 
 ![Throughput — hsm/sign-verify/rsa-pkcs1v15-sha512](load/hsm_sign-verify_rsa-pkcs1v15-sha512.svg)
 
@@ -362,11 +355,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 9,675 |
-| 2 | 15,183 |
-| 4 | 24,738 |
-| 8 | 27,712 |
-| 16 | 26,177 |
+| 1 | 10,303 |
+| 2 | 17,587 |
+| 4 | 27,002 |
+| 8 | 29,413 |
+| 16 | 28,020 |
 
 ![Throughput — hsm/sign-verify/ecdsa-p256](load/hsm_sign-verify_ecdsa-p256.svg)
 
@@ -376,11 +369,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 7,907 |
-| 2 | 11,608 |
-| 4 | 20,267 |
-| 8 | 25,155 |
-| 16 | 17,193 |
+| 1 | 8,794 |
+| 2 | 14,028 |
+| 4 | 22,163 |
+| 8 | 26,343 |
+| 16 | 25,509 |
 
 ![Throughput — hsm/sign-verify/eddsa-ed25519](load/hsm_sign-verify_eddsa-ed25519.svg)
 
@@ -390,11 +383,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Concurrency | ttlv-json (req/s) |
 |---|---|
-| 1 | 3,100 |
-| 2 | 5,191 |
-| 4 | 8,925 |
-| 8 | 12,208 |
-| 16 | 16,277 |
+| 1 | 3,468 |
+| 2 | 5,874 |
+| 4 | 9,428 |
+| 8 | 12,811 |
+| 16 | 16,962 |
 
 ![Throughput — hsm/sign-verify/eddsa-ed448](load/hsm_sign-verify_eddsa-ed448.svg)
 
@@ -406,8 +399,8 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-aes-cbc/encrypt/256 | 126.9 µs |
-| hsm-aes-gcm/encrypt/256 | 101.9 µs |
+| hsm-aes-cbc/encrypt/256 | 290.3 µs |
+| hsm-aes-gcm/encrypt/256 | 127.5 µs |
 
 ---
 
@@ -415,9 +408,9 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-rsa-oaep-sha1/encrypt/2048 | 173.6 µs |
-| hsm-rsa-oaep/encrypt/2048 | 98.3 µs |
-| hsm-rsa-pkcs1v15/encrypt/2048 | 189.0 µs |
+| hsm-rsa-oaep-sha1/encrypt/2048 | 94.1 µs |
+| hsm-rsa-oaep/encrypt/2048 | 68.5 µs |
+| hsm-rsa-pkcs1v15/encrypt/2048 | 94.4 µs |
 
 ---
 
@@ -425,11 +418,11 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-aes-256/create | 71.22 ms |
-| hsm-ec-p256/create | 207.55 ms |
-| hsm-ed25519/create | 208.09 ms |
-| hsm-ed448/create | 207.59 ms |
-| hsm-rsa-2048/create | 273.44 ms |
+| hsm-aes-256/create | 74.02 ms |
+| hsm-ec-p256/create | 215.89 ms |
+| hsm-ed25519/create | 209.82 ms |
+| hsm-ed448/create | 216.12 ms |
+| hsm-rsa-2048/create | 284.53 ms |
 
 ---
 
@@ -437,14 +430,14 @@ The reported value is the **mean ± 95 % confidence interval** over a configurab
 
 | Benchmark | ttlv-json |
 |---|---|
-| hsm-ecdsa-p256/sign | 183.9 µs |
-| hsm-ecdsa-p384/sign | 750.1 µs |
-| hsm-eddsa-ed25519/sign | 142.9 µs |
-| hsm-eddsa-ed448/sign | 377.2 µs |
-| hsm-rsa-pkcs1v15-sha1/sign/2048 | 805.4 µs |
-| hsm-rsa-pkcs1v15-sha256/sign/2048 | 797.5 µs |
-| hsm-rsa-pkcs1v15-sha384/sign/2048 | 768.5 µs |
-| hsm-rsa-pkcs1v15-sha512/sign/2048 | 735.7 µs |
-| hsm-rsa-pss/sign/2048 | 800.4 µs |
+| hsm-ecdsa-p256/sign | 165.5 µs |
+| hsm-ecdsa-p384/sign | 558.2 µs |
+| hsm-eddsa-ed25519/sign | 139.4 µs |
+| hsm-eddsa-ed448/sign | 306.1 µs |
+| hsm-rsa-pkcs1v15-sha1/sign/2048 | 768.8 µs |
+| hsm-rsa-pkcs1v15-sha256/sign/2048 | 704.5 µs |
+| hsm-rsa-pkcs1v15-sha384/sign/2048 | 691.4 µs |
+| hsm-rsa-pkcs1v15-sha512/sign/2048 | 724.3 µs |
+| hsm-rsa-pss/sign/2048 | 707.7 µs |
 
 ---

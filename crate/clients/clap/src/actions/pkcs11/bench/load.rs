@@ -20,6 +20,10 @@ use super::{
 };
 use crate::actions::bench::types::{BenchFilter, BenchMode};
 
+/// Whether this binary is a non-FIPS build; Ed25519 and secp256k1 benchmark modes
+/// are only ever selected when it is `true`.
+pub(crate) const NON_FIPS_BUILD: bool = cfg!(feature = "non-fips");
+
 /// The concrete operation families `run_all` actually knows how to execute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ConcreteMode {
@@ -39,11 +43,8 @@ pub(crate) enum ConcreteMode {
     VerifyEcdsaP256,
     SignEcdsaP384,
     VerifyEcdsaP384,
-    #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
     SignSecp256k1,
-    #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
     VerifySecp256k1,
-    #[cfg_attr(not(feature = "non-fips"), allow(dead_code))]
     SignEdDsa,
     VerifyEdDsa,
     KeyCreation,
@@ -79,35 +80,19 @@ impl ConcreteMode {
             Self::Batch => "batch/aes-cbc",
         }
     }
+
+    /// Whether this mode exercises a key type (Ed25519, secp256k1) that only
+    /// non-FIPS builds may use; FIPS builds never select such modes.
+    pub(crate) const fn requires_non_fips(self) -> bool {
+        matches!(
+            self,
+            Self::SignSecp256k1 | Self::VerifySecp256k1 | Self::SignEdDsa | Self::VerifyEdDsa
+        )
+    }
 }
 
-/// Expands the `all` benchmark mode for a FIPS build.
-#[cfg(not(feature = "non-fips"))]
-fn all_modes() -> Vec<ConcreteMode> {
-    vec![
-        ConcreteMode::EncryptAesCbc,
-        ConcreteMode::EncryptAesGcm,
-        ConcreteMode::EncryptRsaPkcs,
-        ConcreteMode::EncryptRsaOaep,
-        ConcreteMode::DecryptAesCbc,
-        ConcreteMode::DecryptAesGcm,
-        ConcreteMode::DecryptRsaPkcs,
-        ConcreteMode::DecryptRsaOaep,
-        ConcreteMode::SignRsaPkcs,
-        ConcreteMode::SignRsaPss,
-        ConcreteMode::SignEcdsaP256,
-        ConcreteMode::SignEcdsaP384,
-        ConcreteMode::VerifyRsaPkcs,
-        ConcreteMode::VerifyRsaPss,
-        ConcreteMode::VerifyEcdsaP256,
-        ConcreteMode::VerifyEcdsaP384,
-        ConcreteMode::KeyCreation,
-        ConcreteMode::Batch,
-    ]
-}
-
-/// Expands the `all` benchmark mode for a non-FIPS build.
-#[cfg(feature = "non-fips")]
+/// Expands the `all` benchmark mode (before the build-flavour filter applied by
+/// [`expand_bench_mode`]).
 fn all_modes() -> Vec<ConcreteMode> {
     vec![
         ConcreteMode::EncryptAesCbc,
@@ -135,23 +120,8 @@ fn all_modes() -> Vec<ConcreteMode> {
     ]
 }
 
-/// Expands the `sign-verify` benchmark mode for a FIPS build.
-#[cfg(not(feature = "non-fips"))]
-fn sign_verify_modes() -> Vec<ConcreteMode> {
-    vec![
-        ConcreteMode::SignRsaPkcs,
-        ConcreteMode::SignRsaPss,
-        ConcreteMode::SignEcdsaP256,
-        ConcreteMode::SignEcdsaP384,
-        ConcreteMode::VerifyRsaPkcs,
-        ConcreteMode::VerifyRsaPss,
-        ConcreteMode::VerifyEcdsaP256,
-        ConcreteMode::VerifyEcdsaP384,
-    ]
-}
-
-/// Expands the `sign-verify` benchmark mode for a non-FIPS build.
-#[cfg(feature = "non-fips")]
+/// Expands the `sign-verify` benchmark mode (before the build-flavour filter
+/// applied by [`expand_bench_mode`]).
 fn sign_verify_modes() -> Vec<ConcreteMode> {
     vec![
         ConcreteMode::SignRsaPkcs,
@@ -198,7 +168,10 @@ pub(crate) fn expand_bench_mode(
 
     modes
         .into_iter()
-        .filter(|m| filter.is_none_or(|f| f.matches(m.label(), None)))
+        .filter(|m| {
+            (NON_FIPS_BUILD || !m.requires_non_fips())
+                && filter.is_none_or(|f| f.matches(m.label(), None))
+        })
         .collect()
 }
 
@@ -371,7 +344,7 @@ fn summarize(
 /// micro-benchmarks), so the two entry points can never diverge on how a mode's
 /// closure is built.
 ///
-/// `VerifyRsa`/`VerifyEcdsa`/`VerifyEdDsa` are each probed once here; if the loaded
+/// `VerifyRsa`/`VerifyEcdsa` (and, in non-FIPS builds, `VerifyEdDsa`) are each probed once here; if the loaded
 /// provider reports an error for the requested mechanism (e.g. `CKM_EDDSA` on a
 /// v2.40-only library), the mode is skipped with a console notice and simply absent
 /// from the returned list — mirroring `mise bench:load`'s own pattern of skipping a
@@ -665,7 +638,6 @@ pub(crate) fn prepare_ops(
 
     let mut prepared = Vec::new();
     for mode in modes {
-        let mut operation_setup: Option<Box<SetupOp>> = None;
         let op: Box<Op> = match mode {
             ConcreteMode::EncryptAesCbc => {
                 let Some(secret_key) = secret_key else {
@@ -911,18 +883,25 @@ pub(crate) fn prepare_ops(
                 let Some(eddsa_private_key) = eddsa_private_key else {
                     continue;
                 };
-                operation_setup = Some(Box::new(move |sessions: &[Session]| {
+                // Unlike every other mode, EdDSA needs a per-session message-sign
+                // context opened before the sweep, so it is pushed with its setup hook.
+                let setup_hook: Box<SetupOp> = Box::new(move |sessions: &[Session]| {
                     sessions.iter().try_for_each(|session| {
                         session
                             .message_sign_init(eddsa_private_key, HsmSigningAlgorithm::Eddsa)
                             .map_err(BenchError::from)
                     })
-                }));
+                });
                 let message = message.clone();
-                Box::new(move |session: &Session| {
-                    session.sign_message(&message)?;
-                    Ok(())
-                })
+                prepared.push(PreparedOp {
+                    label: mode.label(),
+                    setup: Some(setup_hook),
+                    op: Box::new(move |session: &Session| {
+                        session.sign_message(&message)?;
+                        Ok(())
+                    }),
+                });
+                continue;
             }
             ConcreteMode::VerifyRsaPkcs => {
                 let Some(signature) = verify_rsa_signature.clone() else {
@@ -1166,7 +1145,7 @@ pub(crate) fn prepare_ops(
         };
         prepared.push(PreparedOp {
             label: mode.label(),
-            setup: operation_setup,
+            setup: None,
             op,
         });
     }
@@ -1200,8 +1179,117 @@ pub(crate) fn run_all(
 
 #[cfg(test)]
 mod tests {
-    use super::{ConcreteMode, expand_bench_mode};
-    use crate::actions::bench::types::BenchMode;
+    use std::collections::HashSet;
+
+    use super::{ConcreteMode, NON_FIPS_BUILD, expand_bench_mode};
+    use crate::actions::bench::types::{BenchFilter, BenchMode};
+
+    fn labels(modes: &[ConcreteMode]) -> Vec<&'static str> {
+        modes.iter().map(|mode| mode.label()).collect()
+    }
+
+    fn filter_on(algorithm: &str) -> BenchFilter {
+        BenchFilter {
+            algorithms: vec![algorithm.to_owned()],
+            key_sizes: vec![],
+        }
+    }
+
+    #[test]
+    fn mode_labels_are_unique_and_namespaced() {
+        let modes = expand_bench_mode(BenchMode::All, None);
+        let labels = labels(&modes);
+        let unique: HashSet<_> = labels.iter().collect();
+        assert_eq!(unique.len(), labels.len(), "duplicate label in {labels:?}");
+        assert!(labels.iter().all(|label| label.contains('/')));
+    }
+
+    #[test]
+    fn eddsa_and_secp256k1_modes_exist_only_in_non_fips_builds() {
+        let all = labels(&expand_bench_mode(BenchMode::All, None));
+        let sign_verify = labels(&expand_bench_mode(BenchMode::SignVerify, None));
+        let ed_or_k1 = |label: &&str| label.contains("eddsa") || label.contains("secp256k1");
+
+        if NON_FIPS_BUILD {
+            let expected = [
+                "sign/ecdsa-secp256k1",
+                "verify/ecdsa-secp256k1",
+                "sign/eddsa-ed25519",
+                "verify/eddsa-ed25519",
+            ];
+            for label in expected {
+                assert!(all.contains(&label), "{label} missing from `all`");
+                assert!(
+                    sign_verify.contains(&label),
+                    "{label} missing from `sign-verify`"
+                );
+            }
+        } else {
+            assert!(!all.iter().any(ed_or_k1), "{all:?}");
+            assert!(!sign_verify.iter().any(ed_or_k1), "{sign_verify:?}");
+        }
+        // Modes that are not tied to a mode family never include them.
+        let encrypt = labels(&expand_bench_mode(BenchMode::Encrypt, None));
+        assert!(!encrypt.iter().any(ed_or_k1));
+    }
+
+    #[test]
+    fn sign_verify_is_the_sign_and_verify_subset_of_all() {
+        let all = labels(&expand_bench_mode(BenchMode::All, None));
+        let sign_verify = labels(&expand_bench_mode(BenchMode::SignVerify, None));
+        assert!(
+            sign_verify
+                .iter()
+                .all(|label| label.starts_with("sign/") || label.starts_with("verify/"))
+        );
+        let expected: Vec<_> = all
+            .iter()
+            .copied()
+            .filter(|label| label.starts_with("sign/") || label.starts_with("verify/"))
+            .collect();
+        let mut got = sign_verify;
+        let mut want = expected;
+        got.sort_unstable();
+        want.sort_unstable();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn algorithm_filter_selects_ed25519_only_when_the_build_has_it() {
+        let modes = expand_bench_mode(BenchMode::All, Some(&filter_on("eddsa")));
+        if NON_FIPS_BUILD {
+            assert_eq!(
+                modes,
+                vec![ConcreteMode::SignEdDsa, ConcreteMode::VerifyEdDsa]
+            );
+        } else {
+            assert!(modes.is_empty());
+        }
+
+        let modes = expand_bench_mode(BenchMode::All, Some(&filter_on("secp256k1")));
+        if NON_FIPS_BUILD {
+            assert_eq!(
+                modes,
+                vec![ConcreteMode::SignSecp256k1, ConcreteMode::VerifySecp256k1]
+            );
+        } else {
+            assert!(modes.is_empty());
+        }
+    }
+
+    #[test]
+    fn fips_approved_ecdsa_modes_are_always_available() {
+        let modes = expand_bench_mode(BenchMode::All, Some(&filter_on("ecdsa-p")));
+        assert_eq!(
+            labels(&modes),
+            [
+                "sign/ecdsa-p256",
+                "sign/ecdsa-p384",
+                "verify/ecdsa-p256",
+                "verify/ecdsa-p384"
+            ]
+        );
+    }
 
     #[test]
     fn delegated_encrypt_keeps_all_requested_modes_for_probing() {

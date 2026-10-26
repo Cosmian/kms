@@ -10,12 +10,12 @@ use crate::{
     ttlv::{TtlvError, kmip_ttlv_deserializer::deserializer::MapAccessState},
 };
 
-pub(super) struct EnumWalker<'a> {
-    de: &'a mut TtlvDeserializer,
+pub(super) struct EnumWalker<'a, 't> {
+    de: &'a mut TtlvDeserializer<'t>,
 }
 
-impl<'a> EnumWalker<'a> {
-    pub(super) const fn new(de: &'a mut TtlvDeserializer) -> Self {
+impl<'a, 't> EnumWalker<'a, 't> {
+    pub(super) const fn new(de: &'a mut TtlvDeserializer<'t>) -> Self {
         EnumWalker { de }
     }
 }
@@ -25,7 +25,7 @@ impl<'a> EnumWalker<'a> {
 //
 // Note that all enum deserialization methods in Serde refer exclusively to the
 // "externally tagged" enum representation.
-impl<'de> EnumAccess<'de> for EnumWalker<'_> {
+impl<'de> EnumAccess<'de> for EnumWalker<'_, '_> {
     type Error = TtlvError;
     type Variant = Self;
 
@@ -46,7 +46,7 @@ impl<'de> EnumAccess<'de> for EnumWalker<'_> {
 
 // `VariantAccess` is provided to the `Visitor` to give it the ability to see
 // the content of the single variant that it decided to deserialize.
-impl<'de> VariantAccess<'de> for EnumWalker<'_> {
+impl<'de> VariantAccess<'de> for EnumWalker<'_, '_> {
     type Error = TtlvError;
 
     // If the `Visitor` expected this variant to be a unit variant, the input
@@ -74,7 +74,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_> {
             self.de.child_index, at_root, self.de.current.tag
         );
         seed.deserialize(&mut TtlvDeserializer {
-            current: self.de.current.clone(),
+            current: self.de.current,
             map_state: MapAccessState::None,
             child_index: 0,
             at_root: RwLock::new(true),

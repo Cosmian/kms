@@ -6,7 +6,7 @@ description: 'Standalone Rust audit for panic and brutal-exit hazards, including
 # Rust Panic & Brutal-Exit Audit
 
 Detect every construct in Rust code that can cause a panic, abort, or brutal process exit
-outside of `#[cfg(test)]` blocks. Produces a report in `./review/rust-panic-audit.md`.
+outside of `#[cfg(test)]` blocks. Produces a report in `./review-YYYY-MM-DD/rust-panic-audit.md`.
 
 **Usage**: `/rust-panic-audit` (diff scope) or `/rust-panic-audit crate/server/src/`
 
@@ -15,8 +15,8 @@ outside of `#[cfg(test)]` blocks. Produces a report in `./review/rust-panic-audi
 ## Step 0 — Create output directory
 
 ```bash
-mkdir -p ./review
-REPORT="./review/rust-panic-audit.md"
+mkdir -p ./review-$(date +%F)
+REPORT="./review-$(date +%F)/rust-panic-audit.md"
 echo "# Rust Panic & Brutal-Exit Audit" > "${REPORT}"
 echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${REPORT}"
 echo "" >> "${REPORT}"
@@ -162,7 +162,7 @@ Classify each hit by severity:
 
 Any CRITICAL or HIGH match without a `// tracked in #<N>` or `// false positive:` justification comment on the same line is a **blocker** — reject and fix.
 
-Append all findings to `./review/rust-panic-audit.md` under a `## Lint Suppressions` heading.
+Append all findings to `./review-YYYY-MM-DD/rust-panic-audit.md` under a `## Lint Suppressions` heading.
 
 ---
 
@@ -203,7 +203,7 @@ return Err(KmsError::InvalidRequest("unexpected state".to_owned()));
 
 ## Step 6 — Write report
 
-Append to `./review/rust-panic-audit.md`:
+Append to `./review-YYYY-MM-DD/rust-panic-audit.md`:
 
 ```markdown
 ## Summary
@@ -237,7 +237,7 @@ Print to chat:
 ```
 Rust Panic Audit complete.
 CRITICAL: N  HIGH: N  MEDIUM: N  LOW: N
-Report: ./review/rust-panic-audit.md
+Report: ./review-YYYY-MM-DD/rust-panic-audit.md
 ```
 
 If CRITICAL or HIGH count > 0, recommend running `/rust-review-all` for a full quality gate

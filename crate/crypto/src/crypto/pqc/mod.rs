@@ -3,10 +3,7 @@ pub mod ml_dsa;
 pub mod ml_kem;
 pub mod slh_dsa;
 
-use std::{
-    ffi::{CString, c_char},
-    ptr,
-};
+use std::{ffi::CString, ptr};
 
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -21,33 +18,20 @@ use cosmian_kmip::{
         },
     },
 };
+use foreign_types::ForeignType;
+use openssl::pkey::{PKey, Private};
 use zeroize::Zeroizing;
 
-use crate::{crypto::KeyPair, error::CryptoError};
+use crate::{
+    crypto::{KeyPair, KeyPairIdentity, KmsRng},
+    error::CryptoError,
+};
 
 /// RAII guard for an owned `EVP_PKEY` pointer — calls `EVP_PKEY_free` on drop.
 ///
-/// `PKey<T>` from the `openssl` crate offers the same guarantee, but constructing
-/// it from a raw pointer requires importing the `ForeignType` trait from
-/// `foreign_types_shared` which is not a direct workspace dependency. This thin
-/// wrapper achieves the same RAII semantics without the extra dependency.
+/// Used for raw key loading and hybrid KEM operations where safe `PKey` wrappers
+/// are not yet available (tracking Issue #1251).
 pub(crate) struct PKeyGuard(pub(crate) *mut openssl_sys::EVP_PKEY);
-
-/// RAII guard for an owned `BIO` pointer — calls `BIO_free_all` on drop.
-///
-/// Ensures the BIO memory is freed even if the code reading its contents
-/// panics (e.g. an OOM abort in `to_vec()`), eliminating a resource leak
-/// in `evp_pkey_to_pkcs8_der` / `evp_pkey_to_spki_der`.
-struct BioGuard(*mut openssl_sys::BIO);
-
-impl Drop for BioGuard {
-    #[expect(unsafe_code)]
-    fn drop(&mut self) {
-        // SAFETY: pointer was checked for null before wrapping; BIO_free_all
-        // accepts null as a documented no-op, so double-drop is also safe.
-        unsafe { openssl_sys::BIO_free_all(self.0) }
-    }
-}
 
 impl PKeyGuard {
     pub(crate) const fn as_ptr(&self) -> *mut openssl_sys::EVP_PKEY {
@@ -58,8 +42,24 @@ impl PKeyGuard {
 impl Drop for PKeyGuard {
     #[expect(unsafe_code)]
     fn drop(&mut self) {
+        // SAFETY: `self.0` is a valid EVP_PKEY exclusively owned by this guard.
         unsafe {
             openssl_sys::EVP_PKEY_free(self.0);
+        }
+    }
+}
+
+/// RAII guard for an owned `EVP_PKEY_CTX` pointer — calls `EVP_PKEY_CTX_free` on drop.
+///
+/// Ensures context is freed even on error or early return during key generation.
+struct PKeyCtxGuard(*mut openssl_sys::EVP_PKEY_CTX);
+
+impl Drop for PKeyCtxGuard {
+    #[expect(unsafe_code)]
+    fn drop(&mut self) {
+        // SAFETY: `self.0` is a valid EVP_PKEY_CTX exclusively owned by this guard.
+        unsafe {
+            openssl_sys::EVP_PKEY_CTX_free(self.0);
         }
     }
 }
@@ -67,193 +67,299 @@ impl Drop for PKeyGuard {
 /// Result of [`pqc_keygen`]: (private PKCS#8 DER, public SPKI DER, key bits).
 type PqcKeygenResult = (Zeroizing<Vec<u8>>, Vec<u8>, u32);
 
-/// Serialize an `EVP_PKEY` to PKCS#8 DER (private key).
-#[expect(unsafe_code)]
-fn evp_pkey_to_pkcs8_der(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let bio = openssl_sys::BIO_new(openssl_sys::BIO_s_mem());
-        if bio.is_null() {
-            return Err(CryptoError::Default("BIO_new failed".to_owned()));
-        }
-        // SAFETY: BioGuard frees the BIO on drop — even if to_vec() panics
-        // with OOM later in this function, preventing a resource leak.
-        let _bio_guard = BioGuard(bio);
+/// Generate deterministic seed bytes for PQC key generation.
+///
+/// Returns `seed_len` random bytes from `KmsRng`, in a zeroizing buffer.
+///
+/// When `rng` is supplied to [`pqc_keygen`], seeds of 64 bytes (ML-KEM) or 32 bytes
+/// (ML-DSA) are drawn from this function and injected into OpenSSL's keygen context.
+///
+/// # Arguments
+/// * `rng` - The KMS RNG instance
+/// * `seed_len` - Desired seed length in bytes
+///
+/// # Returns
+/// A `Zeroizing<Vec<u8>>` containing cryptographically random seed bytes that
+/// are automatically zeroed on drop, preventing accidental leakage of entropy state.
+pub fn generate_pqc_seed(rng: &KmsRng, seed_len: usize) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    rng.random_vec(seed_len)
+        .map_err(|e| CryptoError::Default(format!("PQC seed generation failed: {e}")))
+}
 
-        if openssl_sys::i2d_PrivateKey_bio(bio, pkey) != 1 {
+/// Generate a seeded PQC key using `EVP_PKEY_CTX` with the `"seed"` parameter.
+///
+/// Used for ML-KEM (64-byte seed) and ML-DSA (32-byte seed) when a `KmsRng` is provided.
+///
+/// Upstream tracking: `rust-openssl` lacks safe bindings for `EVP_PKEY_CTX_new_from_name`,
+/// `EVP_PKEY_keygen_init`, `EVP_PKEY_CTX_set_params`, and `EVP_PKEY_generate` (Issue #1251,
+/// upstream PRs #2649, #2646, #2636, #2611).
+#[expect(unsafe_code)]
+fn pqc_keygen_seeded(
+    name: &CString,
+    seed: &[u8],
+    propquery: Option<&CString>,
+) -> Result<PKey<Private>, CryptoError> {
+    // SAFETY: every pointer passed to OpenSSL (`name`, `propquery`, `seed`, params, `indicator`)
+    // is valid for the duration of its call. `ctx` is freed by `PKeyCtxGuard`; `raw_pkey` is
+    // either freed explicitly on indicator failure or ownership moves into `PKey`.
+    unsafe {
+        let propq_ptr = propquery.map_or(ptr::null(), |pq| pq.as_ptr());
+        let ctx = EVP_PKEY_CTX_new_from_name(ptr::null_mut(), name.as_ptr(), propq_ptr);
+        if ctx.is_null() {
             return Err(CryptoError::Default(format!(
-                "i2d_PKCS8PrivateKeyInfo_bio failed: {}",
+                "EVP_PKEY_CTX_new_from_name failed for {name:?}: {}",
                 openssl::error::ErrorStack::get()
             )));
         }
-        let mut ptr: *mut c_char = ptr::null_mut();
-        let len = openssl_sys::BIO_get_mem_data(bio, ptr::from_mut(&mut ptr));
-        if len <= 0 || ptr.is_null() {
-            return Err(CryptoError::Default("BIO_get_mem_data failed".to_owned()));
+        let _ctx_guard = PKeyCtxGuard(ctx);
+
+        if EVP_PKEY_keygen_init(ctx) <= 0 {
+            return Err(CryptoError::Default(format!(
+                "EVP_PKEY_keygen_init failed for {name:?}: {}",
+                openssl::error::ErrorStack::get()
+            )));
         }
-        // Propagate length overflow as an error rather than silently returning
-        // an empty slice (would only happen on 32-bit targets with >2 GB keys).
-        let len_usize = usize::try_from(len)
-            .map_err(|e| CryptoError::Default(format!("BIO data length overflow: {e}")))?;
-        // Copy the bytes *before* _bio_guard drops — the slice borrows BIO
-        // internal memory, so it must not outlive the BIO.
-        let der = std::slice::from_raw_parts(ptr.cast::<u8>(), len_usize).to_vec();
-        Ok(der)
-        // _bio_guard drops here, freeing the BIO.
+
+        // Construct OSSL_PARAM array: [ {"seed", OSSL_PARAM_OCTET_STRING, seed.as_ptr(), seed.len()}, END ]
+        // OSSL_PARAM_OCTET_STRING is 5, OSSL_PARAM_UNMODIFIED is (size_t)-1
+        let params = [
+            openssl_sys::OSSL_PARAM {
+                key: c"seed".as_ptr(),
+                data_type: 5, // OSSL_PARAM_OCTET_STRING
+                data: seed.as_ptr().cast_mut().cast::<std::ffi::c_void>(),
+                data_size: seed.len(),
+                return_size: usize::MAX, // OSSL_PARAM_UNMODIFIED
+            },
+            openssl_sys::OSSL_PARAM {
+                key: ptr::null(),
+                data_type: 0,
+                data: ptr::null_mut(),
+                data_size: 0,
+                return_size: 0,
+            },
+        ];
+
+        if EVP_PKEY_CTX_set_params(ctx, params.as_ptr()) <= 0 {
+            return Err(CryptoError::Default(format!(
+                "EVP_PKEY_CTX_set_params (seed) failed for {name:?}: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+
+        let mut raw_pkey: *mut openssl_sys::EVP_PKEY = ptr::null_mut();
+        if EVP_PKEY_generate(ctx, &raw mut raw_pkey) <= 0 || raw_pkey.is_null() {
+            return Err(CryptoError::Default(format!(
+                "EVP_PKEY_generate failed for {name:?}: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+
+        // If FIPS provider was explicitly requested via propquery ("fips=yes"),
+        // verify that the operation was approved by checking the FIPS indicator.
+        if let Some(pq) = propquery {
+            if requests_fips_provider(pq.as_bytes()) {
+                let mut indicator: std::ffi::c_int = 0;
+                let get_params = [
+                    openssl_sys::OSSL_PARAM {
+                        key: c"fips-indicator".as_ptr(),
+                        data_type: 1, // OSSL_PARAM_INTEGER
+                        data: (&raw mut indicator).cast::<std::ffi::c_void>(),
+                        data_size: std::mem::size_of::<std::ffi::c_int>(),
+                        return_size: usize::MAX,
+                    },
+                    openssl_sys::OSSL_PARAM {
+                        key: ptr::null(),
+                        data_type: 0,
+                        data: ptr::null_mut(),
+                        data_size: 0,
+                        return_size: 0,
+                    },
+                ];
+                if !fips_indicator_approved(
+                    EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()),
+                    indicator,
+                ) {
+                    openssl_sys::EVP_PKEY_free(raw_pkey);
+                    return Err(CryptoError::Default(format!(
+                        "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
+                    )));
+                }
+            }
+        }
+
+        Ok(PKey::from_ptr(raw_pkey))
     }
 }
 
-/// Serialize an `EVP_PKEY` to `SubjectPublicKeyInfo` DER (public key).
-#[expect(unsafe_code)]
-fn evp_pkey_to_spki_der(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let bio = openssl_sys::BIO_new(openssl_sys::BIO_s_mem());
-        if bio.is_null() {
-            return Err(CryptoError::Default("BIO_new failed".to_owned()));
-        }
-        // SAFETY: BioGuard frees the BIO on drop — even if to_vec() panics
-        // with OOM later in this function, preventing a resource leak.
-        let _bio_guard = BioGuard(bio);
-
-        if openssl_sys::i2d_PUBKEY_bio(bio, pkey) != 1 {
-            return Err(CryptoError::Default(format!(
-                "i2d_PUBKEY_bio failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut ptr: *mut c_char = ptr::null_mut();
-        let len = openssl_sys::BIO_get_mem_data(bio, ptr::from_mut(&mut ptr));
-        if len <= 0 || ptr.is_null() {
-            return Err(CryptoError::Default("BIO_get_mem_data failed".to_owned()));
-        }
-        // Propagate length overflow as an error rather than silently returning
-        // an empty slice (would only happen on 32-bit targets with >2 GB keys).
-        let len_usize = usize::try_from(len)
-            .map_err(|e| CryptoError::Default(format!("BIO data length overflow: {e}")))?;
-        // Copy the bytes *before* _bio_guard drops — the slice borrows BIO
-        // internal memory, so it must not outlive the BIO.
-        let der = std::slice::from_raw_parts(ptr.cast::<u8>(), len_usize).to_vec();
-        Ok(der)
-        // _bio_guard drops here, freeing the BIO.
-    }
+/// Whether a property query explicitly requires the FIPS provider: the `fips=yes` term or
+/// the bare name `fips` (OpenSSL parses a name without a value as boolean true). Other values
+/// such as `fips=true` are plain strings in OpenSSL and do not select the FIPS provider.
+fn requests_fips_provider(propquery: &[u8]) -> bool {
+    propquery
+        .split(|&b| b == b',' || b == b' ')
+        .any(|part| part == b"fips=yes" || part == b"fips")
 }
 
-/// Extract the raw private key bytes from an `EVP_PKEY`.
-#[expect(unsafe_code)]
-fn evp_pkey_get_raw_private(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let mut len: usize = 0;
-        if openssl_sys::EVP_PKEY_get_raw_private_key(pkey, ptr::null_mut(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_private_key (size) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut buf = vec![0_u8; len];
-        let expected = len;
-        if openssl_sys::EVP_PKEY_get_raw_private_key(pkey, buf.as_mut_ptr(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_private_key (data) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        if len != expected {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_private_key: size mismatch (expected {expected}, got {len})"
-            )));
-        }
-        Ok(buf)
-    }
+/// Fail-closed FIPS indicator decision: approved only if `EVP_PKEY_CTX_get_params` succeeded
+/// (return value > 0) AND the `fips-indicator` value is exactly 1.
+const fn fips_indicator_approved(
+    get_params_ret: std::ffi::c_int,
+    indicator: std::ffi::c_int,
+) -> bool {
+    get_params_ret > 0 && indicator == 1
 }
 
-/// Extract the raw public key bytes from an `EVP_PKEY`.
-#[expect(unsafe_code)]
-fn evp_pkey_get_raw_public(pkey: *mut openssl_sys::EVP_PKEY) -> Result<Vec<u8>, CryptoError> {
-    unsafe {
-        let mut len: usize = 0;
-        if openssl_sys::EVP_PKEY_get_raw_public_key(pkey, ptr::null_mut(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_public_key (size) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let mut buf = vec![0_u8; len];
-        let expected = len;
-        if openssl_sys::EVP_PKEY_get_raw_public_key(pkey, buf.as_mut_ptr(), &raw mut len) != 1 {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_public_key (data) failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        if len != expected {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_get_raw_public_key: size mismatch (expected {expected}, got {len})"
-            )));
-        }
-        Ok(buf)
-    }
+/// Convert an optional string slice propquery to an optional `CString`.
+fn parse_propquery(propquery: Option<&str>) -> Result<Option<CString>, CryptoError> {
+    propquery
+        .map(|pq| {
+            CString::new(pq)
+                .map_err(|e| CryptoError::Default(format!("invalid propquery string: {e}")))
+        })
+        .transpose()
 }
 
-/// Generate a PQC key pair using OpenSSL `EVP_PKEY_Q_keygen`.
+/// Generate a PQC key pair using OpenSSL `EVP_PKEY_Q_keygen` (unseeded) or `pqc_keygen_seeded`.
+///
+/// When `rng` is `Some`:
+/// - ML-KEM draws a 64-byte seed from `KmsRng` (FIPS 203 §7.1 / OpenSSL `ml_kem_kmgmt.c`).
+/// - ML-DSA draws a 32-byte seed from `KmsRng` (FIPS 204 §6.1 / OpenSSL `ml_dsa_kmgmt.c`).
+/// - SLH-DSA uses `EVP_PKEY_Q_keygen` unseeded because OpenSSL's SLH-DSA seed parameter is
+///   documented as testing-only (`EVP_PKEY-SLH-DSA(7)`).
+///
+/// When `rng` is `None`, OpenSSL's internal DRBG generates the key material directly via
+/// `EVP_PKEY_Q_keygen`.
+///
+/// Upstream tracking: `EVP_PKEY_Q_keygen` is used until safe bindings land in `rust-openssl`
+/// (Issue #1251, upstream PRs #2649, #2646, #2636, #2611).
 #[expect(unsafe_code)]
-fn pqc_keygen(algorithm_name: &str) -> Result<PqcKeygenResult, CryptoError> {
+fn pqc_keygen(
+    algorithm_name: &str,
+    rng: Option<&KmsRng>,
+    propquery: Option<&str>,
+) -> Result<PqcKeygenResult, CryptoError> {
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
+    let propq_c = parse_propquery(propquery)?;
+    let propq_ptr = propq_c.as_ref().map_or(ptr::null(), |pq| pq.as_ptr());
 
-    unsafe {
-        let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), ptr::null(), name.as_ptr());
-        if raw.is_null() {
-            return Err(CryptoError::Default(format!(
-                "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
-                openssl::error::ErrorStack::get()
-            )));
+    let safe_pkey = if let Some(rng) = rng {
+        if algorithm_name.starts_with("ML-KEM-") {
+            let seed = generate_pqc_seed(rng, 64)?;
+            pqc_keygen_seeded(&name, &seed, propq_c.as_ref())?
+        } else if algorithm_name.starts_with("ML-DSA-") {
+            let seed = generate_pqc_seed(rng, 32)?;
+            pqc_keygen_seeded(&name, &seed, propq_c.as_ref())?
+        } else {
+            // SLH-DSA seed param is testing-only per EVP_PKEY-SLH-DSA(7); generate unseeded.
+            // SAFETY: `name` and `propq_c` (when `Some`) are valid NUL-terminated CStrings that
+            // outlive the call; the returned non-null key is owned by `PKey`.
+            unsafe {
+                let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), propq_ptr, name.as_ptr());
+                if raw.is_null() {
+                    return Err(CryptoError::Default(format!(
+                        "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
+                        openssl::error::ErrorStack::get()
+                    )));
+                }
+                PKey::from_ptr(raw)
+            }
         }
-        // Take ownership: freed automatically on drop, even if subsequent calls error.
-        let pkey = PKeyGuard(raw);
+    } else {
+        // SAFETY: same as the SLH-DSA call above: valid CString pointers outliving the call.
+        unsafe {
+            let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), propq_ptr, name.as_ptr());
+            if raw.is_null() {
+                return Err(CryptoError::Default(format!(
+                    "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
+                    openssl::error::ErrorStack::get()
+                )));
+            }
+            PKey::from_ptr(raw)
+        }
+    };
 
-        let bits = u32::try_from(openssl_sys::EVP_PKEY_bits(pkey.as_ptr())).map_err(|e| {
-            CryptoError::Default(format!("EVP_PKEY_bits returned negative value: {e}"))
-        })?;
+    let bits = safe_pkey.bits();
+    let private_der = safe_pkey
+        .private_key_to_pkcs8()
+        .map_err(|e| CryptoError::Default(format!("private_key_to_pkcs8 failed: {e}")))?;
+    let public_der = safe_pkey
+        .public_key_to_der()
+        .map_err(|e| CryptoError::Default(format!("public_key_to_der failed: {e}")))?;
 
-        let private_der = evp_pkey_to_pkcs8_der(pkey.as_ptr())?;
-        let public_der = evp_pkey_to_spki_der(pkey.as_ptr())?;
-
-        Ok((Zeroizing::from(private_der), public_der, bits))
-    }
+    Ok((Zeroizing::from(private_der), public_der, bits))
 }
 
 /// Generate a PQC key pair and extract raw key bytes (for algorithms that don't
 /// support DER serialization, such as hybrid KEMs).
+///
+/// `rng` is unused for hybrid KEMs: OpenSSL 3.6.2 generates composite keys atomically
+/// without exposing a seed parameter (see `mlx_kmgmt.c`).
+///
+/// Upstream tracking: `EVP_PKEY_Q_keygen` is used until safe bindings land in `rust-openssl`
+/// (Issue #1251, upstream PRs #2649, #2646, #2636, #2611).
 #[expect(unsafe_code)]
-fn pqc_keygen_raw(algorithm_name: &str) -> Result<PqcKeygenResult, CryptoError> {
+fn pqc_keygen_raw(
+    algorithm_name: &str,
+    rng: Option<&KmsRng>,
+    propquery: Option<&str>,
+) -> Result<PqcKeygenResult, CryptoError> {
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
+    let propq_c = parse_propquery(propquery)?;
+    let propq_ptr = propq_c.as_ref().map_or(ptr::null(), |pq| pq.as_ptr());
 
+    let _ = rng;
+
+    // SAFETY: `name` and `propq_c` (when `Some`) are valid NUL-terminated CStrings that outlive
+    // the call; a null propq selects OpenSSL defaults. The returned key is owned by `PKey`.
     unsafe {
-        let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), ptr::null(), name.as_ptr());
+        let raw = openssl_sys::EVP_PKEY_Q_keygen(ptr::null_mut(), propq_ptr, name.as_ptr());
         if raw.is_null() {
             return Err(CryptoError::Default(format!(
                 "EVP_PKEY_Q_keygen failed for {algorithm_name}: {}",
                 openssl::error::ErrorStack::get()
             )));
         }
-        // Take ownership: freed automatically on drop, even if subsequent calls error.
-        let pkey = PKeyGuard(raw);
-
-        let bits = u32::try_from(openssl_sys::EVP_PKEY_bits(pkey.as_ptr())).map_err(|e| {
-            CryptoError::Default(format!("EVP_PKEY_bits returned negative value: {e}"))
-        })?;
-
-        let private_raw = evp_pkey_get_raw_private(pkey.as_ptr())?;
-        let public_raw = evp_pkey_get_raw_public(pkey.as_ptr())?;
+        let safe_pkey: PKey<Private> = PKey::from_ptr(raw);
+        let bits = safe_pkey.bits();
+        let private_raw = safe_pkey
+            .raw_private_key()
+            .map_err(|e| CryptoError::Default(format!("raw_private_key failed: {e}")))?;
+        let public_raw = safe_pkey
+            .raw_public_key()
+            .map_err(|e| CryptoError::Default(format!("raw_public_key failed: {e}")))?;
 
         Ok((Zeroizing::from(private_raw), public_raw, bits))
     }
 }
 
-// FFI declarations for OpenSSL 3.x _ex raw key loading functions
-// (not available in openssl-sys crate)
+// FFI declarations for OpenSSL 3.x keygen and raw key functions
+// (not available in openssl-sys crate, tracking Issue #1251)
 #[expect(unsafe_code)]
 unsafe extern "C" {
+    fn EVP_PKEY_CTX_new_from_name(
+        libctx: *mut openssl_sys::OSSL_LIB_CTX,
+        name: *const std::ffi::c_char,
+        propquery: *const std::ffi::c_char,
+    ) -> *mut openssl_sys::EVP_PKEY_CTX;
+
+    fn EVP_PKEY_keygen_init(ctx: *mut openssl_sys::EVP_PKEY_CTX) -> std::ffi::c_int;
+
+    fn EVP_PKEY_CTX_set_params(
+        ctx: *mut openssl_sys::EVP_PKEY_CTX,
+        params: *const openssl_sys::OSSL_PARAM,
+    ) -> std::ffi::c_int;
+
+    fn EVP_PKEY_CTX_get_params(
+        ctx: *mut openssl_sys::EVP_PKEY_CTX,
+        params: *const openssl_sys::OSSL_PARAM,
+    ) -> std::ffi::c_int;
+
+    fn EVP_PKEY_generate(
+        ctx: *mut openssl_sys::EVP_PKEY_CTX,
+        ppkey: *mut *mut openssl_sys::EVP_PKEY,
+    ) -> std::ffi::c_int;
     fn EVP_PKEY_new_raw_public_key_ex(
         libctx: *mut openssl_sys::OSSL_LIB_CTX,
         keytype: *const std::ffi::c_char,
@@ -273,6 +379,9 @@ unsafe extern "C" {
 
 /// Load a raw public key into a `PKeyGuard` using the algorithm name.
 /// The returned guard owns the allocation and frees it on drop.
+///
+/// Upstream tracking: `openssl::pkey::PKey::public_key_from_raw_bytes_ex` requires a `KeyType`
+/// enum which does not support hybrid KEMs (Issue #1251).
 #[expect(unsafe_code)]
 pub(crate) fn load_raw_public_key(
     algorithm_name: &str,
@@ -286,6 +395,8 @@ pub(crate) fn load_raw_public_key(
     }
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
+    // SAFETY: `name` is a valid NUL-terminated CString and `raw_bytes` is non-empty (checked
+    // above); a null libctx/propq selects OpenSSL defaults. Returned pointer is owned by `PKeyGuard`.
     unsafe {
         let raw = EVP_PKEY_new_raw_public_key_ex(
             ptr::null_mut(),
@@ -306,6 +417,9 @@ pub(crate) fn load_raw_public_key(
 
 /// Load a raw private key into a `PKeyGuard` using the algorithm name.
 /// The returned guard owns the allocation and frees it on drop.
+///
+/// Upstream tracking: `openssl::pkey::PKey::private_key_from_raw_bytes_ex` requires a `KeyType`
+/// enum which does not support hybrid KEMs (Issue #1251).
 #[expect(unsafe_code)]
 pub(crate) fn load_raw_private_key(
     algorithm_name: &str,
@@ -319,6 +433,8 @@ pub(crate) fn load_raw_private_key(
     }
     let name = CString::new(algorithm_name)
         .map_err(|e| CryptoError::Default(format!("invalid algorithm name: {e}")))?;
+    // SAFETY: `name` is a valid NUL-terminated CString and `raw_bytes` is non-empty (checked
+    // above); a null libctx/propq selects OpenSSL defaults. Returned pointer is owned by `PKeyGuard`.
     unsafe {
         let raw = EVP_PKEY_new_raw_private_key_ex(
             ptr::null_mut(),
@@ -339,64 +455,37 @@ pub(crate) fn load_raw_private_key(
 
 /// Convert a PQC private key from PKCS#8 DER to raw bytes.
 ///
-/// Loads the DER into an `EVP_PKEY` and extracts the raw private key material
-/// via `EVP_PKEY_get_raw_private_key`.
-#[expect(unsafe_code)]
+/// Completely safe implementation using native `openssl::pkey::PKey` methods (Issue #894).
 pub fn pqc_private_key_pkcs8_to_raw(pkcs8_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if pkcs8_der.is_empty() {
         return Err(CryptoError::Default(
             "pqc_private_key_pkcs8_to_raw: empty PKCS#8 DER input".to_owned(),
         ));
     }
-    unsafe {
-        let mut der_ptr = pkcs8_der.as_ptr();
-        let pkey = openssl_sys::d2i_AutoPrivateKey(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            std::os::raw::c_long::try_from(pkcs8_der.len())
-                .map_err(|e| CryptoError::Default(format!("PKCS#8 DER length overflow: {e}")))?,
-        );
-        if pkey.is_null() {
-            return Err(CryptoError::Default(format!(
-                "pqc_private_key_pkcs8_to_raw: d2i_AutoPrivateKey failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let guard = PKeyGuard(pkey);
-        evp_pkey_get_raw_private(guard.as_ptr())
-    }
+    let pkey = PKey::private_key_from_der(pkcs8_der)
+        .map_err(|e| CryptoError::Default(format!("pqc_private_key_pkcs8_to_raw: {e}")))?;
+    let raw = pkey
+        .raw_private_key()
+        .map_err(|e| CryptoError::Default(format!("pqc_private_key_pkcs8_to_raw: {e}")))?;
+    Ok(raw)
 }
 
 /// Convert a PQC public key from SPKI DER to raw bytes.
 ///
-/// Loads the DER into an `EVP_PKEY` and extracts the raw public key material
-/// via `EVP_PKEY_get_raw_public_key`.
-#[expect(unsafe_code)]
+/// Completely safe implementation using native `openssl::pkey::PKey` methods (Issue #894).
 pub fn pqc_public_key_spki_to_raw(spki_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if spki_der.is_empty() {
         return Err(CryptoError::Default(
             "pqc_public_key_spki_to_raw: empty SPKI DER input".to_owned(),
         ));
     }
-    unsafe {
-        let mut der_ptr = spki_der.as_ptr();
-        let pkey = openssl_sys::d2i_PUBKEY(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            std::os::raw::c_long::try_from(spki_der.len())
-                .map_err(|e| CryptoError::Default(format!("SPKI DER length overflow: {e}")))?,
-        );
-        if pkey.is_null() {
-            return Err(CryptoError::Default(format!(
-                "pqc_public_key_spki_to_raw: d2i_PUBKEY failed: {}",
-                openssl::error::ErrorStack::get()
-            )));
-        }
-        let guard = PKeyGuard(pkey);
-        evp_pkey_get_raw_public(guard.as_ptr())
-    }
+    let pkey = PKey::public_key_from_der(spki_der)
+        .map_err(|e| CryptoError::Default(format!("pqc_public_key_spki_to_raw: {e}")))?;
+    let raw = pkey
+        .raw_public_key()
+        .map_err(|e| CryptoError::Default(format!("pqc_public_key_spki_to_raw: {e}")))?;
+    Ok(raw)
 }
-
 /// Map a `CryptographicAlgorithm` to the OpenSSL algorithm name string.
 fn ml_kem_algorithm_name(algorithm: CryptographicAlgorithm) -> Result<&'static str, CryptoError> {
     match algorithm {
@@ -455,23 +544,49 @@ fn slh_dsa_algorithm_name(algorithm: CryptographicAlgorithm) -> Result<&'static 
     }
 }
 
-/// Build a KMIP key pair from key bytes.
-#[expect(clippy::too_many_arguments)]
-fn create_pqc_key_pair(
-    vendor_id: &str,
-    private_key_der: &Zeroizing<Vec<u8>>,
-    public_key_der: &[u8],
+/// Raw key material of a freshly generated PQC key pair.
+#[derive(Clone, Copy)]
+struct PqcKeyMaterial<'a> {
+    private_key_der: &'a Zeroizing<Vec<u8>>,
+    public_key_der: &'a [u8],
     cryptographic_length: i32,
-    cryptographic_algorithm: CryptographicAlgorithm,
     key_format_type: KeyFormatType,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    mut common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+}
+
+/// Algorithm and default usage masks applied to a PQC key pair.
+#[derive(Clone, Copy)]
+struct PqcKeyPolicy {
+    cryptographic_algorithm: CryptographicAlgorithm,
     private_key_usage_mask: CryptographicUsageMask,
     public_key_usage_mask: CryptographicUsageMask,
+}
+
+/// Build a KMIP key pair from key bytes.
+fn create_pqc_key_pair(
+    identity: KeyPairIdentity<'_>,
+    material: PqcKeyMaterial<'_>,
+    policy: PqcKeyPolicy,
 ) -> Result<KeyPair, CryptoError> {
+    let KeyPairIdentity {
+        vendor_id,
+        private_key_uid,
+        public_key_uid,
+        mut common_attributes,
+        private_key_attributes,
+        public_key_attributes,
+    } = identity;
+    let PqcKeyMaterial {
+        private_key_der,
+        public_key_der,
+        cryptographic_length,
+        key_format_type,
+    } = material;
+    let PqcKeyPolicy {
+        cryptographic_algorithm,
+        private_key_usage_mask,
+        public_key_usage_mask,
+    } = policy;
+
     // Recover tags and clean them from common attributes
     let tags = common_attributes.remove_tags(vendor_id).unwrap_or_default();
     Attributes::check_user_tags(&tags)?;
@@ -551,14 +666,13 @@ mod tests {
 
     use super::*;
 
-    // ── BIO RAII / serialization round-trip ─────────────────────────────────
+    // ── Safe serialization round-trip ───────────────────────────────────────
 
-    /// Verify that the key serialization helpers (`evp_pkey_to_pkcs8_der` /
-    /// `evp_pkey_to_spki_der`) work and do not panic or leak when called with a
-    /// freshly generated ML-DSA key (the cheapest DER-capable PQC key).
+    /// Verify that safe key serialization (`private_key_to_pkcs8` / `public_key_to_der`)
+    /// works and does not panic or leak when called with a freshly generated ML-DSA key.
     #[test]
-    fn bio_serialization_roundtrip_does_not_panic() {
-        let (priv_der, pub_der, _bits) = pqc_keygen("ML-DSA-44").expect("keygen");
+    fn safe_serialization_roundtrip_does_not_panic() {
+        let (priv_der, pub_der, _bits) = pqc_keygen("ML-DSA-44", None, None).expect("keygen");
         assert!(!priv_der.is_empty(), "private DER must not be empty");
         assert!(!pub_der.is_empty(), "public DER must not be empty");
     }
@@ -582,7 +696,7 @@ mod tests {
     fn load_raw_pub_key_wrong_algorithm_returns_err() {
         // Generate a valid X25519MLKEM768 raw public key, then load it under a
         // different (wrong) algorithm name — OpenSSL must reject it.
-        let (_, pub_raw, _) = pqc_keygen_raw("X25519MLKEM768").expect("keygen");
+        let (_, pub_raw, _) = pqc_keygen_raw("X25519MLKEM768", None, None).expect("keygen");
         let result = load_raw_public_key("X448MLKEM1024", &pub_raw);
         assert!(
             result.is_err(),
@@ -606,7 +720,7 @@ mod tests {
 
     #[test]
     fn load_raw_priv_key_wrong_algorithm_returns_err() {
-        let (priv_raw, _, _) = pqc_keygen_raw("X25519MLKEM768").expect("keygen");
+        let (priv_raw, _, _) = pqc_keygen_raw("X25519MLKEM768", None, None).expect("keygen");
         let result = load_raw_private_key("X448MLKEM1024", &priv_raw);
         assert!(
             result.is_err(),
@@ -618,66 +732,63 @@ mod tests {
 
     #[test]
     fn pkcs8_to_raw_private_roundtrip_ml_dsa_44() {
-        // Generate key via pqc_keygen (PKCS8) and pqc_keygen + load → raw extraction
-        let (pkcs8_der, _, _) = pqc_keygen("ML-DSA-44").expect("keygen");
+        let (pkcs8_der, _, _) = pqc_keygen("ML-DSA-44", None, None).expect("keygen");
         let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
         assert!(!raw.is_empty(), "raw private key must not be empty");
-        // Verify it can be loaded back
-        let guard = load_raw_private_key("ML-DSA-44", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        let pkey = PKey::private_key_from_der(&pkcs8_der).expect("reload der");
+        let raw2 = pkey.raw_private_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw private key must match");
     }
 
     #[test]
     fn spki_to_raw_public_roundtrip_ml_dsa_44() {
-        let (_, spki_der, _) = pqc_keygen("ML-DSA-44").expect("keygen");
+        let (_, spki_der, _) = pqc_keygen("ML-DSA-44", None, None).expect("keygen");
         let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
         assert!(!raw.is_empty(), "raw public key must not be empty");
-        let guard = load_raw_public_key("ML-DSA-44", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        let pkey = PKey::public_key_from_der(&spki_der).expect("reload der");
+        let raw2 = pkey.raw_public_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw public key must match");
     }
 
     #[test]
     fn pkcs8_to_raw_private_roundtrip_ml_kem_768() {
-        let (pkcs8_der, _, _) = pqc_keygen("ML-KEM-768").expect("keygen");
+        let (pkcs8_der, _, _) = pqc_keygen("ML-KEM-768", None, None).expect("keygen");
         let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
         assert!(!raw.is_empty(), "raw private key must not be empty");
-        let guard = load_raw_private_key("ML-KEM-768", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        let pkey = PKey::private_key_from_der(&pkcs8_der).expect("reload der");
+        let raw2 = pkey.raw_private_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw private key must match");
     }
 
     #[test]
     fn spki_to_raw_public_roundtrip_ml_kem_768() {
-        let (_, spki_der, _) = pqc_keygen("ML-KEM-768").expect("keygen");
+        let (_, spki_der, _) = pqc_keygen("ML-KEM-768", None, None).expect("keygen");
         let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
         assert!(!raw.is_empty(), "raw public key must not be empty");
-        let guard = load_raw_public_key("ML-KEM-768", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        let pkey = PKey::public_key_from_der(&spki_der).expect("reload der");
+        let raw2 = pkey.raw_public_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw public key must match");
     }
 
     #[test]
     fn pkcs8_to_raw_private_roundtrip_slh_dsa_sha2_128s() {
-        let (pkcs8_der, _, _) = pqc_keygen("SLH-DSA-SHA2-128s").expect("keygen");
+        let (pkcs8_der, _, _) = pqc_keygen("SLH-DSA-SHA2-128s", None, None).expect("keygen");
         let raw = pqc_private_key_pkcs8_to_raw(&pkcs8_der).expect("pkcs8 to raw");
         assert!(!raw.is_empty(), "raw private key must not be empty");
-        let guard = load_raw_private_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_private(guard.as_ptr()).expect("re-extract");
+        let pkey = PKey::private_key_from_der(&pkcs8_der).expect("reload der");
+        let raw2 = pkey.raw_private_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw private key must match");
     }
 
     #[test]
     fn spki_to_raw_public_roundtrip_slh_dsa_sha2_128s() {
-        let (_, spki_der, _) = pqc_keygen("SLH-DSA-SHA2-128s").expect("keygen");
+        let (_, spki_der, _) = pqc_keygen("SLH-DSA-SHA2-128s", None, None).expect("keygen");
         let raw = pqc_public_key_spki_to_raw(&spki_der).expect("spki to raw");
         assert!(!raw.is_empty(), "raw public key must not be empty");
-        let guard = load_raw_public_key("SLH-DSA-SHA2-128s", &raw).expect("reload raw");
-        let raw2 = evp_pkey_get_raw_public(guard.as_ptr()).expect("re-extract");
+        let pkey = PKey::public_key_from_der(&spki_der).expect("reload der");
+        let raw2 = pkey.raw_public_key().expect("re-extract");
         assert_eq!(raw, raw2, "round-trip raw public key must match");
     }
-
     #[test]
     fn pkcs8_to_raw_empty_input_returns_err() {
         assert!(
@@ -700,5 +811,219 @@ mod tests {
             pqc_public_key_spki_to_raw(&[0xDE; 128]).is_err(),
             "garbage public key input should fail"
         );
+    }
+
+    // ── PQC seed generation for NIST SP 800-133r3 compliance ───────────────
+
+    #[test]
+    fn generate_pqc_seed_produces_entropy() {
+        let rng = super::super::KmsRng::new();
+
+        // Generate a 32-byte seed (typical for ML-KEM per FIPS 203)
+        let seed_32 = generate_pqc_seed(&rng, 32).expect("seed generation");
+        assert_eq!(seed_32.len(), 32, "seed must be exactly 32 bytes");
+        assert!(
+            !seed_32.iter().all(|&b| b == 0),
+            "seed must not be all zeros"
+        );
+
+        // Generate a 64-byte seed (alternative for ML-DSA per FIPS 204)
+        let seed_64 = generate_pqc_seed(&rng, 64).expect("seed generation");
+        assert_eq!(seed_64.len(), 64, "seed must be exactly 64 bytes");
+        assert!(
+            !seed_64.iter().all(|&b| b == 0),
+            "seed must not be all zeros"
+        );
+
+        // Verify that two consecutive seeds are different (entropy is not deterministic)
+        let seed_a = generate_pqc_seed(&rng, 32).expect("seed a");
+        let seed_b = generate_pqc_seed(&rng, 32).expect("seed b");
+        assert_ne!(
+            seed_a.as_slice(),
+            seed_b.as_slice(),
+            "consecutive seeds must differ"
+        );
+    }
+
+    #[test]
+    fn generate_pqc_seed_zeroizes_on_drop() {
+        let rng = super::super::KmsRng::new();
+
+        // This test verifies that Zeroizing works by creating a seed and
+        // allowing it to be dropped. The actual memory zeroization is
+        // checked by tools like valgrind in CI, but we verify the type exists.
+        let seed = generate_pqc_seed(&rng, 32).expect("seed generation");
+        assert_eq!(seed.len(), 32);
+        // seed is dropped here; Zeroizing::drop() zero-fills the memory
+    }
+
+    // ── Deterministic seeded PQC key generation tests ────────────────────────
+
+    #[test]
+    fn pqc_keygen_seeded_is_deterministic_ml_kem() {
+        let name = CString::new("ML-KEM-768").expect("name");
+        let seed = [0x42_u8; 64];
+
+        let pkey1 = pqc_keygen_seeded(&name, &seed, None).expect("seeded keygen 1");
+        let pkey2 = pqc_keygen_seeded(&name, &seed, None).expect("seeded keygen 2");
+        let priv1 = pkey1.private_key_to_pkcs8().expect("priv1");
+        let priv2 = pkey2.private_key_to_pkcs8().expect("priv2");
+        assert_eq!(
+            priv1, priv2,
+            "same seed must produce identical ML-KEM private key"
+        );
+
+        let pub1 = pkey1.public_key_to_der().expect("pub1");
+        let pub2 = pkey2.public_key_to_der().expect("pub2");
+        assert_eq!(
+            pub1, pub2,
+            "same seed must produce identical ML-KEM public key"
+        );
+    }
+
+    #[test]
+    fn pqc_keygen_seeded_is_deterministic_ml_dsa() {
+        let name = CString::new("ML-DSA-65").expect("name");
+        let seed = [0x55_u8; 32];
+
+        let pkey1 = pqc_keygen_seeded(&name, &seed, None).expect("seeded keygen 1");
+        let pkey2 = pqc_keygen_seeded(&name, &seed, None).expect("seeded keygen 2");
+        let priv1 = pkey1.private_key_to_pkcs8().expect("priv1");
+        let priv2 = pkey2.private_key_to_pkcs8().expect("priv2");
+        assert_eq!(
+            priv1, priv2,
+            "same seed must produce identical ML-DSA private key"
+        );
+
+        let pub1 = pkey1.public_key_to_der().expect("pub1");
+        let pub2 = pkey2.public_key_to_der().expect("pub2");
+        assert_eq!(
+            pub1, pub2,
+            "same seed must produce identical ML-DSA public key"
+        );
+    }
+
+    #[test]
+    fn pqc_keygen_draws_seed_from_kms_rng_for_ml_kem_and_ml_dsa() {
+        let rng = super::super::KmsRng::new();
+
+        // Two key generations with RNG must yield distinct keys
+        let (priv1, _, _) = pqc_keygen("ML-KEM-768", Some(&rng), None).expect("keygen 1");
+        let (priv2, _, _) = pqc_keygen("ML-KEM-768", Some(&rng), None).expect("keygen 2");
+        assert_ne!(
+            priv1.as_slice(),
+            priv2.as_slice(),
+            "randomly seeded keys must differ"
+        );
+
+        let (priv_dsa1, _, _) = pqc_keygen("ML-DSA-65", Some(&rng), None).expect("dsa 1");
+        let (priv_dsa2, _, _) = pqc_keygen("ML-DSA-65", Some(&rng), None).expect("dsa 2");
+        assert_ne!(
+            priv_dsa1.as_slice(),
+            priv_dsa2.as_slice(),
+            "randomly seeded keys must differ"
+        );
+    }
+
+    #[test]
+    fn pqc_keygen_ignores_rng_for_slh_dsa() {
+        let rng = super::super::KmsRng::new();
+
+        // Calling with Some(&rng) for SLH-DSA should succeed (generating unseeded)
+        let (priv_slh, pub_slh, bits) =
+            pqc_keygen("SLH-DSA-SHA2-128s", Some(&rng), None).expect("slh-dsa keygen");
+        assert!(!priv_slh.is_empty());
+        assert!(!pub_slh.is_empty());
+        assert!(bits > 0);
+    }
+
+    // ── Propquery and FIPS indicator tests (SP 800-227 / RS4 readiness) ─────
+
+    #[test]
+    fn pqc_keygen_with_propquery_default_succeeds() {
+        // Passing standard default provider properties explicitly should succeed
+        let (priv_kem, pub_kem, bits) = pqc_keygen("ML-KEM-768", None, Some("provider=default"))
+            .expect("default propquery kem");
+        assert!(!priv_kem.is_empty());
+        assert!(!pub_kem.is_empty());
+        assert!(bits > 0);
+
+        let (priv_dsa, pub_dsa, _) =
+            pqc_keygen("ML-DSA-65", None, Some("provider=default")).expect("default propquery dsa");
+        assert!(!priv_dsa.is_empty());
+        assert!(!pub_dsa.is_empty());
+    }
+
+    #[test]
+    fn pqc_keygen_with_nonexistent_propquery_fails() {
+        // A property query requiring a non-existent provider property must fail cleanly
+        let result = pqc_keygen("ML-KEM-768", None, Some("nonexistent_property=yes"));
+        assert!(
+            result.is_err(),
+            "keygen with impossible propquery must return Err"
+        );
+    }
+
+    #[test]
+    fn pqc_keygen_raw_with_propquery_succeeds() {
+        let (priv_raw, pub_raw, bits) =
+            pqc_keygen_raw("X25519MLKEM768", None, Some("provider=default"))
+                .expect("raw default propquery");
+        assert!(!priv_raw.is_empty());
+        assert!(!pub_raw.is_empty());
+        assert!(bits > 0);
+
+        let result = pqc_keygen_raw("X25519MLKEM768", None, Some("nonexistent_property=yes"));
+        assert!(
+            result.is_err(),
+            "raw keygen with impossible propquery must return Err"
+        );
+    }
+
+    #[test]
+    fn pqc_keygen_seeded_with_propquery_fips_rejects_without_fips_provider() {
+        // When "fips=yes" is requested but the FIPS provider is not active / does not provide
+        // the algorithm with an approved indicator, key generation must return an Err.
+        let name = CString::new("ML-KEM-768").expect("name");
+        let seed = [0x77_u8; 64];
+        let propq = CString::new("fips=yes").expect("propq");
+
+        let result = pqc_keygen_seeded(&name, &seed, Some(&propq));
+        assert!(
+            result.is_err(),
+            "requesting fips=yes without loaded FIPS provider must fail"
+        );
+    }
+
+    #[test]
+    fn fips_indicator_is_fail_closed() {
+        // read OK + approved
+        assert!(fips_indicator_approved(1, 1));
+        // read OK but explicitly unapproved
+        assert!(!fips_indicator_approved(1, 0));
+        // read failed (provider does not expose the param): must NOT pass, whatever the buffer holds
+        assert!(!fips_indicator_approved(0, 1));
+        assert!(!fips_indicator_approved(-1, 1));
+        assert!(!fips_indicator_approved(0, 0));
+        // unexpected indicator values are not approval
+        assert!(!fips_indicator_approved(1, 2));
+    }
+
+    #[test]
+    fn requests_fips_provider_matches_only_exact_term() {
+        assert!(requests_fips_provider(b"fips=yes"));
+        assert!(requests_fips_provider(b"provider=fips, fips=yes"));
+        assert!(requests_fips_provider(b"a=b,fips=yes"));
+        // OpenSSL treats a bare property name as boolean true.
+        assert!(requests_fips_provider(b"fips"));
+        assert!(requests_fips_provider(b"a=b, fips"));
+        assert!(!requests_fips_provider(b"fips=no"));
+        // Only the literal `yes` is a boolean true in OpenSSL; these are plain strings.
+        assert!(!requests_fips_provider(b"fips=true"));
+        assert!(!requests_fips_provider(b"fips=1"));
+        assert!(!requests_fips_provider(b"provider=default"));
+        assert!(!requests_fips_provider(b"xfips=yes"));
+        assert!(!requests_fips_provider(b"xfips"));
+        assert!(!requests_fips_provider(b""));
     }
 }

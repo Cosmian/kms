@@ -25,7 +25,10 @@ pub(crate) struct ObjectUid(pub(crate) String);
 impl From<&ObjectUid> for Keyword {
     fn from(uid: &ObjectUid) -> Self {
         // Prefix with "o:" to avoid collisions with users ids
-        Self::from([b"o".as_slice(), uid.0.as_bytes()].concat())
+        let mut bytes = Vec::with_capacity(1 + uid.0.len());
+        bytes.push(b'o');
+        bytes.extend_from_slice(uid.0.as_bytes());
+        Self::from(bytes)
     }
 }
 
@@ -41,7 +44,10 @@ pub(crate) struct FindexUserId(pub(crate) String);
 impl From<&FindexUserId> for Keyword {
     fn from(uid: &FindexUserId) -> Self {
         // Prefix with "u:" to avoid collisions with objects ids
-        Self::from([b"u".as_slice(), uid.0.as_bytes()].concat())
+        let mut bytes = Vec::with_capacity(1 + uid.0.len());
+        bytes.push(b'u');
+        bytes.extend_from_slice(uid.0.as_bytes());
+        Self::from(bytes)
     }
 }
 
@@ -278,9 +284,7 @@ impl PermissionDB {
 #[cfg(test)]
 mod tests {
     use cosmian_kmip::kmip_2_1::KmipOperation;
-    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        bytes_ser_de::test_serialization, reexport::rand_core::SeedableRng,
-    };
+    use cosmian_kms_crypto::reexport::cosmian_crypto_core::bytes_ser_de::test_serialization;
     use strum::EnumCount;
 
     use super::*;
@@ -288,12 +292,12 @@ mod tests {
     #[test]
     #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::as_conversions)] // this a test, it's okay
     fn test_perm_triple_serialization_randomized() {
-        use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-            CsRng, reexport::rand_core::RngCore,
+        use cosmian_kms_crypto::{
+            crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
         };
         use uuid::Uuid;
 
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng().unwrap();
 
         // All KmipOperation variants (17 at the time of writing)
         let all_operations: Vec<KmipOperation> = (0..=KmipOperation::COUNT)

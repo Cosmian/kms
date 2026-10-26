@@ -545,7 +545,9 @@ async fn import_public_key_for_private(
     private_key_uid: &str,
     usage_mask: CryptographicUsageMask,
 ) -> Result<String, CryptoApiError> {
-    let pub_uid = format!("{private_key_uid}{SYSTEM_TAG_PUBLIC_KEY}");
+    let mut pub_uid = String::with_capacity(private_key_uid.len() + SYSTEM_TAG_PUBLIC_KEY.len());
+    pub_uid.push_str(private_key_uid);
+    pub_uid.push_str(SYSTEM_TAG_PUBLIC_KEY);
 
     let spki_der = pkey
         .public_key_to_der()
