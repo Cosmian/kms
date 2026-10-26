@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use actix_web::{App, test, web::Data};
-use cosmian_kms_interfaces::as_hsm_uid;
+use cosmian_kms_interfaces::{ObjectHandle, as_hsm_uid};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::RecommendedCurve, requests::create_ec_key_pair_request,
@@ -111,7 +111,19 @@ async fn sub_ca_flow(
     sk_id: &str,
     key_pair_request: Result<CreateKeyPair, KmsError>,
 ) -> KResult<(String, String)> {
-    kms.create_key_pair(key_pair_request?, owner).await?;
+    let created = kms.create_key_pair(key_pair_request?, owner).await?;
+    // Both halves are created directly in the HSM: HSM routing ids, public key readable back
+    // from the HSM, private key a non-extractable (sensitive) HSM object.
+    assert_eq!(created.private_key_unique_identifier.to_string(), sk_id);
+    let pk_id = created.public_key_unique_identifier.to_string();
+    assert_eq!(pk_id, format!("{sk_id}_pk"));
+    assert!(ObjectHandle::from(sk_id).is_hsm() && ObjectHandle::from(pk_id.as_str()).is_hsm());
+    assert!(kms.database.retrieve_object_arc(&pk_id).await?.is_some());
+    let sk_attributes = kms
+        .get_attributes(GetAttributes::from(sk_id.to_owned()), owner)
+        .await?
+        .attributes;
+    assert_eq!(sk_attributes.sensitive, Some(true));
 
     // CSR signed by the HSM, then certified by the root.
     let csr = generate_csr(kms, sk_id, "C=FR, O=KMS Test, CN=HSM Sub CA", owner).await?;
