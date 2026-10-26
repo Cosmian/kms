@@ -367,11 +367,11 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          - azure-cloud-hsm
-          # aws-cloudhsm and gcp-cloud-hsm clusters are torn down after validation to
-          # limit cloud costs; re-enable once a cluster is provisioned again.
+          # aws-cloudhsm, gcp-cloud-hsm and azure-cloud-hsm clusters are torn down after
+          # validation to limit cloud costs; re-enable once a cluster is provisioned again.
           # - aws-cloudhsm
           # - gcp-cloud-hsm
+          # - azure-cloud-hsm
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
         # sufficient for crypt2pay, and aws-cloudhsm/azure-cloud-hsm FIPS-mode compatibility
         # is not yet confirmed against the clusters' supported mechanism lists.
