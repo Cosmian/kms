@@ -44,7 +44,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **Pre-Release Gate** | `/pre-release` | **Run before every release.** Orchestrates all AI audit skills (security, FIPS, KMIP, threat model, sync rules, changelog, release notes) and produces a go/no-go report. |
-| KMS Release Notes | `/kms-release-notes <version>` | Aggregate all `CHANGELOG/*.md` files into a single compact release note grouped by section and component. Writes `CHANGELOG/RELEASE_<version>.md`. |
+| KMS Release Notes | `/kms-release-notes <version>` | Write the `## [<version>]` entry at the top of the root `CHANGELOG.md` from `git log` since the last tag, then run `/kms-changelog consolidate`. |
 
 ### Workflow Automation
 
@@ -53,7 +53,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | **CI Fix Loop** | `/ci-fix` | Fixes a supplied run or current HEAD; reads failed jobs, batches fixes into one commit per pass, and follows only the resulting commit's CI. Stops after 3 repeated failures. |
 | **KMS Sync Rules** | `/kms-sync-rules` | **Run after every code change.** Auto-detects changed files via `git diff` and maps them to the applicable sync rule numbers (4.1–4.19), pointing to the normative checklist in `.github/instructions/*.instructions.md` for each (auto-applied via `applyTo` when editing a matching file). Only rule 4.8 (non-FIPS gating) has no instruction file and is checked in full by this skill. |
 | KMS Test Vector | `/kms-test-vector` | Walk through the full test vector workflow: directory, `manifest.toml`, TTLV steps, `vector_runner.rs` registration, README count update. |
-| KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md` with correct sections, component grouping, and PR/issue links. |
+| KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md`; `/kms-changelog consolidate <version>` merges all `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, regroups them and deletes them. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |
 | **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms`. |
 | MISE | `/mise` | Create/modify MISE task and library Bash scripts following `.mise/` conventions. |

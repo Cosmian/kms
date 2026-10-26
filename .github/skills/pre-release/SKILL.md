@@ -97,7 +97,7 @@ cargo test-non-fips       # full non-FIPS suite
 
 ## Step 8 — CHANGELOG completeness
 
-Invoke `/kms-changelog`.
+Invoke `/kms-changelog` (branch mode).
 
 Verify `CHANGELOG/<branch>.md` covers every user-visible change:
 public API signatures, CLI flags/output, config keys, default behavior,
@@ -107,12 +107,16 @@ supported algorithms, operator-visible error messages.
 
 Invoke `/kms-release-notes <version>` (substitute the actual semver).
 
-This aggregates all `CHANGELOG/*.md` files into a single human-readable release
-note at `CHANGELOG/RELEASE_<version>.md`. Review it before proceeding:
+This writes the `## [<version>]` entry at the top of the root `CHANGELOG.md`,
+then runs `/kms-changelog consolidate <version>`, which merges every
+`CHANGELOG/*.md` into that entry and deletes the branch files. Review the entry
+before proceeding:
 
 - All Breaking Changes are documented with a migration guide.
 - Security section is present if any security fix was merged.
 - No operator-visible change is missing.
+- Every Security item concerns an issue present in the previous release (nothing introduced and fixed within this release).
+- `CHANGELOG/` holds no remaining branch file.
 
 ## Step 10 — Go / No-Go Report
 

@@ -238,7 +238,6 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 |------|-------------|
 | `release:version` | Print workspace version from `Cargo.toml` |
 | `release:bump` | Bump version across all `Cargo.toml` and config files |
-| `release:changelog` | Regenerate `CHANGELOG.md` via `git-cliff` |
 | `release:extract-changelog` | Extract a version's changelog entry into a file |
 | `release:nix-update-hashes` | Build all Nix derivations and update vendor hashes |
 | `release:update-hashes` | Fetch correct vendor hashes from a CI run |
