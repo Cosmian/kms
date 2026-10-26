@@ -184,6 +184,8 @@ Authentication Verifier are rejected.
 
 #### Prerequisites
 
+- Authentication Verifier 0.5.0 or later, built with the `saml` feature (Docker image
+  `ghcr.io/cosmian/auth-verifier-saml`).
 - The Authentication Verifier `/saml/` routes are served from the **KMS public origin**, behind a reverse proxy,
   without changing the `/saml/` path prefix. The `_ea_` cookie is bound to the host the browser contacted, so it
   only reaches the KMS when both are served from the same host.

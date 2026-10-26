@@ -6,7 +6,7 @@
 # Usage: stack.sh up|down|logs
 #
 # Env:
-#   AUTH_VERIFIER_IMAGE  Auth Verifier SAML image (default: newest local cosmian-auth-verifier:*-saml)
+#   AUTH_VERIFIER_IMAGE  Auth Verifier SAML image (default: ghcr.io/cosmian/auth-verifier-saml:0.5.0)
 #   KEYCLOAK_IMAGE       Keycloak image (default: quay.io/keycloak/keycloak:26.4)
 #   NGINX_IMAGE          nginx image (default: nginx:1.27-alpine)
 #   SAML_SSO_DIR         work dir for keys and configs (default: /tmp/kms-saml-sso)
@@ -18,6 +18,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 source "${REPO_ROOT}/.mise/lib/common.sh"
 
 export SAML_SSO_DIR="${SAML_SSO_DIR:-/tmp/kms-saml-sso}"
+export AUTH_VERIFIER_IMAGE="${AUTH_VERIFIER_IMAGE:-ghcr.io/cosmian/auth-verifier-saml:0.5.0}"
 export KEYCLOAK_IMAGE="${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.4}"
 export NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.27-alpine}"
 PUBLIC_ORIGIN="https://localhost:8443"
@@ -27,20 +28,7 @@ IDP_METADATA_URL="https://localhost:9443/realms/demo/protocol/saml/descriptor"
 MARKER="${SAML_SSO_DIR}/.kms-saml-sso"
 
 compose() {
-  # `down` and `logs` do not need the real image; Compose only requires the variable to be set.
-  AUTH_VERIFIER_IMAGE="${AUTH_VERIFIER_IMAGE:-cosmian-auth-verifier:unset}" \
-    docker compose -p kms-saml-sso -f "${SCRIPT_DIR}/docker-compose.yml" "$@"
-}
-
-# Newest local Auth Verifier image built with the `saml` feature.
-resolve_auth_verifier_image() {
-  if [ -n "${AUTH_VERIFIER_IMAGE:-}" ]; then
-    return
-  fi
-  AUTH_VERIFIER_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' cosmian-auth-verifier | grep -- '-saml$' | head -n1 || true)
-  [ -n "${AUTH_VERIFIER_IMAGE}" ] ||
-    print_error "No cosmian-auth-verifier:*-saml image found. Build it from the authentication repo (branch feat/saml-integration): 'mise run docker:load -- --variant saml', or set AUTH_VERIFIER_IMAGE."
-  export AUTH_VERIFIER_IMAGE
+  docker compose -p kms-saml-sso -f "${SCRIPT_DIR}/docker-compose.yml" "$@"
 }
 
 # Fresh work dir with throw-away TLS and SAML SP keys (refuses to wipe a dir it did not create).
@@ -163,7 +151,6 @@ up() {
   require_cmd jq
   require_cmd openssl
   require_cmd envsubst
-  resolve_auth_verifier_image
   compose down --remove-orphans >/dev/null 2>&1 || true
   generate_keys
   write_configs

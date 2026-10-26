@@ -18,3 +18,8 @@
 - Accept the Authentication Verifier `_ea_` session cookie only when `auth_verifier_saml_realm` is configured and
   only for tokens issued for that realm; an explicit bearer token always takes precedence over the cookie
 - Refuse to start when `auth_verifier_saml_realm` is set and `kms_public_url` does not use `https://`
+
+## Build
+
+- Move the `authentication` submodule to the Authentication Verifier release that ships SAML single sign-on (0.5.0),
+  and run the local SAML test stack on the published `ghcr.io/cosmian/auth-verifier-saml:0.5.0` image
