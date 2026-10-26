@@ -111,8 +111,8 @@ async fn test_generate_csr_for_kms_held_key_and_certify_it() -> CosmianResult<()
 
 /// Create an RSA key pair in `SoftHSM2` and issue a CA certificate for it: self-signed when
 /// `issuer` is `None`, otherwise from a CSR generated for the HSM private key and signed by
-/// `issuer = (issuer certificate id, issuer private key id)`. Returns the HSM private key id
-/// and the certificate.
+/// `issuer = (issuer certificate id, issuer private key id)`. Returns `(HSM private key id,
+/// certificate id, certificate)`.
 fn hsm_ca_certificate(
     conf: &str,
     slot: usize,
@@ -178,15 +178,17 @@ fn hsm_ca_certificate(
 /// key pairs created and kept in `SoftHSM2`: the KMS database only holds the certificates. The
 /// CSRs are signed by the HSM and the certificates by the HSM issuer keys.
 #[tokio::test]
-#[ignore = "Requires SoftHSM2 (HSM_SLOT_ID, HSM_USER_PASSWORD and SOFTHSM2_CONF)"]
+#[ignore = "Requires SoftHSM2 (HSM_SLOT_ID, optional HSM_USER_PASSWORD, SOFTHSM2_CONF)"]
 async fn test_generate_csr_for_softhsm2_held_keys_and_certify_them() -> CosmianResult<()> {
     log_init(None);
     let slot: usize = std::env::var("HSM_SLOT_ID").unwrap().parse().unwrap();
+    let password = std::env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned());
     // plain-HTTP server whose only HSM is the SoftHSM2 slot under test
     let ctx = start_test_server_with_patch(
         &hsm_config_path("three_softhsm2.toml"),
         move |config| {
             config.hsm.hsm_slot = vec![slot];
+            config.hsm.hsm_password = vec![password];
             config.hsm_instances.clear();
         },
         TestClientOptions::default(),
