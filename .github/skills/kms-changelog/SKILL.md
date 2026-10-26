@@ -24,6 +24,10 @@ Two modes:
   behaviour in the feature's own Features entry instead, and fix it silently. Verify with
   `git grep <symbol> <previous-tag>`: if the code or feature does not exist there, the entry does not belong in
   `## Security`.
+- **Every bullet of a `Security` section carries a `COSMIAN-YYYY-NNN` (or GHSA) id** that exists in `SECURITY.md` with
+  `Fixed in` equal to the release. A hardening or fix without a `SECURITY.md` entry is not listed under Security: put
+  it in Bug Fixes (theme `Hardening`), Build or Features. Never create the `SECURITY.md` entry yourself; report that
+  one is missing when the issue looks like a real vulnerability.
 
 # Mode 1 — Branch entry
 
@@ -123,12 +127,18 @@ signatures, traits, crate layout, CLI flags, benchmarks, build requirements) are
 them as normal entries. A feature introduced since the previous release cannot break anything, so its restrictions are
 described in its Features entry.
 
+A change that corrects wrong, non-compliant or unsafe behaviour is **not** a breaking change, even when some clients
+must adapt: a KMIP-compliance fix (stricter validation, error code or response layout aligned with the spec), a
+rejected input that should never have been accepted, or a response-format fix goes to Bug Fixes (state the client
+action in the bullet), and anything with a `COSMIAN-YYYY-NNN` id goes to Security. Reserve Breaking Changes for a
+deliberate contract change that has no bug-fix or security justification; a release may have none.
+
 ```markdown
 ## Breaking Changes
 
-### KMIP endpoints
-- Return `Attribute_Read_Only` (HTTP 422) from `SetAttribute` for `UniqueIdentifier`; it was previously accepted.
-  Clients must stop setting it through `SetAttribute`.
+### REST endpoints
+- Rename the `kid` field of the `/v1/crypto/keys` response to `key_id` (hypothetical example). Clients must read
+  `key_id`; `kid` is no longer returned.
 ```
 
 ## PR/Issue Link Format
@@ -161,6 +171,11 @@ commit title only, and say so in the final report).
 - Regroup by theme (`####`, ≥ 2 bullets; reuse the same theme name across sections): `HSM`, `PKCS#11`, `Audit Logging`,
   `EST & SCEP Enrollment`, `OpenPGP`, `Hybrid KEM`, `Database`, `CLI`, …. Branch files use different or overlapping
   category names (`Fixed`, `Improvements`, `Tests`, …): map them to the sections above.
+- **A theme that is new in this release lives in one place.** Every item about a feature introduced since the previous
+  release (`Audit Logging`, `EST & SCEP Enrollment`, `OpenPGP`, …) goes under that feature's single `####`
+  subsection of Features: its follow-up fixes, refactors, tests and docs included, not scattered over Bug Fixes,
+  Refactor, Testing and Documentation. Only themes that already existed in the previous release (`HSM`, `Database`,
+  `CLI`, …) are split across sections.
 - Merge duplicates so each item appears exactly once. A bug fix and a feature describing the same change stay under
   Features. A breaking change appears under Breaking Changes only, with its migration action, and only when it meets
   the customer-facing criteria of Step 6 (SQL/Redis schema or server endpoint); demote every other "breaking" item to a
@@ -177,10 +192,15 @@ For each `COSMIAN-YYYY-NNN` or GHSA id in the Security section, verify `SECURITY
 `X.Y.Z` and an affected range that includes the previous release. If one is missing, **stop and report**; do not
 create the SECURITY.md entry.
 
-Then check **every** Security bullet (with or without an id) against the previous tag, as defined in Important Notes:
-`git grep` the symbol, endpoint, config key or package it concerns in the previous tag. If it does not exist there
-(new feature, new package, new endpoint), move the content to Features (keep any operator "Setup action") and delete it
-from Security.
+Also check the reverse direction: list every advisory of the `SECURITY.md` summary table whose `Fixed in` equals
+`X.Y.Z` (`grep "| X.Y.Z " SECURITY.md`, not just a guessed id range). Each one must appear exactly once in the Security
+section.
+
+Then check **every** Security bullet against the previous tag, as defined in Important Notes: `git grep` the symbol,
+endpoint, config key or package it concerns in the previous tag. If it does not exist there (new feature, new package,
+new endpoint), move the content to Features (keep any operator "Setup action") and delete it from Security. Finally,
+every Security bullet must contain an id; move each bullet without one to Bug Fixes (`Hardening`), Build or Features
+and list in the final report the ones that look like real vulnerabilities, so that a `SECURITY.md` entry can be written.
 
 ## Step C4 — Write the root entry
 

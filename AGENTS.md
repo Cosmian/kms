@@ -383,7 +383,7 @@ Run after each task, when diff > 200 lines, or before marking the last todo "com
 Run **`/kms-changelog`** — it reads the branch name, determines the correct file path, and guides the entry format.
 
 > Branch files (`CHANGELOG/<branch-name-with-slashes-as-underscores>.md`) are ephemeral. At release time `/kms-changelog consolidate <version>` merges them into the hand-maintained root `CHANGELOG.md` and deletes them. Outside a release, **do not edit the root `CHANGELOG.md`**.
-> The `Security` section of a branch file or of `CHANGELOG.md` lists only issues present in the previous release; a vulnerability introduced and fixed within the same release is never listed.
+> The `Security` section of a branch file or of `CHANGELOG.md` lists only issues present in the previous release; a vulnerability introduced and fixed within the same release is never listed. Every Security bullet cites a `COSMIAN-YYYY-NNN` id that exists in `SECURITY.md`; anything without one goes to Bug Fixes, Build or Features.
 
 Write an entry for any user- or operator-observable change (feature, bug fix, security, behavioural change, breaking change). Skip internal-only changes (formatting, CI, test-only refactors). When in doubt, write one. See the `/kms-changelog` skill for the full criteria and entry format.
 

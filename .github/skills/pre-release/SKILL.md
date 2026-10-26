@@ -116,6 +116,7 @@ before proceeding:
 - Security section is present if any security fix was merged.
 - No operator-visible change is missing.
 - Every Security item concerns an issue present in the previous release (nothing introduced and fixed within this release).
+- Every Security bullet cites a `COSMIAN-YYYY-NNN` id listed in `SECURITY.md`.
 - `CHANGELOG/` holds no remaining branch file.
 
 ## Step 10 — Go / No-Go Report

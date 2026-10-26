@@ -107,6 +107,9 @@ If the entry contains a `### 🔒 Security` section:
 3. If missing, **block and report** — do not create the entry yourself.
 4. Remove from `### 🔒 Security` any item whose issue was introduced in this same release (the feature, endpoint or
    package does not exist in the previous tag): describe it under Features instead.
+5. Every bullet under `### 🔒 Security` must contain its `COSMIAN-YYYY-NNN` id; move any bullet without one to Bug
+   Fixes, Build or Features and report it.
+6. Every advisory of the `SECURITY.md` table with `Fixed in` equal to this release appears exactly once under Security.
 
 ## Step 6 — Tone and formatting rules
 
