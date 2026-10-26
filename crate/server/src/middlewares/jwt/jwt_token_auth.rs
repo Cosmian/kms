@@ -14,7 +14,7 @@ use super::UserClaim;
 use crate::{
     error::KmsError,
     middlewares::{
-        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_aws_xks_identity,
+        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_service_identity,
     },
     result::KResult,
 };
@@ -91,8 +91,8 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
         ));
     }
     debug!("JWT-SVID access granted to {sub}!");
-    let username = UserId::from(sub.to_owned());
-    reject_reserved_aws_xks_identity(&username)?;
+    let username = UserId::from(sub);
+    reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
         auth_method: AuthMethod::JwtSvid,
@@ -113,8 +113,8 @@ fn resolve_authenticated_user(
     if let Some(email) = user_claim.email.as_deref() {
         // Authentication successful with valid email
         debug!("JWT Access granted to {email}!");
-        let username = UserId::from(email.to_owned());
-        reject_reserved_aws_xks_identity(&username)?;
+        let username = UserId::from(email);
+        reject_reserved_service_identity(&username)?;
         return Ok(AuthenticatedUser {
             username,
             auth_method: AuthMethod::OidcJwt,
@@ -211,21 +211,18 @@ pub(super) async fn handle_jwt(
     trace!("JWT Authentication...");
 
     // Extract identity from either the Identity service or the Authorization header
-    let identity = Identity::extract(req.request())
+    let identity_from_header: Option<String> = Identity::extract(req.request())
         .into_inner()
-        .map_or_else(
-            |_| {
-                // If Identity extraction fails, try the Authorization header
-                req.headers()
-                    .get(header::AUTHORIZATION)
-                    .and_then(|h| h.to_str().ok().map(str::to_owned))
-            },
-            |identity| identity.id().ok(),
-        )
-        .unwrap_or_default();
-
+        .ok()
+        .map(|identity| identity.id().unwrap_or_default());
+    let identity: &str = identity_from_header.as_deref().unwrap_or_else(|| {
+        req.headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or_default()
+    });
     // Try to extract and validate the user claim
-    let mut private_claim = extract_user_claim(&configs, &identity);
+    let mut private_claim = extract_user_claim(&configs, identity);
 
     // If no configuration could get the claim, try refreshing them and extract the user claim again
     if private_claim.is_err() {
@@ -237,7 +234,7 @@ pub(super) async fn handle_jwt(
             .refresh()
             .await?;
 
-        private_claim = extract_user_claim(&configs, &identity);
+        private_claim = extract_user_claim(&configs, identity);
     }
 
     match private_claim {

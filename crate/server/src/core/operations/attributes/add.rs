@@ -1,16 +1,15 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            KmipOperation,
-            kmip_attributes::Attribute,
-            kmip_objects::ObjectType,
-            kmip_operations::{AddAttribute, AddAttributeResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use std::sync::Arc;
+
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_objects::ObjectType,
+        kmip_operations::{AddAttribute, AddAttributeResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    time_normalize,
 };
 use cosmian_logger::{debug, trace};
 
@@ -40,13 +39,14 @@ pub(crate) async fn add_attribute(
     check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
     check_rotate_name(&request.new_attribute, "AddAttribute")?;
 
-    let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
         KmipOperation::AddAttribute,
         kms,
         user,
     ))
     .await?;
+    let owm = Arc::unwrap_or_clone(owm);
     trace!("Retrieved object for: {}", owm.object());
 
     // For SQL keys (non-HSM): rotate_name must equal the key's UID.
@@ -63,8 +63,6 @@ pub(crate) async fn add_attribute(
         }
     }
 
-    let mut attributes = owm.attributes_mut().clone();
-
     // Capture before the macro runs (which may partially move request.new_attribute).
     let is_adding_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
         && !ObjectHandle::from(owm.id()).is_hsm();
@@ -78,6 +76,7 @@ pub(crate) async fn add_attribute(
     )
     .await?;
 
+    let (id, mut object, mut attributes) = owm.into_parts();
     // Check if the attribute is allowed to be set
     match_add_attribute! {
         request.new_attribute, attributes,
@@ -242,33 +241,33 @@ pub(crate) async fn add_attribute(
     // update the last change date
     attributes.last_change_date = Some(time_normalize()?);
 
-    let tags = kms.database.retrieve_tags(owm.id()).await?;
+    let tags = kms.database.retrieve_tags(&id).await?;
 
-    match owm.object().object_type() {
+    match object.object_type() {
         ObjectType::PublicKey
         | ObjectType::PrivateKey
         | ObjectType::SplitKey
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object_mut().attributes_mut()?;
-            *object_attributes = attributes.clone();
+            let object_attributes = object.attributes_mut()?;
+            object_attributes.clone_from(&attributes);
             debug!("Set Object Attribute: {}", object_attributes);
         }
         _ => {
             trace!(
                 "Attribute: Object type {:?} does not have attributes (nor key block)",
-                owm.object().object_type()
+                object.object_type()
             );
         }
     }
 
     debug!("Add Attribute: {}", attributes);
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
+        .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
 
     Ok(AddAttributeResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(id),
     })
 }

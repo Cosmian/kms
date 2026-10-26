@@ -80,6 +80,7 @@ ignore = [
   # (cosmian_kms_k8s_operator/plugin/csi_provider). No safe upgrade is available per the advisory.
   # Re-evaluate once figment/kube-client migrate off serde_yaml.
   { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained; transitive via figment/kube-client's serde_yaml dependency, no safe upgrade available" },
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 timing variability; no 0.5.x patch exists (fixed in >=0.7.6, which the workspace uses for 0.7.x). 0.5.5 remains via elliptic-curve 0.13 (p256/p384 0.13) from jsonwebtoken 10.4 (rust_crypto, JWT ES256/ES384 verification in server and CLI), from the direct p256 0.13 dependency of cosmian_pkcs11 and cosmian_pkcs11_module, and from the optional pgp 0.21.0 -> cx448 0.1.1 (non-fips). Upstream jsonwebtoken 11.1 and pgp 0.21 still require elliptic-curve 0.13. Remove when they move to 0.14" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use
@@ -109,6 +110,7 @@ allow = [
   "BSD-3-Clause",
   "Unicode-3.0",
   "CC0-1.0",
+  "BSL-1.0", # xxhash-rust (via redis 1.x); approved by maintainers
   "BUSL-1.1",
   "CDLA-Permissive-2.0",
 ]

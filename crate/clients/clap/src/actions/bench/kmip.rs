@@ -28,6 +28,8 @@ use cosmian_kms_client::{
         },
     },
 };
+#[cfg(feature = "non-fips")]
+use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
@@ -755,7 +757,10 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
-        let ct = enc_resp.data.map_or_else(Vec::new, |z| z.to_vec());
+        // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
+        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
+            .expect("KEM encapsulation tuple");
+        let ct = ct.to_vec();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
             None,
@@ -818,10 +823,10 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             Operation::Encrypt(Box::new(enc_req)),
         );
 
-        // Standard PQC KEM: ciphertext is in i_v_counter_nonce
-        let ct = enc_resp
-            .i_v_counter_nonce
-            .unwrap_or_else(|| enc_resp.data.map_or_else(Vec::new, |z| z.to_vec()));
+        // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
+        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
+            .expect("KEM encapsulation tuple");
+        let ct = ct.to_vec();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
             &mut group,

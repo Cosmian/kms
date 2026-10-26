@@ -1,17 +1,15 @@
 ---
 name: pre-release
-description: 'Release readiness orchestrator: 9-phase gate per .github/skills/shared/orchestrator-contract.md. Each phase is a task sub-agent (routed by Jev delegation). Runs security, crypto, KMIP, threat-model, sync rules, changelog, release notes audits. Use before triggering release.yml.'
+description: 'Release readiness orchestrator: 9-phase gate per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Runs security, crypto, KMIP, threat-model, sync rules, changelog, release notes audits. Use before triggering release.yml.'
 ---
 
 ## Orchestrator Implementation
 
 This skill implements the **Release Order phase list** defined in [`.github/skills/shared/orchestrator-contract.md`](../shared/orchestrator-contract.md) (phases 1–9).
 
-Each phase below is delegated to a task sub-agent using the OMP `task` tool. Jev's `delegation.enabled: true` automatically routes:
-- **Mechanical phases** (sync rules, deterministic checks) → `smol` (fast, cheap model)
-- **Reasoning phases** (security, crypto, standards, KMIP, threat-model, changelog, release notes) → `slow` (expensive reasoning)
-
-This eliminates manual model selection and ensures consistent orchestration across all audit skills.
+Each phase below is delegated to a sub-agent per contract §6 (harness sub-agent tool, else inline). Where the harness supports routing:
+- **Mechanical phases** (sync rules, deterministic checks) → cheap/fast routing (`smol`)
+- **Reasoning phases** (security, crypto, standards, KMIP, threat-model, changelog, release notes) → reasoning routing (`slow`)
 
 # Pre-Release Readiness Gate
 
@@ -36,7 +34,7 @@ Record: which crates changed, whether crypto/KMIP/auth/UI was touched, whether a
 
 Invoke `/kms-sync-rules` with the full diff since the last tag.
 
-Verify every applicable sub-rule (4.1–4.17) is satisfied. Block on any open item.
+Verify every applicable sub-rule (4.1–4.18) is satisfied. Block on any open item.
 
 ## Step 2 — Security review
 
@@ -58,7 +56,7 @@ Skip if no file under `crate/crypto/` or `crate/server/src/openssl_providers.rs`
 Block on: disallowed algorithm added, missing `#[cfg(feature = "non-fips")]` gate,
 incorrect key size, OpenSSL provider init bypassed, multi-standard compliance divergence.
 
-## Step 3b — Standards review (if spec-level conformance is affected)
+## Step 4 — Standards review (if spec-level conformance is affected)
 
 Invoke `/standards-review` on the changed areas.
 
@@ -66,7 +64,7 @@ Skip if the change is purely internal refactoring with no spec-level behavioral 
 
 Block on: any 🔴 Violation (contradicts a MUST/SHALL requirement in a governing standard).
 
-## Step 4 — KMIP compliance (if any KMIP operation added or modified)
+## Step 5 — KMIP compliance (if any KMIP operation added or modified)
 
 Invoke `/kmip-compliance` for each changed operation.
 
@@ -75,7 +73,7 @@ Skip if no file under `crate/kmip/`, `crate/server/src/core/operations/`, or
 
 Block on: spec deviation, missing dispatch arm, missing access control check.
 
-## Step 5 — Threat model update (if trust boundary or auth flow changed)
+## Step 6 — Threat model update (if trust boundary or auth flow changed)
 
 Invoke `/threat-model` in incremental mode if any of these changed:
 
@@ -86,7 +84,7 @@ Invoke `/threat-model` in incremental mode if any of these changed:
 
 Skip if only internal refactoring or test changes.
 
-## Step 6 — Deterministic checks
+## Step 7 — Deterministic checks
 
 Run locally to confirm CI will pass:
 
@@ -97,26 +95,31 @@ cargo test-fips           # full FIPS suite
 cargo test-non-fips       # full non-FIPS suite
 ```
 
-## Step 7 — CHANGELOG completeness
+## Step 8 — CHANGELOG completeness
 
-Invoke `/kms-changelog`.
+Invoke `/kms-changelog` (branch mode).
 
 Verify `CHANGELOG/<branch>.md` covers every user-visible change:
 public API signatures, CLI flags/output, config keys, default behavior,
 supported algorithms, operator-visible error messages.
 
-## Step 8 — Generate release notes
+## Step 9 — Generate release notes
 
 Invoke `/kms-release-notes <version>` (substitute the actual semver).
 
-This aggregates all `CHANGELOG/*.md` files into a single human-readable release
-note at `CHANGELOG/RELEASE_<version>.md`. Review it before proceeding:
+This writes the `## [<version>]` entry at the top of the root `CHANGELOG.md`,
+then runs `/kms-changelog consolidate <version>`, which merges every
+`CHANGELOG/*.md` into that entry and deletes the branch files. Review the entry
+before proceeding:
 
 - All Breaking Changes are documented with a migration guide.
 - Security section is present if any security fix was merged.
 - No operator-visible change is missing.
+- Every Security item concerns an issue present in the previous release (nothing introduced and fixed within this release).
+- Every Security bullet cites a `COSMIAN-YYYY-NNN` id listed in `SECURITY.md`.
+- `CHANGELOG/` holds no remaining branch file.
 
-## Step 9 — Go / No-Go Report
+## Step 10 — Go / No-Go Report
 
 Produce this exact report:
 
@@ -125,7 +128,7 @@ Produce this exact report:
 
 | Check | Status | Blocking findings |
 |-------|--------|-------------------|
-| Sync rules (4.1–4.17) | ✅ PASS / ❌ BLOCK | [list open items] |
+| Sync rules (4.1–4.18) | ✅ PASS / ❌ BLOCK | [list open items] |
 | Security review | ✅ PASS / ❌ BLOCK | [HIGH/CRITICAL findings] |
 | FIPS audit | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | [violations] |
 | KMIP compliance | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | [spec deviations] |

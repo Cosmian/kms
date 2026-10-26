@@ -106,11 +106,10 @@ pub(crate) async fn create_key_pair(
                 .and_then(|att| att.activation_date)
         });
 
-    let key_pair = generate_key_pair(kms.vendor_id(), request, &sk_uid, &pk_uid, &kms.rng)?;
+    let KeyPair((mut private_key, mut public_key)) =
+        generate_key_pair(kms.vendor_id(), request, &sk_uid, &pk_uid, &kms.rng)?;
 
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
-
-    let mut private_key = key_pair.private_key().to_owned();
     let private_key_attributes =
         private_key.setup_with_lifecycle(ObjectType::PrivateKey, requested_sk_activation_date)?;
     let mut private_key_attributes = private_key_attributes;
@@ -145,7 +144,6 @@ pub(crate) async fn create_key_pair(
     // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
     private_key.copy_wrapping_key_link_to(&mut private_key_attributes);
 
-    let mut public_key = key_pair.public_key().to_owned();
     let mut public_key_attributes =
         public_key.setup_with_lifecycle(ObjectType::PublicKey, requested_pk_activation_date)?;
     // Public keys are never Sensitive; AlwaysSensitive SHALL always have a value
@@ -173,14 +171,14 @@ pub(crate) async fn create_key_pair(
         AtomicOperation::Create((
             sk_uid.clone(),
             owner.to_owned(),
-            private_key.clone(),
+            private_key,
             private_key_attributes,
             private_key_tags,
         )),
         AtomicOperation::Create((
             pk_uid.clone(),
             owner.to_owned(),
-            public_key.clone(),
+            public_key,
             public_key_attributes,
             public_key_tags,
         )),
@@ -525,7 +523,7 @@ pub(super) fn generate_key_pair(
             request.private_key_attributes,
             public_key_uid.to_owned(),
             request.public_key_attributes,
-            common_attributes,
+            &common_attributes,
         ),
         #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::CoverCrypt => {

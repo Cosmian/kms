@@ -10,6 +10,10 @@ nav:
       - Introduction: use_cases/pki.md
       - Revocation & CRL Distribution: use_cases/pki-revocation.md
       - OCSP Responder: use_cases/pki-ocsp.md
+      - Device enrollment:
+          - Overview: use_cases/pki-enrollment.md
+          - EST (RFC 7030): use_cases/pki-enrollment-est.md
+          - SCEP (RFC 8894): use_cases/pki-enrollment-scep.md
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
@@ -24,6 +28,7 @@ nav:
       - AWS CloudHSM: hsm_support/aws_cloudhsm.md
       - GCP Cloud HSM: hsm_support/gcp_cloud_hsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
+      - Kryoptic: hsm_support/kryoptic.md
       - Other HSMs: hsm_support/other_hsms.md
   - KMIP Support:
       - Introduction: kmip_support/introduction/index.md
@@ -92,6 +97,7 @@ nav:
               - Generating Gmail keys: integrations/cloud_providers/google_workspace_client_side_encryption_cse/configuring_gmail_cse.md
               - Migrating existing Drive CSE elements: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_drive.md
               - Migrating existing email to Gmail CSE: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_gmail.md
+              - Test coverage: integrations/cloud_providers/google_workspace_client_side_encryption_cse/test_coverage.md
       - Databases:
           - MongoDB: integrations/databases/mongodb.md
           - MySQL Enterprise Edition: integrations/databases/mysql.md
@@ -121,7 +127,6 @@ nav:
           - Secrets Store CSI Driver: integrations/kubernetes/csi-provider.md
           - Kubernetes Operator: integrations/kubernetes/operator.md
       - Other:
-          - PKCS#11 provider module: integrations/pkcs11_provider.md
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
           - GnuPG:
@@ -139,7 +144,6 @@ nav:
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
-      - Kubernetes (Helm): installation/kubernetes_helm.md
       - High-availability: installation/high_availability_mode.md
   - Configuration:
       - Configuration file: configuration/server_configuration_file.md
@@ -177,7 +181,7 @@ nav:
       - FIPS 140-3: certifications_and_compliance/fips.md
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
-          - PQC Entropy Source Validation (ESV) Compliance: certifications_and_compliance/cryptographic_algorithms/pqc_entropy_compliance.md
+          - Random Number Generation and PQC Entropy: certifications_and_compliance/cryptographic_algorithms/random_number_generation.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:

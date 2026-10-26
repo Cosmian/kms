@@ -102,6 +102,8 @@ require_cmd curl  # uses the built-in default message when omitted
 
 Never use `which` or `type -p`; they are not portable.
 
+Installing or downloading a third-party tool (`cargo install`, `go install`, `pip install`, `npm install -g`, `curl`/`wget` of a script or binary) follows `dependencies.instructions.md`: exact version, SHA-256-verified download (`compute_sha256`), never `curl | sh`.
+
 ## Library sourcing and guard pattern
 
 Every library under `.mise/lib/` must use a double-source guard:

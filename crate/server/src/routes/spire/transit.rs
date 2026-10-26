@@ -613,7 +613,7 @@ pub(crate) async fn get_transit_key(
     };
     let (public_key_pem, key_type) = match attrs.get_link(LinkType::PublicKeyLink) {
         Some(LinkedObjectIdentifier::TextString(pub_uid)) => {
-            match kms.database.retrieve_object(&pub_uid).await {
+            match kms.database.retrieve_object_arc(&pub_uid).await {
                 Ok(Some(owm)) => kmip_public_key_to_openssl(owm.object()).map_or_else(
                     |_| fallback(),
                     |pkey| {
@@ -842,6 +842,12 @@ async fn sign_with_transit_key_impl(
             None
         };
 
+    let (data, digested_data) = if body.prehashed {
+        (None, Some(input_bytes))
+    } else {
+        (Some(Zeroizing::new(input_bytes)), None)
+    };
+
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_uid)),
         cryptographic_parameters: Some(CryptographicParameters {
@@ -849,16 +855,8 @@ async fn sign_with_transit_key_impl(
             digital_signature_algorithm,
             ..Default::default()
         }),
-        digested_data: if body.prehashed {
-            Some(input_bytes.clone())
-        } else {
-            None
-        },
-        data: if body.prehashed {
-            None
-        } else {
-            Some(Zeroizing::new(input_bytes))
-        },
+        digested_data,
+        data,
         ..Default::default()
     };
 

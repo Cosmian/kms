@@ -20,20 +20,24 @@ use std::{
 use cosmian_logger::warn;
 use foreign_types::ForeignTypeRef;
 use openssl::{
+    nid::Nid,
     pkey::{PKeyRef, Private},
     x509::X509Ref,
 };
 use time::OffsetDateTime;
 
 pub use super::crl::CrlReasonCode;
-use super::ocsp_ffi::{
-    self, ASN1_GENERALIZEDTIME_free, ASN1_GENERALIZEDTIME_set, ASN1_INTEGER_to_BN,
-    ASN1_STRING_get0_data, ASN1_STRING_length, BN_bn2hex, BN_free, CRL_REASON_AA_COMPROMISE,
-    CRL_REASON_AFFILIATION_CHANGED, CRL_REASON_CA_COMPROMISE, CRL_REASON_CERTIFICATE_HOLD,
-    CRL_REASON_CESSATION_OF_OPERATION, CRL_REASON_KEY_COMPROMISE, CRL_REASON_PRIVILEGE_WITHDRAWN,
-    CRL_REASON_REMOVE_FROM_CRL, CRL_REASON_SUPERSEDED, CRL_REASON_UNSPECIFIED, OCSP_NONCE_MAX_LEN,
-    OCSP_NONCE_MIN_LEN, OID_OCSP_ARCHIVE_CUTOFF, OID_OCSP_NONCE, V_OCSP_CERTSTATUS_GOOD,
-    V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
+use super::{
+    ocsp_ffi::{
+        self, ASN1_GENERALIZEDTIME_free, ASN1_GENERALIZEDTIME_set, ASN1_INTEGER_to_BN,
+        ASN1_STRING_get0_data, ASN1_STRING_length, BN_bn2hex, BN_free, CRL_REASON_AA_COMPROMISE,
+        CRL_REASON_AFFILIATION_CHANGED, CRL_REASON_CA_COMPROMISE, CRL_REASON_CERTIFICATE_HOLD,
+        CRL_REASON_CESSATION_OF_OPERATION, CRL_REASON_KEY_COMPROMISE,
+        CRL_REASON_PRIVILEGE_WITHDRAWN, CRL_REASON_REMOVE_FROM_CRL, CRL_REASON_SUPERSEDED,
+        CRL_REASON_UNSPECIFIED, OCSP_NONCE_MAX_LEN, OCSP_NONCE_MIN_LEN, V_OCSP_CERTSTATUS_GOOD,
+        V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
+    },
+    oid::asn1_object,
 };
 use crate::error::CryptoError;
 
@@ -347,7 +351,7 @@ pub fn verify_issuer_hashes_match_ca(
 /// Returns [`CryptoError`] if the certificate DER cannot be parsed, or if the
 /// `id-kp-OCSPSigning` extended key usage is missing.
 pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Result<(), CryptoError> {
-    use x509_parser::{der_parser::oid, oid_registry::Oid, prelude::FromDer};
+    use x509_parser::{oid_registry::Oid, prelude::FromDer};
 
     let (_, cert) =
         x509_parser::certificate::X509Certificate::from_der(signer_cert_der).map_err(|e| {
@@ -370,10 +374,11 @@ pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Resul
         ));
     }
 
-    // `id-pkix-ocsp-nocheck` has no named constant in `oid-registry`; match by raw OID.
-    // Its absence is a warning, not a rejection — see the doc comment above for why
+    // `id-pkix-ocsp-nocheck` has no named constant in `oid-registry`; match the OID OpenSSL
+    // registers for it. Its absence is a warning, not a rejection — see the doc comment above for why
     // this is only one of three RFC 6960 §4.2.2.2.1-sanctioned strategies, not a MUST.
-    let ocsp_nocheck_oid: Oid<'_> = oid!(1.3.6.1.5.5.7.48.1.5);
+    let nocheck_obj = asn1_object(Nid::ID_PKIX_OCSP_NOCHECK)?;
+    let ocsp_nocheck_oid = Oid::new(std::borrow::Cow::Borrowed(nocheck_obj.as_slice()));
     let has_nocheck = cert
         .tbs_certificate
         .get_extension_unique(&ocsp_nocheck_oid)
@@ -686,9 +691,7 @@ fn add_single_response(
 /// as absent per §3's "SHOULD be silently ignored").
 #[expect(unsafe_code)]
 fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>> {
-    // SAFETY: OID_OCSP_NONCE is a valid NUL-terminated string.
-    let nonce_nid =
-        unsafe { ocsp_ffi::OBJ_txt2nid(OID_OCSP_NONCE.as_ptr().cast::<std::ffi::c_char>()) };
+    let nonce_nid = Nid::ID_PKIX_OCSP_NONCE.as_raw();
 
     // SAFETY: req is non-null.
     let ext_count = unsafe { ocsp_ffi::OCSP_REQUEST_get_ext_count(req) };
@@ -706,7 +709,7 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
         }
         // SAFETY: obj is non-null.
         let nid = unsafe { openssl_sys::OBJ_obj2nid(obj) };
-        if nid != nonce_nid && nid != ocsp_ffi::NID_OCSP_NONCE {
+        if nid != nonce_nid {
             continue;
         }
 
@@ -831,15 +834,7 @@ fn add_archive_cutoff(
     }
     let _gt_guard = GeneralizedTimeGuard(cutoff_gt);
 
-    // Look up the NID for id-pkix-ocsp-archive-cutoff.
-    // SAFETY: OID_OCSP_ARCHIVE_CUTOFF is a valid NUL-terminated OID string.
-    let nid = unsafe {
-        ocsp_ffi::OBJ_txt2nid(OID_OCSP_ARCHIVE_CUTOFF.as_ptr().cast::<std::ffi::c_char>())
-    };
-    if nid <= 0 {
-        // Extension not registered — skip rather than fail.
-        return Ok(());
-    }
+    let nid = Nid::ID_PKIX_OCSP_ARCHIVECUTOFF.as_raw();
 
     // Add the extension using the pre-built GeneralizedTime value.
     // SAFETY: cutoff_gt is non-null and well-formed; X509V3_ADD_DEFAULT = 0.

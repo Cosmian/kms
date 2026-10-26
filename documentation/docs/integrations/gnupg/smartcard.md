@@ -140,7 +140,7 @@ gpg --card-status
 Then either register the key as a new primary key with `gpg --card-edit` → `admin` → `generate`,
 or attach it to an existing key with `gpg --edit-key <MASTER_KEY_ID>` → `addcardkey`. Both flows
 are described in the GNUPG INTEGRATION section of the
-[upstream manual](https://github.com/alonbl/gnupg-pkcs11-scd/blob/master/doc/gnupg-pkcs11-scd.1.adoc).
+[upstream manual](https://github.com/alonbl/gnupg-pkcs11-scd/blob/master/gnupg-pkcs11-scd/gnupg-pkcs11-scd.1).
 
 ---
 

@@ -198,7 +198,7 @@ expired backups when they are no longer needed.
 ## Development and CI validation
 
 There is no free/local AWS CloudHSM simulator equivalent to SoftHSM2. See
-[`crate/hsm/aws_cloudhsm/README.md`](https://github.com/Cosmian/kms/blob/main/crate/hsm/aws_cloudhsm/README.md)
+[`crate/hsm/aws_cloudhsm/README.md`](https://github.com/Cosmian/kms/blob/develop/crate/hsm/aws_cloudhsm/README.md)
 for:
 
 - the one-time runbook to provision a persistent AWS CloudHSM cluster for CI,

@@ -186,3 +186,112 @@ The `hsm-model` parameter is the HSM model to be used; use `proteccio`
 The `hsm-admin` parameter is the username of the HSM administrator. The HSM administrator is the only user that can create objects on the HSM via the KMIP `Create` operation the delegate other operations to other users. (see below)
 
 The `hsm-slot` and `hsm-password` parameters are the slot number and password of the HSM slots to be used by the KMS. These arguments can be repeated multiple times to specify multiple slots.
+
+## Kubernetes (Helm chart)
+
+Use an official KMS image unmodified (`ghcr.io/cosmian/kms-fips` below, or `ghcr.io/cosmian/kms`).
+An init container copies `libnethsm.so` from a small client image, and `/etc/proteccio` is mounted
+from a Kubernetes Secret. See the [Helm chart HSM overview](../integrations/kubernetes/helm.md#hsm).
+The `nethsm` client library links only against glibc (`libc.so.6`, `libdl.so.2`; check yours with
+`readelf -d libnethsm.so`), so no extra runtime library is needed.
+
+!!! warning "FIPS image: `command` override"
+    `libnethsm.so` embeds its own OpenSSL, which reads the `OPENSSL_CONF` environment variable. The
+    FIPS image sets it to the KMS FIPS configuration, which the embedded OpenSSL cannot load:
+    `C_Initialize` fails with `CKR_FUNCTION_FAILED` and the pod restarts in a loop. The values below
+    therefore start the KMS with `command: [env, -u, OPENSSL_CONF, cosmian_kms]`: the KMS then
+    reads the same FIPS configuration from its built-in default path, and `libnethsm.so` uses its
+    own defaults. The chart `command` value is available in chart releases after 5.28.0. The
+    non-FIPS image (`ghcr.io/cosmian/kms`) does not need `command`.
+
+!!! note
+    Validated on minikube against a live Proteccio (secure channel enabled) with the values below,
+    with the FIPS image (with `command`) and the non-FIPS image (without): HSM key creation, AES-GCM
+    encryption and decryption through the KMS pod.
+
+### 1. Proteccio client image
+
+Build it once per `nethsm` version, from `Client_Software/linux64/libnethsm.so` of the Proteccio
+package:
+
+```dockerfile
+FROM debian:bookworm-slim
+COPY libnethsm.so /opt/proteccio/lib/libnethsm.so
+```
+
+### 2. Proteccio configuration in Secrets
+
+The Secret is mounted read-only, so the library must not write logs into `/etc/proteccio`. Keep
+`LogFile` and `StatusFile` on `/dev/null`. `proteccio.rc`:
+
+```ini
+[PROTECCIO]
+IPaddr=<HSM_IP_ADDRESS>
+SSL=1
+SrvCert=proteccio.crt
+
+[CLIENT]
+Mode=0
+LoggingLevel=0
+LogFile=/dev/null
+StatusFile=/dev/null
+ClntKey=proteccio_client.key
+ClntCert=proteccio_client.crt
+```
+
+```bash
+kubectl -n kms create secret generic proteccio-files \
+  --from-file=proteccio.rc \
+  --from-file=proteccio.crt=<server_cert>.crt \
+  --from-file=proteccio_client.crt \
+  --from-file=proteccio_client.key
+kubectl -n kms create secret generic proteccio-password --from-literal=password='<password>'
+```
+
+With the secure channel enabled (`SEC_CHANNEL=1`), also add `secchannel_hsm.pem`,
+`secchl_clt_privkey.pem` and `secchl_clt_pubkey.pem` to the Secret and their keys to `proteccio.rc`
+(see [`/etc/proteccio` configuration files](#etcproteccio-configuration-files)).
+
+### 3. Helm values
+
+```yaml
+image:
+  repository: ghcr.io/cosmian/kms-fips
+  tag: <version>
+nodeSelector: {kubernetes.io/arch: amd64} # the proteccio model is Linux x86_64 only
+command: [env, -u, OPENSSL_CONF, cosmian_kms] # FIPS image only, see above
+extraArgs: [--hsm-model, proteccio, --hsm-slot, "<slot>", --hsm-admin, admin]
+extraEnv:
+  - name: PROTECCIO_PKCS11_LIB
+    value: /opt/proteccio/lib/libnethsm.so
+  - name: KMS_HSM_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: proteccio-password, key: password}
+initContainers:
+  - name: proteccio-client
+    image: <registry>/proteccio-client:<nethsm-version>
+    command: [cp, /opt/proteccio/lib/libnethsm.so, /proteccio-client/]
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+    volumeMounts:
+      - {name: proteccio-client, mountPath: /proteccio-client}
+extraVolumes:
+  - name: proteccio-client
+    emptyDir: {}
+  - name: proteccio
+    secret:
+      secretName: proteccio-files
+      defaultMode: 0440
+extraVolumeMounts:
+  - name: proteccio-client
+    mountPath: /opt/proteccio/lib
+    readOnly: true
+  - name: proteccio
+    mountPath: /etc/proteccio
+    readOnly: true
+```
+
+The pod must reach the HSM on TCP port 5552 (TLS).

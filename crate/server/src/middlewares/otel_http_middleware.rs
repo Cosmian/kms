@@ -5,7 +5,7 @@
 //!
 //! Must be placed as the **outermost** `App`-level wrap to correctly measure total latency.
 
-use std::{sync::Arc, time::Instant};
+use std::{borrow::Cow, sync::Arc, time::Instant};
 
 use actix_web::{
     Error,
@@ -34,8 +34,17 @@ where
     from_fn(move |req: ServiceRequest, next: Next<B>| {
         let metrics = metrics.clone();
         // Snapshot method and normalized path before consuming the request.
-        let method = req.method().to_string();
-        let path = normalize_path(req.path()).to_owned();
+        let method = match *req.method() {
+            actix_web::http::Method::GET => Cow::Borrowed("GET"),
+            actix_web::http::Method::POST => Cow::Borrowed("POST"),
+            actix_web::http::Method::PUT => Cow::Borrowed("PUT"),
+            actix_web::http::Method::DELETE => Cow::Borrowed("DELETE"),
+            actix_web::http::Method::HEAD => Cow::Borrowed("HEAD"),
+            actix_web::http::Method::OPTIONS => Cow::Borrowed("OPTIONS"),
+            actix_web::http::Method::PATCH => Cow::Borrowed("PATCH"),
+            _ => Cow::Owned(req.method().to_string()),
+        };
+        let path: &'static str = normalize_path(req.path());
 
         async move {
             if let Some(ref m) = metrics {
@@ -49,13 +58,30 @@ where
                 m.decrement_active_connections();
 
                 let duration = start.elapsed().as_secs_f64();
-                let status = result.as_ref().map_or_else(
-                    |err| err.as_response_error().status_code().as_str().to_owned(),
-                    |resp| resp.status().as_str().to_owned(),
+                let status_code = result.as_ref().map_or_else(
+                    |err| err.as_response_error().status_code(),
+                    actix_web::dev::ServiceResponse::status,
                 );
+                let status = match status_code.as_u16() {
+                    200 => Cow::Borrowed("200"),
+                    201 => Cow::Borrowed("201"),
+                    204 => Cow::Borrowed("204"),
+                    400 => Cow::Borrowed("400"),
+                    401 => Cow::Borrowed("401"),
+                    403 => Cow::Borrowed("403"),
+                    404 => Cow::Borrowed("404"),
+                    405 => Cow::Borrowed("405"),
+                    409 => Cow::Borrowed("409"),
+                    422 => Cow::Borrowed("422"),
+                    429 => Cow::Borrowed("429"),
+                    500 => Cow::Borrowed("500"),
+                    502 => Cow::Borrowed("502"),
+                    503 => Cow::Borrowed("503"),
+                    _ => Cow::Owned(status_code.as_str().to_owned()),
+                };
 
-                m.record_http_request(&method, &path, &status);
-                m.record_http_request_duration(&method, &path, &status, duration);
+                m.record_http_request(method.clone(), path, status.clone());
+                m.record_http_request_duration(method, path, status, duration);
             }
 
             result

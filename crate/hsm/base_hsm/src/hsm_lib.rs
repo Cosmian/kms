@@ -793,9 +793,7 @@ mod function_table_fallback_tests {
             .cargo_metadata(false) // this is a plain test, not a build script
             .get_compiler();
         let mut cmd = Command::new(compiler.path());
-        for (key, value) in compiler.env() {
-            cmd.env(key, value);
-        }
+        cmd.envs(compiler.get_envs());
         cmd.args(compiler.args());
         if !cfg!(target_os = "windows") {
             // Silence the intentional generic-function-pointer-cast warning below:

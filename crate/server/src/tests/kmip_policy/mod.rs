@@ -16,3 +16,5 @@ mod e2e_signature;
 mod basic;
 
 mod overrides;
+
+mod certify;

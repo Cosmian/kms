@@ -7,12 +7,12 @@ use crate::ttlv::{TTLValue, TtlvError, kmip_ttlv_deserializer::deserializer::Map
 
 /// The `StructureWalker` is used to deserialize a struct as a map of property -> values
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
-pub(super) struct StructureWalker<'a> {
-    de: &'a mut TtlvDeserializer,
+pub(super) struct StructureWalker<'a, 't> {
+    de: &'a mut TtlvDeserializer<'t>,
 }
 
-impl<'a> StructureWalker<'a> {
-    pub(super) const fn new(de: &'a mut TtlvDeserializer) -> Self {
+impl<'a, 't> StructureWalker<'a, 't> {
+    pub(super) const fn new(de: &'a mut TtlvDeserializer<'t>) -> Self {
         StructureWalker { de }
     }
 }
@@ -22,7 +22,7 @@ impl<'a> StructureWalker<'a> {
 // The calls to `next_value` are driven by the visitor,
 // and it is up to this Access to synchronize and advance its counter
 // over the struct fields (`self.index`) in this case
-impl<'a, 'de: 'a> MapAccess<'de> for StructureWalker<'a> {
+impl<'de> MapAccess<'de> for StructureWalker<'_, '_> {
     type Error = TtlvError;
 
     #[instrument(level = "trace", skip(self, seed))]

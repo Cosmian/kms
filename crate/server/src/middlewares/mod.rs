@@ -1,12 +1,15 @@
 mod audit;
 pub(crate) use audit::{
     AuditMiddleware, BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid,
-    KmipOperationName,
+    KmipOperationName, forwarded_for, resolve_client_ip,
 };
 
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
-pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};
+pub(crate) use tls_auth::{
+    PeerCertificate, extract_peer_certificate, is_enrollment_issued, tls_auth_fn,
+    user_from_client_certificate, verified_issuers,
+};
 
 mod api_token;
 pub(crate) use api_token::api_token_middleware;
@@ -37,7 +40,11 @@ mod session_auth;
 use actix_web::{dev::ServiceRequest, http::header};
 pub(crate) use session_auth::SessionAuth;
 
-use crate::{error::KmsError, result::KResult, routes::aws_xks::AWS_XKS_SERVICE_USER};
+use crate::{
+    error::KmsError,
+    result::KResult,
+    routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER},
+};
 
 /// Extract a Bearer token from the `Authorization` header of a request.
 ///
@@ -102,12 +109,26 @@ pub(crate) struct AuthenticatedUser {
     pub auth_method: AuthMethod,
 }
 
-/// Reject the reserved AWS XKS service identity on externally-derived auth paths.
-pub(crate) fn reject_reserved_aws_xks_identity(username: &UserId) -> KResult<()> {
-    if username.as_str() == AWS_XKS_SERVICE_USER {
+/// Internal service identities that must stay unreachable through any externally-derived
+/// authentication path (OIDC/SVID/Auth Verifier JWT, mTLS CN, SPIRE token, UI session).
+const RESERVED_SERVICE_IDENTITIES: [&str; 2] = [AWS_XKS_SERVICE_USER, ENROLLMENT_SERVICE_USER];
+
+/// Whether `name` would resolve to the `reserved` identity in the database: `MySQL` / `MariaDB`
+/// compare the `userid` / `owner` columns with their default `_ci` collation (case-insensitive),
+/// and the default `MariaDB` `PAD SPACE` collation also ignores trailing spaces.
+pub(crate) fn names_reserved_identity(name: &str, reserved: &str) -> bool {
+    name.trim_end_matches(' ').eq_ignore_ascii_case(reserved)
+}
+
+/// Reject a reserved service identity on externally-derived auth paths.
+pub(crate) fn reject_reserved_service_identity(username: &UserId) -> KResult<()> {
+    if RESERVED_SERVICE_IDENTITIES
+        .iter()
+        .any(|reserved| names_reserved_identity(username.as_str(), reserved))
+    {
         return Err(KmsError::Unauthorized(format!(
-            "reserved AWS XKS service identity `{AWS_XKS_SERVICE_USER}` cannot be used as an \
-             externally authenticated username"
+            "reserved service identity `{username}` cannot be used as an externally \
+             authenticated username"
         )));
     }
     Ok(())
@@ -118,17 +139,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reject_reserved_aws_xks_identity_rejects_reserved_username() {
-        assert!(matches!(
-            reject_reserved_aws_xks_identity(&UserId::from(AWS_XKS_SERVICE_USER)),
-            Err(KmsError::Unauthorized(_))
-        ));
+    fn reject_reserved_service_identity_rejects_every_reserved_username() {
+        for reserved in RESERVED_SERVICE_IDENTITIES {
+            assert!(matches!(
+                reject_reserved_service_identity(&UserId::from(reserved)),
+                Err(KmsError::Unauthorized(_))
+            ));
+        }
     }
 
     #[test]
-    fn reject_reserved_aws_xks_identity_accepts_regular_username() {
+    fn reject_reserved_service_identity_rejects_case_and_padding_variants() {
+        for reserved in RESERVED_SERVICE_IDENTITIES {
+            for variant in [
+                reserved.to_ascii_uppercase(),
+                reserved
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if i % 2 == 0 {
+                            c.to_ascii_uppercase()
+                        } else {
+                            c
+                        }
+                    })
+                    .collect(),
+                format!("{reserved}  "),
+            ] {
+                assert!(
+                    matches!(
+                        reject_reserved_service_identity(&UserId::from(variant.as_str())),
+                        Err(KmsError::Unauthorized(_))
+                    ),
+                    "{variant}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reject_reserved_service_identity_accepts_regular_username() {
         assert!(matches!(
-            reject_reserved_aws_xks_identity(&UserId::from("alice@example.com")),
+            reject_reserved_service_identity(&UserId::from("alice@example.com")),
             Ok(())
         ));
     }

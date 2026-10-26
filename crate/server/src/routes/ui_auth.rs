@@ -14,7 +14,7 @@ use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
     middlewares::{
-        JwtConfig, JwtTokenHeaders, UserId, reject_reserved_aws_xks_identity, validate_jwt_svid,
+        JwtConfig, JwtTokenHeaders, UserId, reject_reserved_service_identity, validate_jwt_svid,
     },
 };
 
@@ -334,7 +334,7 @@ pub(crate) async fn callback(
         return HttpResponse::Unauthorized()
             .json(serde_json::json!({ "error": "Empty email claim in id_token" }));
     };
-    if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+    if let Err(error) = reject_reserved_service_identity(&user_id) {
         return HttpResponse::Unauthorized()
             .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
     }
@@ -538,7 +538,7 @@ pub(crate) async fn login_as(
                     serde_json::json!({ "error": "Empty subject claim in Auth Verifier token" }),
                 );
             };
-            if let Err(error) = reject_reserved_aws_xks_identity(&user_id) {
+            if let Err(error) = reject_reserved_service_identity(&user_id) {
                 return HttpResponse::Unauthorized().json(
                     serde_json::json!({ "error": format!("Forbidden user identity: {error}") }),
                 );

@@ -16,7 +16,7 @@ REPO_ROOT="$(get_repo_root)"
 # KMIP support tables depending on the running environment. Install it
 # whenever the kmip-tables step will actually run.
 if [ "${usage_task:-all}" = "all" ] || [ "${usage_task:-all}" = "kmip-tables" ]; then
-  pip install --quiet -r "${REPO_ROOT}/.mise/scripts/docs/requirements.txt"
+  pip install --quiet --require-hashes -r "${REPO_ROOT}/.mise/scripts/docs/requirements.txt"
 fi
 
 ARGS=()

@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::LazyLock,
+};
 
 use cosmian_kmip::{
     KmipResultHelper,
@@ -15,7 +18,7 @@ use cosmian_kms_crypto::{
     },
 };
 use cosmian_logger::debug;
-use redis::{AsyncCommands, aio::ConnectionManager, pipe};
+use redis::{AsyncCommands, Script, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -161,22 +164,19 @@ impl ObjectsDB {
         let nonce = {
             let mut nonce_bytes = [0_u8; Aes256Gcm::NONCE_LENGTH];
             KmsRng::new()
-                .fill_bytes(&mut nonce_bytes)
+                .fill_public_bytes(&mut nonce_bytes)
                 .map_err(|e| DbError::CryptographicError(format!("RNG failure: {e}")))?;
             Nonce::from(nonce_bytes)
         };
-        let ct: Vec<u8> = self.dem.encrypt(
-            &nonce,
-            &serde_json::to_vec(redis_db_object)?,
-            Some(uid.as_bytes()),
-        )?;
+        let plaintext = serde_json::to_vec(redis_db_object)?;
+        let ct: Vec<u8> = self.dem.encrypt(&nonce, &plaintext, Some(uid.as_bytes()))?;
         let mut ciphertext = Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + ct.len());
         ciphertext.extend_from_slice(nonce.as_bytes());
         ciphertext.extend(ct);
         Ok(ciphertext)
     }
 
-    fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> DbResult<RedisDbObject> {
+    pub(crate) fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> DbResult<RedisDbObject> {
         if ciphertext.len() <= Aes256Gcm::NONCE_LENGTH {
             return Err(DbError::CryptographicError("invalid ciphertext".to_owned()));
         }
@@ -202,26 +202,9 @@ impl ObjectsDB {
         Ok(redis_db_object)
     }
 
-    pub(crate) async fn object_create(
-        &self,
-        uid: &str,
-        redis_db_object: &RedisDbObject,
-    ) -> DbResult<()> {
-        let res: usize = self
-            .mgr
-            .clone()
-            .set_nx(
-                Self::object_key(uid),
-                self.encrypt_object(uid, redis_db_object)?,
-            )
-            .await?;
-        if res == 1 {
-            Ok(())
-        } else {
-            db_bail!("object {uid} already exists")
-        }
-    }
-
+    /// Unconditionally write an object. Test-only (seeds legacy objects): production
+    /// writes go through the CAS script.
+    #[cfg(test)]
     pub(crate) async fn object_upsert(
         &self,
         uid: &str,
@@ -237,15 +220,24 @@ impl ObjectsDB {
         Ok(())
     }
 
-    pub(crate) async fn object_get(&self, uid: &str) -> DbResult<Option<RedisDbObject>> {
+    /// Read the raw (encrypted) object blob, returning `None` if the key is absent.
+    pub(crate) async fn object_get_raw(&self, uid: &str) -> DbResult<Option<Vec<u8>>> {
         let ciphertext: Vec<u8> = self.mgr.clone().get(Self::object_key(uid)).await?;
         if ciphertext.is_empty() {
             return Ok(None);
         }
-        let dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
-        Ok(Some(dbo))
+        Ok(Some(ciphertext))
     }
 
+    pub(crate) async fn object_get(&self, uid: &str) -> DbResult<Option<RedisDbObject>> {
+        match self.object_get_raw(uid).await? {
+            None => Ok(None),
+            Some(ciphertext) => Ok(Some(self.decrypt_object(uid, &ciphertext)?)),
+        }
+    }
+
+    /// Unconditionally delete an object. Test-only: production deletes go through the CAS script.
+    #[cfg(test)]
     pub(crate) async fn object_delete(&self, uid: &str) -> DbResult<()> {
         self.mgr.clone().del::<_, ()>(Self::object_key(uid)).await?;
         Ok(())
@@ -255,6 +247,10 @@ impl ObjectsDB {
         &self,
         uids: &HashSet<String>,
     ) -> DbResult<HashMap<String, RedisDbObject>> {
+        // redis >= 1.0 rejects an empty pipeline with "empty command".
+        if uids.is_empty() {
+            return Ok(HashMap::new());
+        }
         let mut pipeline = pipe();
         for uid in uids {
             pipeline.get(Self::object_key(uid));
@@ -271,64 +267,169 @@ impl ObjectsDB {
         Ok(results)
     }
 
-    pub(crate) async fn atomic(&self, operations: &[RedisOperation]) -> DbResult<Vec<String>> {
-        // For Create operations, use SET_NX (set-if-not-exists) to atomically
-        // check-and-set without WATCH.  WATCH + MULTI/EXEC is unsafe with a
-        // shared ConnectionManager: any concurrent write on the same connection
-        // between WATCH and EXEC aborts the transaction silently.
-        //
-        // For Upsert/Delete, a plain SET/DEL pipeline suffices (idempotent).
-
-        let mut res = Vec::with_capacity(operations.len());
-        let mut pipeline = pipe();
-
-        for operation in operations {
-            match operation {
-                RedisOperation::Create(uid, redis_db_object) => {
-                    // SET key value NX — fails if key already exists
-                    pipeline
-                        .cmd("SET")
-                        .arg(Self::object_key(uid))
-                        .arg(self.encrypt_object(uid, redis_db_object)?)
-                        .arg("NX");
-                    res.push(uid.clone());
+    /// Execute a batch of [`ScriptOp`]s atomically: either every precondition
+    /// holds and every write is applied, or nothing is written.
+    ///
+    /// The script touches several keys in one `EVAL`, so it requires a
+    /// single-node Redis (a Redis Cluster would reject keys in different slots
+    /// with `CROSSSLOT`).
+    pub(crate) async fn atomic_script(
+        &self,
+        ops: &[ScriptOp<'_>],
+    ) -> DbResult<AtomicScriptOutcome> {
+        if ops.is_empty() {
+            return Ok(AtomicScriptOutcome::Committed);
+        }
+        let mut invocation = ATOMIC_CAS_SCRIPT.prepare_invoke();
+        for op in ops {
+            invocation.key(Self::object_key(op.uid()));
+            match op {
+                ScriptOp::Create { uid, value } => {
+                    invocation.arg("C");
+                    invocation.arg(NO_BYTES);
+                    invocation.arg(self.encrypt_object(uid, value)?);
                 }
-                RedisOperation::Upsert(uid, redis_db_object) => {
-                    pipeline.set(
-                        Self::object_key(uid),
-                        self.encrypt_object(uid, redis_db_object)?,
-                    );
-                    res.push(uid.clone());
+                ScriptOp::Absent { .. } => {
+                    invocation.arg("A");
+                    invocation.arg(NO_BYTES);
+                    invocation.arg(NO_BYTES);
                 }
-                RedisOperation::Delete(uid) => {
-                    pipeline.del(Self::object_key(uid));
-                    res.push(uid.clone());
+                ScriptOp::Cas {
+                    uid,
+                    expected,
+                    value,
+                } => {
+                    invocation.arg("U");
+                    invocation.arg(expected.unwrap_or_default());
+                    invocation.arg(self.encrypt_object(uid, value)?);
+                }
+                ScriptOp::Delete { expected, .. } => {
+                    invocation.arg("D");
+                    invocation.arg(expected.unwrap_or_default());
+                    invocation.arg(NO_BYTES);
                 }
             }
         }
-
-        // Execute the pipeline.  For SET ... NX commands, Redis returns nil when
-        // the key already exists.  We parse as Vec<Value> to detect failures.
-        let results: Vec<redis::Value> = pipeline.query_async(&mut self.mgr.clone()).await?;
-
-        // Verify that Create operations succeeded (non-nil response)
-        for (result_idx, operation) in operations.iter().enumerate() {
-            if let RedisOperation::Create(uid, _) = operation {
-                if matches!(results.get(result_idx), Some(redis::Value::Nil)) {
-                    db_bail!("object {uid} already exists");
-                }
-            }
+        let (status, idx): (i64, i64) = invocation.invoke_async(&mut self.mgr.clone()).await?;
+        let uid_at = |idx: i64| {
+            usize::try_from(idx - 1)
+                .ok()
+                .and_then(|i| ops.get(i))
+                .map(|op| op.uid().to_owned())
+                .unwrap_or_default()
+        };
+        match status {
+            1 => Ok(AtomicScriptOutcome::Committed),
+            2 => Ok(AtomicScriptOutcome::CreateConflict(uid_at(idx))),
+            3 => Ok(AtomicScriptOutcome::CasConflict),
+            other => db_bail!("Unexpected atomic script status: {other}"),
         }
-
-        Ok(res)
     }
 }
 
-pub(crate) enum RedisOperation {
-    Create(String, RedisDbObject),
-    Upsert(String, RedisDbObject),
-    Delete(String),
+/// A single key's intended mutation inside one atomic batch. Borrows its data
+/// from the caller so building a batch does not copy objects or ciphertexts.
+pub(crate) enum ScriptOp<'a> {
+    /// Key must not already exist (NX); the value is then written.
+    Create {
+        uid: &'a str,
+        value: &'a RedisDbObject,
+    },
+    /// Key must not already exist; nothing is written. Guards a `Create` whose
+    /// object is deleted again within the same batch.
+    Absent { uid: &'a str },
+    /// Key must currently equal the raw bytes previously read into `expected`
+    /// (`None` = key must be absent). This is how `Upsert`/`UpdateObject`/
+    /// `UpdateState` detect a concurrent modification since their baseline read.
+    Cas {
+        uid: &'a str,
+        expected: Option<&'a [u8]>,
+        value: &'a RedisDbObject,
+    },
+    /// Delete the key if it still equals `expected` (`None` = key must be
+    /// absent, making the delete a no-op), so a concurrent write is not erased
+    /// on the strength of a stale baseline.
+    Delete {
+        uid: &'a str,
+        expected: Option<&'a [u8]>,
+    },
 }
+
+impl ScriptOp<'_> {
+    const fn uid(&self) -> &str {
+        match self {
+            Self::Create { uid, .. }
+            | Self::Absent { uid }
+            | Self::Cas { uid, .. }
+            | Self::Delete { uid, .. } => uid,
+        }
+    }
+}
+
+/// Outcome of [`ObjectsDB::atomic_script`].
+pub(crate) enum AtomicScriptOutcome {
+    /// Every operation's precondition held; all writes were applied.
+    Committed,
+    /// A `Create`/`Absent` operation's key already existed. Hard failure — never retried.
+    CreateConflict(String),
+    /// A `Cas` operation's key no longer matched its expected baseline (lost
+    /// a race with a concurrent writer). Transient — the caller should re-read
+    /// fresh state and retry the whole batch.
+    CasConflict,
+}
+
+/// Two-phase Lua script: phase 1 validates every operation's precondition
+/// against the live Redis state with **no side effects**; phase 2 (only
+/// reached if every precondition in phase 1 held) applies every write. Both
+/// phases run inside a single `EVAL`, which Redis executes atomically and
+/// single-threaded — this gives whole-batch all-or-nothing semantics without
+/// `WATCH` (unsafe to split across round-trips on a shared `ConnectionManager`)
+/// and without `MULTI`/`EXEC` (which cannot express "abort the other queued
+/// commands if this one's precondition fails").
+///
+/// `ARGV` is laid out as triples per operation, in `KEYS` order:
+/// `mode ('C'|'A'|'U'|'D')`, `expected` (CAS baseline, `''` = must-be-absent,
+/// unused for `C`/`A`), `new value` (unused for `A`/`D`).
+const ATOMIC_CAS_LUA: &str = r"
+local n = #KEYS
+for i = 1, n do
+    local mode = ARGV[3 * (i - 1) + 1]
+    if mode == 'C' or mode == 'A' then
+        local current = redis.call('GET', KEYS[i])
+        if current ~= false then
+            return {2, i}
+        end
+    end
+end
+for i = 1, n do
+    local mode = ARGV[3 * (i - 1) + 1]
+    if mode == 'U' or mode == 'D' then
+        local expected = ARGV[3 * (i - 1) + 2]
+        local current = redis.call('GET', KEYS[i])
+        if current == false then
+            current = ''
+        end
+        if current ~= expected then
+            return {3, i}
+        end
+    end
+end
+for i = 1, n do
+    local mode = ARGV[3 * (i - 1) + 1]
+    if mode == 'D' then
+        redis.call('DEL', KEYS[i])
+    elseif mode ~= 'A' then
+        local newval = ARGV[3 * (i - 1) + 3]
+        redis.call('SET', KEYS[i], newval)
+    end
+end
+return {1, 0}
+";
+
+/// Empty `ARGV` slot for script arguments a given mode does not use.
+const NO_BYTES: &[u8] = &[];
+
+static ATOMIC_CAS_SCRIPT: LazyLock<Script> = LazyLock::new(|| Script::new(ATOMIC_CAS_LUA));
 
 // ── Live-object counter key ──────────────────────────────────────────────────
 //

@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+#MISE description="Deploy the KMS with a live Proteccio or Crypt2pay HSM on Kubernetes, exactly as documented, and run an HSM key round trip"
+#USAGE flag "-m --model <model>" help="HSM model whose Kubernetes guide is tested (required)" {
+#USAGE   choices "proteccio" "crypt2pay"
+#USAGE }
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="KMS image: fips (ghcr.io/cosmian/kms-fips) or non-fips (ghcr.io/cosmian/kms)" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "--image-tag <tag>" env="KMS_IMAGE_TAG" help="KMS image tag (default: chart appVersion)"
+#
+# The Helm values, the client-image Dockerfile and the PersistentVolumeClaim are extracted from the
+# "Kubernetes (Helm chart)" section of documentation/docs/hsm_support/<model>.md, so this test fails
+# when the documented instructions stop working. Only placeholders are substituted; with the
+# non-FIPS image the FIPS-only `command:` line is dropped.
+#
+# Host prerequisites (installed by .github/reusable_scripts/prepare_<model>.sh):
+#   proteccio: /lib/libnethsm.so (PROTECCIO_PKCS11_LIB), /etc/proteccio (PROTECCIO_CONF_DIR),
+#              PROTECCIO_PASSWORD, PROTECCIO_SLOT
+#   crypt2pay: /lib/libpkcs11c2p.so (CRYPT2PAY_PKCS11_LIB), /etc/c2p (C2P_DIR), CRYPT2PAY_PASSWORD,
+#              CRYPT2PAY_SLOT_ID (default 1), OVPN_CONF if the HSM is only reachable through OpenVPN
+# Locally, ~/.cosmian/<model>.sh is sourced when present.
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/k8s.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+
+MODEL="${usage_model:?--model is required}"
+VARIANT="${usage_variant:-fips}"
+CHART_DIR="${MISE_CONFIG_ROOT}/charts/cosmian-kms"
+DOC="${MISE_CONFIG_ROOT}/documentation/docs/hsm_support/${MODEL}.md"
+IMAGE_TAG="${usage_image_tag:-$(awk '/^appVersion:/ {gsub(/["'\'']/, "", $2); print $2}' "${CHART_DIR}/Chart.yaml")}"
+NS="kms-hsm-e2e"
+RELEASE="kms-hsm-e2e"
+WS="/var/lib/cosmian-kms/workspace" # writable emptyDir in the KMS pod
+OVPN_PID_FILE="/tmp/k8s-hsm-openvpn.pid"
+OVPN_CONF_FILE="/tmp/k8s-hsm-openvpn.conf"
+KEY_ID=""
+TMP_DIR=""
+
+k8s_require_tools
+require_cmd awk
+
+if [ "$VARIANT" = "fips" ]; then
+  IMAGE_REPOSITORY="ghcr.io/cosmian/kms-fips"
+else
+  IMAGE_REPOSITORY="ghcr.io/cosmian/kms"
+fi
+
+if [ -f "${HOME}/.cosmian/${MODEL}.sh" ]; then
+  # shellcheck source=/dev/null
+  source "${HOME}/.cosmian/${MODEL}.sh"
+fi
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+# Print the first fenced <lang> block after the line starting with <anchor>, inside the
+# "## Kubernetes (Helm chart)" section of the model guide.
+# Usage: _doc_block <anchor> <lang>
+_doc_block() {
+  local block
+  block=$(awk -v anchor="$1" -v fence="\`\`\`$2" '
+    /^## Kubernetes \(Helm chart\)/ { section = 1; next }
+    section && /^## / { exit }
+    section && index($0, anchor) == 1 { found = 1; next }
+    found && $0 == fence { inside = 1; next }
+    inside && $0 == "```" { exit }
+    inside { print }' "$DOC")
+  [ -n "$block" ] || print_error "No \`\`\`$2 block after '$1' in the Kubernetes section of ${DOC}"
+  printf '%s\n' "$block"
+}
+
+# Copy a file or directory owned by root (vendor configuration) into the work directory.
+# Usage: _copy_in <src> <dst>
+_copy_in() {
+  cp -R "$1" "$2" 2>/dev/null || {
+    sudo -n cp -R "$1" "$2"
+    sudo -n chown -R "$(id -u):$(id -g)" "$2"
+  }
+}
+
+_pod_sh() {
+  kubectl -n "$NS" exec "deploy/${RELEASE}-cosmian-kms" -c kms -- sh -c "$1"
+}
+
+# ckms shipped in the KMS image, talking to the KMS of the same pod. It writes a default
+# ~/.cosmian/ckms.toml, so HOME must be writable (the root filesystem is read-only).
+_ckms() {
+  kubectl -n "$NS" exec "deploy/${RELEASE}-cosmian-kms" -c kms -- \
+    env HOME="$WS" ckms --url http://127.0.0.1:9998 "$@"
+}
+
+_decrypt_and_check() {
+  _ckms sym decrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+    -o "${WS}/dec.txt" "${WS}/enc.bin" >/dev/null
+  [ "$(_pod_sh "cat ${WS}/dec.txt")" = "$PLAINTEXT" ] ||
+    print_error "Decrypted data differs from the plaintext"
+}
+
+cleanup() {
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    k8s_dump_debug "$NS" "$RELEASE"
+  fi
+  # Never leave test objects on the shared HSM partition.
+  if [ -n "$KEY_ID" ]; then
+    _ckms sym keys destroy --key-id "$KEY_ID" >/dev/null 2>&1 ||
+      print_warning "Could not destroy ${KEY_ID} on the HSM"
+  fi
+  helm uninstall "$RELEASE" -n "$NS" --wait >/dev/null 2>&1 || true
+  kubectl delete namespace "$NS" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  if [ -f "$OVPN_PID_FILE" ]; then
+    sudo -n kill "$(cat "$OVPN_PID_FILE")" 2>/dev/null || true
+    sudo -n rm -f "$OVPN_PID_FILE"
+  fi
+  rm -f "$OVPN_CONF_FILE"
+  [ -z "$TMP_DIR" ] || rm -rf "$TMP_DIR"
+  exit "$rc"
+}
+trap cleanup EXIT
+
+print_header "Kubernetes HSM E2E: ${MODEL} with ${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+
+TMP_DIR=$(mktemp -d /tmp/k8s-hsm-XXXXXX)
+kubectl delete namespace "$NS" --ignore-not-found=true --wait=true >/dev/null
+kubectl create namespace "$NS" >/dev/null
+
+# ── 1. Vendor configuration and credentials → Secrets ─────────────────────────
+case "$MODEL" in
+  proteccio)
+    : "${PROTECCIO_PASSWORD:?PROTECCIO_PASSWORD must be set}"
+    SLOT="${PROTECCIO_SLOT:?PROTECCIO_SLOT must be set}"
+    HSM_LIB="${PROTECCIO_PKCS11_LIB:-/lib/libnethsm.so}"
+    CONF_DIR="${PROTECCIO_CONF_DIR:-/etc/proteccio}"
+    mkdir "${TMP_DIR}/proteccio"
+    _copy_in "${CONF_DIR}/proteccio.rc" "${TMP_DIR}/proteccio.rc.orig"
+    # The Secret is mounted read-only: send the client logs to /dev/null, as the guide requires.
+    tr -d '\r' <"${TMP_DIR}/proteccio.rc.orig" |
+      sed -E '/^(LoggingLevel|LogFile|StatusFile)=/d' |
+      sed '/^\[CLIENT\]/a LoggingLevel=0\nLogFile=/dev/null\nStatusFile=/dev/null' \
+        >"${TMP_DIR}/proteccio/proteccio.rc"
+    secret_args=(--from-file="${TMP_DIR}/proteccio/proteccio.rc")
+    while IFS= read -r file || [ -n "$file" ]; do # the last line may lack a newline
+      file=$(basename "$file")
+      _copy_in "${CONF_DIR}/${file}" "${TMP_DIR}/proteccio/${file}"
+      secret_args+=(--from-file="${TMP_DIR}/proteccio/${file}")
+    done < <(sed -nE 's/^(SrvCert|ClntKey|ClntCert|SecChlSrvKey|SecChlClntPrivKey|SecChlClntPubKey)=//p' \
+      "${TMP_DIR}/proteccio/proteccio.rc")
+    kubectl -n "$NS" create secret generic proteccio-files "${secret_args[@]}" >/dev/null
+    kubectl -n "$NS" create secret generic proteccio-password \
+      --from-literal=password="$PROTECCIO_PASSWORD" >/dev/null
+    ;;
+  crypt2pay)
+    : "${CRYPT2PAY_PASSWORD:?CRYPT2PAY_PASSWORD must be set}"
+    SLOT="${CRYPT2PAY_SLOT_ID:-1}"
+    HSM_LIB="${CRYPT2PAY_PKCS11_LIB:-/lib/libpkcs11c2p.so}"
+    CONF_DIR="${C2P_DIR:-/etc/c2p}"
+    STAGE="${TMP_DIR}/c2p"
+    mkdir "$STAGE"
+    _copy_in "${CONF_DIR}/c2p.xml" "${STAGE}/c2p.xml"
+    hsm_ip=$(grep -oP '<IP>\K[^<]+' "${STAGE}/c2p.xml" | head -1)
+    hsm_port=$(grep -oP '<Port>\K[^<]+' "${STAGE}/c2p.xml" | head -1)
+    case "$hsm_ip" in
+      127.*) print_error "c2p.xml targets ${hsm_ip}: a loopback address is not reachable from a pod" ;;
+    esac
+    if ! timeout 5 bash -c "</dev/tcp/${hsm_ip}/${hsm_port}" 2>/dev/null; then
+      [ -n "${OVPN_CONF:-}" ] || print_error "Crypt2pay ${hsm_ip}:${hsm_port} unreachable and OVPN_CONF is not set"
+      require_cmd openvpn
+      (umask 077 && printf '%s\n' "$OVPN_CONF" >"$OVPN_CONF_FILE")
+      sudo -n "$(command -v openvpn)" --config "$OVPN_CONF_FILE" --daemon --writepid "$OVPN_PID_FILE"
+      wait_for_port "$hsm_ip" "$hsm_port" 60 ||
+        print_error "Crypt2pay ${hsm_ip}:${hsm_port} still unreachable through OpenVPN"
+    fi
+    # Absolute CA path and a short trace, as the guide recommends (debug traces fill the volume).
+    authorities=$(grep -oP '<Authorities>\K[^<]+' "${STAGE}/c2p.xml")
+    sed -i -E \
+      -e "s#<Authorities>[^/<][^<]*</Authorities>#<Authorities>/etc/c2p/${authorities}</Authorities>#" \
+      -e 's#<TraceLevel>[^<]*</TraceLevel>#<TraceLevel>error</TraceLevel>#' \
+      -e 's#<TraceFile>[^<]*</TraceFile>#<TraceFile>+/etc/c2p/logs/c2p.trc</TraceFile>#' \
+      "${STAGE}/c2p.xml"
+    archive=(c2p.xml "${authorities#/etc/c2p/}")
+    mapfile -t key_files < <(grep -oP '<(KDKfile|KSKfile)>\K[^<]+|<privateKey[^>]*>\K[^<]+' "${STAGE}/c2p.xml")
+    archive+=("${key_files[@]}")
+    for file in "${archive[@]:1}"; do
+      mkdir -p "$(dirname "${STAGE}/${file}")"
+      _copy_in "${CONF_DIR}/${file}" "${STAGE}/${file}"
+    done
+    tar -C "$STAGE" -cf "${TMP_DIR}/c2p-config.tar" "${archive[@]}"
+    kubectl -n "$NS" create secret generic c2p-files --from-file="${TMP_DIR}/c2p-config.tar" >/dev/null
+    kubectl -n "$NS" create secret generic c2p-password \
+      --from-literal=password="$CRYPT2PAY_PASSWORD" >/dev/null
+    _doc_block "PersistentVolumeClaim for" yaml | sed '/^  namespace:/d' | kubectl -n "$NS" apply -f - >/dev/null
+    ;;
+esac
+
+# ── 2. Vendor client image, built from the documented Dockerfile ──────────────
+_doc_block "### 1." dockerfile >"${TMP_DIR}/Dockerfile"
+_copy_in "$HSM_LIB" "${TMP_DIR}/$(awk '$1 == "COPY" { print $2; exit }' "${TMP_DIR}/Dockerfile")"
+
+# ── 3. Documented Helm values with placeholders filled in ─────────────────────
+_doc_block "### 3. Helm values" yaml |
+  sed -E \
+    -e "s#<version>#${IMAGE_TAG}#" \
+    -e "s#\"<slot>\"#\"${SLOT}\"#" \
+    -e 's#image: <registry>/([a-z0-9-]+):<[^>]+>#image: local/\1:e2e#' \
+    >"${TMP_DIR}/values.yaml"
+if [ "$VARIANT" = "non-fips" ]; then
+  sed -i '/^command:/d' "${TMP_DIR}/values.yaml"
+fi
+if grep -n '<[a-z_-]*>' "${TMP_DIR}/values.yaml"; then
+  print_error "Unsubstituted placeholder in the documented Helm values"
+fi
+CLIENT_IMAGE=$(grep -oP 'image: \Klocal/[a-z0-9-]+:e2e' "${TMP_DIR}/values.yaml")
+print_status "Building ${CLIENT_IMAGE} in Minikube"
+minikube image build -t "$CLIENT_IMAGE" "$TMP_DIR" >/dev/null
+rm -f "${TMP_DIR}/Dockerfile"
+
+print_status "Installing the chart with the documented values"
+helm install "$RELEASE" "$CHART_DIR" -n "$NS" -f "${TMP_DIR}/values.yaml" \
+  --set image.repository="$IMAGE_REPOSITORY" --wait --timeout 5m >/dev/null
+print_success "KMS pod ready"
+
+# ── 4. HSM key round trip through the KMS pod ────────────────────────────────
+version=$(_pod_sh 'curl -sf http://127.0.0.1:9998/version')
+print_status "KMS version: ${version}"
+if [ "$VARIANT" = "fips" ] && [[ "$version" != *FIPS* ]]; then
+  print_error "The FIPS image does not report a FIPS OpenSSL"
+fi
+
+KEY_ID="hsm::${SLOT}::k8s_e2e_$(date +%s)"
+PLAINTEXT="Kubernetes HSM E2E ${MODEL} ${VARIANT} $(date -u +%FT%TZ)"
+_ckms sym keys create --algorithm aes --number-of-bits 256 "$KEY_ID" >/dev/null
+_pod_sh "printf '%s' '${PLAINTEXT}' > ${WS}/plain.txt"
+_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+  -o "${WS}/enc.bin" "${WS}/plain.txt" >/dev/null
+_decrypt_and_check
+print_success "${KEY_ID}: AES-GCM encryption and decryption through the KMS pod"
+
+# ── 5. Crypt2pay: the HSM key survives a pod restart (objects directory on the PVC) ─
+if [ "$MODEL" = "crypt2pay" ]; then
+  _pod_sh "cat ${WS}/enc.bin" >"${TMP_DIR}/enc.bin"
+  kubectl -n "$NS" delete pod -l "app.kubernetes.io/instance=${RELEASE}" --wait=true >/dev/null
+  kubectl -n "$NS" rollout status "deploy/${RELEASE}-cosmian-kms" --timeout=5m >/dev/null
+  kubectl -n "$NS" exec -i "deploy/${RELEASE}-cosmian-kms" -c kms -- \
+    sh -c "cat > ${WS}/enc.bin" <"${TMP_DIR}/enc.bin"
+  _decrypt_and_check
+  print_success "${KEY_ID}: decryption after the pod was recreated"
+fi
+
+_ckms sym keys destroy --key-id "$KEY_ID" >/dev/null
+KEY_ID=""
+
+print_success "Kubernetes HSM E2E passed: ${MODEL} with ${IMAGE_REPOSITORY}:${IMAGE_TAG}"

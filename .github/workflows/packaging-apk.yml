@@ -32,7 +32,7 @@ jobs:
         features: [fips, non-fips]
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -45,7 +45,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Set up GPG
-        uses: crazy-max/ghaction-import-gpg@v7
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -73,7 +73,7 @@ jobs:
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
       - name: Upload Alpine apk packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: apk_${{ matrix.features }}_${{ matrix.runner }}
           path: |
@@ -94,7 +94,7 @@ jobs:
         features: [fips, non-fips]
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -166,7 +166,7 @@ jobs:
             gcompat bash git curl \
             build-base perl linux-headers openssl-dev pkgconfig
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -201,25 +201,25 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
         alpine-tag: ['3.20', '3.21', latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - name: Docker login (Docker Hub)
         if: ${{ env.DOCKERHUB_USERNAME != '' }}
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Download apk artifact (fips)
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: apk_fips_${{ matrix.runner }}
           path: fips
 
       - name: Download apk artifact (non-fips)
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: apk_non-fips_${{ matrix.runner }}
           path: non-fips
@@ -287,12 +287,12 @@ jobs:
         run: rm -rf apk_${{ matrix.features }}_${{ matrix.runner }}
 
       - name: Checkout repository (for public key file)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
 
       - name: Download apk artifact for this matrix
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: apk_${{ matrix.features }}_${{ matrix.runner }}
 
@@ -320,7 +320,7 @@ jobs:
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
             result-apk-server-${{ matrix.features }}/cosmian-kms-server-*

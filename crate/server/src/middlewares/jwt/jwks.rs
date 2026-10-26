@@ -80,6 +80,29 @@ impl JwksManager {
             .cloned())
     }
 
+    /// Execute a closure over each `&Jwk` in the cache until it returns `Some` or finishes.
+    pub fn find_map_key<R>(&self, mut f: impl FnMut(&Jwk) -> Option<R>) -> KResult<Option<R>> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        for set in jwks_lock.values() {
+            for key in &set.keys {
+                if let Some(res) = f(key) {
+                    return Ok(Some(res));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Check whether the JWKS cache is empty without allocating.
+    pub fn is_empty(&self) -> KResult<bool> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        Ok(jwks_lock.values().all(|set| set.keys.is_empty()))
+    }
+
     /// Return all JWKs from all registered JWKS sets, regardless of `kid`.
     ///
     /// Used by the Auth Verifier middleware where tokens are issued without a `kid`

@@ -86,6 +86,9 @@ refining_impl_trait = "deny"
 [workspace.lints.clippy]
 # Main clippy categories
 pedantic = { level = "deny", priority = 90 }
+# KmsRng policy (clippy.toml): pinned above every group so no group-level allow can switch them off.
+disallowed_methods = { level = "deny", priority = 100 }
+disallowed_types = { level = "deny", priority = 100 }
 all = { level = "deny", priority = 80 }
 suspicious = { level = "deny", priority = 70 }
 complexity = { level = "deny", priority = 60 }
@@ -276,7 +279,7 @@ deadpool-postgres = "0.14"
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = ["editor", "fuzzy-select", "history", "password", "completion"] }
 dotenvy = "0.15"
-etcetera = "0.8.0"
+etcetera = "0.11.0"
 foreign-types = "0.3"
 fs4 = "0.13"
 futures = "0.3"
@@ -294,7 +297,7 @@ ipnet = "2"
 itertools = "0.10"
 js-sys = "0.3"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
-k256 = "0.13"
+k256 = "0.14"
 k8s-openapi = "0.28"
 kube = "4.2"
 lazy_static = "1.5"
@@ -307,8 +310,8 @@ mockall = "0.13"
 moka = { version = "0.12", default-features = false, features = ["future"] }
 mysql_async = { version = "0.37", default-features = false }
 native-tls = { version = "0.2", default-features = false }
-num-bigint = { version = "0.4", default-features = false }
-num-bigint-dig = { version = "0.8", default-features = false }
+num-bigint = { version = "0.5", default-features = false }
+num-bigint-dig = { version = "0.9", default-features = false }
 num-format = "0.4"
 num-traits = "0.2"
 oauth2 = { version = "5.0", default-features = false }
@@ -326,16 +329,15 @@ postgres-openssl = "0.5"
 predicates = "3.1"
 proptest = "1"
 prost = "0.13"
-quick-xml = "0.41"
+quick-xml = "0.42"
 quote = "1.0"
 rand = "0.10"
-rand_08 = { version = "0.8.6", package = "rand" }
 rand_chacha = "0.10"
 rand_core = "0.10"
 rand_distr = "0.6"
 rawsql = "0.1"
-rcgen = { version = "0.13", default-features = false }
-redis = "0.32"
+rcgen = { version = "0.14", default-features = false }
+redis = "1.6"
 regex = { version = "1.11", default-features = false }
 reqwest = { version = "0.12", default-features = false }
 rusqlite = "0.37"
@@ -373,7 +375,7 @@ tracing = "0.1"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3", default-features = false }
 url = "2.5"
-uuid = "=1.11.1"
+uuid = "=1.28.0"
 wasm-bindgen = "=0.2.108"
 wasm-bindgen-test = "0.3"
 windows-service = "0.8"
