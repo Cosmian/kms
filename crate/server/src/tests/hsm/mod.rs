@@ -48,10 +48,13 @@ use crate::{
 mod ec_dek;
 #[cfg(feature = "non-fips")]
 mod eddsa_sign;
+mod export_key_bytes;
 #[cfg(feature = "non-fips")]
 mod hybrid_kem_dek;
 mod issues;
+mod jose_decrypt;
 mod multi_hsm;
+mod non_extractable_key_bytes;
 mod permissions;
 mod rsa_dek;
 mod search;
@@ -68,6 +71,14 @@ async fn test_hsm_all() {
     info!("HSM: find");
     Box::pin(search::test_object_search()).await.unwrap();
 
+    info!("HSM: export_key_bytes");
+    Box::pin(export_key_bytes::test_hsm_export_key_bytes())
+        .await
+        .unwrap();
+    info!("HSM: non_extractable_key_bytes");
+    Box::pin(non_extractable_key_bytes::test_hsm_non_extractable_key_bytes())
+        .await
+        .unwrap();
     info!("HSM: wrapped_symmetric_dek");
     // Box::pin are needed to conform to clippy::large_futures lint
     Box::pin(symmetric_dek::test_wrapped_symmetric_dek())
@@ -120,6 +131,27 @@ async fn test_hsm_all() {
 
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();
+
+    // SoftHSM2 2.6.1 rejects CKM_RSA_PKCS_OAEP with explicit mechanism parameters
+    // (CKR_ARGUMENTS_BAD), so the RSA-OAEP decrypt oracle cannot be exercised there.
+    if get_hsm_model().as_deref() == Some("softhsm2") {
+        info!("HSM: jose_decrypt skipped (SoftHSM2 does not support RSA-OAEP decrypt)");
+    } else {
+        info!("HSM: jose_decrypt");
+        Box::pin(jose_decrypt::test_jose_hsm_decryption())
+            .await
+            .unwrap();
+    }
+}
+
+/// JOSE flow A against the HSM (runs standalone via `mise run test:jose-hsm`).
+#[tokio::test]
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_jose() {
+    log_init(option_env!("RUST_LOG"));
+    Box::pin(jose_decrypt::test_jose_hsm_decryption())
+        .await
+        .unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {

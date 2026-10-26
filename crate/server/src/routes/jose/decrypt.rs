@@ -11,6 +11,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_objects::Object,
             kmip_operations::Decrypt,
             kmip_types::{LinkType, UniqueIdentifier},
@@ -24,8 +25,10 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
+    cosmian_kms_interfaces::CryptoAlgorithm,
 };
 use cosmian_logger::{debug, trace};
+use openssl::pkey::{PKey, Private};
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
@@ -218,6 +221,12 @@ async fn decrypt_dir(
     }))
 }
 
+/// Where the RSA-OAEP CEK unwrap runs: in-process OpenSSL or the HSM crypto oracle.
+enum OaepUnwrapper {
+    Software(PKey<Private>),
+    Hsm { prefix: String, uid: String },
+}
+
 /// RSA-OAEP decrypt with implicit rejection (RFC 7516 §11.5 countermeasure).
 ///
 /// 1. Unwrap `encrypted_key` with RSA private key to recover CEK
@@ -263,17 +272,20 @@ async fn decrypt_rsa_oaep(
     let private_key_owm = match owm.object() {
         Object::PrivateKey { .. } => owm,
         Object::PublicKey { .. } => {
-            // Resolve linked private key
+            // Resolve the private key: explicit link, else the `_pk` naming convention
+            // (same fallback as key unwrapping, e.g. for HSM key pairs).
             let priv_key_uid = owm
                 .attributes()
                 .get_link(LinkType::PrivateKeyLink)
+                .map(|l| l.to_string())
+                .or_else(|| kid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY).map(str::to_owned))
                 .ok_or_else(|| {
                     CryptoApiError::CryptoFailure(
                         "RSA-OAEP decrypt: public key has no linked private key".to_owned(),
                     )
                 })?;
             Box::pin(retrieve_object_for_operation(
-                ObjectHandle::from(&priv_key_uid.to_string()),
+                ObjectHandle::from(priv_key_uid.as_str()),
                 KmipOperation::Decrypt,
                 kms,
                 user,
@@ -281,6 +293,8 @@ async fn decrypt_rsa_oaep(
             .await
             .map_err(CryptoApiError::from)?
         }
+        // Sensitive HSM private keys come back as metadata stubs, not `PrivateKey` objects.
+        _ if ObjectHandle::from(owm.id()).is_hsm() => owm,
         _ => {
             return Err(CryptoApiError::CryptoFailure(format!(
                 "RSA-OAEP decrypt: key '{}' is not an RSA key pair (got {:?})",
@@ -290,25 +304,38 @@ async fn decrypt_rsa_oaep(
         }
     };
 
-    // Convert KMIP private key to OpenSSL PKey<Private>
-    let private_key = kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
-        CryptoApiError::CryptoFailure(format!("RSA-OAEP decrypt: failed to load private key: {e}"))
-    })?;
+    let unwrapper = if let ObjectHandle::Hsm { prefix, .. } =
+        ObjectHandle::from(private_key_owm.id())
+    {
+        // HSM key size is enforced by the HSM at generation; the private key is not readable here
+        OaepUnwrapper::Hsm {
+            prefix: prefix.to_owned(),
+            uid: private_key_owm.id().to_owned(),
+        }
+    } else {
+        // Convert KMIP private key to OpenSSL PKey<Private>
+        let private_key = kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
+            CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: failed to load private key: {e}"
+            ))
+        })?;
 
-    // Validate RSA key type and minimum size
-    if private_key.id() != openssl::pkey::Id::RSA {
-        return Err(CryptoApiError::CryptoFailure(format!(
-            "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
-            kid,
-            private_key.id()
-        )));
-    }
-    if private_key.bits() < 2048 {
-        return Err(CryptoApiError::CryptoFailure(format!(
-            "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
-            private_key.bits()
-        )));
-    }
+        // Validate RSA key type and minimum size
+        if private_key.id() != openssl::pkey::Id::RSA {
+            return Err(CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
+                kid,
+                private_key.id()
+            )));
+        }
+        if private_key.bits() < 2048 {
+            return Err(CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
+                private_key.bits()
+            )));
+        }
+        OaepUnwrapper::Software(private_key)
+    };
 
     let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
     let expected_cek_len = cek_size_bytes(enc);
@@ -319,47 +346,68 @@ async fn decrypt_rsa_oaep(
     //
     // RFC 7516 §11.5 implicit rejection is preserved: the cache is only
     // populated with genuine CEKs; random substitute keys are never inserted.
-    let cek: Zeroizing<Vec<u8>> =
-        match cek_cache::peek_cek(kms, &encrypted_key_bytes, private_key_owm.object()).await {
-            Some(cached_cek) => cached_cek,
-            None => {
-                // Cache miss — perform RSA-OAEP unwrap.
-                // Implicit rejection: attempt unwrap; on failure substitute random CEK.
-                // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
-                match ckm_rsa_pkcs_oaep_key_unwrap(
-                    &private_key,
-                    oaep_hash,
-                    mgf1_hash,
-                    None,
-                    &encrypted_key_bytes,
-                ) {
-                    Ok(unwrapped) if unwrapped.len() == expected_cek_len => {
-                        // Cache the CEK for subsequent decryptions of this JWE token.
-                        cek_cache::insert_cek(
-                            kms,
-                            &encrypted_key_bytes,
-                            private_key_owm.object(),
-                            &unwrapped,
-                        )
-                        .await;
-                        unwrapped
-                    }
-                    _ => {
-                        // Substitute random CEK — AES-GCM will fail on tag verification
-                        debug!(
-                            "RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection"
-                        );
-                        let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
-                        kms.rng.fill_bytes(&mut random_cek).map_err(|e| {
-                            CryptoApiError::InternalError(format!(
-                                "Failed to generate random CEK for implicit rejection: {e}"
-                            ))
-                        })?;
-                        random_cek
-                    }
-                }
+    let cek: Zeroizing<Vec<u8>> = if let Some(cached_cek) =
+        cek_cache::peek_cek(kms, &encrypted_key_bytes, private_key_owm.object()).await
+    {
+        cached_cek
+    } else {
+        // Cache miss — perform RSA-OAEP unwrap.
+        // Implicit rejection: attempt unwrap; on failure substitute random CEK.
+        // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
+        let unwrapped = match &unwrapper {
+            OaepUnwrapper::Software(private_key) => ckm_rsa_pkcs_oaep_key_unwrap(
+                private_key,
+                oaep_hash,
+                mgf1_hash,
+                None,
+                &encrypted_key_bytes,
+            )
+            .ok(),
+            OaepUnwrapper::Hsm { prefix, uid } => {
+                let oaep_alg = if alg == JoseAlgorithm::RsaOaep {
+                    CryptoAlgorithm::RsaOaepSha1
+                } else {
+                    CryptoAlgorithm::RsaOaepSha256
+                };
+                let lock = kms.crypto_oracles.read().await;
+                let oracle = lock.get(prefix).ok_or_else(|| {
+                    CryptoApiError::InternalError(format!(
+                        "RSA-OAEP decrypt: unknown crypto oracle prefix: {prefix}"
+                    ))
+                })?;
+                let res = oracle
+                    .decrypt(uid, &encrypted_key_bytes, Some(oaep_alg), None)
+                    .await;
+                drop(lock);
+                res.inspect_err(|e| debug!("RSA-OAEP HSM unwrap failed: {e}"))
+                    .ok()
             }
         };
+        match unwrapped {
+            Some(unwrapped) if unwrapped.len() == expected_cek_len => {
+                // Cache the CEK for subsequent decryptions of this JWE token.
+                cek_cache::insert_cek(
+                    kms,
+                    &encrypted_key_bytes,
+                    private_key_owm.object(),
+                    &unwrapped,
+                )
+                .await;
+                unwrapped
+            }
+            _ => {
+                // Substitute random CEK — AES-GCM will fail on tag verification
+                debug!("RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection");
+                let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
+                kms.rng.fill_bytes(&mut random_cek).map_err(|e| {
+                    CryptoApiError::InternalError(format!(
+                        "Failed to generate random CEK for implicit rejection: {e}"
+                    ))
+                })?;
+                random_cek
+            }
+        }
+    };
 
     // AAD reconstruction (RFC 7516 §5.2 step 15)
     let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;

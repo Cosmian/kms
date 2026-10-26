@@ -87,7 +87,10 @@ fn check_extractable_and_sensitive(
         key_wrapping_specification.is_some()
     };
 
-    if owm.attributes().sensitive == Some(true) && !is_wrapped {
+    // A sensitive HSM key is never readable by the KMS (the HSM refuses CKA_VALUE and the object
+    // is an empty stub) and the KMS never calls C_WrapKey, so wrapping cannot get it out either.
+    let is_hsm = ObjectHandle::from(owm.id()).is_hsm();
+    if owm.attributes().sensitive == Some(true) && (!is_wrapped || is_hsm) {
         return Err(KmsError::Kmip21Error(
             ErrorReason::Sensitive,
             "DENIED".to_owned(),

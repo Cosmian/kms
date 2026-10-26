@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#MISE description="Run JOSE + HSM coverage tests (JWKS, RSA-OAEP-256 decrypt via Kryoptic, encrypt with cek_kid)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+print_header "Running JOSE + HSM coverage tests (${VARIANT_NAME})"
+
+# SoftHSM2 2.6.1 rejects CKM_RSA_PKCS_OAEP with explicit mechanism parameters
+# (CKR_ARGUMENTS_BAD, see crate/hsm/softhsm2/src/tests.rs), so the RSA-OAEP-256
+# decrypt through the HSM crypto oracle is exercised against Kryoptic instead.
+kryoptic_build_cdylib
+
+STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cosmian-kms-kryoptic-state-XXXXXX")"
+trap 'rm -rf "${STATE_DIR}"' EXIT
+
+kryoptic_setup "${STATE_DIR}"
+
+export WITH_HSM=1
+export HSM_MODEL="kryoptic"
+export HSM_SLOT_ID="$KRYOPTIC_HSM_SLOT_ID"
+export HSM_USER_PASSWORD
+export KRYOPTIC_CONF
+export KRYOPTIC_PKCS11_LIB
+
+# Run `cargo test` for the server crate against Kryoptic; arguments are the libtest args.
+run_cargo_test() {
+  env \
+    PATH="$PATH" \
+    KRYOPTIC_CONF="$KRYOPTIC_CONF" \
+    KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+    HSM_MODEL="kryoptic" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$HSM_SLOT_ID" \
+    cargo test \
+    -p cosmian_kms_server \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- "$@"
+}
+
+# Bootstrap the token (init + user PIN) with the loader tests, as `hsm-kryoptic` does.
+print_header "Bootstrapping the Kryoptic token"
+env \
+  PATH="$PATH" \
+  KRYOPTIC_CONF="$KRYOPTIC_CONF" \
+  KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$HSM_SLOT_ID" \
+  cargo test \
+  -p kryoptic_pkcs11_loader \
+  --features kryoptic \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- --nocapture tests::test_hsm_kryoptic_all --ignored --exact
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: $name"
+  if "$@"; then
+    print_success "$name passed"
+  else
+    print_warning "$name FAILED (continuing...)"
+    FAILED+=("$name")
+  fi
+}
+
+run_step "jose-hsm-decrypt" run_cargo_test tests::hsm::test_hsm_jose --ignored --exact
+run_step "jose-cek-kid" run_cargo_test tests::jose::cek_kid
+run_step "jwks-endpoint" run_cargo_test tests::jwks_endpoint
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo '' >&2
+  echo '============================================' >&2
+  echo "  FAILED steps: ${FAILED[*]}" >&2
+  echo '============================================' >&2
+  exit 1
+fi
+
+print_success "JOSE + HSM coverage tests completed"

@@ -47,7 +47,7 @@ use crate::core::KMS;
 /// Build the cache UID for a JOSE CEK from the raw `encrypted_key` bytes.
 ///
 /// Uses SHA-256 so the map key is compact: 64 hex chars regardless of RSA size.
-fn cek_cache_uid(encrypted_key_bytes: &[u8]) -> String {
+pub(crate) fn cek_cache_uid(encrypted_key_bytes: &[u8]) -> String {
     format!(
         "jose_cek_{}",
         hex::encode(openssl::sha::sha256(encrypted_key_bytes))
@@ -105,7 +105,7 @@ fn kmip_object_to_cek(obj: Object) -> Option<Zeroizing<Vec<u8>>> {
 ///
 /// `kmip_key_object` is the RSA key KMIP object used for fingerprint validation:
 /// if the key has changed since the entry was inserted, `peek()` returns `None`.
-pub(super) async fn peek_cek(
+pub(crate) async fn peek_cek(
     kms: &KMS,
     encrypted_key_bytes: &[u8],
     kmip_key_object: &Object,

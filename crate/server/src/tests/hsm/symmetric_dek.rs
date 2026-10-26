@@ -123,7 +123,7 @@ async fn create_symmetric_dek(
     Ok(())
 }
 
-async fn symmetric_encrypt(
+pub(super) async fn symmetric_encrypt(
     dek_uid: &str,
     owner: &str,
     kms: &Arc<KMS>,
@@ -166,7 +166,7 @@ async fn symmetric_encrypt(
     .concat())
 }
 
-async fn symmetric_decrypt(
+pub(super) async fn symmetric_decrypt(
     dek_uid: &str,
     owner: &str,
     kms: &Arc<KMS>,

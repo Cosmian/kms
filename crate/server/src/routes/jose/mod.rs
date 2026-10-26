@@ -1,6 +1,6 @@
 mod aes_gcm;
 mod algorithm;
-mod cek_cache;
+pub(crate) mod cek_cache;
 mod models;
 pub(crate) mod tags;
 
