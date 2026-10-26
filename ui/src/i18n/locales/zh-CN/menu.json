@@ -114,6 +114,8 @@
     "certificates/certs/revoke": "撤销",
     "certificates/certs/destroy": "销毁",
     "certificates/certs/validate": "校验",
+    "certificates/certs/generate-crl": "下载 CRL",
+    "certificates/certs/generate-csr": "生成 CSR",
     "certificates/encrypt": "加密",
     "certificates/decrypt": "解密",
     "attributes": "属性",

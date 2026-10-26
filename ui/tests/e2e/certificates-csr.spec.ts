@@ -11,7 +11,7 @@ test.describe("Certificates - Generate CSR", () => {
         const submit = page.locator('[data-testid="submit-generate-csr"]');
         await expect(submit).toBeVisible({ timeout: UI_READY_TIMEOUT });
         await submit.click();
-        await expect(page.getByText("Please enter the private key ID")).toBeVisible();
-        await expect(page.getByText("Please enter the subject distinguished name")).toBeVisible();
+        await expect(page.getByText(/Please enter the private key ID/i)).toBeVisible();
+        await expect(page.getByText(/Please enter the subject distinguished name/i)).toBeVisible();
     });
 });
