@@ -245,3 +245,44 @@ async fn test_jose_public_import_and_cek_kid_errors() -> KResult<()> {
     );
     Ok(())
 }
+
+/// A CEK cached under one RSA key must never be served for another key, even when both keys
+/// have the same fingerprint object (HSM sensitive keys are metadata stubs with no identity).
+#[tokio::test]
+async fn test_cek_cache_is_bound_to_the_key_uid() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes, kmip_types::CryptographicAlgorithm,
+        requests::create_symmetric_key_kmip_object,
+    };
+
+    use crate::routes::jose::cek_cache::{insert_cek, peek_cek};
+
+    let mut clap_config = https_clap_config();
+    clap_config.google_cse_config.google_cse_enable = false;
+    let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
+
+    // Same object for both keys: stands in for two same-size sensitive HSM key stubs.
+    let stub = create_symmetric_key_kmip_object(
+        "cosmian",
+        &[0_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            ..Attributes::default()
+        },
+    )?;
+    let encrypted_key = [7_u8; 256];
+    let cek = [9_u8; 32];
+
+    insert_cek(&kms, "key-a", &encrypted_key, &stub, &cek).await;
+
+    let hit = peek_cek(&kms, "key-a", &encrypted_key, &stub).await;
+    assert_eq!(hit.as_deref().map(Vec::as_slice), Some(cek.as_slice()));
+    assert!(
+        peek_cek(&kms, "key-b", &encrypted_key, &stub)
+            .await
+            .is_none(),
+        "a CEK cached under key-a must not be returned for key-b"
+    );
+    Ok(())
+}

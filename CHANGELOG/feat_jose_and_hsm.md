@@ -6,7 +6,7 @@
 
 - `GET /.well-known/jwks.json` now derives the `use` and `alg` of RSA keys from the public key usage mask:
   `Verify` only publishes `use=sig` with `alg=RS256/384/512`, `Encrypt`/`WrapKey` only publishes `use=enc` without
-  `alg`, and keys carrying both (or neither, such as HSM public keys) publish neither. Keys without a usage mask are
+  `alg`, and keys carrying both (such as HSM RSA public keys) or neither publish neither. Keys without a usage mask are
   unchanged. Clients that assumed every RSA JWK is `use=sig`/`RS*` must select keys by `kid`.
 - `POST /v1/crypto/keys` with RSA `n` and `e` but no `d` now imports a public key instead of generating a key
   pair, and a `kid` on a generation request is rejected with HTTP 400.
@@ -26,4 +26,16 @@
 
 ## Testing
 
-- Add `mise run test:jose-hsm` (JWKS, RSA-OAEP-256 decrypt through a Kryoptic HSM, `cek_kid` encryption).
+- Add `mise run test:jose-hsm` (JWKS, RSA-OAEP-256 decrypt through a Kryoptic HSM, `cek_kid` encryption);
+  `mise run test:jose` now runs it too.
+- `test_hsm_all` also runs `export_key_bytes`, `non_extractable_key_bytes` and `jose_decrypt` (the latter
+  skipped on SoftHSM2).
+
+## Bug Fixes
+
+- Export/Get of a sensitive HSM key is refused even with a key-wrapping specification: the KMS cannot read
+  such a key and has nothing to wrap.
+
+## Build
+
+- `shell.nix`: only add the glibc include path on Linux so `nix-shell` evaluates on macOS.

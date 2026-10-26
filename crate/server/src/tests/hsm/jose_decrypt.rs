@@ -148,11 +148,11 @@ pub(super) async fn test_jose_hsm_decryption() -> KResult<()> {
         &UserId::from(OWNER),
     )
     .await?;
-    let cached = cek_cache::peek_cek(&kms, &encrypted_key, owm.object()).await;
+    let cached = cek_cache::peek_cek(&kms, &sk, &encrypted_key, owm.object()).await;
     assert_eq!(cached.as_deref().map(Vec::as_slice), Some(cek.as_slice()));
     assert!(
         kms.database
-            .retrieve_object(&cek_cache::cek_cache_uid(&encrypted_key))
+            .retrieve_object(&cek_cache::cek_cache_uid(&sk, &encrypted_key))
             .await?
             .is_none(),
         "the CEK must not be written to the database"

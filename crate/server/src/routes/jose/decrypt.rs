@@ -346,8 +346,13 @@ async fn decrypt_rsa_oaep(
     //
     // RFC 7516 §11.5 implicit rejection is preserved: the cache is only
     // populated with genuine CEKs; random substitute keys are never inserted.
-    let cek: Zeroizing<Vec<u8>> = if let Some(cached_cek) =
-        cek_cache::peek_cek(kms, &encrypted_key_bytes, private_key_owm.object()).await
+    let cek: Zeroizing<Vec<u8>> = if let Some(cached_cek) = cek_cache::peek_cek(
+        kms,
+        private_key_owm.id(),
+        &encrypted_key_bytes,
+        private_key_owm.object(),
+    )
+    .await
     {
         cached_cek
     } else {
@@ -388,6 +393,7 @@ async fn decrypt_rsa_oaep(
                 // Cache the CEK for subsequent decryptions of this JWE token.
                 cek_cache::insert_cek(
                     kms,
+                    private_key_owm.id(),
                     &encrypted_key_bytes,
                     private_key_owm.object(),
                     &unwrapped,

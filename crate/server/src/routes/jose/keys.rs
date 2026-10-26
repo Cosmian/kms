@@ -77,6 +77,22 @@ pub(crate) async fn create_key(
                 "Field 'kid' must be non-empty and must not start with 'hsm::'.".to_owned(),
             ));
         }
+        // A private-key import also creates `{kid}_pk`; refuse up front when that uid is taken,
+        // otherwise the private key would be stored without its public key.
+        if body.d.is_some() {
+            let public_uid = format!("{kid}{SYSTEM_TAG_PUBLIC_KEY}");
+            if kms
+                .database
+                .retrieve_object(&public_uid)
+                .await
+                .map_err(|e| CryptoApiError::InternalError(e.to_string()))?
+                .is_some()
+            {
+                return Err(CryptoApiError::BadRequest(format!(
+                    "Cannot import '{kid}': the derived public key uid '{public_uid}' already exists."
+                )));
+            }
+        }
     }
 
     if body.is_import() {

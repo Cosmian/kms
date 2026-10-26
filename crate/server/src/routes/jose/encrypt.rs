@@ -262,7 +262,7 @@ async fn encrypt_rsa_oaep(
     // for this JWE token can skip the RSA-OAEP unwrap entirely.
     // Uses owm.object() as fingerprint source; if the key is rotated or updated
     // the fingerprint changes and the entry will be rejected on next peek().
-    cek_cache::insert_cek(kms, &wrapped_cek, owm.object(), &cek).await;
+    cek_cache::insert_cek(kms, &private_key_uid, &wrapped_cek, owm.object(), &cek).await;
 
     debug!(
         "RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)",
