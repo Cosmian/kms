@@ -286,3 +286,67 @@ async fn test_cek_cache_is_bound_to_the_key_uid() -> KResult<()> {
     );
     Ok(())
 }
+
+/// Importing a private key as `x` also creates `x_pk`: when that uid is taken the import is
+/// refused up front and no orphan private key `x` is left behind.
+#[tokio::test]
+async fn test_private_import_refused_when_derived_public_uid_exists() -> KResult<()> {
+    let app = test_utils::test_app(None).await;
+    let rsa = Rsa::generate(2048)?;
+    let kid = format!("x-{}", Uuid::new_v4());
+
+    drop(
+        post_json_with_uri::<_, _, Value, _>(
+            &app,
+            public_jwk(&rsa, &format!("{kid}_pk"), &json!(["encrypt"])),
+            "/v1/crypto/keys",
+        )
+        .await?,
+    );
+
+    let mut private = public_jwk(&rsa, &kid, &json!(["sign"]));
+    for (name, value) in [
+        ("d", rsa.d()),
+        (
+            "p",
+            rsa.p()
+                .ok_or_else(|| KmsError::Default("no p".to_owned()))?,
+        ),
+        (
+            "q",
+            rsa.q()
+                .ok_or_else(|| KmsError::Default("no q".to_owned()))?,
+        ),
+        (
+            "dp",
+            rsa.dmp1()
+                .ok_or_else(|| KmsError::Default("no dp".to_owned()))?,
+        ),
+        (
+            "dq",
+            rsa.dmq1()
+                .ok_or_else(|| KmsError::Default("no dq".to_owned()))?,
+        ),
+        (
+            "qi",
+            rsa.iqmp()
+                .ok_or_else(|| KmsError::Default("no qi".to_owned()))?,
+        ),
+    ] {
+        private[name] = json!(B64.encode(value.to_vec()));
+    }
+    private["key_ops"] = Value::Null;
+
+    let (status, body) = post_json_raw(&app, private.clone(), "/v1/crypto/keys").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // No orphan: the uid `kid` is still free, a symmetric import under it succeeds.
+    let imported: Value = post_json_with_uri(
+        &app,
+        json!({"kty": "oct", "alg": "A256GCM", "kid": kid, "k": B64.encode([1_u8; 32])}),
+        "/v1/crypto/keys",
+    )
+    .await?;
+    assert_eq!(imported["kid"], kid.as_str());
+    Ok(())
+}

@@ -230,8 +230,7 @@ pub(super) async fn test_jose_hsm_decryption() -> KResult<()> {
 
     // ── Cleanup ──
     delete_key(&sk, OWNER, &kms).await?;
-    // Destroying the private key may cascade to the public key.
-    drop(delete_key(&pk, OWNER, &kms).await);
+    delete_key(&pk, OWNER, &kms).await?;
     revoke_key(&aes_kid, OWNER, &kms).await?;
     delete_key(&aes_kid, OWNER, &kms).await?;
     Ok(())
