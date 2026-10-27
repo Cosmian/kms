@@ -190,6 +190,12 @@ Authentication Verifier are rejected.
   without changing the `/saml/` path prefix. The `_ea_` cookie is bound to the host the browser contacted, so it
   only reaches the KMS when both are served from the same host.
 - `kms_public_url` uses `https://`. The server refuses to start otherwise.
+- `auth_verifier_url` uses `https://` and `auth_verifier_saml_realm` is a regular realm: not empty and not the admin
+  realm `_`. The server refuses to start otherwise (the session cookie is sent to `auth_verifier_url` on logout, and
+  admin-realm sessions must never authenticate to the KMS).
+- State-changing API calls authenticated by the session cookie (`POST` to `/kmip`, `/v1/crypto`, `/tokenize`, ...) must
+  send `Content-Type: application/json` or `application/octet-stream`; the Web UI does. Other content types are
+  rejected, which stops forged cross-origin form posts. List any other UI origin in `cors_allowed_origins`.
 - The reverse proxy reaches the Authentication Verifier over HTTPS, so that the `_ea_` cookie carries the `Secure`
   flag.
 - In the SAML realm of the Authentication Verifier, `sp_acs_url` is `https://<kms host>/saml/<realm>/acs` and

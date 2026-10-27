@@ -18,7 +18,7 @@ use serde_json::Value;
 use url::Url;
 
 use crate::{
-    config::{AuthVerifierConfig, AuthVerifierRuntimeConfig, OidcRuntimeConfig},
+    config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
     middlewares::{
         AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, UserId,
@@ -630,7 +630,7 @@ async fn auth_verifier_session_user(
     let cookie = req.cookie(AUTH_VERIFIER_SESSION_COOKIE)?;
     authenticate_auth_verifier_session_cookie(jwks_manager, cookie.value(), realm)
         .await
-        .inspect_err(|e| debug!("whoami: Auth Verifier session cookie rejected: {e}"))
+        .inspect_err(|e| debug!("Auth Verifier session cookie rejected: {e}"))
         .ok()
 }
 
@@ -691,7 +691,7 @@ pub(crate) async fn logout(
     session.purge();
 
     let mut response = HttpResponse::Found();
-    if end_auth_verifier_session(&req, &auth_verifier_runtime.config).await {
+    if end_auth_verifier_session(&req, &auth_verifier_runtime).await {
         response.cookie(expired_auth_verifier_session_cookie());
     }
 
@@ -727,22 +727,31 @@ pub(crate) async fn logout(
 
 /// Revoke the browser's Auth Verifier SAML session, if any, on the Auth Verifier.
 ///
-/// Returns `true` when the browser holds such a session, so the caller expires the
-/// `_ea_` cookie. Revocation is best effort: logout still succeeds locally if the
-/// Auth Verifier cannot be reached.
-async fn end_auth_verifier_session(req: &HttpRequest, config: &AuthVerifierConfig) -> bool {
-    let (Some(server_url), Some(_)) = (
-        config.auth_verifier_url.as_deref(),
-        config.saml_session_realm(),
-    ) else {
+/// Returns `true` when the browser holds a valid session of the SAML realm, so the caller
+/// expires the `_ea_` cookie. Any other cookie (garbage, another realm of the same Auth
+/// Verifier) is neither forwarded to the Auth Verifier nor expired. Revocation is best
+/// effort: logout still succeeds locally if the Auth Verifier cannot be reached.
+async fn end_auth_verifier_session(
+    req: &HttpRequest,
+    auth_verifier_runtime: &AuthVerifierRuntimeConfig,
+) -> bool {
+    let Some(server_url) = auth_verifier_runtime.config.auth_verifier_url.as_deref() else {
         return false;
     };
+    if auth_verifier_session_user(req, auth_verifier_runtime)
+        .await
+        .is_none()
+    {
+        return false;
+    }
     let Some(cookie) = req.cookie(AUTH_VERIFIER_SESSION_COOKIE) else {
         return false;
     };
     if let Err(e) = revoke_auth_verifier_session(
         server_url,
-        config.auth_verifier_accept_invalid_certs,
+        auth_verifier_runtime
+            .config
+            .auth_verifier_accept_invalid_certs,
         cookie.value(),
     )
     .await
@@ -955,8 +964,14 @@ mod tests {
         );
     }
 
-    #[actix_web::test]
-    async fn logout_expires_auth_verifier_session_cookie() {
+    /// The `_ea_` removal cookie set by `GET /logout` for a request carrying `token`, if any.
+    async fn logout_removal_cookie(
+        token: String,
+    ) -> Option<(
+        String,
+        Option<String>,
+        Option<actix_web::cookie::time::Duration>,
+    )> {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
@@ -968,15 +983,13 @@ mod tests {
                 .service(logout),
         )
         .await;
-        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
         let req = test::TestRequest::get()
             .uri("/logout")
             .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
-        let removal = resp
-            .response()
+        resp.response()
             .cookies()
             .find(|c| c.name() == AUTH_VERIFIER_SESSION_COOKIE)
             .map(|c| {
@@ -985,9 +998,14 @@ mod tests {
                     c.path().map(str::to_owned),
                     c.max_age(),
                 )
-            });
+            })
+    }
+
+    #[actix_web::test]
+    async fn logout_expires_auth_verifier_session_cookie() {
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
         assert_eq!(
-            removal,
+            logout_removal_cookie(token).await,
             Some((
                 String::new(),
                 Some("/".to_owned()),
@@ -995,6 +1013,15 @@ mod tests {
             )),
             "logout must expire the Auth Verifier session cookie"
         );
+    }
+
+    /// Logout must neither call the Auth Verifier nor expire cookies it cannot attribute to
+    /// a valid session of the SAML realm (other realm, or garbage).
+    #[actix_web::test]
+    async fn logout_ignores_cookie_that_is_not_a_valid_saml_realm_session() {
+        let other_realm = auth_verifier_token("alice@example.com", Some("other-app"));
+        assert_eq!(logout_removal_cookie(other_realm).await, None);
+        assert_eq!(logout_removal_cookie("not-a-jwt".to_owned()).await, None);
     }
 
     #[actix_web::test]

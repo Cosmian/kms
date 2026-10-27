@@ -17,7 +17,10 @@
 
 use std::sync::Arc;
 
-use actix_web::dev::ServiceRequest;
+use actix_web::{
+    dev::ServiceRequest,
+    http::{Method, header::CONTENT_TYPE},
+};
 #[cfg(all(not(test), not(feature = "insecure")))]
 use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
@@ -84,6 +87,13 @@ pub(super) async fn handle_auth_verifier(
             ) else {
                 return Err(KmsError::Unauthorized(format!("Auth Verifier: {e}")));
             };
+            if !is_not_forgeable_cross_origin(req) {
+                return Err(KmsError::Unauthorized(
+                    "Auth Verifier: a state-changing request authenticated by the session cookie \
+                     must have an `application/json` or `application/octet-stream` Content-Type"
+                        .to_owned(),
+                ));
+            }
             return Ok(AuthenticatedUser {
                 username: authenticate_auth_verifier_session_cookie(
                     jwks_manager,
@@ -102,6 +112,25 @@ pub(super) async fn handle_auth_verifier(
         username,
         auth_method: AuthMethod::AuthVerifierJwt,
     })
+}
+
+/// CSRF guard for the ambient `_ea_` cookie: a safe method, or a body whose Content-Type is
+/// not CORS-safelisted (`text/plain`, form types), so that a cross-origin page, including
+/// one on a same-site sibling origin the `SameSite=Strict` cookie is still sent to, cannot
+/// forge it without a CORS preflight, which the allow-list CORS of the API scopes refuses.
+fn is_not_forgeable_cross_origin(req: &ServiceRequest) -> bool {
+    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
+        return true;
+    }
+    req.headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
+        .is_some_and(|essence| {
+            essence.eq_ignore_ascii_case("application/json")
+                || essence.eq_ignore_ascii_case("application/octet-stream")
+        })
 }
 
 /// Validate an Auth Verifier `_ea_` session cookie and return the authenticated user.

@@ -1249,6 +1249,11 @@ pub async fn prepare_kms_server(
             "auth_verifier_saml_realm requires kms_public_url to use https://".to_owned(),
         ));
     }
+    if let Some(auth_verifier_config) = kms_server.params.auth_verifier_config.as_ref() {
+        auth_verifier_config
+            .validate_saml()
+            .map_err(KmsError::ServerError)?;
+    }
 
     // Set the `Secure` flag on the session cookie only when the server is reachable
     // via HTTPS.  Over plain HTTP the browser never sends a Secure-flagged cookie
@@ -1770,7 +1775,7 @@ pub async fn prepare_kms_server(
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_methods))
-                .wrap(Cors::permissive())
+                .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
                 .configure(configure_auth_routes);
             // Add all SPA routes
             for route in spa_routes {

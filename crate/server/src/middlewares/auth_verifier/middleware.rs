@@ -152,7 +152,7 @@ mod tests {
                     Some(empty_jwks_manager().await),
                     realm.map(Arc::from),
                 ))
-                .route("/", web::get().to(identity)),
+                .route("/", web::route().to(identity)),
         )
         .await;
         let response = test::call_service(&app, request.to_request()).await;
@@ -174,6 +174,38 @@ mod tests {
             body,
             format!("{:?}:alice@example.com", AuthMethod::AuthVerifierSession)
         );
+    }
+
+    /// CSRF: a state-changing request must carry a Content-Type that forces a CORS preflight.
+    #[actix_web::test]
+    async fn session_cookie_post_requires_non_safelisted_content_type() {
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
+        let post = |content_type: Option<&str>| {
+            let request = test::TestRequest::post()
+                .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token.clone()));
+            match content_type {
+                Some(value) => request.insert_header((header::CONTENT_TYPE, value)),
+                None => request,
+            }
+        };
+        for forgeable in [
+            None,
+            Some("text/plain"),
+            Some("text/plain;charset=UTF-8"),
+            Some("application/x-www-form-urlencoded"),
+            Some("multipart/form-data; boundary=x"),
+        ] {
+            let (status, _) = call(Some("kms-saml"), post(forgeable)).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{forgeable:?}");
+        }
+        for accepted in [
+            "application/json",
+            "Application/JSON; charset=utf-8",
+            "application/octet-stream",
+        ] {
+            let (status, _) = call(Some("kms-saml"), post(Some(accepted))).await;
+            assert_eq!(status, StatusCode::OK, "{accepted}");
+        }
     }
 
     /// Non-regression: without an `auth_verifier_saml_realm`, the `_ea_` cookie is ignored.

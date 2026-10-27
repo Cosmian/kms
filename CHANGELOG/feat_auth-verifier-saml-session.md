@@ -1,3 +1,5 @@
+# Auth Verifier SAML single sign-on for the Web UI
+
 ## Features
 
 ### Server
@@ -18,8 +20,19 @@
 - Accept the Authentication Verifier `_ea_` session cookie only when `auth_verifier_saml_realm` is configured and
   only for tokens issued for that realm; an explicit bearer token always takes precedence over the cookie
 - Refuse to start when `auth_verifier_saml_realm` is set and `kms_public_url` does not use `https://`
+- Refuse to start when `auth_verifier_saml_realm` is empty or the Authentication Verifier admin realm `_`, or when
+  `auth_verifier_url` does not use `https://`
+- Do not authenticate state-changing requests carried by the `_ea_` cookie unless their `Content-Type` is
+  `application/json` or `application/octet-stream` (CSRF from same-site sibling origins)
+- `GET /ui/logout` revokes the Authentication Verifier session and expires the `_ea_` cookie only for a valid session
+  of the SAML realm; other cookie values are no longer forwarded
+- Restrict the CORS policy of the `/ui` routes to `cors_allowed_origins` instead of any origin, so `GET /ui/whoami` is
+  not readable from other origins
 
 ## Build
 
 - Move the `authentication` submodule to the Authentication Verifier release that ships SAML single sign-on (0.5.0),
   and run the local SAML test stack on the published `ghcr.io/cosmian/auth-verifier-saml:0.5.0` image
+- Add the `test:ui-saml` mise task (also run by `test:ui` on non-FIPS with Docker): an end-to-end SAML single
+  sign-on test (Keycloak IdP, Authentication Verifier SAML build, nginx on one HTTPS origin, KMS on the host,
+  Playwright in `ui/tests/e2e-saml/`)
