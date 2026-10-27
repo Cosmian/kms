@@ -128,10 +128,10 @@ gate_run "azure-ekm" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_n
   bash "${TASK_DIR}/azure-ekm" --variant "${VARIANT}" --link "${LINK}"
 gate_run "xks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/xks" --variant "${VARIANT}" --link "${LINK}"
-# NOTE: "ui" already runs test_ui_auth.sh and test_ui_oidc.sh internally
-# (standard + auth + OIDC E2E suites), so "ui-auth"/"ui-oidc" are intentionally
-# NOT listed separately here — that would re-run the same suites twice. They
-# remain available standalone via "mise test:ui-auth" / "mise test:ui-oidc".
+# NOTE: "ui" already runs test_ui_auth.sh, test_ui_oidc.sh and test_ui_saml.sh internally
+# (standard + auth + OIDC + SAML E2E suites), so "ui-auth"/"ui-oidc"/"ui-saml" are
+# intentionally NOT listed separately here — that would re-run the same suites twice. They
+# remain available standalone via "mise test:ui-auth" / "mise test:ui-oidc" / "mise test:ui-saml".
 gate_run "ui" "$(first_reason "$(reason_non_fips_only)")" \
   bash "${TASK_DIR}/ui" --variant "${VARIANT}" --link "${LINK}"
 

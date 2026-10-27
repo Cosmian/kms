@@ -1096,6 +1096,12 @@ pub async fn prepare_kms_server(
         } else {
             (false, None)
         };
+    let auth_verifier_session_realm: Option<Arc<str>> = kms_server
+        .params
+        .auth_verifier_config
+        .as_ref()
+        .and_then(AuthVerifierConfig::saml_session_realm)
+        .map(Arc::from);
 
     // Insecure defaults remain supported for development; make them visible in production logs.
     if !(use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier) {
@@ -1236,6 +1242,18 @@ pub async fn prepare_kms_server(
             kms_server.params.http_port
         )
     });
+
+    // The Auth Verifier only redirects to https:// return URLs after SAML sign-on.
+    if auth_verifier_session_realm.is_some() && !kms_public_url.starts_with("https://") {
+        return Err(KmsError::ServerError(
+            "auth_verifier_saml_realm requires kms_public_url to use https://".to_owned(),
+        ));
+    }
+    if let Some(auth_verifier_config) = kms_server.params.auth_verifier_config.as_ref() {
+        auth_verifier_config
+            .validate_saml()
+            .map_err(KmsError::ServerError)?;
+    }
 
     // Set the `Secure` flag on the session cookie only when the server is reachable
     // via HTTPS.  Over plain HTTP the browser never sends a Secure-flagged cookie
@@ -1545,7 +1563,10 @@ pub async fn prepare_kms_server(
                 ))
                 .wrap(Condition::new(
                     use_auth_verifier,
-                    AuthVerifier::new(auth_verifier_jwks_manager.clone()),
+                    AuthVerifier::new(
+                        auth_verifier_jwks_manager.clone(),
+                        auth_verifier_session_realm.clone(),
+                    ),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
@@ -1667,10 +1688,11 @@ pub async fn prepare_kms_server(
             // Ordered list of UI login methods, highest priority first. The Web UI
             // renders the first entry as the primary login action and the rest as
             // secondary actions (a button when a single alternative exists, a
-            // dropdown when several do). Priority is JWT > SPIFFE > AUTH_VERIFIER > CERT:
-            // the interactive, per-user methods come before the ambient client
-            // certificate probe. AUTH_VERIFIER is only offered when its UI login is
-            // enabled. The singular `auth_method` served by `get_auth_method` is
+            // dropdown when several do). Priority is JWT > SPIFFE > AUTH_VERIFIER_SAML >
+            // AUTH_VERIFIER > CERT: the interactive, per-user methods come before the
+            // ambient client certificate probe. AUTH_VERIFIER is only offered when its UI
+            // login is enabled, AUTH_VERIFIER_SAML when a SAML realm is configured. The
+            // singular `auth_method` served by `get_auth_method` is
             // derived as the first entry for backward compatibility.
             //
             // SPIFFE is not an interactive login: the browser session is established by a
@@ -1689,6 +1711,9 @@ pub async fn prepare_kms_server(
             }
             if use_spiffe_ui_auth {
                 auth_methods.push("SPIFFE".to_owned());
+            }
+            if use_auth_verifier && auth_verifier_session_realm.is_some() {
+                auth_methods.push("AUTH_VERIFIER_SAML".to_owned());
             }
             if use_auth_verifier
                 && kms_server_for_http
@@ -1750,7 +1775,7 @@ pub async fn prepare_kms_server(
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_methods))
-                .wrap(Cors::permissive())
+                .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
                 .configure(configure_auth_routes);
             // Add all SPA routes
             for route in spa_routes {
@@ -1848,7 +1873,10 @@ pub async fn prepare_kms_server(
             ))
             .wrap(Condition::new(
                 use_auth_verifier,
-                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
+                AuthVerifier::new(
+                    auth_verifier_jwks_manager.clone(),
+                    auth_verifier_session_realm.clone(),
+                ),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
@@ -1893,7 +1921,10 @@ pub async fn prepare_kms_server(
             ))
             .wrap(Condition::new(
                 use_auth_verifier,
-                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
+                AuthVerifier::new(
+                    auth_verifier_jwks_manager.clone(),
+                    auth_verifier_session_realm.clone(),
+                ),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
