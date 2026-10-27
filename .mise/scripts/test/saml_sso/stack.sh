@@ -148,8 +148,9 @@ stop_auth_verifier() {
 
 # Run the Auth Verifier SAML build on the host: `cargo run -p auth_verifier --features saml`.
 # The `saml` feature links xmlsec/libxml2, which only the authentication repo's own nix-shell
-# provides (it also pins a newer rustc than the KMS nix shell). The KMS shell's OpenSSL/FIPS
-# and cargo variables are dropped so they do not leak into that build.
+# provides (it also pins a newer rustc than the KMS nix shell). The KMS shell's OpenSSL/FIPS,
+# cargo and LD_LIBRARY_PATH variables are dropped so they do not leak into that build: on Linux the
+# KMS shell's gcc 13 libstdc++ breaks the host `nix-shell` binary (CXXABI_1.3.15 not found).
 start_auth_verifier() {
   [ -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ] ||
     print_error "authentication submodule not found at '${AUTH_VERIFIER_REPO}'. Run: git submodule update --init authentication"
@@ -159,7 +160,7 @@ start_auth_verifier() {
   print_status "Starting the Auth Verifier: cargo run -p auth_verifier --features saml (first build takes a while)"
   (
     cd "${AUTH_VERIFIER_REPO}"
-    exec env -u IN_NIX_SHELL -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES -u OPENSSL_NO_VENDOR \
+    exec env -u IN_NIX_SHELL -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES -u OPENSSL_NO_VENDOR \
       -u OPENSSL_DIR -u OPENSSL_LIB_DIR -u OPENSSL_INCLUDE_DIR -u CARGO_TARGET_DIR -u RUSTFLAGS \
       nix-shell --run "exec cargo run -p auth_verifier --features saml -- '${SAML_SSO_DIR}/auth_verifier.toml'"
   ) >"${AV_LOG}" 2>&1 &
