@@ -233,7 +233,7 @@ utimaco_pkcs11_loader = { path = "crate/hsm/utimaco", version = "5.28.0" }
 
 # Cosmian crates
 cosmian_config_utils = "0.7"
-cosmian_cover_crypt = "16.0.0"
+cosmian_cover_crypt = "16.0.1"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
 cosmian_findex = "8.0.2"
 cosmian_logger = "0.8"
