@@ -742,9 +742,6 @@ impl Database {
             );
         }
         drop(map);
-        self.rotate_name_cache
-            .insert(name, generation, owner, results.clone())
-            .await;
         Ok(results)
     }
 
