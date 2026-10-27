@@ -19,7 +19,7 @@ Only these algorithms are allowed without the `non-fips` feature flag:
 ## Non-FIPS algorithms (require `#[cfg(feature = "non-fips")]`)
 
 - Covercrypt, AES-XTS, ML-KEM, ML-DSA, SLH-DSA, ChaCha20-Poly1305
-- Gate at function or module level, never inside function bodies.
+- Put `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm. Never wrap statements or blocks inside a function body (`#[cfg(..)] { .. }`, `#[cfg(..)] let ..`, paired `#[cfg(feature..)]`/`#[cfg(not(feature..))]` statements) and never branch on `cfg!(feature = "non-fips")` at runtime: split into two functions with opposite `#[cfg]` and call the right one. About 30 existing files violate this (e.g. `create_key_pair.rs`, `export_get.rs`, `decrypt.rs`): legacy — when you touch one, fix it in the same change.
 
 ## OpenSSL provider initialization
 

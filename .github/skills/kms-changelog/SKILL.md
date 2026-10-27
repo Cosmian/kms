@@ -24,7 +24,7 @@ Two modes:
   behaviour in the feature's own Features entry instead, and fix it silently. Verify with
   `git grep <symbol> <previous-tag>`: if the code or feature does not exist there, the entry does not belong in
   `## Security`.
-- **Every bullet of a `Security` section carries a `COSMIAN-YYYY-NNN` (or GHSA) id** that exists in `SECURITY.md` with
+- **Every bullet of a `Security` section carries a `COSMIAN-YYYY-NNN` id** that exists in `SECURITY.md` with
   `Fixed in` equal to the release. A hardening or fix without a `SECURITY.md` entry is not listed under Security: put
   it in Bug Fixes (theme `Hardening`), Build or Features. Never create the `SECURITY.md` entry yourself; report that
   one is missing when the issue looks like a real vulnerability.
@@ -86,7 +86,7 @@ Create or append to `CHANGELOG/<branch>.md` using this structure:
 
 ## Security
 
-- Enforce access control check in `Wrap` operation before returning wrapped key material
+- Enforce access control check in `Wrap` operation before returning wrapped key material (COSMIAN-2026-001)
 
 ## Build
 
@@ -188,7 +188,7 @@ commit title only, and say so in the final report).
 
 ## Step C3 — Security cross-check
 
-For each `COSMIAN-YYYY-NNN` or GHSA id in the Security section, verify `SECURITY.md` lists it with `Fixed in` equal to
+For each `COSMIAN-YYYY-NNN` id in the Security section, verify `SECURITY.md` lists it with `Fixed in` equal to
 `X.Y.Z` and an affected range that includes the previous release. If one is missing, **stop and report**; do not
 create the SECURITY.md entry.
 

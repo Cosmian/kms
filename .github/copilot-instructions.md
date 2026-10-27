@@ -16,6 +16,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `rust-server.instructions.md` | `crate/server/**/*.rs` |
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` |
+| `rust-security.instructions.md` | `crate/**/*.rs` |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` |
 | `database-tables.instructions.md` | `**/*.sql` |
 | `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` |
@@ -26,6 +27,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `server-config.instructions.md` | `crate/server/src/config/**/*.rs` |
 | `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` |
 | `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` |
+| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 | `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` |
 | `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` |
@@ -45,6 +47,8 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `nix.instructions.md` | `nix/**/*.nix` |
 | `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` |
 | `mermaid.instructions.md` | `**/*.md` |
+| `rust-security.instructions.md` | `crate/**/*.rs` |
+| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 
 ---
 
@@ -83,13 +87,16 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 ## Cardinal coding rules
 
 - No `.unwrap()` in production code — use `?` propagation.
-- `#[cfg(feature = "non-fips")]` at function/module level only, never inside a function body.
+- `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm; never on statements/blocks inside a function body, never `cfg!(..)` at runtime.
 - Every `unsafe` block requires a `// SAFETY:` comment.
-- Zero Clippy warnings — fix warnings; never suppress with `#[allow]` without an inline justification.
+- Zero Clippy warnings — fix warnings; `#[allow]` / `#[expect]` is forbidden on new code (see `rust.instructions.md` § Clippy and lint suppression).
 - Unit tests go in a `#[cfg(test)]` submodule in the same file.
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 - Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
+- Regression test: every bug fix ships a test that fails before the fix (or the commit message says why not).
+- Secrets: compare in constant time, keep in `Zeroizing`, never log — see `.github/instructions/rust-security.instructions.md`.
+- Commit subjects: conventional-commit type + descriptive subject; never `fix: PR review`, `fix: commit`.
 
 ## Feature rollout order & commit layering
 
@@ -115,6 +122,8 @@ branch again; never rewrite shared history. Applies to every branch.
 |---------|-------------|
 | `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
+| `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse/create complete fixtures in `test_data` |
+| `/kms-docs-verify` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |
 | `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` |
 | `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
 | `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
@@ -129,6 +138,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/react-ant-patterns` | UI coding conventions |
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-pr-review` | Mandatory self-review — two-pass diff review that auto-applies confirmed fixes (≤ 2 cycles) |
+| `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `consolidate <version>` merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry and deletes them |
 | `/threat-model` | STRIDE-A threat model |
 

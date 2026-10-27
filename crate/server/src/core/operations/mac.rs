@@ -14,6 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::trace;
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
+use subtle::ConstantTimeEq;
 
 use crate::{
     core::{
@@ -169,7 +170,7 @@ impl CryptoOpSpec for MacVerifyOp {
         };
 
         let expected_mac = compute_hmac(key_bytes, &request.data, algorithm)?;
-        let validity = if expected_mac == request.mac_data {
+        let validity = if bool::from(expected_mac.ct_eq(&request.mac_data)) {
             ValidityIndicator::Valid
         } else {
             ValidityIndicator::Invalid
@@ -303,8 +304,8 @@ mod tests {
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{
             extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-            kmip_operations::MAC,
-            kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+            kmip_operations::{MAC, MACVerify},
+            kmip_types::{CryptographicAlgorithm, CryptographicParameters, ValidityIndicator},
             requests::symmetric_key_create_request,
         },
     };
@@ -313,7 +314,7 @@ mod tests {
         config::ServerParams,
         core::{KMS, operations::mac::compute_hmac},
         middlewares::UserId,
-        result::KResult,
+        result::{KResult, KResultHelper},
         tests::test_utils::https_clap_config,
     };
 
@@ -436,6 +437,76 @@ mod tests {
         let response = kms.mac(request, &UserId::from("user")).await?;
         assert_eq!(response.mac_data.unwrap().len(), 32);
         assert_eq!(response.correlation_value, None);
+        Ok(())
+    }
+
+    /// Pins the `MACVerify` verdicts. It passes before and after the switch to a
+    /// constant-time compare (only timing differs); it guards the verdicts against regressions.
+    #[tokio::test]
+    async fn test_server_mac_verify_rejects_tampered_mac() -> KResult<()> {
+        let kms = Arc::new(
+            KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
+        );
+        let user = UserId::from("user");
+        let unique_identifier = kms
+            .create(
+                symmetric_key_create_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    256,
+                    CryptographicAlgorithm::SHA3256,
+                    EMPTY_TAGS,
+                    false,
+                    None,
+                )?,
+                &user,
+            )
+            .await?
+            .unique_identifier;
+        let parameters = CryptographicParameters {
+            hashing_algorithm: Some(HashingAlgorithm::SHA3256),
+            ..Default::default()
+        };
+        let mac = kms
+            .mac(
+                MAC {
+                    unique_identifier: Some(unique_identifier.clone()),
+                    cryptographic_parameters: Some(parameters.clone()),
+                    data: Some(vec![1, 2, 3]),
+                    correlation_value: None,
+                    init_indicator: None,
+                    final_indicator: None,
+                },
+                &user,
+            )
+            .await?
+            .mac_data
+            .context("MAC response has no mac_data")?;
+
+        let mut flipped = mac.clone();
+        *flipped.last_mut().context("empty MAC")? ^= 1;
+        let mut truncated = mac.clone();
+        truncated.pop();
+
+        for (mac_data, expected) in [
+            (mac, ValidityIndicator::Valid),
+            (flipped, ValidityIndicator::Invalid),
+            (truncated, ValidityIndicator::Invalid),
+            (vec![], ValidityIndicator::Invalid),
+        ] {
+            let response = kms
+                .mac_verify(
+                    MACVerify {
+                        unique_identifier: unique_identifier.clone(),
+                        cryptographic_parameters: Some(parameters.clone()),
+                        data: vec![1, 2, 3],
+                        mac_data,
+                    },
+                    &user,
+                )
+                .await?;
+            assert_eq!(response.validity_indicator, expected);
+        }
         Ok(())
     }
 }
