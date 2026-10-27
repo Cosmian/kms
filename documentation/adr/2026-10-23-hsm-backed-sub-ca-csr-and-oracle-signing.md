@@ -164,6 +164,23 @@ Out of scope: the Auditor role of issue #651 (delivered with the OPA authorizati
 - **ALT-009 Description**: Rely on `Locate` by `CertificateAttributes` serial.
 - **ALT-010 Rejection Reason**: Not reachable from the CLI/UI tag filters the operators use.
 
+### Produce the CSR and the CRL through KMIP operations
+
+- **ALT-011 Description**: Add no REST endpoint. For the CSR, extend `Create` (or `Register`) with
+  `ObjectType=CertificateRequest`, taking the private key through `PrivateKeyLink` and the subject through
+  `CertificateAttributes`. For the CRL, have clients build the structure and call the KMIP `Sign` operation.
+- **ALT-012 Rejection Reason**: KMIP 2.1 defines the `CertificateRequest` managed object, so a vendor-extended
+  `Create` was feasible for the CSR; this is a design choice, not a protocol impossibility. The server's `Create`
+  currently handles only symmetric keys, private keys, secret data and PGP keys. A `Create(CertificateRequest)`
+  would return only a UID and persist a managed object, so the caller needs a follow-up `Get`, ACLs and a lifecycle
+  for a throwaway artifact, and it would be authorized by `Create` instead of `Sign` on the key. Other KMIP clients
+  would not understand the extension. KMIP has no CRL object type and no operation that returns a CRL. A CRL is
+  built from server-side revocation state (revoked serials, CRL number, `nextUpdate`) that a client cannot
+  assemble, and RFC 5280 §3 distributes it over unauthenticated HTTP
+  (`GET /public/certificates/{issuer_id}/crl`), not KMIP. A single server-side path (`oracle_signing.rs`) builds the
+  structure, signs it for HSM keys through the crypto oracle with explicit parameters, and verifies the signature
+  against the real public key before returning it.
+
 ## Implementation Notes
 
 - **IMP-001**: Layered commits per `AGENTS.md`: server (`crate/server`, `crate/kmip`), then CLI (`crate/clients`),
