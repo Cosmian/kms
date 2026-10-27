@@ -428,8 +428,8 @@ jobs:
           # servers(3) not available"). Optional: skipped (return 0) if unset.
           AZURE_CLOUD_HSM_HSM_IPS: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IPS }}
           AZURE_CLOUD_HSM_OVPN_CONF: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_OVPN_CONF }}
-          HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
-          HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
+          AZURE_CLOUD_HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
+          AZURE_CLOUD_HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
