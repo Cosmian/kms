@@ -77,7 +77,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // SoftHSM2 build. `multi_threaded_rsa` uses RSA-OAEP encrypt/decrypt, so it is
     // skipped entirely here rather than gated by FIPS variant.
     shared::concurrent_sign_does_not_degrade(&slot)?;
-    shared::get_key_metadata(&slot, true)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -297,7 +297,7 @@ fn test_hsm_softhsm2_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot, true)
+    shared::get_key_metadata(&slot)
 }
 
 #[test]

@@ -47,23 +47,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          # Use the pre-installed Strawberry Perl so vcpkg does not attempt to
-          # download it from GitHub (which fails with 504 under rate-limiting).
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vcpkgExitCode = 1
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            vcpkg install --triplet x64-windows-static
-            $vcpkgExitCode = $LASTEXITCODE
-            if ($vcpkgExitCode -eq 0) { break }
-            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
-          }
-          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Tests
         shell: pwsh
@@ -116,21 +100,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vcpkgExitCode = 1
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            vcpkg install --triplet x64-windows-static
-            $vcpkgExitCode = $LASTEXITCODE
-            if ($vcpkgExitCode -eq 0) { break }
-            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
-          }
-          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Install wasm-pack
         shell: pwsh
@@ -183,21 +153,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vcpkgExitCode = 1
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            vcpkg install --triplet x64-windows-static
-            $vcpkgExitCode = $LASTEXITCODE
-            if ($vcpkgExitCode -eq 0) { break }
-            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
-          }
-          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Run CNG KSP integration tests
         shell: pwsh
@@ -251,21 +207,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vcpkgExitCode = 1
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            vcpkg install --triplet x64-windows-static
-            $vcpkgExitCode = $LASTEXITCODE
-            if ($vcpkgExitCode -eq 0) { break }
-            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
-          }
-          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Run EST interoperability tests
         shell: pwsh

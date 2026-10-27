@@ -76,7 +76,7 @@ fn test_hsm_luna_all() -> HResult<()> {
         shared::eddsa_sign_all_curves(&slot)?;
         shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
         shared::concurrent_sign_does_not_degrade(&slot)?;
-        shared::get_key_metadata(&slot, true)?;
+        shared::get_key_metadata(&slot)?;
         shared::list_objects(&slot)?;
         shared::search_incompatible_key(&hsm, &cfg)
     })
@@ -218,7 +218,7 @@ fn test_hsm_luna_list_objects() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, the Thales Luna Client and a Luna HSM partition"]
 fn test_hsm_luna_get_key_metadata() -> HResult<()> {
-    scoped(|slot| shared::get_key_metadata(slot, true))
+    scoped(shared::get_key_metadata)
 }
 
 #[test]

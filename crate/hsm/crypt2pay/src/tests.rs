@@ -69,7 +69,7 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     shared::eddsa_sign_all_curves(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
     shared::concurrent_sign_does_not_degrade(&slot)?;
-    shared::get_key_metadata(&slot, true)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
@@ -232,7 +232,7 @@ fn test_hsm_crypt2pay_list_objects() -> HResult<()> {
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_get_key_metadata() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot, true)
+    shared::get_key_metadata(&slot)
 }
 
 #[test]

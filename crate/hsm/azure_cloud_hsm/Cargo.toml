@@ -17,7 +17,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.27.1" }
+cosmian_kms_base_hsm = { workspace = true }
 
 [features]
 # Enable Azure Cloud HSM tests (they require a live Azure Cloud HSM).

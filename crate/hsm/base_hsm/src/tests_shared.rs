@@ -1671,14 +1671,7 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-/// `supports_sensitivity_attribute` - if `false` (AWS `CloudHSM`), the key is
-/// generated without an explicit `CKA_SENSITIVE` attribute, relying on the
-/// HSM's own default instead (`CloudHSM` defaults to sensitive; PKCS#11 default
-/// is non-sensitive).
-pub fn get_key_metadata(
-    slot: &Arc<SlotManager>,
-    _supports_sensitivity_attribute: bool,
-) -> HResult<()> {
+pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
 

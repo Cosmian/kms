@@ -36,7 +36,7 @@ fn test_hsm_azure_cloud_hsm_all() -> HResult<()> {
     shared::aes_cbc_encrypt(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
-    shared::get_key_metadata(&slot, false)?;
+    shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::destroy_all(&slot)
 }
