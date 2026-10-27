@@ -793,6 +793,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "azure_cloud_hsm_pkcs11_loader"
+version = "5.28.0"
+dependencies = [
+ "cosmian_kms_base_hsm",
+]
+
+[[package]]
 name = "backon"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1900,6 +1907,7 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "aws_cloudhsm_pkcs11_loader",
+ "azure_cloud_hsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
  "clap",

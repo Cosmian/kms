@@ -741,6 +741,7 @@ impl Database {
                     .unwrap_or_default(),
             );
         }
+        drop(map);
         Ok(results)
     }
 

@@ -53,8 +53,13 @@ jobs:
           - pki-revocation
           - siem
           - audit
+          # Azure Cloud HSM loader compilation does not require a live HSM.
+          - azure-cloud-hsm-build
         features: [fips, non-fips]
         exclude:
+          # kryoptic-conformance only needs to be validated once (fips)
+          - type: hsm-kryoptic-conformance
+            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
@@ -297,7 +302,7 @@ jobs:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-24.04
     # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
-    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
+    # Hardware HSMs (proteccio, crypt2pay, azure-cloud-hsm, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
     concurrency:
       group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
       queue: max
@@ -342,7 +347,7 @@ jobs:
           mise run test:hsm-pkcs11-tool --variant non-fips --marker smoke
 
   # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
-  # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their
+  # network HSM, Crypt2Pay over OpenVPN, the Azure Cloud HSM CI cluster). They live in their
   # own job (a job-level `if` cannot read the `matrix` context) and are skipped on forks.
   hsm-upstream:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
@@ -363,11 +368,14 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
-          # - aws-cloudhsm # This non-free service has been disabled on october 2026
-          # - gcp-cloud-hsm # This non-free service has been disabled on october 2026
+          # aws-cloudhsm, gcp-cloud-hsm and azure-cloud-hsm clusters are torn down after
+          # validation to limit cloud costs; re-enable once a cluster is provisioned again.
+          # - aws-cloudhsm
+          # - gcp-cloud-hsm
+          # - azure-cloud-hsm
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
-        # sufficient for crypt2pay, gcp-cloud-hsm and aws-cloudhsm FIPS-mode compatibility is not yet
-        # confirmed against the cluster's supported mechanism list.
+        # sufficient for crypt2pay, and aws-cloudhsm/azure-cloud-hsm/gcp-cloud-hsm FIPS-mode compatibility
+        # is not yet confirmed against the clusters' supported mechanism lists.
         features: [non-fips]
 
     steps:
@@ -405,6 +413,23 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+          # Azure Cloud HSM: prepare_azure_cloudhsm.sh installs the client SDK and
+          # starts azcloudhsm_client (see crate/hsm/azure_cloud_hsm/README.md).
+          AZURE_CLOUD_HSM_PO_CERT: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_PO_CERT }}
+          AZURE_CLOUD_HSM_HOSTNAME: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HOSTNAME }}
+          # GitHub-hosted runners cannot resolve *.privatelink.cloudhsm.azure.net or
+          # route to the HSM's private VNet IP; prepare_azure_cloudhsm.sh maps the
+          # hostname and starts a VPN tunnel only if the HSM is not already reachable.
+          AZURE_CLOUD_HSM_HSM_IP: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IP }}
+          # Space-separated private IPs of every cluster node (not just the primary
+          # above): azcloudhsm_client dials siblings directly by IP once logged in,
+          # bypassing azcloudhsm_resource.cfg/hostname mapping, so the VPN route must
+          # reach all of them or key generation fails quorum ("Required number of
+          # servers(3) not available"). Optional: skipped (return 0) if unset.
+          AZURE_CLOUD_HSM_HSM_IPS: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IPS }}
+          AZURE_CLOUD_HSM_OVPN_CONF: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_OVPN_CONF }}
+          AZURE_CLOUD_HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
+          AZURE_CLOUD_HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 

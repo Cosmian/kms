@@ -47,17 +47,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          # Use the pre-installed Strawberry Perl so vcpkg does not attempt to
-          # download it from GitHub (which fails with 504 under rate-limiting).
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Tests
         shell: pwsh
@@ -110,15 +100,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Install wasm-pack
         shell: pwsh
@@ -171,15 +153,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Run CNG KSP integration tests
         shell: pwsh
@@ -233,15 +207,7 @@ jobs:
           .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Run EST interoperability tests
         shell: pwsh

@@ -42,6 +42,7 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
             supports_key_dates: true,
             supports_rsa_oaep_key_wrap: false,
             enforces_ecdsa_digest_strength: false,
+            skip_finalize_on_drop: false,
             max_concurrent_sessions: 8,
         }
     }

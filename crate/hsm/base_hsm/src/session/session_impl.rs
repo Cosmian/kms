@@ -206,7 +206,7 @@ pub struct Session {
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
     logging_in: bool,
-    hsm_capabilities: HsmCapabilities,
+    pub(crate) hsm_capabilities: HsmCapabilities,
 }
 
 /// HKDF (RFC 5869) parameters for [`Session::derive_hkdf_key`].

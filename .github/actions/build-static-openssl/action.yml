@@ -1,0 +1,26 @@
+---
+name: Build static OpenSSL
+description: >
+  Install static OpenSSL on Windows via vcpkg (x64-windows-static) with retries,
+  using the pre-installed Strawberry Perl so vcpkg does not download it from
+  GitHub (which fails with 504 under rate-limiting).
+
+runs:
+  using: composite
+  steps:
+    - name: Build static OpenSSL
+      shell: pwsh
+      env:
+        PERL: C:\Strawberry\perl\bin\perl.exe
+        PERL_ROOT: C:\Strawberry\perl
+      run: |
+        $ErrorActionPreference = "Stop"
+        $vcpkgExitCode = 1
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+          vcpkg install --triplet x64-windows-static
+          $vcpkgExitCode = $LASTEXITCODE
+          if ($vcpkgExitCode -eq 0) { break }
+          if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+        }
+        if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
+        vcpkg integrate install

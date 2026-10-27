@@ -611,7 +611,7 @@ The signature is available at "/tmp/secret.sig"
 ## PKCS#11 protocol version compatibility
 
 Eviden KMS talks to HSMs over Cryptoki (PKCS#11) **v2.40** on the consumer side (`crate/hsm/base_hsm`
-and its vendor loaders: SoftHSM2, Utimaco, Proteccio, Crypt2Pay, SmartCard HSM, AWS CloudHSM). Every Cryptoki
+and its vendor loaders: SoftHSM2, Utimaco, Proteccio, Crypt2Pay, SmartCard HSM, AWS CloudHSM, Azure Cloud HSM). Every Cryptoki
 function (`C_Initialize`, `C_GetInfo`, `C_Encrypt`, ...) is resolved by its stable C symbol name,
 never through the PKCS#11 v3.0 "interfaces" discovery mechanism
 (`C_GetInterfaceList`/`C_GetInterface`). This means any v2.40-compliant HSM library works out of
@@ -788,7 +788,7 @@ AES/RSA) — tracked as a dedicated follow-up ([#1182](https://github.com/Cosmia
 #### Validating v3.0 mechanisms: the Kryoptic test token
 
 No vendor HSM currently supported by Eviden KMS (SoftHSM2, Utimaco, Proteccio, Crypt2Pay,
-SmartCard HSM, AWS CloudHSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
+SmartCard HSM, AWS CloudHSM, Azure Cloud HSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
 SoftHSM2's own v3 probe test only confirms the "not supported" degrade path.
 
 The v3.0 code paths are validated against
