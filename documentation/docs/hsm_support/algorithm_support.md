@@ -2,10 +2,11 @@
 
 This page compares PKCS#11 algorithm and capability coverage across the HSM models natively
 integrated by Eviden KMS: **SoftHSM2**, **Kryoptic**, **Proteccio**, **Crypt2Pay**, **Utimaco**,
-**AWS CloudHSM**, **GCP Cloud HSM**, **SmartCard HSM**, and **Thales Luna**. All models share the
-same `BaseHsm` implementation (`crate/hsm/base_hsm`); per-model differences come from (a) real
-PKCS#11 mechanism availability on the device/library, and (b) a small set of vendor-specific
-behavioral quirks captured in each model's `HsmCapabilities` (`crate/hsm/<model>/src/lib.rs`).
+**AWS CloudHSM**, **GCP Cloud HSM**, **Azure Cloud HSM**, **SmartCard HSM**, and **Thales Luna**.
+All models share the same `BaseHsm` implementation (`crate/hsm/base_hsm`); per-model differences
+come from (a) real PKCS#11 mechanism availability on the device/library, and (b) a small set of
+vendor-specific behavioral quirks captured in each model's `HsmCapabilities`
+(`crate/hsm/<model>/src/lib.rs`).
 
 Legend:
 
@@ -23,41 +24,41 @@ Legend:
 
 ## Key generation
 
-| Algorithm / curve | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | SmartCard HSM | Thales Luna |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| AES-128/192/256 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| RSA-2048 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ |
-| EC P-224 | ✅ | ❌ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | ✅ |
-| EC P-256 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | ✅ |
-| EC P-384 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | ✅ |
-| EC P-521 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | ✅ |
-| EC secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | 📄 | — |
-| EC secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | 📄 | — |
-| EC Brainpool / FRP256v1 | ❌ | ❌ | 📄 | 📄 | ❌ | ❌ | — | ❌ | — |
-| Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | 📄 | ✅ |
-| Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | 📄 | ✅ |
+| Algorithm / curve | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | Azure Cloud HSM | SmartCard HSM | Thales Luna |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| AES-128/192/256 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| RSA-2048 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ | ✅ |
+| EC P-224 | ✅ | ❌ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | 📄 | ✅ |
+| EC P-256 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | 📄 | ✅ |
+| EC P-384 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | 📄 | ✅ |
+| EC P-521 | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | 📄 | ✅ |
+| EC secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | 📄 | 📄 | — |
+| EC secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | — | 📄 | — |
+| EC Brainpool / FRP256v1 | ❌ | ❌ | 📄 | 📄 | ❌ | ❌ | — | — | ❌ | — |
+| Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | 📄 | 📄 | ✅ |
+| Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | — | 📄 | ✅ |
 
 ## Encryption mechanisms
 
-| Mechanism | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | SmartCard HSM | Thales Luna |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| AES-GCM | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 📄 | ✅ |
-| AES-CBC (+ multi-round) | ✅ | ✅ | 📄 | 📄 | 📄 | ✅ | ✅ (single-round) | ✅ | ✅ |
-| RSA PKCS#1 v1.5 | ✅ | ✅ | ✅ | ✅ | ✅ | 📄 | — | ✅ | ✅ |
-| RSA-OAEP (SHA-256), direct `Encrypt`/`Decrypt` | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ |
-| RSA-OAEP key wrap (`C_WrapKey`/`C_UnwrapKey`) | ❌ | 📄 | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Mechanism | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | Azure Cloud HSM | SmartCard HSM | Thales Luna |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| AES-GCM | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 📄 | ✅ |
+| AES-CBC (+ multi-round) | ✅ | ✅ | 📄 | 📄 | 📄 | ✅ | ✅ (single-round) | ✅ (single-round) | ✅ | ✅ |
+| RSA PKCS#1 v1.5 | ✅ | ✅ | ✅ | ✅ | ✅ | 📄 | — | 📄 | ✅ | ✅ |
+| RSA-OAEP (SHA-256), direct `Encrypt`/`Decrypt` | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ | ✅ |
+| RSA-OAEP key wrap (`C_WrapKey`/`C_UnwrapKey`) | ❌ | 📄 | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
 
 ## Signing mechanisms
 
-| Mechanism | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | SmartCard HSM | Thales Luna |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| RSA PKCS#1 v1.5 (SHA-1/256/384/512) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ |
-| RSA-PSS (SHA-256/384/512) | ✅ | ✅ | 📄 | 📄 | 📄 | 📄 | — | 📄 | ✅ |
-| ECDSA (raw `CKM_ECDSA` and/or combined `CKM_ECDSA_SHA*`) | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 | ✅ |
-| ECDSA secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | 📄 | — |
-| ECDSA secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | 📄 | — |
-| EdDSA Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | 📄 | ✅ |
-| EdDSA Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | 📄 | ✅ |
+| Mechanism | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | Azure Cloud HSM | SmartCard HSM | Thales Luna |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| RSA PKCS#1 v1.5 (SHA-1/256/384/512) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ (SHA-256) | ✅ | ✅ |
+| RSA-PSS (SHA-256/384/512) | ✅ | ✅ | 📄 | 📄 | 📄 | 📄 | — | 📄 | 📄 | ✅ |
+| ECDSA (raw `CKM_ECDSA` and/or combined `CKM_ECDSA_SHA*`) | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 (P-256/P-384 only) | 📄 | ✅ |
+| ECDSA secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | ❌ | 📄 | — |
+| ECDSA secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | ❌ | 📄 | — |
+| EdDSA Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | ❌ | 📄 | ✅ |
+| EdDSA Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | ❌ | 📄 | ✅ |
 
 !!! warning Crypt2Pay EC/RSA key generation: known, currently blocked issue
     Crypt2Pay's own PKCS#11 API User Guide documents `CKM_RSA_PKCS_KEY_PAIR_GEN` and
@@ -102,22 +103,40 @@ Legend:
     IV of older firmware. This FIPS behavior follows the Thales documentation and has not been
     exercised on a FIPS-mode partition.
 
+!!! note Azure Cloud HSM: limits of the vendor's PKCS#11 library
+    The rows above follow the Azure Cloud HSM *PKCS#11 Integration Guide* (a PKCS#11 v2.40
+    library, `libazcloudhsm_pkcs11.so`). It lists key generation for NIST P-192/P-224/P-256/P-384/
+    P-521 and secp256k1, plus Ed25519/X25519 through `CKM_EC_KEY_PAIR_GEN`, but states that **only
+    P-256 and P-384 are supported for sign/verify** and its sign/verify mechanism table has no
+    `CKM_EDDSA`; ECDSA with secp256k1/secp192k1 and EdDSA are therefore ❌ for signing even where
+    key generation is documented. Sign Recover and Verify Recover are not supported. The guide's
+    curve list has no Brainpool/FRP256v1 or secp192k1, although Microsoft's HSM-level
+    *Supported cryptographic algorithms* page names them (non-FIPS); those rows stay — because the
+    two vendor documents disagree and this repository has not exercised them. The firmware also
+    does not store `CKA_START_DATE`/`CKA_END_DATE`, which is why HSM key auto-rotation is
+    unavailable (see the quirks table).
+
 ## Vendor-specific quirks
 
 These are objective, code-level behavioral differences captured in each model's
 `HsmCapabilities` (`crate/hsm/<model>/src/lib.rs`), not algorithm availability — `BaseHsm` already
 branches on them so KMS operations behave correctly regardless of HSM model.
 
-| Capability | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | SmartCard HSM | Thales Luna |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| PKCS#11 v3.0 message-based AES-GCM | ❌ | ✅ (default) | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| Caller-supplied AES-GCM IV | ✅ | ✅ (default) | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
-| RSA-OAEP empty-label source pointer | non-null required | NULL (default) | NULL | NULL | NULL | NULL required | NULL | NULL | NULL |
-| `CKA_START_DATE`/`CKA_END_DATE` (HSM key auto-rotation) | ❌ | ✅ (default) | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Explicit `CKA_SENSITIVE` on key generation | ✅ | ✅ (default) | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Enforces ECDSA digest ≥ curve strength | ❌ | ❌ (default) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| `FindObjects` page size | 32 | 10 (default) | 64 | 64 | 64 | 64 | 64 | 16 | 256 |
-| `CKA_LABEL` length limit | none | none (default) | 128 bytes | none | none | none | none | none | none |
+| Capability | SoftHSM2 | Kryoptic | Proteccio | Crypt2Pay | Utimaco | AWS CloudHSM | GCP Cloud HSM | Azure Cloud HSM | SmartCard HSM | Thales Luna |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| PKCS#11 v3.0 message-based AES-GCM | ❌ | ✅ (default) | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ (v2.40 library) | ✅ | ❌ |
+| Caller-supplied AES-GCM IV | ✅ | ✅ (default) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| RSA-OAEP empty-label source pointer | non-null required | NULL (default) | NULL | NULL | NULL | NULL required | NULL | NULL | NULL | NULL |
+| `CKA_START_DATE`/`CKA_END_DATE` (HSM key auto-rotation) | ❌ | ✅ (default) | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Explicit `CKA_SENSITIVE` on key generation | ✅ | ✅ (default) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Enforces ECDSA digest ≥ curve strength | ❌ | ❌ (default) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ (default) | ❌ | ❌ |
+| `FindObjects` page size | 32 | 10 (default) | 64 | 64 | 64 | 64 | 64 | 64 | 16 | 256 |
+| `CKA_LABEL` length limit | none | none (default) | 128 bytes | none | none | none | none | none | none | none |
+
+Azure Cloud HSM leaves `supports_aes_gcm_message` at its default (`true`), but `BaseHsm` only
+uses message-based AES-GCM when the loaded library also exports the v3.0 message functions
+(`HsmLib::supports_message_encrypt`); the Azure v2.40 library does not, so classic
+`C_EncryptInit` AES-GCM with an HSM-generated IV is used.
 
 ## Methodology
 
@@ -129,12 +148,16 @@ branches on them so KMS operations behave correctly regardless of HSM model.
   every curve row: per-curve skips show up as warnings in the test log (e.g. Kryoptic's
   P-224/Ed448).
 - CI runs SoftHSM2, Kryoptic, and the Utimaco simulator on every build, and Proteccio and
-  Crypt2Pay on upstream builds (`.github/workflows/test_all.yml`). The AWS CloudHSM and GCP Cloud
-  HSM jobs are disabled. GCP Cloud HSM's suite covers AES only (`generate_aes_key`,
-  `aes_gcm_encrypt`, `aes_cbc_encrypt`); its other algorithm rows are — (not tested).
-- Proteccio, Crypt2Pay, and Utimaco call the same shared EC/ECDSA/RSA-PSS functions, but their EC,
-  ECDSA, and RSA-PSS rows stay 📄 (vendor-documented) until a run's log confirms each curve and
-  digest.
+  Crypt2Pay on upstream builds (`.github/workflows/test_all.yml`). The AWS CloudHSM, GCP Cloud
+  HSM, and Azure Cloud HSM jobs are disabled. GCP Cloud HSM's suite covers AES only
+  (`generate_aes_key`, `aes_gcm_encrypt`, `aes_cbc_encrypt`); its other algorithm rows are — (not
+  tested). Azure Cloud HSM's suite (`test_hsm_azure_cloud_hsm_all`) covers AES/RSA/EC key
+  generation, RSA-OAEP encrypt and key wrap, AES-GCM, single-round AES-CBC, RSA SHA-256 PKCS#1
+  v1.5 signing, and ECDSA; it does not call the multi-round CBC, RSA PKCS#1 v1.5 encryption,
+  RSA-PSS, or EdDSA functions.
+- Proteccio, Crypt2Pay, Utimaco, and Azure Cloud HSM call the same shared EC/ECDSA functions
+  (Proteccio, Crypt2Pay, and Utimaco also RSA-PSS), but their EC, ECDSA, and RSA-PSS rows stay 📄
+  (vendor-documented) until a run's log confirms each curve and digest.
 - Thales Luna rows come from the Luna suite (`crate/hsm/luna/src/tests.rs`, also run by
   `mise run test:hsm:luna`) against a Luna Network HSM 7 partition (firmware 7.9.1, Luna Client
   10.9.3, not in FIPS mode), with every curve and digest confirmed in the run log. Luna sits on a
@@ -147,7 +170,8 @@ branches on them so KMS operations behave correctly regardless of HSM model.
   (`rsa_oaep_requires_source_data_ptr`, `supports_aes_gcm_message`, `supports_key_dates`,
   `enforces_ecdsa_digest_strength`, `max_label_len`, `find_max_object_count`, etc.).
 - 📄 rows are sourced from vendor PKCS#11 documentation (Proteccio *Developer's Guide*; Crypt2Pay
-  *PKCS#11 API User Guide*) for mechanisms not yet exercised by this repository's tests.
+  *PKCS#11 API User Guide*; Azure Cloud HSM *PKCS#11 Integration Guide*) for mechanisms not yet
+  exercised by this repository's tests.
 - ChaCha20/ChaCha20-Poly1305, documented by Crypt2Pay as a vendor extension, is not implemented
   anywhere in `crate/hsm/base_hsm` and is therefore out of scope for this table (a KMS-side gap,
   not an HSM limitation).
@@ -162,4 +186,5 @@ branches on them so KMS operations behave correctly regardless of HSM model.
 - [SoftHSM2 setup](softhsm2.md) · [Kryoptic setup](kryoptic.md) · [Proteccio setup](proteccio.md) ·
   [Crypt2Pay setup](crypt2pay.md) · [Utimaco setup](utimaco.md) ·
   [AWS CloudHSM setup](aws_cloudhsm.md) · [GCP Cloud HSM setup](gcp_cloud_hsm.md) ·
+  Azure Cloud HSM (`crate/hsm/azure_cloud_hsm/README.md`) ·
   [SmartCard HSM setup](sc_hsm.md) · [Thales Luna setup](luna.md)
