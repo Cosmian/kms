@@ -245,11 +245,18 @@ verify_rejects_tampered_signature() {
     return 1
   fi
 
-  # Flip a bit in the middle of the signature
+  # Invert the middle byte of the signature. Writing a constant would be a no-op (and the tampered
+  # signature would still verify) whenever that byte already holds the constant.
   local sig_size
   sig_size=$(stat -f%z "${sig_file}" 2>/dev/null || stat -c%s "${sig_file}")
-  local tamper_offset=$((sig_size / 2))
-  printf '\x00' | dd of="${sig_file}" bs=1 seek="${tamper_offset}" count=1 conv=notrunc 2>/dev/null || true
+  local tamper_offset=$((sig_size / 2)) orig_byte
+  orig_byte=$(dd if="${sig_file}" bs=1 skip="${tamper_offset}" count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
+  printf '%b' "\\0$(printf '%03o' $((orig_byte ^ 255)))" |
+    dd of="${sig_file}" bs=1 seek="${tamper_offset}" count=1 conv=notrunc 2>/dev/null ||
+    {
+      print_error "  Could not tamper with the signature file"
+      return 1
+    }
 
   # Verification must fail
   if pkcs11-tool --module "${PKCS11_LIB}" --login --login-type so --verify \

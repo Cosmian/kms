@@ -4,7 +4,7 @@
 # on the host with `cargo run -p auth_verifier --features saml` from the `authentication` submodule.
 # The KMS itself runs on the host from the current checkout (see `up` output).
 #
-# Usage: stack.sh up|down|logs
+# Usage: stack.sh up|down|url|logs
 #
 # Env:
 #   AUTH_VERIFIER_REPO   Authentication repo checkout (default: <repo>/authentication)
