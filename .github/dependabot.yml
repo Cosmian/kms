@@ -2,8 +2,8 @@
 version: 2
 
 # One grouped PR per ecosystem for minor/patch version updates and one for all
-# security updates. Major version updates are ignored: they usually break the build
-# and must be done by hand with the matching code changes.
+# security updates (cargo: security updates only, see below). Major version updates are
+# ignored: they usually break the build and must be done by hand with the matching code changes.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -22,15 +22,16 @@ updates:
 
   - package-ecosystem: cargo
     directory: /
+    # Security updates only: `cargo vet check --locked` (main_base.yml) is a human gate and
+    # Dependabot cannot add the per-version exemptions in supply-chain/, so version-bump PRs
+    # always fail it. 0 disables version updates; security updates are unaffected (issue #1265).
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     ignore:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
     groups:
-      cargo-minor-patch:
-        applies-to: version-updates
-        update-types: [minor, patch]
       cargo-security:
         applies-to: security-updates
         patterns: ['*']
@@ -70,13 +71,17 @@ updates:
   - package-ecosystem: docker
     directories:
       - /.mise/scripts/docker/ase
-      - /.mise/scripts/edb_tde
+      # /.mise/scripts/edb_tde is excluded: its base image is on the private docker.enterprisedb.com
+      # registry (no credentials for Dependabot -> private_source_authentication_failure).
     schedule:
       interval: weekly
     ignore:
       # Also keeps SAP ASE on Ubuntu 22.04: it needs libaio.so.1, renamed libaio.so.1t64 from 24.04 on.
       - dependency-name: '*'
         update-types: [version-update:semver-major]
+      # Ubuntu YY.MM tags: 22.04 -> 22.10 is a "minor" bump into an EOL non-LTS release (broke #1299).
+      - dependency-name: ubuntu
+        update-types: [version-update:semver-minor]
     groups:
       docker-minor-patch:
         applies-to: version-updates

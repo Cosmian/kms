@@ -804,7 +804,7 @@ impl ObjectsStore for MySqlPool {
             .exec(sql, (user_s, user_s, user_s, wrapping_key_uid))
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut out = Vec::new();
+        let mut out = Vec::with_capacity(rows.len());
         for (uid, state_str, attrs_val) in rows {
             let state = State::try_from(state_str.as_str())
                 .map_err(|e| InterfaceError::Db(format!("invalid state: {e}")))?;
@@ -829,7 +829,7 @@ impl ObjectsStore for MySqlPool {
             .exec(&sql, ())
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut due = Vec::new();
+        let mut due = Vec::with_capacity(rows.len());
         for (uid, owner, attrs_val) in rows {
             let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
             if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
@@ -865,7 +865,7 @@ impl ObjectsStore for MySqlPool {
             .exec(locate.sql, params)
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(rows.len());
         for (uid, attrs_val) in rows {
             let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
             results.push((uid, attrs));
@@ -1162,10 +1162,10 @@ pub(super) async fn create_(
     tags: &HashSet<String>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<String> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+    let object_json = serde_json::to_string(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -1221,11 +1221,11 @@ pub(super) async fn update_object_(
     tags: Option<&HashSet<String>>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+    let object_json = serde_json::to_string(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
 
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
 
@@ -1297,10 +1297,10 @@ pub(super) async fn upsert_(
     state: State,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+    let object_json = serde_json::to_string(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
     let wrapping_key_id = object.wrapping_key_uid();
@@ -1503,7 +1503,7 @@ pub(super) async fn insert_access_(
         return Ok(());
     }
     perms.extend(operation_types.iter().copied());
-    let json = serde_json::to_value(&perms).map_err(|e| {
+    let json = serde_json::to_string(&perms).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
     })?;
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
@@ -1535,7 +1535,7 @@ pub(super) async fn remove_access_(
             .map_err(DbError::from)?;
         return Ok(());
     }
-    let json = serde_json::to_value(&perms).map_err(|e| {
+    let json = serde_json::to_string(&perms).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
     })?;
     conn.exec_drop(

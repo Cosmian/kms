@@ -4,6 +4,7 @@ mod azure_ekm_config;
 mod clap_config;
 mod crl_config;
 mod db;
+mod est_config;
 mod google_cse_config;
 mod hsm_config;
 mod http_config;
@@ -15,6 +16,7 @@ mod logging;
 mod ocsp_config;
 mod proxy_config;
 mod roles_config;
+mod scep_config;
 pub mod secret_backends;
 mod socket_server_config;
 mod tls_config;
@@ -30,6 +32,7 @@ pub use clap_config::DEFAULT_COSMIAN_KMS_CONF;
 pub use clap_config::{ClapConfig, get_default_config_path};
 pub use crl_config::CrlConfig;
 pub use db::{DEFAULT_SQLITE_PATH, DatabaseType, MainDBConfig};
+pub use est_config::EstConfig;
 pub use google_cse_config::GoogleCseConfig;
 pub use hsm_config::{HsmConfig, HsmModel};
 pub use http_config::{HttpConfig, default_cors_origins};
@@ -43,6 +46,7 @@ pub use logging::{LoggingConfig, get_default_rolling_log_dir};
 pub use ocsp_config::{NoncePolicyConfig, OcspConfig};
 pub use proxy_config::ProxyConfig;
 pub use roles_config::RolesConfig;
+pub use scep_config::ScepConfig;
 pub use secret_backends::{
     AwsSsmBackendConfig, AzureKvBackendConfig, CosmianKmsSecretConfig, SecretBackendConfig,
     SecretBackendKind, VaultBackendConfig,

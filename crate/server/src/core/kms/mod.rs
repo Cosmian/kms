@@ -63,6 +63,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
+    routes::enrollment_guard::EnrollmentGuard,
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
@@ -125,6 +126,9 @@ pub struct KMS {
 
     /// Unified cryptographic RNG for all KMS operations.
     pub(crate) rng: Arc<KmsRng>,
+
+    /// Abuse controls (lockout, replay cache, concurrency cap) of the EST / SCEP endpoints.
+    pub(crate) enrollment_guard: EnrollmentGuard,
 }
 
 impl KMS {
@@ -200,7 +204,7 @@ impl KMS {
         // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
         if let Some(ref key_id) = server_params.ceremony_key_id {
             let owm = database
-                .retrieve_object(key_id)
+                .retrieve_object_arc(key_id)
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(
@@ -322,6 +326,7 @@ impl KMS {
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,
             rng,
+            enrollment_guard: EnrollmentGuard::default(),
         })
     }
 

@@ -8,3 +8,4 @@ pub(crate) use ttlv_bytes_deserializer::MAX_TTLV_DEPTH;
 pub(crate) use ttlv_bytes_deserializer::MAX_TTLV_FIELD_BYTES;
 pub use ttlv_bytes_deserializer::TTLVBytesDeserializer;
 pub use ttlv_bytes_serializer::TTLVBytesSerializer;
+pub(crate) use ttlv_bytes_serializer::encoded_len;

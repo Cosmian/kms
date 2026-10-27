@@ -31,9 +31,9 @@ pub trait DbMetricsRecorder: Send + Sync {
     /// * `duration_seconds` – wall-clock duration of the operation in seconds
     fn record_operation(
         &self,
-        operation: &str,
+        operation: &'static str,
         backend: MainDbKind,
-        outcome: &str,
+        outcome: &'static str,
         duration_seconds: f64,
     );
 }

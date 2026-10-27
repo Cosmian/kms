@@ -127,7 +127,7 @@ async fn internal_get_key(
     let mut dke_service_url = Url::parse(dke_service_url)
         .map_err(|_e| kms_error!("MS DKE: Invalid MS DKE Service URL: {}", dke_service_url))?;
     let unique_identifier = UniqueIdentifier::TextString(
-        serde_json::to_string(&vec![key_tag, SYSTEM_TAG_PUBLIC_KEY]).map_err(|e| kms_error!(e))?,
+        serde_json::to_string(&[key_tag, SYSTEM_TAG_PUBLIC_KEY]).map_err(|e| kms_error!(e))?,
     );
     let key_id = unique_identifier.as_str().ok_or_else(|| {
         kms_error!(
@@ -206,10 +206,9 @@ async fn internal_decrypt(
     let user = kms.get_user(&req_http);
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(
-            serde_json::to_string(&vec![key_tag, SYSTEM_TAG_PRIVATE_KEY])
-                .map_err(|e| kms_error!(e))?,
+            serde_json::to_string(&[key_tag, SYSTEM_TAG_PRIVATE_KEY]).map_err(|e| kms_error!(e))?,
         )),
-        data: Some(STANDARD.decode(encrypted_data.value.as_bytes())?),
+        data: Some(STANDARD.decode(&encrypted_data.value)?),
         cryptographic_parameters: Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),

@@ -6,9 +6,8 @@ use cosmian_kms_cli_actions::reexport::{
         cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
         read_object_from_json_ttlv_file,
     },
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::log_init;
@@ -230,7 +229,7 @@ pub(crate) fn password_wrap_import_test(
 
     // wrap and unwrap using a base64 key
     {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let mut key = vec![0_u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);

@@ -1550,6 +1550,7 @@
         "tagsHelp": "Alternative à l'ID de clé : spécifiez des tags pour identifier la clé",
         "submit": "Encapsuler",
         "missingKeyId": "Identifiant de clé manquant.",
+        "invalidResponse": "Réponse KEM invalide : le secret partagé et l'encapsulation étaient attendus.",
         "success": "Encapsulation réussie. Texte chiffré et secret partagé téléchargés.",
         "responseTitle": "Réponse d'encapsulation KEM PQC"
     },

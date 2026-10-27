@@ -10,9 +10,9 @@
 
 use std::path::{Path, PathBuf};
 
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 use openssl::{
     asn1::Asn1Time,
-    bn::{BigNum, MsbOption},
     hash::MessageDigest,
     pkey::{PKey, Private},
     rsa::Rsa,
@@ -22,7 +22,7 @@ use openssl::{
     },
 };
 
-use crate::{error::KmsError, result::KResult};
+use crate::{core::operations::certify::generate_serial_number, error::KmsError, result::KResult};
 
 /// Paths to all generated certificate/key PEM files.
 pub struct CertPaths {
@@ -73,17 +73,6 @@ impl Default for CertGenOptions {
     }
 }
 
-/// Generate a random serial number for a certificate.
-fn random_serial() -> KResult<openssl::asn1::Asn1Integer> {
-    let mut serial = BigNum::new().map_err(|e| KmsError::ServerError(e.to_string()))?;
-    serial
-        .rand(128, MsbOption::MAYBE_ZERO, false)
-        .map_err(|e| KmsError::ServerError(e.to_string()))?;
-    serial
-        .to_asn1_integer()
-        .map_err(|e| KmsError::ServerError(e.to_string()))
-}
-
 /// Generate an RSA private key and return it as a `PKey<Private>`.
 fn gen_rsa_key(bits: u32) -> KResult<PKey<Private>> {
     let rsa = Rsa::generate(bits).map_err(|e| KmsError::ServerError(e.to_string()))?;
@@ -112,7 +101,7 @@ fn build_ca_cert(key: &PKey<Private>, opts: &CertGenOptions) -> KResult<X509> {
     builder
         .set_version(2)
         .map_err(|e| KmsError::ServerError(e.to_string()))?;
-    let serial = random_serial()?;
+    let serial = generate_serial_number(&KmsRng::new())?;
     builder
         .set_serial_number(&serial)
         .map_err(|e| KmsError::ServerError(e.to_string()))?;
@@ -200,7 +189,7 @@ fn issue_leaf_cert(
     builder
         .set_version(2)
         .map_err(|e| KmsError::ServerError(e.to_string()))?;
-    let serial = random_serial()?;
+    let serial = generate_serial_number(&KmsRng::new())?;
     builder
         .set_serial_number(&serial)
         .map_err(|e| KmsError::ServerError(e.to_string()))?;

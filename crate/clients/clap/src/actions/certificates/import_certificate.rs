@@ -206,7 +206,7 @@ impl ImportCertificateAction {
             }
             CertificateInputFormat::Pkcs12 => {
                 debug!("import certificate as PKCS12 file");
-                let private_key_id = self.import_pkcs12(kms_rest_client).await?;
+                let private_key_id = Box::pin(self.import_pkcs12(kms_rest_client)).await?;
                 (
                     "The certificate(s), public key, and private key were successfully imported! \
                      The private key has id:"

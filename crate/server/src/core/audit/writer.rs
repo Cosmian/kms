@@ -95,7 +95,7 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
     let mut writing_size_cap_sentinel = false;
     let mut id = next_id;
     let mut ph = *prev_hash;
-    for _ in 0..MAX_RESYNC_ATTEMPTS {
+    for _attempt in 0..MAX_RESYNC_ATTEMPTS {
         let event = draft.clone().finalize(id, ph);
         match sink.write_event_atomic(&event).await {
             Ok(WriteOutcome::Written) => {

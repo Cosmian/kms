@@ -68,8 +68,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
-        get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, est, get_hsm_status,
+        get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
@@ -77,7 +77,7 @@ use crate::{
             get_secret, hard_delete_path, mount_preflight, put_secret, read_or_list_metadata,
             soft_delete_secret,
         },
-        ms_dke, ocsp, root_redirect,
+        ms_dke, ocsp, root_redirect, scep,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -1002,66 +1002,72 @@ pub async fn prepare_kms_server(
             .google_cse_disable_tokens_validation
         && kms_server.params.kms_public_url.is_some();
 
-    // Prepare the JWT configurations and the JWKS manager if the server uses JWT for authentication.
-    let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
-        &kms_server.params.identity_provider_configurations
-    {
-        // Prepare all the needed URIs from all the configured Identity Providers
-        let mut all_jwks_uris: Vec<_> = identity_provider_configurations
-            .iter()
-            .map(|idp_config| {
-                IdpAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
-            })
-            .collect();
-        // Add the one from Google if CSE is enabled.
-        if enable_google_cse_authentication {
-            all_jwks_uris.extend(google_cse::list_jwks_uri(
-                kms_server
-                    .params
-                    .google_cse
-                    .google_cse_incoming_url_whitelist
-                    .clone(),
-            ));
-        }
-
-        // Security guard: all JWKS URIs must use HTTPS to prevent credential exposure and
-        // MITM attacks on the public-key material used to verify bearer tokens.
-        // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
-        // check is compiled out to allow http:// URIs.
-        #[cfg(not(feature = "insecure"))]
-        validate_jwks_uris_are_https(&all_jwks_uris)?;
-
-        let jwks_manager = Arc::new(
-            JwksManager::new(all_jwks_uris, kms_server.params.proxy_params.as_ref()).await?,
-        );
-
-        let mut built_jwt_configurations = identity_provider_configurations
-            .iter()
-            .map(|idp_config| JwtConfig {
-                jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
-                jwks: jwks_manager.clone(),
-                jwt_audience: idp_config.jwt_audience.clone(),
-                accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
-            })
-            .collect::<Vec<_>>();
-
-        // Add the one from Google if CSE is enabled and some external urls are whitelisted
-        if enable_google_cse_authentication {
-            if let Some(white_list) = &kms_server
+    // Prepare the JWT configurations if the server uses JWT for authentication.
+    // Each issuer gets its own JWKS manager: a token claiming issuer X must only verify
+    // against keys fetched from X's JWKS, never against a key published by another
+    // configured identity provider (cross-issuer token forgery).
+    let proxy_params = kms_server.params.proxy_params.as_ref();
+    let (jwt_configurations, google_cse_jwks_manager) =
+        if let Some(identity_provider_configurations) =
+            &kms_server.params.identity_provider_configurations
+        {
+            let idp_jwks_uris: Vec<_> = identity_provider_configurations
+                .iter()
+                .map(|idp_config| {
+                    IdpAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
+                })
+                .collect();
+            let google_cse_whitelist = kms_server
                 .params
                 .google_cse
                 .google_cse_incoming_url_whitelist
+                .as_deref()
+                .filter(|_| enable_google_cse_authentication);
+
+            // Security guard: all JWKS URIs must use HTTPS to prevent credential exposure and
+            // MITM attacks on the public-key material used to verify bearer tokens.
+            // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
+            // check is compiled out to allow http:// URIs.
+            #[cfg(not(feature = "insecure"))]
             {
-                built_jwt_configurations.extend(google_cse::list_jwt_configurations(
-                    white_list,
-                    &jwks_manager,
-                ));
+                validate_jwks_uris_are_https(&idp_jwks_uris)?;
+                if enable_google_cse_authentication {
+                    validate_jwks_uris_are_https(&google_cse::list_jwks_uri(
+                        google_cse_whitelist.map(<[String]>::to_vec),
+                    ))?;
+                }
             }
-        }
-        (Arc::new(built_jwt_configurations), Some(jwks_manager))
-    } else {
-        (Arc::new(Vec::new()), None)
-    };
+
+            let mut built_jwt_configurations =
+                Vec::with_capacity(identity_provider_configurations.len());
+            for (idp_config, jwks_uri) in identity_provider_configurations.iter().zip(idp_jwks_uris)
+            {
+                built_jwt_configurations.push(JwtConfig {
+                    jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
+                    jwks: Arc::new(JwksManager::new(vec![jwks_uri], proxy_params).await?),
+                    jwt_audience: idp_config.jwt_audience.clone(),
+                    accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
+                });
+            }
+
+            let google_cse_jwks_manager = if enable_google_cse_authentication {
+                // Add the whitelisted external KACLS issuers, each bound to its own JWKS
+                if let Some(white_list) = google_cse_whitelist {
+                    built_jwt_configurations.extend(
+                        google_cse::list_jwt_configurations(white_list, proxy_params).await?,
+                    );
+                }
+                // Google-operated token issuers only (no IdP or whitelisted KACLS keys)
+                Some(Arc::new(
+                    JwksManager::new(google_cse::list_jwks_uri(None), proxy_params).await?,
+                ))
+            } else {
+                None
+            };
+            (Arc::new(built_jwt_configurations), google_cse_jwks_manager)
+        } else {
+            (Arc::new(Vec::new()), None)
+        };
 
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server
@@ -1110,6 +1116,27 @@ pub async fn prepare_kms_server(
             (false, None)
         };
 
+    // Insecure defaults remain supported for development; make them visible in production logs.
+    if !(use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier) {
+        cosmian_logger::warn!(
+            "SECURITY: no authentication method is configured: every request is served as the \
+             default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for \
+             production deployments.",
+            kms_server.params.default_username
+        );
+    }
+    if kms_server.params.key_wrapping_key.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: no key_encryption_key is configured: objects are stored without \
+             server-side KEK wrapping. Configure a KEK for production deployments."
+        );
+    }
+    if kms_server.params.rate_limit_per_second.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: rate_limit_per_second is not set: request rate limiting is disabled."
+        );
+    }
+
     // Determine the address to bind the server to.
     let address = format!(
         "{}:{}",
@@ -1119,7 +1146,7 @@ pub async fn prepare_kms_server(
     // Get the Google Client-Side Encryption JWT authorization config
     debug!("Enable Google CSE JWT Authorization: {enable_google_cse_authentication}");
     let google_cse_jwt_config = if enable_google_cse_authentication {
-        let Some(jwks_manager) = jwks_manager else {
+        let Some(jwks_manager) = google_cse_jwks_manager else {
             return Err(KmsError::ServerError(
                 "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
@@ -1616,7 +1643,7 @@ pub async fn prepare_kms_server(
                         spire_default_username.clone(),
                     ),
                 ))
-                .wrap(Cors::permissive())
+                .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
                 .service(tokenize::hash)
                 .service(tokenize::noise)
                 .service(tokenize::word_mask)
@@ -1847,6 +1874,15 @@ pub async fn prepare_kms_server(
             // Public OCSP responder (no authentication, RFC 6960 §2 — public information).
             .service(ocsp::get_ocsp)
             .service(ocsp::post_ocsp)
+            // EST (RFC 7030) and SCEP (RFC 8894) enrollment. Registered at app level, before
+            // the `/.well-known` JWKS scope, so they are not shadowed. Authentication is done
+            // by the handlers themselves (TLS client certificate / Basic / CMS signature).
+            .service(est::get_cacerts)
+            .service(est::get_csrattrs)
+            .service(est::post_simpleenroll)
+            .service(est::post_simplereenroll)
+            .service(scep::scep_get)
+            .service(scep::scep_post)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)
@@ -1910,7 +1946,7 @@ pub async fn prepare_kms_server(
                     spire_default_username.clone(),
                 ),
             ))
-            .wrap(Cors::permissive())
+            .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
             .service(jose::sign_handler)
@@ -1962,25 +1998,10 @@ pub async fn prepare_kms_server(
                 kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
                 kms_server_for_http.params.audit_failure_mode.clone(),
             ))
-            // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
-            // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
-            // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
-            // (Google CSE, MS DKE, AWS XKS) have their own permissive CORS configuration.
-            // When origins are configured, allow any method and header for those origins so that
-            // browser WASM clients (which use POST with Content-Type: application/octet-stream) can
-            // pass the CORS preflight check and carry session cookies (`credentials: "include"`).
-            // When no origins are configured, Cors::default() with no allowed origins effectively
-            // blocks all cross-origin requests (same-origin only).
-            .wrap({
-                let mut cors = Cors::default()
-                    .allow_any_method()
-                    .allow_any_header()
-                    .supports_credentials();
-                for origin in &kms_server_for_http.params.cors_allowed_origins {
-                    cors = cors.allowed_origin(origin.as_str());
-                }
-                cors
-            })
+            // CORS: same-origin plus `cors_allowed_origins` (see `allowed_origins_cors`).
+            // Enterprise-integration scopes (Google CSE, MS DKE, AWS XKS) have their own
+            // permissive CORS configuration.
+            .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(get_server_info)
@@ -2118,6 +2139,22 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
         }
     }
     Ok(())
+}
+
+/// CORS policy for the scopes that accept session cookies (KMIP, `/v1/crypto`, `/tokenize`):
+/// same-origin plus the configured `cors_allowed_origins`, with credentials. Any method and
+/// header is allowed for those origins so browser clients (WASM `application/octet-stream`
+/// POSTs, a Vite dev server in E2E tests) pass the preflight and carry the session cookie.
+/// Other origins get no CORS headers, so they can neither read responses nor send
+/// preflighted (JSON) requests with the user's cookie.
+fn allowed_origins_cors(allowed_origins: &[String]) -> Cors {
+    allowed_origins.iter().fold(
+        Cors::default()
+            .allow_any_method()
+            .allow_any_header()
+            .supports_credentials(),
+        |cors, origin| cors.allowed_origin(origin),
+    )
 }
 
 #[cfg(test)]

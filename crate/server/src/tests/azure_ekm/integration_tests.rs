@@ -17,9 +17,8 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::{log_init, warn};
@@ -285,7 +284,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 
     // For info, the rfc document has no test vector with a 256-bit KEK, so we generate our own
     for _ in 0..5 {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let mut rfc_kek_bytes = vec![0_u8; 32];
         rng.fill_bytes(&mut rfc_kek_bytes);
 
@@ -386,7 +385,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         key_id_private
     );
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let plaintext_len = 1 + (rng.next_u32() as usize % 190); // OAEP with SHA-256 and 2048-bit key max
     let mut valid_random_plaintext = vec![0_u8; plaintext_len];
     rng.fill_bytes(&mut valid_random_plaintext);

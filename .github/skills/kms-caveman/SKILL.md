@@ -33,7 +33,7 @@ Pattern: `[SEVERITY] path:line — finding. Evidence: <code>. Risk: <impact>. Fi
 - **PASS** means no confirmed CRITICAL/HIGH finding in the verified scope; not a full quality or security verdict.
 - Use `NOT APPLICABLE` when no Rust files are in scope and `INCOMPLETE` when scope/context is missing. Neither means PASS.
 - Do not claim detection rates, model choice, latency, or token savings without measured evidence.
-- If an orchestrator writes reports, use `./review/kms-caveman.md`; otherwise return the concise ranked list.
+- If an orchestrator writes reports, use `./review-YYYY-MM-DD/kms-caveman.md`; otherwise return the concise ranked list.
 
 ## Credit-saving style
 

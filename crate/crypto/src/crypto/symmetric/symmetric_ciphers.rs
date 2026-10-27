@@ -434,7 +434,7 @@ impl SymCipher {
 /// Generate a random nonce for the given symmetric cipher.
 pub fn random_nonce(rng: &KmsRng, sym_cipher: SymCipher) -> Result<Vec<u8>, CryptoError> {
     let mut nonce = vec![0; sym_cipher.nonce_size()];
-    rng.fill_bytes(&mut nonce)?;
+    rng.fill_public_bytes(&mut nonce)?;
     Ok(nonce)
 }
 

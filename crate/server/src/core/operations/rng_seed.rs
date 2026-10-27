@@ -16,10 +16,10 @@ pub(crate) async fn rng_seed(
     request: RNGSeed,
     _user: &UserId,
 ) -> KResult<RNGSeedResponse> {
-    trace!("{request}");
+    // Only the length is logged: the request carries the seed material itself.
+    trace!("RNGSeed: {} bytes", request.data.len());
 
-    // Incorporate seed data into the unified KMS RNG.
-    // OpenSSL's RAND_add is called via kms.rng.reseed().
+    // Additional input to a reseed of OpenSSL's primary DRBG (`KmsRng::reseed`, `RAND_add`).
     if !request.data.is_empty() {
         kms.rng
             .reseed(&request.data)

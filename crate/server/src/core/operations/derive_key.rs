@@ -54,6 +54,9 @@ use crate::{
 
 // Default constants for key derivation
 const DEFAULT_PBKDF2_ITERATIONS: i32 = 600_000; // OWASP recommendation for PBKDF2 with SHA-256
+/// Upper bound on the client-supplied PBKDF2 iteration count (a few seconds of CPU):
+/// the derivation runs synchronously, so larger values would pin a worker thread.
+const MAX_PBKDF2_ITERATIONS: u32 = 10_000_000;
 
 pub(crate) async fn derive_key(
     kms: &KMS,
@@ -170,7 +173,7 @@ async fn derive_key_symmetric(
     // Extract the key material from the base object (supports both SymmetricKey and SecretData)
     let base_key_bytes = match base_key_owm.object() {
         Object::SymmetricKey(SymmetricKey { key_block })
-        | Object::SecretData(SecretData { key_block, .. }) => key_block.key_bytes()?,
+        | Object::SecretData(SecretData { key_block, .. }) => key_block.key_bytes_ref()?,
         _ => kms_bail!("DeriveKey: base object must be a SymmetricKey or SecretData"),
     };
 
@@ -210,12 +213,18 @@ async fn derive_key_symmetric(
                 .derivation_parameters
                 .iteration_count
                 .unwrap_or(DEFAULT_PBKDF2_ITERATIONS);
-            let iterations_u32 = u32::try_from(iterations).map_err(|_e| {
-                KmsError::InvalidRequest("Invalid iteration count value".to_owned())
-            })?;
+            let iterations_u32 = u32::try_from(iterations)
+                .ok()
+                .filter(|i| (1..=MAX_PBKDF2_ITERATIONS).contains(i))
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest(format!(
+                        "Invalid iteration count {iterations}: must be between 1 and \
+                         {MAX_PBKDF2_ITERATIONS}"
+                    ))
+                })?;
 
             derive_pbkdf2(
-                &base_key_bytes,
+                base_key_bytes,
                 salt,
                 iterations_u32,
                 cryptographic_length,
@@ -230,7 +239,7 @@ async fn derive_key_symmetric(
                 .as_deref()
                 .map_or(&[][..], std::vec::Vec::as_slice);
             derive_hkdf(
-                &base_key_bytes,
+                base_key_bytes,
                 salt,
                 info,
                 cryptographic_length,
@@ -258,7 +267,7 @@ async fn derive_key_symmetric(
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentSymmetricKey {
-                        key: (*derived_key_bytes).clone().into(),
+                        key: derived_key_bytes,
                     },
                     attributes: Some(attributes.clone()),
                 }),
@@ -273,7 +282,7 @@ async fn derive_key_symmetric(
                 key_format_type: KeyFormatType::Opaque,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString((*derived_key_bytes).clone().into()),
+                    key_material: KeyMaterial::ByteString(derived_key_bytes),
                     attributes: Some(attributes.clone()),
                 }),
                 cryptographic_algorithm: None,

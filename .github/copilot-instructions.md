@@ -89,16 +89,16 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Unit tests go in a `#[cfg(test)]` submodule in the same file.
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
+- Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
 
-## Feature rollout order & PR cascade
+## Feature rollout order & commit layering
 
-For any feature spanning server + CLI/UI: implement and PR the **server** side first
-(`crate/server/`, `crate/kmip/`), then the **CLI** (`crate/clients/`) in its own PR, then
-the **Web UI** (`ui/`) in its own PR. Never bundle server and CLI/UI changes for the same
-feature in one PR. When branches must exist before the server PR merges, stack them
-(each branch based on the previous one); use `gh stack view`/`gh stack submit` to manage
-the stack, but never `gh stack sync` (or any rebase-then-force-push flow) — update
-downstream branches with a regular merge instead, per the force-push prohibition below.
+For any feature spanning server + CLI/UI: use one branch and one PR, but make independent
+commits per layer, in this order: **server** (`crate/server/`, `crate/kmip/`), then **CLI**
+(`crate/clients/`), then **Web UI** (`ui/`). Each commit must build and pass hooks on its own
+and must not mix layers. Do not open separate or stacked PRs per layer. Pushed commits are
+never rewritten (see force-push prohibition below): if a layer was bundled by mistake, leave
+it and apply the layering to subsequent commits.
 
 ## Force-push prohibition
 
@@ -115,7 +115,7 @@ branch again; never rewrite shared history. Applies to every branch.
 |---------|-------------|
 | `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
-| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review/` |
+| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` |
 | `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
 | `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
@@ -129,7 +129,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/react-ant-patterns` | UI coding conventions |
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-pr-review` | Mandatory self-review — two-pass diff review that auto-applies confirmed fixes (≤ 2 cycles) |
-| `/kms-changelog` | Writing the branch CHANGELOG entry |
+| `/kms-changelog` | Writing the branch CHANGELOG entry; `consolidate <version>` merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry and deletes them |
 | `/threat-model` | STRIDE-A threat model |
 
 ## Credit-Saving Strategies

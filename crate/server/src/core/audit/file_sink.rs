@@ -86,6 +86,8 @@ pub(crate) struct FileSink {
     committed_len: u64,
     /// Whether bytes past `committed_len` must be discarded.
     needs_repair: bool,
+    /// Reusable serialization buffer to avoid heap allocations per event.
+    row_buf: Vec<u8>,
     /// Kept alive because dropping the handle releases the OS lock; never read again.
     _lock: Option<std::fs::File>,
 }
@@ -101,6 +103,7 @@ impl FileSink {
             file: None,
             committed_len: 0,
             needs_repair: false,
+            row_buf: Vec::new(),
             _lock: None,
         }
     }
@@ -208,12 +211,13 @@ impl AuditSink for FileSink {
     /// # Errors
     /// Returns an error if the sink is not resumed or file I/O fails.
     async fn write_event_atomic(&mut self, event: &AuditEvent) -> InterfaceResult<WriteOutcome> {
-        let mut row = serde_json::to_vec(event)
+        self.row_buf.clear();
+        serde_json::to_writer(&mut self.row_buf, event)
             .map_err(|e| InterfaceError::Default(format!("audit: cannot serialise event: {e}")))?;
-        row.push(b'\n');
+        self.row_buf.push(b'\n');
 
         let is_size_cap_sentinel = event.operation == SIZE_CAP_SENTINEL_OPERATION;
-        if !is_size_cap_sentinel && self.would_reach_size_cap(row.len()) {
+        if !is_size_cap_sentinel && self.would_reach_size_cap(self.row_buf.len()) {
             return Ok(WriteOutcome::CapacityReached);
         }
 
@@ -227,9 +231,12 @@ impl AuditSink for FileSink {
                 "audit: FileSink::write_event_atomic called before resume()".to_owned(),
             )
         })?;
-        match file.write_all(&row).and_then(|()| file.sync_data()) {
+        match file
+            .write_all(&self.row_buf)
+            .and_then(|()| file.sync_data())
+        {
             Ok(()) => {
-                self.committed_len += u64::try_from(row.len()).unwrap_or(u64::MAX);
+                self.committed_len += u64::try_from(self.row_buf.len()).unwrap_or(u64::MAX);
                 if is_size_cap_sentinel {
                     if let Some(cap) = self.write_state.max_size_bytes {
                         mark_size_cap_reached(
@@ -241,6 +248,9 @@ impl AuditSink for FileSink {
                     }
                 } else {
                     enforce_size_cap(self.committed_len, &self.write_state, &self.path);
+                }
+                if self.row_buf.capacity() > 64 * 1024 {
+                    self.row_buf.shrink_to(64 * 1024);
                 }
                 Ok(WriteOutcome::Written)
             }
@@ -395,6 +405,7 @@ mod tests {
             file: Some(file),
             committed_len,
             needs_repair: false,
+            row_buf: Vec::new(),
             _lock: None,
         }
     }

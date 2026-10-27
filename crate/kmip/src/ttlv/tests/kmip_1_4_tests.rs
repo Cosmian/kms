@@ -183,45 +183,45 @@ fn test_kmip_1_0_authentication_fortigate() {
     //   }
     // }
     let ttlv = TTLV {
-        tag: "RequestMessage".to_owned(),
+        tag: "RequestMessage".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "RequestHeader".to_owned(),
+                tag: "RequestHeader".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "ProtocolVersion".to_owned(),
+                        tag: "ProtocolVersion".into(),
                         value: TTLValue::Structure(vec![
                             TTLV {
-                                tag: "ProtocolVersionMajor".to_owned(),
+                                tag: "ProtocolVersionMajor".into(),
                                 value: TTLValue::Integer(1),
                             },
                             TTLV {
-                                tag: "ProtocolVersionMinor".to_owned(),
+                                tag: "ProtocolVersionMinor".into(),
                                 value: TTLValue::Integer(0),
                             },
                         ]),
                     },
                     TTLV {
-                        tag: "Authentication".to_owned(),
+                        tag: "Authentication".into(),
                         value: TTLValue::Structure(vec![TTLV {
-                            tag: "Credential".to_owned(),
+                            tag: "Credential".into(),
                             value: TTLValue::Structure(vec![
                                 TTLV {
-                                    tag: "CredentialType".to_owned(),
+                                    tag: "CredentialType".into(),
                                     value: TTLValue::Enumeration(KmipEnumerationVariant {
                                         value: 0x0000_0001, // UsernameAndPassword
-                                        name: String::new(),
+                                        name: "".into(),
                                     }),
                                 },
                                 TTLV {
-                                    tag: "CredentialValue".to_owned(),
+                                    tag: "CredentialValue".into(),
                                     value: TTLValue::Structure(vec![
                                         TTLV {
-                                            tag: "Username".to_owned(),
+                                            tag: "Username".into(),
                                             value: TTLValue::TextString("fg-client".to_owned()),
                                         },
                                         TTLV {
-                                            tag: "Password".to_owned(),
+                                            tag: "Password".into(),
                                             value: TTLValue::TextString("password".to_owned()),
                                         },
                                     ]),
@@ -230,23 +230,23 @@ fn test_kmip_1_0_authentication_fortigate() {
                         }]),
                     },
                     TTLV {
-                        tag: "BatchCount".to_owned(),
+                        tag: "BatchCount".into(),
                         value: TTLValue::Integer(1),
                     },
                 ]),
             },
             TTLV {
-                tag: "BatchItem".to_owned(),
+                tag: "BatchItem".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "Operation".to_owned(),
+                        tag: "Operation".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             value: 0x0000_0008, // Locate
-                            name: "Locate".to_owned(),
+                            name: "Locate".into(),
                         }),
                     },
                     TTLV {
-                        tag: "RequestPayload".to_owned(),
+                        tag: "RequestPayload".into(),
                         value: TTLValue::Structure(vec![]),
                     },
                 ]),

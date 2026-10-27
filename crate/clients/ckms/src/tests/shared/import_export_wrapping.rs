@@ -18,11 +18,8 @@ use cosmian_kms_cli_actions::reexport::{
         write_kmip_object_to_file,
     },
     cosmian_kms_crypto::{
-        crypto::wrap::unwrap_key_block,
-        reexport::cosmian_crypto_core::{
-            CsRng,
-            reexport::rand_core::{RngCore, SeedableRng},
-        },
+        crypto::{KmsRng, wrap::unwrap_key_block},
+        reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::{debug, trace};
@@ -52,7 +49,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
 
     // Generate a symmetric wrapping key
     let wrap_key_path = tmp_path.join("wrap.key");
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
     let wrap_key = create_symmetric_key_kmip_object(

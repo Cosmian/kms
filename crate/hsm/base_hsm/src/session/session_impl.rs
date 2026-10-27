@@ -61,7 +61,7 @@ const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
 fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
     KmsRng::new()
-        .fill_bytes(&mut bytes)
+        .fill_public_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)
 }

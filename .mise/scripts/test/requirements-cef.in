@@ -9,4 +9,4 @@
 #
 # Pinned to the latest stable release at the time of writing; no known
 # CVEs/advisories against this package. Revisit the pin on a major bump.
-jc==1.26.0
+jc==1.26.1

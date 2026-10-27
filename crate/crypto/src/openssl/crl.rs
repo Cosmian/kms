@@ -7,13 +7,15 @@ use std::ptr;
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
-    asn1::{Asn1Object, Asn1OctetString},
+    asn1::Asn1OctetString,
+    nid::Nid,
     pkey::{PKeyRef, Private},
     sha::Sha1,
     x509::{X509Crl, X509Extension, X509Ref},
 };
 use time::OffsetDateTime;
 
+use super::oid::asn1_object;
 use crate::error::CryptoError;
 
 /// RFC 5280 §5.3.1 `CRLReason` values.
@@ -417,7 +419,7 @@ fn add_aki_extension(
     aki_der.extend_from_slice(&tagged);
 
     // ── Step 3: create the X.509 extension and attach it to the CRL ─────────
-    let oid = Asn1Object::from_str("2.5.29.35")
+    let oid = asn1_object(Nid::AUTHORITY_KEY_IDENTIFIER)
         .map_err(|e| CryptoError::Default(format!("AKI OID: {e}")))?;
     let val = Asn1OctetString::new_from_bytes(&aki_der)
         .map_err(|e| CryptoError::Default(format!("AKI value: {e}")))?;

@@ -507,6 +507,7 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
                     auth_provider_x509_cert_url: String::new(),
                     client_x509_cert_url: String::new(),
                     universe_domain: String::new(),
+                    gmail_api_base_url: None,
                 });
             prompt_required!(g.account_type, "Gmail account type");
             prompt_required!(g.project_id, "Gmail project_id");

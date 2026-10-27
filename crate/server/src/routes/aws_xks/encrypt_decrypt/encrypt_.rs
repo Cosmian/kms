@@ -280,12 +280,22 @@ pub(crate) async fn encrypt_inner(
     // Supplied Nonce or new one.
     let nonce: [u8; AES_256_GCM_IV_LENGTH] = {
         let mut iv = [0; AES_256_GCM_IV_LENGTH];
-        kms.rng.fill_bytes(&mut iv)?;
+        kms.rng.fill_public_bytes(&mut iv)?;
         iv
     };
     let aead = match request.additionalAuthenticatedData {
         None => None,
         Some(b64) => Some(STANDARD.decode(&b64)?),
+    };
+    let cdiv_aead_hasher = match request.ciphertextDataIntegrityValueAlgorithm {
+        Some(CdivAlgorithm::SHA_256) => {
+            let mut hasher = Sha256::new();
+            if let Some(a) = &aead {
+                hasher.update(a);
+            }
+            Some(hasher)
+        }
+        None => None,
     };
     let response = kms
         .encrypt(
@@ -297,7 +307,7 @@ pub(crate) async fn encrypt_inner(
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: aead.clone(),
+                authenticated_encryption_additional_data: aead,
             },
             &user,
         )
@@ -315,22 +325,15 @@ pub(crate) async fn encrypt_inner(
     let tag = response.authenticated_encryption_tag.ok_or_else(|| {
         KmsError::ServerError("Missing AES GCM authenticated encryption tag".to_owned())
     })?;
-    let integrity_hash = match request.ciphertextDataIntegrityValueAlgorithm {
-        None => None,
-        Some(CdivAlgorithm::SHA_256) => {
-            let mut hasher = Sha256::new();
-            if let Some(aead) = &aead {
-                hasher.update(aead);
-            }
-            if let Some(ciphertext_metadata) = &ciphertext_metadata {
-                hasher.update(ciphertext_metadata);
-            }
-            hasher.update(&nonce);
-            hasher.update(&ciphertext);
-            hasher.update(&tag);
-            Some(hasher.finish())
+    let integrity_hash = cdiv_aead_hasher.map(|mut hasher| {
+        if let Some(ciphertext_metadata) = &ciphertext_metadata {
+            hasher.update(ciphertext_metadata);
         }
-    };
+        hasher.update(&nonce);
+        hasher.update(&ciphertext);
+        hasher.update(&tag);
+        hasher.finish()
+    });
     Ok(EncryptResponse {
         ciphertext: STANDARD.encode(ciphertext),
         ciphertextMetadata: ciphertext_metadata.map(|b| STANDARD.encode(&b)),

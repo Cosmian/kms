@@ -202,7 +202,7 @@ Grant another user one or multiple access rights to an object
 
 `--object-uid [-i] <OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATIONS>` The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`)
+` <OPERATIONS>` The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `get_attributes`, `certify`)
 
 
 
@@ -221,7 +221,7 @@ Revoke another user one or multiple access rights to an object
 
 `--object-uid [-i] <OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATIONS>` The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
+` <OPERATIONS>` The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`, `certify`)
 
 
 

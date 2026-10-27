@@ -85,6 +85,9 @@ refining_impl_trait = "deny"
 [workspace.lints.clippy]
 # Main clippy categories
 pedantic = { level = "deny", priority = 90 }
+# KmsRng policy (clippy.toml): pinned above every group so no group-level allow can switch them off.
+disallowed_methods = { level = "deny", priority = 100 }
+disallowed_types = { level = "deny", priority = 100 }
 all = { level = "deny", priority = 80 }
 suspicious = { level = "deny", priority = 70 }
 complexity = { level = "deny", priority = 60 }
@@ -328,7 +331,6 @@ prost = "0.13"
 quick-xml = "0.42"
 quote = "1.0"
 rand = "0.10"
-rand_08 = { version = "0.8.6", package = "rand" }
 rand_chacha = "0.10"
 rand_core = "0.10"
 rand_distr = "0.6"

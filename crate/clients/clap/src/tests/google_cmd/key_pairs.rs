@@ -8,10 +8,14 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, CryptographicParameters},
     },
 };
-use cosmian_kms_client::{ExportObjectParams, export_object};
+use cosmian_kms_client::{
+    ExportObjectParams, export_object,
+    reexport::cosmian_kms_client_utils::import_utils::ImportKeyFormat,
+};
 use cosmian_logger::{info, log_init};
 use openssl::x509::X509;
 use test_kms_server::{
+    TestsContext, mock_gmail,
     reexport::cosmian_kms_server::routes::google_cse::operations::PrivateKeySignRequest,
     start_default_test_kms_server,
 };
@@ -19,6 +23,7 @@ use test_kms_server::{
 use crate::{
     actions::{
         attributes::GetAttributesAction, google::key_pairs::create::CreateKeyPairsAction,
+        rsa::keys::create_key_pair::CreateKeyPairAction, shared::ImportSecretDataOrKeyAction,
         symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
@@ -259,4 +264,145 @@ async fn create_google_key_pair_and_sign_with_private_key() -> KmsCliResult<()> 
         .await?;
 
     Ok(())
+}
+
+/// A `create` action using a fresh CSE key and an issuer, ready to certify with `ext_leaf.cnf`.
+async fn extension_action(
+    ctx: &TestsContext,
+    user_id: &str,
+    dry_run: bool,
+) -> CreateKeyPairsAction {
+    let cse_key_id = CreateKeyAction::default()
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
+    let (_root_id, _intermediate_id, issuer_private_key_id) =
+        Box::pin(import_root_and_intermediate(ctx)).await.unwrap();
+    CreateKeyPairsAction {
+        user_id: user_id.to_owned(),
+        cse_key_id: cse_key_id.to_string(),
+        issuer_private_key_id: Some(issuer_private_key_id),
+        subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_owned(),
+        rsa_private_key_id: None,
+        sensitive: false,
+        wrapping_key_id: None,
+        leaf_certificate_extensions: Some(PathBuf::from(
+            "../../../test_data/certificates/openssl/ext_leaf.cnf",
+        )),
+        leaf_certificate_id: None,
+        leaf_certificate_pkcs12_file: None,
+        leaf_certificate_pkcs12_password: None,
+        number_of_days: 365,
+        dry_run,
+    }
+}
+
+/// The owner client of `ctx`, with the Gmail API redirected to `mock`.
+fn client_with_mock(
+    ctx: &TestsContext,
+    mock: &mock_gmail::MockGoogle,
+) -> cosmian_kms_client::KmsClient {
+    let mut client = ctx.get_owner_client();
+    client.config.gmail_api_conf = Some(mock_gmail::gmail_api_conf(&mock.base, "/token"));
+    client
+}
+
+#[tokio::test]
+async fn create_pushes_to_gmail() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let mock = mock_gmail::start();
+    let action = extension_action(ctx, "john.doe@acme.com", false).await;
+    action.run(client_with_mock(ctx, &mock)).await.unwrap();
+
+    let kacls_url = ctx
+        .get_owner_client()
+        .google_cse_status()
+        .await
+        .unwrap()
+        .kacls_url;
+    let requests = mock.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(requests[0].path, "/token");
+    let push = &requests[1];
+    assert_eq!(push.method, "POST");
+    assert_eq!(
+        push.path.replace("%40", "@"),
+        "/gmail/v1/users/john.doe@acme.com/settings/cse/keypairs/"
+    );
+    assert_eq!(push.authorization.as_deref(), Some("Bearer mock-token"));
+    let body: serde_json::Value = serde_json::from_str(&push.body).unwrap();
+    assert!(
+        body["pkcs7"]
+            .as_str()
+            .unwrap()
+            .starts_with("-----BEGIN PKCS7-----")
+    );
+    let metadata = &body["privateKeyMetadata"][0]["kaclsKeyMetadata"];
+    assert_eq!(metadata["kaclsUri"].as_str().unwrap(), kacls_url);
+    assert!(!metadata["kaclsData"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn create_gmail_error_propagates() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let mock = mock_gmail::start();
+    let action = extension_action(ctx, "fail@example.com", false).await;
+    let err = action.run(client_with_mock(ctx, &mock)).await.unwrap_err();
+    assert!(err.to_string().contains("mock failure"), "{err}");
+}
+
+#[tokio::test]
+async fn create_reuses_existing_rsa_key() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (private_key_id, _public_key_id) = CreateKeyPairAction::default()
+        .run(ctx.get_owner_client())
+        .await
+        .unwrap();
+    let action = CreateKeyPairsAction {
+        rsa_private_key_id: Some(private_key_id.to_string()),
+        ..extension_action(ctx, "john.doe@acme.com", true).await
+    };
+    action.run(ctx.get_owner_client()).await.unwrap();
+}
+
+#[tokio::test]
+async fn create_rejects_non_private_key_id() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let action = extension_action(ctx, "john.doe@acme.com", true).await;
+    let action = CreateKeyPairsAction {
+        rsa_private_key_id: Some(action.cse_key_id.clone()),
+        ..action
+    };
+    let err = action.run(ctx.get_owner_client()).await.unwrap_err();
+    assert!(
+        err.to_string().contains("must be of PrivateKey type"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn create_rejects_private_key_without_public_link() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let bare_private_key_id = ImportSecretDataOrKeyAction {
+        key_file: PathBuf::from("../../../test_data/certificates/gmail_cse/test_private_key"),
+        key_format: ImportKeyFormat::Pem,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
+    let action = CreateKeyPairsAction {
+        rsa_private_key_id: Some(bare_private_key_id.to_string()),
+        ..extension_action(ctx, "john.doe@acme.com", true).await
+    };
+    let err = action.run(ctx.get_owner_client()).await.unwrap_err();
+    assert!(
+        err.to_string().contains("no linked public key found"),
+        "{err}"
+    );
 }

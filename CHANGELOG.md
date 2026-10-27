@@ -2,20 +2,196 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [5.29.0] - 2026-10-26
+
+### 🔒 Security
+
+- Enforce read-only attribute rules for client updates: `SetAttribute` returns `Attribute_Read_Only` (HTTP 422) for `UniqueIdentifier`, `ObjectType`, `CryptographicLength`, `CertificateLength`, `Digest`, `InitialDate`, `LastChangeDate`, `OriginalCreationDate` and `Fresh`, which were previously accepted and persisted; `AddAttribute` is unchanged (COSMIAN-2026-030, [#1004](https://github.com/Cosmian/kms/issues/1004), [#1259](https://github.com/Cosmian/kms/pull/1259))
+- Stop `Get`/`Export` of a key with `Fresh = true` from writing the auto-unwrapped key back to the database when `default_unwrap_types` is set (COSMIAN-2026-031)
+- Harden the KMIP socket server: close connections idle for more than 120 s, abort TLS handshakes longer than 10 s, accept at most 1,024 concurrent connections (clients that keep a connection open between requests must reconnect) and reject messages above 64 MiB before allocation (COSMIAN-2026-032); apply the HTTPS mTLS client-certificate CN checks (no empty, `*` or reserved CN, whitespace trimmed) (COSMIAN-2026-033); reject a client certificate with `CN=[aws-xks-service]` (COSMIAN-2026-040)
+- Verify each JWT only against the JWKS of its issuer, for every identity provider, whitelisted Google CSE KACLS and Google CSE token issuer (COSMIAN-2026-034)
+- Close the Google CSE `rewrap` SSRF bypass: no redirects, IPv6 and IPv4-mapped literals checked, host resolved, checked and pinned (COSMIAN-2026-035)
+- Fail KMIP requests above 10,000 batch items with `Invalid_Message`, and reject `DeriveKey` PBKDF2 with fewer than 1 or more than 10,000,000 iterations and RSA key generation above 16,384 bits (COSMIAN-2026-036); return `Item_Not_Found` instead of `Permission_Denied` from crypto operations (`Encrypt`, `Decrypt`, `Sign`, `MAC`, …) on a key the caller has no grant on, so the existence or state of keys the caller may not use is not revealed (COSMIAN-2026-037)
+- Mask the AWS XKS SigV4 secret access key in startup and debug configuration logs (COSMIAN-2026-038)
+- Apply the KMIP-scope CORS policy (same-origin plus `cors_allowed_origins`) to `/v1/crypto/*` and `/tokenize/*`, and require `Content-Type: application/json` on `POST /kmip/2_1` (other types, and an invalid UTF-8 body, return HTTP 422), so other origins of the same site cannot reuse a logged-in UI session (COSMIAN-2026-039)
+- Enforce `sslmode` and certificate verification on `PostgreSQL` connections (COSMIAN-2026-029, [#1262](https://github.com/Cosmian/kms/pull/1262)): `require`, `verify-ca` and `verify-full` fail at startup when TLS cannot be established and unknown values are rejected, so check that the `PostgreSQL` server accepts TLS before upgrading; `sslrootcert` trusts only the given CA and `verify-ca` no longer checks the hostname
 
 ### 🚀 Features
 
-#### OpenPGP CLI, Web UI & Battle-Testing Suite
+#### EST & SCEP Enrollment ([#871](https://github.com/Cosmian/kms/issues/871))
 
-- Add `ckms pgp` CLI subcommand group under `non-fips` feature for OpenPGP key management and crypto operations: `keys create` (Ed25519 or RSA 2048/3072/4096, `--user-id`, tags, sensitive, wrapping key id), `keys revoke`, `keys destroy`, `export` (`--key-format pgp-secret` / `pgp-public`), `import` (`--key-format pgp`), `encrypt`, `decrypt`, `sign`, and `sign-verify`
-- Add Web UI OpenPGP (`pgp`) section matching `sym`/`rsa` parity: WASM bridge bindings (`create_pgp_key_ttlv_request`, `get_pgp_algorithms`, `encrypt_pgp_ttlv_request`, `decrypt_pgp_ttlv_request`), React action forms (`PgpKeysCreate`, `PgpEncrypt`, `PgpDecrypt`, `PgpSign`, `PgpVerify`), SPA deep-linking and allowlist, navigation menu item with FIPS filtering, full i18n in English, French, and Simplified Chinese (`en`, `fr`, `zh-CN`), and Playwright E2E test coverage (`pgp-key-flow.spec.ts`)
-- Add comprehensive 24-test GnuPG interoperability matrix in `pgp_gnupg_tests.rs`: keys generated in GnuPG imported into KMS for Decrypt and Sign, keys generated in KMS exported to GnuPG for Decrypt and Verify, subkey signature verification, binary and ASCII-armored inputs, RFC 3156 PGP/MIME encrypted and signed email round-trips, and negative tests pinning server operational boundaries
-- Add end-to-end shell test script `.mise/scripts/test/test_gnupg.sh` and CI matrix job `gnupg` (non-fips only) in `.github/workflows/test_all.yml`
+- Add EST ([RFC 7030](https://www.rfc-editor.org/rfc/rfc7030)): `cacerts`, `csrattrs`, `simpleenroll` (TLS client certificate or HTTP Basic bootstrap) and `simplereenroll`; enable with `[est] est_enabled = true` and `est_ca_uid` ([#1257](https://github.com/Cosmian/kms/pull/1257))
+- Add SCEP ([RFC 8894](https://www.rfc-editor.org/rfc/rfc8894)) at `/scep`: `GetCACaps`, `GetCACert` and `PKIOperation` (`PKCSReq`, `RenewalReq`); enable with `[scep] scep_enabled = true`, `scep_ca_uid` and `scep_challenge_password`; only AES-128/192/256-CBC envelopes with RSA key transport and SHA-256/384/512 signer digests are accepted
+- Add per-endpoint certificate templates (`[templates.<name>]`, `est_template`/`scep_template`): RSA size, EC curves, EKUs, validity and anchored regular expressions for the subject CN and DNS/e-mail/UPN SANs; a CSR SAN without a matching `san_dns_regex`/`san_email_regex`/`san_upn_regex` is refused (422/`badRequest`), and iPAddress and URI SANs need `allow_any_identity = true` and no `san_*_regex`
+- Issue EST/SCEP certificates as the reserved identity `[enrollment-service]`, mark every enrolled certificate with a `certificatePolicies` entry (`1.3.6.1.4.1.16376.9.2.1`) that mTLS and the KMIP socket refuse for authentication, and validate CSRs fail-closed (`msExtReq`, undecodable or repeated `extensionRequest`). **Setup action:** `ckms access-rights grant "[enrollment-service]" -i <ca cert uid> certify`, the same for the CA private key, and `create` when `crypto_officer_users` is configured
+- Protect enrollment: lockout with `429` + `Retry-After`, at most 16 concurrent enrollments, 64 KiB bodies, SCEP replay protection, fixed error messages, masked secrets, refusal of DES/3DES/RC2 envelopes and SHA-1/MD5 signatures, and every attempt logged and audited ([#1257](https://github.com/Cosmian/kms/pull/1257))
+- Accept dotted OIDs in extended-key-usage entries of X.509 extension files
+- Add `mise run test:scep-interop`, `test:est-interop` and `test:scep-apple` black-box tests
+
+#### Audit Logging
+
+- Add a `PostgreSQL` audit backend as an alternative to the JSONL file (`--audit-postgres-url`, `--audit-instance-id`): session advisory lock per instance, append-only `kms_audit_events`, hardened deployments with `SELECT`/`INSERT` only, and the audit database must differ from the object database
+- Always start the `PostgreSQL` audit backend: on content corruption, seal the latest chain generation as evidence and start a new one with an `audit:reanchor` event carrying a SHA-256 evidence digest; connectivity, TLS, schema and lock failures still abort startup
+- Record a final `audit:size-cap-reached` event in the file backend and report a row that does not chain to its predecessor as `broken_link`
+- Honor `sslmode=verify-ca`/`verify-full`, `sslrootcert`, `sslcert` and `sslkey` on the audit connection, and refuse to start when the four append-only triggers are missing in a no-DDL deployment
+- Read PostgreSQL audit chains with `ckms audit export`/`verify` through `--audit-postgres-url` (optional `--audit-instance-id`) in bounded pages ([#1189](https://github.com/Cosmian/kms/pull/1189))
+- Fix `ckms audit` flags: reject `--audit-instance-id` with a file source, fail `export` and `verify` on an instance with no events, verify every chain generation, include instance and generation in PostgreSQL exports, and stop reading `KMS_AUDIT_INSTANCE_ID`
+- Make the `PostgreSQL` audit seal-and-roll write atomic and serialize concurrent schema bootstrap across instances
+- Read the audit client address from the rightmost `X-Forwarded-For` entry that is not a trusted proxy instead of the leftmost one, which the client controls; update log/SIEM correlation rules
+- Generalize the audit writer/store to an `AuditSink` interface shared by the file and `PostgreSQL` backends
+- Add a live `PostgreSQL` audit suite (restricted writer role, tamper → restart → seal-and-roll), run in CI
+- Reorganize the Audit & SIEM docs (shared overview, file and `PostgreSQL` backend pages, audit events reference) and document CEF export and read-only collection accounts
+- Upgrading from 5.28.0 needs no audit migration: the `PostgreSQL` audit tables are new and created on first connection, file audit logs keep their hash-chain format, and every new configuration key is optional
+
+#### OpenPGP
+
+- Add the `ckms pgp` subcommand group (non-FIPS): `keys create` (Ed25519, RSA 2048/3072/4096), `keys revoke`, `keys destroy`, `export`, `import`, `encrypt`, `decrypt`, `sign` and `sign-verify`, with `pgp-secret-binary` and `pgp-public-binary` GnuPG-compatible exports; transferable keys are version 4 or 6 only, and building requires Rust 1.88 (rPGP 0.21.0) ([#1240](https://github.com/Cosmian/kms/pull/1240))
+- Add the Web UI OpenPGP section (create, encrypt, decrypt, sign, verify, armored and binary export) with WASM bindings, FIPS filtering, `en`/`fr`/`zh-CN` translations and Playwright coverage
+- Discover RSA keys and certificates tagged `gnupg-card` (override with `COSMIAN_PKCS11_GNUPG_KEY_TAG`) so `gnupg-pkcs11-scd` can expose them as a GnuPG smartcard
+- Add a 24-test GnuPG interoperability matrix, `.mise/scripts/test/test_gnupg.sh` and a `gnupg` CI job
+
+#### HSM
+
+- Add Thales Luna Network HSM support (`hsm_model = "luna"`) with a 25-test PKCS#11 suite, a `prepare_luna.sh` client installer, and Kubernetes guides ([#1275](https://github.com/Cosmian/kms/pull/1275), [#1281](https://github.com/Cosmian/kms/pull/1281))
+- Delegate RSA-PSS signing, EC key generation (P-224/P-256/P-384/P-521), ECDSA signing, EdDSA (Ed25519/Ed448) signing and RSA `SignatureVerify` to the HSM ([#1154](https://github.com/Cosmian/kms/issues/1154), [#1157](https://github.com/Cosmian/kms/issues/1157))
+- Add HSM trait MAC generate/verify with bridging ([#1263](https://github.com/Cosmian/kms/pull/1263)), `non-fips` gating on every PKCS#11 loader crate, and `Session` helpers for message-based AES-GCM, HKDF, generic secret keys and multi-part AES-CBC
+- Add the Helm `command` value so the FIPS image can start with `OPENSSL_CONF` unset for HSM libraries that embed OpenSSL (Trustway Proteccio)
+- Add `ckms bench --hsm`/`--hsm-slot` and `mise run bench:hsm --delegated`, with `bench:pkcs11` reports for every signature algorithm
+
+#### PKCS#11 v3.x Provider
+
+- Implement `C_GetInterfaceList`/`C_GetInterface` (`CK_INFO.cryptokiVersion` 3.1; `C_GetFunctionList` v2.40 unchanged), `C_LoginUser`, the `CKO_PROFILE` conformance profiles, `CKA_UNIQUE_ID`, the v3.0 function list stubs, and one-shot EdDSA message signing ([#1166](https://github.com/Cosmian/kms/pull/1166))
+- Implement `C_VerifyInit`/`C_Verify`/`C_VerifyUpdate`/`C_VerifyFinal` through KMIP `SignatureVerify` (previously `CKR_FUNCTION_NOT_SUPPORTED`) and native `CKM_AES_GCM`
+- Add `CKA_MODULUS_BITS` on RSA key objects and report `CKF_VERIFY` in `C_GetMechanismInfo`
+- Probe the v3.0 interface of loaded HSM libraries additively, degrading to v2.40 when unsupported
+
+#### Packaging & Deployment
+
+- Publish signed Alpine Linux `.apk` packages for `cosmian_kms` (OpenRC service, run as the unprivileged `kms` system user with `kms.toml` as `root:kms` `0640`) and `ckms`, for x86_64 and aarch64: dynamically-linked musl for FIPS, fully static musl for non-FIPS; add the `test:musl-crosscheck`, `test_alpine_musl.sh` and `alpine-native-build` validation paths and gate `publish-apk` on the Alpine smoke tests ([#1237](https://github.com/Cosmian/kms/pull/1237))
+- Ship the C++ runtime (`libstdc++`, `libgcc_s`) in the Docker image for vendor PKCS#11 libraries
+
+#### Server Configuration & KMIP
+
+- Report the real generator (DRBG, CTR, AES-256) in `Query` with `QueryRNGs`
+- Decide per attribute and per operation whether an edit is allowed, needs a grant or is server-managed with one policy table (`Tag::edit_policy`)
+
+#### Crypto & KEM
+
+- Thread an OpenSSL property query and a FIPS-indicator check through ML-KEM, ML-DSA, SLH-DSA and hybrid KEM key generation; a `fips=yes` request fails closed when the indicator is unavailable, as required by NIST SP 800-227 RS2 readiness ([#1253](https://github.com/Cosmian/kms/pull/1253))
+- Give `RNGSeed` zero entropy credit, zeroize the split-key seed and return `ServerError` on RNG failures ([#1253](https://github.com/Cosmian/kms/pull/1253))
+- Add the non-FIPS `secp192k1` curve: `ckms ec keys create --curve secp192k1`, `ckms ec sign` and `sign-verify` on the software path, and HSM key generation (OID `1.3.132.0.31`); it signs with OpenSSL's randomised ECDSA
+
+### 🐛 Bug Fixes
+
+#### Hybrid KEM & HSM Key Encryption Key
+
+- Fix hybrid KEM keys (`ConfigurableKEM`, `X25519MLKEM768`, `X448MLKEM1024`) with an HSM `key_encryption_key`: `ckms pqc keys create -a ml-kem-768-p256` no longer fails with `Unsupported key format type: ConfigurableKEMSecretKey`; wrap, unwrap, export with the stored `KeyFormatType` and TTLV deserialization now work ([#1330](https://github.com/Cosmian/kms/pull/1330))
+- Unwrap with a KMS wrapping key that is itself wrapped (for example by the HSM KEK), checking its stored usage mask
+- Keep the requested `CryptographicUsageMask` of `ConfigurableKEM` keys instead of OR-ing `Unrestricted`, and inherit `CommonAttributes` in per-key attributes
+- Reject non-empty `Data` in KEM `Encrypt`, and decapsulate the encapsulation component in `ckms bench`
+- Fix `Import` of `X25519MLKEM768`, `X448MLKEM1024` and `ConfigurableKEM` keys failing with `Unsupported key format type`, and `Get`/`Export` of a `ConfigurableKEM` key, by skipping the OpenSSL round trip ([#1268](https://github.com/Cosmian/kms/pull/1268))
+
+#### HSM
+
+- Fix every HSM `Encrypt` failing on Thales Luna (non-sensitive RSA-OAEP probe key), AES-GCM `Encrypt` on Luna ("Failed to initialize message-based encryption"), the Luna FIPS IV layout (`ciphertext || tag || iv`), and creation of non-sensitive keys; cache the supported algorithms per slot (AES-GCM on Luna from 288 to about 4,000 req/s)
+- Create HSM benchmark keys as sensitive and destroy leaked keys; give `ckms bench` setup keys deterministic `bench-<purpose>` identifiers
+- Make key-date handling capability-driven (`supports_key_dates`, false for Crypt2pay, AWS CloudHSM and SoftHSM2) and refuse RSA-OAEP wrapping where unsupported
+- Fix delegated signing: pre-digested ECDSA uses `CKM_ECDSA`, pre-digested RSA-PSS uses `CKM_RSA_PKCS_PSS`, pre-digested PKCS#1 v1.5 wraps a `DigestInfo`, `data` together with `digested_data` is rejected, Ed25519/Ed448 reject pre-hashed requests, a mismatched `CryptographicAlgorithm` returns a clear KMIP error, and a malformed DER ECDSA signature is reported as invalid ([#1169](https://github.com/Cosmian/kms/pull/1169))
+- Infer the RSA PKCS#1 v1.5 hash from the input length only for a digest (`digested_data`): a raw message with no explicit hash always signs with SHA-256
+- Preserve EC-family HSM metadata (Ed25519/Ed448/X25519 key types and `CKA_EC_PARAMS` encodings, curve domain parameters, `CKA_START_DATE`/`CKA_END_DATE` read failures) and refuse HSM-backed X25519 key-pair creation until a `DeriveKey` path exists
+- Bound async session checkouts per slot (`max_concurrent_sessions`, default 128), resolve signing in one session, avoid the second `C_Sign` call, cache non-rotated HSM keyset UIDs for 1 hour, and pool only read-write sessions
+- Issue one `C_EncryptMessage`/`C_DecryptMessage` call per AES-GCM operation, and pin the decrypt IV to 12 bytes and the tag to 16
+- Fix `SignatureVerify` resolving `data` and `digested_data` inconsistently on the crypto-oracle path
+
+#### PKCS#11 Provider
+
+- Fix `C_Login`/`C_LoginUser` rejecting OIDC bearer tokens above 4 KiB when `pkcs11_use_pin_as_access_token = true` (PIN cap raised to 64 KiB)
+- Match `C_GetInterface` versions exactly and bound the `pInterfaceName` read to 8 bytes
+- Fix the secp256k1 OID (`1.3.132.0.33` was secp224r1's; correct is `1.3.132.0.10`), Ed25519/Ed448 key types (`CKK_EC_EDWARDS`/`CKK_EC_MONTGOMERY`), and `CKM_RSA_PKCS_PSS` treating its input as a message instead of a digest
+- Sign a `CKM_RSA_PKCS` DER `DigestInfo` (SHA-1/256/384/512) as a pre-computed digest for `gnupg-pkcs11-scd` and OpenSSH
+- Stop serializing every Cryptoki operation process-wide: one lock per session instead of one global lock (`sign-eddsa` throughput 19 → 82 ops/s at concurrency 8)
+- Reuse a `C_Sign` length-query signature only for the same data
+
+#### Crypto
+
+- Fix `ecdsa_verify()`/`ed_verify()` returning a hard `CryptoError` instead of `ValidityIndicator::Invalid` for tampered, malformed or wrong-curve signatures, which affected every KMIP `Verify` client, not only PKCS#11 ([#1183](https://github.com/Cosmian/kms/issues/1183))
+- Sign NIST P-256 ECDSA (non-FIPS builds) with OpenSSL's RFC 6979 deterministic nonce mode instead of the pure-Rust `p256` crate, about 20x faster; the randomised OpenSSL signer is used when a pre-digested input is not exactly the hash length. secp256k1 keeps `k256` with low-S ([#1320](https://github.com/Cosmian/kms/pull/1320))
+
+#### OpenPGP
+
+- Support revoking and destroying OpenPGP keys, generate keys on the blocking thread pool (no more `408 Request Timeout`), decrypt DEFLATE-compressed messages, preserve signed encryption-subkey metadata and normalize RSA secret-key factors for GnuPG interoperability
+- Fix `.gpg` downloads from the Web UI containing a textual list of byte values instead of the binary message, and hide OpenPGP, PQC, FPE, Anonymize and Covercrypt in FIPS mode, failing closed while `/server-info` loads
+
+#### KMIP
+
+- Return one `Encrypt` response layout for every KEM public key (ML-KEM, `X25519MLKEM768`, `X448MLKEM1024`, `ConfigurableKEM`): `Data` is the serialized `(shared secret, encapsulation)` tuple and `IVCounterNonce` is empty, instead of returning the encapsulation in `IVCounterNonce`; ML-KEM and native hybrid KEM clients unpack `Data` ([#1330](https://github.com/Cosmian/kms/pull/1330))
+- Restrict `RNGSeed` to Crypto Officers once roles are configured (add seeding callers to `crypto_officer_users`), and answer `Unauthorized` instead of `RouteNotFound` for unimplemented KMIP operations (`Archive`, `Ping`, …) in that case
+
+#### REST
+
+- Require a JSON object for protected headers in `/v1/crypto/decrypt`, `/v1/crypto/verify` and `/v1/crypto/keys/unwrap` (arrays and duplicate parameters fail with HTTP 400)
+- Return error responses of every route as `text/plain; charset=utf-8` with `X-Content-Type-Options: nosniff` instead of `text/html`
+- Report an Azure EKM wrap/unwrap with a KEK that is not in an accepted lifecycle state (for example `PreActive` or `Deactivated`) as `KeyDisabled` (HTTP 403) instead of `InternalError`
+
+#### Database
+
+- Fix Redis/Findex concurrent `Upsert` and stale tag index: every write is one two-phase Lua script with compare-and-swap, lost races retry, stale Findex keywords are removed and discarded on read; Redis Cluster is not supported ([#940](https://github.com/Cosmian/kms/issues/940), [#1258](https://github.com/Cosmian/kms/pull/1258))
+- Invalidate `RotateNameCache` by keyset name and member UID, and never cache empty results
+- Empty the `crls` table in `clear_database` (SQLite, PostgreSQL, MySQL)
+
+#### CLI
+
+- Include the JOSE AES-GCM benchmarks in `ckms bench --algorithm aes-gcm`, and drop the secp256k1 and Ed25519 sign/verify modes of the `ckms` PKCS#11 benchmarks from FIPS builds
+- Send curve-appropriate `CryptographicParameters` from `ckms ec sign`, and reject `--digested` for Ed25519/Ed448
+
+#### Hardening
+
+- Fail the KMIP socket TLS handshake when no client certificate is presented, instead of after the first KMIP bytes ([#1276](https://github.com/Cosmian/kms/issues/1276), [#1278](https://github.com/Cosmian/kms/pull/1278))
+- Compare the AWS XKS SigV4 access key ID in constant time
+- Reject `crit` and nested-JWT `cty` headers in every JWKS-keyed authenticator (Google CSE, OIDC, Auth Verifier, UI SSO `id_token`); Google CSE tokens must carry non-blank `alg` and `kid`
+- Warn at startup when no authentication method, no `key_encryption_key` or no `rate_limit_per_second` is configured
+- Draw every key, nonce/IV and secret token from `KmsRng` (OpenSSL AES-256 CTR-DRBG, fail-closed) instead of `rand_bytes`, `CsRng` or `rand::rng()`, including `C_GenerateRandom`; ban every other entropy source with a workspace `clippy.toml`; nonces, IVs and serials come from the public DRBG so private-DRBG output never leaves the server ([#1274](https://github.com/Cosmian/kms/pull/1274))
+- Check every `ConfigurableKEM` key against the algorithm policy on each use (ML-KEM variant and curve read from the serialized key) so relabelled or stripped imports cannot bypass it ([#1330](https://github.com/Cosmian/kms/pull/1330))
+- Make `CKA_EXTRACTABLE` follow `sensitive` on HSM-generated AES and RSA keys (`sensitive = true` ⇒ non-extractable) instead of always `true`; existing keys must be regenerated
+- Apply the role check to every operation of a batched KMIP `RequestMessage` (`RNGSeed`, `CreateSplitKey`, `JoinSplitKey`, `RNGRetrieve`, …), and the KMIP algorithm policy to a root tag `Mac`
+- Refuse the reserved service identity `[aws-xks-service]` regardless of ASCII case or trailing spaces
+- Enforce `objectVersion` in the Kubernetes CSI provider: when set, it must equal the lower-case hexadecimal SHA-256 digest of the object's current content, otherwise the mount fails with `FailedPrecondition`
+
+### ♻️ Refactor
+
+- **KMIP / Server**: cut per-request allocations on the TTLV-JSON, binary TTLV, KMIP `ByteString` decoding, database, audit and middleware paths (4 KiB `Encrypt` decode: 166 µs → 7 µs; `retrieve_object_for_operation` on a cached key: 36 → 3 allocations) ([#1280](https://github.com/Cosmian/kms/pull/1280))
+- **Workspace**: remove every `#[allow(dead_code)]`/`#[expect(dead_code)]`, declare crate versions and shared dependencies once in the root `Cargo.toml`, use safe OpenSSL APIs instead of raw FFI in PQC ([#1267](https://github.com/Cosmian/kms/pull/1267), [#1260](https://github.com/Cosmian/kms/pull/1260))
+- **HSM**: add `supports_rsa_oaep_key_wrap` and `enforces_ecdsa_digest_strength` capabilities and remove vendor names from `base_hsm` session code
+
+### 🧪 Testing
+
+- Add SoftHSM2-backed hybrid KEM lifecycle and TTLV-wrapped import tests, `ConfigurableKEM` server tests (usage masks, policy on use, revocation) and `pqc_import_tests`
+- Add live `PostgreSQL` TLS tests for every `sslmode`
+- Add a PKCS#11 v3.x conformance tier (`pkcs11-tool`, Kryoptic suite, `ckms pkcs11 verify`), a Luna test suite and a Crypt2pay simulator, and wire shared HSM tests into every backend
+- Add `test:k8s:hsm --model proteccio|crypt2pay --variant fips|non-fips` and a Helm `command` render check
+- Add the EST/SCEP interoperability suites and Apple SCEP fixtures replayed in CI
+
+### ⚙️ Build
+
+- Merge Dependabot bumps (`rcgen` 0.14, `k256` 0.14, `num-bigint-dig` 0.9, `etcetera` 0.11, `redis` 1.x, `num-bigint` 0.5, `quick-xml` 0.42, `vite`), adapting the TTLV XML parser and secp256k1 ECDSA, enabling `uuid` `js` for WASM, allowing `BSL-1.0` in `deny.toml` and recording `cargo-vet` exemptions ([#1289](https://github.com/Cosmian/kms/pull/1289), [#1297](https://github.com/Cosmian/kms/pull/1297), [#1327](https://github.com/Cosmian/kms/pull/1327))
+- Upgrade `rustls` and group Dependabot minor/patch and security updates per ecosystem; ignore semver-major bumps
+- Add Nix builds for the Alpine musl packages (`nix/kms-server-musl.nix`, `nix/cli-musl.nix`)
+- Use rPGP 0.21.0 without its `bzip2` feature and build without `clap-config-fallback`'s `yaml` feature
+- Build the FIPS provider from the CMVP-validated OpenSSL 3.1.2 (certificate #4985) instead of the 3.6.2 sources, which hold no certificate; the main library stays on OpenSSL 3.6.2 ([#1253](https://github.com/Cosmian/kms/pull/1253))
+- Pin the supply chain: add `cargo-vet`, hash-pinned Python requirements with `pip-audit`, `govulncheck`, SHA-pinned GitHub Actions and base images, pre-commit policy hooks and wider Dependabot coverage ([#1273](https://github.com/Cosmian/kms/pull/1273))
+- Drop the unmaintained `unsafe-libyaml` (RUSTSEC-2024-0449): use `serde-saphyr`, upgrade `kube` to 4.2, `k8s-openapi` to 0.28 and `schemars` to 1; the server no longer accepts `.yaml`/`.yml` configuration files (TOML and JSON remain supported) ([#1269](https://github.com/Cosmian/kms/pull/1269))
 
 ### ⚙️ CI
 
-- Reduce Docker Hub pull-rate-limit exposure: authenticate Docker Hub pulls with the new `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repository secrets (`test_all.yml` `test-nix` login step skipped when secrets are absent, e.g. fork PRs; `container.credentials` on `packages-test` and `alpine-native-build`), and collapse the `features`/`link` (`packages-test`) and `features` (`alpine-packages-test`) matrix axes into in-job loops so each leg pulls its base image once (`packages-test` 56 → 14 legs, `alpine-packages-test` 12 → 6 legs; same combinations still tested)
+- Authenticate Docker Hub pulls and collapse the `packages-test` and `alpine-packages-test` matrix axes into in-job loops (56 → 14 and 12 → 6 legs)
+- Pin `ubuntu-latest` to `ubuntu-24.04`, keep the SAP ASE test image on `ubuntu:22.04`, pin `azure/setup-helm` and `medyagh/setup-minikube` by commit SHA, and add `cargo-vet`, `pip-audit` and `govulncheck` jobs
+- Fix new Clippy findings (`large_futures`, `result_large_err`, deprecated `cc::Tool::env`)
+
+### 📚 Documentation
+
+- Document PKCS#11 v3.x provider interfaces, Alpine installation with signature verification, Thales Luna and Kubernetes HSM deployments (Luna, Proteccio, Crypt2pay), GnuPG smartcard use, EST/SCEP trusted-proxy semantics, PostgreSQL `sslmode`, the Redis single-node requirement and the Azure EKM trust directions ([#1323](https://github.com/Cosmian/kms/pull/1323))
+- Document NIST SP 800-227 requirements RS1–RS5 for KEMs, which of them the KMS meets or does not meet (no ESV/CMVP entropy claims for PQC key generation), in the random-number-generation page ([#1253](https://github.com/Cosmian/kms/pull/1253)); add ADRs for the HSM delegation and PKCS#11 v3.0 scope decisions, the PQC `KmsRng` seeding decision and the randomness exceptions
+- Add Thales Luna and Proteccio benchmark reports and HSM algorithm support matrix columns for Thales Luna and GCP Cloud HSM
 
 ## [5.28.0] - 2026-09-30
 
@@ -698,6 +874,43 @@ All notable changes to this project will be documented in this file.
 - Oracle TDE: refactored CI into standalone `upgrade-kms.sh` + `smoke-test-tde.sh` scripts; 6/6 TDE proofs validated on Oracle 23ai Free with Cosmian PKCS#11 provider ([#918](https://github.com/Cosmian/kms/pull/918))
 - New `jose` CI test type (non-FIPS): curl-based REST crypto tests + Python `jwcrypto` interoperability ([#929](https://github.com/Cosmian/kms/pull/929))
 - Add `cargo deny list -l crate > sbom/licenses.txt` pre-commit hook; automate SBOM license generation in `release.yml` `prepare` job ([#967](https://github.com/Cosmian/kms/pull/967))
+
+## [5.22.1] - 2026-10-25
+
+### 🔒 Security
+
+- Fix the RUSTSEC advisories published since 5.22.0: `h2` (RUSTSEC-2026-0258, via `actix-web` 4.17), `tokio` (RUSTSEC-2026-0386), `lru` 0.18 (RUSTSEC-2026-0253), `tokio-postgres`/`postgres-protocol` (RUSTSEC-2026-0178/0179/0180, with `aes-kw` 0.3.1), `quick-xml` 0.42 (RUSTSEC-2026-0194/0195) and `mysql_async` 0.37 without the `derive` feature (RUSTSEC-2026-0173)
+- Ignore RUSTSEC-2026-0387 (`crypto-bigint` 0.5.5, no 0.5.x patch) in `deny.toml` and `.cargo/audit.toml`, with its reason
+
+### 🐛 Bug Fixes
+
+#### Hybrid KEM keys with an HSM key encryption key ([#1329](https://github.com/Cosmian/kms/pull/1329))
+
+- Hybrid KEM keys (`ConfigurableKEM` and native `X25519MLKEM768` / `X448MLKEM1024`) now work when the server `key_encryption_key` is stored in an HSM: `ckms pqc keys create -a ml-kem-768-p256` no longer fails with `Unsupported key format type: ConfigurableKEMSecretKey`
+- Wrap: `ByteString`-only `Raw`, `ConfigurableKEM*` and `CoverCrypt*` asymmetric keys are wrapped as raw bytes instead of going through OpenSSL (Create, Import, Export with a `KeyWrappingSpecification`)
+- Unwrap: `ConfigurableKEM*` keys are decoded on unwrap (Encrypt/Decrypt after a restart, `default_unwrap_type`, Export/Import with `NotWrapped`)
+- Unwrapping with a KMS wrapping key now works when that wrapping key is itself wrapped (for example by the HSM KEK): it is unwrapped first and its stored usage mask is checked, as already done when wrapping
+- Export: a PQC/hybrid KEM key can be exported with its own stored `KeyFormatType`
+- TTLV: `ConfigurableKEM*` key material can be deserialized from TTLV, so TTLV-wrapped keys (`ckms keys export --wrap-key-id ... -f json-ttlv`, then import) can be unwrapped and used
+- Backport of [#1268](https://github.com/Cosmian/kms/pull/1268): import and export skip the OpenSSL round-trip for `ConfigurableKEM` and native hybrid KEM keys
+
+#### ConfigurableKEM usage rules and algorithm policy ([#1329](https://github.com/Cosmian/kms/pull/1329))
+
+- `ConfigurableKEM` hybrid keys (ML-KEM + P-256/X25519) follow least privilege and the KMIP usage-mask rules: a requested `CryptographicUsageMask` is kept as is instead of being OR-ed with `Unrestricted`; without one, the private key gets `Decrypt` and the public key `Encrypt`. `ckms pqc keys create` no longer requests `Unrestricted`, and existing keys keep their mask
+- Per-key `PrivateKeyAttributes`/`PublicKeyAttributes` inherit the `CommonAttributes` (tags, curve, ML-KEM variant) instead of replacing them
+- KEM `Encrypt` (ML-KEM, native hybrid, `ConfigurableKEM`) rejects non-empty `Data` instead of silently ignoring it
+- Algorithm policy: a `ConfigurableKEM` key is checked on every use, not only at creation, against both its ML-KEM variant and its curve, read from the serialized key rather than from its KMIP attributes, so an imported key with relabelled or stripped attributes cannot bypass the policy. `X25519MLKEM768` and `X448MLKEM1024` are in the policy scope and in the `DEFAULT` allowlist (non-FIPS), where they were previously always denied
+- `ckms bench`: the configurable KEM decapsulation benchmark decapsulates the encapsulation component of the packed result instead of the whole tuple
+
+### 🧪 Testing
+
+- Add a SoftHSM2-backed hybrid KEM lifecycle test, TTLV-wrapped import tests (export wrapped by a software AES key, and client-side wrap by the HSM KEK), a wrap/unwrap unit test for `ByteString`-only KEM keys and a TTLV round-trip test for `ConfigurableKEM*` key values
+- Add `ConfigurableKEM` server tests (usage masks, encapsulation round trip, plaintext and `Sign` refusal, `Locate`, revocation, policy on use including relabelled and stripped imports); they also pin the `Encrypt` response layout, unchanged since 5.22.0: the serialized `(shared secret, encapsulation)` tuple in `Data` and an empty `IVCounterNonce`. `ckms pqc` KEM tests now compare the decapsulated secret with the encapsulated one
+- Fix the stale `test_toml` snapshot (`rate_limit_per_second`, `otlp_allow_insecure`) in `crate/server/src/main.rs`
+
+### ⚙️ Build
+
+- Bump the workspace version to 5.22.1 and pin the internal path dependencies with `=5.22.1`, so that `cargo publish --dry-run` verifies the local 5.22.1 crates instead of newer 5.2x releases already on crates.io (a caret requirement matched them, and `cosmian_kms_crypto` 5.25.0 does not compile against `openssl` 0.10.79)
 
 ## [5.22.0] - 2026-05-06
 

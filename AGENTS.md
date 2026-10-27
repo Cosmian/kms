@@ -253,8 +253,9 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
 - **Commit scope**: minimal, focused changes — don't refactor surrounding code alongside a bug fix.
 - **Live DB tests**: `docker compose up -d <service>` before running tests that need a backend (postgres :5432, mysql :3306, redis :6379, etc.).
-- **Broad feature rollout order**: for any feature that spans server + CLI/UI, implement and PR the server side first, then CLI/UI separately — see "Feature rollout order & PR cascade" below.
+- **Broad feature rollout**: for any feature that spans server + CLI/UI, deliver it in one branch/PR but as independent, separately buildable commits (server, then CLI, then Web UI) — see "Feature rollout order & commit layering" below.
 - **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
+- **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed — see .github/instructions/rust.instructions.md § Randomness.
 
 For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.
@@ -268,36 +269,23 @@ For FIPS feature-flag gating discipline, multi-standard algorithm compliance, an
 - Do not claim model selection, latency targets, percentages, or token savings unless the platform supports the measurement and actual usage data was observed.
 - `/kms-pr-review` Phase 1 overlaps `/kms-caveman`; if `/kms-caveman` already ran this session, feed its findings into `/kms-pr-review` instead of re-scanning.
 
-### Feature rollout order & PR cascade
+### Feature rollout order & commit layering
 
 For any feature broad enough to touch both the server and its clients (CLI and/or Web UI),
-development **must** be split and sequenced as follows — never bundle server and
-CLI/UI changes for the same feature into one commit or one PR:
+use **one branch and one PR**, but split the work into **independent commits**, one per layer:
 
-1. **Server first.** Implement the server-side change in full (KMIP operation, REST route,
-   core logic, database changes) and open a dedicated PR for it. Run the full section 5
-   workflow (tests, clippy, sync rules, changelog) on that PR before moving on.
-2. **CLI next.** Once the server change exists (merged, or at minimum stacked on top of
-   its branch), implement the CLI change (`crate/clients/clap/`, `crate/clients/ckms/`)
-   in its own, separate PR.
-3. **Web UI last.** Implement the Web UI change (`ui/src/`) in its own, separate PR, stacked
-   after (or on top of) the CLI PR. CLI and UI may be split into two independent PRs even
-   though `cli-ui-sync.instructions.md` requires them to stay functionally in sync.
-4. **Cascade/stack the PRs.** When server, CLI, and UI branches must exist before the
-   server PR merges, stack them: each subsequent branch is based on the previous one's
-   branch (not `develop`), so the PRs form a dependency chain. Use `gh stack view` /
-   `gh stack submit` to inspect and open the chain. **Do not use `gh stack sync`** (or any
-   equivalent rebase-then-force-push tool) to update already-pushed downstream branches —
-   it rewrites history and force-pushes with `--force-with-lease`, which the force-push
-   prohibition below strictly forbids. Instead, when an earlier PR in the chain merges or
-   gains new commits, update each downstream branch with a regular **merge** (not a
-   rebase): `git checkout <downstream-branch> && git merge origin/<upstream-branch>`,
-   resolve any conflicts in the merge commit, then a normal fast-forward
-   `git push origin <downstream-branch>`. This keeps every branch's history append-only
-   and preserves already-pushed commits and their review state. Do not squash unrelated
-   layers together to avoid stacking.
-5. Do not skip this ordering for "small" broad features — if a change touches both
-   `crate/server/` (or `crate/kmip/`) and either `crate/clients/` or `ui/`, split it.
+1. **Server commit first.** Implement the server-side change in full (KMIP operation, REST
+   route, core logic, database changes). Run the full section 5 workflow (tests, clippy,
+   sync rules, changelog) for it.
+2. **CLI commit next** (`crate/clients/clap/`, `crate/clients/ckms/`, generated CLI docs).
+3. **Web UI commit last** (`ui/src/`, locale files).
+4. **Each commit must stand alone**: it builds, passes pre-commit hooks and its own tests, and
+   touches only its layer (plus that layer's changelog entry and docs). Never mix layers in one
+   commit. Keep CLI and UI functionally in sync as required by `cli-ui-sync.instructions.md`
+   across the commits of the same PR.
+5. Do not open separate or stacked PRs per layer for the same feature. Commits already pushed
+   are never rewritten (see "Force-push prohibition"): if a layer was bundled by mistake,
+   leave it and apply the layering to subsequent commits.
 
 ### Force-push prohibition
 
@@ -386,7 +374,7 @@ shipped in a tagged KMS release (vX.Y.Z)**. The key question is: _were real user
 
 Run after each task, when diff > 200 lines, or before marking the last todo "completed". Skip only for trivial fixes and one-liners.
 
-1. Run **`/kms-pr-review`** (self-review mode, no argument). It reviews the branch diff in two passes, **applies confirmed fixes automatically**, re-tests, and re-reviews — at most 2 fix cycles — then writes `review/final.md`. Scope, security-posture, feature-flag, and diff checks are part of its two passes; do not repeat them by hand.
+1. Run **`/kms-pr-review`** (self-review mode, no argument). It reviews the branch diff in two passes, **applies confirmed fixes automatically**, re-tests, and re-reviews — at most 2 fix cycles — then writes `review-YYYY-MM-DD/final.md`. Scope, security-posture, feature-flag, and diff checks are part of its two passes; do not repeat them by hand.
 2. If `/kms-pr-review` stops with NO-GO or `needs-human` findings after its 2 fix cycles, stop and report those findings to the user; do not keep iterating.
 3. **PR quality gate** — for significant work (new feature, algorithm, auth change, or diff > 200 lines) also run **`/kms-adversarial-test`** once before the PR is submitted. Skip for trivial fixes and one-liners.
 
@@ -394,8 +382,8 @@ Run after each task, when diff > 200 lines, or before marking the last todo "com
 
 Run **`/kms-changelog`** — it reads the branch name, determines the correct file path, and guides the entry format.
 
-> Root `CHANGELOG.md` is generated by `git-cliff` — **never edit it manually.**
-> Branch files: `CHANGELOG/<branch-name-with-slashes-as-underscores>.md`
+> Branch files (`CHANGELOG/<branch-name-with-slashes-as-underscores>.md`) are ephemeral. At release time `/kms-changelog consolidate <version>` merges them into the hand-maintained root `CHANGELOG.md` and deletes them. Outside a release, **do not edit the root `CHANGELOG.md`**.
+> The `Security` section of a branch file or of `CHANGELOG.md` lists only issues present in the previous release; a vulnerability introduced and fixed within the same release is never listed. Every Security bullet cites a `COSMIAN-YYYY-NNN` id that exists in `SECURITY.md`; anything without one goes to Bug Fixes, Build or Features.
 
 Write an entry for any user- or operator-observable change (feature, bug fix, security, behavioural change, breaking change). Skip internal-only changes (formatting, CI, test-only refactors). When in doubt, write one. See the `/kms-changelog` skill for the full criteria and entry format.
 
@@ -427,7 +415,7 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 | `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
 | `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; run once for significant work (`AGENTS.md` §5.6.3), skip for trivial fixes |
 | `/pre-release` | **Before every release** — orchestrates all AI audits, produces go/no-go report |
-| `/kms-release-notes <version>` | Aggregate `CHANGELOG/*.md` into a compact release note |
+| `/kms-release-notes <version>` | At release time — write the root `## [X.Y.Z]` entry of `CHANGELOG.md` from `git log` since the last tag, then consolidate the branch files |
 | `/ci-fix` | Fix CI failures for a supplied run or HEAD; one batched commit per pass; stops after 3 repeated failures |
 | `/kms-sync-rules` | After every code change — auto-detects changed files and emits the applicable checklist |
 | `/meta-security [path]` | **Comprehensive security audit** — orchestrates all 4 security skills |
@@ -437,11 +425,11 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 | `/kmip-compliance [op]` | When adding or modifying a KMIP operation |
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
 | `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
-| `/kms-changelog` | When writing the branch CHANGELOG entry |
+| `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then deletes them |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |
-| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 10 review phases, reports in `./review/`, go/no-go verdict |
+| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 10 review phases, reports in `./review-YYYY-MM-DD/`, go/no-go verdict |
 | `/rust-panic-audit [path]` | Scan for panics, `.unwrap()`, `.expect()`, `process::exit`, unchecked indexing |
 | `/refactor-plan` | Before any multi-file refactor |
 | `/rust-refactor` | To find and consolidate Rust code duplication |

@@ -1550,6 +1550,7 @@
         "tagsHelp": "Key ID 的替代方式：指定标签以标识密钥",
         "submit": "封装",
         "missingKeyId": "缺少密钥标识符。",
+        "invalidResponse": "无效的 KEM 响应：应包含共享秘密和封装。",
         "success": "封装成功。密文和共享秘密已下载。",
         "responseTitle": "PQC KEM 封装响应"
     },

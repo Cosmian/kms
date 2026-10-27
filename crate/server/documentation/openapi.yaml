@@ -17,6 +17,9 @@ info:
 
     Public endpoints (`/health`, `/version`, `/swagger`, `/openapi.yaml`) require no authentication.
 
+    Error responses that do not document another media type carry the reason as
+    `text/plain; charset=utf-8`, with `X-Content-Type-Options: nosniff`.
+
 servers:
   - url: /
     description: Current server
@@ -32,6 +35,11 @@ tags:
     description: Server information and HSM status
   - name: Certificates
     description: X.509 certificate lifecycle — CRL generation, OCSP status (RFC 6960)
+  - name: Enrollment
+    description: |
+      Automated certificate enrollment for IoT and MDM-managed devices — EST (RFC 7030) and
+      SCEP (RFC 8894). Enabled with `est_enabled` / `scep_enabled`; issuance is constrained by
+      the `[templates.<name>]` certificate templates.
   - name: REST Crypto API
     description: Simplified JWE/JWS/HMAC REST API built on top of KMIP keys
   - name: Google CSE
@@ -74,6 +82,10 @@ components:
     mtls:
       type: mutualTLS
       description: Client certificate presented during TLS handshake
+    basicAuth:
+      type: http
+      scheme: basic
+      description: HTTP Basic bootstrap credentials of EST `simpleenroll` (`est_require_client_cert = false`, TLS required)
     vaultToken:
       type: apiKey
       in: header
@@ -2637,6 +2649,337 @@ paths:
                 format: binary
         '404':
           description: OCSP responder disabled (`ocsp_enabled = false`, the default)
+
+  /.well-known/est/cacerts:
+    get:
+      tags: [Enrollment]
+      summary: EST CA certificates distribution (RFC 7030 §4.1, no authentication)
+      description: |
+        Returns the CA certificate chain configured via `est_ca_uid` as a degenerate
+        (certs-only) CMS `SignedData`, base64-encoded (`Content-Transfer-Encoding: base64`).
+        Returns `404` when `est_enabled = false` (the default).
+      operationId: estCaCerts
+      security: []
+      responses:
+        '200':
+          description: Base64-encoded certs-only PKCS#7 / CMS structure
+          headers:
+            Content-Transfer-Encoding:
+              schema:
+                type: string
+                enum: [base64]
+          content:
+            application/pkcs7-mime:
+              schema:
+                type: string
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+
+  /.well-known/est/csrattrs:
+    get:
+      tags: [Enrollment]
+      summary: EST CSR attributes (RFC 7030 §4.5, no authentication)
+      description: |
+        Returns the base64-encoded `CsrAttrs` the server would like to see in a CSR
+        (`id-pkcs9-at-extensionRequest`).
+        Returns `404` when `est_enabled = false`.
+      operationId: estCsrAttrs
+      security: []
+      responses:
+        '200':
+          description: Base64-encoded DER `CsrAttrs`
+          content:
+            application/csrattrs:
+              schema:
+                type: string
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+
+  /.well-known/est/simpleenroll:
+    post:
+      tags: [Enrollment]
+      summary: EST initial enrollment (RFC 7030 §4.2.1)
+      description: |
+        Submit a base64-encoded PKCS#10 request (`Content-Type: application/pkcs10`, RFC 5967).
+        The client is authenticated by its TLS client certificate or, when
+        `est_require_client_cert = false`, by HTTP Basic credentials matching
+        `est_bootstrap_username` / `est_bootstrap_password`. The CSR is validated against the
+        `est_template` certificate template (key type and size, EKU, Subject/SAN patterns,
+        validity) before the certificate is issued by the CA `est_ca_uid`.
+        The response contains only the issued certificate.
+      operationId: estSimpleEnroll
+      security:
+        - mtls: []
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/pkcs10:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Base64-encoded certs-only PKCS#7 containing the issued certificate
+          headers:
+            Content-Transfer-Encoding:
+              schema:
+                type: string
+                enum: [base64]
+          content:
+            application/pkcs7-mime; smime-type=certs-only:
+              schema:
+                type: string
+        '400':
+          description: Unreadable request body, or a CSR whose Subject/SubjectAltName differ from the EST-CA client certificate presenting it
+        '401':
+          description: 'Client authentication required (`WWW-Authenticate: Basic` when Basic bootstrap is enabled)'
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+        '403':
+          description: The client certificate cannot be used for enrollment (a fixed message; the reason is only logged)
+        '413':
+          description: Request body larger than 64 KiB
+        '422': &estPlainTextError
+          description: The CSR violates the certificate template or is malformed (the reason, as plain text)
+          headers:
+            X-Content-Type-Options:
+              schema:
+                type: string
+                enum: [nosniff]
+          content:
+            text/plain; charset=utf-8:
+              schema:
+                type: string
+        '429':
+          description: Too many wrong HTTP Basic credentials from this client address (a request with a TLS client certificate is not locked out); `Retry-After`
+            gives the delay in seconds
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
+
+  /.well-known/est/simplereenroll:
+    post:
+      tags: [Enrollment]
+      summary: EST re-enrollment (RFC 7030 §4.2.2)
+      description: |
+        Renew or rekey a certificate. Always authenticated by the TLS client certificate being
+        renewed, which must have been issued by the EST CA and still be active. The CSR Subject
+        and SubjectAltName must be identical to those of that certificate. No challenge or
+        bootstrap credential is needed.
+      operationId: estSimpleReenroll
+      security:
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/pkcs10:
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Base64-encoded certs-only PKCS#7 containing the renewed certificate
+          headers:
+            Content-Transfer-Encoding:
+              schema:
+                type: string
+                enum: [base64]
+          content:
+            application/pkcs7-mime; smime-type=certs-only:
+              schema:
+                type: string
+        '400':
+          description: CSR Subject/SubjectAltName differ from the certificate being renewed
+        '401':
+          description: No TLS client certificate presented
+        '403':
+          description: The client certificate cannot be used for enrollment (not issued by the EST CA, expired or not active; a fixed message, the reason
+            is only logged)
+        '404':
+          description: EST disabled (`est_enabled = false`, the default)
+        '413':
+          description: Request body larger than 64 KiB
+        '422': *estPlainTextError
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
+
+  /scep:
+    get:
+      tags: [Enrollment]
+      summary: SCEP GetCACaps, GetCACert and PKIOperation over GET (RFC 8894)
+      description: |
+        Dispatches on the `operation` query parameter (RFC 8894 §4.1):
+
+        - `GetCACaps` — capabilities, `text/plain`: `POSTPKIOperation`, `SHA-256`, `AES`, and
+          `Renewal` only when `scep_allow_renewal_without_challenge = true`. `DES3` and `SHA-1`
+          are never advertised (not FIPS 140-3 approved).
+        - `GetCACert` — the CA certificate: raw DER (`application/x-x509-ca-cert`) for a root CA,
+          or a certs-only `SignedData` chain (`application/x-x509-ca-ra-cert`).
+        - `PKIOperation` — the base64 `message` parameter carries a signed `pkiMessage`.
+
+        Authentication happens inside the CMS `pkiMessage` (RFC 8894 §2.3). Returns `404`
+        when `scep_enabled = false` (the default).
+      operationId: scepGet
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [GetCACaps, GetCACert, PKIOperation]
+        - name: message
+          in: query
+          required: false
+          description: Base64 (URL-escaped) `pkiMessage`, for `operation=PKIOperation`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation result (binary DER bodies are not base64-encoded)
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/x-x509-ca-cert:
+              schema:
+                type: string
+                format: binary
+            application/x-x509-ca-ra-cert:
+              schema:
+                type: string
+                format: binary
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing or unsupported `operation`, unreadable `pkiMessage`, invalid `transactionID`, or a `messageType` the CA does not process
+            (counted as a failed attempt)
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
+        '413':
+          description: The `pkiMessage` is larger than 64 KiB
+        '429':
+          description: Too many failed authentications from this client address; `Retry-After` gives the delay in seconds
+        '500':
+          description: The enrollment CA cannot be used (a fixed message; the reason is only logged)
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
+    post:
+      tags: [Enrollment]
+      summary: SCEP PKIOperation over POST (RFC 8894 §4.3)
+      description: |
+        The body is a DER `pkiMessage` (`Content-Type: application/x-pki-message`) carrying a
+        `PKCSReq` (initial enrollment, `challengePassword` required) or a `RenewalReq` (signed
+        by a still-valid certificate of the SCEP CA, no challenge required). Any other
+        `messageType`, or a `RenewalReq` when `scep_allow_renewal_without_challenge = false`, is
+        refused with HTTP `400` before any CA operation and counts as a failed attempt. The
+        signer key must be RSA or EC (the response is encrypted to it). The CSR is validated
+        against the `scep_template` certificate template. The answer is a signed `CertRep`;
+        failures are reported as `pkiStatus = FAILURE` with `failInfo = badRequest` for every
+        problem found after the request is parsed (undecryptable envelope, wrong challenge,
+        policy violation, replayed message), so that the `failInfo` is not a decryption oracle,
+        or `badCertId` when a renewal is signed by a certificate that is not valid. A client
+        that repeatedly fails to authenticate is locked out (`429`); only a successful `PKCSReq`
+        clears the count, a renewal does not.
+      operationId: scepPost
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PKIOperation]
+      requestBody:
+        required: true
+        content:
+          application/x-pki-message:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Signed `CertRep` `pkiMessage`
+          content:
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported operation, unreadable `pkiMessage`, invalid `transactionID`, or a `messageType` the CA does not process (counted as a
+            failed attempt)
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
+        '413':
+          description: The `pkiMessage` is larger than 64 KiB
+        '429':
+          description: Too many failed authentications from this client address; `Retry-After` gives the delay in seconds
+        '500':
+          description: The enrollment CA cannot be used (a fixed message; the reason is only logged)
+        '503':
+          description: Too many enrollments in progress; retry after the `Retry-After` delay
+
+  /scep/pkiclient.exe:
+    get:
+      tags: [Enrollment]
+      summary: Alias of `GET /scep` for the Windows MDM (NDES) SCEP client
+      description: |
+        Same behavior as `GET /scep`. The Windows SCEP client appends `/pkiclient.exe` to the
+        configured profile URL and also sends `message=default` for `GetCACaps` / `GetCACert`.
+      operationId: scepGetPkiclient
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [GetCACaps, GetCACert, PKIOperation]
+        - name: message
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation result, see `GET /scep`
+        '400':
+          description: Missing or unsupported `operation`, unreadable `pkiMessage`, invalid `transactionID`, or a `messageType` the CA does not process
+            (counted as a failed attempt)
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
+    post:
+      tags: [Enrollment]
+      summary: Alias of `POST /scep` for the Windows MDM (NDES) SCEP client
+      description: Same behavior as `POST /scep` (`PKIOperation`).
+      operationId: scepPostPkiclient
+      security: []
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PKIOperation]
+      requestBody:
+        required: true
+        content:
+          application/x-pki-message:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Signed `CertRep` `pkiMessage`
+          content:
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported operation or unreadable `pkiMessage`
+        '404':
+          description: SCEP disabled (`scep_enabled = false`, the default)
 
   /v1/crypto/encrypt:
     post:

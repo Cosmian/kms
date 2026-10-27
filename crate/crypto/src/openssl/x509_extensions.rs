@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use cosmian_logger::warn;
 use ini::Ini;
 use openssl::{
-    asn1::{Asn1Object, Asn1OctetString},
+    asn1::Asn1OctetString,
     nid::Nid,
     x509::{
         X509Extension, X509v3Context,
@@ -14,6 +14,7 @@ use openssl::{
     },
 };
 
+use super::oid::{asn1_object, oid_string};
 use crate::{crypto_bail, error::CryptoError};
 
 /// X509 Extension section parser.
@@ -217,6 +218,8 @@ pub fn parse_v3_ca(
                         "msEFS" => eku.ms_efs(),
                         "nsSGC" => eku.ns_sgc(),
                         "msSGC" => eku.ms_sgc(),
+                        // Any other purpose can be given as a dotted OID, e.g. `1.3.6.1.5.5.7.3.2`.
+                        oid if is_dotted_oid(oid) => eku.other(oid),
                         _ => {
                             crypto_bail!(
                                 "not supported `extendedKeyUsage` extension's value: {value}"
@@ -259,10 +262,10 @@ pub fn parse_v3_ca(
             }
             "noRevAvail" => {
                 // id-ce-noRevAvail (RFC 9608 §2), OID { id-ce 56 } = 2.5.29.56.
-                // OpenSSL does not register this OID in its extension table, so we build
-                // the extension directly using new_from_der().
+                // OpenSSL registers the NID but no extension method for this OID, so we
+                // build the extension directly using new_from_der().
                 // Criticality MUST be FALSE; DER encoding is '0500'H (NULL).
-                let oid = Asn1Object::from_str("2.5.29.56")?;
+                let oid = asn1_object(Nid::NO_REV_AVAIL)?;
                 let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
                 extensions.push(X509Extension::new_from_der(
                     oid.as_ref(),
@@ -340,8 +343,8 @@ fn build_certificate_policies_extension(value: &str) -> Result<X509Extension, Cr
 
     // Encode SEQUENCE OF PolicyInformation
     let mut policies_content = Vec::new();
-    // id-qt-cps OID bytes (1.3.6.1.5.5.7.2.1) – pre-encoded for efficiency
-    let cps_oid_der = der_encode_oid("1.3.6.1.5.5.7.2.1")?;
+    // id-qt-cps OID bytes – pre-encoded for efficiency
+    let cps_oid_der = der_encode_oid(&oid_string(Nid::ID_QT_CPS)?)?;
 
     for (oid_str, cps_urls) in &policies {
         let oid_der = der_encode_oid(oid_str)?;
@@ -368,7 +371,7 @@ fn build_certificate_policies_extension(value: &str) -> Result<X509Extension, Cr
 
     // extnValue OCTET STRING wraps the DER of SEQUENCE OF PolicyInformation
     let ext_value_der = der_encode_sequence(&policies_content);
-    let ext_oid = Asn1Object::from_str("2.5.29.32")?;
+    let ext_oid = asn1_object(Nid::CERTIFICATE_POLICIES)?;
     let octet_string = Asn1OctetString::new_from_bytes(&ext_value_der)?;
     X509Extension::new_from_der(ext_oid.as_ref(), critical, octet_string.as_ref())
         .map_err(CryptoError::from)
@@ -522,6 +525,26 @@ mod tests {
         let split = colon_split("email:dummy@gmail.com", "email").unwrap();
         assert_eq!(split, "dummy@gmail.com");
         colon_split("email:dummy@gmail.com", "emails").unwrap_err();
+    }
+
+    #[test]
+    fn test_extended_key_usage_accepts_dotted_oid() {
+        let x509_builder = X509::builder().unwrap();
+        let x509_context = x509_builder.x509v3_context(None, None);
+        let exts = parse_v3_ca_from_str(
+            "[ v3_ca ]\nextendedKeyUsage=1.3.6.1.5.5.7.3.2",
+            &x509_context,
+        )
+        .unwrap();
+        let der = exts.first().unwrap().to_der().unwrap();
+        // DER of clientAuth (1.3.6.1.5.5.7.3.2) content octets
+        assert!(
+            der.windows(8)
+                .any(|w| w == [0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02])
+        );
+        assert!(
+            parse_v3_ca_from_str("[ v3_ca ]\nextendedKeyUsage=notAnEku", &x509_context).is_err()
+        );
     }
 
     #[test]
@@ -870,7 +893,7 @@ certificatePolicies=2.5.29.32
         let ctx = builder.x509v3_context(None, None);
         let exts = parse_v3_ca_from_str(&ext_bare, &ctx).unwrap();
         assert_eq!(exts.len(), 1);
-        let der = exts[0].to_der().unwrap();
+        let der = exts.first().unwrap().to_der().unwrap();
         let (_, parsed) = X509ExtensionParser::new().parse(&der).unwrap();
         assert!(!parsed.critical);
         assert!(
