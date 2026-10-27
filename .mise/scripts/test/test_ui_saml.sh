@@ -136,7 +136,7 @@ echo "==> Running Playwright SAML E2E tests …"
 TEST_EXIT=0
 # shellcheck disable=SC2086 # PLAYWRIGHT_ARGS is deliberately word-split (e.g. "--repeat-each=5 --grep SSO")
 (cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES \
-  CI=true PLAYWRIGHT_BASE_URL="${PUBLIC_ORIGIN}" pnpm run test:e2e:saml ${PLAYWRIGHT_ARGS:-}) || TEST_EXIT=$?
+  CI=true PLAYWRIGHT_BASE_URL="${PUBLIC_ORIGIN}" AUTH_VERIFIER_URL="$(bash "${STACK}" url)" pnpm run test:e2e:saml ${PLAYWRIGHT_ARGS:-}) || TEST_EXIT=$?
 
 if [ "${TEST_EXIT}" -ne 0 ]; then
   echo "==> Playwright SAML tests FAILED (exit code ${TEST_EXIT})"

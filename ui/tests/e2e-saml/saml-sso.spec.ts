@@ -13,7 +13,9 @@ import { expect, test, request as playwrightRequest, type BrowserContext, type P
 
 const SAML_USER = "alice@example.com"; // Keycloak user `alice`; `sub` = email attribute (stack.sh)
 const SESSION_COOKIE = "_ea_";
-const AUTH_VERIFIER_URL = "https://127.0.0.1:8444"; // reached directly, as the KMS does
+// Reached directly, as the KMS does. The harness passes the address the verifier binds (the docker
+// bridge gateway on Linux, loopback on macOS).
+const AUTH_VERIFIER_URL = process.env.AUTH_VERIFIER_URL ?? "https://127.0.0.1:8444";
 
 const CREATE_AES_KEY = {
     tag: "Create",

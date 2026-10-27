@@ -253,9 +253,10 @@ down() {
 case "${1:-}" in
   up) up ;;
   down) down ;;
+  url) echo "${AV_URL}" ;;
   logs)
     compose logs --tail 200
     tail -200 "${AV_LOG}" 2>/dev/null || true
     ;;
-  *) print_error "Usage: $0 up|down|logs" ;;
+  *) print_error "Usage: $0 up|down|url|logs" ;;
 esac
