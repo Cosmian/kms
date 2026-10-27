@@ -55,8 +55,14 @@ jobs:
           PERL_ROOT: C:\Strawberry\perl
         run: |
           $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vcpkgExitCode = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            vcpkg install --triplet x64-windows-static
+            $vcpkgExitCode = $LASTEXITCODE
+            if ($vcpkgExitCode -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
           vcpkg integrate install
 
       - name: Tests
@@ -116,8 +122,14 @@ jobs:
           PERL_ROOT: C:\Strawberry\perl
         run: |
           $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vcpkgExitCode = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            vcpkg install --triplet x64-windows-static
+            $vcpkgExitCode = $LASTEXITCODE
+            if ($vcpkgExitCode -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
           vcpkg integrate install
 
       - name: Install wasm-pack
@@ -177,8 +189,14 @@ jobs:
           PERL_ROOT: C:\Strawberry\perl
         run: |
           $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vcpkgExitCode = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            vcpkg install --triplet x64-windows-static
+            $vcpkgExitCode = $LASTEXITCODE
+            if ($vcpkgExitCode -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
           vcpkg integrate install
 
       - name: Run CNG KSP integration tests
@@ -239,8 +257,14 @@ jobs:
           PERL_ROOT: C:\Strawberry\perl
         run: |
           $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vcpkgExitCode = 1
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            vcpkg install --triplet x64-windows-static
+            $vcpkgExitCode = $LASTEXITCODE
+            if ($vcpkgExitCode -eq 0) { break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if ($vcpkgExitCode -ne 0) { exit $vcpkgExitCode }
           vcpkg integrate install
 
       - name: Run EST interoperability tests
