@@ -245,6 +245,7 @@ impl HsmProvider for V3AdapterProvider {
             supports_rsa_oaep_key_wrap: false,
             enforces_ecdsa_digest_strength: false,
             max_concurrent_sessions: 128,
+            skip_finalize_on_drop: false,
         }
     }
 }
