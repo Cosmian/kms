@@ -169,9 +169,8 @@ gate_run "secret_vault" "$(first_reason "$(reason_non_fips_only)" "$(reason_need
 # test_sds.sh as "spire-sds" (step 17) using the containers it started, so
 # those two are intentionally NOT listed separately — that would re-run the
 # same suites twice. They remain available standalone via "mise test:spire-pki"
-# / "mise test:spire-sds". Likewise "spire-kmip" already runs both
-# "spire-kmip-key-manager" and "spire-kmip-upstream-authority" sequentially, so
-# those two are also omitted here.
+# / "mise test:spire-sds". Likewise "spire-kmip" only delegates to
+# "spire-kmip-key-manager", so that one is also omitted here.
 gate_run "spire" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_auth_submodule)")" \
   bash "${TASK_DIR}/spire" --variant "${VARIANT}" --link "${LINK}"
 gate_run "spire-kmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_cmd go)")" \

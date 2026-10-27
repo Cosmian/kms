@@ -502,9 +502,15 @@ impl TryFrom<kmip_2_1::kmip_operations::DeriveKeyResponse> for DeriveKeyResponse
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
-    pub unique_identifier: String,
-    pub certificate_request_type: CertificateRequestType,
-    pub certificate_request_value: Vec<u8>,
+    /// If omitted, then the ID Placeholder value is used by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+    /// REQUIRED if the Certificate Request is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_type: Option<CertificateRequestType>,
+    /// Tag 0x420018 `CertificateRequest` (KMIP 1.4 name).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
@@ -516,6 +522,34 @@ pub struct CertifyResponse {
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl From<Certify> for kmip_2_1::kmip_operations::Certify {
+    fn from(certify: Certify) -> Self {
+        let cert_req_type = certify.certificate_request_type.map(|t| match t {
+            CertificateRequestType::CRMF => kmip_2_1::kmip_types::CertificateRequestType::CRMF,
+            CertificateRequestType::PKCS10 => kmip_2_1::kmip_types::CertificateRequestType::PKCS10,
+            CertificateRequestType::PEM => kmip_2_1::kmip_types::CertificateRequestType::PEM,
+        });
+        Self {
+            unique_identifier: certify.unique_identifier.map(Into::into),
+            certificate_request_type: cert_req_type,
+            certificate_request_value: certify.certificate_request,
+            attributes: certify.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::CertifyResponse> for CertifyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::CertifyResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
 }
 
 /// 4.8 Re-certify
@@ -2822,9 +2856,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::Cancel(cancel) => {
             //     Self::Cancel(cancel.into())
             // }
-            // Operation::Certify(certify) => {
-            //     Self::Certify(certify.into())
-            // }
+            Operation::Certify(certify) => Self::Certify(Box::new(certify.into())),
             // Operation::Check(check) => Self::Check(check.into()),
             Operation::Create(create) => Self::Create(create.into()),
             Operation::CreateKeyPair(create_key_pair) => {
@@ -2912,9 +2944,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::CancelResponse(cancel_response) => {
             //     Self::CancelResponse(cancel_response.into())
             // }
-            // Operation::CertifyResponse(certify_response) => {
-            //     Self::CertifyResponse(certify_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::CertifyResponse(certify_response) => {
+                Self::CertifyResponse(certify_response.try_into().context("CertifyResponse")?)
+            }
             kmip_2_1::kmip_operations::Operation::CheckResponse(check_response) => {
                 Self::CheckResponse(check_response.try_into().context("CheckResponse")?)
             }
