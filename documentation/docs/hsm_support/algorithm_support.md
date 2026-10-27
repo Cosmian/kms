@@ -186,5 +186,5 @@ uses message-based AES-GCM when the loaded library also exports the v3.0 message
 - [SoftHSM2 setup](softhsm2.md) · [Kryoptic setup](kryoptic.md) · [Proteccio setup](proteccio.md) ·
   [Crypt2Pay setup](crypt2pay.md) · [Utimaco setup](utimaco.md) ·
   [AWS CloudHSM setup](aws_cloudhsm.md) · [GCP Cloud HSM setup](gcp_cloud_hsm.md) ·
-  Azure Cloud HSM (`crate/hsm/azure_cloud_hsm/README.md`) ·
+  [Azure Cloud HSM setup](azure_cloud_hsm.md) ·
   [SmartCard HSM setup](sc_hsm.md) · [Thales Luna setup](luna.md)
