@@ -1,9 +1,10 @@
 /**
  * Auth Verifier SAML single sign-on — Web UI E2E tests.
  *
- * The IdP round trip (KMS -> Auth Verifier /saml -> IdP -> ACS) needs a SAML identity
- * provider and a same-origin reverse proxy; it is covered by the Auth Verifier SAML E2E
- * suite and the KMS server unit tests. Here the KMS UI endpoints are mocked to check the
+ * Mocked UI-contract test. The IdP round trip (KMS -> Auth Verifier /saml -> IdP -> ACS) needs a
+ * SAML identity provider and a same-origin reverse proxy, so it is covered for real, with
+ * Keycloak and an Auth Verifier SAML build, by `tests/e2e-saml/saml-sso.spec.ts`
+ * (`mise run test:ui-saml`). Here the KMS UI endpoints are mocked to check the
  * UI side of the contract: the login button starts at `/ui/login_saml`, and a session
  * resolved by `/ui/whoami` after the redirect back is shown with a Logout button.
  *
