@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_objects::Object,
             kmip_operations::Decrypt,
-            kmip_types::{LinkType, UniqueIdentifier},
+            kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier},
         },
     },
     cosmian_kms_crypto::{
@@ -294,7 +294,11 @@ async fn decrypt_rsa_oaep(
             .map_err(CryptoApiError::from)?
         }
         // Sensitive HSM private keys come back as metadata stubs, not `PrivateKey` objects.
-        _ if ObjectHandle::from(owm.id()).is_hsm() => owm,
+        _ if ObjectHandle::from(owm.id()).is_hsm()
+            && owm.attributes().cryptographic_algorithm == Some(CryptographicAlgorithm::RSA) =>
+        {
+            owm
+        }
         _ => {
             return Err(CryptoApiError::CryptoFailure(format!(
                 "RSA-OAEP decrypt: key '{}' is not an RSA key pair (got {:?})",
@@ -307,7 +311,7 @@ async fn decrypt_rsa_oaep(
     let unwrapper = if let ObjectHandle::Hsm { prefix, .. } =
         ObjectHandle::from(private_key_owm.id())
     {
-        // HSM key size is enforced by the HSM at generation; the private key is not readable here
+        // The HSM holds the key and rejects a non-RSA-OAEP-capable key at use time
         OaepUnwrapper::Hsm {
             prefix: prefix.to_owned(),
             uid: private_key_owm.id().to_owned(),

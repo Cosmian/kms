@@ -410,7 +410,7 @@ sequenceDiagram
 Full trace of `POST /v1/crypto/decrypt` with `alg: RSA-OAEP`. The RSA wrapping
 key (persistent DB object, identified by `kid`) passes through both caches.
 The RSA-OAEP CEK is cached as a separate `UnwrappedCache` entry, keyed by a
-SHA-256 digest of the JWE `encrypted_key` field.
+SHA-256 digest of the private-key UID and the JWE `encrypted_key` field.
 
 ```mermaid
 sequenceDiagram
@@ -501,11 +501,13 @@ subsequent requests for the same token skip the RSA operation entirely.
 ### Cache key
 
 ```text
-"jose_cek_{SHA-256-hex(encrypted_key_bytes)}"
+"jose_cek_{SHA-256-hex(uid || 0x00 || encrypted_key_bytes)}"
 ```
 
 The JWE `encrypted_key` field (the RSA-OAEP ciphertext of the CEK) uniquely
-identifies a token because RSA-OAEP encryption is randomised. SHA-256 keeps the
+identifies a token because RSA-OAEP encryption is randomised. The key UID is part
+of the digest so that a CEK cached under one key is never served for another (HSM
+private keys are metadata stubs with identical fingerprints). SHA-256 keeps the
 map key compact: 64 hex chars regardless of RSA key size.
 
 ### Fingerprint source

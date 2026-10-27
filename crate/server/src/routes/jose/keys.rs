@@ -302,6 +302,17 @@ async fn generate_ec_key_pair(
 
 // ─── Internal: RSA key pair generation ──────────────────────────────────────
 
+/// Usage mask of the public half of an RSA pair: encryption algs → `Encrypt | WrapKey`,
+/// anything else (signature algs or none) → `Verify`.
+fn rsa_public_usage_from_alg(alg: Option<&str>) -> CryptographicUsageMask {
+    match alg {
+        Some("RSA-OAEP" | "RSA-OAEP-256") => {
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey
+        }
+        _ => CryptographicUsageMask::Verify,
+    }
+}
+
 async fn generate_rsa_key_pair(
     kms: &Arc<KMS>,
     user: &UserId,
@@ -316,7 +327,7 @@ async fn generate_rsa_key_pair(
         )));
     }
 
-    let create_req = create_rsa_key_pair_request(
+    let mut create_req = create_rsa_key_pair_request(
         kms.vendor_id(),
         None, // auto-generate UID
         if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
@@ -329,6 +340,28 @@ async fn generate_rsa_key_pair(
         None,  // no wrapping key
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // The default masks (Unrestricted / FIPS RSA mask) allow both Verify and Encrypt on the
+    // public key, which makes the JWKS endpoint publish neither `use` nor `alg`.
+    // Private masks stay within FIPS_PRIVATE_RSA_MASK (no Verify/Encrypt on a private key).
+    let private_mask = if matches!(alg, Some("RSA-OAEP" | "RSA-OAEP-256")) {
+        CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey
+    } else {
+        CryptographicUsageMask::Sign
+    };
+    let public_mask = rsa_public_usage_from_alg(alg);
+    for (attrs, mask) in [
+        (create_req.private_key_attributes.as_mut(), private_mask),
+        (create_req.public_key_attributes.as_mut(), public_mask),
+        (
+            create_req.common_attributes.as_mut(),
+            private_mask | public_mask,
+        ),
+    ] {
+        if let Some(attrs) = attrs {
+            attrs.cryptographic_usage_mask = Some(mask);
+        }
+    }
 
     let resp = kms
         .create_key_pair(create_req, user)
@@ -939,7 +972,7 @@ async fn import_rsa_key(
     let kid = resp.unique_identifier.to_string();
 
     // Derive and import the public key alongside the private key
-    let pub_usage = CryptographicUsageMask::Verify;
+    let pub_usage = rsa_public_usage_from_alg(alg);
     let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
 
     let key_ops = alg.map_or_else(
@@ -995,6 +1028,12 @@ fn rsa_public_components(body: &KeyCreateRequest) -> Result<(BigNum, BigNum), Cr
     if !e_bn.is_odd() {
         return Err(CryptoApiError::BadRequest(
             "RSA public exponent 'e' must be odd.".to_owned(),
+        ));
+    }
+    // An oversized `e` imports fine but makes every later RSA-OAEP wrap fail (FIPS 186-5: e < 2^256).
+    if e_bn.num_bits() > 256 {
+        return Err(CryptoApiError::BadRequest(
+            "RSA public exponent 'e' must be below 2^256 (FIPS 186-5).".to_owned(),
         ));
     }
     Ok((n_bn, e_bn))

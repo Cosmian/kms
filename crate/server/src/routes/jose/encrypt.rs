@@ -206,14 +206,14 @@ async fn encrypt_rsa_oaep(
                     ))
                 })?
             };
-            (pkey, kid.clone())
+            (pkey, Some(kid.clone()))
         }
         kmip_2_1::kmip_objects::Object::PublicKey { .. } => {
             // Already a public key — resolve linked private key UID for the protected header
             let priv_key_uid = owm
                 .attributes()
                 .get_link(LinkType::PrivateKeyLink)
-                .map_or_else(|| kid.clone(), |l| l.to_string());
+                .map(|l| l.to_string());
             let pkey = kmip_public_key_to_openssl(owm.object()).map_err(|e| {
                 CryptoApiError::CryptoFailure(format!(
                     "RSA-OAEP encrypt: failed to load public key: {e}"
@@ -262,7 +262,10 @@ async fn encrypt_rsa_oaep(
     // for this JWE token can skip the RSA-OAEP unwrap entirely.
     // Uses owm.object() as fingerprint source; if the key is rotated or updated
     // the fingerprint changes and the entry will be rejected on next peek().
-    cek_cache::insert_cek(kms, &private_key_uid, &wrapped_cek, owm.object(), &cek).await;
+    // Skipped without a linked private key: /decrypt could never peek that entry.
+    if let Some(uid) = &private_key_uid {
+        cek_cache::insert_cek(kms, uid, &wrapped_cek, owm.object(), &cek).await;
+    }
 
     debug!(
         "RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)",
@@ -272,7 +275,10 @@ async fn encrypt_rsa_oaep(
     );
 
     // Build protected header with private key UID (so decrypt handler can use it directly)
-    let protected_json = format!(r#"{{"alg":"{alg}","enc":"{enc}","kid":"{private_key_uid}"}}"#);
+    let protected_json = format!(
+        r#"{{"alg":"{alg}","enc":"{enc}","kid":"{}"}}"#,
+        private_key_uid.as_deref().unwrap_or(&kid)
+    );
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
     // RFC 7516 §5.1 step 14 — AAD construction

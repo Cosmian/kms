@@ -171,6 +171,49 @@ async fn test_jwks_rsa_encrypt_only_key_use_enc() -> KResult<()> {
     Ok(())
 }
 
+/// REST-generated RSA pairs advertise `use`/`alg` according to the requested JOSE `alg`.
+#[tokio::test]
+async fn test_jwks_rest_generated_rsa_use_alg_follow_requested_alg() -> KResult<()> {
+    use jsonwebtoken::jwk::{KeyAlgorithm, PublicKeyUse};
+
+    let app = test_utils::setup_app(None).await;
+
+    for (alg, expected_use, expected_alg) in [
+        ("RS256", PublicKeyUse::Signature, Some(KeyAlgorithm::RS256)),
+        ("RSA-OAEP-256", PublicKeyUse::Encryption, None),
+    ] {
+        let created: serde_json::Value = test_utils::post_json_with_uri(
+            &app,
+            serde_json::json!({"kty": "RSA", "alg": alg}),
+            "/v1/crypto/keys",
+        )
+        .await?;
+        let public_kid = created["kid_public"]
+            .as_str()
+            .expect("kid_public in key creation response")
+            .to_owned();
+        drop(
+            test_utils::post_json_with_uri::<_, _, serde_json::Value, _>(
+                &app,
+                serde_json::json!({"tags": ["jwks"]}),
+                &format!("/v1/crypto/keys/{public_kid}/tags"),
+            )
+            .await?,
+        );
+
+        let body = read_body(get_jwks_response(&app).await).await;
+        let set: JwkSet = serde_json::from_slice(&body).expect("valid JwkSet JSON");
+        let jwk = set
+            .keys
+            .iter()
+            .find(|k| k.common.key_id.as_deref() == Some(&public_kid))
+            .expect("generated RSA public key should be in JWKS");
+        assert_eq!(jwk.common.public_key_use, Some(expected_use), "alg={alg}");
+        assert_eq!(jwk.common.key_algorithm, expected_alg, "alg={alg}");
+    }
+    Ok(())
+}
+
 /// EC P-256 public key tagged `"jwks"` → `kty=EC`, `crv=P-256`, `alg=ES256`.
 #[tokio::test]
 async fn test_jwks_ec_p256_verify_key_present() -> KResult<()> {

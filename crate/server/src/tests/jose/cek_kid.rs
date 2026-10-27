@@ -246,6 +246,77 @@ async fn test_jose_public_import_and_cek_kid_errors() -> KResult<()> {
     Ok(())
 }
 
+/// An imported public-only key has no private key the KMS could decrypt with: the CEK must not
+/// be parked in the cache for it. Also: an oversized public exponent is refused at import.
+#[tokio::test]
+async fn test_public_only_import_caches_no_cek_and_bounds_exponent() -> KResult<()> {
+    use crate::routes::jose::cek_cache::{insert_cek, peek_cek};
+
+    let mut clap_config = https_clap_config();
+    clap_config.google_cse_config.google_cse_enable = false;
+    let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
+    let app = test_utils::test_app_with_kms(kms.clone(), None).await;
+
+    let recipient = Rsa::generate(2048)?;
+    let recipient_kid = format!("recipient-kpub-{}", Uuid::new_v4());
+    drop(
+        post_json_with_uri::<_, _, Value, _>(
+            &app,
+            public_jwk(&recipient, &recipient_kid, &json!(["encrypt"])),
+            "/v1/crypto/keys",
+        )
+        .await?,
+    );
+    let cek_key = create_aes_key(&app, "A256GCM").await?;
+    let jwe: Value = post_json_with_uri(
+        &app,
+        json!({
+            "kid": recipient_kid,
+            "alg": "RSA-OAEP-256",
+            "enc": "A256GCM",
+            "data": B64.encode(DATA),
+            "cek_kid": cek_key,
+        }),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+    let encrypted_key = field_bytes(&jwe, "encrypted_key")?;
+
+    let public: GetResponse = post_2_1(
+        &app,
+        Get::new(
+            UniqueIdentifier::TextString(recipient_kid.clone()),
+            false,
+            None,
+            None,
+        ),
+    )
+    .await?;
+    assert!(
+        peek_cek(&kms, &recipient_kid, &encrypted_key, &public.object)
+            .await
+            .is_none(),
+        "no CEK may be cached for a key without a linked private key"
+    );
+    // Control: the same lookup does find an entry that was actually inserted.
+    insert_cek(&kms, &recipient_kid, b"other", &public.object, &[1_u8; 32]).await;
+    assert!(
+        peek_cek(&kms, &recipient_kid, b"other", &public.object)
+            .await
+            .is_some()
+    );
+
+    // e = 2^300 + 1 is odd and large: refused at import, not later as a 500 in /encrypt.
+    let mut huge_e = vec![0_u8; 38];
+    huge_e[0] = 0x10;
+    huge_e[37] = 0x01;
+    let mut import = public_jwk(&recipient, &Uuid::new_v4().to_string(), &json!(["encrypt"]));
+    import["e"] = json!(B64.encode(huge_e));
+    let (status, body) = post_json_raw(&app, import, "/v1/crypto/keys").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    Ok(())
+}
+
 /// A CEK cached under one RSA key must never be served for another key, even when both keys
 /// have the same fingerprint object (HSM sensitive keys are metadata stubs with no identity).
 #[tokio::test]
