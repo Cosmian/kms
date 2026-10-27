@@ -1907,6 +1907,7 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "aws_cloudhsm_pkcs11_loader",
+ "azure_cloud_hsm_pkcs11_loader",
  "base64 0.22.1",
  "chrono",
  "clap",
