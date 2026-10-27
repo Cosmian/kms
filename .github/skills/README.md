@@ -85,6 +85,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **KMS PR Review** | `/kms-pr-review [PR#]` | Two-pass diff review; self-review mode auto-applies confirmed fixes (≤ 2 cycles); writes `review-YYYY-MM-DD/final.md`. |
+| KMS PR Description | `/kms-pr-description [PR#]` | Summarize the real branch diff into the PR description (What / Why / How / Tests / Docs) with `gh pr edit`; lists only tests actually run. |
 | KMS Adversarial Test | `/kms-adversarial-test` | Live adversarial quality gate against a running KMS; once for significant PRs. |
 
 ### Documentation

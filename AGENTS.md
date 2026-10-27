@@ -421,6 +421,7 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 |--------|------|
 | `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure through review feedback; reports CI once, never waits for it, never merges |
 | `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
+| `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; run once for significant work (`AGENTS.md` §5.6.3), skip for trivial fixes |
 | `/pre-release` | **Before every release** — orchestrates all AI audits, produces go/no-go report |
 | `/kms-release-notes <version>` | At release time — write the root `## [X.Y.Z]` entry of `CHANGELOG.md` from `git log` since the last tag, then consolidate the branch files |

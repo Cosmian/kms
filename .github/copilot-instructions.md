@@ -138,6 +138,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/react-ant-patterns` | UI coding conventions |
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
 | `/kms-pr-review` | Mandatory self-review — two-pass diff review that auto-applies confirmed fixes (≤ 2 cycles) |
+| `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `consolidate <version>` merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry and deletes them |
 | `/threat-model` | STRIDE-A threat model |
 
