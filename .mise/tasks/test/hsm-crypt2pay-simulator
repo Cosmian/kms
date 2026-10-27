@@ -43,13 +43,28 @@ require_cmd cargo
 # CRYPT2PAY_SIM_PASSWORD: PKCS#11 user PIN of the simulator slot.
 # libpkcs11c2p.so intermittently (~10%) SIGSEGVs in one of its own worker threads (strcmp,
 # reproduced under gdb, independent of the test). Retry only that signal, never test failures.
-CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
-  C2P_CONF=/etc/c2p/c2p.xml \
-  HSM_USER_PASSWORD="${CRYPT2PAY_SIM_PASSWORD:-}" \
-  cargo test \
-  -p crypt2pay_pkcs11_loader \
-  --features crypt2pay \
-  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact 2>&1
+MAX_ATTEMPTS=3
+TEST_LOG="$(mktemp)"
+for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
+  rc=0
+  CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
+    C2P_CONF=/etc/c2p/c2p.xml \
+    HSM_USER_PASSWORD="${CRYPT2PAY_SIM_PASSWORD:-}" \
+    cargo test \
+    -p crypt2pay_pkcs11_loader \
+    --features crypt2pay \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact 2>&1 | tee "$TEST_LOG" || rc=$?
+  # PIPESTATUS is clobbered by `|| rc=$?`, but under pipefail rc is the first failing stage's status.
+  if ((rc == 0)); then
+    break
+  fi
+  if ! grep -q "signal: 11, SIGSEGV" "$TEST_LOG" || ((attempt == MAX_ATTEMPTS)); then
+    rm -f "$TEST_LOG"
+    exit "$rc"
+  fi
+  print_warning "libpkcs11c2p.so SIGSEGV (attempt ${attempt}/${MAX_ATTEMPTS}); retrying"
+done
+rm -f "$TEST_LOG"
 
 print_success "Crypt2Pay simulator HSM tests completed"
