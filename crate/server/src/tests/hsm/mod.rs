@@ -135,6 +135,9 @@ async fn test_hsm_all() {
     info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
     Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
 
+    info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
+    Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 

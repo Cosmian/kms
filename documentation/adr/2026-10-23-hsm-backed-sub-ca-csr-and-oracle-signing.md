@@ -63,8 +63,8 @@ changes, see NEG-001.
    the signer public key. SCEP keeps the software path and rejects a *sensitive* HSM CA key with `NotSupported`.
    Non-sensitive HSM keys are exportable, so a blanket `is_hsm()` rejection is not needed.
 5. **`_serial=<UPPERCASE HEX>` system tag** on every certificate stored by Certify, ReCertify, Import, Register and
-   PKCS#12 import, through one helper (`set_certificate_serial_tag`) that first removes any client-supplied or
-   inherited `_serial=` tag. Certificates stored before this change are tagged once at startup on every backend
+   PKCS#12 import, through one helper (`set_certificate_serial_tag`) that first removes any inherited `_serial=` tag
+   (a client-supplied one is dropped on Import/Register/PKCS#12 and rejected on Certify). Certificates stored before this change are tagged once at startup on every backend
    (SQLite, PostgreSQL, MySQL/MariaDB, Redis-Findex), gated by a `certificate_serial_tag_backfilled` marker; the SQL
    inserts are conflict-tolerant so several nodes may start concurrently. A serial is unique only per issuer, so the
    tag can match several certificates from different CAs; it is unrelated to the enrollment tag

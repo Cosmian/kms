@@ -41,23 +41,24 @@ use crate::{
 };
 
 /// Split `subject` on commas not preceded by a backslash; `\,` and `\\` are unescaped.
-fn split_unescaped(subject: &str) -> Vec<String> {
+fn split_unescaped(subject: &str) -> KResult<Vec<String>> {
     let mut parts = vec![];
     let mut current = String::new();
     let mut chars = subject.chars();
     while let Some(c) = chars.next() {
         match c {
-            '\\' => {
-                if let Some(next) = chars.next() {
-                    current.push(next);
-                }
-            }
+            '\\' => match chars.next() {
+                Some(next) => current.push(next),
+                None => kms_bail!(KmsError::InvalidRequest(
+                    "CSR generation: subject_name ends with a dangling backslash".to_owned()
+                )),
+            },
             ',' => parts.push(std::mem::take(&mut current)),
             other => current.push(other),
         }
     }
     parts.push(current);
-    parts
+    Ok(parts)
 }
 
 /// Parse `C=FR, O=Acme\, SA, OU=PKI, OU=Sub, CN=Sub CA` into an X.509 name, keeping the RDNs in
@@ -65,7 +66,7 @@ fn split_unescaped(subject: &str) -> Vec<String> {
 /// accepted (`organizationIdentifier`, `serialNumber`, ...).
 fn parse_distinguished_name(subject: &str) -> KResult<X509Name> {
     let mut builder = X509NameBuilder::new()?;
-    for part in split_unescaped(subject) {
+    for part in split_unescaped(subject)? {
         let invalid = |reason: &str| {
             KmsError::InvalidRequest(format!(
                 "CSR generation: invalid subject name component '{part}': {reason}"
@@ -138,13 +139,16 @@ pub(crate) async fn generate_csr(
             sk.id()
         )));
     }
-    if !sk.has_usage_mask(CryptographicUsageMask::Sign, true) {
+    let is_hsm = ObjectHandle::from(sk.id()).is_hsm();
+    if !sk.has_usage_mask(CryptographicUsageMask::Sign, is_hsm) {
         kms_bail!(KmsError::InvalidRequest(format!(
             "CSR generation: the usage mask of private key '{}' does not allow Sign",
             sk.id()
         )));
     }
-    let is_hsm = ObjectHandle::from(sk.id()).is_hsm();
+    sk.check_process_window()?;
+    // shortcut: usage limits are checked, not decremented (a CSR signs no caller data); decrement like crypto_op::decrement_usage_limits if CSRs must consume a Sign budget
+    sk.enforce_usage_limits(0)?;
     if is_hsm && sk.attributes().sensitive != Some(true) {
         kms_bail!(KmsError::InvalidRequest(format!(
             "CSR generation: HSM key '{}' is extractable; create it with --sensitive",
@@ -297,6 +301,7 @@ mod tests {
             "C\0N=a",
             "C=Fé",
             "C=FRA",
+            "CN=a\\",
             too_long_ascii.as_str(),
             too_long_non_ascii.as_str(),
         ] {

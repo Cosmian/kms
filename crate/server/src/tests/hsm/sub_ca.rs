@@ -6,27 +6,30 @@ use std::sync::Arc;
 use actix_web::{App, test, web::Data};
 use cosmian_kms_access::access::Access;
 use cosmian_kms_interfaces::{ObjectHandle, as_hsm_uid};
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_types::RecommendedCurve, requests::create_ec_key_pair_request,
-};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         KmipOperation,
-        extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
+        extra::{
+            VENDOR_ATTR_X509_EXTENSION,
+            tagging::{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, VENDOR_ID_COSMIAN},
+        },
         kmip_attributes::{Attribute, Attributes},
         kmip_objects::Object,
-        kmip_operations::{AddAttribute, Certify, CreateKeyPair, Get, GetAttributes, Revoke},
+        kmip_operations::{
+            AddAttribute, Certify, CreateKeyPair, Get, GetAttributes, ReCertify, Revoke,
+        },
         kmip_types::{
             CertificateAttributes, CertificateRequestType, CryptographicAlgorithm, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, VendorAttributeValue,
+            LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, VendorAttribute,
+            VendorAttributeValue,
         },
-        requests::create_rsa_key_pair_request,
+        requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
     },
 };
 use openssl::{
     hash::MessageDigest,
+    nid::Nid,
     ocsp::{OcspCertId, OcspCertStatus as OpenSslOcspStatus, OcspFlag, OcspRequest, OcspResponse},
     stack::Stack,
     x509::{X509, X509Crl, store::X509StoreBuilder},
@@ -304,6 +307,21 @@ async fn non_admin_grants(kms: &KMS, owner: &UserId, sub_id: &str, sub_sk_id: &s
         "a CRL needs the Certify grant on the HSM key, got {:?}",
         result.map(|_crl| ())
     );
+    let leaf_request = || {
+        certify_request(
+            Some("C=FR, O=KMS Test, CN=Operator Leaf"),
+            &[
+                (LinkType::CertificateLink, sub_id),
+                (LinkType::PrivateKeyLink, sub_sk_id),
+            ],
+        )
+    };
+    let result = kms.certify(leaf_request()?, &operator).await;
+    assert!(
+        result.is_err(),
+        "issuing with an HSM CA key needs the Certify grant, got {:?}",
+        result.map(|_response| ())
+    );
     kms.grant_access(&access(sub_sk_id, KmipOperation::Certify), owner)
         .await?;
     let crl = Box::pin(generate_crl(
@@ -314,6 +332,16 @@ async fn non_admin_grants(kms: &KMS, owner: &UserId, sub_id: &str, sub_sk_id: &s
     ))
     .await?;
     let sub = certificate(kms, owner, sub_id).await?;
+    let leaf_id = kms
+        .certify(leaf_request()?, &operator)
+        .await?
+        .unique_identifier
+        .to_string();
+    let leaf = certificate(kms, &operator, &leaf_id).await?;
+    assert!(
+        leaf.verify(sub.public_key()?.as_ref())?,
+        "the operator's leaf is signed by the HSM sub-CA key"
+    );
     assert!(crl.verify(sub.public_key()?.as_ref())?);
     Ok(())
 }
@@ -327,7 +355,8 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     let slot = clap_config.hsm.hsm_slot[0];
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
-    let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
+    let root_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
+    let root_id = create_hsm_root(&kms, &owner, &root_sk_id).await?;
 
     // Sub-CA with a non-extractable RSA key pair inside the HSM.
     let sub_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
@@ -347,6 +376,71 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
         .map_err(KmsError::from),
     ))
     .await?;
+
+    // ReCertify with the HSM issuer: re-signed through the oracle, serial tag replaced by the new serial.
+    let mut renew_attributes = Attributes::default();
+    renew_attributes.set_link(
+        LinkType::CertificateLink,
+        LinkedObjectIdentifier::TextString(sub_id.clone()),
+    );
+    renew_attributes.set_link(
+        LinkType::PrivateKeyLink,
+        LinkedObjectIdentifier::TextString(sub_sk_id.clone()),
+    );
+    let renewed_id = kms
+        .recertify(
+            ReCertify {
+                unique_identifier: Some(UniqueIdentifier::TextString(leaf_id)),
+                certificate_request_type: None,
+                certificate_request_value: None,
+                offset: None,
+                attributes: Some(renew_attributes),
+                protection_storage_masks: None,
+            },
+            &owner,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+    let sub_before_restart = certificate(&kms, &owner, &sub_id).await?;
+    let renewed = certificate(&kms, &owner, &renewed_id).await?;
+    assert!(
+        renewed.verify(sub_before_restart.public_key()?.as_ref())?,
+        "the renewed leaf is signed by the HSM sub-CA key"
+    );
+    let renewed_serial = renewed.serial_number().to_bn()?.to_hex_str()?.to_string();
+    let serial_tags: Vec<String> = kms
+        .database
+        .retrieve_tags(&renewed_id)
+        .await?
+        .into_iter()
+        .filter(|tag| tag.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX))
+        .collect();
+    assert_eq!(
+        serial_tags,
+        vec![format!(
+            "{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{renewed_serial}"
+        )]
+    );
+
+    // A certificate paired with another HSM key must not produce a certificate (fails closed).
+    let mismatch = kms
+        .certify(
+            certify_request(
+                Some("C=FR, O=KMS Test, CN=Mismatch"),
+                &[
+                    (LinkType::CertificateLink, &sub_id),
+                    (LinkType::PrivateKeyLink, &root_sk_id),
+                ],
+            )?,
+            &owner,
+        )
+        .await;
+    assert!(
+        mismatch.is_err(),
+        "the sub-CA certificate paired with the root HSM key must not issue, got {:?}",
+        mismatch.map(|_response| ())
+    );
 
     // An extractable (non-sensitive) HSM key never signs a CSR: the key must stay in the HSM.
     let extractable_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
@@ -381,14 +475,15 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
     let root = certificate(&kms, &owner, &root_id).await?;
     let sub = certificate(&kms, &owner, &sub_id).await?;
-    let leaf = certificate(&kms, &owner, &leaf_id).await?;
+    // ReCertify deactivated the original leaf (Get is refused): the renewed one is checked
+    let leaf = certificate(&kms, &owner, &renewed_id).await?;
     assert_eq!(
         ocsp_status(&kms, &root, &sub, &leaf).await?,
         OpenSslOcspStatus::GOOD
     );
     kms.revoke(
         Revoke {
-            unique_identifier: Some(UniqueIdentifier::TextString(leaf_id)),
+            unique_identifier: Some(UniqueIdentifier::TextString(renewed_id)),
             revocation_reason: RevocationReason {
                 revocation_reason_code: RevocationReasonCode::KeyCompromise,
                 revocation_message: None,
@@ -434,5 +529,44 @@ pub(super) async fn test_hsm_sub_ca_ed25519() -> KResult<()> {
         .map_err(KmsError::from),
     ))
     .await?;
+    Ok(())
+}
+
+/// Sub-CA with an ECDSA HSM key (P-256 and P-384), signed by an RSA HSM root: the HSM's raw r||s
+/// signatures must come back DER-encoded in the CSR, the leaf certificate and the CRL.
+pub(super) async fn test_hsm_sub_ca_ec() -> KResult<()> {
+    let owner_name = Uuid::new_v4().to_string();
+    let owner = UserId::from(owner_name.as_str());
+    let mut clap_config = hsm_clap_config(&owner_name, None)?;
+    clap_config.db.sqlite_path = get_tmp_sqlite_path();
+    let slot = clap_config.hsm.hsm_slot[0];
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+
+    let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
+    for curve in [RecommendedCurve::P256, RecommendedCurve::P384] {
+        let sk_id = as_hsm_uid!(slot, Uuid::new_v4());
+        let (_sub_id, leaf_id) = Box::pin(sub_ca_flow(
+            &kms,
+            &owner,
+            &root_id,
+            &sk_id,
+            create_ec_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                Some(UniqueIdentifier::TextString(sk_id.clone())),
+                EMPTY_TAGS,
+                curve,
+                true,
+                None,
+            )
+            .map_err(KmsError::from),
+        ))
+        .await?;
+        let leaf = certificate(&kms, &owner, &leaf_id).await?;
+        assert_eq!(
+            leaf.signature_algorithm().object().nid(),
+            Nid::ECDSA_WITH_SHA256,
+            "{curve:?}: an EC HSM CA signs ecdsa-with-SHA256"
+        );
+    }
     Ok(())
 }

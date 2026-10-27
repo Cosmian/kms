@@ -858,6 +858,7 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/sqlite.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 
 ### `cosmian_kms_crypto`
 

@@ -21,7 +21,8 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::{Certify, Get, GetAttributes, Import, ModifyAttribute, Revoke},
             kmip_types::{
                 CertificateRequestType, CryptographicAlgorithm, Link, LinkType,
-                LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute, VendorAttributeValue,
+                LinkedObjectIdentifier, UniqueIdentifier, UsageLimits, UsageLimitsUnit,
+                VendorAttribute, VendorAttributeValue,
             },
             requests::create_rsa_key_pair_request,
         },
@@ -29,6 +30,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::openssl::kmip_public_key_to_openssl,
 };
 use openssl::x509::{X509, X509Req};
+use time::OffsetDateTime;
 
 use crate::{
     config::ServerParams,
@@ -353,6 +355,54 @@ async fn csr_generation_refuses_a_key_that_cannot_sign() -> KResult<()> {
         panic!("a key without the Sign usage must not sign a CSR");
     };
     assert!(err.to_string().contains("does not allow Sign"), "{err}");
+    Ok(())
+}
+
+/// A key past its `ProtectStopDate` does not sign a CSR, as for the KMIP Sign operation.
+#[tokio::test]
+async fn csr_generation_refuses_a_key_past_its_protect_stop_date() -> KResult<()> {
+    let kms = make_kms().await?;
+    let owner = user("pki-admin@example.com");
+    let (sk_id, _) = make_key_pair(&kms, &owner).await?;
+    kms.modify_attribute(
+        ModifyAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(sk_id.clone())),
+            new_attribute: Attribute::ProtectStopDate(
+                OffsetDateTime::now_utc() - time::Duration::hours(1),
+            ),
+        },
+        &owner,
+    )
+    .await?;
+    let Err(err) = generate_csr(&kms, &sk_id, "CN=x", &owner).await else {
+        panic!("a key past its protect stop date must not sign a CSR");
+    };
+    assert!(err.to_string().contains("DENIED"), "{err}");
+    Ok(())
+}
+
+/// A key whose usage-limit budget is exhausted does not sign a CSR.
+#[tokio::test]
+async fn csr_generation_refuses_an_exhausted_usage_limit() -> KResult<()> {
+    let kms = make_kms().await?;
+    let owner = user("pki-admin@example.com");
+    let (sk_id, _) = make_key_pair(&kms, &owner).await?;
+    kms.modify_attribute(
+        ModifyAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(sk_id.clone())),
+            new_attribute: Attribute::UsageLimits(UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: None,
+                usage_limits_total: 0,
+            }),
+        },
+        &owner,
+    )
+    .await?;
+    let Err(err) = generate_csr(&kms, &sk_id, "CN=x", &owner).await else {
+        panic!("a key with an exhausted usage limit must not sign a CSR");
+    };
+    assert!(err.to_string().contains("DENIED"), "{err}");
     Ok(())
 }
 

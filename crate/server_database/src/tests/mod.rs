@@ -294,8 +294,7 @@ pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_object
 }
 
 /// A certificate stored before the `_serial=<HEX>` tag existed (it only carries `_cert`) gets
-/// the tag when the database is re-opened; the backfill runs once (marker) and never touches
-/// certificates that already carry the tag.
+/// the tag when the database is re-opened; the marker is recorded.
 #[tokio::test]
 async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
     use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;

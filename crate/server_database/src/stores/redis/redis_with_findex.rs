@@ -417,8 +417,17 @@ impl RedisWithFindex {
             .iter()
             .filter_map(|v| String::from_utf8(v.to_vec()).ok())
         {
-            let Some(db_object) = self.objects_db.object_get(&uid).await? else {
+            let Some(ciphertext) = self.objects_db.object_get_raw(&uid).await? else {
                 continue;
+            };
+            let db_object = match self.objects_db.decrypt_object(&uid, &ciphertext) {
+                Ok(db_object) => db_object,
+                Err(e) => {
+                    warn!(
+                        "serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}"
+                    );
+                    continue;
+                }
             };
             let mut tags = db_object.tags.clone().unwrap_or_default();
             if tags
@@ -431,16 +440,22 @@ impl RedisWithFindex {
                 continue;
             };
             tags.insert(tag);
-            self.run_atomic(
-                None,
-                &[AtomicOperation::UpdateObject((
-                    uid,
-                    db_object.object,
-                    db_object.attributes.unwrap_or_default(),
-                    Some(tags),
-                ))],
-            )
-            .await?;
+            match self
+                .run_atomic(
+                    None,
+                    &[AtomicOperation::UpdateObject((
+                        uid,
+                        db_object.object,
+                        db_object.attributes.unwrap_or_default(),
+                        Some(tags),
+                    ))],
+                )
+                .await
+            {
+                // ItemNotFound: deleted since the scan started
+                Ok(_) | Err(DbError::ItemNotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
         }
 
         redis::cmd("SET")

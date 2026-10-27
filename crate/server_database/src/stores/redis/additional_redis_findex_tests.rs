@@ -1218,6 +1218,21 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
         db.list_uids_for_tags(&serial_tag).await?.contains(&uid),
         "the backfilled serial tag must be indexed in Findex"
     );
+    assert!(
+        db.retrieve_tags(&uid).await?.contains("_cert"),
+        "the backfill must keep the existing tags"
+    );
+
+    // Re-running with the marker cleared skips the already-tagged certificate.
+    redis::cmd("DEL")
+        .arg("certificate_serial_tag_backfilled")
+        .query_async::<()>(&mut db.mgr.clone())
+        .await?;
+    db.backfill_certificate_serial_tags().await?;
+    assert_eq!(
+        db.retrieve_tags(&uid).await?,
+        HashSet::from(["_cert".to_owned(), "_serial=0ABBCC".to_owned()])
+    );
 
     db.delete(&uid).await?;
     Ok(())
