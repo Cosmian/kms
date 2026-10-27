@@ -7,7 +7,7 @@
 #
 # Env:
 #   AUTH_VERIFIER_IMAGE  Auth Verifier SAML image (default: ghcr.io/cosmian/auth-verifier-saml:0.5.0)
-#   KEYCLOAK_IMAGE       Keycloak image (default: quay.io/keycloak/keycloak:26.4)
+#   KEYCLOAK_IMAGE       Keycloak image (default: docker.io/keycloak/keycloak:26.4.0)
 #   NGINX_IMAGE          nginx image (default: nginx:1.27-alpine)
 #   SAML_SSO_DIR         work dir for keys and configs (default: /tmp/kms-saml-sso)
 set -euo pipefail
@@ -19,7 +19,7 @@ source "${REPO_ROOT}/.mise/lib/common.sh"
 
 export SAML_SSO_DIR="${SAML_SSO_DIR:-/tmp/kms-saml-sso}"
 export AUTH_VERIFIER_IMAGE="${AUTH_VERIFIER_IMAGE:-ghcr.io/cosmian/auth-verifier-saml:0.5.0}"
-export KEYCLOAK_IMAGE="${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.4}"
+export KEYCLOAK_IMAGE="${KEYCLOAK_IMAGE:-docker.io/keycloak/keycloak:26.4.0}"
 export NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.27-alpine}"
 PUBLIC_ORIGIN="https://localhost:8443"
 SAML_REALM="kms-saml"
