@@ -10,7 +10,7 @@ applyTo: '**/*.rs'
 
 - Never use `.unwrap()` in production code — use `?` propagation with context.
 - Use `thiserror`-based error types; each crate defines its own `Error` enum.
-- In tests, prefer `.expect("reason")` over `.unwrap()` for better failure messages.
+- In tests, return `KResult<()>` / `Result` and use `?`. Where a panic is unavoidable use `.expect("<why this cannot fail>")`; never a bare `.unwrap()`.
 
 ## Panics and brutal exits — FORBIDDEN in production code
 
@@ -52,7 +52,7 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 ## Feature-flag discipline
 
-- `#[cfg(feature = "non-fips")]` goes at the **function or module level only** — never inside a function body.
+- Put `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm. Never wrap statements or blocks inside a function body (`#[cfg(..)] { .. }`, `#[cfg(..)] let ..`, paired `#[cfg(feature..)]`/`#[cfg(not(feature..))]` statements) and never branch on `cfg!(feature = "non-fips")` at runtime: split into two functions with opposite `#[cfg]` and call the right one. About 30 existing files violate this (e.g. `create_key_pair.rs`, `export_get.rs`, `decrypt.rs`): legacy — when you touch one, fix it in the same change.
 - Non-FIPS-only items: Covercrypt, Redis-findex, PQC CLI module, AES-XTS.
 - FIPS is the default build mode (no feature flag needed).
 
@@ -133,7 +133,7 @@ Study this file before implementing tests for any new cryptographic feature.
 //! | Functional | <list tests here> |
 //! | Security | <list security tests here> |
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 
 // ... imports ...
 
@@ -159,6 +159,15 @@ async fn test_<feature>_rejects_invalid_input() -> KResult<()> { ... }
 - Run targeted tests: `cargo test -p <crate> <test_name>` — not the full suite.
 - **Never mark a test `#[ignore]` to make the suite green.** If a test requires infrastructure (DB, network), annotate it with the reason: `#[ignore = "Requires running PostgreSQL"]`.
 - Register every new test module in `crate/server/src/tests/mod.rs`.
+- Every test asserts an observable result: a value, a state transition or an error substring (`assert!(err.to_string().contains("..."))`). `is_ok()`, `is_err()`, a bare `?`, `a || !a` and `assert!(true)` are not assertions. Assert the error *kind/message*, not just "an error occurred".
+- A missing prerequisite (HSM, DB, env var, network) is `#[ignore = "<missing infrastructure>"]` or a hard failure — never `eprintln!` + `return Ok(())`, which reports as a pass. Reasons such as "to be fixed", "noisy", "flaky" are forbidden.
+- Never hard-code a TCP port. Bind `127.0.0.1:0`, keep the listener and hand it to the code under test (pattern: `crate/test_kms_server/src/test_server.rs`, `ttlv_tests/mod.rs`). A deliberately unreachable address comes from a `:0` listener that is bound, read, then dropped — never from `9998` or `1xxxx` literals. Never bind, drop, then reuse a port for a live server.
+- Temporary files use `tempfile::TempDir` / `NamedTempFile`; never a fixed name under `std::env::temp_dir()` or `/tmp`.
+- Never use `sleep` to wait for a condition: pre-bind the listener, poll with a deadline, or use `tokio::time::pause()` + `advance()` for TTL tests. A real sleep needs a one-line comment saying what elapses.
+- Servers from `start_default_test_kms_server*()` are process-wide singletons per configuration, and `start_test_kms_server_with_config` shares the same `ONCE` cell as the default one (`test_server.rs:174-176` and `:403`): whichever test runs first wins. A test that counts or `Locate`s objects uses unique tags/UIDs generated for that test.
+- Use `#[serial]` only with a one-line comment naming the global state it protects.
+- Reuse before writing a helper: `crate/test_kms_server` (incl. `mock_gmail.rs` for one-shot mock HTTP servers), the helpers listed in `rust-cli.instructions.md`.
+- Every bug fix ships a test that fails before the fix. If that is impossible (timing, concurrency), say why in the commit message.
 
 ## Documentation
 
@@ -171,6 +180,7 @@ async fn test_<feature>_rejects_invalid_input() -> KResult<()> { ... }
 - **`#[allow(warnings)]` and `#[allow(unused_imports)]` / `#[allow(dead_code)]` and similar** are forbidden on new code. Unused items must be removed, not silenced.
 - **`#[expect(clippy::...)]` / `#[expect(dead_code)]`** (Rust 1.81+) is subject to the same rule as `#[allow]` — forbidden on new code.
 - **Do not silence any lint to make code compile faster.** Every lint exists for a reason.
+- **Test code carve-out (the only one):** a test module or test file may carry one `#[allow(clippy::unwrap_used, clippy::expect_used, clippy::unwrap_in_result, clippy::panic_in_result_fn)]` (inner `#![allow(..)]` for a whole test file) ending with the comment `// tests: a panic is the failure signal`. No other lint may be suppressed in tests.
 
 ### Fully forbidden lint suppressions (no exception, ever)
 
@@ -201,12 +211,13 @@ Any of the above added to **new code** is a blocker that must be fixed before re
 Agents must run the following scan before every commit and after every AI code-generation step:
 
 ```bash
-# All newly added #[allow(...)] and #[expect(...)] on any lint — not just clippy
+# All newly added outer #[allow(...)] / #[expect(...)] and inner #![allow(...)] attributes on any lint — not just clippy
 git diff origin/develop...HEAD -- '*.rs' \
   | grep '^+' \
   | grep -v '^+++' \
-  | grep -E '#\[(allow|expect)\(' \
-  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive\|//.*SAFETY'
+  | grep -E '#!?\[(allow|expect)\(' \
+  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive\|//.*SAFETY' \
+  | grep -v 'tests: a panic is the failure signal'
 ```
 
 Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justification. Report every match to the reviewer.

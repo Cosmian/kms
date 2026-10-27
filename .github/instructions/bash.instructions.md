@@ -79,4 +79,21 @@ trap 'rm -f "${TMP}"' EXIT
 - Never hardcode secrets or tokens in scripts.
 - Use environment variables sourced from CI secrets or `.env` files (not committed).
 
+## Destructive commands
+
+- `rm -rf` on a variable is `rm -rf -- "${VAR:?}"`; `set -u` does not catch an empty value or `/`. Same inside `trap` strings.
+- Never `chmod 777` / `chmod -R 777`; use `0700`/`0755` and `chown`.
+
+## TLS verification
+
+- `curl -k` / `--insecure` is allowed only in test scripts under `.mise/**/test*` talking to a loopback server started by the script, with a comment saying so. Never in docs, workflows, packaging or deploy scripts: use `--cacert`.
+
+## Waiting and ports
+
+- Never `sleep N` to wait for a condition: use `wait_for_port` / `kms_wait_ready` (`.mise/lib/common.sh`). Never a literal port: `kms_pick_free_port` or `test_slots.sh`.
+
+## Credentials
+
+- Never commit a bearer token, JWT or API key, even for tests. Test-only passwords are obviously fake constants defined once at the top of the script.
+
 > For MISE-specific task conventions (flags, variants, lib usage), see `.github/instructions/mise.instructions.md`.
