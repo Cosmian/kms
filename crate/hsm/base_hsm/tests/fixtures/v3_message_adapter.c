@@ -46,11 +46,18 @@ enum {
 static CK_ULONG g_counts[CNT_LEN];
 #define COUNT(i) __atomic_fetch_add(&g_counts[i], 1, __ATOMIC_RELAXED)
 
+/* Parameter bytes, CK_ULONG-aligned: the target dereferences them as a typed parameter struct
+ * (e.g. CK_RSA_PKCS_PSS_PARAMS*), which byte-aligned storage would not allow. */
+typedef union {
+  CK_ULONG align;
+  unsigned char bytes[MAX_PARAM];
+} ParamBuf;
+
 /* One message context (mechanism + parameter bytes + key) of one family. */
 typedef struct {
   int active;
   CkMechanism mech;
-  unsigned char param[MAX_PARAM];
+  ParamBuf param;
   CK_OBJECT_HANDLE key;
 } MsgCtx;
 
@@ -127,7 +134,7 @@ static CK_RV message_init(int is_sign, CK_SESSION_HANDLE h, CkMechanism *m, CK_O
   }
   ctx->mech = *m;
   if (m->ulParameterLen > 0 && m->pParameter != 0) {
-    memcpy(ctx->param, m->pParameter, m->ulParameterLen);
+    memcpy(ctx->param.bytes, m->pParameter, m->ulParameterLen);
   }
   ctx->key = key;
   ctx->active = 1;
@@ -145,7 +152,7 @@ static CK_RV adapter_message_verify_init(CK_SESSION_HANDLE h, CkMechanism *m, CK
 /* Copies the session's context out under the lock, with `pParameter` pointing at a local copy of
  * the parameter bytes. Returns CKR_OPERATION_NOT_INITIALIZED when no context is open. */
 static CK_RV snapshot(int is_sign, CK_SESSION_HANDLE h, CkMechanism *mech,
-                      unsigned char param[MAX_PARAM], CK_OBJECT_HANDLE *key) {
+                      ParamBuf *param, CK_OBJECT_HANDLE *key) {
   SessState *s;
   MsgCtx *ctx;
   pthread_mutex_lock(&g_mu);
@@ -155,9 +162,9 @@ static CK_RV snapshot(int is_sign, CK_SESSION_HANDLE h, CkMechanism *mech,
     pthread_mutex_unlock(&g_mu);
     return CKR_OPERATION_NOT_INITIALIZED;
   }
-  memcpy(param, ctx->param, MAX_PARAM);
+  memcpy(param, &ctx->param, sizeof(ParamBuf));
   *mech = ctx->mech;
-  mech->pParameter = mech->ulParameterLen > 0 ? param : 0;
+  mech->pParameter = mech->ulParameterLen > 0 ? (CK_VOID_PTR)param : 0;
   *key = ctx->key;
   pthread_mutex_unlock(&g_mu);
   return CKR_OK;
@@ -167,7 +174,7 @@ static CK_RV adapter_sign_message(CK_SESSION_HANDLE h, CK_VOID_PTR pParameter,
                                   CK_ULONG ulParameterLen, CK_BYTE *pData, CK_ULONG ulDataLen,
                                   CK_BYTE *pSignature, CK_ULONG_PTR pulSignatureLen) {
   CkMechanism mech;
-  unsigned char param[MAX_PARAM];
+  ParamBuf param;
   CK_OBJECT_HANDLE key;
   CK_BYTE buf[SIGNATURE_BUFFER];
   CK_ULONG buf_len = SIGNATURE_BUFFER;
@@ -175,7 +182,7 @@ static CK_RV adapter_sign_message(CK_SESSION_HANDLE h, CK_VOID_PTR pParameter,
   (void)ulParameterLen;
   COUNT(CNT_SIGN_MSG);
   if (pParameter != 0 || pulSignatureLen == 0) { return CKR_ARGUMENTS_BAD; }
-  rv = snapshot(1, h, &mech, param, &key);
+  rv = snapshot(1, h, &mech, &param, &key);
   if (rv != CKR_OK) { return rv; }
   rv = ((FnInit)g_target->C_SignInit)(h, &mech, key);
   if (rv != CKR_OK) { return rv; }
@@ -192,13 +199,13 @@ static CK_RV adapter_verify_message(CK_SESSION_HANDLE h, CK_VOID_PTR pParameter,
                                     CK_ULONG ulParameterLen, CK_BYTE *pData, CK_ULONG ulDataLen,
                                     CK_BYTE *pSignature, CK_ULONG ulSignatureLen) {
   CkMechanism mech;
-  unsigned char param[MAX_PARAM];
+  ParamBuf param;
   CK_OBJECT_HANDLE key;
   CK_RV rv;
   (void)ulParameterLen;
   COUNT(CNT_VERIFY_MSG);
   if (pParameter != 0) { return CKR_ARGUMENTS_BAD; }
-  rv = snapshot(0, h, &mech, param, &key);
+  rv = snapshot(0, h, &mech, &param, &key);
   if (rv != CKR_OK) { return rv; }
   rv = ((FnInit)g_target->C_VerifyInit)(h, &mech, key);
   if (rv != CKR_OK) { return rv; }
