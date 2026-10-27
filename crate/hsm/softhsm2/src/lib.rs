@@ -43,6 +43,7 @@ impl HsmProvider for SofthsmCapabilityProvider {
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
             supports_aes_gcm_message: false,
+            supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: true,
             max_label_len: None,
             // `C_SetAttributeValue` stores CKA_START_DATE/CKA_END_DATE in plaintext on private

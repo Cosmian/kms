@@ -133,4 +133,21 @@ env \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_softhsm2_all --ignored --exact
 
+# ── Run base_hsm PKCS#11 v3 message-signature adapter test ──────────────────
+# SoftHSM2 has no v3.0 message functions: a test-only C adapter adds them on top of it.
+print_header "Running base_hsm PKCS#11 v3 message-signature adapter test"
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="$LIB_PATH" \
+  DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  cargo test \
+  -p cosmian_kms_base_hsm \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --nocapture session::message_signature_tests::softhsm2_v3_adapter_message_signature --ignored --exact
+
 print_success "SoftHSM2 tests completed"

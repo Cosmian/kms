@@ -19,7 +19,7 @@ use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE,
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
-    CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
+    CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
     CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE,
     CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
     CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
@@ -43,7 +43,9 @@ use crate::{
     HError, HResult, ObjectHandlesCache, hsm_call,
     hsm_capabilities::HsmCapabilities,
     session::{
-        curve_byte_size, curve_from_der_oid, deserialize_tagged_label, serialize_tagged_label,
+        curve_byte_size, curve_from_der_oid, deserialize_tagged_label,
+        message_context::{MessageMechanismSupport, OpenMessageContexts},
+        serialize_tagged_label,
     },
 };
 
@@ -196,7 +198,7 @@ pub(super) const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bo
 }
 
 /// Returns whether a PKCS#11 return code means a mechanism is unsupported.
-const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
+pub(super) const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
     rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
 }
 /// An active PKCS#11 session with an HSM.
@@ -205,6 +207,8 @@ pub struct Session {
     handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
+    message_mechanism_support: Arc<Mutex<MessageMechanismSupport>>,
+    open_message_contexts: Mutex<OpenMessageContexts>,
     logging_in: bool,
     pub(crate) hsm_capabilities: HsmCapabilities,
 }
@@ -232,11 +236,12 @@ pub struct DerivedKeySpec<'a> {
 }
 
 impl Session {
-    pub fn new(
+    pub(crate) fn new(
         hsm: Arc<crate::hsm_lib::HsmLib>,
         session_handle: CK_SESSION_HANDLE,
         object_handles_cache: Arc<ObjectHandlesCache>,
         supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
+        message_mechanism_support: Arc<Mutex<MessageMechanismSupport>>,
         logging_in: bool,
         hsm_capabilities: HsmCapabilities,
     ) -> Self {
@@ -246,6 +251,8 @@ impl Session {
             handle: session_handle,
             object_handles_cache,
             supported_oaep_hash_cache,
+            message_mechanism_support,
+            open_message_contexts: Mutex::new(OpenMessageContexts::default()),
             logging_in,
             hsm_capabilities,
         }
@@ -269,6 +276,16 @@ impl Session {
     /// Get the object handles cache
     pub(crate) fn object_handles_cache(&self) -> Arc<ObjectHandlesCache> {
         self.object_handles_cache.clone()
+    }
+
+    /// Get the per-slot cache of mechanisms rejected by the message-signature API
+    pub(crate) const fn message_mechanism_support(&self) -> &Arc<Mutex<MessageMechanismSupport>> {
+        &self.message_mechanism_support
+    }
+
+    /// Get the message-signature contexts currently open on this session
+    pub(crate) const fn open_message_contexts(&self) -> &Mutex<OpenMessageContexts> {
+        &self.open_message_contexts
     }
 
     /// Pre-populate the object handle cache with a known object_id-to-handle mapping.
@@ -407,6 +424,8 @@ impl Session {
         &self,
         mut template: Vec<CK_ATTRIBUTE>,
     ) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+        // A token may refuse object searches while a message context is active.
+        self.end_message_operations();
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         hsm_call!(
             self.hsm,
@@ -1987,56 +2006,66 @@ impl Session {
         }
     }
 
-    fn sign_with_buffer(&self, data: &mut [u8]) -> HResult<Vec<u8>> {
+    /// Calls a single-part PKCS#11 signature function into a `MAX_SIGNATURE_BUFFER_LEN`
+    /// buffer; on `CKR_BUFFER_TOO_SMALL` grows the buffer to the reported length and calls
+    /// once more. Returns the final return code and the signature truncated to the length
+    /// written. The caller maps non-`CKR_OK` codes to errors.
+    pub(super) fn call_into_signature_buffer(
+        fn_name: &str,
+        mut call: impl FnMut(*mut u8, &mut CK_ULONG) -> HResult<CK_RV>,
+    ) -> HResult<(CK_RV, Vec<u8>)> {
         let mut signature = vec![0_u8; MAX_SIGNATURE_BUFFER_LEN];
         let mut signature_len = CK_ULONG::try_from(signature.len())?;
-        let mut rv = hsm_call!(
-            self.hsm,
-            "Failed to sign data",
-            C_Sign,
-            self.handle,
-            data.as_mut_ptr(),
-            CK_ULONG::try_from(data.len())?,
-            signature.as_mut_ptr(),
-            &raw mut signature_len;
-            CKR_BUFFER_TOO_SMALL
-        );
+        let mut rv = call(signature.as_mut_ptr(), &mut signature_len)?;
 
         if rv == CKR_BUFFER_TOO_SMALL {
             let required_len = usize::try_from(signature_len)?;
             if required_len <= signature.len() {
                 return Err(HError::Default(format!(
-                    "C_Sign reported an invalid required signature length: {required_len}"
+                    "{fn_name} reported an invalid required signature length: {required_len}"
                 )));
             }
             signature.resize(required_len, 0);
             signature_len = CK_ULONG::try_from(signature.len())?;
-            rv = hsm_call!(
-                self.hsm,
-                "Failed to sign data",
-                C_Sign,
-                self.handle,
-                data.as_mut_ptr(),
-                CK_ULONG::try_from(data.len())?,
-                signature.as_mut_ptr(),
-                &raw mut signature_len;
-                CKR_BUFFER_TOO_SMALL
-            );
+            rv = call(signature.as_mut_ptr(), &mut signature_len)?;
         }
 
+        if rv == CKR_OK {
+            let signature_len = usize::try_from(signature_len)?;
+            if signature_len > signature.len() {
+                return Err(HError::Default(format!(
+                    "{fn_name} returned signature length {signature_len} beyond buffer \
+                     capacity {}",
+                    signature.len()
+                )));
+            }
+            signature.truncate(signature_len);
+        }
+        Ok((rv, signature))
+    }
+
+    fn sign_with_buffer(&self, data: &mut [u8]) -> HResult<Vec<u8>> {
+        let data_len = CK_ULONG::try_from(data.len())?;
+        let data_ptr = data.as_mut_ptr();
+        let (rv, signature) = Self::call_into_signature_buffer("C_Sign", |sig_ptr, sig_len| {
+            #[expect(unsafe_code)]
+            // SAFETY: `data_ptr`/`data_len` describe the live `data` slice; `sig_ptr` points to
+            // a buffer of `*sig_len` bytes owned by `call_into_signature_buffer`.
+            let rv = match self.hsm.C_Sign {
+                Some(func) => unsafe { func(self.handle, data_ptr, data_len, sig_ptr, sig_len) },
+                None => {
+                    return Err(HError::Default(
+                        "C_Sign not available on library".to_owned(),
+                    ));
+                }
+            };
+            Ok(rv)
+        })?;
         if rv != CKR_OK {
             return Err(HError::Default(format!(
                 "Failed to sign data. Return code: {rv}"
             )));
         }
-        let signature_len = usize::try_from(signature_len)?;
-        if signature_len > signature.len() {
-            return Err(HError::Default(format!(
-                "C_Sign returned signature length {signature_len} beyond buffer capacity {}",
-                signature.len()
-            )));
-        }
-        signature.truncate(signature_len);
         Ok(signature)
     }
 
@@ -2046,6 +2075,10 @@ impl Session {
         mechanism: &mut CK_MECHANISM,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
+        if let Some(signature) = self.try_sign_message(key_handle, mechanism, data)? {
+            return Ok(signature);
+        }
+        self.end_message_operations();
         let mut data = data.to_vec();
         #[expect(unsafe_code)]
         // SAFETY: `mechanism` is a valid, live `&mut CK_MECHANISM` for the duration
@@ -2089,8 +2122,10 @@ impl Session {
     /// not support the requested mechanism (e.g. `CKM_EDDSA` on a v2.40-only library),
     /// so callers can distinguish "signature is wrong" from "mechanism unsupported".
     ///
-    /// Requires the loaded library to expose the classic `C_VerifyInit`/`C_Verify`
-    /// functions; virtually every conformant PKCS#11 library (v2.01+) does.
+    /// Uses the PKCS#11 v3.0 message-based `C_VerifyMessage` (persistent context) when the
+    /// provider sets `supports_message_sign_verify` and the token accepts the mechanism;
+    /// otherwise the classic `C_VerifyInit`/`C_Verify` functions, which virtually every
+    /// conformant PKCS#11 library (v2.01+) exposes.
     pub fn verify(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -2360,6 +2395,10 @@ impl Session {
         data: &[u8],
         signature: &[u8],
     ) -> HResult<bool> {
+        if let Some(valid) = self.try_verify_message(key_handle, mechanism, data, signature)? {
+            return Ok(valid);
+        }
+        self.end_message_operations();
         let mut data = data.to_vec();
         let mut signature = signature.to_vec();
 

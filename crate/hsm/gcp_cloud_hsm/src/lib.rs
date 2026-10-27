@@ -22,6 +22,7 @@ impl HsmProvider for GcpCloudHsmCapabilityProvider {
             supports_ec_sensitive_attribute: false,
             supports_aes_gcm_caller_iv: false,
             supports_aes_gcm_message: false,
+            supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
             supports_key_dates: false,

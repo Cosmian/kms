@@ -15,6 +15,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::{
     HError, HResult, Session, hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
+    session::message_context::MessageMechanismSupport,
 };
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
@@ -192,6 +193,7 @@ struct LoginSessionState {
 /// * `slot_id` - The unique identifier for this HSM slot
 /// * `object_handles_cache` - A thread-safe cache of object handles for this slot
 /// * `supported_oaep_hash_cache` - A thread-safe cache of supported hashing algorithms for rsa oaep
+/// * `message_mechanism_support` - Mechanisms the token rejected for the message-signature API
 /// * `login_state` - the optional password and lazily opened authenticated session
 ///
 /// The `SlotManager` is responsible for coordinating operations on a specific HSM slot,
@@ -201,6 +203,7 @@ pub struct SlotManager {
     slot_id: usize,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
+    message_mechanism_support: Arc<Mutex<MessageMechanismSupport>>,
     login_state: Mutex<LoginSessionState>,
     session_pool: Arc<Mutex<Vec<Session>>>,
     hsm_capabilities: HsmCapabilities,
@@ -237,6 +240,7 @@ impl SlotManager {
     ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
         let supported_oaep_hash_cache = Arc::new(Mutex::new(None));
+        let message_mechanism_support = Arc::new(Mutex::new(MessageMechanismSupport::default()));
         let session_pool = Arc::new(Mutex::new(Vec::new()));
         let session_semaphore = Arc::new(Semaphore::new(hsm_capabilities.max_concurrent_sessions));
         Ok(Self {
@@ -244,6 +248,7 @@ impl SlotManager {
             slot_id,
             object_handles_cache,
             supported_oaep_hash_cache,
+            message_mechanism_support,
             login_state: Mutex::new(LoginSessionState {
                 password: login_password,
                 session: None,
@@ -348,15 +353,7 @@ impl SlotManager {
             .map_err(|e| HError::Default(format!("Failed to lock HSM login state: {e}")))?;
         if login_state.session.is_none() {
             if let Some(password) = login_state.password.take() {
-                match Self::open_session_(
-                    &self.hsm_lib,
-                    self.slot_id,
-                    false,
-                    self.object_handles_cache.clone(),
-                    self.supported_oaep_hash_cache.clone(),
-                    Some(&password),
-                    self.hsm_capabilities.clone(),
-                ) {
+                match self.open_session_(false, Some(&password)) {
                     Ok(session) => login_state.session = Some(session),
                     Err(error) => {
                         login_state.password = Some(password);
@@ -387,15 +384,7 @@ impl SlotManager {
     /// The session is automatically closed when the Session instance is dropped.
     pub fn open_session(&self, read_write: bool) -> HResult<Session> {
         self.ensure_login_session()?;
-        Self::open_session_(
-            &self.hsm_lib,
-            self.slot_id,
-            read_write,
-            self.object_handles_cache.clone(),
-            self.supported_oaep_hash_cache.clone(),
-            None,
-            self.hsm_capabilities.clone(),
-        )
+        self.open_session_(read_write, None)
     }
 
     /// Acquire a bounded concurrency permit for this slot before checking out a session.
@@ -418,11 +407,12 @@ impl SlotManager {
             .map_err(|e| HError::Default(format!("HSM session semaphore closed unexpectedly: {e}")))
     }
 
-    /// Check out a pooled read-write session if available, otherwise open a new one.
+    /// Checkout for `sign`/`verify`: keeps any message context left open on the pooled
+    /// session so consecutive signatures with the same key reuse it.
     ///
     /// The pool only ever holds read-write sessions, so callers can never receive a
     /// session with different access rights than the ones it was opened with.
-    pub fn checkout_session(&self) -> HResult<Session> {
+    pub fn checkout_session_for_signature(&self) -> HResult<Session> {
         let pooled = {
             let mut pool = self
                 .session_pool
@@ -431,6 +421,15 @@ impl SlotManager {
             pool.pop()
         };
         pooled.map_or_else(|| self.open_session(true), Ok)
+    }
+
+    /// Checkout for every other operation: closes message contexts first, because a token
+    /// may refuse other operations while one is active (`CKR_OPERATION_ACTIVE`).
+    pub fn checkout_session(&self) -> HResult<Session> {
+        let session = self.checkout_session_for_signature()?;
+        // shortcut: mixed sign/other workloads re-init message contexts after each non-sign checkout; add a dedicated signing pool if that churn shows up in benchmarks.
+        session.end_message_operations();
+        Ok(session)
     }
 
     /// Return a healthy session to the pool for reuse.
@@ -443,16 +442,9 @@ impl SlotManager {
         }
     }
 
-    fn open_session_(
-        hsm_lib: &Arc<HsmLib>,
-        slot_id: usize,
-        read_write: bool,
-        object_handles_cache: Arc<ObjectHandlesCache>,
-        supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-        login_password: Option<&String>,
-        hsm_capabilities: HsmCapabilities,
-    ) -> HResult<Session> {
-        let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(slot_id)?;
+    fn open_session_(&self, read_write: bool, login_password: Option<&String>) -> HResult<Session> {
+        let hsm_lib = &self.hsm_lib;
+        let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(self.slot_id)?;
         let flags: CK_FLAGS = if read_write {
             CKF_RW_SESSION | CKF_SERIAL_SESSION
         } else {
@@ -536,10 +528,11 @@ impl SlotManager {
         Ok(Session::new(
             hsm_lib.clone(),
             session_handle,
-            object_handles_cache,
-            supported_oaep_hash_cache,
+            self.object_handles_cache.clone(),
+            self.supported_oaep_hash_cache.clone(),
+            self.message_mechanism_support.clone(),
             login_password.is_some(),
-            hsm_capabilities,
+            self.hsm_capabilities.clone(),
         ))
     }
 }

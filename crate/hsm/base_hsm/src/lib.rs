@@ -23,6 +23,8 @@ mod kms_hsm;
 mod slots;
 
 pub mod hsm_capabilities;
+#[cfg(test)]
+mod test_fixtures;
 pub mod test_helpers;
 pub mod tests_shared;
 
