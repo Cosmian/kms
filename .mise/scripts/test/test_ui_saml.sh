@@ -3,14 +3,18 @@
 # test_ui_saml.sh – TRUE end-to-end test of the KMS Web UI SAML single sign-on.
 #
 # Real stack, nothing mocked (see saml_sso/stack.sh):
-#   Keycloak (SAML IdP) + Auth Verifier SAML build (SAML SP) + nginx on ONE public
-#   origin https://localhost:8443, in Docker; the KMS runs on the host from this
-#   checkout (port 9998, reached through nginx) and serves the UI built here.
+#   Keycloak (SAML IdP) + nginx on ONE public origin https://localhost:8443, in Docker;
+#   the Auth Verifier SAML build (SAML SP) runs on the host with
+#   `cargo run -p auth_verifier --features saml` from the `authentication` submodule (inside
+#   its own nix-shell, which provides xmlsec); the KMS runs on the host from this checkout
+#   (port 9998, reached through nginx) and serves the UI built here.
 # Then runs `pnpm run test:e2e:saml` (ui/tests/e2e-saml/, playwright.saml.config.ts).
 #
-# Needs: docker (with compose), jq, openssl, envsubst, curl, node/pnpm, wasm-pack.
+# Needs: docker (with compose), nix (to build the Auth Verifier), the `authentication` submodule,
+#        jq, openssl, envsubst, curl, node/pnpm, wasm-pack. The first run builds xmlsec and the
+#        Auth Verifier, which takes several minutes (AUTH_VERIFIER_TIMEOUT, default 1800 s).
 # Fixed host ports: 8443 (proxy), 8444 (Auth Verifier), 9443 (Keycloak), 9998 (KMS).
-# Image overrides (e.g. a registry mirror): KEYCLOAK_IMAGE, AUTH_VERIFIER_IMAGE, NGINX_IMAGE.
+# Overrides: KEYCLOAK_IMAGE, NGINX_IMAGE (e.g. a registry mirror), AUTH_VERIFIER_REPO.
 #
 # Usage: bash .mise/scripts/test/test_ui_saml.sh [--variant non-fips]
 # ============================================================================
@@ -32,14 +36,17 @@ PUBLIC_ORIGIN="https://localhost:8443"
 
 init_build_env "$@"
 
-for cmd in docker jq openssl envsubst curl node; do
+for cmd in docker nix-shell jq openssl envsubst curl node; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     echo "ERROR: '${cmd}' is required for the SAML E2E test." >&2
     exit 1
   }
 done
-if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${KMS_PORT}/version"; then
-  echo "ERROR: something already listens on port ${KMS_PORT}; the SAML proxy forwards to it." >&2
+# A TCP probe, not an HTTP one: a foreign listener (e.g. an IDE port forward) may reset or drop HTTP.
+if (exec 3<>"/dev/tcp/127.0.0.1/${KMS_PORT}") 2>/dev/null; then
+  echo "ERROR: something already listens on port ${KMS_PORT}; the SAML proxy forwards to it:" >&2
+  # The nix shell may not have lsof on PATH.
+  "$(command -v lsof || echo /usr/sbin/lsof)" -nP -iTCP:"${KMS_PORT}" -sTCP:LISTEN >&2 2>/dev/null || true
   exit 1
 fi
 

@@ -1,9 +1,10 @@
 ---
 # Local SAML single sign-on stack for manual testing — started by stack.sh (do not run directly).
 #   keycloak       SAML identity provider           https://localhost:9443 (admin / admin)
-#   auth-verifier  SAML service provider (SAML build) https://127.0.0.1:8444 (reached by the KMS)
-#   proxy          nginx: /saml/* -> auth-verifier, everything else -> KMS on the host
+#   proxy          nginx: /saml/* -> Auth Verifier, everything else -> KMS, both running on the host
 #                  public origin https://localhost:8443
+# The Auth Verifier (SAML service provider, https://127.0.0.1:8444) is not a container: stack.sh runs it
+# on the host with `cargo run -p auth_verifier --features saml`.
 services:
   keycloak:
     image: ${KEYCLOAK_IMAGE}
@@ -21,18 +22,8 @@ services:
       - ${SAML_SSO_DIR}:/conf:ro
       - ${SAML_SSO_DIR}/keycloak-realm.json:/opt/keycloak/data/import/demo-realm.json:ro
 
-  auth-verifier:
-    image: ${AUTH_VERIFIER_IMAGE}
-    environment:
-      AUTH_SERVER_CONF: /conf/auth_verifier.toml
-    ports:
-      - 127.0.0.1:8444:8444
-    volumes:
-      - ${SAML_SSO_DIR}:/conf:ro
-
   proxy:
     image: ${NGINX_IMAGE}
-    depends_on: [auth-verifier]
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:

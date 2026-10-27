@@ -71,12 +71,15 @@ fi
 print_header "OIDC E2E tests"
 bash "${REPO_ROOT}/.mise/scripts/test/test_ui_oidc.sh" --variant "${VARIANT}" --link "${LINK}"
 
-# ── 4. SAML single sign-on E2E tests (Keycloak + Auth Verifier SAML, Docker) ─
-# Validated for non-FIPS only; needs a running Docker daemon for the IdP/SP stack.
+# ── 4. SAML single sign-on E2E tests (Keycloak + nginx in Docker, Auth Verifier SAML via cargo run) ─
+# Validated for non-FIPS only; needs a Docker daemon (Keycloak, nginx) and the authentication
+# submodule (the Auth Verifier SAML build is started with `cargo run`).
 if [ "${VARIANT}" = "fips" ]; then
   print_warning "Skipping SAML E2E tests in FIPS mode (only validated for non-FIPS)"
 elif ! docker info >/dev/null 2>&1; then
   print_warning "Skipping SAML E2E tests: Docker daemon not available"
+elif [ ! -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+  print_warning "Skipping SAML E2E tests: authentication submodule not found"
 else
   print_header "SAML E2E tests"
   bash "${REPO_ROOT}/.mise/scripts/test/test_ui_saml.sh" --variant "${VARIANT}" --link "${LINK}"

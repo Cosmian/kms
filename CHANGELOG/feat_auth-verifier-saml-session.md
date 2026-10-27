@@ -32,7 +32,7 @@
 ## Build
 
 - Move the `authentication` submodule to the Authentication Verifier release that ships SAML single sign-on (0.5.0),
-  and run the local SAML test stack on the published `ghcr.io/cosmian/auth-verifier-saml:0.5.0` image
+  and run the local SAML test stack with `cargo run -p auth_verifier --features saml` from that submodule
 - Add the `test:ui-saml` mise task (also run by `test:ui` on non-FIPS with Docker): an end-to-end SAML single
-  sign-on test (Keycloak IdP, Authentication Verifier SAML build, nginx on one HTTPS origin, KMS on the host,
+  sign-on test (Keycloak IdP and nginx in Docker, Authentication Verifier SAML build and KMS on the host,
   Playwright in `ui/tests/e2e-saml/`)
