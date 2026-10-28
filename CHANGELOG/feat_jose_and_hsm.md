@@ -40,3 +40,7 @@
 ## Build
 
 - `shell.nix`: only add the glibc include path on Linux so `nix-shell` evaluates on macOS.
+
+## CI
+
+- Install the pinned mise `v2026.10.8` Linux x64/ARM64 release binary directly and verify its architecture-specific SHA-256 before execution. This removes the installer's unpinned release-index lookup and its HTTP 524 failure path.
