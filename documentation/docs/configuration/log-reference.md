@@ -1130,6 +1130,8 @@ Crate path: `crate/hsm/base_hsm`
 | `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
 | `debug` | `Could not terminate the decryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
 | `debug` | `Could not terminate the encryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
+| `warn` | `{} failed: {rv:#010x} ({}); context dropped` | `src/session/message_context.rs` | `rv` | - |
+| `debug` | `PKCS#11 message-based {0} unsupported for mechanism {mechanism_type:#x} ({1}); using C_{2}Init` | `src/session/message_context.rs` | `0`, `mechanism_type`, `1`, `2` | - |
 
 ---
 
