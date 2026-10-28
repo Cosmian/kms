@@ -64,12 +64,28 @@ function skillBody(cwd: string, name: string): string | undefined {
   }
 }
 
+/**
+ * The part of a prompt that can request a workflow: not fenced/inline code, quoted or diff lines,
+ * nor a negated clause ("do not edit …"). shortcut: a negation hides the rest of its clause, so
+ * "do not forget the changelog" is missed; upgrade to a real intent classifier if that bites.
+ */
+function requestText(prompt: string): string {
+  return prompt
+    .replace(/```[\s\S]*?(?:```|$)/g, " ")
+    .replace(/`[^`\n]*`/g, " ")
+    .split("\n")
+    .filter(line => !/^\s*(?:>|[+-](?!\s)|@@|diff --git)/.test(line))
+    .join("\n")
+    .replace(/\b(?:do not|don't|dont|never|without|avoid)\b[^.;\n]*/gi, " ");
+}
+
 function autorunMessage(cwd: string, prompt: string): string | undefined {
   const seen = new Set<string>();
   const sections: string[] = [];
+  const request = requestText(prompt);
   for (const t of loadTriggers(cwd)) {
     if (sections.length >= MAX_AUTORUN_SKILLS) break;
-    if (seen.has(t.skill) || !t.regex.test(prompt)) continue;
+    if (seen.has(t.skill) || !t.regex.test(request)) continue;
     seen.add(t.skill);
     const body = skillBody(cwd, t.skill);
     if (body === undefined) continue;
