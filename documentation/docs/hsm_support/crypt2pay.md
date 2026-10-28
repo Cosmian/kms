@@ -276,6 +276,12 @@ which stores the keys generated through PKCS#11, wrapped by the KDK. `[C2P_DIR]`
     FIPS images: HSM key creation, AES-GCM encryption and decryption through the KMS pod, and
     decryption with the same HSM key after the pod was deleted and recreated.
 
+!!! warning
+    The FIPS validation above predates the FIPS 140-3 IG C.H rule: FIPS builds no longer send a
+    caller-chosen AES-GCM IV, and Crypt2pay has no PKCS#11 v3.0 message API, so FIPS AES-GCM now
+    requires Crypt2pay to generate the IV. This is not yet re-validated; if it fails, use
+    `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"` for the key encryption key.
+
 ### 1. Crypt2pay client image
 
 Build it once per library version. `libpkcs11c2p.so` links only against glibc (check yours with

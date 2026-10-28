@@ -494,8 +494,9 @@ The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw
 Symmetric keys and public keys can be used to encrypt data. Only HSM admin users, or a user granted the `Encrypt`
 operation by an HSM admin, can encrypt data with keys stored in the HSM.
 
-For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-deprecated, but still widely
-used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
+For symmetric keys, AES GCM is supported for data encryption; AES-KW (`NISTKeyWrap`) and AES-KWP
+(`AESKeyWrapPadding`) are also accepted, for wrapping key material. CKM_RSA_PKCS_OAEP and the now-deprecated, but
+still widely used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
 
 When using RSA, the maximum message size in bytes is:
 
