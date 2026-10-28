@@ -491,6 +491,40 @@ impl RedisWithFindex {
                 }
                 db_object.attributes = Some(attributes.clone());
             }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_object,
+                object,
+                attributes,
+                tags,
+            } => {
+                let user = require_user(user)?;
+                let entry = self.touch(&mut attempt.uids, uid).await?;
+                let Some(db_object) = entry.current.as_mut() else {
+                    return Err(DbError::Conflict(uid.clone()));
+                };
+                if db_object.owner != user.as_str() {
+                    return Err(DbError::Unauthorized(format!(
+                        "User '{user}' does not own object '{uid}' and cannot update it"
+                    )));
+                }
+                if matches!(
+                    db_object.state,
+                    State::Destroyed | State::Destroyed_Compromised
+                ) {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                if serde_json::to_value(&db_object.object)?
+                    != serde_json::to_value(expected_object)?
+                {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                db_object.object = object.as_ref().clone();
+                if tags.is_some() {
+                    db_object.tags.clone_from(tags);
+                }
+                db_object.attributes = Some(attributes.clone());
+            }
             AtomicOperation::UpdateState((uid, state)) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
                 let Some(db_object) = entry.current.as_mut() else {
