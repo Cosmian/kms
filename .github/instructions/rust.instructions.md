@@ -93,7 +93,7 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 **Functional tests** (new file `crate/server/src/tests/<feature>_tests.rs`):
 
-- Use `make_kms()` / `test_kms()` for in-process SQLite tests (no network).
+- Use `test_kms()` / `test_kms_with_config()` (§ Test KMS servers) for in-process SQLite tests (no network).
 - Cover the full lifecycle: create → operate → verify state.
 - Test all output formats (DER, PEM, JSON) when applicable.
 - Test that the result is persisted and retrievable from cache/DB.
@@ -164,10 +164,35 @@ async fn test_<feature>_rejects_invalid_input() -> KResult<()> { ... }
 - Never hard-code a TCP port. Bind `127.0.0.1:0`, keep the listener and hand it to the code under test (pattern: `crate/test_kms_server/src/test_server.rs`, `ttlv_tests/mod.rs`). A deliberately unreachable address comes from a `:0` listener that is bound, read, then dropped — never from `9998` or `1xxxx` literals. Never bind, drop, then reuse a port for a live server.
 - Temporary files use `tempfile::TempDir` / `NamedTempFile`; never a fixed name under `std::env::temp_dir()` or `/tmp`.
 - Never use `sleep` to wait for a condition: pre-bind the listener, poll with a deadline, or use `tokio::time::pause()` + `advance()` for TTL tests. A real sleep needs a one-line comment saying what elapses.
-- Servers from `start_default_test_kms_server*()` are process-wide singletons per configuration, and `start_test_kms_server_with_config` shares the same `ONCE` cell as the default one (`test_server.rs:174-176` and `:403`): whichever test runs first wins. A test that counts or `Locate`s objects uses unique tags/UIDs generated for that test.
 - Use `#[serial]` only with a one-line comment naming the global state it protects.
-- Reuse before writing a helper: `crate/test_kms_server` (incl. `mock_gmail.rs` for one-shot mock HTTP servers), the helpers listed in `rust-cli.instructions.md`.
 - Every bug fix ships a test that fails before the fix. If that is impossible (timing, concurrency), say why in the commit message.
+
+### Test KMS servers
+
+- Never call `KMS::instantiate`, `start_kms_server` or `ServerParams::try_from` in a test. If a variant is missing, add a helper first: a singleton goes through `start_singleton_from_toml` in `crate/test_kms_server/src/test_server.rs` with its own `OnceCell` and a complete fixture under `test_data/configs/server/` (per `test-configs.instructions.md`); a one-off server uses `start_test_server_with_patch`; inside `crate/server`, extend `tests/test_utils.rs`. The `no-direct-kms-instantiate` pre-commit hook enforces this for `crate/server/src`.
+- Inside `crate/server` (no `test_kms_server` dependency: cycle): use `test_kms()`, `test_kms_with_config(cfg)` (patch `https_clap_config()` / `https_clap_config_opts(url)`), `test_app*` for in-process Actix services, and `ttlv_tests::get_client()` for the binary KMIP socket server.
+- Servers from `start_default_test_kms_server*()` are process-wide singletons per configuration, and `start_test_kms_server_with_config` shares the default server's `ONCE` cell: whichever test runs first wins. A test that counts or `Locate`s objects uses unique tags/UIDs generated for that test.
+- Reuse before writing a helper: `crate/test_kms_server` (incl. `mock_gmail.rs` for one-shot mock HTTP servers) and the helpers below.
+
+Every other crate uses the `test_kms_server` helpers:
+
+| Helper | Fixture / behaviour |
+|---|---|
+| `start_default_test_kms_server` | `auth/plain.toml`: SQLite, plain HTTP, no auth, `KMS_TEST_DB` override |
+| `start_default_test_kms_server_with_cert_auth` | `auth/cert.toml`: TLS + client-cert auth + socket server |
+| `_with_jwt_auth` | `auth/plain_jwt.toml`: plain HTTP + JWT auth |
+| `_with_non_revocable_key_ids(ids)` | `test/non_revocable.toml` + the given non-revocable key IDs |
+| `_with_crypto_officer_users(users)` | `rbac/crypto_officer_users.toml` + the given crypto officers |
+| `_with_multi_crypto_officer_users` | `rbac/crypto_officer_users.toml` + two crypto officers |
+| `start_ceremony_test_kms_server` | `rbac/crypto_officers.toml`: `require_ceremony = true` |
+| `start_test_kms_server_with_pqc_tls` | `tls/pqc_tls.toml`: ML-DSA-44 TLS certificate (non-FIPS) |
+| `_with_utimaco_hsm` | `hsm/hsm_test.toml`: Utimaco HSM |
+| `_with_utimaco_and_kek` | Utimaco HSM + HSM key encryption key |
+| `_with_hsm_and_kek` | HSM from `HSM_MODEL` / `HSM_SLOT_ID` + HSM key encryption key |
+| `_with_three_softhsm2` | `hsm/three_softhsm2.toml`: three SoftHSM2 slots |
+| `start_test_kms_server_with_config(ClapConfig)` | Custom config; shares the default `ONCE` cell |
+| `start_test_server(path, TestClientOptions)` / `start_test_server_with_patch(path, patch, opts)` / `start_test_server_from_toml(path)` | Fresh owned server; call `stop_server()` |
+| `*_for_vectors` | Vector runner only |
 
 ## Documentation
 

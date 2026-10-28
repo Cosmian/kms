@@ -110,13 +110,7 @@ async fn test_create_my_object_error_cases() -> CosmianResult<()> {
 
 ### Test server variants
 
-| `start_*` helper | When to use |
-|---|---|
-| `start_default_test_kms_server()` | Default: SQLite, TLS with cert auth |
-| `start_default_test_kms_server_with_cert_auth()` | Explicit cert-auth (same as above) |
-| `start_default_test_kms_server_with_crypto_officer_users(users)` | One or more CO users, no ceremony |
-| `start_default_test_kms_server_with_multi_crypto_officer_users()` | Pre-configured two-CO setup |
-| Custom: `TestKmsServerConfig { .. }` | Any other config (HSM, Redis, ceremony) |
+Pick the server helper from [`rust.instructions.md` § Test KMS servers](rust.instructions.md#test-kms-servers); never start a server another way.
 
 Import helpers from `crate/tests/utils::{owner_config, load_client_config, run_ckms, run_ckms_expect_error}`.
 
