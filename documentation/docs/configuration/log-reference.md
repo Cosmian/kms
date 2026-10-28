@@ -802,6 +802,8 @@ Crate path: `crate/server`
 | `warn` | `enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 | `debug` | `The unwrapping key {unwrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid` | - |
 | `debug` | `RSA-OAEP HSM unwrap failed: {e}` | `src/routes/jose/decrypt.rs` | `e` | - |
+| `info` | `POST /certificates/csr` | `src/routes/csr.rs` | - | Request to generate a PKCS#10 CSR; the HSM signs it for non-extractable keys. |
+| `trace` | `found certificate {certificate_id} linked to HSM private key {}` | `src/core/certificate/find.rs` | `certificate_id` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -854,6 +856,10 @@ Crate path: `crate/server_database`
 | `error` | `atomic: objects {uids:?} were committed but the Findex index could not be updated after {INDEX_WRITE_ATTEMPTS} attempts (index needs repair): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `INDEX_WRITE_ATTEMPTS`, `e` | - |
 | `warn` | `atomic: active-key counter not updated for {uids:?} (reconcile will fix): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `e` | - |
 | `warn` | `atomic: live-object counter not updated for {uids:?} (reconcile will fix): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `e` | - |
+| `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/sqlite.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 
 ### `cosmian_kms_crypto`
 
@@ -1494,6 +1500,7 @@ Crate path: `ui/src/`
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 | `error` | `Error loading OpenPGP algorithms from WASM:` | `actions/Pgp/PgpKeysCreate.tsx` | - | - |
 | `error` | `Error fetching Get for ${row.object_id}:` | `components/common/Locate.tsx` | `row.object_id`: UID whose attributes could not be retrieved | The Locate row remains un-enriched and shows unavailable attributes. Check the browser network request and KMS response for this UID. |
+| `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
 
 ---
 

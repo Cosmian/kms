@@ -29,7 +29,10 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         sql::{
             database::SqlDatabase,
             locate_query::{
@@ -510,6 +513,56 @@ impl PgPool {
             tx.execute(
                 get_pgsql_query!("upsert-parameter"),
                 &[&WRAPPING_KEY_BACKFILL_PARAM, &"true"],
+            )
+            .await
+            .map_err(DbError::from)?;
+            tx.commit().await.map_err(DbError::from)?;
+        }
+        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
+        // existed, gated by a completion marker (same transactional shape as above).
+        let serial_backfill_done = client
+            .query_opt(
+                get_pgsql_query!("select-parameter"),
+                &[&CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
+            )
+            .await
+            .map_err(DbError::from)?
+            .map(|row| row.get::<usize, String>(0))
+            == Some("true".to_owned());
+        if !serial_backfill_done {
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            let missing_rows = tx
+                .query(
+                    get_pgsql_query!("select-certificates-missing-serial-tag"),
+                    &[],
+                )
+                .await
+                .map_err(DbError::from)?;
+            let insert_tag_stmt = tx
+                .prepare(get_pgsql_query!("insert-tags-if-absent"))
+                .await
+                .map_err(DbError::from)?;
+            for row in &missing_rows {
+                let id: String = row.get(0);
+                let object_json: String = row.get(1);
+                match serde_json::from_str::<Object>(&object_json) {
+                    Ok(obj) => {
+                        if let Some(tag) = certificate_serial_tag(&obj) {
+                            tx.execute(&insert_tag_stmt, &[&id, &tag])
+                                .await
+                                .map_err(DbError::from)?;
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        uid = %id,
+                        error = %e,
+                        "serial tag backfill: skipping object that failed to deserialize"
+                    ),
+                }
+            }
+            tx.execute(
+                get_pgsql_query!("upsert-parameter"),
+                &[&CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, &"true"],
             )
             .await
             .map_err(DbError::from)?;

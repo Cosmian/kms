@@ -390,8 +390,29 @@ impl ObjectsStore for HsmStore {
             return Ok(vec![]);
         }
 
+        // A private key creation `hsm_keypair_algorithm` did not recognize: say which algorithm.
+        if let Some((uid, attributes)) = operations.iter().find_map(|op| match op {
+            AtomicOperation::Create((uid, _owner, object, attributes, _tags))
+                if object.object_type() == ObjectType::PrivateKey =>
+            {
+                Some((uid, attributes))
+            }
+            _ => None,
+        }) {
+            #[cfg(not(feature = "non-fips"))]
+            const SUPPORTED: &str = "RSA and elliptic-curve (EC/ECDSA/ECDH) key pairs";
+            #[cfg(feature = "non-fips")]
+            const SUPPORTED: &str = "RSA and elliptic-curve (EC/ECDSA/ECDH, secp256k1, secp192k1, \
+                                     Ed25519, Ed448, X25519) key pairs";
+            return Err(InterfaceError::InvalidRequest(format!(
+                "HSM key pair creation does not support the cryptographic algorithm {:?} (key \
+                 {uid}); an HSM can only create {SUPPORTED}",
+                attributes.cryptographic_algorithm
+            )));
+        }
+
         Err(InterfaceError::InvalidRequest(
-            "HSM atomic operations only support RSA keypair creations for now".to_owned(),
+            "unsupported HSM atomic operation".to_owned(),
         ))
     }
 
@@ -2180,6 +2201,55 @@ mod tests {
             return Err(InterfaceError::Default(format!(
                 "count_all_non_destroyed ({via_all}) must equal count_non_destroyed_keys \
                  ({via_keys}) for HsmStore"
+            )));
+        }
+        Ok(())
+    }
+
+    /// An unsupported key pair algorithm (ML-DSA) on an `hsm::` id is refused with a message that
+    /// names the algorithm, not a generic "RSA only" error.
+    #[tokio::test]
+    async fn test_atomic_create_of_an_unsupported_keypair_names_the_algorithm()
+    -> InterfaceResult<()> {
+        let store = HsmStore::new(
+            Arc::new(MockHsm::new()),
+            &["admin".to_owned()],
+            "cosmian",
+            "hsm",
+        );
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::MLDSA_44),
+            ..Attributes::default()
+        };
+        let object = cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey(
+            cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey {
+                key_block: cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock {
+                    key_format_type: cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::PKCS8,
+                    key_compression_type: None,
+                    key_value: None,
+                    cryptographic_algorithm: None,
+                    cryptographic_length: None,
+                    key_wrapping_data: None,
+                },
+            },
+        );
+        let operation = crate::AtomicOperation::Create((
+            "hsm::0::k".to_owned(),
+            UserId::from("admin"),
+            object,
+            attributes,
+            HashSet::new(),
+        ));
+        let Err(InterfaceError::InvalidRequest(message)) =
+            store.atomic(&UserId::from("admin"), &[operation]).await
+        else {
+            return Err(InterfaceError::Default(
+                "an ML-DSA key pair must be refused by the HSM store".to_owned(),
+            ));
+        };
+        if !(message.contains("MLDSA_44") && message.contains("RSA")) {
+            return Err(InterfaceError::Default(format!(
+                "the error must name the algorithm and what is supported: {message}"
             )));
         }
         Ok(())

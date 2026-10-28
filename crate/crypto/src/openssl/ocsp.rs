@@ -307,12 +307,11 @@ pub fn verify_issuer_hashes_match_ca(
             return Ok(false);
         }
 
-        // Build a reference OCSP_CERTID from the CA itself, using the same digest as
-        // the query. OCSP_cert_to_id(dgst, subject=ca_cert, issuer=ca_cert) gives us
-        // what we need because OpenSSL computes issuerNameHash from issuer.subject and
-        // issuerKeyHash from issuer.pubkey; the serial number is irrelevant here.
-        // SAFETY: ca_cert is valid; OCSP_cert_to_id returns null on error.
-        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ca_cert.as_ptr(), ca_cert.as_ptr()) };
+        // Build a reference OCSP_CERTID from the CA itself. With a null subject OpenSSL hashes
+        // the *issuer's own* subject name and public key; passing the CA as subject would hash
+        // the CA's issuer name instead, which differs for every non-self-signed (sub-)CA.
+        // SAFETY: ca_cert is valid; a null subject is allowed; null is returned on error.
+        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ptr::null(), ca_cert.as_ptr()) };
         if ref_cid.is_null() {
             return Ok(false);
         }
@@ -1433,6 +1432,44 @@ mod tests {
                 md.type_()
             );
         }
+    }
+
+    #[test]
+    fn test_verify_issuer_hashes_match_ca_accepts_sub_ca() {
+        // A sub-CA's issuer name differs from its subject name: the CertId of a certificate
+        // it issued hashes the sub-CA subject, which is what the check must compare with.
+        let (root, root_key) = create_test_ca();
+        let sub_key =
+            PKey::from_rsa(openssl::rsa::Rsa::generate(2048).expect("RSA keygen")).expect("PKey");
+        let cert = |subject: &str, key: &PKey<openssl::pkey::Private>, issuer: &X509| {
+            let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
+            nb.append_entry_by_text("CN", subject).expect("CN");
+            let name = nb.build();
+            let mut b = X509Builder::new().expect("X509Builder");
+            b.set_version(2).expect("v3");
+            b.set_subject_name(&name).expect("subject");
+            b.set_issuer_name(issuer.subject_name()).expect("issuer");
+            b.set_pubkey(key).expect("pubkey");
+            b.set_not_before(&openssl::asn1::Asn1Time::days_from_now(0).expect("nb"))
+                .expect("set_not_before");
+            b.set_not_after(&openssl::asn1::Asn1Time::days_from_now(30).expect("na"))
+                .expect("set_not_after");
+            b.set_serial_number(
+                &Asn1Integer::from_bn(BigNum::from_u32(2).expect("bn").as_ref()).expect("serial"),
+            )
+            .expect("set_serial");
+            b.sign(&root_key, MessageDigest::sha256()).expect("sign");
+            b.build()
+        };
+        let sub = cert("Sub CA", &sub_key, &root);
+        let leaf = cert("Leaf", &sub_key, &sub);
+
+        let mut req = OcspRequest::new().expect("OcspRequest::new");
+        req.add_id(OcspCertId::from_cert(MessageDigest::sha1(), &leaf, &sub).expect("cert id"))
+            .expect("add_id");
+        let queries = parse_ocsp_request(&req.to_der().expect("to_der")).expect("parse");
+        assert!(verify_issuer_hashes_match_ca(&queries, &sub).expect("verify"));
+        assert!(!verify_issuer_hashes_match_ca(&queries, &root).expect("verify"));
     }
 
     #[test]

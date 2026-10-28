@@ -1402,11 +1402,16 @@ basicConstraints=critical,CA:FALSE
         ca_id: &str,
         path: &std::path::Path,
     ) {
-        let crl = crate::core::operations::generate_crl::generate_crl(kms, ca_id, None, owner)
-            .await
-            .expect("generate_crl")
-            .to_der()
-            .expect("CRL to DER");
+        let crl = crate::core::operations::generate_crl::generate_crl(
+            kms,
+            ca_id,
+            None,
+            crate::core::operations::generate_crl::CrlRequester::User(owner),
+        )
+        .await
+        .expect("generate_crl")
+        .to_der()
+        .expect("CRL to DER");
         std::fs::write(path, crl).expect("write CRL fixture");
     }
 

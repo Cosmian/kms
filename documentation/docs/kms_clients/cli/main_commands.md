@@ -2525,20 +2525,22 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 **`generate-crl`** [[12.6]](#126-ckms-certificates-generate-crl)  Generate a Certificate Revocation List (CRL) for a CA certificate.
 
-**`import`** [[12.7]](#127-ckms-certificates-import)  Import one of the following:
+**`generate-csr`** [[12.7]](#127-ckms-certificates-generate-csr)  Generate a PKCS#10 certificate signing request (CSR) for a private key held by the KMS.
+
+**`import`** [[12.8]](#128-ckms-certificates-import)  Import one of the following:
 
 - a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
 - a certificate chain as a PEM-stack (chain)
 - a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
 - the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 
-**`revoke`** [[12.8]](#128-ckms-certificates-revoke)  Revoke a certificate
+**`revoke`** [[12.9]](#129-ckms-certificates-revoke)  Revoke a certificate
 
-**`destroy`** [[12.9]](#129-ckms-certificates-destroy)  Destroy a certificate
+**`destroy`** [[12.10]](#1210-ckms-certificates-destroy)  Destroy a certificate
 
-**`set-rotation-policy`** [[12.10]](#1210-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+**`set-rotation-policy`** [[12.11]](#1211-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
 
-**`validate`** [[12.11]](#1211-ckms-certificates-validate)  Validate a certificate
+**`validate`** [[12.12]](#1212-ckms-certificates-validate)  Validate a certificate
 
 ---
 
@@ -2709,7 +2711,32 @@ Generate a Certificate Revocation List (CRL) for a CA certificate.
 
 ---
 
-## 12.7 ckms certificates import
+## 12.7 ckms certificates generate-csr
+
+Generate a PKCS#10 certificate signing request (CSR) for a private key held by the KMS.
+
+### Usage
+`ckms certificates generate-csr [options]`
+### Arguments
+`--private-key-id [-k] <PRIVATE_KEY_ID>` The unique identifier of the private key that signs the CSR. With `--algorithm`, the identifier of the key pair to generate (`hsm::<slot>::<id>` generates it in the HSM); a random one is used when omitted
+
+`--algorithm [-a] <ALGORITHM>` Generate the key pair with this algorithm before signing the CSR with its private key
+
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "ed25519", "ed448", "rsa1024", "rsa2048", "rsa3072", "rsa4096", "ml-dsa-44", "ml-dsa-65", "ml-dsa-87", "slh-dsa-sha2-128s", "slh-dsa-sha2-128f", "slh-dsa-sha2-192s", "slh-dsa-sha2-192f", "slh-dsa-sha2-256s", "slh-dsa-sha2-256f", "slh-dsa-shake-128s", "slh-dsa-shake-128f", "slh-dsa-shake-192s", "slh-dsa-shake-192f", "slh-dsa-shake-256s", "slh-dsa-shake-256f", "ml-kem-512", "ml-kem-768", "ml-kem-1024", "x25519-ml-kem-768", "x448-ml-kem-1024", "ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"`
+
+`--sensitive <SENSITIVE>` Make the generated private key non-extractable (required for an HSM key)
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--subject-name [-s] <SUBJECT_NAME>` The subject distinguished name, e.g. "C=FR, O=Acme, CN=Acme Sub CA". Escape a comma inside a value with a backslash
+
+`--output-file [-o] <OUTPUT_FILE>` The output file for the PEM-encoded CSR
+
+
+
+---
+
+## 12.8 ckms certificates import
 
 Import one of the following:
 
@@ -2755,7 +2782,7 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 ---
 
-## 12.8 ckms certificates revoke
+## 12.9 ckms certificates revoke
 
 Revoke a certificate
 
@@ -2775,7 +2802,7 @@ Revoke a certificate
 
 ---
 
-## 12.9 ckms certificates destroy
+## 12.10 ckms certificates destroy
 
 Destroy a certificate
 
@@ -2797,7 +2824,7 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 12.10 ckms certificates set-rotation-policy
+## 12.11 ckms certificates set-rotation-policy
 
 Set the automatic rotation policy on a certificate (interval, offset, keyset name)
 
@@ -2816,7 +2843,7 @@ Set the automatic rotation policy on a certificate (interval, offset, keyset nam
 
 ---
 
-## 12.11 ckms certificates validate
+## 12.12 ckms certificates validate
 
 Validate a certificate
 

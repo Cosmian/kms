@@ -68,7 +68,7 @@ use crate::{
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, est, get_hsm_status,
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, csr, est, get_hsm_status,
         get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
@@ -1966,6 +1966,7 @@ pub async fn prepare_kms_server(
             .service(access::get_create_access)
             .service(access::get_privileged_access)
             .service(crl::get_crl)
+            .service(csr::post_csr)
             .service(access::get_crypto_officer_status)
             .service(access::disable_crypto_officer)
             .service(access::activate_crypto_officer_ceremony)

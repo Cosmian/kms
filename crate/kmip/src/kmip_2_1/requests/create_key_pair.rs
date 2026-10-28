@@ -286,3 +286,96 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..CreateKeyPair::default()
     })
 }
+
+/// Build the `CreateKeyPair` request of a key pair able to sign, from the algorithm names of
+/// `ckms certificates certify --algorithm` (`rsa2048`, `nist-p256`, `ed25519`, `ml-dsa-65`, ...).
+///
+/// `private_key_id` is the identifier of the private key to create (an `hsm::<slot>::<id>`
+/// identifier creates it in the HSM) and `sensitive` makes it non-extractable.
+///
+/// # Errors
+/// Returns an error for an unknown name, for an algorithm that cannot sign (ML-KEM and hybrid
+/// KEMs) or that the build does not support (non-FIPS algorithms in a FIPS build).
+pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    vendor_id: &str,
+    algorithm: &str,
+    private_key_id: Option<&UniqueIdentifier>,
+    tags: T,
+    sensitive: bool,
+) -> Result<CreateKeyPair, KmipError> {
+    let tags: Vec<String> = tags.into_iter().map(|t| t.as_ref().to_owned()).collect();
+    let rsa = |bits| {
+        create_rsa_key_pair_request(
+            vendor_id,
+            private_key_id.cloned(),
+            &tags,
+            bits,
+            sensitive,
+            None,
+        )
+    };
+    let ec = |curve| {
+        create_ec_key_pair_request(
+            vendor_id,
+            private_key_id.cloned(),
+            &tags,
+            curve,
+            sensitive,
+            None,
+        )
+    };
+    #[cfg(feature = "non-fips")]
+    if let Some(pqc_algorithm) = pqc_signing_algorithm(algorithm) {
+        let mut request = create_pqc_key_pair_request(vendor_id, &tags, pqc_algorithm, sensitive)?;
+        if let Some(attributes) = request.private_key_attributes.as_mut() {
+            attributes.unique_identifier = private_key_id.cloned();
+        }
+        return Ok(request);
+    }
+    match algorithm {
+        "rsa2048" => rsa(2048),
+        "rsa3072" => rsa(3072),
+        "rsa4096" => rsa(4096),
+        "nist-p224" => ec(RecommendedCurve::P224),
+        "nist-p256" => ec(RecommendedCurve::P256),
+        "nist-p384" => ec(RecommendedCurve::P384),
+        "nist-p521" => ec(RecommendedCurve::P521),
+        #[cfg(feature = "non-fips")]
+        "rsa1024" => rsa(1024),
+        #[cfg(feature = "non-fips")]
+        "nist-p192" => ec(RecommendedCurve::P192),
+        #[cfg(feature = "non-fips")]
+        "ed25519" => ec(RecommendedCurve::CURVEED25519),
+        #[cfg(feature = "non-fips")]
+        "ed448" => ec(RecommendedCurve::CURVEED448),
+        name if name.contains("kem") => Err(KmipError::Default(format!(
+            "{name} is a key encapsulation algorithm: its key cannot sign a certificate signing request"
+        ))),
+        name => Err(KmipError::Default(format!(
+            "unknown or unsupported key algorithm '{name}'"
+        ))),
+    }
+}
+
+/// The ML-DSA / SLH-DSA algorithm named like the `certify --algorithm` values.
+#[cfg(feature = "non-fips")]
+fn pqc_signing_algorithm(name: &str) -> Option<CryptographicAlgorithm> {
+    Some(match name {
+        "ml-dsa-44" => CryptographicAlgorithm::MLDSA_44,
+        "ml-dsa-65" => CryptographicAlgorithm::MLDSA_65,
+        "ml-dsa-87" => CryptographicAlgorithm::MLDSA_87,
+        "slh-dsa-sha2-128s" => CryptographicAlgorithm::SLHDSA_SHA2_128s,
+        "slh-dsa-sha2-128f" => CryptographicAlgorithm::SLHDSA_SHA2_128f,
+        "slh-dsa-sha2-192s" => CryptographicAlgorithm::SLHDSA_SHA2_192s,
+        "slh-dsa-sha2-192f" => CryptographicAlgorithm::SLHDSA_SHA2_192f,
+        "slh-dsa-sha2-256s" => CryptographicAlgorithm::SLHDSA_SHA2_256s,
+        "slh-dsa-sha2-256f" => CryptographicAlgorithm::SLHDSA_SHA2_256f,
+        "slh-dsa-shake-128s" => CryptographicAlgorithm::SLHDSA_SHAKE_128s,
+        "slh-dsa-shake-128f" => CryptographicAlgorithm::SLHDSA_SHAKE_128f,
+        "slh-dsa-shake-192s" => CryptographicAlgorithm::SLHDSA_SHAKE_192s,
+        "slh-dsa-shake-192f" => CryptographicAlgorithm::SLHDSA_SHAKE_192f,
+        "slh-dsa-shake-256s" => CryptographicAlgorithm::SLHDSA_SHAKE_256s,
+        "slh-dsa-shake-256f" => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+        _ => return None,
+    })
+}

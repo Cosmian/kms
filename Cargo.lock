@@ -1920,6 +1920,7 @@ dependencies = [
  "cosmian_logger",
  "crypt2pay_pkcs11_loader",
  "dashmap",
+ "der 0.7.10",
  "dialoguer",
  "dotenvy",
  "fs4",
@@ -1967,6 +1968,7 @@ dependencies = [
  "uuid",
  "windows-service",
  "winresource",
+ "x509-cert",
  "x509-parser 0.17.0",
  "zeroize",
 ]

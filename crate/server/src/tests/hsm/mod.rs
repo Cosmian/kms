@@ -59,6 +59,7 @@ mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
+mod sub_ca;
 mod symmetric_dek;
 pub(crate) mod test_helpers;
 
@@ -108,6 +109,8 @@ async fn test_hsm_all() {
         Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
             .await
             .unwrap();
+        info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
@@ -128,6 +131,12 @@ async fn test_hsm_all() {
     Box::pin(issues::test_hsm_locate_name_filter_does_not_leak_kek())
         .await
         .unwrap();
+
+    info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
+    Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
+
+    info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
+    Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
 
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();

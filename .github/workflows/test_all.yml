@@ -594,18 +594,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
 
-  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.). The publication will be done on tags only.
-  cargo-publish:
-    needs:
-      - test-nix
-      - test-nix-upstream
-      - hsm
-      - hsm-upstream
-      - helm
-    # The upstream-only jobs are skipped on forks: a skipped dependency must not skip the
-    # publish dry-run, but any failed or cancelled dependency still blocks it.
+  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.).
+  # cargo-publish.yml does a dry run off-tag and a real publish on tags, so it is called twice:
+  # the (long) dry run starts immediately, the real publish only once every test job passed.
+  cargo-publish-dry-run:
     if: >-
-      !failure() && !cancelled() &&
+      !startsWith(github.ref, 'refs/tags/') &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/cargo-publish.yml
@@ -614,9 +608,34 @@ jobs:
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
+  cargo-publish:
+    needs:
+      - test-nix
+      - test-nix-upstream
+      - hsm
+      - hsm-upstream
+      - helm
+    # Real publish, tags only: a skipped dependency (upstream-only jobs on forks) must not skip
+    # it, but any failed or cancelled dependency blocks it.
+    if: >-
+      startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
+    uses: ./.github/workflows/cargo-publish.yml
+    with:
+      toolchain: 1.97.0
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
+
   cleanup:
     needs:
+      - cargo-publish-dry-run
       - cargo-publish
+      - test-nix
+      - test-nix-upstream
+      - hsm
+      - hsm-upstream
+      - helm
+      - windows-2022
+      - interop-macos
     if: >-
       always() &&
       (github.event_name != 'pull_request' ||

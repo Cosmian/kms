@@ -246,6 +246,15 @@ graph LR
     end
 ```
 
+### certificates-csr
+
+```mermaid
+graph LR
+    A[Open Generate CSR page] --> B[Submit empty form]
+    B --> C[Private key ID required error]
+    B --> D[Subject DN required error]
+```
+
 ## Locate & Filters
 
 ### locate-flow
