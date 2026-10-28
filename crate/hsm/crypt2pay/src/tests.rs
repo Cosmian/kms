@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest,
+    HError, HResult, RsaOaepDigest,
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -50,7 +50,7 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     let slot = shared::get_slot::<Crypt2payCapabilityProvider>(&hsm, &cfg)?;
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
-    shared::destroy_all(&slot)?;
+    let before = shared::object_handles(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
     shared::generate_ec_keypair(&slot)?;
@@ -72,7 +72,7 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
-    shared::destroy_all(&slot)?;
+    shared::destroy_created_since(&slot, &before)?;
     Ok(())
 }
 
@@ -106,6 +106,14 @@ fn test_hsm_crypt2pay_get_supported_algorithms() -> HResult<()> {
 fn test_hsm_crypt2pay_generate_aes_key() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::generate_aes_key(&slot)
+}
+
+/// Real-hardware CI runs this separately from the simulator's aggregate suite.
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and a real Crypt2pay HSM"]
+fn test_hsm_crypt2pay_exportable_aes_key() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::export_aes_key_bytes(&slot)
 }
 
 #[test]
@@ -245,7 +253,21 @@ fn test_hsm_crypt2pay_search_incompatible_key() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_destroy_all() -> HResult<()> {
+fn test_hsm_crypt2pay_zz_cleanup_test_objects() -> HResult<()> {
+    // The serial prefix runner sorts this last, after standalone tests have created their keys.
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::destroy_all(&slot)
+    let session = slot.open_session(true)?;
+    let mut before = shared::object_handles(&slot)?;
+    before.retain(|handle| {
+        !matches!(session.get_object_id(*handle),
+            Ok(Some(id)) if id.starts_with(shared::TEST_OBJECT_ID_PREFIX.as_bytes()))
+    });
+    shared::generate_aes_key(&slot)?;
+    shared::destroy_created_since(&slot, &before)?;
+    if shared::object_handles(&slot)? != before {
+        return Err(HError::Default(
+            "Cleanup must remove test-created objects and preserve non-test objects".to_owned(),
+        ));
+    }
+    Ok(())
 }

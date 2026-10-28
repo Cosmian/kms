@@ -215,7 +215,7 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
 }
 
 /// `CKA_ID` prefix of every object created by these shared tests.
-const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
+pub const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
 
 /// A fresh, unique `CKA_ID` for an object created by these shared tests.
 fn test_object_id() -> String {
@@ -326,6 +326,54 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
             );
         }
     }
+    Ok(())
+}
+
+/// Export an AES-256 key and prove its bytes decrypt ciphertext produced by the HSM.
+pub fn export_aes_key_bytes(slot: &Arc<SlotManager>) -> HResult<()> {
+    let session = slot.open_session(true)?;
+    let key_id = test_object_id();
+    let handle = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
+    let data = b"export the real HSM key bytes";
+    let result = (|| -> HResult<_> {
+        let extractable = session.is_extractable(handle)?;
+        let key = session
+            .export_key(handle)
+            .map_err(|e| {
+                HError::Default(format!(
+                    "AES key export failed (CKA_EXTRACTABLE={extractable:?}): {e}"
+                ))
+            })?
+            .ok_or_else(|| HError::Default("Exported AES key is missing".to_owned()))?;
+        let encrypted = session.encrypt(handle, HsmEncryptionAlgorithm::AesGcm, data, None)?;
+        Ok((extractable, key, encrypted))
+    })();
+    // Delete only our key, including when export or encryption failed.
+    session.destroy_object(handle)?;
+    let (extractable, key, encrypted) = result?;
+    assert_eq!(extractable, Some(true), "CKA_EXTRACTABLE must be true");
+    let KeyMaterial::AesKey(key_bytes) = key.key_material() else {
+        return Err(HError::Default(
+            "Expected exported AES key material".to_owned(),
+        ));
+    };
+    assert_eq!(key_bytes.len(), 32, "AES-256 export must contain 32 bytes");
+    let iv = encrypted
+        .iv
+        .ok_or_else(|| HError::Default("HSM encryption returned no IV".to_owned()))?;
+    let tag = encrypted
+        .tag
+        .ok_or_else(|| HError::Default("HSM encryption returned no GCM tag".to_owned()))?;
+    let plaintext = openssl::symm::decrypt_aead(
+        openssl::symm::Cipher::aes_256_gcm(),
+        key_bytes,
+        Some(&iv),
+        &[],
+        &encrypted.ciphertext,
+        &tag,
+    )
+    .map_err(|e| HError::Default(format!("Exported key cannot decrypt HSM ciphertext: {e}")))?;
+    assert_eq!(plaintext, data);
     Ok(())
 }
 
