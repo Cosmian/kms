@@ -599,6 +599,14 @@ repos:
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
+      - id: ui-e2e-changed
+        name: UI end-to-end (specs touched by the change, dev server)
+        entry: bash .mise/scripts/pre-commit/ui-e2e-changed.sh
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [pre-push]
+
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
         entry: mise run test:wasm
