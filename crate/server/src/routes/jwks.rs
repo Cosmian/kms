@@ -205,7 +205,7 @@ fn object_to_jwk(
     let usage_mask = attributes.cryptographic_usage_mask;
 
     match pkey.id() {
-        Id::RSA => rsa_to_jwk(uid, &pkey).map(|jwk| to_json_value(uid, &jwk)),
+        Id::RSA => rsa_to_jwk(uid, &pkey, usage_mask).map(|jwk| to_json_value(uid, &jwk)),
         Id::EC => Ok(ec_to_jwk(uid, &pkey, usage_mask)?.and_then(|jwk| to_json_value(uid, &jwk))),
         #[cfg(feature = "non-fips")]
         Id::ED25519 => Ok(eddsa_to_jwk(uid, &pkey)?.and_then(|jwk| to_json_value(uid, &jwk))),
@@ -229,9 +229,16 @@ fn to_json_value(uid: &str, jwk: &Jwk) -> Option<serde_json::Value> {
 /// Serialize an RSA public key to JWK.
 ///
 /// Encodes the modulus (`n`) and public exponent (`e`) as unsigned big-endian
-/// base64url strings.  The `alg` field is inferred from the modulus bit length:
-/// 2048 → `RS256`, 3072 → `RS384`, 4096 → `RS512`.
-fn rsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Jwk> {
+/// base64url strings.  `use`/`alg` are derived from the `CryptographicUsageMask`:
+/// - absent mask, or `Verify` without `Encrypt`/`WrapKey` → `use=sig`, `alg` inferred
+///   from the modulus bit length (2048 → `RS256`, 3072 → `RS384`, 4096 → `RS512`);
+/// - `Encrypt`/`WrapKey` without `Verify` → `use=enc`, no `alg`;
+/// - both, or neither → neither `use` nor `alg` (the key is not restricted to one purpose).
+fn rsa_to_jwk(
+    uid: &str,
+    pkey: &PKey<Public>,
+    usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Jwk> {
     let rsa = pkey
         .rsa()
         .map_err(|e| KmsError::ServerError(format!("Failed to extract RSA key uid={uid}: {e}")))?;
@@ -250,16 +257,28 @@ fn rsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Jwk> {
     // Exponent is typically 3 bytes (65537 = 0x010001) — no padding needed.
     let e_bytes = rsa.e().to_vec();
 
-    let alg = match key_bits {
+    let size_alg = match key_bits {
         2048 => Some(KeyAlgorithm::RS256),
         3072 => Some(KeyAlgorithm::RS384),
         4096 => Some(KeyAlgorithm::RS512),
         _ => None,
     };
 
+    let (public_key_use, alg) =
+        usage_mask.map_or((Some(PublicKeyUse::Signature), size_alg), |mask| {
+            let has_verify = mask.contains(CryptographicUsageMask::Verify);
+            let has_enc =
+                mask.intersects(CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey);
+            match (has_verify, has_enc) {
+                (true, false) => (Some(PublicKeyUse::Signature), size_alg),
+                (false, true) => (Some(PublicKeyUse::Encryption), None),
+                _ => (None, None),
+            }
+        });
+
     Ok(Jwk {
         common: CommonParameters {
-            public_key_use: Some(PublicKeyUse::Signature),
+            public_key_use,
             key_algorithm: alg,
             key_id: Some(uid.to_owned()),
             ..Default::default()

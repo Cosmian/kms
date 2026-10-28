@@ -1,9 +1,8 @@
 ---
 name: Install mise
 description: >
-  Install mise in a CI-resilient way.
-  Uses Homebrew on macOS (never hits GitHub release race conditions)
-  and the official install script on Linux (Linux builds are always present).
+  Install mise using Homebrew on macOS and a pinned, SHA-256-verified
+  release binary on Linux, without installer release-index discovery.
   Sets MISE_YES=1 so all subsequent mise commands run non-interactively.
 
 runs:
@@ -14,24 +13,36 @@ runs:
       shell: bash
       run: brew install mise
 
-    - name: Install mise (Linux via install script)
+    - name: Install mise (Linux via pinned binary)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         set -euo pipefail
-        # Pinned to an immutable release asset (https://mise.run serves the latest
-        # version and changes on every mise release, which would break this check).
-        # To bump: set MISE_INSTALL_VERSION, then update the hash with
-        #   curl -fsSL https://github.com/jdx/mise/releases/download/<version>/install.sh | sha256sum
-        MISE_INSTALL_VERSION="v2026.10.8"
+        MISE_VERSION="v2026.10.8"
+        # Recompute pins: curl -fsSL https://github.com/jdx/mise/releases/download/<version>/mise-<version>-linux-<arch> | sha256sum
+        case "$RUNNER_ARCH" in
+          X64)
+            arch="x64"
+            checksum="c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428"
+            ;;
+          ARM64)
+            arch="arm64"
+            checksum="6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5"
+            ;;
+          *)
+            echo "::error::Unsupported Linux runner architecture: $RUNNER_ARCH"
+            exit 1
+            ;;
+        esac
+        work_dir="$(mktemp -d)"
+        trap 'rm -rf -- "${work_dir:?}"' EXIT
         curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors \
-          -fsSL "https://github.com/jdx/mise/releases/download/${MISE_INSTALL_VERSION}/install.sh" \
-          -o /tmp/mise-install.sh
-        echo "0cf85ea287411c3de289ee28b20453e24d5b84172c3d276f3a12db704feb483d  /tmp/mise-install.sh" | sha256sum -c -
-        sh /tmp/mise-install.sh
-        rm -f /tmp/mise-install.sh
+          -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-${arch}" \
+          -o "${work_dir}/mise"
+        echo "${checksum}  ${work_dir}/mise" | sha256sum -c -
+        install -Dm755 "${work_dir}/mise" "$HOME/.local/bin/mise"
+        "$HOME/.local/bin/mise" --version
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
 
     - name: Configure mise for CI (non-interactive)
       shell: bash

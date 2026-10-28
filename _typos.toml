@@ -1,5 +1,7 @@
 [default.extend-identifiers]
 HashiCorp = "HashiCorp"
+# openssl::encrypt::Encrypter (the crate's own spelling).
+Encrypter = "Encrypter"
 
 [default.extend-words]
 Veeam = "Veeam"
