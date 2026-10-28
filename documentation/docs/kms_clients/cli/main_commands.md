@@ -930,7 +930,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -938,8 +939,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -1393,7 +1392,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -1401,8 +1401,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -1751,7 +1749,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -1759,8 +1758,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -2187,7 +2184,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -2195,8 +2193,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -3139,7 +3135,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -3147,8 +3144,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -4200,7 +4195,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -4208,8 +4204,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -4621,7 +4615,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -4629,8 +4624,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -4958,7 +4951,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -4966,8 +4960,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 
@@ -5323,7 +5315,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 The possible wrapping algorithms are
 
  - using a symmetric KEK:
-    - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     - `aes-gcm`
  - using an RSA KEK:
     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -5331,8 +5324,6 @@ The possible wrapping algorithms are
     - `rsa-pkcs-v15` (CKM-RSA v1.5)
 
 Possible values:  `"aes-key-wrap-padding", "nist-key-wrap", "aes-gcm", "rsa-pkcs-v15-sha1", "rsa-pkcs-v15", "rsa-oaep-sha1", "rsa-oaep", "rsa-aes-key-wrap-sha1", "rsa-aes-key-wrap"`
-
-`--authenticated-additional-data [-d] <AUTHENTICATED_ADDITIONAL_DATA>` Authenticated encryption additional data Only available for AES GCM wrapping
 
 
 

@@ -299,7 +299,6 @@ async fn import_encrypt_decrypt(
         key_usage_vec: Some(vec![KeyUsage::Decrypt]),
         unwrap: true,
         replace_existing: true,
-        authenticated_additional_data: None,
     })?;
     trace!("import private key with unwrap OK");
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
