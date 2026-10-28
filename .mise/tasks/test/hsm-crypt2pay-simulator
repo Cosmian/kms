@@ -60,6 +60,6 @@ LD_PRELOAD="${C2P_SHIM_DIR}/c2p_no_inotify.so${LD_PRELOAD:+:${LD_PRELOAD}}" \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact 2>&1
+  -- --nocapture tests::test_hsm_crypt2pay_simulator_all --ignored --exact 2>&1
 
 print_success "Crypt2Pay simulator HSM tests completed"

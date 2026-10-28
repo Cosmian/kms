@@ -14,7 +14,7 @@
 
 ### HSM
 
-- FIPS builds use the PKCS#11 v3.0 message API or an HSM-generated AES-GCM IV for production HSMs (FIPS 140-3 IG C.H); an HSM providing neither fails with a message pointing to `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"`. Exceptions retain caller-supplied IVs for the SoftHSM2 and Kryoptic development tokens and for Crypt2pay, whose simulator generates no GCM IV (use AES key wrap there in FIPS deployments). `hsm_model = "other"` is now treated as a FIPS-validated module.
+- FIPS builds use the PKCS#11 v3.0 message API or an HSM-generated AES-GCM IV for production HSMs (FIPS 140-3 IG C.H); an HSM providing neither fails with a message pointing to `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"`. Only the SoftHSM2 and Kryoptic development tokens retain caller-supplied IVs. The Crypt2pay simulator's FIPS suite verifies rejection when no IV is generated, without weakening the production Crypt2pay policy. `hsm_model = "other"` is now treated as a FIPS-validated module.
 
 ### CLI / UI
 
