@@ -66,8 +66,9 @@ function skillBody(cwd: string, name: string): string | undefined {
 
 /**
  * The part of a prompt that can request a workflow: not fenced/inline code, quoted or diff lines,
- * nor a negated clause ("do not edit …"). shortcut: a negation hides the rest of its clause, so
- * "do not forget the changelog" is missed; upgrade to a real intent classifier if that bites.
+ * nor an imperative negation of a file action ("do not edit …", up to the clause end). A dot only
+ * ends the clause before whitespace, so file names and URLs stay inside it. shortcut: other
+ * negations ("without", "avoid") are not stripped; upgrade to an intent classifier if that bites.
  */
 function requestText(prompt: string): string {
   return prompt
@@ -76,7 +77,10 @@ function requestText(prompt: string): string {
     .split("\n")
     .filter(line => !/^\s*(?:>|[+-](?!\s)|@@|diff --git)/.test(line))
     .join("\n")
-    .replace(/\b(?:do not|don't|dont|never|without|avoid)\b[^.;\n]*/gi, " ");
+    .replace(
+      /\b(?:do not|don't|dont|never)\s+(?:edit|modify|touch|change|update|write|create|run|use|commit|push)\b(?:[^;,\n.]|\.(?!\s|$))*/gi,
+      " ",
+    );
 }
 
 function autorunMessage(cwd: string, prompt: string): string | undefined {
