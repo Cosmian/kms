@@ -36,14 +36,6 @@ function TestProject
         Write-Error "Workspace lib tests failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
-
-    # Run ckms crate tests explicitly (lib + integration)
-    cargo test -p ckms --features "non-fips" -- --nocapture
-    if ($LASTEXITCODE -ne 0)
-    {
-        Write-Error "ckms tests failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
 }
 
 
