@@ -201,6 +201,7 @@ The API is available below `/<kv_mount>/data/*` and
 `/<kv_mount>/metadata/*`, and also below `/v1/<kv_mount>/...` because the `vault` and `bao` CLIs always send the `/v1` prefix. Writes are accepted with `POST` or `PUT`. The `kv_mount` name must be a single path segment that does not collide with another scope (`v1`, `sys`, `auth`, `crypto`, `kmip`, `ui`, `aws`, `ms_dke`, `google_cse`, `tokenize`, `vault_transit_mount`, `vault_pki_mount`); the server refuses to start otherwise. An empty value means `kv`. A write creates a new version, while reads return
 the latest version unless `?version=<number>` is provided. All versions are
 retained indefinitely. Metadata listing uses `GET /<kv_mount>/metadata/<prefix>?list=true`.
+Paths and listing prefixes are limited to 219 characters so generated tags fit the SQL backends.
 
 KV operations use the metadata object's access rights:
 
@@ -215,6 +216,13 @@ The first writer owns the path. Other identities must receive the matching
 access right on the metadata object through the normal access-grant API. A
 `DELETE` on `data/<path>` soft-deletes the current version; a `DELETE` on
 `metadata/<path>` destroys all versions and the metadata object.
+Hard-deleted paths no longer appear in metadata listings.
+
+Concurrent writes to the same path use a metadata compare-and-swap. If another
+write wins first, the request returns `409 Conflict` and can be retried. Version
+object IDs are recorded in metadata so hard-delete does not depend on a current
+tag-index listing; metadata created by older server versions remains supported
+through the legacy tag lookup.
 
 An optional write TTL can be supplied with the Vault KV v2 request body. The
 background sweep marks expired versions as destroyed at the configured
@@ -225,7 +233,7 @@ When the Vault-compatible authentication API is enabled and an auth-verifier
 URL is configured, requests may authenticate with the `X-Vault-Token` header.
 Native KMS authentication methods remain available on the same scope.
 
-The OpenBao CLI works unchanged against this store. Point it at the KMS and use the `kv` mount:
+Use the OpenBao CLI with the supported KV v2 operations by pointing it at the KMS and using the `kv` mount:
 
 ```bash
 export BAO_ADDR=https://kms.example.com:9998
@@ -236,7 +244,7 @@ bao kv get -version=1 kv/myapp/config
 bao kv list kv/myapp
 ```
 
-This is exercised in CI by `mise run test:openbao --variant non-fips`.
+The OpenBao CLI integration test runs in CI with both FIPS and non-FIPS builds. It covers the operations listed above, but does not claim full Vault KV v2 API parity. Compare-and-set (`cas`), partial updates (`kv patch`), and version-targeted delete/undelete/destroy operations are not implemented.
 
 ## Security considerations
 

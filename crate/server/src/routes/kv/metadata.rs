@@ -42,7 +42,9 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use uuid::Uuid;
 
 use super::error::{KvApiError, KvResult};
 use crate::{
@@ -54,6 +56,19 @@ use crate::{
 /// alike), used for the `LIST` prefix scan and the TTL cron sweep.
 pub(crate) const KV_MARKER_TAG: &str = "_kv";
 
+/// Maximum path length that keeps the longest KV tag within SQL `VARCHAR(255)`.
+pub(crate) const MAX_KV_PATH_LENGTH: usize = 255 - "_kv::version::".len() - "::".len() - 20;
+
+/// Reject paths that would produce a KV tag too long for SQL backends.
+pub(crate) fn validate_path_length(path: &str) -> KvResult<()> {
+    if path.chars().count() > MAX_KV_PATH_LENGTH {
+        return Err(KvApiError::BadRequest(format!(
+            "path must not exceed {MAX_KV_PATH_LENGTH} characters"
+        )));
+    }
+    Ok(())
+}
+
 /// Build the exact tag identifying the metadata object for `path`.
 pub(crate) fn meta_tag(path: &str) -> String {
     format!("_kv::meta::{path}")
@@ -61,7 +76,12 @@ pub(crate) fn meta_tag(path: &str) -> String {
 
 /// Build the exact tag identifying version `version` of `path`.
 pub(crate) fn version_tag(path: &str, version: u64) -> String {
-    format!("_kv::{path}::{version}")
+    format!("_kv::version::{path}::{version}")
+}
+
+/// Build the tag shared by all versions belonging to `path`.
+pub(crate) fn path_tag(path: &str) -> String {
+    format!("_kv::path::{path}")
 }
 
 /// Build the tag recording a version's absolute TTL expiry (Unix seconds).
@@ -81,6 +101,8 @@ pub(crate) struct VersionEntry {
     pub deletion_time: String,
     #[serde(default)]
     pub destroyed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_uid: Option<String>,
 }
 
 /// JSON payload stored inside the metadata `SecretData` object.
@@ -98,6 +120,54 @@ pub(crate) fn now_rfc3339() -> KvResult<String> {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| KvApiError::InternalError(format!("failed to format timestamp: {e}")))
+}
+
+/// Derive a stable metadata UID so concurrent first writes converge on one object.
+pub(crate) fn path_metadata_uid(path: &str, generation: u64) -> KvResult<String> {
+    let uid_input = format!("kv-metadata-v1:{generation}:{path}");
+    let digest = Sha256::digest(uid_input.as_bytes());
+    let uid_bytes = digest
+        .chunks_exact(16)
+        .next()
+        .ok_or_else(|| KvApiError::InternalError("failed to derive KV metadata UID".into()))?;
+    Uuid::from_slice(uid_bytes)
+        .map(|uid| uid.to_string())
+        .map_err(|e| KvApiError::InternalError(format!("failed to derive KV metadata UID: {e}")))
+}
+
+/// Find the first unused metadata UID, skipping destroyed generations.
+pub(crate) async fn next_path_metadata_uid(
+    kms: &KMS,
+    path: &str,
+) -> KvResult<(String, Option<(ObjectWithMetadata, PathMetadata)>)> {
+    let mut generation = 0;
+    loop {
+        let uid = path_metadata_uid(path, generation)?;
+        let Some(owm) = kms
+            .database
+            .retrieve_object(&uid)
+            .await
+            .map_err(|e| KvApiError::InternalError(e.to_string()))?
+        else {
+            return Ok((uid, None));
+        };
+        if matches!(owm.state(), State::Destroyed | State::Destroyed_Compromised) {
+            generation = generation.checked_add(1).ok_or_else(|| {
+                KvApiError::InternalError("KV metadata generation is exhausted".to_owned())
+            })?;
+            continue;
+        }
+        let bytes = secret_bytes(&owm)?;
+        let metadata: PathMetadata = serde_json::from_slice(&bytes).map_err(|e| {
+            KvApiError::InternalError(format!("corrupt KV metadata for {path}: {e}"))
+        })?;
+        if metadata.path != path {
+            return Err(KvApiError::InternalError(format!(
+                "deterministic KV metadata UID for {path} points to a different path"
+            )));
+        }
+        return Ok((uid, Some((owm, metadata))));
+    }
 }
 
 /// Build a `SecretData` object holding opaque `bytes`, tagged with
@@ -118,6 +188,31 @@ fn build_secret_object(vendor_id: &str, bytes: &[u8], extra_tags: &[String]) -> 
 
 /// Persist a brand-new KV-managed `SecretData` object (metadata or version),
 /// owned by `owner`.
+pub(crate) fn create_object_operation(
+    kms: &KMS,
+    uid: &str,
+    owner: &UserId,
+    bytes: &[u8],
+    extra_tags: &[String],
+) -> KvResult<AtomicOperation> {
+    let object = build_secret_object(kms.vendor_id(), bytes, extra_tags)?;
+    let attributes = object
+        .attributes()
+        .map_err(|e| KvApiError::InternalError(format!("failed to read attributes: {e}")))?
+        .clone();
+    let mut tags: std::collections::HashSet<String> = extra_tags.iter().cloned().collect();
+    tags.insert(KV_MARKER_TAG.to_owned());
+    Ok(AtomicOperation::Create((
+        uid.to_owned(),
+        owner.clone(),
+        object,
+        attributes,
+        tags,
+    )))
+}
+
+/// Persist a brand-new KV-managed `SecretData` object, owned by `owner`.
+#[cfg(test)]
 pub(crate) async fn create_object(
     kms: &KMS,
     uid: &str,
@@ -125,41 +220,22 @@ pub(crate) async fn create_object(
     bytes: &[u8],
     extra_tags: &[String],
 ) -> KvResult<()> {
-    let object = build_secret_object(kms.vendor_id(), bytes, extra_tags)?;
-    let attributes = object
-        .attributes()
-        .map_err(|e| KvApiError::InternalError(format!("failed to read attributes: {e}")))?
-        .clone();
-    let mut tags: std::collections::HashSet<String> = extra_tags.iter().cloned().collect();
-    tags.insert(KV_MARKER_TAG.to_owned());
+    let operation = create_object_operation(kms, uid, owner, bytes, extra_tags)?;
     kms.database
-        .atomic(
-            owner,
-            &[AtomicOperation::Create((
-                uid.to_owned(),
-                owner.clone(),
-                object,
-                attributes,
-                tags,
-            ))],
-        )
+        .atomic(owner, &[operation])
         .await
         .map_err(|e| KvApiError::InternalError(format!("failed to persist KV object: {e}")))?;
     Ok(())
 }
 
-/// Overwrite an existing KV-managed `SecretData` object's content in place
-/// (used to update the metadata object after a new version is written, or
-/// to mark it after a delete). `owner` must match the object's current owner
-/// — the store rejects an `Upsert` whose owner does not match (affected-row
-/// check), it is not a no-op placeholder.
-pub(crate) async fn upsert_object(
+/// Build an atomic metadata update that cannot reactivate a destroyed object.
+pub(crate) fn update_object_operation(
     kms: &KMS,
     uid: &str,
-    owner: &UserId,
+    expected_object: &Object,
     bytes: &[u8],
     extra_tags: &[String],
-) -> KvResult<()> {
+) -> KvResult<AtomicOperation> {
     let object = build_secret_object(kms.vendor_id(), bytes, extra_tags)?;
     let attributes = object
         .attributes()
@@ -167,20 +243,13 @@ pub(crate) async fn upsert_object(
         .clone();
     let mut tags: std::collections::HashSet<String> = extra_tags.iter().cloned().collect();
     tags.insert(KV_MARKER_TAG.to_owned());
-    kms.database
-        .atomic(
-            owner,
-            &[AtomicOperation::Upsert((
-                uid.to_owned(),
-                object,
-                attributes,
-                Some(tags),
-                State::Active,
-            ))],
-        )
-        .await
-        .map_err(|e| KvApiError::InternalError(format!("failed to update KV object: {e}")))?;
-    Ok(())
+    Ok(AtomicOperation::CompareAndSwapObject {
+        uid: uid.to_owned(),
+        expected_object: Box::new(expected_object.clone()),
+        object: Box::new(object),
+        attributes,
+        tags: Some(tags),
+    })
 }
 
 /// Extract the raw opaque bytes stored in a KV `SecretData` object.
@@ -213,27 +282,39 @@ pub(crate) async fn find_metadata(
         .into_iter()
         .collect();
     uids.sort();
-    let Some(uid) = uids.into_iter().next() else {
-        return Ok(None);
-    };
-    let owm = kms
-        .database
-        .retrieve_object(&uid)
-        .await
-        .map_err(|e| KvApiError::InternalError(e.to_string()))?
-        .ok_or_else(|| {
-            KvApiError::InternalError(format!("KV metadata tag indexed a missing object {uid}"))
+    let mut found = None;
+    for uid in uids {
+        let owm = kms
+            .database
+            .retrieve_object(&uid)
+            .await
+            .map_err(|e| KvApiError::InternalError(e.to_string()))?
+            .ok_or_else(|| {
+                KvApiError::InternalError(format!("KV metadata tag indexed a missing object {uid}"))
+            })?;
+        // A hard-deleted path's metadata object is marked `Destroyed` in place
+        // (see `hard_delete_path`) rather than removed from the tag index.
+        // Skip it so a later write can create a usable metadata object.
+        if matches!(owm.state(), State::Destroyed | State::Destroyed_Compromised) {
+            continue;
+        }
+        let bytes = secret_bytes(&owm)?;
+        let metadata: PathMetadata = serde_json::from_slice(&bytes).map_err(|e| {
+            KvApiError::InternalError(format!("corrupt KV metadata for {path}: {e}"))
         })?;
-    // A hard-deleted path's metadata object is marked `Destroyed` in place
-    // (see `hard_delete_path`) rather than removed from the tag index, so it
-    // must be treated as absent here.
-    if owm.state() == State::Destroyed {
-        return Ok(None);
+        if metadata.path != path {
+            return Err(KvApiError::InternalError(format!(
+                "KV metadata tag for {path} points to a different path"
+            )));
+        }
+        if found.is_some() {
+            return Err(KvApiError::InternalError(format!(
+                "multiple active KV metadata objects indexed for path {path}"
+            )));
+        }
+        found = Some((uid, owm, metadata));
     }
-    let bytes = secret_bytes(&owm)?;
-    let metadata: PathMetadata = serde_json::from_slice(&bytes)
-        .map_err(|e| KvApiError::InternalError(format!("corrupt KV metadata for {path}: {e}")))?;
-    Ok(Some((uid, owm, metadata)))
+    Ok(found)
 }
 
 /// Require that `user` holds `op` on the path's metadata object (owner bypass
@@ -256,27 +337,38 @@ pub(crate) async fn authorize(
     )))
 }
 
-/// Persist `metadata` back to its `SecretData` object. `owner` must be the
-/// metadata object's real owner (see [`upsert_object`]).
-pub(crate) async fn save_metadata(
+/// Build an atomic update operation for the path's metadata object.
+pub(crate) fn metadata_update_operation(
     kms: &KMS,
     uid: &str,
-    owner: &UserId,
+    expected_object: &Object,
+    path: &str,
+    metadata: &PathMetadata,
+) -> KvResult<AtomicOperation> {
+    let bytes = serde_json::to_vec(metadata)
+        .map_err(|e| KvApiError::InternalError(format!("failed to serialize KV metadata: {e}")))?;
+    update_object_operation(kms, uid, expected_object, &bytes, &[meta_tag(path)])
+}
+
+/// Persist `metadata` without changing the object's lifecycle state.
+pub(crate) async fn save_metadata(
+    kms: &KMS,
+    owm: &ObjectWithMetadata,
     path: &str,
     metadata: &PathMetadata,
 ) -> KvResult<()> {
-    let bytes = serde_json::to_vec(metadata)
-        .map_err(|e| KvApiError::InternalError(format!("failed to serialize KV metadata: {e}")))?;
-    upsert_object(kms, uid, owner, &bytes, &[meta_tag(path)]).await
+    let operation = metadata_update_operation(kms, owm.id(), owm.object(), path, metadata)?;
+    kms.database
+        .atomic(owm.owner_id(), &[operation])
+        .await
+        .map_err(KvApiError::from)?;
+    Ok(())
 }
 
-/// Extract `(path, version)` from a version tag (`_kv::{path}::{version}`),
-/// rejecting the marker, meta, and ttl tags which share the same `_kv::` prefix.
+/// Extract `(path, version)` from a version tag (`_kv::version::{path}::{version}`).
 fn parse_version_tag(tag: &str) -> Option<(&str, u64)> {
-    if tag == KV_MARKER_TAG || tag.starts_with("_kv::meta::") || tag.starts_with("_kv::ttl::") {
-        return None;
-    }
-    let (path, version_str) = tag.strip_prefix("_kv::")?.rsplit_once("::")?;
+    let tag = tag.strip_prefix("_kv::version::")?;
+    let (path, version_str) = tag.rsplit_once("::")?;
     Some((path, version_str.parse().ok()?))
 }
 
@@ -332,7 +424,7 @@ pub(crate) async fn sweep_expired_versions(kms: &KMS) -> usize {
         }
         destroyed_count += 1;
 
-        let Ok(Some((meta_uid, meta_owm, mut path_metadata))) = find_metadata(kms, path).await
+        let Ok(Some((_meta_uid, meta_owm, mut path_metadata))) = find_metadata(kms, path).await
         else {
             continue;
         };
@@ -342,9 +434,7 @@ pub(crate) async fn sweep_expired_versions(kms: &KMS) -> usize {
                 entry.deletion_time = now_rfc3339().unwrap_or_default();
             }
         }
-        if let Err(e) =
-            save_metadata(kms, &meta_uid, meta_owm.owner_id(), path, &path_metadata).await
-        {
+        if let Err(e) = save_metadata(kms, &meta_owm, path, &path_metadata).await {
             cosmian_logger::warn!(
                 "[kv-ttl-cron] destroyed version {version} of '{path}' but failed to update \
                  its metadata: {e}"
@@ -352,4 +442,59 @@ pub(crate) async fn sweep_expired_versions(kms: &KMS) -> usize {
         }
     }
     destroyed_count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_and_version_tags_have_disjoint_namespaces() {
+        assert_ne!(meta_tag("1"), version_tag("meta", 1));
+        assert_eq!(path_tag("myapp/key"), "_kv::path::myapp/key");
+    }
+
+    #[test]
+    fn path_length_fits_the_longest_version_tag() {
+        let valid_path = "a".repeat(MAX_KV_PATH_LENGTH);
+        let too_long_path = format!("{valid_path}a");
+        assert!(validate_path_length(&valid_path).is_ok());
+        assert!(matches!(
+            validate_path_length(&too_long_path),
+            Err(KvApiError::BadRequest(_))
+        ));
+        assert_eq!(version_tag(&valid_path, u64::MAX).chars().count(), 255);
+    }
+
+    #[test]
+    fn path_metadata_uid_is_stable_and_legacy_versions_deserialize() {
+        assert_eq!(
+            path_metadata_uid("myapp/key", 0).expect("path UID derives"),
+            path_metadata_uid("myapp/key", 0).expect("same path generation has same UID")
+        );
+        assert_ne!(
+            path_metadata_uid("myapp/key", 0).expect("first path UID derives"),
+            path_metadata_uid("myapp/other", 0).expect("second path UID derives")
+        );
+        assert_ne!(
+            path_metadata_uid("myapp/key", 0).expect("first generation UID derives"),
+            path_metadata_uid("myapp/key", 1).expect("second generation UID derives")
+        );
+        let metadata: PathMetadata = serde_json::from_str(
+            r#"{"path":"legacy","current_version":1,"oldest_version":1,"created_time":"now","updated_time":"now","versions":{"1":{"created_time":"now","deletion_time":"","destroyed":false}}}"#,
+        )
+        .expect("legacy metadata without object_uid remains readable");
+        assert_eq!(metadata.versions["1"].object_uid, None);
+    }
+
+    #[test]
+    fn parse_version_tag_requires_version_namespace() {
+        assert_eq!(
+            parse_version_tag("_kv::version::myapp::nested::3"),
+            Some(("myapp::nested", 3))
+        );
+        assert_eq!(parse_version_tag("_kv::meta::1"), None);
+        assert_eq!(parse_version_tag("_kv::ttl::1"), None);
+        assert_eq!(parse_version_tag("_kv::version::myapp::invalid"), None);
+    }
 }

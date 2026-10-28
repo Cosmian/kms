@@ -4595,7 +4595,8 @@ paths:
         required: true
         schema:
           type: string
-        description: Secret path. Nested paths may contain `/`.
+          maxLength: 219
+        description: Secret path, up to 219 characters. Nested paths may contain `/`.
     post:
       tags: [Vault KV]
       summary: Write a KV secret version
@@ -4648,6 +4649,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/KvSecretResponse'
+        '400':
+          description: Secret path exceeds the supported length.
         '403':
           description: The caller lacks the `Get` right on the path.
         '404':
@@ -4663,6 +4666,8 @@ paths:
       responses:
         '204':
           description: Latest version marked as deleted.
+        '400':
+          description: Secret path exceeds the supported length.
         '403':
           description: The caller lacks the `Destroy` right on the path.
         '404':
@@ -4675,7 +4680,8 @@ paths:
         required: true
         schema:
           type: string
-        description: Secret path or listing prefix. Nested paths may contain `/`.
+          maxLength: 219
+        description: Secret path or listing prefix, up to 219 characters. Nested paths may contain `/`.
     get:
       tags: [Vault KV]
       summary: Read KV metadata or list child paths
@@ -4699,6 +4705,8 @@ paths:
               oneOf:
                 - $ref: '#/components/schemas/KvMetadataResponse'
                 - $ref: '#/components/schemas/KvListResponse'
+        '400':
+          description: Secret path or listing prefix exceeds the supported length.
         '403':
           description: The caller lacks the `Locate` right on the path.
         '404':
@@ -4714,6 +4722,8 @@ paths:
       responses:
         '204':
           description: All versions and metadata marked as destroyed.
+        '400':
+          description: Secret path exceeds the supported length.
         '403':
           description: The caller lacks the `Destroy` right on the path.
         '404':
