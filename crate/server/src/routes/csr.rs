@@ -98,12 +98,14 @@ pub(crate) async fn post_csr(
                     .to_owned()
             ));
         }
+        let private_key_id = body
+            .private_key_id
+            .clone()
+            .map(UniqueIdentifier::TextString);
         let create = create_signing_key_pair_request(
             kms.vendor_id(),
             algorithm,
-            body.private_key_id
-                .clone()
-                .map(UniqueIdentifier::TextString),
+            private_key_id.as_ref(),
             EMPTY_TAGS,
             body.sensitive,
         )

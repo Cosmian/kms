@@ -593,13 +593,8 @@ mod tests {
         for algorithm in Algorithm::value_variants() {
             let name = algorithm.to_possible_value().unwrap().get_name().to_owned();
             let id = UniqueIdentifier::TextString("hsm::0::k".to_owned());
-            let request = create_signing_key_pair_request(
-                "cosmian",
-                &name,
-                Some(id.clone()),
-                EMPTY_TAGS,
-                true,
-            );
+            let request =
+                create_signing_key_pair_request("cosmian", &name, Some(&id), EMPTY_TAGS, true);
             assert_eq!(
                 request.is_err(),
                 name.contains("kem"),

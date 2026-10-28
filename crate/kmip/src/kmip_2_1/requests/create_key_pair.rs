@@ -299,7 +299,7 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     vendor_id: &str,
     algorithm: &str,
-    private_key_id: Option<UniqueIdentifier>,
+    private_key_id: Option<&UniqueIdentifier>,
     tags: T,
     sensitive: bool,
 ) -> Result<CreateKeyPair, KmipError> {
@@ -307,7 +307,7 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     let rsa = |bits| {
         create_rsa_key_pair_request(
             vendor_id,
-            private_key_id.clone(),
+            private_key_id.cloned(),
             &tags,
             bits,
             sensitive,
@@ -317,7 +317,7 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     let ec = |curve| {
         create_ec_key_pair_request(
             vendor_id,
-            private_key_id.clone(),
+            private_key_id.cloned(),
             &tags,
             curve,
             sensitive,
@@ -328,7 +328,7 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     if let Some(pqc_algorithm) = pqc_signing_algorithm(algorithm) {
         let mut request = create_pqc_key_pair_request(vendor_id, &tags, pqc_algorithm, sensitive)?;
         if let Some(attributes) = request.private_key_attributes.as_mut() {
-            attributes.unique_identifier = private_key_id;
+            attributes.unique_identifier = private_key_id.cloned();
         }
         return Ok(request);
     }

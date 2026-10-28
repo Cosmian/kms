@@ -167,7 +167,7 @@ const CertificateGenerateCsrForm: React.FC = () => {
                                     : Promise.resolve(),
                         },
                     ]}
-                    help={
+                    extra={
                         keySource === "generate"
                             ? t(inHsm ? "certificateGenerateCsr.hsmKeyIdHelp" : "certificateGenerateCsr.newPrivateKeyIdHelp")
                             : undefined
