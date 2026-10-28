@@ -108,7 +108,7 @@ fn test_hsm_crypt2pay_generate_aes_key() -> HResult<()> {
     shared::generate_aes_key(&slot)
 }
 
-/// Real-hardware CI runs this separately from the simulator's aggregate suite.
+/// Prove real-C2P wrapped export yields usable AES bytes, without requiring clear `CKA_VALUE`.
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and a real Crypt2pay HSM"]
 fn test_hsm_crypt2pay_exportable_aes_key() -> HResult<()> {

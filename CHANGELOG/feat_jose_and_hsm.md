@@ -30,7 +30,7 @@
   `mise run test:jose` now runs it too.
 - `test_hsm_all` also runs `export_key_bytes`, `non_extractable_key_bytes` and `jose_decrypt` (the latter
   skipped on SoftHSM2).
-- Add `test_hsm_crypt2pay_exportable_aes_key` to real-Crypt2Pay CI: export an AES-256 key and use its bytes to decrypt HSM-produced AES-GCM ciphertext. The hardware task runs the `test_hsm_crypt2pay` prefix serially, including the aggregate suite and export regression; the simulator task remains aggregate-only. Finish with cleanup of reserved `kms-test-*` objects, including leftovers from earlier runs, while preserving non-test objects. Reuse the existing C2P key-directory watcher workaround for hardware tests.
+- Add `test_hsm_crypt2pay_exportable_aes_key` to real-Crypt2Pay CI: wrap an extractable AES-256 key with RSA-OAEP-SHA256, recover its bytes through RSA decryption, and use those bytes outside the HSM to decrypt HSM-produced AES-GCM ciphertext. This proves exportability without incorrectly requiring clear `CKA_VALUE` access. The hardware task runs the `test_hsm_crypt2pay` prefix serially, including the aggregate suite and export regression; the simulator task remains aggregate-only. Finish with cleanup of reserved `kms-test-*` objects, including leftovers from earlier runs, while preserving non-test objects. Reuse the existing C2P key-directory watcher workaround for hardware tests.
 
 ## Bug Fixes
 
