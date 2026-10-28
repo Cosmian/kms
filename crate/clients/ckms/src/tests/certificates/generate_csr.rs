@@ -47,6 +47,29 @@ fn generate_csr(
     ))
 }
 
+/// `ckms certificates generate-csr <args>`: returns stdout, or stderr as an error.
+fn generate_csr_args(cli_conf_path: &str, args: &[&str]) -> CosmianResult<String> {
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, cli_conf_path);
+    cmd.args(["certificates", "generate-csr"]).args(args);
+    let output = recover_cmd_logs(&mut cmd);
+    if output.status.success() {
+        return Ok(std::str::from_utf8(&output.stdout)?.to_owned());
+    }
+    Err(CosmianError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
+}
+
+/// The value printed after `label` on its line of the command output.
+fn printed_value<'a>(stdout: &'a str, label: &str) -> &'a str {
+    stdout
+        .lines()
+        .find_map(|line| line.split_once(label).map(|(_, value)| value))
+        .unwrap_or_else(|| panic!("no '{label}' in: {stdout}"))
+        .trim()
+}
+
 /// A sub-CA CSR is generated for a key kept in the KMS, signed by a CA, and the resulting
 /// certificate carries the key of the CSR.
 #[tokio::test]
@@ -234,6 +257,27 @@ async fn test_generate_csr_for_softhsm2_held_keys_and_certify_them() -> CosmianR
         sub.verify(intermediate.public_key().unwrap().as_ref())
             .unwrap()
     );
+
+    // the CSR command can generate the non-extractable key pair in the HSM itself
+    let hsm_key_id = format!("hsm::{slot}::{}", Uuid::new_v4());
+    let csr_file = tmp_dir.path().join("generated-in-hsm.csr");
+    let stdout = generate_csr_args(
+        &conf,
+        &[
+            "--algorithm",
+            "nist-p256",
+            "--sensitive",
+            "--private-key-id",
+            &hsm_key_id,
+            "--subject-name",
+            "C=FR, O=Acme, CN=Acme HSM Generated",
+            "--output-file",
+            csr_file.to_str().unwrap(),
+        ],
+    )?;
+    assert_eq!(printed_value(&stdout, "Private key id:"), hsm_key_id);
+    let csr = X509Req::from_pem(&std::fs::read(&csr_file).unwrap()).unwrap();
+    assert!(csr.verify(csr.public_key().unwrap().as_ref()).unwrap());
     Ok(())
 }
 
@@ -249,5 +293,151 @@ async fn test_generate_csr_rejects_a_public_key_and_a_bad_subject() -> CosmianRe
     assert!(generate_csr(&conf, &public_key_id, "CN=x", &out).is_err());
     assert!(generate_csr(&conf, &private_key_id, "not a dn", &out).is_err());
     assert!(!out.exists(), "no CSR file is written on failure");
+    Ok(())
+}
+
+/// `--algorithm` generates the key pair, signs the CSR with it, and prints the key ids; the
+/// private key is then usable by `--private-key-id`.
+#[tokio::test]
+async fn test_generate_csr_generating_the_key_pair() -> CosmianResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let conf = owner_config(ctx);
+    let tmp_dir = TempDir::new().unwrap();
+
+    for algorithm in ["nist-p256", "rsa2048"] {
+        let csr_file = tmp_dir.path().join(format!("{algorithm}.csr"));
+        let csr_path = csr_file.to_str().unwrap();
+        let stdout = generate_csr_args(
+            &conf,
+            &[
+                "--algorithm",
+                algorithm,
+                "--subject-name",
+                "C=FR, O=Acme, CN=Generated",
+                "--output-file",
+                csr_path,
+            ],
+        )?;
+        let private_key_id = printed_value(&stdout, "Private key id:").to_owned();
+        assert!(!printed_value(&stdout, "Public key id:").is_empty());
+        let csr = X509Req::from_pem(&std::fs::read(&csr_file).unwrap()).unwrap();
+        assert!(csr.verify(csr.public_key().unwrap().as_ref()).unwrap());
+        assert_eq!(
+            csr.public_key().unwrap().id(),
+            if algorithm == "rsa2048" {
+                openssl::pkey::Id::RSA
+            } else {
+                openssl::pkey::Id::EC
+            }
+        );
+
+        // the generated private key signs a second CSR on its own
+        generate_csr(&conf, &private_key_id, "CN=Again", &csr_file)?;
+    }
+
+    // a chosen id is honoured
+    let id = Uuid::new_v4().to_string();
+    let csr_file = tmp_dir.path().join("chosen.csr");
+    let stdout = generate_csr_args(
+        &conf,
+        &[
+            "--algorithm",
+            "nist-p384",
+            "--private-key-id",
+            &id,
+            "--subject-name",
+            "CN=Chosen",
+            "--output-file",
+            csr_file.to_str().unwrap(),
+        ],
+    )?;
+    assert_eq!(printed_value(&stdout, "Private key id:"), id);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_generate_csr_key_pair_generation_errors() -> CosmianResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let conf = owner_config(ctx);
+    let tmp_dir = TempDir::new().unwrap();
+    let out = tmp_dir.path().join("x.csr");
+    let out = out.to_str().unwrap();
+    let base = ["--subject-name", "CN=x", "--output-file", out];
+
+    // neither a key nor an algorithm
+    assert!(generate_csr_args(&conf, &base).is_err());
+    // `--sensitive` only applies to a generated key pair
+    assert!(
+        generate_csr_args(
+            &conf,
+            &[&base[..], &["--private-key-id", "x", "--sensitive"]].concat()
+        )
+        .is_err()
+    );
+    // unknown algorithm
+    assert!(generate_csr_args(&conf, &[&base[..], &["--algorithm", "nope"]].concat()).is_err());
+    // an HSM key pair must be sensitive: refused before anything is created
+    let err = generate_csr_args(
+        &conf,
+        &[
+            &base[..],
+            &["--algorithm", "nist-p256", "--private-key-id", "hsm::0::x"],
+        ]
+        .concat(),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("must be sensitive"), "{err}");
+    // a key encapsulation key cannot sign
+    #[cfg(feature = "non-fips")]
+    {
+        let err = generate_csr_args(&conf, &[&base[..], &["--algorithm", "ml-kem-512"]].concat())
+            .unwrap_err();
+        assert!(err.to_string().contains("cannot sign"), "{err}");
+        // ML-DSA keys cannot be created in an HSM: refused up front
+        let err = generate_csr_args(
+            &conf,
+            &[
+                &base[..],
+                &[
+                    "--algorithm",
+                    "ml-dsa-44",
+                    "--sensitive",
+                    "--private-key-id",
+                    "hsm::0::x",
+                ],
+            ]
+            .concat(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("HSM cannot generate"), "{err}");
+    }
+    assert!(
+        !std::path::Path::new(out).exists(),
+        "no CSR file is written on failure"
+    );
+
+    // a malformed subject is refused before the key pair is created: the id is still free
+    let id = Uuid::new_v4().to_string();
+    let run = |subject: &str| {
+        generate_csr_args(
+            &conf,
+            &[
+                "--algorithm",
+                "nist-p256",
+                "--private-key-id",
+                &id,
+                "--subject-name",
+                subject,
+                "--output-file",
+                out,
+            ],
+        )
+    };
+    for bad in ["CN=a\\", "not a dn", " "] {
+        assert!(run(bad).is_err(), "{bad:?}");
+    }
+    run("CN=ok")?;
     Ok(())
 }

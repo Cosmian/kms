@@ -7,14 +7,14 @@ root signs it.
 
 ```mermaid
 sequenceDiagram
-    participant On as Online KMS (HSM)
-    participant Off as Offline root KMS
-    On->>On: create sensitive key pair
-    On->>On: generate-csr (signed by the HSM key)
-    On->>Off: subca.csr (file transfer)
-    Off->>Off: certify the CSR with the root key
-    Off->>On: sub-CA certificate (file transfer)
-    On->>On: import certificate, link it to the key
+    participant Online as Online KMS<br/>(HSM)
+    participant Root as Offline root KMS
+    Online->>Online: create sensitive key pair
+    Online->>Online: generate-csr (signed by the HSM key)
+    Online->>Root: subca.csr (file transfer)
+    Root->>Root: certify the CSR with the root key
+    Root->>Online: sub-CA certificate (file transfer)
+    Online->>Online: import certificate, link it to the key
 ```
 
 ## 1. Create a non-extractable key on the online KMS
@@ -41,6 +41,20 @@ configured KMIP algorithm policy is enforced.
 Web UI: **Certificates > Certs > Generate CSR**. REST: `POST /certificates/csr`.
 
 An HSM key that is **extractable** is refused: create it with `--sensitive`.
+
+### Generate the key pair and the CSR in one step
+
+`--algorithm` creates the key pair first (same algorithm names as `ckms certificates certify --algorithm`; the ML-KEM key encapsulation algorithms cannot sign and are refused), then signs the CSR with its private key. Steps 1 and 2 become one command; the key pair is created in the HSM when the identifier is an `hsm::<slot>::<id>` one, and an HSM key pair must be `--sensitive`:
+
+```bash
+ckms certificates generate-csr \
+  --algorithm nist-p384 --sensitive \
+  --private-key-id hsm::0::subca \
+  --subject-name "C=FR, O=Acme, CN=Acme Sub CA" \
+  --output-file subca.csr
+```
+
+The command prints the private and public key ids. Without `--private-key-id` the server chooses the identifier of a database key pair. In the Web UI, choose **Generate a new key pair** on the same page, pick the algorithm, and tick **Generate the key pair in the HSM** to create it in the HSM.
 
 ## 3. Sign the CSR on the offline root
 

@@ -9,6 +9,10 @@
   CSR generation enforces the configured KMIP algorithm policy, refuses a private key that is not Active
   or whose usage mask lacks `Sign`, never follows the user-settable `PublicKeyLink`, and answers 4xx for
   keys that cannot sign (X25519, ML-KEM).
+- CSR generation can create the key pair first: `ckms certificates generate-csr --algorithm <nist-p256|rsa4096|...>`
+  (same algorithms as `certify --generate-key-pair`; add `--private-key-id hsm::<slot>::<id> --sensitive` to create
+  it non-extractable in the HSM), a **Generate a new key pair** option on the **Generate CSR** page, and the
+  `algorithm` / `sensitive` fields of `POST /certificates/csr`, whose response now also returns the key ids.
 - `Certify`/`ReCertify` and CRL generation now accept a certificate issuer whose private key is
   in an HSM (non-extractable): the HSM signs the TBS bytes and the result is verified with the
   issuer public key before being stored.
@@ -38,3 +42,4 @@
 - Fix automatic CRL regeneration (after `Revoke` and from the refresh cron): it now signs as the owner of the
   issuer certificate. Before, it failed silently when the revoking user or `default_username` had no access to the
   CA key, leaving the CRL stale.
+- Fix `Certify` with only a sensitive HSM issuer key id: resolve its issuer certificate through the certificate's persisted `PrivateKeyLink` when the HSM cannot store KMIP key links.

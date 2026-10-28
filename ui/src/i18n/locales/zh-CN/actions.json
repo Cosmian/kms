@@ -1931,7 +1931,7 @@
     "certificateGenerateCsr": {
         "title": "生成 CSR",
         "alertMessage": "CSR 在 KMS 内部使用私钥签名，私钥不会被导出。",
-        "alertDescription": "用于向外部或离线根 CA 申请由本 KMS（或其 HSM，即使不可导出）持有的子 CA 密钥的证书。需要对该密钥拥有 Sign 权限。",
+        "alertDescription": "用于向外部或离线根 CA 申请子 CA 密钥的证书。可使用本 KMS 或其 HSM（即使不可导出）中已有的密钥签名（需要对该密钥拥有 Sign 权限），也可先在 KMS 或其 HSM 中生成新的密钥对。创建密钥对需要 Create 权限，在 HSM 中创建还需要是 HSM 管理员；ML-DSA 和 SLH-DSA 密钥无法在 HSM 中创建。",
         "privateKeyId": "私钥 ID",
         "privateKeyIdRequired": "请输入私钥 ID",
         "privateKeyIdPlaceholder": "输入私钥的唯一标识符",
@@ -1939,7 +1939,23 @@
         "subjectNameRequired": "请输入主体可分辨名称",
         "submit": "生成 CSR",
         "responseTitle": "CSR 生成结果",
-        "success": "CSR 已生成并下载（{{bytes}} 字节，PEM 格式）"
+        "success": "CSR 已生成并下载（{{bytes}} 字节，PEM 格式）",
+        "keySource": "用于签名 CSR 的密钥",
+        "useExistingKey": "使用现有私钥",
+        "generateKeyPair": "生成新的密钥对",
+        "algorithm": "密钥对算法",
+        "algorithmRequired": "请选择算法",
+        "inHsm": "在 HSM 中生成密钥对",
+        "sensitive": "不可导出（敏感）私钥",
+        "sensitiveHelp": "私钥永远无法导出。HSM 密钥始终启用。",
+        "newPrivateKeyId": "新私钥 ID（可选）",
+        "hsmPrivateKeyId": "HSM 私钥 ID",
+        "newPrivateKeyIdHelp": "留空则由服务器选择标识符。",
+        "hsmKeyIdRequired": "请输入 HSM 密钥 ID",
+        "hsmKeyIdFormat": "HSM 密钥 ID 以 hsm:: 开头",
+        "hsmKeyIdHelp": "HSM 插槽和密钥标签，例如 hsm::0::subca",
+        "hsmKeyIdPlaceholder": "hsm::<插槽>::<密钥标签>",
+        "keyPairGenerated": "密钥对已生成。私钥：{{privateKeyId}}，公钥：{{publicKeyId}}"
     },
     "pgpKeysCreate": {
         "title": "创建 OpenPGP 密钥",

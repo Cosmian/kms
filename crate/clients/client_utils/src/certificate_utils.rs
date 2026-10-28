@@ -573,3 +573,44 @@ fn configurable_kem_algorithm(
     attributes.key_format_type = Some(KeyFormatType::ConfigurableKEMSecretKey);
     attributes.object_type = Some(ObjectType::PrivateKey);
 }
+
+#[cfg(test)]
+// test-only: every `ValueEnum` variant has a possible value, and the requests are built with an id
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use clap::ValueEnum;
+    use cosmian_kmip::kmip_2_1::{
+        extra::tagging::EMPTY_TAGS, kmip_types::UniqueIdentifier,
+        requests::create_signing_key_pair_request,
+    };
+
+    use super::Algorithm;
+
+    /// The server builds the CSR key pair from the `certify --algorithm` names: every one of them
+    /// must be understood, except the KEM algorithms, which cannot sign.
+    #[test]
+    fn every_certify_algorithm_but_the_kems_can_generate_a_signing_key_pair() {
+        for algorithm in Algorithm::value_variants() {
+            let name = algorithm.to_possible_value().unwrap().get_name().to_owned();
+            let id = UniqueIdentifier::TextString("hsm::0::k".to_owned());
+            let request = create_signing_key_pair_request(
+                "cosmian",
+                &name,
+                Some(id.clone()),
+                EMPTY_TAGS,
+                true,
+            );
+            assert_eq!(
+                request.is_err(),
+                name.contains("kem"),
+                "{name}: {request:?}"
+            );
+            if let Ok(request) = request {
+                // the requested id (e.g. an HSM one) and sensitivity reach the private key
+                let attributes = request.private_key_attributes.unwrap();
+                assert_eq!(attributes.unique_identifier, Some(id), "{name}");
+                assert_eq!(attributes.sensitive, Some(true), "{name}");
+            }
+        }
+    }
+}

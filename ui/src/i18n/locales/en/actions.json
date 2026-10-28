@@ -1931,7 +1931,7 @@
     "certificateGenerateCsr": {
         "title": "Generate a CSR",
         "alertMessage": "The CSR is signed inside the KMS with the private key, which is never exported.",
-        "alertDescription": "Use this to request a certificate for a sub-CA key held by this KMS (or its HSM, even non-extractable) from an external or offline root CA. You need the Sign permission on the key.",
+        "alertDescription": "Use this to request a certificate for a sub-CA key from an external or offline root CA. Sign with an existing key held by this KMS or its HSM (even non-extractable), which requires the Sign permission on the key, or generate a new key pair first, in the KMS or in its HSM. Creating the key pair requires the Create permission, and creating it in the HSM requires being an HSM administrator; ML-DSA and SLH-DSA keys cannot be created in an HSM.",
         "privateKeyId": "Private Key ID",
         "privateKeyIdRequired": "Please enter the private key ID",
         "privateKeyIdPlaceholder": "Enter the private key unique identifier",
@@ -1939,7 +1939,23 @@
         "subjectNameRequired": "Please enter the subject distinguished name",
         "submit": "Generate CSR",
         "responseTitle": "CSR Generation Result",
-        "success": "CSR generated and downloaded ({{bytes}} bytes, PEM format)"
+        "success": "CSR generated and downloaded ({{bytes}} bytes, PEM format)",
+        "keySource": "Key to sign the CSR",
+        "useExistingKey": "Use an existing private key",
+        "generateKeyPair": "Generate a new key pair",
+        "algorithm": "Key pair algorithm",
+        "algorithmRequired": "Please select an algorithm",
+        "inHsm": "Generate the key pair in the HSM",
+        "sensitive": "Non-extractable (sensitive) private key",
+        "sensitiveHelp": "The private key can never be exported. Always on for an HSM key.",
+        "newPrivateKeyId": "New private key ID (optional)",
+        "hsmPrivateKeyId": "HSM private key ID",
+        "newPrivateKeyIdHelp": "Leave empty to let the server choose an identifier.",
+        "hsmKeyIdRequired": "Please enter the HSM key ID",
+        "hsmKeyIdFormat": "An HSM key ID starts with hsm::",
+        "hsmKeyIdHelp": "The HSM slot and key label, e.g. hsm::0::subca",
+        "hsmKeyIdPlaceholder": "hsm::<slot>::<key label>",
+        "keyPairGenerated": "Key pair generated. Private key: {{privateKeyId}}, public key: {{publicKeyId}}"
     },
     "pgpKeysCreate": {
         "title": "Create an OpenPGP Key",
