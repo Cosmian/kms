@@ -89,7 +89,7 @@ async fn test_hsm_all() {
     info!("HSM: kek_wrap_modes");
     Box::pin(kek_wrap_modes::test_hsm_kek_wrap_modes())
         .await
-        .unwrap();
+        .expect("HSM kek_wrap_modes suite failed");
     info!("HSM: wrapped_secret_data");
     Box::pin(secret_data_dek::test_wrapped_secret_data())
         .await

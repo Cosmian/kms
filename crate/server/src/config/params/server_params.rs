@@ -1796,24 +1796,30 @@ mod tests {
             ("aes-key-wrap-padding", BlockCipherMode::AESKeyWrapPadding),
         ] {
             let p = parse_kek_wrapping_algorithm(Some(value), true)
-                .unwrap()
-                .unwrap();
+                .expect("a supported algorithm parses")
+                .expect("a configured algorithm yields parameters");
             assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::AES));
             assert_eq!(p.block_cipher_mode, Some(mode), "{value}");
         }
         let p = parse_kek_wrapping_algorithm(Some("rsa-oaep"), true)
-            .unwrap()
-            .unwrap();
+            .expect("rsa-oaep parses")
+            .expect("rsa-oaep yields parameters");
         assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::RSA));
         assert_eq!(p.padding_method, Some(PaddingMethod::OAEP));
-        assert!(parse_kek_wrapping_algorithm(None, false).unwrap().is_none());
+        assert!(
+            parse_kek_wrapping_algorithm(None, false)
+                .expect("an unset algorithm is valid")
+                .is_none()
+        );
 
-        let err = parse_kek_wrapping_algorithm(Some("aes-ctr"), true).unwrap_err();
+        let err = parse_kek_wrapping_algorithm(Some("aes-ctr"), true)
+            .expect_err("an unknown algorithm is rejected");
         assert!(
             err.to_string()
                 .contains("invalid key_encryption_key_wrapping_algorithm: aes-ctr")
         );
-        let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false).unwrap_err();
+        let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false)
+            .expect_err("an algorithm without a KEK is rejected");
         assert!(err.to_string().contains("requires key_encryption_key"));
     }
 }

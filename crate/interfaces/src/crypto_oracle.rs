@@ -138,6 +138,15 @@ impl CryptoAlgorithm {
         }
     }
 
+    /// Whether this is an RSA encryption algorithm.
+    #[must_use]
+    pub const fn is_rsa(&self) -> bool {
+        matches!(
+            self,
+            Self::RsaPkcsV15 | Self::RsaOaepSha256 | Self::RsaOaepSha1
+        )
+    }
+
     /// Selects a default AES algorithm from the provided list of supported algorithms.
     ///
     /// Preference order:

@@ -193,10 +193,13 @@ while minimizing HSM calls through expiring caching.
 
 | Value | Algorithm |
 | --- | --- |
-| `aes-gcm` | AES-GCM (NIST SP 800-38D) — default for an HSM key encryption key |
+| `aes-gcm` | AES-GCM (NIST SP 800-38D) — default for an HSM AES key encryption key |
 | `aes-key-wrap` | AES-KW (NIST SP 800-38F, RFC 3394) |
-| `aes-key-wrap-padding` | AES-KWP (NIST SP 800-38F, RFC 5649) — default for a software key encryption key |
-| `rsa-oaep` | RSA-OAEP with SHA-256 |
+| `aes-key-wrap-padding` | AES-KWP (NIST SP 800-38F, RFC 5649) — default for a software AES key encryption key |
+| `rsa-oaep` | RSA-OAEP with SHA-256 — default for an HSM RSA key encryption key; required for a software one |
+
+The AES modes need an AES key encryption key and `rsa-oaep` an RSA one. The startup check below
+applies to HSM AES keys only.
 
 In a FIPS build, AES-GCM encryption on a FIPS-validated HSM requires the HSM to generate the IV
 (FIPS 140-3 Implementation Guidance C.H). An HSM that neither supports the PKCS#11 v3.0 message
@@ -211,8 +214,10 @@ key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"
 At startup the server checks that an AES HSM key encryption key can wrap with the selected
 algorithm. AES-KW/KWP go through `C_WrapKey` on HSMs that do not offer them as single-part
 encryption; this needs `CKA_WRAP`/`CKA_UNWRAP` on the key encryption key. HSM AES keys created by
-earlier KMS versions lack them: the server sets both attributes once, or stops with an error when
-the HSM refuses. Keys already wrapped with another algorithm are still unwrapped.
+this KMS version are created with both attributes enabled, so any of them can serve as a key
+wrapping key. Keys created by earlier KMS versions lack them: on a slot that offers AES key wrap,
+the server sets both attributes once and restores them if wrapping still fails, then stops with an
+error. Keys already wrapped with another algorithm are still unwrapped.
 
 ## Using the wrapped KMS key
 

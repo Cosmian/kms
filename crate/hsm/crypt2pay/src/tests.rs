@@ -44,9 +44,11 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     crypt2pay_all(shared::aes_gcm_encrypt)
 }
 
+// Deliberately not named `test_hsm_crypt2pay*`: the hardware task selects that substring, and its
+// FIPS expectations (GCM succeeds) contradict the simulator's (no HSM-generated IV).
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and the Crypt2pay simulator"]
-fn test_hsm_crypt2pay_simulator_all() -> HResult<()> {
+fn test_crypt2pay_simulator_all() -> HResult<()> {
     crypt2pay_all(simulator_aes_gcm_encrypt)
 }
 

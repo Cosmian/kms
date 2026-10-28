@@ -14,7 +14,6 @@ use openssl::symm::{Cipher, decrypt_aead};
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     result::KResult,
@@ -23,7 +22,7 @@ use crate::{
             EMPTY_TAGS, delete_key, export_object, hsm_clap_config, send_message,
             symmetric_dek::symmetric_encrypt,
         },
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -59,7 +58,7 @@ pub(super) async fn test_hsm_export_key_bytes() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner, None)?;
     clap_config.db.sqlite_path = get_tmp_sqlite_path();
     let slot = clap_config.hsm.hsm_slot[0];
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // --- extractable, non-sensitive key: bytes are exported and are the HSM key
     let extractable_uid = as_hsm_uid!(slot, Uuid::new_v4());

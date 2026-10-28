@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
     cosmian_kms_interfaces::{CryptoAlgorithm, EncryptedContent, KeyType},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, info, trace, warn};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -228,12 +228,17 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
         )));
     }
     info!("Enabled CKA_WRAP/CKA_UNWRAP on HSM key encryption key {kek} for {alg:?}");
-    probe().await.map_err(|e3| {
-        KmsError::ServerError(format!(
+    if let Err(e3) = probe().await {
+        // Do not leave a widened key behind when the migration did not fix the wrapping.
+        if let Err(e4) = oracle.set_key_wrap(kek, false).await {
+            warn!("could not restore CKA_WRAP/CKA_UNWRAP on HSM key {kek}: {e4}");
+        }
+        return Err(KmsError::ServerError(format!(
             "key_encryption_key {kek} cannot wrap with {alg:?} on this HSM: {e3}. Set \
              key_encryption_key_wrapping_algorithm = \"aes-gcm\""
-        ))
-    })
+        )));
+    }
+    Ok(())
 }
 
 /// Wrap an Object with a wrapping key

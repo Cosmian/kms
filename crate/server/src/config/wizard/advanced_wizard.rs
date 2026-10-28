@@ -121,7 +121,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
     };
     let key_encryption_key_wrapping_algorithm = if key_encryption_key.is_some() {
         let items = [
-            "default (AES-GCM for HSM keys)",
+            "default (HSM: AES-GCM or RSA-OAEP; software: AES-KWP)",
             "aes-gcm",
             "aes-key-wrap",
             "aes-key-wrap-padding",
