@@ -801,6 +801,7 @@ Crate path: `crate/server`
 | `warn` | `enrollment: refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 | `warn` | `enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 | `debug` | `The unwrapping key {unwrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid` | - |
+| `debug` | `RSA-OAEP HSM unwrap failed: {e}` | `src/routes/jose/decrypt.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
