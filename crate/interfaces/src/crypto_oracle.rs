@@ -703,6 +703,14 @@ pub trait CryptoOracle: Send + Sync {
         authenticated_encryption_additional_data: Option<&[u8]>,
     ) -> InterfaceResult<Zeroizing<Vec<u8>>>;
 
+    /// Allow or forbid AES-KW/KWP through `C_WrapKey`/`C_UnwrapKey` on key `uid`
+    /// (`CKA_WRAP`/`CKA_UNWRAP` on HSMs).
+    async fn set_key_wrap(&self, _uid: &str, _enabled: bool) -> InterfaceResult<()> {
+        Err(InterfaceError::Default(
+            "setting key wrap attributes is not supported".to_owned(),
+        ))
+    }
+
     /// Get the key type
     /// On HSMs, this should be a single call to the HSM.
     /// # Arguments

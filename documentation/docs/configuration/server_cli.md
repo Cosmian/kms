@@ -86,6 +86,15 @@ Options:
 
           [env: KMS_HSM_PASSWORD=]
 
+      --key-encryption-key-wrapping-algorithm <KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM>
+          Algorithm used to wrap keys at rest with `key_encryption_key`:
+          `aes-gcm`, `aes-key-wrap` (NIST SP 800-38F KW, RFC 3394), `aes-key-wrap-padding`
+          (NIST SP 800-38F KWP, RFC 5649) or `rsa-oaep` (SHA-256). Unset: AES-GCM for an HSM
+          key encryption key, AES-KWP for a software one.
+
+          [env: KMS_KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM=]
+          [possible values: aes-gcm, aes-key-wrap, aes-key-wrap-padding, rsa-oaep]
+
       --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
           Specifies which KMIP object types should be automatically unwrapped when retrieved.
           Repeat this option to specify multiple object types

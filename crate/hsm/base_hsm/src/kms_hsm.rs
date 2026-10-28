@@ -415,6 +415,29 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
+    async fn set_key_wrap(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        enabled: bool,
+    ) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let permit = slot
+            .acquire_session_permit()
+            .await
+            .map_err(|e| InterfaceError::Default(e.to_string()))?;
+        let key_id = key_id.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            session.session()?.set_wrap_attributes(handle, enabled)?;
+            session.checkin();
+            Ok(())
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
+    }
+
     async fn sign_with_metadata(
         &self,
         slot_id: usize,

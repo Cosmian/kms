@@ -5,8 +5,8 @@ use std::ptr;
 
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_MECHANISM, CK_OBJECT_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS,
-    CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_PRIVATE, CKA_SENSITIVE, CKA_TOKEN, CKA_VALUE,
-    CKK_GENERIC_SECRET, CKO_SECRET_KEY,
+    CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_PRIVATE, CKA_SENSITIVE, CKA_TOKEN, CKA_UNWRAP, CKA_VALUE,
+    CKA_WRAP, CKK_GENERIC_SECRET, CKO_SECRET_KEY,
 };
 use zeroize::Zeroizing;
 
@@ -41,6 +41,25 @@ fn ephemeral_secret_template() -> HResult<Vec<CK_ATTRIBUTE>> {
 }
 
 impl Session {
+    /// Set `CKA_WRAP` and `CKA_UNWRAP` on `key_handle`, so AES-KW/KWP can use `C_WrapKey`.
+    pub fn set_wrap_attributes(&self, key_handle: CK_OBJECT_HANDLE, enabled: bool) -> HResult<()> {
+        let value = if enabled { CK_TRUE } else { CK_FALSE };
+        let mut template = [
+            bool_attribute(CKA_WRAP, &value)?,
+            bool_attribute(CKA_UNWRAP, &value)?,
+        ];
+        hsm_call!(
+            self.hsm(),
+            format!("Failed to set CKA_WRAP/CKA_UNWRAP on key handle {key_handle}"),
+            C_SetAttributeValue,
+            self.session_handle(),
+            key_handle,
+            template.as_mut_ptr(),
+            CK_ULONG::try_from(template.len())?
+        );
+        Ok(())
+    }
+
     /// Wrap `data` under the AES key `kek` with AES-KW or AES-KWP.
     pub(crate) fn aes_key_wrap(
         &self,

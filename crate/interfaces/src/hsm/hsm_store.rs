@@ -892,6 +892,13 @@ impl CryptoOracle for HsmStore {
         self.hsm.get_key_type(slot_id, key_id.as_bytes()).await
     }
 
+    async fn set_key_wrap(&self, uid: &str, enabled: bool) -> InterfaceResult<()> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm
+            .set_key_wrap(slot_id, key_id.as_bytes(), enabled)
+            .await
+    }
+
     async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         self.hsm.get_key_metadata(slot_id, key_id.as_bytes()).await

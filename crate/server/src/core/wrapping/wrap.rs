@@ -15,7 +15,8 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
     cosmian_kms_interfaces::CryptoAlgorithm,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, info, trace};
+use zeroize::Zeroizing;
 
 use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::unwrap_object},
@@ -95,17 +96,23 @@ pub(crate) async fn wrap_and_cache(
     };
 
     trace!("Wrapping key with id: {wrapping_key_id}");
-    // HSM wrapping keys default to the HSM's own mode (AES-GCM / RSA-OAEP).
-    // Software keys use AESKeyWrapPadding (RFC 5649) at rest: it handles arbitrary key
-    // lengths (including < 16 bytes), unlike the Get-with-wrapping default NISTKeyWrap
-    // (RFC 3394) which requires input >= 16 bytes.
-    let cryptographic_parameters = if ObjectHandle::from(wrapping_key_id.as_str()).is_hsm() {
-        None
-    } else {
-        Some(CryptographicParameters {
+    // An operator-selected algorithm applies to the server KEK. Otherwise, HSM wrapping
+    // keys default to the HSM's own mode (AES-GCM / RSA-OAEP), and software keys use
+    // AESKeyWrapPadding (RFC 5649) at rest: it handles arbitrary key lengths (including
+    // < 16 bytes), unlike the Get-with-wrapping default NISTKeyWrap (RFC 3394) which
+    // requires input >= 16 bytes.
+    let configured = kms
+        .params
+        .key_wrapping_algorithm
+        .as_ref()
+        .filter(|_| kms.params.key_wrapping_key.as_deref() == Some(wrapping_key_id.as_str()));
+    let cryptographic_parameters = match configured {
+        Some(params) => Some(params.clone()),
+        None if ObjectHandle::from(wrapping_key_id.as_str()).is_hsm() => None,
+        None => Some(CryptographicParameters {
             block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
             ..CryptographicParameters::default()
-        })
+        }),
     };
     // wrap the current object
     Box::pin(wrap_object(
@@ -152,6 +159,64 @@ pub(super) fn requested_hsm_algorithm(
         });
     }
     Ok(CryptoAlgorithm::from_kmip(&p)?)
+}
+
+/// Startup check: an HSM key encryption key configured for AES-KW/KWP must be able to wrap.
+/// When the probe fails, `CKA_WRAP`/`CKA_UNWRAP` are enabled once on the KEK and the
+/// probe is retried.
+pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
+    let Some(kek) = kms.params.key_wrapping_key.as_deref() else {
+        return Ok(());
+    };
+    let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(kek) else {
+        return Ok(());
+    };
+    let Some(alg) =
+        requested_hsm_algorithm(kms.params.key_wrapping_algorithm.as_ref())?.filter(|a| {
+            matches!(
+                a,
+                CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
+            )
+        })
+    else {
+        return Ok(());
+    };
+    let oracles = kms.crypto_oracles.read().await;
+    let oracle = oracles.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!("unknown crypto oracle prefix: {prefix}"))
+    })?;
+    let probe = async || -> KResult<()> {
+        let mut buf = Zeroizing::new(vec![0_u8; 32]);
+        kms.rng.fill_bytes(&mut buf)?;
+        let ct = oracle
+            .encrypt(kek, &buf, Some(alg.clone()), None, None)
+            .await?;
+        let pt = oracle
+            .decrypt(kek, &ct.ciphertext, Some(alg.clone()), None)
+            .await?;
+        if *pt != *buf {
+            kms_bail!("wrap/unwrap probe returned different bytes");
+        }
+        Ok(())
+    };
+    let Err(e1) = probe().await else {
+        return Ok(());
+    };
+    if let Err(e2) = oracle.set_key_wrap(kek, true).await {
+        return Err(KmsError::ServerError(format!(
+            "key_encryption_key {kek} cannot wrap with {alg:?}: {e1}; enabling \
+             CKA_WRAP/CKA_UNWRAP was refused by the HSM: {e2}. Create a new HSM key \
+             encryption key with this KMS version or set \
+             key_encryption_key_wrapping_algorithm = \"aes-gcm\""
+        )));
+    }
+    info!("Enabled CKA_WRAP/CKA_UNWRAP on HSM key encryption key {kek} for {alg:?}");
+    probe().await.map_err(|e3| {
+        KmsError::ServerError(format!(
+            "key_encryption_key {kek} cannot wrap with {alg:?} on this HSM: {e3}. Set \
+             key_encryption_key_wrapping_algorithm = \"aes-gcm\""
+        ))
+    })
 }
 
 /// Wrap an Object with a wrapping key

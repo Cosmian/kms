@@ -162,6 +162,12 @@ info = false
 # Note: This setting is ignored when a key is imported in JSON TTLV format and is already wrapped.
 # key_encryption_key = "kek ID"
 
+# Algorithm used to wrap keys at rest with `key_encryption_key`:
+# `aes-gcm`, `aes-key-wrap` (NIST SP 800-38F KW, RFC 3394), `aes-key-wrap-padding`
+# (NIST SP 800-38F KWP, RFC 5649) or `rsa-oaep` (SHA-256). Unset: AES-GCM for an HSM
+# key encryption key, AES-KWP for a software one.
+# key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"
+
 # Specifies which KMIP object types should be automatically unwrapped when retrieved.
 # Repeat this option to specify multiple object types
 # e.g.
