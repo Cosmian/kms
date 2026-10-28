@@ -1,13 +1,15 @@
 /**
- * KMS Jev skill-routing hook — before_agent_start.
+ * KMS skill-routing hook — before_agent_start.
  *
- * Suggests which existing `.github/skills/*\/SKILL.md` best matches the
- * current prompt, via one TypeSafe (Jev) choice request. Fail-open: any
- * missing key, timeout, network error, or parse failure makes this a no-op.
- * Never forces skill execution; only injects a hint into model context.
+ * 1. Deterministic: prompts matching a trigger in `.github/copilot-instructions.md`
+ *    § Automatic skill routing get that skill's SKILL.md body injected (max 3 skills).
+ * 2. Fallback: otherwise, suggests which existing `.github/skills/*\/SKILL.md` best
+ *    matches the prompt via one TypeSafe (Jev) choice request. Fail-open: any missing
+ *    key, timeout, network error, or parse failure makes this a no-op. Only injects a
+ *    hint into model context.
  *
- * Env:
- *   TYPESAFE_API_KEY   (required — unset disables this hook entirely)
+ * Env (Jev fallback only):
+ *   TYPESAFE_API_KEY   (required — unset disables the fallback)
  *   TYPESAFE_API_URL   (optional, default https://api.typesafe.ai)
  *   TYPESAFE_MODEL     (optional, default jev-latest)
  */
@@ -18,6 +20,71 @@ import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 const API_URL = process.env.TYPESAFE_API_URL || "https://api.typesafe.ai";
 const MODEL = process.env.TYPESAFE_MODEL || "jev-latest";
 const ROW = /^\|[^|]*\|\s*`\/([a-z0-9-]+)[^`]*`\s*\|\s*(.+?)\s*\|\s*$/;
+const ROUTE_ROW = /^\|\s*`\/([a-z0-9-]+)`\s*\|\s*`(.+)`\s*\|\s*$/;
+const ROUTING_HEADING = "## Automatic skill routing";
+const MAX_AUTORUN_SKILLS = 3;
+
+interface Trigger {
+  skill: string;
+  pattern: string;
+  regex: RegExp;
+}
+
+function loadTriggers(cwd: string): Trigger[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(cwd, ".github", "copilot-instructions.md"), "utf8");
+  } catch {
+    return [];
+  }
+  const lines = text.split("\n");
+  const start = lines.findIndex(l => l.trim() === ROUTING_HEADING);
+  if (start < 0) return [];
+  const triggers: Trigger[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith("## ")) break;
+    const m = ROUTE_ROW.exec(line);
+    if (!m) continue;
+    const pattern = m[2].replaceAll("\\|", "|");
+    try {
+      triggers.push({ skill: m[1], pattern, regex: new RegExp(pattern, "i") });
+    } catch {
+      // invalid regex: skip the row (check_ai_docs.py C7 reports it)
+    }
+  }
+  return triggers;
+}
+
+function skillBody(cwd: string, name: string): string | undefined {
+  try {
+    const text = fs.readFileSync(path.join(cwd, ".github", "skills", name, "SKILL.md"), "utf8");
+    return text.replace(/^---\n[\s\S]*?\n---\n/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function autorunMessage(cwd: string, prompt: string): string | undefined {
+  const seen = new Set<string>();
+  const sections: string[] = [];
+  for (const t of loadTriggers(cwd)) {
+    if (sections.length >= MAX_AUTORUN_SKILLS) break;
+    if (seen.has(t.skill) || !t.regex.test(prompt)) continue;
+    seen.add(t.skill);
+    const body = skillBody(cwd, t.skill);
+    if (body === undefined) continue;
+    sections.push(
+      `\n\n## /${t.skill} (trigger: \`${t.pattern}\`)\n[Skill directory: .github/skills/${t.skill}]\n\n${body}`,
+    );
+  }
+  if (sections.length === 0) return undefined;
+  return (
+    "Auto-selected skill(s) from .github/copilot-instructions.md § Automatic skill routing. " +
+    "Apply each to the part of the request matching its trigger; user instructions and " +
+    "plan-mode restrictions still take precedence." +
+    sections.join("")
+  );
+}
 
 type Roster = Record<string, string>;
 
@@ -90,11 +157,18 @@ async function routeToSkill(
 }
 
 export default function jevOrchestrator(pi: ExtensionAPI): void {
-  pi.on("before_agent_start", async (event: { prompt?: string }, ctx: ExtensionContext) => {
-    if (!event.prompt) return;
+  pi.on("before_agent_start", async (event: { prompt?: string; reason?: string }, ctx: ExtensionContext) => {
+    const prompt = event.prompt;
+    if (event.reason === "revive" || !prompt) return;
+    // Explicit `/command` or `/skill:<name>` invocation (its expansion embeds the skill directory).
+    if (prompt.trimStart().startsWith("/") || prompt.includes("[Skill directory: ")) return;
+    const content = autorunMessage(ctx.cwd, prompt);
+    if (content) {
+      return { message: { customType: "kms-skill-autorun", display: false, content } };
+    }
     const roster = loadRoster(ctx.cwd);
     if (!roster) return;
-    const result = await routeToSkill(event.prompt, roster);
+    const result = await routeToSkill(prompt, roster);
     if (!result || result.choice === "none") return;
     const description = roster[result.choice];
     if (!description) return;

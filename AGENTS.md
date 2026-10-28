@@ -417,6 +417,7 @@ Key rules:
 ## 7. Copilot Skills
 
 All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` for the full index.
+Prompts matching `.github/copilot-instructions.md` § Automatic skill routing run that skill first.
 
 | Invoke | When |
 |--------|------|

@@ -141,6 +141,28 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `consolidate <version>` merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry and deletes them |
 | `/threat-model` | STRIDE-A threat model |
+| `/ci-fix` | Fix CI failures for a supplied run/job URL or HEAD; reruns lost hosted runners |
+
+## Automatic skill routing
+
+When a prompt matches a trigger below, read `.github/skills/<skill>/SKILL.md` and apply it to the matching part of the request before anything else; rows are in priority order. OMP sessions inject the skill automatically (`.omp/extensions/jev-orchestrator.ts`). Triggers are case-insensitive regexes in the JavaScript/Python common subset; write alternation as `\|`.
+
+| Skill | Trigger |
+|---|---|
+| `/ci-fix` | `github\.com/Cosmian/kms/actions/runs/\d+` |
+| `/ci-fix` | `\b(fix\|repair)\s+(the\s+)?ci\b` |
+| `/issue-workflow` | `github\.com/Cosmian/kms/issues/\d+` |
+| `/issue-workflow` | `\b(resolve\|fix\|implement)\s+(github\s+)?issue\s+#?\d+` |
+| `/kms-pr-description` | `\bpr description\b` |
+| `/kms-pr-review` | `\breview\s+(this\s+\|the\s+\|my\s+)?(pr\|pull request\|diff\|branch)\b` |
+| `/kms-release-notes` | `\brelease notes\b` |
+| `/pre-release` | `\bpre-?release\s+(gate\|check\|audit)\b` |
+| `/kms-changelog` | `\bchangelog\b` |
+| `/meta-security` | `\b(full\|complete\|meta)[- ]security audit\b` |
+| `/threat-model` | `\bthreat[- ]model` |
+| `/kms-test-vector` | `\b(create\|add\|new)\b.*\btest vectors?\b` |
+| `/kms-adversarial-test` | `\badversarial test` |
+| `/adr` | `\barchitectural decision record\b` |
 
 ## Credit-Saving Strategies
 
