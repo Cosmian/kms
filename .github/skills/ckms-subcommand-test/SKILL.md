@@ -247,6 +247,7 @@ Verify before closing the task:
 | `owner_config(ctx)` | `tests/utils/mod.rs` | Path to `owner.client.acme.com.toml` config |
 | `load_client_config(name, ctx)` | `tests/utils/mod.rs` | Path to any test-cert config file |
 | `extract_uid(stdout, label)` | `tests/utils/extract_uids.rs` | Parse a UID from a line like `Unique identifier: <uid>` |
-| `start_default_test_kms_server()` | `test_kms_server` crate | Start an in-process KMS with SQLite + cert auth |
+| `start_default_test_kms_server()` | `test_kms_server` crate | Shared singleton KMS: SQLite, plain HTTP, no auth (`auth/plain.toml`) |
 | `start_default_test_kms_server_with_crypto_officer_users(users)` | `test_kms_server` crate | Start KMS with CO role enabled |
 | `start_default_test_kms_server_with_multi_crypto_officer_users()` | `test_kms_server` crate | Two-CO pre-configured setup |
+| other server variants | `test_kms_server` crate | See `.github/instructions/rust.instructions.md` § Test KMS servers |

@@ -89,6 +89,7 @@ impl Default for ClapConfig {
             hsm: HsmConfig::default(),
             hsm_instances: vec![],
             key_encryption_key: None,
+            key_encryption_key_wrapping_algorithm: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
             roles: RolesConfig::default(),
@@ -173,6 +174,20 @@ pub struct ClapConfig {
     /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
     /// to be wrapped by the specified key encryption key (KEK)
     pub key_encryption_key: Option<String>,
+
+    /// Algorithm used to wrap keys at rest with `key_encryption_key`:
+    /// `aes-gcm`, `aes-key-wrap` (NIST SP 800-38F KW, RFC 3394), `aes-key-wrap-padding`
+    /// (NIST SP 800-38F KWP, RFC 5649) or `rsa-oaep` (SHA-256). The AES modes need an AES key
+    /// encryption key, `rsa-oaep` an RSA one. Unset: AES-GCM for an HSM AES key, RSA-OAEP
+    /// (SHA-256) for an HSM RSA key, AES-KWP for a software AES key; a software RSA key requires
+    /// `rsa-oaep`. Startup probing covers HSM AES keys only.
+    #[clap(
+        verbatim_doc_comment,
+        long,
+        env = "KMS_KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM",
+        value_parser(["aes-gcm", "aes-key-wrap", "aes-key-wrap-padding", "rsa-oaep"])
+    )]
+    pub key_encryption_key_wrapping_algorithm: Option<String>,
 
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved.
     /// Repeat this option to specify multiple object types
@@ -795,6 +810,10 @@ impl fmt::Debug for ClapConfig {
         };
         let x = x.field("hsm_instances count", &self.hsm_instances.len());
         let x = x.field("key wrapping key", &self.key_encryption_key);
+        let x = x.field(
+            "key encryption key wrapping algorithm",
+            &self.key_encryption_key_wrapping_algorithm,
+        );
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users (deprecated)", &self.privileged_users);

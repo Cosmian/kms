@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::{
@@ -36,19 +34,15 @@ use cosmian_kms_server_database::reexport::{
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
-    core::KMS,
     error::KmsError,
     middlewares::UserId,
     result::{KResult, KResultHelper},
-    tests::test_utils::https_clap_config,
+    tests::test_utils::test_kms,
 };
 
 #[tokio::test]
 async fn test_curve_25519() -> KResult<()> {
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from(Uuid::new_v4().to_string());
 
     // request key pair creation
@@ -214,9 +208,7 @@ async fn test_curve_25519() -> KResult<()> {
 
 #[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from(Uuid::new_v4().to_string());
 
     let request = RequestMessage {

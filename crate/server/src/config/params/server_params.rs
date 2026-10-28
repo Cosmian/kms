@@ -2,7 +2,14 @@ use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, tim
 
 use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams,
+    reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        },
+    },
 };
 use cosmian_logger::{debug, warn};
 use ipnet::IpNet;
@@ -144,6 +151,9 @@ pub struct ServerParams {
 
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
+
+    /// Wrapping parameters for `key_wrapping_key`; `None` = per-KEK default
+    pub key_wrapping_algorithm: Option<CryptographicParameters>,
 
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved
     ///
@@ -786,6 +796,10 @@ impl ServerParams {
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_instances,
+            key_wrapping_algorithm: parse_kek_wrapping_algorithm(
+                conf.key_encryption_key_wrapping_algorithm.as_deref(),
+                conf.key_encryption_key.is_some(),
+            )?,
             key_wrapping_key: conf.key_encryption_key,
             default_unwrap_types: parse_default_unwrap_types(conf.default_unwrap_type)?,
             otel_params: if conf.logging.otlp.is_some()
@@ -1153,6 +1167,42 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
         .transpose()
 }
 
+/// Parse `key_encryption_key_wrapping_algorithm` (TOML values bypass clap's `value_parser`).
+fn parse_kek_wrapping_algorithm(
+    value: Option<&str>,
+    has_kek: bool,
+) -> KResult<Option<CryptographicParameters>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if !has_kek {
+        return Err(KmsError::ServerError(
+            "key_encryption_key_wrapping_algorithm requires key_encryption_key".to_owned(),
+        ));
+    }
+    let aes = |mode| CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(mode),
+        ..Default::default()
+    };
+    Ok(Some(match value {
+        "aes-gcm" => aes(BlockCipherMode::GCM),
+        "aes-key-wrap" => aes(BlockCipherMode::NISTKeyWrap),
+        "aes-key-wrap-padding" => aes(BlockCipherMode::AESKeyWrapPadding),
+        "rsa-oaep" => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        other => {
+            return Err(KmsError::ServerError(format!(
+                "invalid key_encryption_key_wrapping_algorithm: {other}"
+            )));
+        }
+    }))
+}
+
 /// `--jwt-svid-auth` is global: it makes EVERY `--jwt-auth-provider` issuer accept SPIFFE
 /// subjects. A JWT-SVID is minted for a specific audience and workloads hold SVIDs for many
 /// services, so without an expected audience any SVID issued for another service could be
@@ -1352,6 +1402,9 @@ impl fmt::Debug for ServerParams {
         if self.key_wrapping_key.is_some() {
             debug_struct.field("key_wrapping_key", &"[configured]");
         }
+        if let Some(a) = &self.key_wrapping_algorithm {
+            debug_struct.field("key_wrapping_algorithm", a);
+        }
 
         if let Some(ref proxy) = self.proxy_params {
             debug_struct.field("proxy_params", proxy);
@@ -1479,8 +1532,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        AuditBackendParams, ServerParams, ensure_svid_providers_have_audience,
-        normalized_pg_authority,
+        AuditBackendParams, BlockCipherMode, CryptographicAlgorithm, PaddingMethod, ServerParams,
+        ensure_svid_providers_have_audience, normalized_pg_authority, parse_kek_wrapping_algorithm,
     };
     use crate::{
         config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
@@ -1733,5 +1786,40 @@ mod tests {
             normalized_pg_authority("postgresql://u:p@host:5432/db_audit"),
             normalized_pg_authority("postgresql://u:p@host:5432/db_objects")
         );
+    }
+
+    #[test]
+    fn parse_kek_wrapping_algorithm_values() {
+        for (value, mode) in [
+            ("aes-gcm", BlockCipherMode::GCM),
+            ("aes-key-wrap", BlockCipherMode::NISTKeyWrap),
+            ("aes-key-wrap-padding", BlockCipherMode::AESKeyWrapPadding),
+        ] {
+            let p = parse_kek_wrapping_algorithm(Some(value), true)
+                .expect("a supported algorithm parses")
+                .expect("a configured algorithm yields parameters");
+            assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::AES));
+            assert_eq!(p.block_cipher_mode, Some(mode), "{value}");
+        }
+        let p = parse_kek_wrapping_algorithm(Some("rsa-oaep"), true)
+            .expect("rsa-oaep parses")
+            .expect("rsa-oaep yields parameters");
+        assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::RSA));
+        assert_eq!(p.padding_method, Some(PaddingMethod::OAEP));
+        assert!(
+            parse_kek_wrapping_algorithm(None, false)
+                .expect("an unset algorithm is valid")
+                .is_none()
+        );
+
+        let err = parse_kek_wrapping_algorithm(Some("aes-ctr"), true)
+            .expect_err("an unknown algorithm is rejected");
+        assert!(
+            err.to_string()
+                .contains("invalid key_encryption_key_wrapping_algorithm: aes-ctr")
+        );
+        let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false)
+            .expect_err("an algorithm without a KEK is rejected");
+        assert!(err.to_string().contains("requires key_encryption_key"));
     }
 }

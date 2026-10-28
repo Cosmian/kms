@@ -1,3 +1,17 @@
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::KeyWrapType,
+    kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
+        kmip_attributes::{Attribute, Attributes},
+        kmip_objects::ObjectType as Kmip21ObjectType,
+        kmip_operations::{Destroy, Export, Import, ModifyAttribute, Operation},
+        kmip_types::{CryptographicAlgorithm, Name, NameType, UniqueIdentifier},
+        requests::symmetric_key_create_request,
+    },
+};
+use uuid::Uuid;
+
 /// Server-side regression tests for HSM-related GitHub issues.
 ///
 /// - Issue #761: Non-admin users could not wrap keys using the server-configured
@@ -13,25 +27,8 @@
 /// - Issue #933: `ModifyAttribute(Name)` failed for non-extractable (sensitive)
 ///   HSM-backed keys because `HsmStore::retrieve` tried to export key material.
 ///   The fix falls back to `get_key_metadata` for sensitive keys to build a stub.
-use std::sync::Arc;
-
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::KeyWrapType,
-    kmip_2_1::{
-        extra::tagging::VENDOR_ID_COSMIAN,
-        kmip_attributes::{Attribute, Attributes},
-        kmip_objects::ObjectType as Kmip21ObjectType,
-        kmip_operations::{Destroy, Export, Import, ModifyAttribute, Operation},
-        kmip_types::{CryptographicAlgorithm, Name, NameType, UniqueIdentifier},
-        requests::symmetric_key_create_request,
-    },
-};
-use uuid::Uuid;
-
+use crate::tests::test_utils::test_kms_with_config;
 use crate::{
-    config::ServerParams,
-    core::KMS,
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -61,7 +58,7 @@ pub(super) async fn test_non_admin_kek_wrapping() -> KResult<()> {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Admin creates the KEK on the HSM.
     create_kek(&kek_uid, &admin, &kms).await?;
@@ -124,7 +121,7 @@ pub(super) async fn test_server_side_unwrap() -> KResult<()> {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Admin creates the KEK on the HSM.
     create_kek(&kek_uid, &admin, &kms).await?;
@@ -215,7 +212,7 @@ pub(super) async fn test_hsm_destroy_type_guard() -> KResult<()> {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Create a symmetric (AES) key on the HSM.
     create_kek(&kek_uid, &admin, &kms).await?;
@@ -284,7 +281,7 @@ pub(super) async fn test_hsm_modify_attribute_sensitive_key() -> KResult<()> {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Create a sensitive (non-extractable) AES-256 key on the HSM.
     // We create it directly with `sensitive = true` to ensure the key is
@@ -353,7 +350,7 @@ pub(super) async fn test_hsm_locate_name_filter_does_not_leak_kek() -> KResult<(
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Create the KEK in the HSM (simulates server-configured wrapping key).
     create_kek(&kek_uid, &admin, &kms).await?;

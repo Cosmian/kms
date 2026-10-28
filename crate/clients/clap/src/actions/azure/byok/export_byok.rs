@@ -82,7 +82,6 @@ impl ExportByokAction {
                 hashing_algorithm: Some(HashingAlgorithm::SHA1),
                 ..CryptographicParameters::default()
             }),
-            authenticated_encryption_additional_data: None,
         };
 
         let (_id, object, _) =

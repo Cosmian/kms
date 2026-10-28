@@ -42,6 +42,9 @@ impl HsmProvider for SofthsmCapabilityProvider {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            // Development token, not a FIPS-validated module.
+            allows_caller_gcm_iv_in_fips: true,
+            aes_key_wrap_pad_is_rfc5649: true,
             supports_aes_gcm_message: false,
             supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: true,
@@ -59,3 +62,34 @@ impl HsmProvider for SofthsmCapabilityProvider {
 
 /// The softhsm2 is fully supported by the `BaseHsm` implementation
 pub type Softhsm2 = cosmian_kms_base_hsm::BaseHsm<SofthsmCapabilityProvider>;
+
+/// Capability profile for `hsm_model = "other"`: `SoftHSM2`'s PKCS#11 quirks, but treated as a
+/// FIPS-validated module (no caller-chosen AES-GCM IV in FIPS builds) and trying the
+/// PKCS#11 v3 message API when the library exports it.
+pub struct OtherCapabilityProvider;
+
+impl HsmProvider for OtherCapabilityProvider {
+    fn capabilities() -> HsmCapabilities {
+        HsmCapabilities {
+            allows_caller_gcm_iv_in_fips: false,
+            supports_aes_gcm_message: true,
+            ..SofthsmCapabilityProvider::capabilities()
+        }
+    }
+}
+
+/// Generic PKCS#11 HSM (`hsm_model = "other"`).
+pub type OtherHsm = cosmian_kms_base_hsm::BaseHsm<OtherCapabilityProvider>;
+
+#[cfg(test)]
+mod capability_tests {
+    use cosmian_kms_base_hsm::hsm_capabilities::HsmProvider;
+
+    use super::{OtherCapabilityProvider, SofthsmCapabilityProvider};
+
+    #[test]
+    fn only_the_development_token_may_send_a_caller_gcm_iv_in_fips() {
+        assert!(!OtherCapabilityProvider::capabilities().allows_caller_gcm_iv_in_fips);
+        assert!(SofthsmCapabilityProvider::capabilities().allows_caller_gcm_iv_in_fips);
+    }
+}

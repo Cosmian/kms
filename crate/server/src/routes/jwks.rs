@@ -446,7 +446,6 @@ fn x25519_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<serde_json::V
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_access::access::Access;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
@@ -454,18 +453,13 @@ mod tests {
     };
 
     use super::{JWKS_TAG, discover_eligible_public_keys};
-    use crate::{
-        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-        tests::test_utils::https_clap_config,
-    };
+    use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
     /// A `jwks`-tagged key owned by another user and shared with `*` must not be
     /// published; the same kind of key owned by `default_username` must be.
     #[tokio::test]
     async fn test_jwks_excludes_keys_only_shared_with_default_user() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
         let attacker = UserId::from("attacker");
         let request =
             || create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, [JWKS_TAG], 2048, false, None);

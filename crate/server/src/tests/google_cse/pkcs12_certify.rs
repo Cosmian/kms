@@ -2,7 +2,7 @@
 //!
 //! Non-FIPS only: the PKCS12KDF MAC of the PKCS#12 file is not available in the FIPS provider.
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
@@ -34,16 +34,15 @@ use super::{
     rsa_encrypt, test_cse_private_key_decrypt,
 };
 use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-    routes::google_cse::operations::GOOGLE_CSE_ID, tests::test_utils::https_clap_config,
+    middlewares::UserId, result::KResult, routes::google_cse::operations::GOOGLE_CSE_ID,
+    tests::test_utils::test_kms,
 };
 
 #[tokio::test]
 async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
     log_init(Some("debug"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // Create google_cse key

@@ -14,6 +14,8 @@ Checks:
   C4  every `/slash-command` reference names an existing skill
   C5  relative Markdown links (and #anchors) resolve
   C6  `.github/...` paths quoted in backticks exist
+  C7  the automatic skill routing table in copilot-instructions.md is
+      well-formed and every trigger regex compiles
 
 Usage:
   python3 .mise/scripts/docs/check_ai_docs.py            # check only
@@ -55,6 +57,8 @@ SPAN_RE = re.compile(r'`([^`]+)`')
 HEADING_RE = re.compile(r'^#{1,6}\s')
 # `/skill-name` is the documented placeholder in AGENTS.md section 9 and skills/README.md.
 SLASH_ALLOWLIST = {'skill-name'}
+ROUTE_ROW_RE = re.compile(r'^\|\s*`/([a-z0-9-]+)`\s*\|\s*`(.+)`\s*\|\s*$')
+ROUTING_HEADING = '## Automatic skill routing'
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -395,6 +399,40 @@ def check_gh_paths(repo: Repo) -> list[str]:
     return out
 
 
+def check_routing(repo: Repo) -> list[str]:
+    """C7: routing rows are `| `/skill` | `regex` |` and each regex compiles."""
+    p = repo.root / '.github' / 'copilot-instructions.md'
+    rel = repo.rel(p)
+    lines = p.read_text(encoding='utf-8').splitlines()
+    try:
+        start = lines.index(ROUTING_HEADING) + 1
+    except ValueError:
+        return [f'ERROR {rel}:1: missing automatic skill routing table']
+    out: list[str] = []
+    rows = 0
+    for no, line in enumerate(lines[start:], start=start + 1):
+        if line.startswith('## '):
+            break
+        if (
+            not line.startswith('|')
+            or line.startswith('|---')
+            or line.startswith('| Skill')
+        ):
+            continue
+        m = ROUTE_ROW_RE.match(line)
+        if not m:
+            out.append(f'ERROR {rel}:{no}: malformed routing row')
+            continue
+        rows += 1
+        try:
+            re.compile(m.group(2).replace('\\|', '|'), re.IGNORECASE)
+        except re.error as e:
+            out.append(f'ERROR {rel}:{no}: invalid trigger regex: {e}')
+    if rows == 0 and not out:
+        out.append(f'ERROR {rel}:{start}: missing automatic skill routing table')
+    return out
+
+
 # ── main ───────────────────────────────────────────────────────────────────
 
 
@@ -413,6 +451,11 @@ def self_test() -> None:
     assert strip_inline_code('a `[b](c.md)` d') == 'a  d'
     assert ROW_RE.match('| `rust.instructions.md` | `**/*.rs` | x |')
     assert SLASH_RE.match('/kms-pr-review [PR#]') and not SLASH_RE.match('/tmp/x')
+    assert (
+        ROUTE_ROW_RE.match('| `/ci-fix` | `a\\|b` |').group(2).replace('\\|', '|')
+        == 'a|b'
+    )
+    assert not ROUTE_ROW_RE.match('| `ci-fix` | x |')
     print('self-test OK')
 
 
@@ -436,6 +479,7 @@ def main() -> None:
         + check_slash_refs(repo)
         + check_links(repo)
         + check_gh_paths(repo)
+        + check_routing(repo)
     )
     for line in issues:
         print(line, file=sys.stderr if line.startswith('ERROR') else sys.stdout)

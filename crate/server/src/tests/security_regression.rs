@@ -4,8 +4,6 @@
 //! development. Each test documents the vulnerability it guards against.
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm,
     kmip_2_1::{
@@ -18,16 +16,12 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
+    core::KMS,
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
+    tests::test_utils::{https_clap_config, test_kms, test_kms_with_config},
 };
-
-/// Helper: create a KMS instance for tests
-async fn test_kms() -> KResult<Arc<KMS>> {
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-    ))
-}
 
 /// Helper: create a symmetric AES-256 key for encryption tests
 async fn create_aes_key(kms: &KMS, user: &str) -> KResult<UniqueIdentifier> {
@@ -243,7 +237,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
     // Phase 1: create a wrapping key (KEK) on a plain KMS (no KEK configured yet)
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     let owner = UserId::from("test_kek_wrapping_regression@example.com");
 
     let kek_request = symmetric_key_create_request(
@@ -263,7 +257,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
     let mut clap_config_kek = https_clap_config();
     clap_config_kek.db.sqlite_path = sqlite_path;
     clap_config_kek.key_encryption_key = Some(kek_id.to_string());
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+    let kms = test_kms_with_config(clap_config_kek).await?;
 
     // Create a data encryption key (DEK) — auto-wrapped by KEK — with UsageLimits
     let mut dek_request = symmetric_key_create_request(
@@ -389,7 +383,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     // Phase 1: create a wrapping key (KEK) on a plain KMS
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     let owner = UserId::from("test_kek_sign_regression@example.com");
 
     let kek_request = symmetric_key_create_request(
@@ -409,7 +403,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     let mut clap_config_kek = https_clap_config();
     clap_config_kek.db.sqlite_path = sqlite_path;
     clap_config_kek.key_encryption_key = Some(kek_id.to_string());
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+    let kms = test_kms_with_config(clap_config_kek).await?;
 
     // Create an Ed25519 keypair with UsageLimits on the private key
     let mut create_request = create_ec_key_pair_request(
@@ -493,7 +487,7 @@ async fn test_get_fresh_wrapped_key_preserves_wrapping_in_db() -> KResult<()> {
     // Phase 1: create a wrapping key (KEK) on a plain KMS
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     let owner = UserId::from("test_fresh_unwrap_owner@example.com");
 
     let kek_request = symmetric_key_create_request(
@@ -514,7 +508,7 @@ async fn test_get_fresh_wrapped_key_preserves_wrapping_in_db() -> KResult<()> {
     clap_config_kek.db.sqlite_path = sqlite_path;
     clap_config_kek.key_encryption_key = Some(kek_id.to_string());
     clap_config_kek.default_unwrap_type = Some(vec!["All".to_owned()]);
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+    let kms = test_kms_with_config(clap_config_kek).await?;
 
     // Create a symmetric key while KEK is configured -> wrapped at rest in DB
     let key_request = symmetric_key_create_request(
@@ -608,7 +602,7 @@ async fn test_get_fresh_wrapped_key_explicit_not_wrapped_preserves_wrapping_in_d
     // Phase 1: create a wrapping key (KEK) on a plain KMS
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     let owner = UserId::from("test_fresh_unwrap_explicit_owner@example.com");
 
     let kek_request = symmetric_key_create_request(
@@ -629,7 +623,7 @@ async fn test_get_fresh_wrapped_key_explicit_not_wrapped_preserves_wrapping_in_d
     clap_config_kek.db.sqlite_path = sqlite_path;
     clap_config_kek.key_encryption_key = Some(kek_id.to_string());
     clap_config_kek.default_unwrap_type = None;
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+    let kms = test_kms_with_config(clap_config_kek).await?;
 
     // Create a symmetric key while KEK is configured -> wrapped at rest in DB
     let key_request = symmetric_key_create_request(
@@ -945,7 +939,7 @@ async fn test_rng_seed_is_restricted_to_crypto_officers() -> KResult<()> {
         ..Default::default()
     };
     conf.roles.crypto_officer_users = Some(vec![alice.to_owned()]);
-    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?;
+    let kms = test_kms_with_config(conf).await?;
     let roles = &kms.params.crypto_officer;
 
     check_role_permission(&kms, alice, OperationEnumeration::RNGSeed, roles).await?;
@@ -1015,7 +1009,7 @@ async fn test_mac_tag_spelling_cannot_bypass_algorithm_policy() -> KResult<()> {
     };
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA512]);
-    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?;
+    let kms = test_kms_with_config(conf).await?;
 
     let mac = MAC {
         unique_identifier: Some(UniqueIdentifier::TextString("no-such-key".to_owned())),
@@ -1079,7 +1073,7 @@ async fn test_default_kmip_policy_applies_to_batched_request_messages() -> KResu
         ..Default::default()
     };
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
-    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?;
+    let kms = test_kms_with_config(conf).await?;
 
     let message = RequestMessage {
         request_header: RequestMessageHeader {

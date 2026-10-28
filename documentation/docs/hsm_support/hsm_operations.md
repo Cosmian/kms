@@ -186,6 +186,39 @@ in the server's memory cache (see [The Unwrapped Objects Cache](#the-unwrapped-o
 This enables transparent encryption/decryption operations without storing clear-text keys in the database
 while minimizing HSM calls through expiring caching.
 
+#### Choosing the wrapping algorithm
+
+`key_encryption_key_wrapping_algorithm` selects the algorithm used to wrap keys at rest with the
+`key_encryption_key`:
+
+| Value | Algorithm |
+| --- | --- |
+| `aes-gcm` | AES-GCM (NIST SP 800-38D) — default for an HSM AES key encryption key |
+| `aes-key-wrap` | AES-KW (NIST SP 800-38F, RFC 3394) |
+| `aes-key-wrap-padding` | AES-KWP (NIST SP 800-38F, RFC 5649) — default for a software AES key encryption key |
+| `rsa-oaep` | RSA-OAEP with SHA-256 — default for an HSM RSA key encryption key; required for a software one |
+
+The AES modes need an AES key encryption key and `rsa-oaep` an RSA one. The startup check below
+applies to HSM AES keys only.
+
+In a FIPS build, AES-GCM encryption on a FIPS-validated HSM requires the HSM to generate the IV
+(FIPS 140-3 Implementation Guidance C.H). An HSM that neither supports the PKCS#11 v3.0 message
+API nor generates the IV refuses AES-GCM; the server then stops at startup with an error that
+names this option. AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
+
+```toml
+key_encryption_key = "hsm::4::master_kek"
+key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"
+```
+
+At startup the server checks that an AES HSM key encryption key can wrap with the selected
+algorithm. AES-KW/KWP go through `C_WrapKey` on HSMs that do not offer them as single-part
+encryption; this needs `CKA_WRAP`/`CKA_UNWRAP` on the key encryption key. HSM AES keys created by
+this KMS version are created with both attributes enabled, so any of them can serve as a key
+wrapping key. Keys created by earlier KMS versions lack them: on a slot that offers AES key wrap,
+the server sets both attributes once and clears them again if wrapping still fails, then stops with an
+error. Keys already wrapped with another algorithm are still unwrapped.
+
 ## Using the wrapped KMS key
 
 The symmetric key created above can now be used to encrypt and decrypt data, and the KMS will transparently unwrap the
@@ -466,8 +499,9 @@ The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw
 Symmetric keys and public keys can be used to encrypt data. Only HSM admin users, or a user granted the `Encrypt`
 operation by an HSM admin, can encrypt data with keys stored in the HSM.
 
-For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-deprecated, but still widely
-used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
+For symmetric keys, AES GCM is supported for data encryption; AES-KW (`NISTKeyWrap`) and AES-KWP
+(`AESKeyWrapPadding`) are also accepted, for wrapping key material. CKM_RSA_PKCS_OAEP and the now-deprecated, but
+still widely used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
 
 When using RSA, the maximum message size in bytes is:
 

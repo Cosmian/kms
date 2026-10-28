@@ -33,16 +33,14 @@ use openssl::x509::{X509, X509Req};
 use time::OffsetDateTime;
 
 use crate::{
-    config::ServerParams,
     core::{
         KMS,
         operations::{generate_crl::get_cached_crl, generate_csr::generate_csr},
     },
     error::KmsError,
     middlewares::UserId,
-    openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
-    tests::test_utils::{https_clap_config, https_clap_config_opts},
+    tests::test_utils::{https_clap_config_opts, test_kms, test_kms_with_config},
 };
 
 const CA_EXT: &[u8] = b"[v3_ca]
@@ -54,10 +52,7 @@ keyUsage=critical,keyCertSign,crlSign
 const EMPTY_TAGS: [&str; 0] = [];
 
 async fn make_kms() -> KResult<Arc<KMS>> {
-    init_openssl_providers_for_tests();
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-    ))
+    test_kms().await
 }
 
 fn user(name: &str) -> UserId {
@@ -565,13 +560,10 @@ async fn import_certificate_copy(
 #[tokio::test]
 async fn server_crl_regeneration_does_not_sign_with_a_key_its_certificate_owner_cannot_use()
 -> KResult<()> {
-    init_openssl_providers_for_tests();
-    let kms = Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config_opts(
-            Some("https://kms.example.com".to_owned()),
-        ))?))
-        .await?,
-    );
+    let kms = test_kms_with_config(https_clap_config_opts(Some(
+        "https://kms.example.com".to_owned(),
+    )))
+    .await?;
     let alice = user("alice@example.com");
     let mallory = user("mallory@example.com");
     let (root_id, root_sk_id) = make_root(&kms, &alice).await?;

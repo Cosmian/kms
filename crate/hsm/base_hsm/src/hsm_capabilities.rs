@@ -34,6 +34,11 @@ pub struct HsmCapabilities {
     /// When false, encryption proceeds without caller IV (HSM generates internally).
     pub supports_aes_gcm_caller_iv: bool,
 
+    /// Whether a caller-chosen AES-GCM IV may still be sent in FIPS builds.
+    /// Only for development tokens that are not FIPS-validated modules (`SoftHSM2`, Kryoptic).
+    /// FIPS 140-3 IG C.H requires GCM encryption IVs to be generated inside the module.
+    pub allows_caller_gcm_iv_in_fips: bool,
+
     /// Whether the HSM supports PKCS#11 v3.0 message-based AES-GCM encryption.
     pub supports_aes_gcm_message: bool,
 
@@ -67,6 +72,11 @@ pub struct HsmCapabilities {
     /// does not support it.
     pub supports_rsa_oaep_key_wrap: bool,
 
+    /// Whether `CKM_AES_KEY_WRAP_PAD` (0x210A) implements RFC 5649 KWP. PKCS#11 v2.40 defines
+    /// it as PKCS#7-padded KW, but `SoftHSM2` implements RFC 5649. `CKM_AES_KEY_WRAP_KWP`
+    /// (v3.0) is always RFC 5649.
+    pub aes_key_wrap_pad_is_rfc5649: bool,
+
     /// Whether the HSM refuses ECDSA signatures whose digest is weaker than the curve
     /// (P-384 with SHA-256; P-521 with SHA-256 or SHA-384). AWS `CloudHSM` enforces this.
     /// The shared test suite reads it to skip those combinations; production calls
@@ -91,12 +101,14 @@ impl Default for HsmCapabilities {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
             supports_aes_gcm_message: true,
             supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
             supports_key_dates: true,
             supports_rsa_oaep_key_wrap: true,
+            aes_key_wrap_pad_is_rfc5649: false,
             enforces_ecdsa_digest_strength: false,
             skip_finalize_on_drop: false,
             max_concurrent_sessions: 128,

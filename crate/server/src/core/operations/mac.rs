@@ -298,7 +298,6 @@ fn infer_hmac_hashing_algorithm(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
@@ -311,11 +310,10 @@ mod tests {
     };
 
     use crate::{
-        config::ServerParams,
-        core::{KMS, operations::mac::compute_hmac},
+        core::operations::mac::compute_hmac,
         middlewares::UserId,
         result::{KResult, KResultHelper},
-        tests::test_utils::https_clap_config,
+        tests::test_utils::test_kms,
     };
 
     #[test]
@@ -370,9 +368,7 @@ mod tests {
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
 
         let unique_identifier = Some(
             kms.create(
@@ -444,9 +440,7 @@ mod tests {
     /// constant-time compare (only timing differs); it guards the verdicts against regressions.
     #[tokio::test]
     async fn test_server_mac_verify_rejects_tampered_mac() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
         let user = UserId::from("user");
         let unique_identifier = kms
             .create(

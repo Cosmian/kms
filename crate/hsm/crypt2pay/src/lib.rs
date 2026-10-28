@@ -18,6 +18,8 @@ impl HsmProvider for Crypt2payCapabilityProvider {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            aes_key_wrap_pad_is_rfc5649: false,
             // libpkcs11c2p.so stubs both v3 families as notimpl.c (CKR_FUNCTION_NOT_SUPPORTED, 0x54):
             // C_MessageEncryptInit and C_MessageSignInit, on the simulator and the real HSM alike.
             supports_aes_gcm_message: false,

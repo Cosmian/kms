@@ -37,7 +37,6 @@ use openssl::{
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
     core::{
         KMS,
         operations::{
@@ -51,7 +50,7 @@ use crate::{
     routes::ocsp,
     tests::{
         hsm::{EMPTY_TAGS, hsm_clap_config},
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -353,7 +352,7 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     let sqlite_path = get_tmp_sqlite_path();
     clap_config.db.sqlite_path = sqlite_path.clone();
     let slot = clap_config.hsm.hsm_slot[0];
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     let root_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
     let root_id = create_hsm_root(&kms, &owner, &root_sk_id).await?;
@@ -506,7 +505,7 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
     clap_config.ocsp.ocsp_enabled = true;
     clap_config.ocsp.ocsp_ca_uid = Some(sub_id.clone());
     clap_config.ocsp.ocsp_include_cert_chain = true;
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     let root = certificate(&kms, &owner, &root_id).await?;
     let sub = certificate(&kms, &owner, &sub_id).await?;
     // ReCertify deactivated the original leaf (Get is refused): the renewed one is checked
@@ -543,7 +542,7 @@ pub(super) async fn test_hsm_sub_ca_ed25519() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner_name, None)?;
     clap_config.db.sqlite_path = get_tmp_sqlite_path();
     let slot = clap_config.hsm.hsm_slot[0];
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
     let ed_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
@@ -574,7 +573,7 @@ pub(super) async fn test_hsm_sub_ca_ec() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner_name, None)?;
     clap_config.db.sqlite_path = get_tmp_sqlite_path();
     let slot = clap_config.hsm.hsm_slot[0];
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
     for curve in [RecommendedCurve::P256, RecommendedCurve::P384] {

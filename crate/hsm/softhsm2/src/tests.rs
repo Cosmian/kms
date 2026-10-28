@@ -60,6 +60,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // comment above `concurrent_sign_does_not_degrade`. Its standalone test fails the same
     // way on this build.
     shared::aes_gcm_encrypt(&slot)?;
+    shared::aes_key_wrap(&slot, cfg.slot_id_for_tests)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
     shared::aes_cbc_multi_part(&slot)?;

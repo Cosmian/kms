@@ -73,6 +73,8 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 pub enum HsmEncryptionAlgorithm {
     AesCbc,
     AesGcm,
+    AesKeyWrap,
+    AesKeyWrapPad,
     RsaPkcsV15,
     RsaOaepSha256,
     RsaOaepSha1,
@@ -83,6 +85,8 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
         match algorithm {
             CryptoAlgorithm::AesCbc => Self::AesCbc,
             CryptoAlgorithm::AesGcm => Self::AesGcm,
+            CryptoAlgorithm::AesKeyWrap => Self::AesKeyWrap,
+            CryptoAlgorithm::AesKeyWrapPad => Self::AesKeyWrapPad,
             CryptoAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
             CryptoAlgorithm::RsaOaepSha256 => Self::RsaOaepSha256,
             CryptoAlgorithm::RsaOaepSha1 => Self::RsaOaepSha1,
@@ -177,6 +181,21 @@ const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) ->
 #[cfg(feature = "non-fips")]
 const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
+}
+
+/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
+#[cfg(not(feature = "non-fips"))]
+const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
+    c.supports_aes_gcm_caller_iv && c.allows_caller_gcm_iv_in_fips
+}
+
+#[cfg(feature = "non-fips")]
+const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
+    c.supports_aes_gcm_caller_iv
+}
+
+fn aes_key_wrap_misrouted() -> HError {
+    HError::Default("AES key wrap must go through Session::aes_key_wrap/aes_key_unwrap".to_owned())
 }
 
 #[cfg(not(feature = "non-fips"))]
@@ -896,10 +915,7 @@ impl Session {
             .as_deref()
             .is_none_or(|iv| iv.iter().all(|&b| b == 0))
         {
-            return Err(HError::Default(
-                "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce"
-                    .to_owned(),
-            ));
+            return Err(HError::Default(NO_GENERATED_GCM_IV.to_owned()));
         }
         Ok(content)
     }
@@ -955,11 +971,26 @@ impl Session {
                     && self.hsm().supports_message_encrypt()
                 {
                     self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
-                } else if self.hsm_capabilities().supports_aes_gcm_caller_iv {
+                } else if caller_gcm_iv_allowed(self.hsm_capabilities()) {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
-                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)?
+                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
+                        .map_err(|e| {
+                            if e.to_string() == NO_GENERATED_GCM_IV {
+                                HError::Default(format!(
+                                    "AES-GCM encryption needs an IV generated inside the HSM \
+                                     (FIPS 140-3 IG C.H), and this HSM provided none ({e}). Use \
+                                     AES key wrap instead: key_encryption_key_wrapping_algorithm \
+                                     = \"aes-key-wrap-padding\" (NIST SP 800-38F)"
+                                ))
+                            } else {
+                                e
+                            }
+                        })?
                 }
+            }
+            HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
+                return Err(aes_key_wrap_misrouted());
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
@@ -997,6 +1028,7 @@ impl Session {
                     iv: Some(iv.to_vec()),
                     ciphertext, // no separate tag for CBC
                     tag: None,
+                    cryptographic_algorithm: None,
                 }
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -1143,6 +1175,9 @@ impl Session {
                     })?,
                 )?;
                 Ok(plaintext)
+            }
+            HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
+                Err(aes_key_wrap_misrouted())
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 if ciphertext.len() < AES_CBC_IV_LENGTH {
@@ -1324,6 +1359,7 @@ impl Session {
             iv: Some(iv.to_vec()),
             ciphertext, // no separate tag for CBC
             tag: None,
+            cryptographic_algorithm: None,
         })
     }
 
@@ -1479,6 +1515,7 @@ impl Session {
             iv: Some(iv.to_vec()),
             ciphertext, // no separate tag for CBC
             tag: None,
+            cryptographic_algorithm: None,
         })
     }
 
@@ -1632,7 +1669,7 @@ impl Session {
         }
     }
 
-    fn encrypt_with_mechanism(
+    pub(super) fn encrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
@@ -1680,7 +1717,7 @@ impl Session {
         Ok(encrypted_data)
     }
 
-    fn decrypt_with_mechanism(
+    pub(super) fn decrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
@@ -3264,7 +3301,7 @@ impl Session {
         Ok(rv)
     }
 
-    fn call_get_attributes(
+    pub(super) fn call_get_attributes(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
@@ -4001,12 +4038,49 @@ fn split_aes_gcm_output(
                 .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
                 .to_vec(),
         ),
+        cryptographic_algorithm: None,
     })
 }
+
+/// Error raised when an HSM leaves the `pIv` buffer of a FIPS AES-GCM encryption all-zero.
+const NO_GENERATED_GCM_IV: &str =
+    "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce";
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caller_gcm_iv_policy_development_token() {
+        let development_token = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: true,
+            ..Default::default()
+        };
+        assert!(caller_gcm_iv_allowed(&development_token));
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn caller_gcm_iv_policy_production_non_fips() {
+        let production = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            ..Default::default()
+        };
+        assert!(caller_gcm_iv_allowed(&production));
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn caller_gcm_iv_policy_production_fips() {
+        let production = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            ..Default::default()
+        };
+        assert!(!caller_gcm_iv_allowed(&production));
+    }
 
     #[test]
     fn split_aes_gcm_output_handles_standard_and_hsm_appended_iv() {

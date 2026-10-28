@@ -1117,16 +1117,11 @@ mod tests {
         requests::{create_ec_key_pair_request, get_ec_private_key_request},
     };
 
-    use crate::{
-        config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
-    };
+    use crate::{core::KMS, result::KResult, tests::test_utils::test_kms};
 
     /// Create a KMS instance backed by a fresh in-memory `SQLite` database.
     async fn isolation_test_kms() -> KResult<Arc<KMS>> {
-        let clap_config = https_clap_config();
-        Ok(Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
-        ))
+        test_kms().await
     }
 
     /// Build a P-256 key-pair creation request tagged as a transit key for `name`.

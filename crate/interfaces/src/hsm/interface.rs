@@ -412,6 +412,18 @@ pub trait HSM: Send + Sync {
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>>;
 
+    /// Set `CKA_WRAP`/`CKA_UNWRAP` on an AES key so AES-KW/KWP can (or cannot) use `C_WrapKey`.
+    async fn set_key_wrap(
+        &self,
+        _slot_id: usize,
+        _key_id: &[u8],
+        _enabled: bool,
+    ) -> InterfaceResult<()> {
+        Err(InterfaceError::Default(
+            "setting key wrap attributes is not supported".to_owned(),
+        ))
+    }
+
     /// Get the type of the key.
     /// This should be a single call to the HSM.
     /// # Arguments

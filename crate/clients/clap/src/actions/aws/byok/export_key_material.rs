@@ -60,7 +60,6 @@ impl ExportByokAction {
             key_format_type: None,
             encode_to_ttlv: false,
             wrapping_cryptographic_parameters,
-            authenticated_encryption_additional_data: None,
         };
 
         let (_, object, _) = export_object(&kms_client, &self.key_id, export_params).await?;

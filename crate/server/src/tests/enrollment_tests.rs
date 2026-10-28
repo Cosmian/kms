@@ -67,7 +67,7 @@ use crate::{
     openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
     routes::{enrollment::ENROLLMENT_SERVICE_USER, est, scep},
-    tests::test_utils::https_clap_config,
+    tests::test_utils::{https_clap_config, test_kms_with_config},
 };
 
 const CA_UID: &str = "enrollment-test-ca";
@@ -160,10 +160,9 @@ async fn make_kms_inner(
     ca_owner: Option<&str>,
 ) -> KResult<(Arc<KMS>, X509)> {
     cosmian_logger::log_init(None);
-    init_openssl_providers_for_tests();
     let mut conf = config(est_enabled, scep_enabled, allow_renewal);
     tweak(&mut conf);
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?);
+    let kms = test_kms_with_config(conf).await?;
     let owner = UserId::from(ca_owner.unwrap_or(kms.params.default_username.as_str()));
 
     let attrs = Attributes {

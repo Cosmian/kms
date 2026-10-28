@@ -338,7 +338,7 @@ fn days_until_next_rotation(
 #[cfg(test)]
 #[expect(clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::{collections::HashSet, sync::Arc};
+    use std::collections::HashSet;
 
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
@@ -355,28 +355,16 @@ mod tests {
 
     use super::days_until_next_rotation;
     use crate::{
-        config::ServerParams,
-        core::{
-            KMS,
-            operations::{
-                auto_rotate::{dispatch_renewal_warnings, run_auto_rotation},
-                set_attribute,
-            },
+        core::operations::{
+            auto_rotate::{dispatch_renewal_warnings, run_auto_rotation},
+            set_attribute,
         },
         middlewares::UserId,
         result::KResult,
-        tests::test_utils::https_clap_config,
+        tests::test_utils::test_kms,
     };
 
     // ── Helper ────────────────────────────────────────────────────────────────
-
-    async fn test_kms() -> KResult<Arc<KMS>> {
-        crate::openssl_providers::init_openssl_providers_for_tests();
-        let cfg = https_clap_config();
-        Ok(Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(cfg)?)).await?,
-        ))
-    }
 
     fn make_aes256_key()
     -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object {

@@ -196,6 +196,7 @@ impl Session {
                 iv: Some(nonce.to_vec()),
                 ciphertext,
                 tag: Some(tag),
+                cryptographic_algorithm: None,
             })
         }
     }

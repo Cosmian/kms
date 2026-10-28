@@ -38,7 +38,7 @@ use crate::{
     error::KmsError,
     middlewares::UserId,
     result::KResult,
-    tests::test_utils::get_tmp_sqlite_path,
+    tests::test_utils::{get_tmp_sqlite_path, test_kms_with_config},
 };
 
 // A fixed 32-byte secret used for all ceremony tests.
@@ -86,8 +86,7 @@ fn base_ceremony_conf(
 /// Build a `KMS` configured for ceremony mode with the given CO users.
 async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
     let conf = base_ceremony_conf(co_users, true, None);
-    let params = ServerParams::try_from(conf)?;
-    Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
+    test_kms_with_config(conf).await
 }
 
 /// Build a `KMS` configured for ceremony mode with AES-KW share wrapping enabled.
@@ -96,8 +95,7 @@ async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
 /// The returned `Arc<KMS>` is ready for split-key operations that wrap shares at rest.
 async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) -> KResult<Arc<KMS>> {
     let conf = base_ceremony_conf(co_users.clone(), true, Some(wrap_key_id));
-    let params = ServerParams::try_from(conf)?;
-    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
+    let kms = test_kms_with_config(conf).await?;
 
     // Pre-create the wrapping key directly in the DB as the first CO user.
     // `create_key` is a CO-free helper that stores directly through the operations layer.
@@ -119,8 +117,7 @@ async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) ->
 
 async fn config_only_co_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
     let conf = base_ceremony_conf(co_users, false, None);
-    let params = ServerParams::try_from(conf)?;
-    Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
+    test_kms_with_config(conf).await
 }
 
 /// Create a `PreActive` symmetric key owned by `owner` and return its UID.
@@ -1994,8 +1991,7 @@ async fn test_ceremony_wrapping_key_missing_returns_item_not_found() -> KResult<
     conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
     conf.roles.ceremony_wrapping_key_id = Some(MISSING_KEY_ID.to_owned());
 
-    let params = ServerParams::try_from(conf)?;
-    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
+    let kms = test_kms_with_config(conf).await?;
 
     // Create a source key and attempt to split it.
     let key_uid = create_key(&kms, alice).await?;

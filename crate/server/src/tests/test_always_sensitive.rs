@@ -24,19 +24,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::log_init;
 
-use crate::{
-    config::ServerParams, core::KMS, error::KmsError, result::KResult,
-    tests::test_utils::https_clap_config,
-};
+use crate::{core::KMS, error::KmsError, result::KResult, tests::test_utils::test_kms};
 
 const USER: &str = "alwayssensitive_user";
-
-async fn instantiate_kms() -> KResult<Arc<KMS>> {
-    let clap_config = https_clap_config();
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
-    ))
-}
 
 async fn create_sym_key(kms: &Arc<KMS>, sensitive: bool) -> KResult<String> {
     let request = symmetric_key_create_request(
@@ -75,7 +65,7 @@ fn assert_read_only(result: &KResult<impl std::fmt::Debug>) {
 
 #[tokio::test]
 async fn test_attribute_policy_operation_wiring() -> KResult<()> {
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
     let uid = UniqueIdentifier::TextString(create_sym_key(&kms, true).await?);
     let user = UserId::from(USER);
 
@@ -147,7 +137,7 @@ async fn test_attribute_policy_operation_wiring() -> KResult<()> {
 #[tokio::test]
 async fn test_always_sensitive_set_at_creation() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
 
     let sensitive_uid = create_sym_key(&kms, true).await?;
     let response = get_attributes(&kms, &sensitive_uid, Tag::AlwaysSensitive).await?;
@@ -165,7 +155,7 @@ async fn test_always_sensitive_set_at_creation() -> KResult<()> {
 #[tokio::test]
 async fn test_always_sensitive_is_read_only() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
     let uid = create_sym_key(&kms, true).await?;
 
     let add = kms
@@ -239,7 +229,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
 #[tokio::test]
 async fn test_always_sensitive_derived_from_sensitive_changes() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
     let uid = create_sym_key(&kms, true).await?;
 
     // Initially always-sensitive.
@@ -285,7 +275,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
     };
 
     log_init(option_env!("RUST_LOG"));
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
     let alice = UserId::from("alice");
     let bob = UserId::from("bob");
 
@@ -486,7 +476,7 @@ async fn test_extractable_and_never_extractable_enforcement() -> KResult<()> {
     };
 
     log_init(option_env!("RUST_LOG"));
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
     let user = UserId::from(USER);
 
     // 1. Create a key with Extractable=false and attempt to pass conflicting NeverExtractable=false.
@@ -697,7 +687,7 @@ async fn test_pkcs12_sensitive_export_requires_non_empty_password() -> KResult<(
         requests::create_rsa_key_pair_request,
     };
     log_init(option_env!("RUST_LOG"));
-    let kms = instantiate_kms().await?;
+    let kms = test_kms().await?;
     let user = UserId::from(USER);
 
     // Generate an RSA keypair with private key marked Sensitive=true.

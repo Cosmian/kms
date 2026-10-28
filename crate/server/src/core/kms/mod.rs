@@ -40,7 +40,7 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
+use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
@@ -577,7 +577,7 @@ impl KMS {
             )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
-                Softhsm2,
+                OtherHsm,
                 "OTHER_HSM_PKCS11_LIB",
                 OTHER_HSM_PKCS11_LIB,
                 "Other",

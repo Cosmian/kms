@@ -1643,11 +1643,9 @@ pub fn export_ttlv_request(
     key_format: &str,
     wrap_key_id: Option<String>,
     wrapping_algorithm: Option<String>,
-    authentication_data: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let wrap_key_id = none_if_empty(wrap_key_id);
     let wrapping_algorithm = none_if_empty(wrapping_algorithm);
-    let authentication_data = none_if_empty(authentication_data);
     let key_format = ExportKeyFormat::from_str(key_format)
         .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
     let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
@@ -1665,7 +1663,6 @@ pub fn export_ttlv_request(
         key_format_type,
         encode_to_ttlv,
         wrapping_cryptographic_parameters,
-        authentication_data,
     );
     to_wasm_ttlv(&request)
 }
@@ -2095,7 +2092,6 @@ pub fn export_certificate_ttlv_request(
         wrapping_key_id.as_deref(),
         Some(key_format_type),
         false,
-        None,
         None,
     );
     to_wasm_ttlv(&request)

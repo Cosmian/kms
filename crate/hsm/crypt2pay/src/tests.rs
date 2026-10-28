@@ -5,10 +5,10 @@
 //! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features crypt2pay -- tests::test_hsm_crypt2pay_all
 //! ```
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use cosmian_kms_base_hsm::{
-    HError, HResult, RsaOaepDigest,
+    HError, HResult, RsaOaepDigest, SlotManager,
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -41,6 +41,18 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_all() -> HResult<()> {
+    crypt2pay_all(shared::aes_gcm_encrypt)
+}
+
+// Deliberately not named `test_hsm_crypt2pay*`: the hardware task selects that substring, and its
+// FIPS expectations (GCM succeeds) contradict the simulator's (no HSM-generated IV).
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and the Crypt2pay simulator"]
+fn test_crypt2pay_simulator_all() -> HResult<()> {
+    crypt2pay_all(simulator_aes_gcm_encrypt)
+}
+
+fn crypt2pay_all(aes_gcm_check: fn(&Arc<SlotManager>) -> HResult<()>) -> HResult<()> {
     // Use a single BaseHsm for the entire test to prevent repeated C_Initialize/C_Finalize
     // cycles. Some PKCS#11 native libraries are not safely re-initializable within the same
     // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
@@ -57,16 +69,14 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
-    shared::aes_gcm_encrypt(&slot)?;
+    aes_gcm_check(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::rsa_pss_sign_all_algorithms(&slot)?;
-    shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
-    #[cfg(feature = "non-fips")]
-    shared::eddsa_sign_all_curves(&slot)?;
+    ec_signatures(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
     shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
@@ -74,6 +84,35 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_created_since(&slot, &before)?;
     Ok(())
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn simulator_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
+    let Err(error) = shared::aes_gcm_encrypt(slot) else {
+        return Err(HError::Default(
+            "The simulator accepted AES-GCM without generating an IV in FIPS mode".to_owned(),
+        ));
+    };
+    if !error.to_string().contains("did not generate an AES-GCM IV") {
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+fn simulator_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
+    shared::aes_gcm_encrypt(slot)
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn ec_signatures(slot: &Arc<SlotManager>) -> HResult<()> {
+    shared::ecdsa_sign_all_curves_and_hashes(slot)
+}
+
+#[cfg(feature = "non-fips")]
+fn ec_signatures(slot: &Arc<SlotManager>) -> HResult<()> {
+    shared::ecdsa_sign_all_curves_and_hashes(slot)?;
+    shared::eddsa_sign_all_curves(slot)
 }
 
 #[test]

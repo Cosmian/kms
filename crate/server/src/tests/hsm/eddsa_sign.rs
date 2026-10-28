@@ -13,14 +13,13 @@ use cosmian_logger::{info, warn};
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     middlewares::UserId,
     result::KResult,
     tests::{
         hsm::{EMPTY_TAGS, hsm_clap_config, send_message},
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -128,7 +127,7 @@ pub(super) async fn test_hsm_eddsa_sign() -> KResult<()> {
     let mut clap_config = hsm_clap_config(ADMIN, None)?;
     clap_config.db.sqlite_path = sqlite_path;
     let slot = clap_config.hsm.hsm_slot[0];
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     info!("HSM EdDSA: Ed25519 create+sign+verify");
     create_sign_verify(&kms, slot, RecommendedCurve::CURVEED25519).await?;

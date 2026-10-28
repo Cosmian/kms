@@ -3,11 +3,11 @@ use std::ptr;
 use cosmian_logger::warn;
 use libloading::Library;
 use pkcs11_sys::{
-    CK_C_CloseSession, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit, CK_C_DecryptMessage,
-    CK_C_DecryptMessageBegin, CK_C_DecryptMessageNext, CK_C_DecryptUpdate, CK_C_DeriveKey,
-    CK_C_DestroyObject, CK_C_Encrypt, CK_C_EncryptFinal, CK_C_EncryptInit, CK_C_EncryptMessage,
-    CK_C_EncryptMessageBegin, CK_C_EncryptMessageNext, CK_C_EncryptUpdate, CK_C_Finalize,
-    CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
+    CK_C_CloseSession, CK_C_CreateObject, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit,
+    CK_C_DecryptMessage, CK_C_DecryptMessageBegin, CK_C_DecryptMessageNext, CK_C_DecryptUpdate,
+    CK_C_DeriveKey, CK_C_DestroyObject, CK_C_Encrypt, CK_C_EncryptFinal, CK_C_EncryptInit,
+    CK_C_EncryptMessage, CK_C_EncryptMessageBegin, CK_C_EncryptMessageNext, CK_C_EncryptUpdate,
+    CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
     CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
     CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
     CK_C_Login, CK_C_LoginUser, CK_C_Logout, CK_C_MessageDecryptFinal, CK_C_MessageDecryptInit,
@@ -109,6 +109,7 @@ pub struct HsmLib {
     pub(crate) C_OpenSession: CK_C_OpenSession,
     pub(crate) C_CloseSession: CK_C_CloseSession,
 
+    pub(crate) C_CreateObject: CK_C_CreateObject,
     pub(crate) C_DestroyObject: CK_C_DestroyObject,
 
     pub(crate) C_Decrypt: CK_C_Decrypt,
@@ -288,6 +289,7 @@ impl HsmLib {
                 C_DecryptInit: resolve!(b"C_DecryptInit", C_DecryptInit),
                 C_DecryptUpdate: resolve!(b"C_DecryptUpdate", C_DecryptUpdate),
                 C_DecryptFinal: resolve!(b"C_DecryptFinal", C_DecryptFinal),
+                C_CreateObject: resolve!(b"C_CreateObject", C_CreateObject),
                 C_DestroyObject: resolve!(b"C_DestroyObject", C_DestroyObject),
                 C_FindObjectsInit: resolve!(b"C_FindObjectsInit", C_FindObjectsInit),
                 C_FindObjects: resolve!(b"C_FindObjects", C_FindObjects),

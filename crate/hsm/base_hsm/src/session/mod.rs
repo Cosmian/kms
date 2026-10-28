@@ -226,6 +226,7 @@ mod tests {
 mod message_signature_tests;
 
 mod aes;
+mod aes_key_wrap;
 mod ec;
 mod eddsa;
 mod message_aead;

@@ -12,7 +12,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     result::KResult,
@@ -21,7 +20,7 @@ use crate::{
             EMPTY_TAGS, create_kek, delete_key, export_object, hsm_clap_config, revoke_key,
             send_message,
         },
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -37,7 +36,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     create_kek(&kek_uid, &owner, &kms).await?;
 
@@ -59,7 +58,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Encrypt with the DEK - unwrapping the DEK reloaded from the DB
     let data = b"hello world";
@@ -85,7 +84,7 @@ pub(super) async fn test_wrapped_ec_dek() -> KResult<()> {
     let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     let exported_sk = export_object(&kms, &owner, &dek_uid).await?;
     assert_eq!(exported_sk.object_type(), ObjectType::PrivateKey);

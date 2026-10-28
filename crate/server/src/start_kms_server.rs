@@ -522,6 +522,9 @@ pub async fn start_kms_server(
             .await
             .context("start KMS server: failed instantiating the server")?,
     );
+    crate::core::wrapping::ensure_kek_wrapping(&kms_server)
+        .await
+        .context("start KMS server: key_encryption_key wrapping check")?;
 
     // Spawn background metrics cron thread and retain shutdown signal
     let metrics_shutdown_tx = if kms_server.metrics.is_some() {
