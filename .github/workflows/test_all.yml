@@ -45,6 +45,8 @@ jobs:
           - secret_cosmian_kms
           - spire
           - openbao
+          - openbao-psql
+          - openbao-mysql
           - kmip-go
           - cef
           - monitoring
@@ -113,6 +115,10 @@ jobs:
           - type: psql
             docker: postgres
           - type: mysql
+            docker: mysql
+          - type: openbao-psql
+            docker: postgres
+          - type: openbao-mysql
             docker: mysql
           - type: percona
             docker: percona
