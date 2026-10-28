@@ -65,6 +65,10 @@ pub struct MacKeyMetadata {
 pub enum CryptoAlgorithm {
     AesCbc,
     AesGcm,
+    /// NIST SP 800-38F KW (RFC 3394)
+    AesKeyWrap,
+    /// NIST SP 800-38F KWP (RFC 5649)
+    AesKeyWrapPad,
     RsaPkcsV15,
     RsaOaepSha256,
     RsaOaepSha1,
@@ -82,6 +86,8 @@ impl CryptoAlgorithm {
                         |block_cipher_mode| match block_cipher_mode {
                             BlockCipherMode::CBC => Ok(Some(Self::AesCbc)),
                             BlockCipherMode::GCM => Ok(Some(Self::AesGcm)),
+                            BlockCipherMode::NISTKeyWrap => Ok(Some(Self::AesKeyWrap)),
+                            BlockCipherMode::AESKeyWrapPadding => Ok(Some(Self::AesKeyWrapPad)),
                             bcm => Err(InterfaceError::Default(format!(
                                 "Block cipher mode: {bcm:?} not supported for AES",
                             ))),
@@ -105,6 +111,31 @@ impl CryptoAlgorithm {
                     "Cryptographic algorithm: {x:?} not supported",
                 ))),
             })
+    }
+
+    /// KMIP cryptographic parameters identifying this algorithm (inverse of [`Self::from_kmip`]).
+    #[must_use]
+    pub fn to_kmip(&self) -> CryptographicParameters {
+        let aes = |mode| CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(mode),
+            ..Default::default()
+        };
+        let rsa = |padding, hashing| CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(padding),
+            hashing_algorithm: hashing,
+            ..Default::default()
+        };
+        match self {
+            Self::AesCbc => aes(BlockCipherMode::CBC),
+            Self::AesGcm => aes(BlockCipherMode::GCM),
+            Self::AesKeyWrap => aes(BlockCipherMode::NISTKeyWrap),
+            Self::AesKeyWrapPad => aes(BlockCipherMode::AESKeyWrapPadding),
+            Self::RsaPkcsV15 => rsa(PaddingMethod::PKCS1v15, None),
+            Self::RsaOaepSha256 => rsa(PaddingMethod::OAEP, Some(HashingAlgorithm::SHA256)),
+            Self::RsaOaepSha1 => rsa(PaddingMethod::OAEP, Some(HashingAlgorithm::SHA1)),
+        }
     }
 
     /// Selects a default AES algorithm from the provided list of supported algorithms.
@@ -632,6 +663,8 @@ pub struct EncryptedContent {
     pub ciphertext: Vec<u8>,
     pub iv: Option<Vec<u8>>,
     pub tag: Option<Vec<u8>>,
+    /// Algorithm the oracle actually used; set by `CryptoOracle` implementations
+    pub cryptographic_algorithm: Option<CryptoAlgorithm>,
 }
 
 #[async_trait]
@@ -759,6 +792,22 @@ pub trait CryptoOracle: Send + Sync {
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn crypto_algorithm_to_kmip_round_trip() {
+        for a in [
+            CryptoAlgorithm::AesCbc,
+            CryptoAlgorithm::AesGcm,
+            CryptoAlgorithm::AesKeyWrap,
+            CryptoAlgorithm::AesKeyWrapPad,
+            CryptoAlgorithm::RsaPkcsV15,
+            CryptoAlgorithm::RsaOaepSha256,
+            CryptoAlgorithm::RsaOaepSha1,
+        ] {
+            let round_trip = CryptoAlgorithm::from_kmip(&a.to_kmip()).expect("from_kmip");
+            assert_eq!(round_trip, Some(a));
+        }
+    }
 
     fn params_with(
         digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,

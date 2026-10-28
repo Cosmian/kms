@@ -11,10 +11,10 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::wrap::{decode_unwrapped_key, unwrap_key_block},
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, warn};
 
 use crate::{
-    core::{KMS, uid_utils::ObjectHandle},
+    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap::requested_hsm_algorithm},
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -234,13 +234,35 @@ async fn unwrap_using_crypto_oracle(
     };
 
     // decrypt the wrapped key
+    let requested = requested_hsm_algorithm(
+        key_wrapping_data
+            .encryption_key_information
+            .as_ref()
+            .and_then(|e| e.cryptographic_parameters.as_ref()),
+    )?;
     let lock = kms.crypto_oracles.read().await;
     let crypto_oracle = lock.get(prefix).ok_or_else(|| {
         KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let plaintext = crypto_oracle
-        .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
-        .await?;
+    let plaintext = match crypto_oracle
+        .decrypt(&unwrapping_key_uid, wrapped_key, requested.clone(), None)
+        .await
+    {
+        Ok(plaintext) => plaintext,
+        Err(e) if requested.is_some() => {
+            // GCM tags, the KW/KWP integrity check and OAEP all fail closed on the wrong mode.
+            warn!(
+                "unwrap: declared {requested:?} failed for key wrapped by {unwrapping_key_uid} \
+                 ({e}); retrying with the HSM default for objects wrapped before HSM wrapping \
+                 honoured the requested mode"
+            );
+            crypto_oracle
+                .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
+                .await
+                .map_err(|_retry_error| e)?
+        }
+        Err(e) => return Err(e.into()),
+    };
     if let Some(ref metrics) = kms.metrics {
         let model =
             crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);

@@ -53,6 +53,7 @@ mod export_key_bytes;
 mod hybrid_kem_dek;
 mod issues;
 mod jose_decrypt;
+mod kek_wrap_modes;
 mod multi_hsm;
 mod non_extractable_key_bytes;
 mod permissions;
@@ -83,6 +84,10 @@ async fn test_hsm_all() {
     info!("HSM: wrapped_symmetric_dek");
     // Box::pin are needed to conform to clippy::large_futures lint
     Box::pin(symmetric_dek::test_wrapped_symmetric_dek())
+        .await
+        .unwrap();
+    info!("HSM: kek_wrap_modes");
+    Box::pin(kek_wrap_modes::test_hsm_kek_wrap_modes())
         .await
         .unwrap();
     info!("HSM: wrapped_secret_data");

@@ -73,6 +73,8 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 pub enum HsmEncryptionAlgorithm {
     AesCbc,
     AesGcm,
+    AesKeyWrap,
+    AesKeyWrapPad,
     RsaPkcsV15,
     RsaOaepSha256,
     RsaOaepSha1,
@@ -83,6 +85,8 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
         match algorithm {
             CryptoAlgorithm::AesCbc => Self::AesCbc,
             CryptoAlgorithm::AesGcm => Self::AesGcm,
+            CryptoAlgorithm::AesKeyWrap => Self::AesKeyWrap,
+            CryptoAlgorithm::AesKeyWrapPad => Self::AesKeyWrapPad,
             CryptoAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
             CryptoAlgorithm::RsaOaepSha256 => Self::RsaOaepSha256,
             CryptoAlgorithm::RsaOaepSha1 => Self::RsaOaepSha1,
@@ -177,6 +181,10 @@ const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) ->
 #[cfg(feature = "non-fips")]
 const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
+}
+
+fn aes_key_wrap_misrouted() -> HError {
+    HError::Default("AES key wrap must go through Session::aes_key_wrap/aes_key_unwrap".to_owned())
 }
 
 #[cfg(not(feature = "non-fips"))]
@@ -961,6 +969,9 @@ impl Session {
                     self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)?
                 }
             }
+            HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
+                return Err(aes_key_wrap_misrouted());
+            }
             HsmEncryptionAlgorithm::AesCbc => {
                 let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
                     Some(iv) => iv.try_into().map_err(|_invalid_length| {
@@ -997,6 +1008,7 @@ impl Session {
                     iv: Some(iv.to_vec()),
                     ciphertext, // no separate tag for CBC
                     tag: None,
+                    cryptographic_algorithm: None,
                 }
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -1143,6 +1155,9 @@ impl Session {
                     })?,
                 )?;
                 Ok(plaintext)
+            }
+            HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
+                Err(aes_key_wrap_misrouted())
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 if ciphertext.len() < AES_CBC_IV_LENGTH {
@@ -1324,6 +1339,7 @@ impl Session {
             iv: Some(iv.to_vec()),
             ciphertext, // no separate tag for CBC
             tag: None,
+            cryptographic_algorithm: None,
         })
     }
 
@@ -1479,6 +1495,7 @@ impl Session {
             iv: Some(iv.to_vec()),
             ciphertext, // no separate tag for CBC
             tag: None,
+            cryptographic_algorithm: None,
         })
     }
 
@@ -1632,7 +1649,7 @@ impl Session {
         }
     }
 
-    fn encrypt_with_mechanism(
+    pub(super) fn encrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
@@ -1680,7 +1697,7 @@ impl Session {
         Ok(encrypted_data)
     }
 
-    fn decrypt_with_mechanism(
+    pub(super) fn decrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
@@ -3264,7 +3281,7 @@ impl Session {
         Ok(rv)
     }
 
-    fn call_get_attributes(
+    pub(super) fn call_get_attributes(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
@@ -4001,6 +4018,7 @@ fn split_aes_gcm_output(
                 .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
                 .to_vec(),
         ),
+        cryptographic_algorithm: None,
     })
 }
 

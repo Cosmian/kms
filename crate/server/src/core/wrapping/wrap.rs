@@ -7,12 +7,13 @@ use cosmian_kms_server_database::reexport::{
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
             kmip_objects::{Object, ObjectType},
             kmip_types::{
-                CryptographicParameters, EncodingOption, EncryptionKeyInformation, LinkType,
-                UniqueIdentifier,
+                CryptographicAlgorithm, CryptographicParameters, EncodingOption,
+                EncryptionKeyInformation, LinkType, UniqueIdentifier,
             },
         },
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
+    cosmian_kms_interfaces::CryptoAlgorithm,
 };
 use cosmian_logger::{debug, trace};
 
@@ -94,20 +95,25 @@ pub(crate) async fn wrap_and_cache(
     };
 
     trace!("Wrapping key with id: {wrapping_key_id}");
+    // HSM wrapping keys default to the HSM's own mode (AES-GCM / RSA-OAEP).
+    // Software keys use AESKeyWrapPadding (RFC 5649) at rest: it handles arbitrary key
+    // lengths (including < 16 bytes), unlike the Get-with-wrapping default NISTKeyWrap
+    // (RFC 3394) which requires input >= 16 bytes.
+    let cryptographic_parameters = if ObjectHandle::from(wrapping_key_id.as_str()).is_hsm() {
+        None
+    } else {
+        Some(CryptographicParameters {
+            block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
+            ..CryptographicParameters::default()
+        })
+    };
     // wrap the current object
     Box::pin(wrap_object(
         object,
         &KeyWrappingSpecification {
             encryption_key_information: Some(EncryptionKeyInformation {
                 unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
-                // Explicitly use AESKeyWrapPadding (RFC 5649) for at-rest wrapping:
-                // it handles arbitrary key lengths (including < 16 bytes). The global
-                // default for Get-with-wrapping is NISTKeyWrap (RFC 3394) which
-                // requires input >= 16 bytes.
-                cryptographic_parameters: Some(CryptographicParameters {
-                    block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
-                    ..CryptographicParameters::default()
-                }),
+                cryptographic_parameters,
             }),
             encoding_option: Some(encoding),
             ..Default::default()
@@ -124,6 +130,28 @@ pub(crate) async fn wrap_and_cache(
         .await?;
 
     Ok(())
+}
+
+/// HSM algorithm requested by KMIP parameters; `None` = HSM default (AES-GCM / RSA-OAEP-SHA256).
+pub(super) fn requested_hsm_algorithm(
+    params: Option<&CryptographicParameters>,
+) -> KResult<Option<CryptoAlgorithm>> {
+    let Some(params) = params.filter(|p| {
+        p.cryptographic_algorithm.is_some()
+            || p.block_cipher_mode.is_some()
+            || p.padding_method.is_some()
+    }) else {
+        return Ok(None);
+    };
+    let mut p = params.clone();
+    if p.cryptographic_algorithm.is_none() {
+        p.cryptographic_algorithm = Some(if p.block_cipher_mode.is_some() {
+            CryptographicAlgorithm::AES
+        } else {
+            CryptographicAlgorithm::RSA
+        });
+    }
+    Ok(CryptoAlgorithm::from_kmip(&p)?)
 }
 
 /// Wrap an Object with a wrapping key
@@ -360,6 +388,12 @@ async fn wrap_using_crypto_oracle(
 
     // Determine the key data to wrap based on the key format type and encoding
     let data_to_wrap = key_data_to_wrap(object, key_wrapping_specification)?;
+    let requested = requested_hsm_algorithm(
+        key_wrapping_specification
+            .encryption_key_information
+            .as_ref()
+            .and_then(|e| e.cryptographic_parameters.as_ref()),
+    )?;
 
     // encrypt the key using the crypto oracle
     let lock = kms.crypto_oracles.read().await;
@@ -367,7 +401,13 @@ async fn wrap_using_crypto_oracle(
         KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
     let encrypted_content = crypto_oracle
-        .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None, None)
+        .encrypt(
+            wrapping_key_uid,
+            data_to_wrap.as_slice(),
+            requested,
+            None,
+            None,
+        )
         .await?;
     if let Some(ref metrics) = kms.metrics {
         let model =
@@ -383,10 +423,19 @@ async fn wrap_using_crypto_oracle(
     wrapped_key.extend_from_slice(&encrypted_content.ciphertext);
     wrapped_key.extend_from_slice(tag);
 
+    // record the mode actually used, which may be the HSM default
+    let mut key_wrapping_data = key_wrapping_specification.get_key_wrapping_data();
+    if let Some(algorithm) = &encrypted_content.cryptographic_algorithm {
+        key_wrapping_data.encryption_key_information = Some(EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString(wrapping_key_uid.to_owned()),
+            cryptographic_parameters: Some(algorithm.to_kmip()),
+        });
+    }
+
     // update the key block with the wrapped key
     let object_key_block = object.key_block_mut()?;
     object_key_block.key_value = Some(KeyValue::ByteString(wrapped_key.into()));
-    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
+    object_key_block.key_wrapping_data = Some(key_wrapping_data);
 
     Ok(())
 }

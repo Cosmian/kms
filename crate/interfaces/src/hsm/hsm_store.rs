@@ -737,6 +737,24 @@ impl ObjectsStore for HsmStore {
     }
 }
 
+/// AES-KW/KWP are only attempted on slots that advertise them.
+fn ensure_key_wrap_supported(
+    algorithm: &CryptoAlgorithm,
+    supported_algorithms: &[CryptoAlgorithm],
+    slot_id: usize,
+) -> InterfaceResult<()> {
+    if matches!(
+        algorithm,
+        CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
+    ) && !supported_algorithms.contains(algorithm)
+    {
+        return Err(InterfaceError::InvalidRequest(format!(
+            "{algorithm:?} is not supported by HSM slot {slot_id}"
+        )));
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl CryptoOracle for HsmStore {
     async fn encrypt(
@@ -797,6 +815,7 @@ impl CryptoOracle for HsmStore {
                 },
             }
         };
+        ensure_key_wrap_supported(&cryptographic_algorithm, &supported_algorithms, slot_id)?;
         if matches!(cryptographic_algorithm, CryptoAlgorithm::AesGcm) && iv_counter_nonce.is_some()
         {
             return Err(InterfaceError::InvalidRequest(
@@ -805,15 +824,18 @@ impl CryptoOracle for HsmStore {
                     .to_owned(),
             ));
         }
-        self.hsm
+        let mut content = self
+            .hsm
             .encrypt(
                 slot_id,
                 key_id.as_bytes(),
-                cryptographic_algorithm,
+                cryptographic_algorithm.clone(),
                 data,
                 iv_counter_nonce.unwrap_or_default(),
             )
-            .await
+            .await?;
+        content.cryptographic_algorithm = Some(cryptographic_algorithm);
+        Ok(content)
     }
 
     async fn decrypt(
@@ -859,6 +881,7 @@ impl CryptoOracle for HsmStore {
                 },
             }
         };
+        ensure_key_wrap_supported(&cryptographic_algorithm, &supported_algorithms, slot_id)?;
         self.hsm
             .decrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
             .await

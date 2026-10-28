@@ -21,6 +21,7 @@ impl HsmProvider for AzureCloudHsmCapabilityProvider {
             supports_rsa_sensitive_attribute: false,
             supports_ec_sensitive_attribute: false,
             supports_aes_gcm_caller_iv: false,
+            aes_key_wrap_pad_is_rfc5649: false,
             max_label_len: None,
             skip_finalize_on_drop: true,
             // Same Cavium/Liquidsec PKCS#11 stack as AWS CloudHSM and Crypt2pay: reading
