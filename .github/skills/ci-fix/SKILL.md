@@ -16,7 +16,7 @@ BRANCH=$(git branch --show-current)
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
-Confirm the branch is not `main` or `develop`. Stop and ask for confirmation before direct work on either protected branch.
+Confirm the branch is not `main` or `develop`. Stop and ask for confirmation before direct work on either protected branch. Exception: a rerun-only repair (category **Runner lost / infrastructure**, no commit) is allowed on any branch.
 
 ## Step 1 — Select the run scope
 
@@ -60,6 +60,8 @@ GH_PAGER=cat gh run view "$RUN_ID" --repo Cosmian/kms --job "$JOB_ID" --log-fail
 
 Read the failing step and enough surrounding output to identify the root cause. If insufficient, expand logs for that same failed job only. Do not fetch successful-job or full-run logs by default; avoid truncation that could hide the first error.
 
+If `--log-failed` prints nothing (log expired or runner died), read `gh api repos/Cosmian/kms/check-runs/$JOB_ID/annotations --jq '.[] | {annotation_level, message}'` and the step timeline `gh api repos/Cosmian/kms/actions/jobs/$JOB_ID --jq '.steps[] | {number, name, conclusion, started_at, completed_at}'`.
+
 ## Step 4 — Categorize
 
 When `omp-jev-tools` is installed (OMP only — not available in VS Code
@@ -81,6 +83,7 @@ for every failure.
 | **Dependency audit** | `cargo deny` / `cargo audit` / `cargo machete` | Upgrade vulnerable deps; remove unused deps; use only justified exceptions |
 | **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Update the matching expected hash from the failed job |
 | **Docker/packaging** | packaging-job failure | Inspect the failing Docker/package path only |
+| **Runner lost / infrastructure** | Annotation `The hosted runner lost communication with the server` or `The runner has received a shutdown signal`; failed step has `conclusion: null` and no log | Confirm the same job passed on an earlier run whose diff to this commit does not touch the job's inputs, then `gh run rerun $RUN_ID --repo Cosmian/kms --failed` once and watch it. No commit. If it recurs on the rerun, investigate that step's memory/disk use instead of rerunning. |
 | **Flaky test** | intermittent failure | Re-run the affected test; investigate if repeatable |
 
 Fix fast deterministic failures (formatting/Clippy) first when they block diagnosis of later failures.
