@@ -413,7 +413,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
+            let session = SessionGuard::new(&slot, slot.checkout_session_for_signature()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let metadata = if let Some(meta) = session
                 .session()?
@@ -465,7 +465,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let data = data.to_vec();
         let signature = signature.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
+            let session = SessionGuard::new(&slot, slot.checkout_session_for_signature()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let metadata = if let Some(meta) = session
                 .session()?
