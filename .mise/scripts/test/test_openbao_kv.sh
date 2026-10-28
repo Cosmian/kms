@@ -119,19 +119,63 @@ print_status "kv list shows the secret under its prefix"
 OUT=$(bao kv list -format=json "${KV_MOUNT}/openbao-ci")
 assert_eq "$(json_field "${OUT}" "'${SECRET_NAME}' in d")" "True" "kv list contains the secret"
 
+print_status "kv list returns nested paths as directories"
+bao kv put "${FULL_PATH}/child" child_key=value >/dev/null
+OUT=$(bao kv list -format=json "${FULL_PATH}")
+NESTED_LISTED="$(json_field "${OUT}" "'child' in d")"
+[[ "${NESTED_LISTED}" == "True" ]] || print_error "nested path is not listed; response: ${OUT}"
+print_success "nested path is listed"
+bao kv metadata delete "${FULL_PATH}/child" >/dev/null
+
 if [[ -n "${BAO_TOKEN_OTHER}" ]]; then
   print_status "a wrong token is rejected"
   BAO_TOKEN="not-a-valid-token" assert_fails "kv get with a bad token" bao kv get "${FULL_PATH}"
 
   print_status "a second identity without a grant gets 403"
   assert_eq "$(kv_status "${BAO_TOKEN_OTHER}" GET "${DATA_URI}")" "403" "non-owner read is forbidden"
+  assert_eq "$(kv_status "${BAO_TOKEN_OTHER}" PUT "${DATA_URI}" '{"data":{"k":"forged"}}')" "403" "non-owner write is forbidden"
+  assert_eq "$(kv_status "${BAO_TOKEN_OTHER}" DELETE "/v1/${KV_MOUNT}/metadata/${SECRET_PATH}")" "403" "non-owner hard delete is forbidden"
+  assert_eq "$(kv_status "${BAO_TOKEN}" GET "${DATA_URI}")" "200" "owner still reads its secret"
 else
   print_warning "BAO_TOKEN_OTHER not set — skipping the authentication and authorization checks"
 fi
 
+print_status "concurrent writes never share a version (200 or 409 only)"
+CONC_PATH="${SECRET_PATH}-concurrent"
+CONC_URI="/v1/${KV_MOUNT}/data/${CONC_PATH}"
+CONC_DIR="$(mktemp -d)"
+for i in $(seq 1 8); do
+  kv_status "${BAO_TOKEN}" PUT "${CONC_URI}" "{\"data\":{\"k\":\"v${i}\"}}" >"${CONC_DIR}/${i}" &
+done
+wait
+OK_COUNT=0
+for i in $(seq 1 8); do
+  CODE="$(cat "${CONC_DIR}/${i}")"
+  case "${CODE}" in
+    200) OK_COUNT=$((OK_COUNT + 1)) ;;
+    409) ;;
+    *) print_error "concurrent write returned unexpected status ${CODE}" ;;
+  esac
+done
+rm -rf "${CONC_DIR}"
+[[ "${OK_COUNT}" -ge 1 ]] || print_error "no concurrent write succeeded"
+OUT=$(bao kv metadata get -format=json "${KV_MOUNT}/${CONC_PATH}")
+assert_eq "$(json_field "${OUT}" "d['data']['current_version']")" "${OK_COUNT}" "one version per successful concurrent write"
+bao kv metadata delete "${KV_MOUNT}/${CONC_PATH}" >/dev/null
+
+print_status "path length limit: 219 characters accepted, 220 rejected with 400"
+LONG_BASE="$(python3 -c "print('a' * (219 - len('${SECRET_PATH}-len/')))")"
+LONG_OK="${SECRET_PATH}-len/${LONG_BASE}"
+assert_eq "${#LONG_OK}" "219" "boundary path is 219 characters"
+assert_eq "$(kv_status "${BAO_TOKEN}" PUT "/v1/${KV_MOUNT}/data/${LONG_OK}" '{"data":{"k":"v"}}')" "200" "219-character path accepted"
+assert_eq "$(kv_status "${BAO_TOKEN}" PUT "/v1/${KV_MOUNT}/data/${LONG_OK}a" '{"data":{"k":"v"}}')" "400" "220-character path rejected"
+assert_eq "$(kv_status "${BAO_TOKEN}" DELETE "/v1/${KV_MOUNT}/metadata/${LONG_OK}")" "204" "219-character path hard-deleted"
+
 print_status "kv delete hides the latest version"
 bao kv delete "${FULL_PATH}" >/dev/null
 assert_fails "kv get after delete" bao kv get "${FULL_PATH}"
+OUT=$(bao kv get -format=json -version=1 "${FULL_PATH}")
+assert_eq "$(json_field "${OUT}" "d['data']['data']['api_key']")" "first" "soft delete preserves older version"
 
 print_status "TTL: a secret written with options.ttl disappears after the sweep"
 TTL_URI="${DATA_URI}-ttl"
@@ -152,5 +196,10 @@ print_status "kv metadata delete removes every version"
 bao kv put "${FULL_PATH}" api_key=again >/dev/null
 bao kv metadata delete "${FULL_PATH}" >/dev/null
 assert_fails "kv metadata get after metadata delete" bao kv metadata get "${FULL_PATH}"
+assert_fails "metadata delete removes older versions" bao kv get -version=1 "${FULL_PATH}"
+bao kv put "${FULL_PATH}" api_key=recreated >/dev/null
+OUT=$(bao kv get -format=json "${FULL_PATH}")
+assert_eq "$(json_field "${OUT}" "d['data']['metadata']['version']")" "1" "recreated path starts at version 1"
+assert_eq "$(json_field "${OUT}" "d['data']['data']['api_key']")" "recreated" "recreated path is readable"
 
 print_success "OpenBao kv scenario passed"
