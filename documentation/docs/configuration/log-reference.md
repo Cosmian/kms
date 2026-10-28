@@ -804,6 +804,9 @@ Crate path: `crate/server`
 | `debug` | `RSA-OAEP HSM unwrap failed: {e}` | `src/routes/jose/decrypt.rs` | `e` | - |
 | `info` | `POST /certificates/csr` | `src/routes/csr.rs` | - | Request to generate a PKCS#10 CSR; the HSM signs it for non-extractable keys. |
 | `trace` | `found certificate {certificate_id} linked to HSM private key {}` | `src/core/certificate/find.rs` | `certificate_id` | - |
+| `warn` | `could not restore CKA_WRAP/CKA_UNWRAP on HSM key {kek}: {e4}` | `src/core/wrapping/wrap.rs` | `kek`, `e4` | - |
+| `warn` | `unwrap: declared {requested:?} failed for key wrapped by {unwrapping_key_uid} ({e}); retrying with the HSM default for objects wrapped before HSM wrapping honoured the requested mode` | `src/core/wrapping/unwrap.rs` | `requested`, `unwrapping_key_uid`, `e` | - |
+| `info` | `Enabled CKA_WRAP/CKA_UNWRAP on HSM key encryption key {kek} for {alg:?}` | `src/core/wrapping/wrap.rs` | `kek`, `alg` | - |
 
 ### `cosmian_kms_server_database`
 
