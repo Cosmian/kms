@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_client_utils::cover_crypt_utils::{
     build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
 };
@@ -23,20 +21,16 @@ use cosmian_logger::{debug, log_init};
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
-    core::KMS,
     error::KmsError,
     kms_bail,
     middlewares::UserId,
     result::{KResult, KResultHelper},
-    tests::test_utils::https_clap_config,
+    tests::test_utils::test_kms,
 };
 
 #[tokio::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
@@ -232,9 +226,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("debug"));
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let nonexistent_owner = UserId::from("invalid_owner");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
@@ -438,9 +430,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
 #[tokio::test]
 async fn test_abe_json_access() -> KResult<()> {
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
     // Create CC master key pair
@@ -522,9 +512,7 @@ async fn test_abe_json_access() -> KResult<()> {
 #[tokio::test]
 async fn test_import_decrypt() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("cceyJhbGciOiJSUzI1Ni");
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 

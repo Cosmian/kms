@@ -54,8 +54,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
+    core::KMS, error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
 };
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
@@ -93,8 +92,7 @@ async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KR
 pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
 
     let mut rng = KmsRng::new().seeded_csrng()?;
 

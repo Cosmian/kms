@@ -42,7 +42,6 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     middlewares::UserId,
@@ -52,7 +51,7 @@ use crate::{
             create_kek, delete_key, export_object, hsm_clap_config, import_object, locate_keys,
             send_message,
         },
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -179,9 +178,7 @@ async fn restart(
         clap_config.default_unwrap_type =
             Some(vec!["PrivateKey".to_owned(), "PublicKey".to_owned()]);
     }
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
-    ))
+    test_kms_with_config(clap_config).await
 }
 
 /// The raw KMIP `Encrypt` response of a KEM public key
@@ -537,8 +534,7 @@ async fn ttlv_wrapped_import(alg: Alg) -> KResult<()> {
     // the source server has no key encryption key
     let mut source_config = hsm_clap_config(&owner, None)?;
     source_config.db.sqlite_path = get_tmp_sqlite_path();
-    let source =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(source_config)?)).await?);
+    let source = test_kms_with_config(source_config).await?;
 
     // the same software AES wrapping key on both servers
     let aes = create_symmetric_key_kmip_object(

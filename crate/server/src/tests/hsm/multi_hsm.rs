@@ -1,9 +1,3 @@
-/// Multi-HSM tests using two `SoftHSM2` instances.
-///
-/// These tests verify that the KMS server correctly routes objects whose UID has the
-/// `"hsm::softhsm2"` or `"hsm::softhsm2_1"` prefix to the corresponding HSM instance.
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN,
     kmip_operations::{Destroy, Operation},
@@ -14,12 +8,11 @@ use cosmian_logger::{info, log_init};
 use uuid::Uuid;
 
 use crate::{
-    config::{HsmConfig, ServerParams},
-    core::KMS,
+    config::HsmConfig,
     result::KResult,
     tests::{
         hsm::{EMPTY_TAGS, send_message},
-        test_utils::{get_tmp_sqlite_path, https_clap_config},
+        test_utils::{get_tmp_sqlite_path, https_clap_config, test_kms_with_config},
     },
 };
 
@@ -65,7 +58,7 @@ async fn test_multi_hsm_routing() -> KResult<()> {
         },
     ];
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Create a symmetric key on the first HSM — prefix "hsm::softhsm2".
     let key1_uid = format!("hsm::softhsm2::{slot_id_1}::{}", Uuid::new_v4());

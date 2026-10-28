@@ -33,10 +33,7 @@ use cosmian_logger::log_init;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
-};
+use crate::{core::KMS, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
 
@@ -105,8 +102,7 @@ async fn modify_attribute(
 pub(crate) async fn test_modify_attribute_server() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
 
     modify_name_on_pre_active_key(&kms).await?;
     modify_activation_date_past_transitions_to_active(&kms).await?;
