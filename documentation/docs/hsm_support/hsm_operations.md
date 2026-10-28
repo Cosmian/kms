@@ -216,7 +216,7 @@ algorithm. AES-KW/KWP go through `C_WrapKey` on HSMs that do not offer them as s
 encryption; this needs `CKA_WRAP`/`CKA_UNWRAP` on the key encryption key. HSM AES keys created by
 this KMS version are created with both attributes enabled, so any of them can serve as a key
 wrapping key. Keys created by earlier KMS versions lack them: on a slot that offers AES key wrap,
-the server sets both attributes once and restores them if wrapping still fails, then stops with an
+the server sets both attributes once and clears them again if wrapping still fails, then stops with an
 error. Keys already wrapped with another algorithm are still unwrapped.
 
 ## Using the wrapped KMS key

@@ -4,7 +4,7 @@
 
 - Add `key_encryption_key_wrapping_algorithm` (`aes-gcm`, `aes-key-wrap`, `aes-key-wrap-padding`, `rsa-oaep`; env `KMS_KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM`) to choose how keys are wrapped at rest by `key_encryption_key`. Unset keeps AES-GCM for an HSM AES key, RSA-OAEP (SHA-256) for an HSM RSA key and AES-KWP for a software AES key; a software RSA key requires `rsa-oaep`.
 - HSM wrapping keys support AES-KW (NIST SP 800-38F, RFC 3394) and AES-KWP (RFC 5649) and honour the wrapping mode requested on Export/Get; wrapped objects record the mode actually used. Objects wrapped by earlier versions still unwrap.
-- At startup, the server checks that an HSM AES key encryption key can wrap with its configured mode. For AES-KW/KWP it sets `CKA_WRAP`/`CKA_UNWRAP` once on keys created by earlier versions, only on a slot that offers AES key wrap, and restores them when that does not fix the wrapping; otherwise it stops with an actionable error.
+- At startup, the server checks that an HSM AES key encryption key can wrap with its configured mode. For AES-KW/KWP it sets `CKA_WRAP`/`CKA_UNWRAP` once on keys created by earlier versions, only on a slot that offers AES key wrap, and clears them again when that does not fix the wrapping; otherwise it stops with an actionable error. Every new HSM AES key is created with both attributes enabled; narrowing this to key-wrapping keys only is an open security decision.
 
 ## Bug Fixes
 
