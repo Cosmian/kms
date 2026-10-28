@@ -126,7 +126,7 @@ branches on them so KMS operations behave correctly regardless of HSM model.
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | PKCS#11 v3.0 message-based AES-GCM | ❌ | ✅ (default) | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ (v2.40 library) | ✅ | ❌ |
 | Caller-supplied AES-GCM IV | ✅ | ✅ (default) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Caller-supplied AES-GCM IV in FIPS builds (IG C.H) | ✅ (not FIPS-validated) | ✅ (not FIPS-validated) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Caller-supplied AES-GCM IV in FIPS builds (IG C.H) | ✅ (not FIPS-validated) | ✅ (not FIPS-validated) | ❌ | ✅ (simulator generates no IV) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | RSA-OAEP empty-label source pointer | non-null required | NULL (default) | NULL | NULL | NULL | NULL required | NULL | NULL | NULL | NULL |
 | `CKA_START_DATE`/`CKA_END_DATE` (HSM key auto-rotation) | ❌ | ✅ (default) | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Explicit `CKA_SENSITIVE` on key generation | ✅ | ✅ (default) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
@@ -140,8 +140,9 @@ uses message-based AES-GCM when the loaded library also exports the v3.0 message
 `C_EncryptInit` AES-GCM with an HSM-generated IV is used.
 
 In FIPS builds, an HSM without a usable PKCS#11 v3.0 message API gets AES-GCM with an
-HSM-generated IV even when it accepts a caller-supplied IV; only the SoftHSM2 and Kryoptic
-development tokens keep the caller-supplied IV. `hsm_model = "other"` uses the SoftHSM2 PKCS#11
+HSM-generated IV even when it accepts a caller-supplied IV. The SoftHSM2 and Kryoptic development
+tokens keep the caller-supplied IV, and so does Crypt2pay, whose simulator generates no GCM IV
+(FIPS deployments on Crypt2pay must use AES key wrap). `hsm_model = "other"` uses the SoftHSM2 PKCS#11
 quirks but is treated as a FIPS-validated module and tries the v3.0 message API first. Use
 `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"` (see
 [HSM operations](hsm_operations.md#choosing-the-wrapping-algorithm)) on an HSM that generates

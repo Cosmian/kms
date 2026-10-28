@@ -277,10 +277,10 @@ which stores the keys generated through PKCS#11, wrapped by the KDK. `[C2P_DIR]`
     decryption with the same HSM key after the pod was deleted and recreated.
 
 !!! warning
-    The FIPS validation above predates the FIPS 140-3 IG C.H rule: FIPS builds no longer send a
-    caller-chosen AES-GCM IV, and Crypt2pay has no PKCS#11 v3.0 message API, so FIPS AES-GCM now
-    requires Crypt2pay to generate the IV. This is not yet re-validated; if it fails, use
-    `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"` for the key encryption key.
+    Crypt2pay has no PKCS#11 v3.0 message API, and its simulator does not generate AES-GCM IVs.
+    The KMS retains caller-supplied GCM IVs for Crypt2pay, which FIPS 140-3 IG C.H does not allow for a FIPS-validated module.
+    FIPS deployments wrapping keys with a Crypt2pay key encryption key should set
+    `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"`.
 
 ### 1. Crypt2pay client image
 
