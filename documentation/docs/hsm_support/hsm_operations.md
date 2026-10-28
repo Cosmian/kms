@@ -186,6 +186,34 @@ in the server's memory cache (see [The Unwrapped Objects Cache](#the-unwrapped-o
 This enables transparent encryption/decryption operations without storing clear-text keys in the database
 while minimizing HSM calls through expiring caching.
 
+#### Choosing the wrapping algorithm
+
+`key_encryption_key_wrapping_algorithm` selects the algorithm used to wrap keys at rest with the
+`key_encryption_key`:
+
+| Value | Algorithm |
+| --- | --- |
+| `aes-gcm` | AES-GCM (NIST SP 800-38D) — default for an HSM key encryption key |
+| `aes-key-wrap` | AES-KW (NIST SP 800-38F, RFC 3394) |
+| `aes-key-wrap-padding` | AES-KWP (NIST SP 800-38F, RFC 5649) — default for a software key encryption key |
+| `rsa-oaep` | RSA-OAEP with SHA-256 |
+
+In a FIPS build, AES-GCM encryption on a FIPS-validated HSM requires the HSM to generate the IV
+(FIPS 140-3 Implementation Guidance C.H). An HSM that neither supports the PKCS#11 v3.0 message
+API nor generates the IV refuses AES-GCM; the server then stops at startup with an error that
+names this option. AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
+
+```toml
+key_encryption_key = "hsm::4::master_kek"
+key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"
+```
+
+At startup the server checks that an AES HSM key encryption key can wrap with the selected
+algorithm. AES-KW/KWP go through `C_WrapKey` on HSMs that do not offer them as single-part
+encryption; this needs `CKA_WRAP`/`CKA_UNWRAP` on the key encryption key. HSM AES keys created by
+earlier KMS versions lack them: the server sets both attributes once, or stops with an error when
+the HSM refuses. Keys already wrapped with another algorithm are still unwrapped.
+
 ## Using the wrapped KMS key
 
 The symmetric key created above can now be used to encrypt and decrypt data, and the KMS will transparently unwrap the

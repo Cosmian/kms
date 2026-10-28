@@ -38,7 +38,11 @@ pub struct KryopticCapabilityProvider;
 
 impl HsmProvider for KryopticCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
-        HsmCapabilities::default()
+        HsmCapabilities {
+            // Development token, not a FIPS-validated module.
+            allows_caller_gcm_iv_in_fips: true,
+            ..HsmCapabilities::default()
+        }
     }
 }
 

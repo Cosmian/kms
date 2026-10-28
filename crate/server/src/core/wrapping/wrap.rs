@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
-    cosmian_kms_interfaces::CryptoAlgorithm,
+    cosmian_kms_interfaces::{CryptoAlgorithm, EncryptedContent, KeyType},
 };
 use cosmian_logger::{debug, info, trace};
 use zeroize::Zeroizing;
@@ -161,9 +161,17 @@ pub(super) fn requested_hsm_algorithm(
     Ok(CryptoAlgorithm::from_kmip(&p)?)
 }
 
-/// Startup check: an HSM key encryption key configured for AES-KW/KWP must be able to wrap.
-/// When the probe fails, `CKA_WRAP`/`CKA_UNWRAP` are enabled once on the KEK and the
-/// probe is retried.
+/// Wrapped-key bytes as stored and as oracle `decrypt` expects them:
+/// `[iv ‖ ciphertext ‖ tag]` (AES-KW/KWP and RSA have neither iv nor tag).
+fn pack_wrapped(content: &EncryptedContent) -> Vec<u8> {
+    let iv = content.iv.as_deref().unwrap_or_default();
+    let tag = content.tag.as_deref().unwrap_or_default();
+    [iv, content.ciphertext.as_slice(), tag].concat()
+}
+
+/// Startup check: an HSM AES key encryption key must be able to wrap with its configured
+/// mode (AES-KW, AES-KWP or AES-GCM, the default). For AES-KW/KWP, a failed probe enables
+/// `CKA_WRAP`/`CKA_UNWRAP` once on the KEK and retries.
 pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
     let Some(kek) = kms.params.key_wrapping_key.as_deref() else {
         return Ok(());
@@ -171,20 +179,22 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
     let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(kek) else {
         return Ok(());
     };
-    let Some(alg) =
-        requested_hsm_algorithm(kms.params.key_wrapping_algorithm.as_ref())?.filter(|a| {
-            matches!(
-                a,
-                CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
-            )
-        })
-    else {
-        return Ok(());
-    };
     let oracles = kms.crypto_oracles.read().await;
     let oracle = oracles.get(prefix).ok_or_else(|| {
         KmsError::InvalidRequest(format!("unknown crypto oracle prefix: {prefix}"))
     })?;
+    let alg = match requested_hsm_algorithm(kms.params.key_wrapping_algorithm.as_ref())? {
+        Some(
+            a @ (CryptoAlgorithm::AesKeyWrap
+            | CryptoAlgorithm::AesKeyWrapPad
+            | CryptoAlgorithm::AesGcm),
+        ) => a,
+        // A KEK that does not exist yet keeps failing on first use, as before this check.
+        None if matches!(oracle.get_key_type(kek).await, Ok(Some(KeyType::AesKey))) => {
+            CryptoAlgorithm::AesGcm
+        }
+        _ => return Ok(()),
+    };
     let probe = async || -> KResult<()> {
         let mut buf = Zeroizing::new(vec![0_u8; 32]);
         kms.rng.fill_bytes(&mut buf)?;
@@ -192,7 +202,7 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
             .encrypt(kek, &buf, Some(alg.clone()), None, None)
             .await?;
         let pt = oracle
-            .decrypt(kek, &ct.ciphertext, Some(alg.clone()), None)
+            .decrypt(kek, &pack_wrapped(&ct), Some(alg.clone()), None)
             .await?;
         if *pt != *buf {
             kms_bail!("wrap/unwrap probe returned different bytes");
@@ -202,6 +212,13 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
     let Err(e1) = probe().await else {
         return Ok(());
     };
+    if alg == CryptoAlgorithm::AesGcm {
+        return Err(KmsError::ServerError(format!(
+            "key_encryption_key {kek}: AES-GCM wrapping failed on this HSM: {e1}. Set \
+             key_encryption_key_wrapping_algorithm = \"aes-key-wrap-padding\" (NIST SP \
+             800-38F) or \"aes-key-wrap\""
+        )));
+    }
     if let Err(e2) = oracle.set_key_wrap(kek, true).await {
         return Err(KmsError::ServerError(format!(
             "key_encryption_key {kek} cannot wrap with {alg:?}: {e1}; enabling \
@@ -480,13 +497,7 @@ async fn wrap_using_crypto_oracle(
         metrics.record_hsm_operation("Wrap", model);
     }
 
-    let iv = encrypted_content.iv.as_deref().unwrap_or(b"");
-    let tag = encrypted_content.tag.as_deref().unwrap_or(b"");
-    let mut wrapped_key =
-        Vec::with_capacity(iv.len() + encrypted_content.ciphertext.len() + tag.len());
-    wrapped_key.extend_from_slice(iv);
-    wrapped_key.extend_from_slice(&encrypted_content.ciphertext);
-    wrapped_key.extend_from_slice(tag);
+    let wrapped_key = pack_wrapped(&encrypted_content);
 
     // record the mode actually used, which may be the HSM default
     let mut key_wrapping_data = key_wrapping_specification.get_key_wrapping_data();

@@ -34,6 +34,11 @@ pub struct HsmCapabilities {
     /// When false, encryption proceeds without caller IV (HSM generates internally).
     pub supports_aes_gcm_caller_iv: bool,
 
+    /// Whether a caller-chosen AES-GCM IV may still be sent in FIPS builds. Only for
+    /// development tokens that are not FIPS-validated modules (`SoftHSM2`, Kryoptic):
+    /// FIPS 140-3 IG C.H requires GCM encryption IVs to be generated inside the module.
+    pub allows_caller_gcm_iv_in_fips: bool,
+
     /// Whether the HSM supports PKCS#11 v3.0 message-based AES-GCM encryption.
     pub supports_aes_gcm_message: bool,
 
@@ -96,6 +101,7 @@ impl Default for HsmCapabilities {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
             supports_aes_gcm_message: true,
             supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: false,

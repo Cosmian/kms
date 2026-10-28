@@ -183,6 +183,17 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
 }
 
+/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
+#[cfg(not(feature = "non-fips"))]
+const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
+    c.supports_aes_gcm_caller_iv && c.allows_caller_gcm_iv_in_fips
+}
+
+#[cfg(feature = "non-fips")]
+const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
+    c.supports_aes_gcm_caller_iv
+}
+
 fn aes_key_wrap_misrouted() -> HError {
     HError::Default("AES key wrap must go through Session::aes_key_wrap/aes_key_unwrap".to_owned())
 }
@@ -963,10 +974,18 @@ impl Session {
                     && self.hsm().supports_message_encrypt()
                 {
                     self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
-                } else if self.hsm_capabilities().supports_aes_gcm_caller_iv {
+                } else if caller_gcm_iv_allowed(self.hsm_capabilities()) {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
-                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)?
+                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
+                        .map_err(|e| {
+                            HError::Default(format!(
+                                "AES-GCM encryption needs an IV generated inside the HSM (FIPS \
+                                 140-3 IG C.H), and this HSM provided none ({e}). Use AES key \
+                                 wrap instead: key_encryption_key_wrapping_algorithm = \
+                                 \"aes-key-wrap-padding\" (NIST SP 800-38F)"
+                            ))
+                        })?
                 }
             }
             HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
@@ -4025,6 +4044,25 @@ fn split_aes_gcm_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caller_gcm_iv_policy() {
+        let production = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            caller_gcm_iv_allowed(&production),
+            cfg!(feature = "non-fips")
+        );
+        let development_token = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: true,
+            ..Default::default()
+        };
+        assert!(caller_gcm_iv_allowed(&development_token));
+    }
 
     #[test]
     fn split_aes_gcm_output_handles_standard_and_hsm_appended_iv() {

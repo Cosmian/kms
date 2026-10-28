@@ -237,6 +237,7 @@ impl HsmProvider for V3AdapterProvider {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
             aes_key_wrap_pad_is_rfc5649: false,
             supports_aes_gcm_message: false,
             supports_message_sign_verify: true,
