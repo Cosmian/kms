@@ -29,6 +29,7 @@ use x509_cert::{
     der::{
         Any, Decode, Encode, Sequence,
         asn1::{BitString, ObjectIdentifier, OctetString},
+        oid::db::rfc5912,
     },
     request::CertReq,
     spki::AlgorithmIdentifierOwned,
@@ -43,17 +44,6 @@ use crate::{
     error::KmsError,
     result::KResult,
 };
-
-/// `sha256WithRSAEncryption` (RFC 8017, PKCS#1 v1.5).
-const SHA256_WITH_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
-/// `ecdsa-with-SHA256` (RFC 5758).
-const ECDSA_WITH_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
-/// `id-Ed25519` (RFC 8410).
-#[cfg(feature = "non-fips")]
-const ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
-/// `id-Ed448` (RFC 8410).
-#[cfg(feature = "non-fips")]
-const ED448: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.113");
 
 /// Signature algorithm used to sign X.509 structures with a key the server cannot load.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,12 +111,12 @@ impl X509SignatureAlgorithm {
         // shortcut: only RSA and ECDSA remain here, extend this when adding a classic variant
         if self == Self::Sha256WithRsa {
             AlgorithmIdentifierOwned {
-                oid: SHA256_WITH_RSA,
+                oid: rfc5912::SHA_256_WITH_RSA_ENCRYPTION,
                 parameters: Some(Any::null()),
             }
         } else {
             AlgorithmIdentifierOwned {
-                oid: ECDSA_WITH_SHA256,
+                oid: rfc5912::ECDSA_WITH_SHA_256,
                 parameters: None,
             }
         }
@@ -154,8 +144,8 @@ impl X509SignatureAlgorithm {
 
     const fn eddsa_oid(self) -> Option<ObjectIdentifier> {
         match self {
-            Self::Ed25519 => Some(ED25519),
-            Self::Ed448 => Some(ED448),
+            Self::Ed25519 => Some(der::oid::db::rfc8410::ID_ED_25519),
+            Self::Ed448 => Some(der::oid::db::rfc8410::ID_ED_448),
             Self::Sha256WithRsa | Self::EcdsaWithSha256 => None,
         }
     }

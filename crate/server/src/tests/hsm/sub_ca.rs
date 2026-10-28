@@ -357,6 +357,40 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
 
     let root_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
     let root_id = create_hsm_root(&kms, &owner, &root_sk_id).await?;
+    // A CSR signed by a sensitive HSM key can name only the issuer private key: the issuer
+    // certificate is resolved through its persisted PrivateKeyLink, not HSM key attributes.
+    let csr_subject_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
+    kms.create_key_pair(
+        create_rsa_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            Some(UniqueIdentifier::TextString(csr_subject_sk_id.clone())),
+            EMPTY_TAGS,
+            2048,
+            true,
+            None,
+        )?,
+        &owner,
+    )
+    .await?;
+    let csr = generate_csr(
+        &kms,
+        &csr_subject_sk_id,
+        "C=FR, O=KMS Test, CN=CSR Subject",
+        &owner,
+    )
+    .await?;
+    let mut csr_request =
+        certify_request(None, &[(LinkType::PrivateKeyLink, root_sk_id.as_str())])?;
+    csr_request.certificate_request_type = Some(CertificateRequestType::PKCS10);
+    csr_request.certificate_request_value = Some(csr.to_der()?);
+    let csr_certificate_id = kms
+        .certify(csr_request, &owner)
+        .await?
+        .unique_identifier
+        .to_string();
+    let root = certificate(&kms, &owner, &root_id).await?;
+    let csr_certificate = certificate(&kms, &owner, &csr_certificate_id).await?;
+    assert!(csr_certificate.verify(root.public_key()?.as_ref())?);
 
     // Sub-CA with a non-extractable RSA key pair inside the HSM.
     let sub_sk_id = as_hsm_uid!(slot, Uuid::new_v4());

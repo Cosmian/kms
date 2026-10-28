@@ -14,6 +14,7 @@ pub use create::{
 };
 pub use create_key_pair::{
     create_ec_key_pair_request, create_pqc_key_pair_request, create_rsa_key_pair_request,
+    create_signing_key_pair_request,
 };
 pub use decrypt::decrypt_request;
 pub use encrypt::encrypt_request;

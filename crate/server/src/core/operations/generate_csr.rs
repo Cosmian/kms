@@ -90,6 +90,16 @@ fn parse_distinguished_name(subject: &str) -> KResult<X509Name> {
     Ok(builder.build())
 }
 
+/// Reject an empty or malformed subject, returning the parsed name.
+pub(crate) fn validate_subject_name(subject_name: &str) -> KResult<X509Name> {
+    if subject_name.trim().is_empty() {
+        kms_bail!(KmsError::InvalidRequest(
+            "CSR generation: subject_name must not be empty".to_owned()
+        ));
+    }
+    parse_distinguished_name(subject_name)
+}
+
 /// Generate a PKCS#10 CSR for the private key `private_key_id`.
 ///
 /// Signs with the exact key requested: HSM keys through the crypto oracle, database keys in
@@ -100,12 +110,7 @@ pub(crate) async fn generate_csr(
     subject_name: &str,
     user: &UserId,
 ) -> KResult<X509Req> {
-    if subject_name.trim().is_empty() {
-        kms_bail!(KmsError::InvalidRequest(
-            "CSR generation: subject_name must not be empty".to_owned()
-        ));
-    }
-    let name = parse_distinguished_name(subject_name)?;
+    let name = validate_subject_name(subject_name)?;
 
     // REST handlers skip the KMIP dispatch gate: apply the role check here
     check_role_permission(

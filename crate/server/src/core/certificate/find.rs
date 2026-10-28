@@ -3,6 +3,8 @@ use std::{borrow::Cow, sync::Arc};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
         kmip_types::{LinkType, LinkedObjectIdentifier},
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
@@ -119,8 +121,10 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     let certificate_id = if let Some(certificate_id) = certificate_id {
         trace!("found link to certificate: {}", certificate_id);
         certificate_id
+    } else if ObjectHandle::from(private_key.id()).is_hsm() {
+        find_certificate_linked_to_hsm_private_key(private_key, kms, user).await?
     } else {
-        // check if there is a link to a public key
+        // Check if there is a link to a public key.
         let public_key_id = private_key
             .attributes()
             .get_link(LinkType::PublicKeyLink)
@@ -161,6 +165,46 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     Ok(Arc::unwrap_or_clone(cert_owm))
 }
 
+/// Find the certificate whose persisted `PrivateKeyLink` identifies an HSM key.
+///
+/// HSM key metadata cannot persist KMIP links, so the normal `PrivateKey` → `PublicKey` →
+/// `Certificate` traversal is unavailable. Certificate links are stored in the database and
+/// survive an HSM restart.
+async fn find_certificate_linked_to_hsm_private_key(
+    private_key: &ObjectWithMetadata,
+    kms: &KMS,
+    user: &UserId,
+) -> KResult<LinkedObjectIdentifier> {
+    let mut filter = Attributes {
+        object_type: Some(ObjectType::Certificate),
+        ..Attributes::default()
+    };
+    filter.set_link(
+        LinkType::PrivateKeyLink,
+        LinkedObjectIdentifier::TextString(private_key.id().to_owned()),
+    );
+    let certificate_ids = kms
+        .database
+        .find(Some(&filter), None, user, false, kms.vendor_id())
+        .await?;
+    match certificate_ids.as_slice() {
+        [(certificate_id, _, _)] => {
+            trace!(
+                "found certificate {certificate_id} linked to HSM private key {}",
+                private_key.id()
+            );
+            Ok(LinkedObjectIdentifier::TextString(certificate_id.clone()))
+        }
+        [] => Err(KmsError::InvalidRequest(format!(
+            "No certificate linked to HSM private key '{}'",
+            private_key.id()
+        ))),
+        _ => Err(KmsError::InvalidRequest(format!(
+            "Multiple certificates are linked to HSM private key '{}'; specify the issuer certificate",
+            private_key.id()
+        ))),
+    }
+}
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_private_key_for_certificate(
     certificate_handle: ObjectHandle<'_>,

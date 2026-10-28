@@ -2411,14 +2411,33 @@ paths:
           application/json:
             schema:
               type: object
-              required: [private_key_id, subject_name]
+              required: [subject_name]
+              description: |
+                Either `private_key_id` (an existing key) or `algorithm` (generate the key pair
+                first) is required.
               properties:
                 private_key_id:
                   type: string
-                  description: KMIP unique identifier of the private key, e.g. `hsm::0::subca`
+                  description: |
+                    KMIP unique identifier of the private key, e.g. `hsm::0::subca`. With
+                    `algorithm`, the identifier given to the new key pair (an `hsm::<slot>::<id>`
+                    identifier creates it in the HSM); generated when omitted.
                 subject_name:
                   type: string
                   example: C=FR, O=Acme, CN=Acme Sub CA
+                algorithm:
+                  type: string
+                  example: nist-p256
+                  description: |
+                    Generate a key pair of this algorithm first, with the same names as
+                    `ckms certificates certify --algorithm` (`rsa2048`, `nist-p384`, `ed25519`,
+                    `ml-dsa-65`, ...). Key encapsulation algorithms (ML-KEM) cannot sign and are refused.
+                sensitive:
+                  type: boolean
+                  default: false
+                  description: |
+                    Make the generated private key non-extractable. Mandatory for an HSM key;
+                    only valid with `algorithm`.
       responses:
         '200':
           description: The signed CSR
@@ -2426,11 +2445,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [csr_pem]
+                required: [csr_pem, private_key_id]
                 properties:
                   csr_pem:
                     type: string
                     description: PEM-encoded PKCS#10 certificate signing request
+                  private_key_id:
+                    type: string
+                    description: The private key that signed the CSR
+                  public_key_id:
+                    type: string
+                    description: The public key of the generated pair (only when `algorithm` was set)
         '401':
           description: Unauthorized — missing or invalid credentials, or role not permitted
         '422':
