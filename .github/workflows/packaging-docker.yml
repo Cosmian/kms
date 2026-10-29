@@ -141,7 +141,16 @@ jobs:
           for tag in ${TAGS}; do
             images+="${tag}@${DIGEST} "
           done
-          cosign sign --yes ${images}
+          # Keyless signing logs to the public Rekor instance, which occasionally times out after
+          # storing the entry, so the client's own retry gets "409 an equivalent entry already
+          # exists". Each new `cosign sign` run uses a fresh ephemeral key, so retrying the whole
+          # command succeeds.
+          for attempt in 1 2 3; do
+            cosign sign --yes ${images} && exit 0
+            echo "::warning::cosign sign failed (attempt ${attempt}/3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Select test tag
         id: pick_test_tag
@@ -272,7 +281,13 @@ jobs:
           for tag in ${TAGS}; do
             images+="${tag} "
           done
-          cosign sign --yes ${images}
+          # See "Sign Docker images with Cosign": retry on transient Rekor errors.
+          for attempt in 1 2 3; do
+            cosign sign --yes ${images} && exit 0
+            echo "::warning::cosign sign failed (attempt ${attempt}/3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
   # ── Kubernetes pod smoke-test for the KMS server image ───────────────────
   # Runs on both amd64 and arm64.  Tests both fips and non-fips variants.
