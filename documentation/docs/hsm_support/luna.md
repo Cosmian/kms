@@ -389,7 +389,8 @@ KMS_HSM_PASSWORD='<partition-password>' ./cosmian_kms \
 - **Sensitive keys**: Luna rejects an explicit `CKA_SENSITIVE=false` with
   `CKR_ATTRIBUTE_VALUE_INVALID`. The KMS therefore omits `CKA_SENSITIVE` on Luna and sets only
   `CKA_EXTRACTABLE`: a key created without `--sensitive` gets `CKA_EXTRACTABLE=true` (it can be
-  wrapped) and Luna's default `CKA_SENSITIVE` value.
+  wrapped) and Luna's default `CKA_SENSITIVE` value; a key created with `--sensitive` gets
+  `CKA_EXTRACTABLE=false` (it cannot be wrapped).
 - **AES-GCM**: the KMS uses classic `C_EncryptInit` AES-GCM (the PKCS#11 3.0 message API fails on
   Luna). In FIPS mode Luna generates the IV and appends it to the output; the KMS uses that IV with
   firmware 7.9.3 or later (96-bit IV) and rejects the 16-byte IV of older firmware.

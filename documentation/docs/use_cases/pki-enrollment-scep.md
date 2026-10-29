@@ -125,7 +125,14 @@ How SCEP behaves:
   to it;
 - the envelope must use AES-CBC (128, 192 or 256) and the signature SHA-256, SHA-384 or SHA-512:
   DES, `DES3`, RC2, `SHA-1` and MD5 are refused in every build, so the client must negotiate `AES`
-  and `SHA-256`.
+  and `SHA-256`;
+- in the **FIPS build**, the envelope key must be encrypted to the CA with **RSAES-OAEP**: PKCS#1
+  v1.5 key transport (`rsaEncryption`) is refused with `badRequest` (NIST SP 800-131A Rev. 2
+  disallows it after 2023), and the certificate is returned with RSAES-OAEP (SHA-256, MGF1
+  SHA-256) to an RSA signer. FIPS SCEP therefore needs a client that sends and decrypts OAEP. The
+  native macOS client sends PKCS#1 v1.5 and cannot enroll with the FIPS build; use the
+  non-FIPS build for it. The non-FIPS build accepts both and answers with PKCS#1 v1.5, which every
+  SCEP client supports.
 
 ## Protocol flow
 
@@ -193,9 +200,10 @@ Errors common to EST and SCEP are listed on the
 
 ## Verifying the setup
 
-- `mise run test:scep-interop`: the micromdm `scepclient`: enrollment, challenge-less renewal and a
-  wrong challenge.
-- `mise run test:scep-apple` (macOS, interactive): installs a `com.apple.security.scep` profile
-  with a `CAFingerprint` pin; you approve it in System Settings. It checks the Apple request
-  (SHA-256, AES, RSA-2048, challenge) and the issued identity in the keychain, then stores the
-  capture under `test_data/scep/apple/` for the CI test `apple_scep_fixtures_parse`.
+- `mise run test:scep-interop`: the micromdm `scepclient` (built to send RSAES-OAEP):
+  enrollment, challenge-less renewal and a wrong challenge.
+- `mise run test:scep-apple --variant non-fips` (macOS, interactive): installs a
+  `com.apple.security.scep` profile with a `CAFingerprint` pin; you approve it in System Settings.
+  It checks the Apple request (SHA-256, AES, RSA-2048, challenge) and the issued identity in the
+  keychain, then stores the capture under `test_data/scep/apple/` for the CI test
+  `apple_scep_fixtures_parse`.

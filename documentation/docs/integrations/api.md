@@ -160,7 +160,7 @@ When enabled, the audit logging middleware records every KMIP and crypto operati
 
 - **Pre-Authentication Recording**: In the default scope, the audit middleware wraps outside the authentication layers, capturing both successful operations and failed attempts (`401 Unauthorized`, `403 Forbidden`).
 - **Trusted Proxy CIDRs**: Client IP addresses are extracted from `X-Forwarded-For` only when the immediate peer IP matches configured CIDR ranges in `audit_trusted_proxy_cidrs`.
-- **Failure Modes**: Configurable via `audit_failure_mode` to either `continue` (log failure and proceed) or `reject` (fail closed and return HTTP 503 if an event cannot be audited).
+- **Failure Modes**: Configurable via `audit_failure_mode` to either `continue` (log failure and proceed) or `reject` (return HTTP 503 if an event cannot be queued for the writer; a later backend write failure is recorded by an `audit:eviction` event, not a 503).
 
 See [Audit logs](../configuration/audit-logs.md) and [SIEM integration](../configuration/siems.md).
 

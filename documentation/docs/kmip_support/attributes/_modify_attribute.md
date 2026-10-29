@@ -35,8 +35,13 @@ The following KMIP attributes can be modified:
 The following attributes are **read-only** for `ModifyAttribute` and SHALL NOT be modified. Any attempt returns an
 `Attribute_Read_Only` error before the object is touched:
 
-- `UniqueIdentifier`, `ObjectType`, `CryptographicLength`, `CertificateLength`, `Digest`
-- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `Fresh`
+- `UniqueIdentifier`, `ObjectType`, `ShortUniqueIdentifier`, `KeyFormatType`, `KeyValuePresent`, `OpaqueDataType`
+- `CryptographicAlgorithm`, `CryptographicDomainParameters`, `CryptographicLength`, `DigitalSignatureAlgorithm`,
+  `NISTKeyType`, `Digest`, `RandomNumberGenerator`, `ProtectionStorageMasks`
+- `CertificateType`, `CertificateLength`, `CertificateAttributes`, `X509CertificateIdentifier`,
+  `X509CertificateSubject`, `X509CertificateIssuer`
+- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `ArchiveDate`, `DestroyDate`, `CompromiseDate`,
+  `CompromiseOccurrenceDate`, `Fresh`
 - `State` (use Revoke and Destroy to change it)
 - `AlwaysSensitive`, `NeverExtractable`
 - `RotateGeneration`, `RotateDate`, `RotateLatest`

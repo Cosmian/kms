@@ -56,7 +56,7 @@ hash chain as ordinary KMIP events, with `user` set to `"server"`.
 
 | Event                        | Written when                                                                            | `result`                                     | `details`                                                                                          |
 | ---------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `audit:eviction`             | One or more events were dropped because the writer's queue was full.                    | `Failure`, with the count of dropped events. | `null`                                                                                             |
+| `audit:eviction`             | One or more events were dropped because the writer's queue was full or the backend failed to write them. | `Failure`, with the count of dropped events. | `null`                                                                                             |
 | `audit:size-cap-reached`     | The file backend's `--audit-file-max-size-bytes` cap was reached.                       | `Failure`                                    | `null`                                                                                             |
 | `audit:torn-write-recovered` | File backend only: an incomplete trailing row was found and discarded after an ungraceful restart. | `Success`                         | `bytes_discarded` and `offset` of the discarded fragment.                                          |
 | `audit:reanchor`             | The KMS started a fresh chain after finding the previous one corrupted (seal-and-roll). | `Success`                                    | `reason` (see [Reanchor reasons](#reanchor-reasons)) plus backend-specific evidence fields, described in [File backend](./audit-file-backend.md#startup-and-recovery) and [PostgreSQL backend](./audit-postgresql-backend.md#startup-and-recovery). |
@@ -87,6 +87,8 @@ was added still hash to the same bytes.
 
 `prev_hash` of the first event (`id = 0`) is the 32-byte all-zeros sentinel.
 
-Any modification to a field in any row, including reordering rows, deleting rows, or appending
-forged rows, breaks at least one `prev_hash → row_hash` link and is detected by
-`ckms audit verify`.
+Modifying, reordering or deleting a row without recomputing the hashes that follow it breaks at
+least one `prev_hash → row_hash` link and is detected by `ckms audit verify`. The hash is unkeyed:
+anyone with write access to the audit store can recompute the chain after an edit, delete the
+latest rows, or append well-formed rows, and the chain still verifies. Detecting this requires a
+chain head (`id` and `row_hash` of a recent event) retained outside the audit store.

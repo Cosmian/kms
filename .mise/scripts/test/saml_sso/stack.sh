@@ -64,52 +64,36 @@ generate_keys() {
     -keyout "${SAML_SSO_DIR}/saml-sp.key.pem" -out "${SAML_SSO_DIR}/saml-sp.cert.pem" 2>/dev/null
 }
 
-# Auth Verifier, Keycloak realm and KMS configuration files.
+# Set the value of a key that already exists in a copied fixture; fails when the key is absent.
+set_toml_value() { # <file> <key> <already-quoted-value>
+  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
+  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
+# Auth Verifier and KMS configs: copies of the test_data fixtures with this run's host and paths.
+# Keycloak realm: rendered from its template.
 write_configs() {
-  cat >"${SAML_SSO_DIR}/auth_verifier.toml" <<TOML
-# Dev only: in-memory database, throw-away keys, torn down by \`stack.sh down\`.
-host_name = "${BIND_HOST}"
-host_port = 8444
-roles = ["SuperAdmin", "DomainAdmin", "CryptoOfficer", "Auditor", "User"]
-
-[tls_params]
-server_private_key = "${SAML_SSO_DIR}/tls.key.pem"
-server_certificate = "${SAML_SSO_DIR}/tls.cert.pem"
-server_ca_chain = "${SAML_SSO_DIR}/tls.cert.pem"
-
-[database_params]
-backend = "sqlite"
-connection_url = "sqlite::memory:"
-
-[saml_sp_params]
-saml_rsa_private_key = "${SAML_SSO_DIR}/saml-sp.key.pem"
-saml_certificate = "${SAML_SSO_DIR}/saml-sp.cert.pem"
-TOML
+  local av_toml="${SAML_SSO_DIR}/auth_verifier.toml" kms_toml="${SAML_SSO_DIR}/kms.toml"
+  cp "${REPO_ROOT}/test_data/configs/auth_verifier/saml_sso.toml" "${av_toml}"
+  set_toml_value "${av_toml}" host_name "\"${BIND_HOST}\""
+  set_toml_value "${av_toml}" server_private_key "\"${SAML_SSO_DIR}/tls.key.pem\""
+  set_toml_value "${av_toml}" server_certificate "\"${SAML_SSO_DIR}/tls.cert.pem\""
+  set_toml_value "${av_toml}" server_ca_chain "\"${SAML_SSO_DIR}/tls.cert.pem\""
+  set_toml_value "${av_toml}" jwt_ec_private_key "\"${SAML_SSO_DIR}/tls.key.pem\""
+  set_toml_value "${av_toml}" jwt_ec_public_key "\"${SAML_SSO_DIR}/tls.cert.pem\""
+  set_toml_value "${av_toml}" saml_rsa_private_key "\"${SAML_SSO_DIR}/saml-sp.key.pem\""
+  set_toml_value "${av_toml}" saml_certificate "\"${SAML_SSO_DIR}/saml-sp.cert.pem\""
 
   SP_CERT=$(grep -v -- '-----' "${SAML_SSO_DIR}/saml-sp.cert.pem" | tr -d '\n') \
   PUBLIC_ORIGIN="${PUBLIC_ORIGIN}" SAML_REALM="${SAML_REALM}" \
     envsubst "\${PUBLIC_ORIGIN} \${SAML_REALM} \${SP_CERT}" \
     <"${SCRIPT_DIR}/keycloak-realm.json.tmpl" >"${SAML_SSO_DIR}/keycloak-realm.json"
 
-  cat >"${SAML_SSO_DIR}/kms.toml" <<TOML
-kms_public_url = "${PUBLIC_ORIGIN}"
-
-[http]
-port = 9998
-hostname = "${BIND_HOST}"
-
-[db]
-database_type = "sqlite"
-sqlite_path = "${SAML_SSO_DIR}/kms-data"
-
-[auth_verifier]
-auth_verifier_url = "${AV_URL}"
-auth_verifier_saml_realm = "${SAML_REALM}"
-auth_verifier_accept_invalid_certs = true   # self-signed local certificate, dev only
-
-[ui_config]
-ui_index_html_folder = "${REPO_ROOT}/ui/dist"
-TOML
+  cp "${REPO_ROOT}/test_data/configs/server/auth/saml_sso.toml" "${kms_toml}"
+  set_toml_value "${kms_toml}" hostname "\"${BIND_HOST}\""
+  set_toml_value "${kms_toml}" sqlite_path "\"${SAML_SSO_DIR}/kms-data\""
+  set_toml_value "${kms_toml}" auth_verifier_url "\"${AV_URL}\""
+  set_toml_value "${kms_toml}" ui_index_html_folder "\"${REPO_ROOT}/ui/dist\""
   # The Keycloak and nginx containers run as non-root and must read these throw-away files.
   chmod 755 "${SAML_SSO_DIR}"
   chmod 644 "${SAML_SSO_DIR}"/*.pem "${SAML_SSO_DIR}"/*.toml "${SAML_SSO_DIR}"/*.json

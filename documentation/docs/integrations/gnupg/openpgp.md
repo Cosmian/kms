@@ -58,9 +58,9 @@ server directly: key files, signatures and messages move between `gpg` and the c
 | Transferable public / secret key | ASCII armor (`-----BEGIN PGP PUBLIC KEY BLOCK-----` / `PRIVATE KEY BLOCK`) | v4 | Import, export (`pgp-public`, `pgp-secret`) |
 | Transferable public / secret key | Binary packets | v4 | Import, export (`pgp-public-binary`, `pgp-secret-binary`) |
 | Encrypted message | Binary: PKESK v3 + SEIPD v1 (AES-256) | RFC 4880 / RFC 9580 §5.13.1 | `Encrypt` output |
-| Encrypted message | Binary or ASCII armor | PKESK + SEIPD v1 (compressed payloads are decompressed) | `Decrypt` input |
+| Encrypted message | Binary or ASCII armor | PKESK + SEIPD v1 (compressed payloads are decompressed, up to 64 MiB of plaintext) | `Decrypt` input |
 | Detached signature | Binary (SHA-256, made with the primary key) | v4 signature | `Sign` output |
-| Detached signature | Binary or ASCII armor | v4 signature, primary key or any subkey | `SignatureVerify` input |
+| Detached signature | Binary or ASCII armor | v4 signature, primary key or a bound signing subkey | `SignatureVerify` input |
 | Inline, cleartext signatures | not supported | n/a | rejected |
 | SEIPD v2 / AEAD (packet tag 20), passphrase-protected secret keys | not supported | n/a | rejected |
 
@@ -77,6 +77,11 @@ command. Two algorithm profiles are supported:
   encryption subkey.
 - **RSA**: an RSA primary key (certify and sign) with an RSA encryption subkey. Supported modulus
   sizes are **2048**, **3072**, or **4096** bits.
+
+RSA private-key operations on OpenPGP keys (key generation and self-signatures, `Decrypt` of the
+session key, `Sign`) run in OpenSSL, which blinds them and applies implicit rejection to
+PKCS#1 v1.5 decryption. The `pgp` crate is used for packet handling and RSA public-key operations
+only.
 
 Keys are generated **unprotected** inside the KMS protection boundary.
 
@@ -289,8 +294,20 @@ The server pins the following constraints for OpenPGP keys. Each is asserted by 
     - `SignatureVerify` accepts only **detached** signatures (`gpg --detach-sign`). Inline
       (`gpg --sign`) and cleartext (`gpg --clearsign`) signatures are rejected.
     - `Decrypt` and `SignatureVerify` accept both binary and ASCII-armored inputs.
-    - The KMS verifies against the primary key first, then every public subkey — a signing-subkey
-      signature validates against the published certificate.
+    - The KMS verifies against the primary key first, then every signing subkey bound to it: the
+      subkey's binding signature must verify against the primary key and carry a valid embedded
+      back-signature (RFC 9580 §5.2.1.8). A signing-subkey signature therefore validates against the
+      published certificate, while subkeys added to a certificate by a third party are ignored.
+
+!!! warning Only bound subkeys are used
+    `Encrypt` selects the first encryption subkey whose binding signature verifies against the
+    primary key; Key Flags are read from verified signatures only. A certificate without such a
+    subkey (and whose primary key is not flagged for encryption by a verified self-signature) is
+    rejected with `OpenPGP certificate has no encryption-capable key`.
+
+!!! warning Plaintext size limit
+    `Decrypt` fails with `decrypted OpenPGP plaintext exceeds the 67108864-byte limit` when the
+    decrypted (decompressed) plaintext is larger than 64 MiB, the server request-body limit.
 
 !!! warning No streaming or pre-hashed data
     - Supplying `DigestedData` to `Sign` or `SignatureVerify` returns an error: OpenPGP signatures
@@ -298,10 +315,13 @@ The server pins the following constraints for OpenPGP keys. Each is asserted by 
     - Supplying `InitIndicator` or `CorrelationValue` (streaming / multi-part) returns an error:
       streaming is not supported for OpenPGP keys.
 
-!!! warning Wrap-on-create unsupported
+!!! warning Wrap-on-create and wrap-on-export unsupported
     OpenPGP keys cannot be wrapped at `Create` time using `wrapping_key_id`: the server's at-rest
     wrap path does not support the `PGPKey` encoding. A wrapped OpenPGP key cannot be unwrapped on
     export either; requesting an explicit `KeyFormatType` on a wrapped key returns an error.
+    `Export`/`Get` with a `KeyWrappingSpecification` is refused (`Key_Wrap_Type_Not_Supported`);
+    for a `Sensitive` OpenPGP key it returns `Sensitive`, so a Sensitive secret key never leaves
+    the server.
 
 ## Glossary
 

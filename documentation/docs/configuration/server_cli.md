@@ -49,7 +49,8 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
+          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+          are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]

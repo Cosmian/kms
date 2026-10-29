@@ -21,18 +21,28 @@ database's append-only grants.
 `--audit-postgres-url` supports the same `sslmode`/`sslrootcert`/`sslcert`/`sslkey` query
 parameters as `--database-url`; see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls-mtls).
 The server logs a warning at startup when the URL does not verify the server certificate (the default
-`sslmode=prefer` does not); use `sslmode=verify-full` with `sslrootcert`.
+`sslmode=prefer` does not); use `sslmode=verify-full` with `sslrootcert`. As with `libpq`,
+`sslmode=verify-ca` without `sslrootcert` is refused at startup.
 
 The KMS creates its table on first connection, with triggers that reject `UPDATE`, `DELETE`, and
-`TRUNCATE` on it. The table owner and any superuser can still disable these triggers with
+`TRUNCATE` on it. This runs again on every boot and self-heals an older table automatically.
+The table owner and any superuser can still disable these triggers with
 `ALTER TABLE … DISABLE TRIGGER`, so run the KMS with a role that does not own the table (see
-below) and rely on the hash chain, verified by `ckms audit verify`, to detect tampering by a
-privileged role. This runs again on every boot and self-heals an older table automatically.
+below).
+
+!!! warning "The hash chain does not stop a privileged database role"
+    Each row's hash is a plain, unkeyed SHA-256 over the row and its predecessor's hash.
+    `ckms audit verify` therefore detects edits that leave the chain inconsistent, but a role
+    able to bypass the triggers can rewrite rows and recompute every later hash, or delete the
+    most recent rows, and the chain still verifies. Such tampering is only detectable against a
+    chain head (`id` and `row_hash` of the latest event) retained outside the audit database.
+    Export or record the head regularly (for example with `ckms audit export`) to storage the
+    database administrators cannot modify, and compare it with the database on audit.
 
 For a hardened deployment, a database administrator can provision both tables separately and grant
 the KMS role only `SELECT` and `INSERT` on `kms_audit_events`, plus `SELECT`, `INSERT`, and `UPDATE` on
-`kms_audit_control`, with no DDL rights; see
-[the exact schema](https://github.com/Cosmian/kms/blob/develop/crate/server_database/src/stores/audit/audit.sql).
+`kms_audit_control`, with no DDL rights; see [the schema reference](./database/tables.md#postgresql-audit-database)
+and [the exact DDL](https://github.com/Cosmian/kms/blob/5.29.0/crate/server_database/src/stores/audit/audit.sql).
 The KMS then skips schema creation and only checks that every required column is present and that
 the four append-only triggers (`kms_audit_no_update`, `kms_audit_no_delete`,
 `kms_audit_no_truncate`, `kms_audit_no_insert_sealed`) exist and are enabled; it refuses to start

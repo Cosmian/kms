@@ -45,7 +45,7 @@ All routes answer `404` unless `est_enabled = true`.
 | Route | Authentication | Request | Response | Description |
 | --- | --- | --- | --- | --- |
 | `GET /.well-known/est/cacerts` | None | None | `application/pkcs7-mime`, base64 | The CA chain, as a certs-only PKCS#7. Devices use it to trust the issuing CA. |
-| `GET /.well-known/est/csrattrs` | None | None | `application/csrattrs`, base64 | What the CSR should contain. |
+| `GET /.well-known/est/csrattrs` | None | None | `application/csrattrs`, base64 | What the CSR should contain: `extensionRequest`, and the key types of `est_template` (`rsaEncryption` with `min_rsa_key_bits`, `id-ecPublicKey` with `allowed_ec_curves`; either is accepted). |
 | `POST /.well-known/est/simpleenroll` | TLS client certificate, or HTTP Basic bootstrap credentials when `est_require_client_cert = false` | PKCS#10 CSR, base64 | `application/pkcs7-mime; smime-type=certs-only`, base64 | First enrollment: the CSR is checked against the template, then signed by the CA. |
 | `POST /.well-known/est/simplereenroll` | The TLS client certificate being renewed | PKCS#10 CSR, base64, same Subject and SubjectAltName | `application/pkcs7-mime; smime-type=certs-only`, base64 | Renewal or key change. No shared secret is needed. |
 
@@ -245,6 +245,10 @@ The shared [security model](pki-enrollment.md#security-model) applies. Specific 
   SubjectAltName. A certificate that carries the enrollment marker but was issued elsewhere (the SCEP
   CA, an earlier key of this CA) is refused with `403`. The TLS layer does not check revocation of
   other client certificates (for example corporate ones accepted through `clients_ca_cert_file`).
+- **tls-unique channel binding.** A CSR that carries a `challengePassword` is taken as the
+  RFC 7030 §3.5 tls-unique binding: the value must be the base64 tls-unique of the current TLS
+  connection, or the request is refused with `400`. tls-unique only exists in TLS 1.2, so such a
+  CSR is also refused over TLS 1.3. A CSR without `challengePassword` is not affected.
 - **Do not mix trust roles.** Setting `clients_ca_cert_file` to the enrollment CA is needed for
   renewal, but it also makes the TLS layer accept that CA's certificates for all clients of the
   listener. Prefer a dedicated listener or trust anchor for KMIP and API users where you can.
@@ -261,6 +265,7 @@ Errors common to EST and SCEP are listed on the
 | HTTP `401` on `simpleenroll` | Wrong or missing bootstrap credentials, and no accepted client certificate. |
 | HTTP `422` | The CSR breaks the template: name, SAN, key size, EKU or extension. The reply says which. |
 | HTTP `400` on `simplereenroll` | The CSR's Subject or SubjectAltName differs from the current certificate. |
+| HTTP `400` mentioning tls-unique | The CSR carries a `challengePassword` that is not the tls-unique value of this TLS connection, or the connection has none (TLS 1.3). Drop the challengePassword, or have the client bind its TLS 1.2 session. |
 | HTTP `403` on `simplereenroll` or `simpleenroll` | The client certificate cannot be used for enrollment: not issued by this CA, expired, not `Active` (for example revoked), or enrolled elsewhere. The reply is a fixed message; the reason is in the server log. |
 | HTTP `429` / `503` | Too many wrong credentials from this address, or too many enrollments in progress; wait for `Retry-After`. |
 

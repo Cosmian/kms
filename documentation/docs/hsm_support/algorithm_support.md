@@ -80,7 +80,7 @@ Legend:
     KMIP-level test vectors `test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha{256,1}`.
     RSA-OAEP **key wrap** (`C_WrapKey`/`C_UnwrapKey`, a separate mechanism/code path) is
     unaffected by this and genuinely does not support it either
-    (`supports_rsa_oaep_key_wrap: false`, already reflected in the quirks table).
+    (`rsa.supports_oaep_key_wrap: false`, already reflected in the quirks table).
 
 !!! note Kryoptic 1.5.2: P-224 and Ed448 key generation confirmed unsupported
     Live-verified against Kryoptic 1.5.2 (`cargo build --features standard`, this repository's
@@ -134,7 +134,7 @@ branches on them so KMS operations behave correctly regardless of HSM model.
 | `FindObjects` page size | 32 | 10 (default) | 64 | 64 | 64 | 64 | 64 | 64 | 16 | 256 |
 | `CKA_LABEL` length limit | none | none (default) | 128 bytes | none | none | none | none | none | none | none |
 
-Azure Cloud HSM leaves `supports_aes_gcm_message` at its default (`true`), but `BaseHsm` only
+Azure Cloud HSM leaves `aes.gcm.supports_message` at its default (`true`), but `BaseHsm` only
 uses message-based AES-GCM when the loaded library also exports the v3.0 message functions
 (`HsmLib::supports_message_encrypt`); the Azure v2.40 library does not, so classic
 `C_EncryptInit` AES-GCM with an HSM-generated IV is used.
@@ -178,8 +178,8 @@ no GCM IV.
   from an end-to-end create/sign/verify run against it; the other models' rows are 📄 or —, even
   where the same model's NIST P-curve rows are ✅.
 - Quirks table values come directly from each model's `HsmCapabilities` struct fields
-  (`rsa_oaep_requires_source_data_ptr`, `supports_aes_gcm_message`, `supports_key_dates`,
-  `enforces_ecdsa_digest_strength`, `max_label_len`, `find_max_object_count`, etc.).
+  (`rsa.oaep_requires_source_data_ptr`, `aes.gcm.supports_message`, `supports_key_dates`,
+  `ec.enforces_ecdsa_digest_strength`, `max_label_len`, `find_max_object_count`, etc.).
 - 📄 rows are sourced from vendor PKCS#11 documentation (Proteccio *Developer's Guide*; Crypt2Pay
   *PKCS#11 API User Guide*; Azure Cloud HSM *PKCS#11 Integration Guide*) for mechanisms not yet
   exercised by this repository's tests.

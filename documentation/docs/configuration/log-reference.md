@@ -349,7 +349,6 @@ Crate path: `crate/server`
 | `trace` | `No issuer private key id provided` | `src/core/operations/certify/resolve_issuer.rs` | — | — |
 | `trace` | `No UI folder containing index.html found at {}` | `src/start_kms_server.rs` | — | — |
 | `trace` | `Non revocable keys detected: won't be revoked {non_revocable_key_id:?}` | `src/core/operations/revoke.rs` | `non_revocable_key_id` — … | — |
-| `trace` | `Not using Client Certificate Authentication with OpenSSL` | `src/start_kms_server.rs` | — | — |
 | `trace` | `OpenSSL Private Key instantiated before signing` | `src/core/operations/sign.rs` | — | — |
 | `trace` | `OpenSSL Public Key instantiated before encryption` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `Operation processed successfully: {op}` | `src/core/operations/message.rs` | `op` — … | — |
@@ -415,7 +414,6 @@ Crate path: `crate/server`
 | `trace` | `updated_master_secret_key_bytes len: {}` | `src/core/cover_crypt/create_user_decryption_key.rs` | — | — |
 | `trace` | `User {user} does not have permission for operation {operation_type:?} on object {}` | `src/core/retrieve_object_utils.rs` | `user` — …<br>`operation_type` — … | — |
 | `trace` | `User {user} has permission for operation {operation_type:?} on object {}` | `src/core/retrieve_object_utils.rs` | `user` — …<br>`operation_type` — … | — |
-| `trace` | `Using Client Certificate Authentication with OpenSSL` | `src/start_kms_server.rs` | — | — |
 | `trace` | `valid_jwt user claims: {:?}` | `src/routes/google_cse/jwt.rs` | — | — |
 | `trace` | `validate token: KACLS URL {google_cse_kacls_url}` | `src/routes/google_cse/jwt.rs` | `google_cse_kacls_url` — … | — |
 | `trace` | `Validate: {}` | `src/core/operations/validate.rs` | — | — |
@@ -769,7 +767,6 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: no authentication method is configured: every request is served as the default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: rate_limit_per_second is not set: request rate limiting is disabled.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `Socket server: cannot set socket timeouts, dropping connection: {e}` | `src/socket_server.rs` | `e` | - |
 | `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
 | `debug` | `Generated JWT for original KACLS` | `src/routes/google_cse/operations.rs` | - | - |
 | `warn` | `Session: rejecting reserved service identity from stored session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
@@ -800,13 +797,15 @@ Crate path: `crate/server`
 | `warn` | `SCEP request {} from {client} rejected: {reason} (messageType={message_type})` | `src/routes/scep/pki_operation.rs` | `client`, `reason`, `message_type` | Counts toward the enrollment lockout. |
 | `warn` | `enrollment: refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 | `warn` | `enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
-| `debug` | `The unwrapping key {unwrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid` | - |
 | `debug` | `RSA-OAEP HSM unwrap failed: {e}` | `src/routes/jose/decrypt.rs` | `e` | - |
 | `info` | `POST /certificates/csr` | `src/routes/csr.rs` | - | Request to generate a PKCS#10 CSR; the HSM signs it for non-extractable keys. |
 | `trace` | `found certificate {certificate_id} linked to HSM private key {}` | `src/core/certificate/find.rs` | `certificate_id` | - |
 | `warn` | `could not restore CKA_WRAP/CKA_UNWRAP on HSM key {kek}: {e4}` | `src/core/wrapping/wrap.rs` | `kek`, `e4` | - |
 | `warn` | `unwrap: declared {requested:?} failed for key wrapped by {unwrapping_key_uid} ({e}); retrying with the HSM default for objects wrapped before HSM wrapping honoured the requested mode` | `src/core/wrapping/unwrap.rs` | `requested`, `unwrapping_key_uid`, `e` | - |
 | `info` | `Enabled CKA_WRAP/CKA_UNWRAP on HSM key encryption key {kek} for {alg:?}` | `src/core/wrapping/wrap.rs` | `kek`, `alg` | - |
+| `warn` | `EST simpleenroll rejected: {reason}` | `src/routes/est/enroll.rs` | `reason` | - |
+| `warn` | `EST simplereenroll rejected: {reason}` | `src/routes/est/enroll.rs` | `reason` | - |
+| `debug` | `The unwrapping key {} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1266,7 +1265,6 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn`  | `create_symmetric_key_from_id: {id} has type {:?} (expected SymmetricKey), skipping`                                                                                                                                                                                       | `src/backend.rs`            | `id`: object ID                                                                                       | -                                                                                               |
 | `debug` | `decrypt: decrypt_ctx: {ctx:?}`                                                                                                                                                                                                                                            | `src/backend.rs`            | `ctx`: ctx                                                                                            | -                                                                                               |
 | `debug` | `encrypt: ctx: {ctx:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | `ctx`: ctx                                                                                            | -                                                                                               |
-| `debug` | `kms_encrypt_async: ciphertext: {}`                                                                                                                                                                                                                                        | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
 | `debug` | `kms_import_object_async: label: {label}, data (length): {}`                                                                                                                                                                                                               | `src/kms_object.rs`         | `label`: label                                                                                        | -                                                                                               |
 | `debug` | `Locate response: ids: {:?}`                                                                                                                                                                                                                                               | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
 | `debug` | `Located objects: tags: {tags:?}, type: {object_type:?} => {uniques_identifiers:?}`                                                                                                                                                                                        | `src/kms_object.rs`         | `tags`: KMIP tag set<br>`object_type`: KMIP object type<br>`uniques_identifiers`: uniques identifiers | -                                                                                               |
@@ -1314,6 +1312,7 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn` | `create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
 | `warn` | `create_public_key_from_id: failed to export public key {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
 | `debug` | `encrypt_message: ctx: {ctx:?}` | `src/backend.rs` | `ctx` | - |
+| `debug` | `kms_encrypt_async: ciphertext_len: {}` | `src/kms_object.rs` | - | - |
 
 ### `cosmian_pkcs11_module`
 
@@ -1371,10 +1370,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `info` | `C_FindObjectsInit: session: {hSession:?}, load Objects Store context for                  attributes: {attributes:?}` | `src/pkcs11.rs` | `hSession`, `attributes` | — |
 | `debug` | `C_CreateObject: session: {hSession:?}, pTemplate: {pTemplate:?}, ulCount:              {ulCount:?}, phObject: {phObject:?}` | `src/pkcs11.rs` | `hSession`, `pTemplate`, `ulCount`, `phObject` | — |
 | `debug` | `C_Decrypt: pEncryptedData: {pEncryptedData:?}, ulEncryptedDataLen:              {ulEncryptedDataLen:?}, pData: {pData:?}, pulDataLen: {pulDataLen:?}` | `src/pkcs11.rs` | `pEncryptedData`, `ulEncryptedDataLen`, `pData`, `pulDataLen` | — |
-| `debug` | `C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?},                      ciphertext: {:?}` | `src/pkcs11.rs` | — | — |
 | `debug` | `C_DecryptInit: session: {hSession:?}, hKey: {hKey:?}, mechanism: {mechanism:?},                  object: {object:?}` | `src/pkcs11.rs` | `hSession`, `hKey`, `mechanism`, `object` | — |
 | `debug` | `C_Encrypt: pData: {pData:?}, ulDataLen: {ulDataLen:?}, pEncryptedData:              {pEncryptedData:?}, pulEncryptedDataLen: {pulEncryptedDataLen:?}` | `src/pkcs11.rs` | `pData`, `ulDataLen`, `pEncryptedData`, `pulEncryptedDataLen` | — |
-| `debug` | `C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?},                      cleartext: {:?}` | `src/pkcs11.rs` | — | — |
 | `debug` | `C_EncryptInit: session: {hSession:?}, hKey: {hKey:?}, mechanism: {mechanism:?},                  object: {object:?}` | `src/pkcs11.rs` | `hSession`, `hKey`, `mechanism`, `object` | — |
 | `debug` | `C_GenerateKey: session: {hSession:?}, pMechanism: {pMechanism:?}, pTemplate:              {pTemplate:?}, ulCount: {ulCount:?}, phKey: {phKey:?}` | `src/pkcs11.rs` | `hSession`, `pMechanism`, `pTemplate`, `ulCount`, `phKey` | — |
 | `debug` | `load_find_context_by_class: loading for class: {search_class:?} and options:              {search_options:?}, attributes: {attributes:?}` | `src/sessions.rs` | `search_class`, `search_options`, `attributes` | — |
@@ -1395,6 +1392,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label_or_id`, `attributes` | - |
 | `debug` | `load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label_or_id` | - |
 | `trace` | `Generated {len} random bytes` | `src/pkcs11.rs` | `len` | - |
+| `debug` | `C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?}` | `src/pkcs11.rs` | - | - |
+| `debug` | `C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?}` | `src/pkcs11.rs` | - | - |
 
 ---
 

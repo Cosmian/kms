@@ -373,6 +373,10 @@ jobs:
           # - aws-cloudhsm
           # - gcp-cloud-hsm
           # - azure-cloud-hsm
+          # Thales Luna: no network HSM partition or proprietary Luna Client is reachable from
+          # CI; validated manually against a Luna appliance (`mise run test:hsm-luna`).
+          # Re-enable once a CI partition and LUNA_* secrets are provisioned.
+          # - luna
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
         # sufficient for crypt2pay, and aws-cloudhsm/azure-cloud-hsm/gcp-cloud-hsm FIPS-mode compatibility
         # is not yet confirmed against the clusters' supported mechanism lists.
