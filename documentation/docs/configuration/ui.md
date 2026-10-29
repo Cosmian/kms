@@ -238,6 +238,7 @@ cookie. Logging out of the UI revokes the Authentication Verifier session and ex
     (`_ea_` cookie or `Authorization: Bearer`) is still live, with `GET {auth_verifier_url}/whoami`; a live session is
     cached for 30 seconds. A session ended by UI logout is refused at once by the KMS instance that served the logout;
     one revoked on the Authentication Verifier, or idle past the realm's stale age, is refused within 30 seconds. The
-    KMS must reach `auth_verifier_url`: when it cannot, Authentication Verifier tokens are refused.
+    KMS must reach `auth_verifier_url`, through the `[proxy]` settings when they are configured (as for the JWKS
+    fetch): when it cannot, Authentication Verifier tokens are refused.
 
 ---

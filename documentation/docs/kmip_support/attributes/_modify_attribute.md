@@ -20,9 +20,7 @@ The following KMIP attributes can be modified:
 | Attribute | Notes |
 |---|---|
 | `ActivationDate` | **Pre-Active objects only.** If the new date ≤ now the object automatically transitions to **Active** (KMIP spec §3.22). |
-| `CryptographicAlgorithm` | Replaces the algorithm of the managed object. |
 | `CryptographicParameters` | Replaces the cryptographic parameters structure. |
-| `CryptographicDomainParameters` | Replaces the domain parameters structure. |
 | `CryptographicUsageMask` | Replaces the bitmask of allowed cryptographic usages. |
 | `DeactivationDate` | Sets or replaces the deactivation date. |
 | `Link` | Replaces the linked object identifier for the given link type. |
@@ -49,10 +47,10 @@ The following attributes are **read-only** for `ModifyAttribute` and SHALL NOT b
 `Sensitive` and `Extractable` can be modified only by the object owner or by a user holding an explicit
 `ModifyAttribute` grant.
 
-## Example - Modify the cryptographic algorithm
+## Example - Modify the name
 
 ```bash
-  ckms attributes modify -i my_symmetric_key --cryptographic-algorithm chacha20
+  ckms attributes modify -i my_symmetric_key --name my_new_name
 ```
 
 === "Request"
@@ -72,9 +70,12 @@ The following attributes are **read-only** for `ModifyAttribute` and SHALL NOT b
           "type": "Structure",
           "value": [
             {
-              "tag": "CryptographicAlgorithm",
-              "type": "Enumeration",
-              "value": "ChaCha20"
+              "tag": "Name",
+              "type": "Structure",
+              "value": [
+                { "tag": "NameValue", "type": "TextString", "value": "my_new_name" },
+                { "tag": "NameType", "type": "Enumeration", "value": "UninterpretedTextString" }
+              ]
             }
           ]
         }

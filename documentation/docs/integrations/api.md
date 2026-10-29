@@ -156,9 +156,10 @@ See [Ownership and access rights](../configuration/authorization.md) and [Role M
 
 ### 6. Audit Logging & Non-Repudiation
 
-When enabled, the audit logging middleware records every KMIP and crypto operation into a tamper-evident, cryptographically chained JSONL log:
+When enabled, the audit logging middleware records every request of the default scope (`/kmip`, `/access`, certificates, …) and of the REST Native Crypto API (`/v1/crypto`) into a tamper-evident, cryptographically chained JSONL log. The other scopes (Google CSE, Microsoft DKE, AWS XKS, Azure EKM, `/tokenize`, Vault transit/PKI) are not recorded:
 
-- **Pre-Authentication Recording**: In the default scope, the audit middleware wraps outside the authentication layers, capturing both successful operations and failed attempts (`401 Unauthorized`, `403 Forbidden`).
+- **Pre-Authentication Recording**: In these scopes, the audit middleware wraps outside the authentication layers, capturing both successful operations and failed attempts (`401 Unauthorized`, `403 Forbidden`).
+- **REST Native Crypto API events**: the `operation` is the HTTP method and route (e.g. `POST /v1/crypto/encrypt`, `DELETE /v1/crypto/keys/{kid}`) and `object_uid` is the key used, the created key, or, for `encrypt` with `cek_kid`, the exported CEK key.
 - **Trusted Proxy CIDRs**: Client IP addresses are extracted from `X-Forwarded-For` only when the immediate peer IP matches configured CIDR ranges in `audit_trusted_proxy_cidrs`.
 - **Failure Modes**: Configurable via `audit_failure_mode` to either `continue` (log failure and proceed) or `reject` (return HTTP 503 if an event cannot be queued for the writer; a later backend write failure is recorded by an `audit:eviction` event, not a 503).
 

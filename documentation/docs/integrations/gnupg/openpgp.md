@@ -299,11 +299,21 @@ The server pins the following constraints for OpenPGP keys. Each is asserted by 
       back-signature (RFC 9580 §5.2.1.8). A signing-subkey signature therefore validates against the
       published certificate, while subkeys added to a certificate by a third party are ignored.
 
-!!! warning Only bound subkeys are used
+!!! warning Only bound, unrevoked, unexpired keys are used
     `Encrypt` selects the first encryption subkey whose binding signature verifies against the
-    primary key; Key Flags are read from verified signatures only. A certificate without such a
-    subkey (and whose primary key is not flagged for encryption by a verified self-signature) is
-    rejected with `OpenPGP certificate has no encryption-capable key`.
+    primary key; Key Flags are read from verified signatures only, from the newest binding of each
+    subkey. A subkey is skipped when the primary key issued a subkey revocation signature for it
+    (RFC 9580 §5.2.1.12) or when the Key Expiration Time of its newest binding has passed (RFC 9580
+    §5.2.3.13). A certificate without such a subkey (and whose primary key is not flagged for
+    encryption by a verified self-signature) is rejected with
+    `OpenPGP certificate has no encryption-capable key`.
+
+    A certificate carrying a key revocation signature made by its primary key (RFC 9580 §5.2.1.11),
+    or whose primary key is past the Key Expiration Time of its newest self-signature, is refused as
+    a whole: `Encrypt` fails with `OpenPGP certificate is revoked` or
+    `OpenPGP certificate is expired`, and `SignatureVerify` returns `Invalid`. A signature made by a
+    revoked or expired signing subkey is also `Invalid`, whatever the signature's creation time.
+    Import the up-to-date certificate (`gpg --export`) to have a revocation or expiry take effect.
 
 !!! warning Plaintext size limit
     `Decrypt` fails with `decrypted OpenPGP plaintext exceeds the 67108864-byte limit` when the

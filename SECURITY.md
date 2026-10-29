@@ -5,6 +5,8 @@
       - [Severity Rating](#severity-rating)
       - [Known Vulnerabilities](#known-vulnerabilities)
             - [2026](#2026)
+                  - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
+                  - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
                   - [COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`](#cosmian-2026-046--server-key-encryption-key-usable-as-a-decryption-oracle-through-pre-wrapped-import)
                   - [COSMIAN-2026-045 — Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent](#cosmian-2026-045--sensitive-opaque-objects-and-split-keys-exported-in-plaintext-when-a-wrapping-specification-is-sent)
                   - [COSMIAN-2026-044 — Attribute edits let stored keys escape the KMIP algorithm policy](#cosmian-2026-044--attribute-edits-let-stored-keys-escape-the-kmip-algorithm-policy)
@@ -107,6 +109,44 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ### 2026
 
+#### COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA
+
+| Field      | Value                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                                                      |
+| Published  | Pending                                                                                                                   |
+| Affected   | from 5.27.0 before 5.29.0                                                                                                 |
+| Fixed in   | 5.29.0                                                                                                                    |
+| Found by   | Pre-release security review, 28 October 2026                                                                              |
+| References | [Regression tests](crate/server/src/tests/revocation_authority_tests.rs), [Release notes](CHANGELOG.md#5290---2026-10-28) |
+
+**Summary:** CRL generation listed every revoked certificate whose `CertificateLink` pointed at the CA certificate, whoever owned it, and the OCSP responder looked a serial up among the same certificates, Active ones first. Neither checked that the CA had issued the certificate. Any user allowed to `Import` could store a certificate carrying the serial of a certificate of the CA (a forgery, or a byte-for-byte copy of the genuine certificate, which is public), link it to the CA at import or later with `AddAttribute`/`SetAttribute`, and then revoke it or keep it active as its owner.
+
+**Impact:** An `Import`-capable user could put the serial of any certificate of a CA on its CRL, so relying parties reject a valid certificate, or make OCSP answer `good` for a revoked certificate, so relying parties accept it.
+
+**Mitigation:** Upgrade to 5.29.0. CRL and OCSP count only certificates whose issuer name is the CA subject and whose signature verifies with the CA public key; a certificate whose signature cannot be checked does not count. When stored copies share a serial, only the copies owned by the CA certificate owner or by a user allowed to issue with the CA private key count (a `Certify` grant, or `Get` on a database key; an explicit grant or HSM admin rights for an HSM key); if no copy has such an owner, all copies count, so a revocation is never silently dropped. A revoked copy wins over an active one: OCSP answers `good` only when no counted copy is revoked, and the CRL lists each serial once with its earliest revocation date. 5.29.0 extends CRL and OCSP signing to HSM-backed CAs, which get the same checks. If the user who issued a certificate loses the grant and no other authorized copy exists, all copies count again. Each CRL generation now reads every certificate linked to the CA once, which can be slow for a CA with a very large number of certificates. After the upgrade, check the CRLs and OCSP answers published before it for serials that the CA owner did not revoke. Regression tests: `crl_lists_only_revocations_of_certificates_the_ca_issued` and `ocsp_ignores_forged_and_copied_certificates_linked_to_the_ca` in `crate/server/src/tests/revocation_authority_tests.rs`, and the copy-and-revoke case of `test_hsm_sub_ca` in `crate/server/src/tests/hsm/sub_ca.rs`. Until then, grant `Import` only to trusted users.
+
+---
+
+#### COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check
+
+| Field      | Value                                                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                                               |
+| Published  | Pending                                                                                                                                                                |
+| Affected   | from 5.16.0 before 5.29.0                                                                                                                                              |
+| Fixed in   | 5.29.0                                                                                                                                                                 |
+| Found by   | Pre-release security review, 28 October 2026                                                                                                                           |
+| References | [Fix](crate/server/src/core/operations/message.rs), [Regression tests](crate/server/src/tests/security_regression.rs), [Release notes](CHANGELOG.md#5290---2026-10-28) |
+
+**Summary:** The request-time KMIP algorithm policy (`[kmip.policy]`) ran only on the single-operation TTLV path, selected by the name of the root tag. Operations sent inside a KMIP `RequestMessage`, the format of KMIP 1.x and 2.x clients and of the KMIP socket server, skipped it from 5.16.0, and so did a single `MAC` request whose root tag was spelled `Mac`, which the dispatcher accepted but the policy did not match. From 5.27.0, the role check of the `RequestMessage` path also named operations by string with an `Unknown` fallback, which the check let through for every user: a batched `CreateSplitKey` skipped the Crypto Officer restriction that the single-operation path applies. `JoinSplitKey` stays open to every user by design. The policy check on stored keys at use time was not affected.
+
+**Impact:** Any authenticated user could create keys and send request parameters that the configured algorithm policy forbids (for example an RSA key size or block cipher mode refused by `DEFAULT`) by wrapping the operation in a `RequestMessage`, and, once `crypto_officer_users` was configured, a user who is not a Crypto Officer could create split keys.
+
+**Mitigation:** Upgrade to 5.29.0. Every operation of a `RequestMessage` goes through the same role check, keyed by the KMIP operation enumeration, and the same request-time algorithm policy as a single operation, and the policy also matches the `Mac` spelling. After the upgrade, `Locate` the keys whose algorithm, length or curve the policy forbids, created through a `RequestMessage` before the upgrade, and revoke or re-key them, and review split keys created by users who are not Crypto Officers. Regression tests: `test_default_kmip_policy_applies_to_batched_request_messages`, `test_mac_tag_spelling_cannot_bypass_algorithm_policy` and `test_rng_seed_is_restricted_to_crypto_officers` (role check on the `RequestMessage` path) in `crate/server/src/tests/security_regression.rs`. Until then, grant KMS access only to trusted clients.
+
+---
+
 #### COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`
 
 | Field      | Value                                                                                                            |
@@ -122,7 +162,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Any user allowed to `Import` could have arbitrary ciphertext decrypted by the server KEK, for example key material taken from a database backup or from another user's KEK-wrapped export, and so recover keys of other users protected at rest by the KEK.
 
-**Mitigation:** Upgrade to 5.29.0. `Import` and `Register` of a key block wrapped by the server `key_encryption_key` or its `_pk` alias, and an `Import` that asks the server to unwrap with the KEK, are accepted only from users allowed to decrypt with the KEK: HSM admins or explicit `Decrypt` grantees for an HSM KEK, the existing owner/grant rule for a database KEK (COSMIAN-2026-041). Everyone else gets `Invalid_Request`. Plain imports are still wrapped by the KEK at rest. Regression tests: `test_kek_wrapped_import_is_refused` and `test_hsm_kek_unwraps_at_rest_but_not_on_import` in `crate/server/src/tests/hsm/fake_hsm_authz.rs`. Until then, restrict `Import` (and `Create`) to trusted users with `crypto_officer_users`.
+**Mitigation:** Upgrade to 5.29.0. `Import` and `Register` of a key block wrapped by the server `key_encryption_key` or its `_pk` alias, and an `Import` that asks the server to unwrap with the KEK, are accepted only from users allowed to decrypt with the KEK: HSM admins or explicit `Decrypt` grantees for an HSM KEK, the existing owner/grant rule for a database KEK (COSMIAN-2026-041). The same applies when the block names the KEK by a numeric uid, or by a public key or certificate whose `PrivateKeyLink` points at the KEK. Everyone else gets `Invalid_Request`. Plain imports are still wrapped by the KEK at rest, and the at-rest exemption that lets every user unwrap with the KEK applies only when the stored key block names the KEK uid or `<kek>_pk` literally: a key reached through a `PrivateKeyLink` must be a private key and needs the usual grant. Regression tests: `test_kek_wrapped_import_is_refused`, `test_hsm_kek_unwraps_at_rest_but_not_on_import`, `test_hsm_kek_alias_is_no_decryption_oracle`, `test_db_kek_alias_is_no_decryption_oracle` and `test_numeric_kek_uid_wrapped_import_is_refused` in `crate/server/src/tests/hsm/fake_hsm_authz.rs`. Until then, restrict `Import` (and `Create`) to trusted users with `crypto_officer_users`.
 
 ---
 
@@ -179,7 +219,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A token captured from a client (logs, a shared workstation, a proxy) remained usable against the KMS for its whole lifetime even after the user logged out or an administrator revoked the session.
 
-**Mitigation:** Upgrade to 5.29.0. After the signature check, the KMS asks `GET {auth_verifier_url}/whoami` whether the session is still live, for bearer tokens and for the new `_ea_` session cookie, and refuses the request otherwise; a live answer is cached for 30 s, and a logout through the KMS drops the entry at once on that instance. The KMS must now reach `auth_verifier_url` at runtime: requests carrying an Authentication Verifier token are refused while it is unreachable. Regression tests: `token_of_ended_session_is_rejected` in `crate/server/src/middlewares/auth_verifier/token.rs` and `token_of_ended_session_does_not_authenticate` in `crate/server/src/middlewares/auth_verifier/middleware.rs`. Until then, keep the Authentication Verifier token lifetime short.
+**Mitigation:** Upgrade to 5.29.0. After the signature check, the KMS asks `GET {auth_verifier_url}/whoami` whether the session is still live, for bearer tokens and for the new `_ea_` session cookie, and refuses the request otherwise; a live answer is cached for 30 s, and a logout through the KMS drops the entry at once on that instance. The KMS must now reach `auth_verifier_url` at runtime, through the `[proxy]` settings when configured, like the JWKS fetch: requests carrying an Authentication Verifier token are refused while it is unreachable. Regression tests: `token_of_ended_session_is_rejected` in `crate/server/src/middlewares/auth_verifier/token.rs` and `token_of_ended_session_does_not_authenticate` in `crate/server/src/middlewares/auth_verifier/middleware.rs`. Until then, keep the Authentication Verifier token lifetime short.
 
 ---
 
@@ -350,7 +390,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** With two or more identity providers (or Google CSE with an incoming KACLS whitelist), whoever controls the signing key of one of them — a partner IdP, a whitelisted KACLS — could mint tokens with the `iss` of another provider, any `email`, and a `kid` of its own key, and authenticate as any user of that provider, or forge Google CSE authorization tokens.
 
-**Mitigation:** Upgrade to 5.29.0. Each issuer now has its own JWKS manager and Google CSE authorization tokens are only checked against Google's JWKS. Until then, configure a single identity provider.
+**Mitigation:** Upgrade to 5.29.0. Each issuer now has its own JWKS manager and Google CSE authorization tokens are only checked against Google's JWKS. A token signed with an unknown key makes the KMS refresh the keys of the token's own issuer, Google CSE authorization keys included, at most once every 60 s. Until then, configure a single identity provider.
 
 ---
 
@@ -1260,6 +1300,8 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-048    | High     | 5.27.0 – 5.28.0         | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |
+| COSMIAN-2026-047    | Moderate | 5.16.0 – 5.28.0         | 5.29.0   | Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check               |
 | COSMIAN-2026-046    | High     | before 5.29.0           | 5.29.0   | Server key encryption key usable as a decryption oracle through pre-wrapped `Import`                |
 | COSMIAN-2026-045    | Moderate | 5.13.0 – 5.28.0         | 5.29.0   | Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent |
 | COSMIAN-2026-044    | Moderate | 5.16.0 – 5.28.0         | 5.29.0   | Attribute edits let stored keys escape the KMIP algorithm policy                                    |

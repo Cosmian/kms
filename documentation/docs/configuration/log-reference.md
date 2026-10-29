@@ -123,8 +123,6 @@ Crate path: `crate/server`
 | `info` | `Starting the HTTPS KMS server...` | `src/start_kms_server.rs` | - | - |
 | `info` | `Windows service received Stop signal, shutting down...` | `src/windows_service.rs` | - | - |
 | `info` | `Windows service reporting Running to SCM` | `src/windows_service.rs` | - | - |
-| `info` | `XKS Decrypt internal error: {:?}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
-| `info` | `XKS Encrypt internal error: {:?}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
 | `info` | `{}` | `src/main.rs` | - | - |
 | `debug` | `<== encrypted {} ciphertexts` | `src/core/operations/encrypt.rs` | - | - |
 | `debug` | `==> encrypting {} clear texts` | `src/core/operations/encrypt.rs` | - | - |
@@ -184,8 +182,6 @@ Crate path: `crate/server`
 | `debug` | `get_crl_bytes: exiting in success with {} CRLs` | `src/core/operations/validate.rs` | - | - |
 | `debug` | `get_status` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Google CSE request authorized for user {authentication_email}` | `src/routes/google_cse/jwt.rs` | `authentication_email`: email from the authentication token | - |
-| `debug` | `Import: activation_date={:?} <= now, setting state to Active` | `src/core/operations/import.rs` | - | - |
-| `debug` | `Import: no activation_date or future date, setting state to PreActive` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
@@ -203,8 +199,6 @@ Crate path: `crate/server`
 | `debug` | `Parent CRL verification: revocation status: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `proxy_config: {config:#?}` | `src/config/params/proxy_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `re-wrapping key with current KMS` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `Register: activation_date={:?} <= now, setting state to Active` | `src/core/operations/register.rs` | - | - |
-| `debug` | `Register: no activation_date or future date, setting state to PreActive` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Registered object with uid: {}` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Request already authenticated, skipping Ensure Auth middleware` | `src/middlewares/ensure_auth.rs` | - | - |
 | `debug` | `request.encrypted_data_encryption_key: {}` | `src/routes/google_cse/operations.rs` | - | - |
@@ -681,7 +675,6 @@ Crate path: `crate/server`
 | `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
 | `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
 | `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
-| `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
 | `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
 | `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
@@ -806,6 +799,11 @@ Crate path: `crate/server`
 | `warn` | `EST simpleenroll rejected: {reason}` | `src/routes/est/enroll.rs` | `reason` | - |
 | `warn` | `EST simplereenroll rejected: {reason}` | `src/routes/est/enroll.rs` | `reason` | - |
 | `debug` | `The unwrapping key {} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | - | - |
+| `info` | `XKS {operation} internal error: {:?}` | `src/routes/aws_xks/error.rs` | `operation`: XKS operation (`Encrypt` or `Decrypt`) | - |
+| `debug` | `{operation}: activation_date={:?} <= now, setting state to Active` | `src/core/operations/import.rs` | `operation`: KMIP operation (`Import` or `Register`) | - |
+| `debug` | `{operation}: no activation_date or future date, setting state to PreActive` | `src/core/operations/import.rs` | `operation`: KMIP operation (`Import` or `Register`) | - |
+| `trace` | `ignoring certificate '{uid}': not issued by the CA '{}'` | `src/core/certificate/find.rs` | `uid` | - |
+| `trace` | `skipping certificate '{uid}': cannot parse DER` | `src/core/certificate/find.rs` | `uid` | - |
 
 ### `cosmian_kms_server_database`
 

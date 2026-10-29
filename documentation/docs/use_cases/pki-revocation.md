@@ -19,6 +19,18 @@ automatically collects **all** revoked certificates — those in `Deactivated` o
 of which user owns each certificate record in the KMS database, then signs the
 CRL with the CA private key.
 
+A `CertificateLink` can be set by any user who imports a certificate, so a linked
+certificate only counts if the CA really issued it:
+
+- its issuer name is the CA subject and its signature verifies with the CA public key;
+- when several records carry the same serial (for example, someone imported a copy of a
+  certificate), only the records owned by the CA certificate owner or by a user allowed
+  to issue with the CA private key (`Certify` grant, or `Get` on a database key) count.
+  If none of them qualifies, for example because the issuing user's grant was removed
+  since, all of them count, so a revocation never silently disappears.
+
+Each serial number is listed once, with its earliest revocation.
+
 **CLI usage:**
 
 ```bash
