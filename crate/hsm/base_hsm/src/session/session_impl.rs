@@ -4132,8 +4132,8 @@ mod tests {
         )
     }
 
-    /// Regression: a FIPS-mode HSM rejects a caller nonce with "algorithm not allowed using
-    /// FIPS mode". With the HSM-generated IV flow (any build) the IV it returns is used.
+    /// A profile without caller IV (AWS/Azure/GCP): the HSM-generated IV flow works in any
+    /// build against a FIPS-mode HSM and uses the IV it returns.
     #[test]
     fn gcm_encrypt_uses_the_iv_generated_by_a_fips_mode_hsm() {
         let content = fips_hsm_gcm_encrypt(false, &[]).ok();
@@ -4151,19 +4151,29 @@ mod tests {
         assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
     }
 
-    /// A non-FIPS build of the KMS that treats the HSM as accepting caller nonces is the
-    /// reported failure; pin it so the capability profile (not the build) stays the guard.
+    /// FIPS build + a profile that accepts caller IVs outside FIPS (every production HSM and
+    /// `hsm_model = "other"`): the nonce is left to the FIPS-mode HSM, which accepts it.
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn fips_build_lets_a_fips_mode_hsm_generate_the_gcm_iv() {
+        let iv = fips_hsm_gcm_encrypt(true, &[]).ok().and_then(|c| c.iv);
+        assert_eq!(iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
+        assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
+    }
+
+    /// Non-FIPS build + the same profile: the KMS picks the nonce, so a FIPS-mode HSM refuses
+    /// it (the reported SPHERE error). Documents why such an HSM needs the FIPS build.
     #[cfg(feature = "non-fips")]
     #[test]
-    fn gcm_encrypt_with_caller_nonce_is_rejected_by_a_fips_mode_hsm() {
+    fn non_fips_build_sends_a_caller_gcm_iv_that_a_fips_mode_hsm_refuses() {
         assert!(matches!(
             fips_hsm_gcm_encrypt(true, &[]),
             Err(e) if e.to_string().contains("Failed to allocate encrypted data length")
         ));
     }
 
-    /// Known limit of a capability profile without caller IV (`hsm_model = "other"`): an HSM
-    /// that ignores the `pIv` buffer fails closed, and the all-zero IV is never returned.
+    /// An HSM that must generate the IV but ignores the `pIv` buffer fails closed: the
+    /// all-zero IV is never returned.
     #[test]
     fn gcm_encrypt_fails_closed_when_the_hsm_generates_no_iv() {
         assert!(matches!(
