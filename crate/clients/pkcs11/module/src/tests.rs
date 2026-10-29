@@ -31,12 +31,13 @@ use crate::{
     },
     objects_store::OBJECTS_STORE,
     pkcs11::{
-        C_CloseSession, C_DecryptMessage, C_Encrypt, C_EncryptInit, C_EncryptMessage, C_Finalize,
-        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
-        C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo,
-        C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageDecryptFinal,
-        C_MessageDecryptInit, C_MessageEncryptFinal, C_MessageEncryptInit, C_MessageSignInit,
-        C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_CloseSession, C_Decrypt, C_DecryptInit, C_DecryptMessage, C_Encrypt, C_EncryptInit,
+        C_EncryptMessage, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
+        C_GenerateKey, C_GetAttributeValue, C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo,
+        C_GetMechanismList, C_GetSessionInfo, C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo,
+        C_Initialize, C_MessageDecryptFinal, C_MessageDecryptInit, C_MessageEncryptFinal,
+        C_MessageEncryptInit, C_MessageSignInit, C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED,
+        SLOT_ID,
     },
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
@@ -1080,6 +1081,81 @@ fn encrypt_buffer_too_small_does_not_overflow() {
         output.iter().all(|b| *b == 0xAA),
         "output buffer was written"
     );
+
+    assert_eq!(C_CloseSession(session_h), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// `C_Decrypt` with a too-small buffer must return `CKR_BUFFER_TOO_SMALL`, report the
+/// required length in `pulDataLen` and keep the operation active for the retry
+/// (PKCS#11 v3.0 §5.2).
+#[test]
+#[serial]
+fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session_h = CK_INVALID_HANDLE;
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session_h,
+            )
+        },
+        CKR_OK
+    );
+    let key_handle = test_generate_key(session_h);
+
+    let mut iv = [0_u8; AES_IV_SIZE];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_CBC_PAD,
+        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+    };
+    assert_eq!(
+        unsafe { C_DecryptInit(session_h, &raw mut mechanism, key_handle) },
+        CKR_OK
+    );
+    // The test backend returns 32 bytes of cleartext for AES-CBC; offer only 16.
+    let mut ciphertext = [0_u8; 48];
+    let mut output = [0xAA_u8; 32];
+    let mut output_len: CK_ULONG = 16;
+    assert_eq!(
+        unsafe {
+            C_Decrypt(
+                session_h,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        },
+        CKR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(output_len, 32);
+    assert!(
+        output.iter().all(|b| *b == 0xAA),
+        "output buffer was written"
+    );
+
+    // Retry with the reported length on the still-active operation.
+    assert_eq!(
+        unsafe {
+            C_Decrypt(
+                session_h,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        },
+        CKR_OK
+    );
+    assert_eq!(output_len, 32);
+    assert_eq!(output, [0_u8; 32]);
 
     assert_eq!(C_CloseSession(session_h), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);

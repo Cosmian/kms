@@ -840,17 +840,10 @@ impl Session {
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let cleartext = backend()?.decrypt(decrypt_ctx, ciphertext)?;
-        unsafe {
-            if pData.is_null() {
-                *pulDataLen = cleartext.len() as CK_ULONG;
-            } else {
-                if (usize::try_from(*pulDataLen)?) < cleartext.len() {
-                    return Err(ModuleError::BufferTooSmall);
-                }
-                std::slice::from_raw_parts_mut(pData, cleartext.len()).copy_from_slice(&cleartext);
-                *pulDataLen = cleartext.len() as CK_ULONG;
-                self.decrypt_ctx = None;
-            }
+        // SAFETY: pulDataLen is non-null (checked by C_Decrypt); pData, when non-null, is a
+        // caller buffer of *pulDataLen bytes. Length query / too-small keep the operation active.
+        if unsafe { copy_to_output_buffer(&cleartext, pData, pulDataLen) }? {
+            self.decrypt_ctx = None;
         }
         Ok(())
     }
