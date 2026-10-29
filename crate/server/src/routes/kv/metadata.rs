@@ -445,6 +445,8 @@ pub(crate) async fn sweep_expired_versions(kms: &KMS) -> usize {
 }
 
 #[cfg(test)]
+// Same test-only relaxations as the sibling `routes::kv::tests` module.
+#[allow(clippy::panic_in_result_fn, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -455,36 +457,38 @@ mod tests {
     }
 
     #[test]
-    fn path_length_fits_the_longest_version_tag() {
+    fn path_length_fits_the_longest_version_tag() -> Result<(), KvApiError> {
         let valid_path = "a".repeat(MAX_KV_PATH_LENGTH);
         let too_long_path = format!("{valid_path}a");
-        assert!(validate_path_length(&valid_path).is_ok());
+        validate_path_length(&valid_path)?;
         assert!(matches!(
             validate_path_length(&too_long_path),
             Err(KvApiError::BadRequest(_))
         ));
         assert_eq!(version_tag(&valid_path, u64::MAX).chars().count(), 255);
+        Ok(())
     }
 
     #[test]
-    fn path_metadata_uid_is_stable_and_legacy_versions_deserialize() {
+    fn path_metadata_uid_is_stable_and_legacy_versions_deserialize()
+    -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            path_metadata_uid("myapp/key", 0).expect("path UID derives"),
-            path_metadata_uid("myapp/key", 0).expect("same path generation has same UID")
+            path_metadata_uid("myapp/key", 0)?,
+            path_metadata_uid("myapp/key", 0)?
         );
         assert_ne!(
-            path_metadata_uid("myapp/key", 0).expect("first path UID derives"),
-            path_metadata_uid("myapp/other", 0).expect("second path UID derives")
+            path_metadata_uid("myapp/key", 0)?,
+            path_metadata_uid("myapp/other", 0)?
         );
         assert_ne!(
-            path_metadata_uid("myapp/key", 0).expect("first generation UID derives"),
-            path_metadata_uid("myapp/key", 1).expect("second generation UID derives")
+            path_metadata_uid("myapp/key", 0)?,
+            path_metadata_uid("myapp/key", 1)?
         );
         let metadata: PathMetadata = serde_json::from_str(
             r#"{"path":"legacy","current_version":1,"oldest_version":1,"created_time":"now","updated_time":"now","versions":{"1":{"created_time":"now","deletion_time":"","destroyed":false}}}"#,
-        )
-        .expect("legacy metadata without object_uid remains readable");
+        )?;
         assert_eq!(metadata.versions["1"].object_uid, None);
+        Ok(())
     }
 
     #[test]
