@@ -2,6 +2,8 @@ use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
+    nid::Nid,
+    pkey::{HasPublic, Id, PKeyRef},
 };
 
 use crate::{CryptoError, crypto_error};
@@ -41,5 +43,23 @@ pub fn hashing_algorithm_to_openssl_ref(
         h => Err(crypto_error!(
             "Unsupported hash function: {h:?} for the openssl provider"
         )),
+    }
+}
+
+/// Digest for an X.509 signature (certificate, CRL, CSR, OCSP response) made with `key`.
+///
+/// RSA: SHA-256. ECDSA: the digest matching the curve strength (RFC 5480 §4): SHA-384 for
+/// P-384, SHA-512 for P-521, SHA-256 otherwise. Null for algorithms that hash internally
+/// (`EdDSA`, ML-DSA, SLH-DSA).
+#[must_use]
+pub fn x509_signing_digest<T: HasPublic>(key: &PKeyRef<T>) -> MessageDigest {
+    match key.id() {
+        Id::RSA => MessageDigest::sha256(),
+        Id::EC => match key.ec_key().ok().and_then(|ec| ec.group().curve_name()) {
+            Some(Nid::SECP384R1) => MessageDigest::sha384(),
+            Some(Nid::SECP521R1) => MessageDigest::sha512(),
+            _ => MessageDigest::sha256(),
+        },
+        _ => MessageDigest::null(),
     }
 }

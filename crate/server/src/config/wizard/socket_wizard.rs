@@ -4,7 +4,8 @@
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
-use crate::{config::SocketServerConfig, error::KmsError, result::KResult};
+use super::PromptResultExt;
+use crate::{config::SocketServerConfig, result::KResult};
 
 pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConfig> {
     let theme = ColorfulTheme::default();
@@ -13,7 +14,7 @@ pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConf
         .with_prompt("Enable the KMIP socket server (TLS-based KMIP protocol)?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable {
         return Ok(SocketServerConfig::default());
@@ -36,13 +37,13 @@ pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConf
         .with_prompt("KMIP socket server port")
         .default(5696_u16)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let hostname: String = Input::with_theme(&theme)
         .with_prompt("KMIP socket server hostname")
         .default(default_hostname)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     Ok(SocketServerConfig {
         socket_server_start: true,

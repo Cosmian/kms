@@ -22,7 +22,12 @@ use crate::actions::bench::types::{BenchFilter, BenchMode};
 
 /// Whether this binary is a non-FIPS build; Ed25519 and secp256k1 benchmark modes
 /// are only ever selected when it is `true`.
-pub(crate) const NON_FIPS_BUILD: bool = cfg!(feature = "non-fips");
+#[cfg(feature = "non-fips")]
+pub(crate) const NON_FIPS_BUILD: bool = true;
+/// Whether this binary is a non-FIPS build; Ed25519 and secp256k1 benchmark modes
+/// are only ever selected when it is `true`.
+#[cfg(not(feature = "non-fips"))]
+pub(crate) const NON_FIPS_BUILD: bool = false;
 
 /// The concrete operation families `run_all` actually knows how to execute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,29 +263,23 @@ fn run_for(
 
     let start = Instant::now();
     let per_thread_latencies: BenchResult<Vec<Vec<Duration>>> = thread::scope(|scope| {
-        // `.collect()` here is required, not needless: every `scope.spawn` must run
-        // before the `.join()` pass below, otherwise threads would be spawned and
-        // joined one at a time — serializing the very concurrency this benchmark
-        // measures.
-        #[allow(clippy::needless_collect)]
-        let handles: Vec<_> = (0..concurrency.max(1))
-            .map(|i| {
-                // `pool.len()` may be smaller than `concurrency` (e.g. a
-                // single-session `pool` under `--shared-session`), hence the modulo
-                // instead of a direct index.
-                let session = &pool[i % pool.len()];
-                scope.spawn(move || {
-                    let mut latencies = Vec::new();
-                    while Instant::now() < stop_after {
-                        let call_start = Instant::now();
-                        op(session)?;
-                        let elapsed = call_start.elapsed();
-                        latencies.push(elapsed);
-                    }
-                    Ok(latencies)
-                })
-            })
-            .collect();
+        // Every `scope.spawn` must run before the `.join()` pass below, otherwise
+        // threads would be spawned and joined one at a time — serializing the very
+        // concurrency this benchmark measures. `cycle()` handles a `pool` smaller
+        // than `concurrency` (e.g. a single-session `pool` under `--shared-session`).
+        let mut handles = Vec::with_capacity(concurrency.max(1));
+        for session in pool.iter().cycle().take(concurrency.max(1)) {
+            handles.push(scope.spawn(move || {
+                let mut latencies = Vec::new();
+                while Instant::now() < stop_after {
+                    let call_start = Instant::now();
+                    op(session)?;
+                    let elapsed = call_start.elapsed();
+                    latencies.push(elapsed);
+                }
+                Ok(latencies)
+            }));
+        }
         handles
             .into_iter()
             .map(|h| {
@@ -312,27 +311,26 @@ fn summarize(
     sorted.sort_unstable();
     let samples = sorted.len();
 
-    let percentile = |p: f64| -> f64 {
-        if samples == 0 {
-            return 0.0;
-        }
-        let idx = ((samples - 1) as f64 * p).round() as usize;
-        sorted[idx.min(samples - 1)].as_secs_f64() * 1000.0
+    // Nearest-rank percentile, `per_mille` in 0..=1000, rounded half up.
+    let percentile = |per_mille: usize| -> f64 {
+        let idx = (samples.saturating_sub(1) * per_mille + 500) / 1000;
+        sorted.get(idx).map_or(0.0, |d| d.as_secs_f64() * 1000.0)
     };
 
     let throughput_ops = if elapsed.is_zero() {
         0.0
     } else {
-        samples as f64 / elapsed.as_secs_f64()
+        // shortcut: saturates at u32::MAX samples per level, unreachable in a timed sweep.
+        f64::from(u32::try_from(samples).unwrap_or(u32::MAX)) / elapsed.as_secs_f64()
     };
 
     LoadResult {
         operation: operation.to_owned(),
         concurrency,
         throughput_ops,
-        p50_ms: percentile(0.50),
-        p95_ms: percentile(0.95),
-        p99_ms: percentile(0.99),
+        p50_ms: percentile(500),
+        p95_ms: percentile(950),
+        p99_ms: percentile(990),
         samples,
     }
 }
@@ -1201,9 +1199,9 @@ pub(crate) fn run_all(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, time::Duration};
 
-    use super::{ConcreteMode, NON_FIPS_BUILD, expand_bench_mode};
+    use super::{ConcreteMode, NON_FIPS_BUILD, expand_bench_mode, summarize};
     use crate::actions::bench::types::{BenchFilter, BenchMode};
 
     fn labels(modes: &[ConcreteMode]) -> Vec<&'static str> {
@@ -1341,5 +1339,19 @@ mod tests {
         assert!(modes.contains(&ConcreteMode::DecryptRsaOaep));
         assert!(modes.contains(&ConcreteMode::SignEcdsaP384));
         assert!(modes.contains(&ConcreteMode::VerifyEcdsaP384));
+    }
+
+    #[test]
+    fn summarize_computes_nearest_rank_percentiles_and_throughput() {
+        let latencies: Vec<_> = (1..=21).map(Duration::from_millis).collect();
+        let result = summarize("op", 2, &latencies, Duration::from_secs(7));
+        assert_eq!(result.samples, 21);
+        assert!((result.p50_ms - 11.0).abs() < 1e-9, "{}", result.p50_ms);
+        assert!((result.p95_ms - 20.0).abs() < 1e-9, "{}", result.p95_ms);
+        assert!((result.p99_ms - 21.0).abs() < 1e-9, "{}", result.p99_ms);
+        assert!((result.throughput_ops - 3.0).abs() < 1e-9);
+
+        let empty = summarize("op", 1, &[], Duration::ZERO);
+        assert!(empty.p50_ms.abs() < f64::EPSILON && empty.throughput_ops.abs() < f64::EPSILON);
     }
 }

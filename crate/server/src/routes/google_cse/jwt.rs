@@ -9,7 +9,9 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_ensure,
-    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId},
+    middlewares::{
+        JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId, refresh_jwks_for_token,
+    },
     result::KResult,
     routes::google_cse::build_google_cse_url,
 };
@@ -254,13 +256,11 @@ pub async fn validate_cse_authentication_token(
         }
     }
 
-    // If no config matched, refresh the JWKS and retry once.
-    // The KACLS `/certs` key may have been evicted during a periodic refresh
+    // If no config matched, refresh the JWKS of the token's issuer and retry once.
+    // The KACLS `/certs` key may have been rotated, or evicted during a periodic refresh
     // failure (the JwksManager replaces the entire map on each refresh).
     if decoded_token.is_none() {
-        if let Some(first) = cse_config.authentication.first() {
-            first.jwks.refresh().await?;
-        }
+        refresh_jwks_for_token(cse_config.authentication.iter(), authentication_token).await?;
         for idp_config in cse_config.authentication.iter() {
             if let Ok(token) = idp_config.validate_authentication_token(authentication_token, false)
             {
@@ -351,16 +351,29 @@ pub(super) async fn validate_cse_authorization_token(
     })?;
 
     // Try all JWT configs in the authorization map until one successfully decodes the token
-    let mut decoded_token = None;
-    for (app_name, jwt_config) in &cse_config.authorization {
-        if let Ok((token, jwt_headers)) =
-            decode_jwt_authorization_token(jwt_config, authorization_token)
-        {
-            trace!("token decoded with {app_name} jwt config");
+    let try_decode = || {
+        cse_config
+            .authorization
+            .iter()
+            .find_map(|(app_name, jwt_config)| {
+                let decoded = decode_jwt_authorization_token(jwt_config, authorization_token).ok();
+                if decoded.is_some() {
+                    trace!("token decoded with {app_name} jwt config");
+                }
+                decoded
+            })
+    };
+    let mut decoded_token = try_decode();
 
-            decoded_token = Some((token, jwt_headers));
-            break;
-        }
+    // If no config matched, the token issuer may have rotated its signing key, or the
+    // startup fetch may have failed: refresh (throttled) its key set and retry once.
+    if decoded_token.is_none() {
+        refresh_jwks_for_token(
+            cse_config.authorization.values().map(Arc::as_ref),
+            authorization_token,
+        )
+        .await?;
+        decoded_token = try_decode();
     }
 
     let (authorization_token, _jwt_headers) = decoded_token.ok_or_else(|| {
@@ -1318,5 +1331,79 @@ mod tests {
                 .contains("Fail to decode authentication token with the given config"),
             "{err}"
         );
+    }
+
+    /// Regression (gate #2 F1): the authorization key set is refreshed on a `kid` miss, so a
+    /// token signed with a key rotated in after startup is accepted without a restart.
+    #[tokio::test]
+    async fn authorization_refresh_picks_up_rotated_key() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+
+        // The issuer publishes only the rotated key.
+        let rotated = Rsa::generate(2048).unwrap();
+        let jwk = build_jwks_manager_with_key("rotated-kid", &rotated)
+            .find("rotated-kid")
+            .unwrap()
+            .unwrap();
+        let body = serde_json::to_string(&jsonwebtoken::jwk::JwkSet { keys: vec![jwk] }).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = vec![0_u8; 4096];
+                let _ = stream.read(&mut buf).await.unwrap();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        // The cached key set still holds the old key, and the refresh throttle is lifted.
+        let old = Rsa::generate(2048).unwrap();
+        let cached = build_jwks_manager_with_key("old-kid", &old);
+        let jwks = Arc::new(JwksManager {
+            uris: vec![format!("http://127.0.0.1:{port}/certs")],
+            jwks: std::sync::RwLock::new(cached.jwks.read().unwrap().clone()),
+            last_update: std::sync::RwLock::new(None),
+            last_force_refresh: std::sync::RwLock::new(None),
+            proxy_params: None,
+            accept_invalid_certs: false,
+        });
+        let issuer = "gsuitecse-tokenissuer-drive@system.gserviceaccount.com";
+        let cse_config = super::GoogleCseConfig {
+            authentication: Arc::new(vec![]),
+            authorization: HashMap::from([(
+                "drive".to_owned(),
+                Arc::new(JwtConfig {
+                    jwt_issuer_uri: issuer.to_owned(),
+                    jwks,
+                    jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+                    accept_spiffe_subject: false,
+                }),
+            )]),
+        };
+        let now = now_usize();
+        let token = sign_test_jwt(
+            "rotated-kid",
+            &MinimalClaims {
+                iss: issuer.to_owned(),
+                aud: "cse-authorization".to_owned(),
+                email: "user@example.com".to_owned(),
+                role: Some("writer".to_owned()),
+                iat: now,
+                exp: now + 3600,
+            },
+            &rotated,
+        );
+
+        let claims = validate_cse_authorization_token(&token, "https://k", &Some(cse_config), None)
+            .await
+            .unwrap();
+        assert_eq!(claims.email.as_deref(), Some("user@example.com"));
     }
 }

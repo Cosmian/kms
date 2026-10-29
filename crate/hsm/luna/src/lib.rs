@@ -29,7 +29,10 @@
 //! hsm_password = ["partition_pin"]
 //! ```
 
-use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
+use cosmian_kms_base_hsm::hsm_capabilities::{
+    AesCapabilities, AesGcmCapabilities, EcCapabilities, HsmCapabilities, HsmProvider,
+    RsaCapabilities,
+};
 
 /// Path to the Thales Luna PKCS#11 shared library.
 /// Overridable at runtime via the `LUNA_PKCS11_LIB` environment variable.
@@ -42,21 +45,12 @@ use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
 #[cfg(target_arch = "x86_64")]
 pub const LUNA_PKCS11_LIB: &str = "/usr/safenet/lunaclient/lib/libCryptoki2_64.so";
 
+/// Library name resolved through the dynamic loader search path on platforms other than
+/// Linux `x86_64` (unsupported for production; overridable via `LUNA_PKCS11_LIB`).
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub const LUNA_PKCS11_LIB: &str = "libCryptoki2_64.so";
 
 #[cfg(test)]
-// Allow test-specific lint patterns for C library integration
-#[allow(unsafe_code)]
-#[allow(clippy::panic_in_result_fn)]
-#[allow(clippy::panic)]
-#[allow(clippy::expect_used)]
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::assertions_on_result_states)]
-#[allow(clippy::as_conversions)]
-#[allow(clippy::map_err_ignore)]
-#[allow(clippy::redundant_clone)]
-#[allow(clippy::explicit_iter_loop)]
 #[cfg(feature = "luna")]
 mod tests;
 
@@ -70,15 +64,27 @@ impl HsmProvider for LunaCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
         HsmCapabilities {
             find_max_object_count: 256,
-            // Luna exports the PKCS#11 3.0 message API but C_MessageEncryptInit fails for AES-GCM.
-            supports_aes_gcm_message: false,
             // Luna rejects an explicit CKA_SENSITIVE=false with CKR_ATTRIBUTE_VALUE_INVALID;
             // omit CKA_SENSITIVE and let CKA_EXTRACTABLE drive exportability.
-            supports_aes_sensitive_attribute: false,
-            supports_rsa_sensitive_attribute: false,
-            supports_ec_sensitive_attribute: false,
-            aes_key_wrap_pad_is_rfc5649: false,
-            allows_caller_gcm_iv_in_fips: false,
+            aes: AesCapabilities {
+                supports_sensitive_attribute: false,
+                key_wrap_pad_is_rfc5649: false,
+                gcm: AesGcmCapabilities {
+                    allows_caller_iv_in_fips: false,
+                    // Luna exports the PKCS#11 3.0 message API but C_MessageEncryptInit fails
+                    // for AES-GCM.
+                    supports_message: false,
+                    ..AesGcmCapabilities::default()
+                },
+            },
+            rsa: RsaCapabilities {
+                supports_sensitive_attribute: false,
+                ..RsaCapabilities::default()
+            },
+            ec: EcCapabilities {
+                supports_sensitive_attribute: false,
+                ..EcCapabilities::default()
+            },
             ..Default::default()
         }
     }

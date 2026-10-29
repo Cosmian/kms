@@ -23,7 +23,7 @@ use crate::{
 #[cfg(unix)]
 use crate::{
     RsaKeySize, SlotManager,
-    hsm_capabilities::HsmProvider,
+    hsm_capabilities::{AesCapabilities, AesGcmCapabilities, HsmProvider, RsaCapabilities},
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -231,23 +231,22 @@ struct V3AdapterProvider;
 impl HsmProvider for V3AdapterProvider {
     fn capabilities() -> HsmCapabilities {
         HsmCapabilities {
-            max_cbc_data_size: None,
             find_max_object_count: 32,
-            supports_aes_sensitive_attribute: true,
-            supports_rsa_sensitive_attribute: true,
-            supports_ec_sensitive_attribute: true,
-            supports_aes_gcm_caller_iv: true,
-            allows_caller_gcm_iv_in_fips: false,
-            aes_key_wrap_pad_is_rfc5649: false,
-            supports_aes_gcm_message: false,
+            aes: AesCapabilities {
+                gcm: AesGcmCapabilities {
+                    supports_message: false,
+                    ..AesGcmCapabilities::default()
+                },
+                ..AesCapabilities::default()
+            },
+            rsa: RsaCapabilities {
+                oaep_requires_source_data_ptr: true,
+                supports_oaep_key_wrap: false,
+                ..RsaCapabilities::default()
+            },
             supports_message_sign_verify: true,
-            rsa_oaep_requires_source_data_ptr: true,
-            max_label_len: None,
             supports_key_dates: false,
-            supports_rsa_oaep_key_wrap: false,
-            enforces_ecdsa_digest_strength: false,
-            max_concurrent_sessions: 128,
-            skip_finalize_on_drop: false,
+            ..HsmCapabilities::default()
         }
     }
 }
@@ -433,11 +432,16 @@ fn softhsm2_v3_adapter_message_signature() -> HResult<()> {
         }
     }
     let after = adapter_counts(&library)?;
-    let delta = |i: usize| after[i] - before[i];
-    assert_eq!(delta(SIGN_INIT_MSG), 1, "{before:?} -> {after:?}");
-    assert_eq!(delta(SIGN_INIT), 2, "{before:?} -> {after:?}");
-    assert_eq!(delta(VERIFY_INIT_MSG), 1, "{before:?} -> {after:?}");
-    assert_eq!(delta(VERIFY_INIT), 2, "{before:?} -> {after:?}");
+    let delta = |i: usize| {
+        after
+            .get(i)
+            .zip(before.get(i))
+            .and_then(|(a, b)| a.checked_sub(*b))
+    };
+    assert_eq!(delta(SIGN_INIT_MSG), Some(1), "{before:?} -> {after:?}");
+    assert_eq!(delta(SIGN_INIT), Some(2), "{before:?} -> {after:?}");
+    assert_eq!(delta(VERIFY_INIT_MSG), Some(1), "{before:?} -> {after:?}");
+    assert_eq!(delta(VERIFY_INIT), Some(2), "{before:?} -> {after:?}");
 
     shared::destroy_all(&slot)?;
     // `SlotManager` is `Arc`-shared; keep `hsm` alive until here.

@@ -371,7 +371,9 @@ components:
           type: string
           description: >
             KMS UID of an AES key used as the CEK instead of a random one; RSA-OAEP /
-            RSA-OAEP-256 only. The key leaves the KMS wrapped under `kid`.
+            RSA-OAEP-256 only. The key leaves the KMS wrapped under `kid`, as by a KMIP
+            Export: the wrapping key needs the WrapKey usage and the OAEP hashes must pass
+            the KMIP algorithm policy.
       example:
         kid: 550e8400-e29b-41d4-a716-446655440000
         alg: dir
@@ -2771,8 +2773,10 @@ paths:
       tags: [Enrollment]
       summary: EST CSR attributes (RFC 7030 §4.5, no authentication)
       description: |
-        Returns the base64-encoded `CsrAttrs` the server would like to see in a CSR
-        (`id-pkcs9-at-extensionRequest`).
+        Returns the base64-encoded `CsrAttrs` the server would like to see in a CSR:
+        `id-pkcs9-at-extensionRequest`, then the key types `est_template` accepts as RFC 9908
+        key attributes (`rsaEncryption` with `SET { INTEGER min_rsa_key_bits }`,
+        `id-ecPublicKey` with the `allowed_ec_curves` OIDs); either key type is accepted.
         Returns `404` when `est_enabled = false`.
       operationId: estCsrAttrs
       security: []
@@ -2797,7 +2801,9 @@ paths:
         `est_bootstrap_username` / `est_bootstrap_password`. The CSR is validated against the
         `est_template` certificate template (key type and size, EKU, Subject/SAN patterns,
         validity) before the certificate is issued by the CA `est_ca_uid`.
-        The response contains only the issued certificate.
+        The response contains only the issued certificate. A CSR `challengePassword` is the
+        RFC 7030 §3.5 tls-unique channel binding: it must equal the base64 tls-unique of the
+        TLS 1.2 connection, otherwise (or over TLS 1.3, where tls-unique is undefined) `400`.
       operationId: estSimpleEnroll
       security:
         - mtls: []
@@ -2821,7 +2827,8 @@ paths:
               schema:
                 type: string
         '400':
-          description: Unreadable request body, or a CSR whose Subject/SubjectAltName differ from the EST-CA client certificate presenting it
+          description: Unreadable request body, a CSR whose Subject/SubjectAltName differ from the EST-CA client certificate presenting it, or a CSR `challengePassword`
+            that is not this connection's tls-unique value
         '401':
           description: 'Client authentication required (`WWW-Authenticate: Basic` when Basic bootstrap is enabled)'
         '404':
@@ -2855,7 +2862,8 @@ paths:
         Renew or rekey a certificate. Always authenticated by the TLS client certificate being
         renewed, which must have been issued by the EST CA and still be active. The CSR Subject
         and SubjectAltName must be identical to those of that certificate. No challenge or
-        bootstrap credential is needed.
+        bootstrap credential is needed. A CSR `challengePassword` must be the base64 tls-unique
+        value of the TLS 1.2 connection (RFC 7030 §3.5).
       operationId: estSimpleReenroll
       security:
         - mtls: []
@@ -2878,7 +2886,8 @@ paths:
               schema:
                 type: string
         '400':
-          description: CSR Subject/SubjectAltName differ from the certificate being renewed
+          description: CSR Subject/SubjectAltName differ from the certificate being renewed, or a CSR `challengePassword` that is not this connection's
+            tls-unique value
         '401':
           description: No TLS client certificate presented
         '403':
@@ -2964,7 +2973,9 @@ paths:
         by a still-valid certificate of the SCEP CA, no challenge required). Any other
         `messageType`, or a `RenewalReq` when `scep_allow_renewal_without_challenge = false`, is
         refused with HTTP `400` before any CA operation and counts as a failed attempt. The
-        signer key must be RSA or EC (the response is encrypted to it). The CSR is validated
+        signer key must be RSA or EC (the response is encrypted to it). In the FIPS build the
+        envelope key transport must be RSAES-OAEP (PKCS#1 v1.5 is refused with `badRequest`) and
+        the response to an RSA signer uses RSAES-OAEP. The CSR is validated
         against the `scep_template` certificate template. The answer is a signed `CertRep`;
         failures are reported as `pkiStatus = FAILURE` with `failInfo = badRequest` for every
         problem found after the request is parsed (undecryptable envelope, wrong challenge,

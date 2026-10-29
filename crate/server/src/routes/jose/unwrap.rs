@@ -59,6 +59,7 @@ pub(crate) async fn unwrap_key(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "POST /v1/crypto/keys/unwrap");
+    super::audit(&req, None);
 
     // Parse the protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
@@ -77,6 +78,7 @@ pub(crate) async fn unwrap_key(
             CryptoApiError::BadRequest("Protected header missing required 'kid' field".to_owned())
         })?
         .to_owned();
+    super::audit(&req, Some(&kid));
 
     let alg: JoseAlgorithm = header
         .alg

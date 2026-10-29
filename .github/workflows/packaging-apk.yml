@@ -172,10 +172,24 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      - name: Install Rust via rustup (musl-native build, same 1.97.0 pin as the rest of CI)
+      - name: Install Rust via pinned rustup-init (musl-native build, same 1.97.0 pin as the rest of CI)
+        env:
+          RUSTUP_VERSION: 1.29.2
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-            sh -s -- -y --default-toolchain 1.97.0 --profile minimal
+          # SHA-256 from static.rust-lang.org/rustup/archive/<version>/<target>/rustup-init.sha256
+          case "$(uname -m)" in
+            x86_64) target=x86_64-unknown-linux-musl
+              sha=2ba97d668c06dc4b1884f2a3fa6f4cf14b9bd0c1db379af7e4f87a705ff19edd ;;
+            aarch64) target=aarch64-unknown-linux-musl
+              sha=7fdbb23acf6495efee2e371580c52b365917551b4835090a225c44ac30915235 ;;
+            *) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl --proto '=https' --tlsv1.2 -sSfLo rustup-init \
+            "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${target}/rustup-init"
+          echo "${sha}  rustup-init" | sha256sum -c -
+          chmod +x rustup-init
+          ./rustup-init -y --default-toolchain 1.97.0 --profile minimal
+          rm rustup-init
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Build natively on Alpine (no cross-compilation)

@@ -61,10 +61,25 @@ pub(super) async fn writer_loop<S: AuditSink>(
         let n_dropped = dropped_count.swap(0, std::sync::atomic::Ordering::Relaxed);
         if n_dropped > 0 {
             let sentinel = make_eviction_sentinel(n_dropped);
-            next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash).await;
+            let written;
+            (next_id, written) =
+                write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash).await;
+            if !written {
+                // Nothing may be chained before the loss is: count this event too and retry later.
+                dropped_count.fetch_add(
+                    n_dropped.saturating_add(1),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                continue;
+            }
         }
         if !sink.is_write_capacity_exceeded() {
-            next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash).await;
+            let written;
+            (next_id, written) =
+                write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash).await;
+            if !written {
+                dropped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
         }
     }
 
@@ -80,12 +95,15 @@ pub(super) async fn writer_loop<S: AuditSink>(
 /// chain (see [`WriteOutcome::Resynced`] — e.g. a prior write whose acknowledgement was
 /// lost), the same draft is retried at the corrected position instead of being dropped
 /// or permanently wedging the chain on a slot nothing will ever fill again.
+///
+/// Returns the next chain id and whether the draft (or the size-cap sentinel replacing
+/// it) was persisted; `false` means the event is lost and the caller must account for it.
 pub(super) async fn write_draft_to_chain<S: AuditSink>(
     sink: &mut S,
     draft: AuditEventDraft,
     next_id: i64,
     prev_hash: &mut [u8; 32],
-) -> i64 {
+) -> (i64, bool) {
     // A resync can only ever move `id` forward, and the composite primary key means at
     // most one is ever expected per draft; this bound only guarantees termination
     // against a pathologically/adversarially pre-filled range of slots.
@@ -100,13 +118,14 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
         match sink.write_event_atomic(&event).await {
             Ok(WriteOutcome::Written) => {
                 *prev_hash = event.row_hash;
-                return id.checked_add(1).unwrap_or_else(|| {
+                let next = id.checked_add(1).unwrap_or_else(|| {
                     error!(
                         "AuditFileStore: id counter overflow at i64::MAX — \
                          audit logging stopped. Rotate the log file and restart."
                     );
                     id
                 });
+                return (next, true);
             }
             Ok(WriteOutcome::CapacityReached) if !writing_size_cap_sentinel => {
                 draft = make_size_cap_sentinel();
@@ -114,7 +133,7 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
             }
             Ok(WriteOutcome::CapacityReached) => {
                 error!("AuditFileStore: sink rejected size-cap sentinel at id={id}");
-                return id;
+                return (id, false);
             }
             Ok(WriteOutcome::Resynced(head)) => {
                 id = head.next_id;
@@ -127,15 +146,15 @@ pub(super) async fn write_draft_to_chain<S: AuditSink>(
             Err(e) => {
                 error!("AuditFileStore: failed to write event id={id}: {e} — event dropped");
                 // Reuse this chain position after a failed write.
-                return id;
+                return (id, false);
             }
         }
     }
     error!("AuditFileStore: exhausted resync attempts at id={id} — event dropped");
-    id
+    (id, false)
 }
 
-/// Builds a chained sentinel recording events dropped by channel saturation.
+/// Builds a chained sentinel recording events dropped by channel saturation or failed writes.
 fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
     AuditEventDraft {
         // Every other production draft uses `audit_now()`, truncated to the microsecond
@@ -147,7 +166,9 @@ fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
         object_uid: None,
         algorithm: None,
         client_ip: None,
-        result: AuditResult::Failure(format!("{n_dropped} events dropped (channel full)")),
+        result: AuditResult::Failure(format!(
+            "{n_dropped} events dropped (channel full or write failed)"
+        )),
         duration_ms: 0,
         request_id: None,
         details: None,

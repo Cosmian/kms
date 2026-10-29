@@ -6,12 +6,16 @@ use actix_web::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::State,
+        kmip_0::kmip_types::{CryptographicUsageMask, MaskGenerator, PaddingMethod, State},
         kmip_2_1,
         kmip_2_1::{
             KmipOperation,
-            kmip_operations::Encrypt,
-            kmip_types::{LinkType, UniqueIdentifier},
+            kmip_data_structures::KeyWrappingSpecification,
+            kmip_operations::{Encrypt, Export, Operation},
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, EncryptionKeyInformation,
+                LinkType, UniqueIdentifier,
+            },
         },
     },
     cosmian_kms_crypto::{
@@ -29,7 +33,10 @@ use super::{
     b64_decode, b64_encode, cek_cache, jose_oaep_hashes, jose_to_kmip_params,
 };
 use crate::{
-    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS, ObjectHandle, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request,
+        retrieve_object_utils::retrieve_object_for_operation,
+    },
     middlewares::UserId,
 };
 
@@ -55,6 +62,8 @@ pub(crate) async fn encrypt(
         user = user.as_str(),
         "POST /v1/crypto/encrypt kid={} alg={}", body.kid, body.alg
     );
+    // With `cek_kid`, the audited object is the KMS key that leaves the KMS.
+    super::audit(&req, Some(body.cek_kid.as_deref().unwrap_or(&body.kid)));
 
     let plaintext = b64_decode("data", &body.data)?;
 
@@ -169,44 +178,53 @@ async fn encrypt_rsa_oaep(
     .await
     .map_err(CryptoApiError::from)?;
 
-    // Determine if this is a private key (resolve to linked public key) or already a public key
-    let (public_key, private_key_uid) = match owm.object() {
+    // Determine if this is a private key (resolve to linked public key) or already a public key.
+    // `can_wrap`: the key actually used allows WrapKey, as a KMIP wrapped Export requires.
+    let can_wrap = |attributes: &kmip_2_1::kmip_attributes::Attributes| {
+        matches!(
+            attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey),
+            Ok(true)
+        )
+    };
+    let (public_key, private_key_uid, recipient_can_wrap) = match owm.object() {
         kmip_2_1::kmip_objects::Object::PrivateKey { .. } => {
             // Resolve linked public key if available; otherwise extract from private key
-            let pkey = if let Some(pub_key_uid) = owm.attributes().get_link(LinkType::PublicKeyLink)
-            {
-                let pub_owm = Box::pin(retrieve_object_for_operation(
-                    ObjectHandle::from(&pub_key_uid.to_string()),
-                    KmipOperation::Encrypt,
-                    kms,
-                    user,
-                ))
-                .await
-                .map_err(CryptoApiError::from)?;
-                kmip_public_key_to_openssl(pub_owm.object()).map_err(|e| {
-                    CryptoApiError::CryptoFailure(format!(
-                        "RSA-OAEP encrypt: failed to load public key: {e}"
+            let (pkey, recipient_can_wrap) =
+                if let Some(pub_key_uid) = owm.attributes().get_link(LinkType::PublicKeyLink) {
+                    let pub_owm = Box::pin(retrieve_object_for_operation(
+                        ObjectHandle::from(&pub_key_uid.to_string()),
+                        KmipOperation::Encrypt,
+                        kms,
+                        user,
                     ))
-                })?
-            } else {
-                // No linked public key (e.g. imported private key) — extract from private key
-                let priv_pkey = kmip_private_key_to_openssl(owm.object()).map_err(|e| {
-                    CryptoApiError::CryptoFailure(format!(
-                        "RSA-OAEP encrypt: failed to load private key: {e}"
-                    ))
-                })?;
-                let pub_der = priv_pkey.public_key_to_der().map_err(|e| {
-                    CryptoApiError::CryptoFailure(format!(
-                        "RSA-OAEP encrypt: failed to extract public key: {e}"
-                    ))
-                })?;
-                openssl::pkey::PKey::public_key_from_der(&pub_der).map_err(|e| {
-                    CryptoApiError::CryptoFailure(format!(
-                        "RSA-OAEP encrypt: failed to parse public key DER: {e}"
-                    ))
-                })?
-            };
-            (pkey, Some(kid.clone()))
+                    .await
+                    .map_err(CryptoApiError::from)?;
+                    let pkey = kmip_public_key_to_openssl(pub_owm.object()).map_err(|e| {
+                        CryptoApiError::CryptoFailure(format!(
+                            "RSA-OAEP encrypt: failed to load public key: {e}"
+                        ))
+                    })?;
+                    (pkey, can_wrap(pub_owm.attributes()))
+                } else {
+                    // No linked public key (e.g. imported private key) — extract from private key
+                    let priv_pkey = kmip_private_key_to_openssl(owm.object()).map_err(|e| {
+                        CryptoApiError::CryptoFailure(format!(
+                            "RSA-OAEP encrypt: failed to load private key: {e}"
+                        ))
+                    })?;
+                    let pub_der = priv_pkey.public_key_to_der().map_err(|e| {
+                        CryptoApiError::CryptoFailure(format!(
+                            "RSA-OAEP encrypt: failed to extract public key: {e}"
+                        ))
+                    })?;
+                    let pkey = openssl::pkey::PKey::public_key_from_der(&pub_der).map_err(|e| {
+                        CryptoApiError::CryptoFailure(format!(
+                            "RSA-OAEP encrypt: failed to parse public key DER: {e}"
+                        ))
+                    })?;
+                    (pkey, can_wrap(owm.attributes()))
+                };
+            (pkey, Some(kid.clone()), recipient_can_wrap)
         }
         kmip_2_1::kmip_objects::Object::PublicKey { .. } => {
             // Already a public key — resolve linked private key UID for the protected header
@@ -219,7 +237,7 @@ async fn encrypt_rsa_oaep(
                     "RSA-OAEP encrypt: failed to load public key: {e}"
                 ))
             })?;
-            (pkey, priv_key_uid)
+            (pkey, priv_key_uid, can_wrap(owm.attributes()))
         }
         _ => {
             return Err(CryptoApiError::CryptoFailure(format!(
@@ -250,7 +268,37 @@ async fn encrypt_rsa_oaep(
 
     // Step 1: CEK — a KMS-held AES key when `cek_kid` is given, else a random one
     let cek = match cek_kid.as_deref() {
-        Some(cek_kid) => Box::pin(cek_from_kms_key(kms, user, cek_kid, enc)).await?,
+        Some(cek_kid) => {
+            // The KMS key leaves wrapped under `kid`: apply the rules of the equivalent
+            // KMIP Export with an RSA-OAEP key wrapping specification.
+            if !recipient_can_wrap {
+                return Err(CryptoApiError::CryptoFailure(format!(
+                    "RSA-OAEP encrypt: key '{kid}' is not meant to wrap keys (no WrapKey usage)."
+                )));
+            }
+            let export = Export::new(
+                UniqueIdentifier::TextString(cek_kid.to_owned()),
+                false,
+                Some(KeyWrappingSpecification {
+                    encryption_key_information: Some(EncryptionKeyInformation {
+                        unique_identifier: UniqueIdentifier::TextString(kid.clone()),
+                        cryptographic_parameters: Some(CryptographicParameters {
+                            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                            padding_method: Some(PaddingMethod::OAEP),
+                            hashing_algorithm: Some(oaep_hash),
+                            mask_generator: Some(MaskGenerator::MFG1),
+                            mask_generator_hashing_algorithm: Some(mgf1_hash),
+                            ..Default::default()
+                        }),
+                    }),
+                    ..Default::default()
+                }),
+                None,
+            );
+            enforce_kmip_algorithm_policy_for_request(&kms.params, &Operation::Export(export))
+                .map_err(CryptoApiError::from)?;
+            Box::pin(cek_from_kms_key(kms, user, cek_kid, enc)).await?
+        }
         None => generate_cek(enc, &kms.rng)?,
     };
 

@@ -49,6 +49,7 @@ mod ec_dek;
 #[cfg(feature = "non-fips")]
 mod eddsa_sign;
 mod export_key_bytes;
+mod fake_hsm_authz;
 #[cfg(feature = "non-fips")]
 mod hybrid_kem_dek;
 mod issues;

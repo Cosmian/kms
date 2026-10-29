@@ -1,6 +1,6 @@
-use std::{convert::TryFrom, fmt::Display};
+use std::convert::TryFrom;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
@@ -8,15 +8,14 @@ use cosmian_kms_client::{
         kmip_attributes::Attribute,
         kmip_operations::{SetAttribute, SetAttributeResponse},
         kmip_types::{
-            self, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Name, NameType,
-            VendorAttribute, VendorAttributeValue,
+            self, Link, LinkType, LinkedObjectIdentifier, Name, NameType, VendorAttribute,
+            VendorAttributeValue,
         },
     },
     reexport::cosmian_kms_client_utils::import_utils::{KeyUsage, build_usage_mask_from_key_usage},
 };
 use cosmian_logger::{info, trace};
 use serde::Deserialize;
-use strum::EnumIter;
 use time::OffsetDateTime;
 
 use crate::{
@@ -24,74 +23,6 @@ use crate::{
     cli_bail,
     error::result::KmsCliResult,
 };
-
-#[derive(ValueEnum, Clone, Copy, Debug, EnumIter)]
-pub enum CCryptographicAlgorithm {
-    AES,
-    /// This is `CKM_RSA_PKCS_OAEP` from PKCS#11
-    /// see <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226895
-    /// To use  `CKM_RSA_AES_KEY_WRAP` from PKCS#11, use and RSA key with AES as the algorithm
-    /// See <https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html>#_Toc408226908
-    RSA,
-    ECDSA,
-    ECDH,
-    EC,
-    Chacha20,
-    Chacha20Poly1305,
-    SHA3224,
-    SHA3256,
-    SHA3384,
-    SHA3512,
-    Ed25519,
-    Ed448,
-    Covercrypt,
-    CovercryptBulk,
-}
-
-impl Display for CCryptographicAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let value = match self {
-            Self::AES => "aes",
-            Self::RSA => "rsa",
-            Self::ECDSA => "ecdsa",
-            Self::ECDH => "ecdh",
-            Self::EC => "ec",
-            Self::Chacha20 => "chacha20",
-            Self::Chacha20Poly1305 => "chacha20-poly1305",
-            Self::SHA3224 => "sha3224",
-            Self::SHA3256 => "sha3256",
-            Self::SHA3384 => "sha3384",
-            Self::SHA3512 => "sha3512",
-            Self::Ed25519 => "ed25519",
-            Self::Ed448 => "ed448",
-            Self::Covercrypt => "covercrypt",
-            Self::CovercryptBulk => "covercrypt-bulk",
-        };
-        write!(f, "{value}")
-    }
-}
-
-impl From<CCryptographicAlgorithm> for CryptographicAlgorithm {
-    fn from(value: CCryptographicAlgorithm) -> Self {
-        match value {
-            CCryptographicAlgorithm::AES => Self::AES,
-            CCryptographicAlgorithm::RSA => Self::RSA,
-            CCryptographicAlgorithm::ECDSA => Self::ECDSA,
-            CCryptographicAlgorithm::ECDH => Self::ECDH,
-            CCryptographicAlgorithm::EC => Self::EC,
-            CCryptographicAlgorithm::Chacha20 => Self::ChaCha20,
-            CCryptographicAlgorithm::Chacha20Poly1305 => Self::ChaCha20Poly1305,
-            CCryptographicAlgorithm::SHA3224 => Self::SHA3224,
-            CCryptographicAlgorithm::SHA3256 => Self::SHA3256,
-            CCryptographicAlgorithm::SHA3384 => Self::SHA3384,
-            CCryptographicAlgorithm::SHA3512 => Self::SHA3512,
-            CCryptographicAlgorithm::Ed25519 => Self::Ed25519,
-            CCryptographicAlgorithm::Ed448 => Self::Ed448,
-            CCryptographicAlgorithm::Covercrypt => Self::CoverCrypt,
-            CCryptographicAlgorithm::CovercryptBulk => Self::CoverCryptBulk,
-        }
-    }
-}
 
 #[derive(Parser, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct VendorAttributeCli {
@@ -157,14 +88,6 @@ pub struct SetOrDeleteAttributes {
     /// Set the activation date of the key. Epoch time (or Unix time) in milliseconds.
     #[clap(long, short = 'd')]
     pub activation_date: Option<i64>,
-
-    /// The cryptographic algorithm used by the key.
-    #[clap(long, short = 'a')]
-    pub cryptographic_algorithm: Option<CCryptographicAlgorithm>,
-
-    /// The length of the cryptographic key.
-    #[clap(long)]
-    pub cryptographic_length: Option<i32>,
 
     /// The key usage. Add multiple times to specify multiple key usages.
     #[clap(long, short = 'u')]
@@ -236,16 +159,6 @@ impl SetOrDeleteAttributes {
                 ))
             })?;
             result.push(Attribute::ActivationDate(activation_date));
-        }
-
-        if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
-            result.push(Attribute::CryptographicAlgorithm(
-                CryptographicAlgorithm::from(cryptographic_algorithm.to_owned()),
-            ));
-        }
-
-        if let Some(cryptographic_length) = &self.cryptographic_length {
-            result.push(Attribute::CryptographicLength(*cryptographic_length));
         }
 
         if let Some(key_usage) = &self.key_usage {
@@ -351,5 +264,24 @@ impl SetAttributesAction {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::SetAttributesAction;
+
+    /// Cryptographic Algorithm/Length are server-managed (KMIP 2.1 §4.13, §4.15):
+    /// the CLI no longer offers flags the server always rejects.
+    #[test]
+    fn read_only_cryptographic_flags_are_not_offered() {
+        for flag in ["--cryptographic-algorithm", "--cryptographic-length", "-a"] {
+            let err = SetAttributesAction::try_parse_from(["set", "--id", "k", flag, "aes"])
+                .err()
+                .map(|e| e.kind());
+            assert_eq!(err, Some(clap::error::ErrorKind::UnknownArgument), "{flag}");
+        }
     }
 }

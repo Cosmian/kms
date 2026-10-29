@@ -7,18 +7,27 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 
-use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
+use crate::{
+    core::{KMS, uid_utils::ObjectHandle},
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
+};
 
 /// Error for an attribute the server manages for this operation.
+///
+/// KMIP 2.1 names two result reasons: Add and Set Attribute return `Read Only Attribute`
+/// (§6.1.2.1 Table 169, §6.1.51.1 Table 324); Modify and Delete Attribute return
+/// `Attribute Read Only` (§6.1.34.1 Table 267, §6.1.13.1 Table 204).
 pub(crate) fn read_only_error(operation: KmipOperation) -> KmsError {
-    let verb = match operation {
-        KmipOperation::AddAttribute => "added",
-        KmipOperation::SetAttribute => "set",
-        KmipOperation::DeleteAttribute => "deleted",
-        _ => "modified",
+    let (verb, reason) = match operation {
+        KmipOperation::AddAttribute => ("added", ErrorReason::Read_Only_Attribute),
+        KmipOperation::SetAttribute => ("set", ErrorReason::Read_Only_Attribute),
+        KmipOperation::DeleteAttribute => ("deleted", ErrorReason::Attribute_Read_Only),
+        _ => ("modified", ErrorReason::Attribute_Read_Only),
     };
     KmsError::Kmip21Error(
-        ErrorReason::Attribute_Read_Only,
+        reason,
         format!("DENIED: this attribute is server-managed and cannot be {verb} by the user"),
     )
 }
@@ -37,6 +46,27 @@ pub(crate) fn check_rotate_name(attribute: &Attribute, operation: &str) -> KResu
         Attribute::RotateName(name) if name.contains('@') => {
             Err(KmsError::InvalidRequest(format!(
                 "{operation}: rotate_name must not contain '@' (reserved for keyset versioning)"
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// For SQL (non-HSM) objects, requires `rotate_name` to equal the object's UID.
+///
+/// This enforces the gen-0 UID = keyset name invariant for deterministic `@N` addressing.
+/// `noun` names the object in the error ("key" or "object").
+pub(crate) fn check_sql_rotate_name(
+    uid: &str,
+    attribute: &Attribute,
+    operation: &str,
+    noun: &str,
+) -> KResult<()> {
+    match attribute {
+        Attribute::RotateName(name) if !ObjectHandle::from(uid).is_hsm() && name != uid => {
+            Err(KmsError::InvalidRequest(format!(
+                "{operation}: rotate_name ('{name}') must equal the {noun}'s UID ('{uid}') — \
+                 create the {noun} with the keyset name as its ID"
             )))
         }
         _ => Ok(()),
@@ -84,6 +114,33 @@ mod tests {
             (Attribute::Comment("private value".to_owned()), "Comment"),
         ] {
             assert_eq!(attribute.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn read_only_reason_follows_operation() {
+        for (operation, expected) in [
+            (
+                KmipOperation::AddAttribute,
+                ErrorReason::Read_Only_Attribute,
+            ),
+            (
+                KmipOperation::SetAttribute,
+                ErrorReason::Read_Only_Attribute,
+            ),
+            (
+                KmipOperation::ModifyAttribute,
+                ErrorReason::Attribute_Read_Only,
+            ),
+            (
+                KmipOperation::DeleteAttribute,
+                ErrorReason::Attribute_Read_Only,
+            ),
+        ] {
+            assert!(
+                matches!(read_only_error(operation), KmsError::Kmip21Error(reason, _) if reason == expected),
+                "{operation:?}"
+            );
         }
     }
 }

@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{
         crypto::KmsRng,
         openssl::{
             oid::asn1_object, openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes,
-            x509_extensions,
+            x509_extensions, x509_signing_digest,
         },
     },
 };
@@ -33,7 +33,6 @@ use openssl::{
     asn1::{Asn1Integer, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
     nid::Nid,
-    pkey::Id,
     x509::{X509, X509Extension},
 };
 
@@ -148,7 +147,7 @@ pub(crate) async fn build_and_sign_certificate(
     let x509 = match issuer.key() {
         IssuerKey::Local(key) => {
             // The digest must match the *issuer's signing key* type, not the subject key.
-            x509_builder.sign(key, signing_digest(key))?;
+            x509_builder.sign(key, x509_signing_digest(key))?;
             x509_builder.build()
         }
         IssuerKey::Oracle(key) => {
@@ -457,18 +456,6 @@ fn apply_no_rev_avail(
     has_cdp: bool,
 ) -> KResult<()> {
     rfc9608::apply_extensions(x509_builder, issuer, attributes, vendor_id, has_cdp)
-}
-
-/// Select the correct `MessageDigest` for signing based on the issuer key type.
-///
-/// RSA and EC (ECDSA) require an explicit external digest (SHA-256).
-/// `EdDSA` and PQC algorithms (`ML-DSA`, `SLH-DSA`) handle their digest internally
-/// and must receive a null digest.
-fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> MessageDigest {
-    match key.id() {
-        Id::RSA | Id::EC => MessageDigest::sha256(),
-        _ => MessageDigest::null(),
-    }
 }
 
 /// Generate a fresh random certificate serial number (RFC 5280 §4.1.2.2).

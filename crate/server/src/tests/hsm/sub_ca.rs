@@ -7,7 +7,7 @@ use actix_web::{App, test, web::Data};
 use cosmian_kms_access::access::Access;
 use cosmian_kms_interfaces::{ObjectHandle, as_hsm_uid};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{CertificateType, ErrorReason, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         KmipOperation,
         extra::{
@@ -15,9 +15,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             tagging::{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, VENDOR_ID_COSMIAN},
         },
         kmip_attributes::{Attribute, Attributes},
-        kmip_objects::Object,
+        kmip_objects::{Certificate, Object, ObjectType},
         kmip_operations::{
-            AddAttribute, Certify, CreateKeyPair, Get, GetAttributes, ReCertify, Revoke,
+            AddAttribute, Certify, CreateKeyPair, Get, GetAttributes, Import, ReCertify, Revoke,
         },
         kmip_types::{
             CertificateAttributes, CertificateRequestType, CryptographicAlgorithm, Link, LinkType,
@@ -514,19 +514,48 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
         ocsp_status(&kms, &root, &sub, &leaf).await?,
         OpenSslOcspStatus::GOOD
     );
-    kms.revoke(
-        Revoke {
-            unique_identifier: Some(UniqueIdentifier::TextString(renewed_id)),
-            revocation_reason: RevocationReason {
-                revocation_reason_code: RevocationReasonCode::KeyCompromise,
-                revocation_message: None,
-            },
-            compromise_occurrence_date: None,
-            cascade: false,
+    let revoke = |id: String| Revoke {
+        unique_identifier: Some(UniqueIdentifier::TextString(id)),
+        revocation_reason: RevocationReason {
+            revocation_reason_code: RevocationReasonCode::KeyCompromise,
+            revocation_message: None,
         },
-        &owner,
-    )
-    .await?;
+        compromise_occurrence_date: None,
+        cascade: false,
+    };
+    // A copy of the leaf that another user links to the HSM sub-CA and revokes does not count.
+    let outsider = UserId::from(Uuid::new_v4().to_string().as_str());
+    let copy_id = kms
+        .import(
+            Import {
+                unique_identifier: UniqueIdentifier::TextString(String::new()),
+                object_type: ObjectType::Certificate,
+                replace_existing: None,
+                key_wrap_type: None,
+                attributes: {
+                    let mut attributes = Attributes::default();
+                    attributes.set_link(
+                        LinkType::CertificateLink,
+                        LinkedObjectIdentifier::TextString(sub_id.clone()),
+                    );
+                    attributes
+                },
+                object: Object::Certificate(Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: leaf.to_der()?,
+                }),
+            },
+            &outsider,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+    kms.revoke(revoke(copy_id), &outsider).await?;
+    assert_eq!(
+        ocsp_status(&kms, &root, &sub, &leaf).await?,
+        OpenSslOcspStatus::GOOD
+    );
+    kms.revoke(revoke(renewed_id), &owner).await?;
     assert_eq!(
         ocsp_status(&kms, &root, &sub, &leaf).await?,
         OpenSslOcspStatus::REVOKED
@@ -576,7 +605,10 @@ pub(super) async fn test_hsm_sub_ca_ec() -> KResult<()> {
     let kms = test_kms_with_config(clap_config).await?;
 
     let root_id = create_hsm_root(&kms, &owner, &as_hsm_uid!(slot, Uuid::new_v4())).await?;
-    for curve in [RecommendedCurve::P256, RecommendedCurve::P384] {
+    for (curve, signature) in [
+        (RecommendedCurve::P256, Nid::ECDSA_WITH_SHA256),
+        (RecommendedCurve::P384, Nid::ECDSA_WITH_SHA384),
+    ] {
         let sk_id = as_hsm_uid!(slot, Uuid::new_v4());
         let (_sub_id, leaf_id) = Box::pin(sub_ca_flow(
             &kms,
@@ -597,8 +629,8 @@ pub(super) async fn test_hsm_sub_ca_ec() -> KResult<()> {
         let leaf = certificate(&kms, &owner, &leaf_id).await?;
         assert_eq!(
             leaf.signature_algorithm().object().nid(),
-            Nid::ECDSA_WITH_SHA256,
-            "{curve:?}: an EC HSM CA signs ecdsa-with-SHA256"
+            signature,
+            "{curve:?}: an EC HSM CA signs with the digest matching its curve (RFC 5480 §4)"
         );
     }
     Ok(())

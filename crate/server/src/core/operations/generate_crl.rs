@@ -1,11 +1,12 @@
 //! CRL generation operation.
 //!
 //! Generates an X.509 v2 CRL for a given CA certificate, listing all
-//! certificates that have been revoked (state Deactivated or Compromised)
-//! and whose `CertificateLink` attribute points to the issuer.
+//! certificates that have been revoked (state Deactivated or Compromised),
+//! whose `CertificateLink` attribute points to the issuer and that the issuer
+//! actually issued (see [`find_ca_issued_certificates`]).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, LazyLock, atomic::Ordering},
     time::Instant,
 };
@@ -17,20 +18,26 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_objects::{Certificate, Object, ObjectType},
-            kmip_types::{Link, LinkType, LinkedObjectIdentifier},
+            kmip_types::{LinkType, LinkedObjectIdentifier},
         },
     },
     cosmian_kms_crypto::openssl::crl::{CrlReasonCode, RevokedEntry, build_crl},
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace, warn};
-use openssl::x509::{X509, X509Crl};
+use openssl::{
+    bn::BigNum,
+    x509::{X509, X509Crl},
+};
 use time::OffsetDateTime;
 
 use crate::{
     core::{
         KMS, ObjectHandle,
-        certificate::oracle_signing::{placeholder_signing_key, sign_crl_with_oracle},
+        certificate::{
+            find_ca_issued_certificates,
+            oracle_signing::{placeholder_signing_key, sign_crl_with_oracle},
+        },
         operations::certify::{IssuerKey, load_issuer_key},
         retrieve_object_utils::retrieve_object_for_operation,
     },
@@ -301,7 +308,8 @@ pub(crate) async fn generate_crl(
     .context("CRL generation: loading issuer private key")?;
 
     // 3. Find all certificates signed by this issuer that are revoked
-    let revoked_entries = Box::pin(find_revoked_certificates(kms, issuer_certificate_id)).await?;
+    let revoked_entries =
+        Box::pin(find_revoked_certificates(kms, &issuer_owm, &issuer_x509)).await?;
 
     trace!(
         "Found {} revoked certificate(s) for issuer '{}'",
@@ -396,106 +404,110 @@ pub(crate) async fn generate_crl(
     Ok(crl)
 }
 
-/// Find all certificates issued by `issuer_certificate_id` that are in a revoked state.
+/// `true` when a certificate in `state` with these `attributes` is revoked: listed on the CRL,
+/// `revoked` for OCSP. A certificate destroyed without ever being revoked is not revoked.
+pub(crate) const fn is_revoked(state: State, attributes: &Attributes) -> bool {
+    match state {
+        State::Deactivated | State::Compromised | State::Destroyed_Compromised => true,
+        State::Destroyed => attributes.revocation_reason.is_some(),
+        State::Active | State::PreActive => false,
+    }
+}
+
+/// Find all certificates issued by `issuer` that are in a revoked state, one entry per serial.
 ///
 /// Uses `find_all` (bypasses user ownership filters) so that the CRL contains every
-/// revoked certificate regardless of which user owns it in the KMS database.  The
-/// caller is responsible for ensuring the requesting user holds the Crypto Officer role
-/// before invoking this function (enforced by `generate_crl`).
+/// revoked certificate regardless of which user owns it in the KMS database; only the
+/// certificates the issuer really issued count (see [`find_ca_issued_certificates`]).
 ///
 /// Returns a list of `RevokedEntry` structs ready for CRL generation.
 async fn find_revoked_certificates(
     kms: &KMS,
-    issuer_certificate_id: &str,
+    issuer: &ObjectWithMetadata,
+    issuer_x509: &X509,
 ) -> KResult<Vec<RevokedEntry>> {
-    let mut entries = Vec::new();
-
-    // Search for certificates with CertificateLink pointing to this issuer.
+    // First the serials of the revoked certificates linked to the issuer, then every record of
+    // these serials: an authoritative active record outweighs a revoked copy.
     // Destroyed certificates must stay listed (RFC 5280 §3.3: until they expire):
     // Destroy keeps the issuer link and revocation details for exactly this purpose.
-    let search_attrs = Attributes {
+    let mut search_attrs = Attributes {
         object_type: Some(ObjectType::Certificate),
-        link: Some(vec![Link {
-            link_type: LinkType::CertificateLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                issuer_certificate_id.to_owned(),
-            ),
-        }]),
         ..Attributes::default()
     };
-
+    search_attrs.set_link(
+        LinkType::CertificateLink,
+        LinkedObjectIdentifier::TextString(issuer.id().to_owned()),
+    );
+    let mut serials = HashSet::new();
     for state in [
         State::Deactivated,
         State::Compromised,
         State::Destroyed,
         State::Destroyed_Compromised,
     ] {
-        // Use find_all to bypass user ownership filters — the CRL must include
-        // every revoked certificate issued by this CA, regardless of who owns it.
         let results = kms
             .database
             .find_all(Some(&search_attrs), Some(state), kms.vendor_id())
             .await
             .context("CRL generation: searching for revoked certificates")?;
-
         for (uid, _state, attributes) in results {
-            // A certificate destroyed without ever being revoked is not revoked.
-            if state == State::Destroyed && attributes.revocation_reason.is_none() {
+            if !is_revoked(state, &attributes) {
                 continue;
             }
-            // Retrieve the actual certificate to extract serial number
             let Some(owm) = kms.database.retrieve_object_arc(&uid).await? else {
                 continue;
             };
-
             let Object::Certificate(Certificate {
-                certificate_value: cert_der,
-                ..
+                certificate_value, ..
             }) = owm.object()
             else {
                 continue;
             };
+            if let Ok(serial) = X509::from_der(certificate_value)
+                .and_then(|x509| x509.serial_number().to_bn())
+                .and_then(|bn| bn.to_hex_str().map(|hex| hex.to_ascii_uppercase()))
+            {
+                serials.insert(serial);
+            }
+        }
+    }
 
-            let x509 = match X509::from_der(cert_der) {
-                Ok(x509) => x509,
-                Err(e) => {
-                    trace!("Skipping certificate '{}': cannot parse DER: {e}", uid);
-                    continue;
-                }
-            };
-
-            // Extract serial number as big-endian bytes
-            let serial_bytes = x509
-                .serial_number()
-                .to_bn()
-                .map_err(|e| {
-                    KmsError::ServerError(format!(
-                        "Failed to extract serial number from certificate '{uid}': {e}"
-                    ))
-                })?
-                .to_vec();
-
+    let mut entries = Vec::new();
+    for (serial, records) in Box::pin(find_ca_issued_certificates(
+        kms,
+        issuer,
+        issuer_x509,
+        &serials,
+    ))
+    .await?
+    {
+        // One entry per serial: the earliest revocation among the records that count.
+        let Some((_, _, attributes)) = records
+            .iter()
+            .filter(|(_, state, attributes)| is_revoked(*state, attributes))
+            .min_by_key(|(_, _, attributes)| attributes.deactivation_date)
+        else {
+            continue;
+        };
+        let serial_number = BigNum::from_hex_str(&serial)
+            .map_err(|e| {
+                KmsError::ServerError(format!("Failed to decode serial number {serial}: {e}"))
+            })?
+            .to_vec();
+        entries.push(RevokedEntry {
+            serial_number,
             // Determine revocation date (deactivation_date from attributes)
-            let revocation_date = attributes
+            revocation_date: attributes
                 .deactivation_date
-                .unwrap_or_else(OffsetDateTime::now_utc);
-
+                .unwrap_or_else(OffsetDateTime::now_utc),
             // Map KMIP RevocationReasonCode to CRL reason code
-            let reason_code = attributes
+            reason_code: attributes
                 .revocation_reason
                 .as_ref()
-                .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code));
-
+                .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
             // Invalidity date = compromise_occurrence_date (RFC 5280 §5.3.2)
-            let invalidity_date = attributes.compromise_occurrence_date;
-
-            entries.push(RevokedEntry {
-                serial_number: serial_bytes,
-                revocation_date,
-                reason_code,
-                invalidity_date,
-            });
-        }
+            invalidity_date: attributes.compromise_occurrence_date,
+        });
     }
 
     Ok(entries)

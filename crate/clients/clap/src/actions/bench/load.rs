@@ -349,53 +349,7 @@ fn prepare_load_ops(
             eprintln!("[load] ECDSA P-256 key creation failed, skipping sign load test");
         }
 
-        #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(
-            rt,
-            client,
-            "load-json-sign-eddsa-ed25519",
-            RecommendedCurve::CURVEED25519,
-        ) {
-            // No `digital_signature_algorithm` needed: the server dispatches to
-            // EdDSA based on the key's own cryptographic algorithm (Ed25519).
-            let req = Sign {
-                unique_identifier: Some(priv_id),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
-                ..Default::default()
-            };
-            ops.push(preserialized_op(
-                "ttlv-json/sign-verify/eddsa-ed25519",
-                client,
-                Operation::Sign(req),
-            ));
-        } else {
-            eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
-        }
-
-        #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(
-            rt,
-            client,
-            "load-json-sign-ecdsa-secp256k1",
-            RecommendedCurve::SECP256K1,
-        ) {
-            let req = Sign {
-                unique_identifier: Some(priv_id),
-                cryptographic_parameters: Some(CryptographicParameters {
-                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
-                    ..Default::default()
-                }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
-                ..Default::default()
-            };
-            ops.push(preserialized_op(
-                "ttlv-json/sign-verify/ecdsa-secp256k1",
-                client,
-                Operation::Sign(req),
-            ));
-        } else {
-            eprintln!("[load] secp256k1 key creation failed, skipping sign load test");
-        }
+        push_non_fips_json_sign_ops(rt, client, &mut ops);
     }
 
     if run_json && needs_batch {
@@ -471,47 +425,7 @@ fn prepare_load_ops(
             ));
         }
 
-        #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(
-            rt,
-            client,
-            "load-bytes-sign-eddsa-ed25519",
-            RecommendedCurve::CURVEED25519,
-        ) {
-            let req = Sign {
-                unique_identifier: Some(priv_id),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
-                ..Default::default()
-            };
-            ops.push(preserialized_wire_op(
-                "ttlv-bytes/sign-verify/eddsa-ed25519",
-                client,
-                Operation::Sign(req),
-            ));
-        }
-
-        #[cfg(feature = "non-fips")]
-        if let Some((_, priv_id)) = try_create_ec_kp(
-            rt,
-            client,
-            "load-bytes-sign-ecdsa-secp256k1",
-            RecommendedCurve::SECP256K1,
-        ) {
-            let req = Sign {
-                unique_identifier: Some(priv_id),
-                cryptographic_parameters: Some(CryptographicParameters {
-                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
-                    ..Default::default()
-                }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
-                ..Default::default()
-            };
-            ops.push(preserialized_wire_op(
-                "ttlv-bytes/sign-verify/ecdsa-secp256k1",
-                client,
-                Operation::Sign(req),
-            ));
-        }
+        push_non_fips_wire_sign_ops(rt, client, &mut ops);
     }
 
     // ── JOSE load ops ────────────────────────────────────────────────────
@@ -554,29 +468,155 @@ fn prepare_load_ops(
             eprintln!("[load] JOSE ES256 key creation failed, skipping JOSE sign load test");
         }
 
-        #[cfg(feature = "non-fips")]
-        if let Some((priv_kid, _pub_kid)) = jose_try_create_okp_kp(rt, client) {
-            let jose_sign_req = JoseSignReq {
-                kid: priv_kid,
-                alg: "EdDSA",
-                data: b64url(&[0x42_u8; 32]),
-            };
-            let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
-            let url = format!("{}/v1/crypto/sign", client.client.server_url);
-            ops.push(PreparedLoadOp::PreSerialized {
-                name: "jose/sign-verify/eddsa-ed25519",
-                url,
-                body: body.into(),
-            });
-        } else {
-            eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");
-        }
+        push_jose_eddsa_sign_op(rt, client, &mut ops);
     }
 
     if let Some(filter) = filter {
         ops.retain(|op| filter.matches(op.name(), None));
     }
     ops
+}
+
+/// TTLV-JSON sign load ops on the non-FIPS curves (Ed25519, secp256k1).
+#[cfg(feature = "non-fips")]
+fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-json-sign-eddsa-ed25519",
+        RecommendedCurve::CURVEED25519,
+    ) {
+        // No `digital_signature_algorithm` needed: the server dispatches to
+        // EdDSA based on the key's own cryptographic algorithm (Ed25519).
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_op(
+            "ttlv-json/sign-verify/eddsa-ed25519",
+            client,
+            Operation::Sign(req),
+        ));
+    } else {
+        eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
+    }
+
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-json-sign-ecdsa-secp256k1",
+        RecommendedCurve::SECP256K1,
+    ) {
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            }),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_op(
+            "ttlv-json/sign-verify/ecdsa-secp256k1",
+            client,
+            Operation::Sign(req),
+        ));
+    } else {
+        eprintln!("[load] secp256k1 key creation failed, skipping sign load test");
+    }
+}
+
+/// FIPS build: Ed25519 and secp256k1 are not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_non_fips_json_sign_ops(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
+}
+
+/// TTLV-bytes sign load ops on the non-FIPS curves (Ed25519, secp256k1).
+#[cfg(feature = "non-fips")]
+fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-bytes-sign-eddsa-ed25519",
+        RecommendedCurve::CURVEED25519,
+    ) {
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_wire_op(
+            "ttlv-bytes/sign-verify/eddsa-ed25519",
+            client,
+            Operation::Sign(req),
+        ));
+    }
+
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-bytes-sign-ecdsa-secp256k1",
+        RecommendedCurve::SECP256K1,
+    ) {
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            }),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_wire_op(
+            "ttlv-bytes/sign-verify/ecdsa-secp256k1",
+            client,
+            Operation::Sign(req),
+        ));
+    }
+}
+
+/// FIPS build: Ed25519 and secp256k1 are not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_non_fips_wire_sign_ops(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
+}
+
+/// JOSE `EdDSA` (Ed25519) sign load op.
+#[cfg(feature = "non-fips")]
+fn push_jose_eddsa_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    if let Some((priv_kid, _pub_kid)) = jose_try_create_okp_kp(rt, client) {
+        let jose_sign_req = JoseSignReq {
+            kid: priv_kid,
+            alg: "EdDSA",
+            data: b64url(&[0x42_u8; 32]),
+        };
+        let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
+        let url = format!("{}/v1/crypto/sign", client.client.server_url);
+        ops.push(PreparedLoadOp::PreSerialized {
+            name: "jose/sign-verify/eddsa-ed25519",
+            url,
+            body: body.into(),
+        });
+    } else {
+        eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");
+    }
+}
+
+/// FIPS build: Ed25519 is not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_jose_eddsa_sign_op(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
 }
 
 /// Prepare load-test operations for `--hsm`: keys are created with an
@@ -839,57 +879,78 @@ fn prepare_hsm_load_ops(
             eprintln!("[load] HSM ECDSA P-256 not available, skipping HSM sign load test");
         }
 
-        // EdDSA (Ed25519/Ed448, non-FIPS) — pure, un-hashed CKM_EDDSA. See
-        // module docs in `kmip.rs`'s "HSM-RESIDENT BENCHMARKS" section for
-        // why `cryptographic_algorithm` must be set explicitly (mirrors
-        // `ckms ec sign`'s own request construction).
-        #[cfg(feature = "non-fips")]
-        for (label, curve, algorithm) in [
-            (
-                "eddsa-ed25519",
-                RecommendedCurve::CURVEED25519,
-                CryptographicAlgorithm::Ed25519,
-            ),
-            (
-                "eddsa-ed448",
-                RecommendedCurve::CURVEED448,
-                CryptographicAlgorithm::Ed448,
-            ),
-        ] {
-            if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
-                rt,
-                client,
-                hsm_prefix,
-                &format!("load-sign-{label}"),
-                curve,
-                ledger,
-            ) {
-                let req = Sign {
-                    unique_identifier: Some(priv_id),
-                    cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(algorithm),
-                        ..Default::default()
-                    }),
-                    data: Some(Zeroizing::new(vec![0x42_u8; 32])),
-                    ..Default::default()
-                };
-                if run_json {
-                    ops.push(preserialized_op(
-                        Box::leak(format!("ttlv-json/hsm/sign-verify/{label}").into_boxed_str()),
-                        client,
-                        Operation::Sign(req),
-                    ));
-                }
-            } else {
-                eprintln!("[load] HSM {label} not available, skipping HSM sign load test");
-            }
-        }
+        push_hsm_eddsa_sign_ops(rt, client, hsm_prefix, ledger, run_json, &mut ops);
     }
 
     if let Some(filter) = filter {
         ops.retain(|op| filter.matches(op.name(), None));
     }
     ops
+}
+
+/// HSM `EdDSA` (Ed25519/Ed448) sign load ops — pure, un-hashed `CKM_EDDSA`. See
+/// module docs in `kmip.rs`'s "HSM-RESIDENT BENCHMARKS" section for why
+/// `cryptographic_algorithm` must be set explicitly (mirrors `ckms ec sign`'s
+/// own request construction).
+#[cfg(feature = "non-fips")]
+fn push_hsm_eddsa_sign_ops(
+    rt: &Runtime,
+    client: &KmsClient,
+    hsm_prefix: &str,
+    ledger: &HsmKeyLedger,
+    run_json: bool,
+    ops: &mut Vec<PreparedLoadOp>,
+) {
+    for (label, op_name, curve, algorithm) in [
+        (
+            "eddsa-ed25519",
+            "ttlv-json/hsm/sign-verify/eddsa-ed25519",
+            RecommendedCurve::CURVEED25519,
+            CryptographicAlgorithm::Ed25519,
+        ),
+        (
+            "eddsa-ed448",
+            "ttlv-json/hsm/sign-verify/eddsa-ed448",
+            RecommendedCurve::CURVEED448,
+            CryptographicAlgorithm::Ed448,
+        ),
+    ] {
+        if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+            rt,
+            client,
+            hsm_prefix,
+            &format!("load-sign-{label}"),
+            curve,
+            ledger,
+        ) {
+            let req = Sign {
+                unique_identifier: Some(priv_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(algorithm),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                ..Default::default()
+            };
+            if run_json {
+                ops.push(preserialized_op(op_name, client, Operation::Sign(req)));
+            }
+        } else {
+            eprintln!("[load] HSM {label} not available, skipping HSM sign load test");
+        }
+    }
+}
+
+/// FIPS build: `EdDSA` is not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_hsm_eddsa_sign_ops(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _hsm_prefix: &str,
+    _ledger: &HsmKeyLedger,
+    _run_json: bool,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
 }
 
 /// Spawn `concurrency` OS threads, each with a dedicated single-threaded tokio

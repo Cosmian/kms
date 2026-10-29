@@ -60,7 +60,7 @@ pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgor
     let session = slot.open_session(true)?;
     let supported_hashes = session.get_supported_oaep_hash()?;
     let mut algorithms = Vec::new();
-    let kwp_pad_is_rfc5649 = slot.capabilities().aes_key_wrap_pad_is_rfc5649;
+    let kwp_pad_is_rfc5649 = slot.capabilities().aes.key_wrap_pad_is_rfc5649;
 
     for &mechanism in &mechanisms {
         match mechanism {
@@ -108,7 +108,7 @@ pub(crate) fn aes_key_wrap_mechanism(
 ) -> HResult<AesKeyWrapMechanism> {
     let candidates: &[CK_MECHANISM_TYPE] = match algorithm {
         CryptoAlgorithm::AesKeyWrap => &[CKM_AES_KEY_WRAP],
-        CryptoAlgorithm::AesKeyWrapPad if slot.capabilities().aes_key_wrap_pad_is_rfc5649 => {
+        CryptoAlgorithm::AesKeyWrapPad if slot.capabilities().aes.key_wrap_pad_is_rfc5649 => {
             &[CKM_AES_KEY_WRAP_KWP, CKM_AES_KEY_WRAP_PAD]
         }
         CryptoAlgorithm::AesKeyWrapPad => &[CKM_AES_KEY_WRAP_KWP],

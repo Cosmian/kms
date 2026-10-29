@@ -60,6 +60,7 @@ pub(crate) async fn create_key(
         user = user.as_str(),
         "POST /v1/crypto/keys kty={}", body.kty
     );
+    super::audit(&req, body.kid.as_deref());
 
     // Validate algorithm ↔ key type consistency to prevent key confusion attacks.
     if let Some(alg) = body.alg.as_deref() {
@@ -95,32 +96,33 @@ pub(crate) async fn create_key(
         }
     }
 
-    if body.is_import() {
-        return match body.kty.as_str() {
-            "oct" => import_symmetric_key(&kms, &user, &body).await.map(Json),
-            "EC" => import_ec_key(&kms, &user, &body).await.map(Json),
-            "RSA" => import_rsa_key(&kms, &user, &body).await.map(Json),
+    let created = if body.is_import() {
+        match body.kty.as_str() {
+            "oct" => import_symmetric_key(&kms, &user, &body).await,
+            "EC" => import_ec_key(&kms, &user, &body).await,
+            "RSA" => import_rsa_key(&kms, &user, &body).await,
             #[cfg(feature = "non-fips")]
-            "OKP" => import_okp_key(&kms, &user, &body).await.map(Json),
+            "OKP" => import_okp_key(&kms, &user, &body).await,
             other => Err(CryptoApiError::BadRequest(format!(
                 "Unsupported key type '{other}' for import."
             ))),
-        };
-    }
-
-    let alg_str = body.alg.as_deref().unwrap_or("");
-
-    match body.kty.as_str() {
-        "oct" => generate_symmetric_key(&kms, &user, &body).await.map(Json),
-        "EC" => generate_ec_key_pair(&kms, &user, &body).await.map(Json),
-        "RSA" => generate_rsa_key_pair(&kms, &user, &body).await.map(Json),
-        #[cfg(feature = "non-fips")]
-        "OKP" => generate_okp_key_pair(&kms, &user, &body).await.map(Json),
-        other => Err(CryptoApiError::BadRequest(format!(
-            "Unsupported key type '{other}'. Supported: oct, EC, RSA, OKP (non-FIPS). \
-             alg={alg_str}"
-        ))),
-    }
+        }
+    } else {
+        let alg_str = body.alg.as_deref().unwrap_or("");
+        match body.kty.as_str() {
+            "oct" => generate_symmetric_key(&kms, &user, &body).await,
+            "EC" => generate_ec_key_pair(&kms, &user, &body).await,
+            "RSA" => generate_rsa_key_pair(&kms, &user, &body).await,
+            #[cfg(feature = "non-fips")]
+            "OKP" => generate_okp_key_pair(&kms, &user, &body).await,
+            other => Err(CryptoApiError::BadRequest(format!(
+                "Unsupported key type '{other}'. Supported: oct, EC, RSA, OKP (non-FIPS). \
+                 alg={alg_str}"
+            ))),
+        }
+    }?;
+    super::audit(&req, Some(&created.kid));
+    Ok(Json(created))
 }
 
 /// `DELETE /v1/crypto/keys/{kid}` — destroy a key by its KMS unique identifier.
@@ -134,6 +136,7 @@ pub(crate) async fn delete_key(
     let kid = kid.into_inner();
 
     trace!(user = user.as_str(), "DELETE /v1/crypto/keys/{kid}");
+    super::audit(&req, Some(&kid));
 
     // Revoke the key first (KMIP lifecycle requires Deactivated state before Destroy)
     let revoke_req = Revoke {

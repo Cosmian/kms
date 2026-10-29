@@ -22,8 +22,8 @@
 use std::ffi::{c_int, c_uint, c_void};
 
 use openssl_sys::{
-    ASN1_OBJECT, ASN1_OCTET_STRING, BIO, CMS_ContentInfo, EVP_MD, EVP_PKEY, OPENSSL_STACK, X509,
-    X509_ATTRIBUTE,
+    ASN1_OBJECT, ASN1_OCTET_STRING, BIO, CMS_ContentInfo, EVP_MD, EVP_PKEY, EVP_PKEY_CTX,
+    OPENSSL_STACK, X509, X509_ATTRIBUTE,
 };
 
 /// An opaque pointer to `CMS_SignerInfo` (not exposed by openssl-sys).
@@ -91,6 +91,19 @@ unsafe extern "C" {
 
     /// `CMS_get0_content` — pointer to the encapsulated content (`*ptr` null when detached).
     pub(crate) fn CMS_get0_content(cms: *mut CMS_ContentInfo) -> *mut *mut ASN1_OCTET_STRING;
+
+    /// `CMS_add1_recipient_cert` — add a recipient to a (partial) `EnvelopedData`.
+    ///
+    /// Returns the new `CMS_RecipientInfo` (owned by `cms`, do **not** free) or null on error.
+    pub(crate) fn CMS_add1_recipient_cert(
+        cms: *mut CMS_ContentInfo,
+        recip: *mut X509,
+        flags: c_uint,
+    ) -> *mut c_void;
+
+    /// `CMS_RecipientInfo_get0_pkey_ctx` — the public-key context of a key-transport recipient
+    /// (owned by `ri`); only set when the recipient was added with `CMS_KEY_PARAM`.
+    pub(crate) fn CMS_RecipientInfo_get0_pkey_ctx(ri: *mut c_void) -> *mut EVP_PKEY_CTX;
 }
 
 /// `CMS_NO_SIGNER_CERT_VERIFY` — do not validate the signer certificate chain.

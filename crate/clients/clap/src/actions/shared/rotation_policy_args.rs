@@ -2,11 +2,16 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{
-        kmip_attributes::Attribute, kmip_operations::SetAttribute, kmip_types::UniqueIdentifier,
+        kmip_attributes::Attribute,
+        kmip_operations::{CreateKeyPairResponse, SetAttribute},
+        kmip_types::UniqueIdentifier,
     },
 };
 
-use crate::error::result::{KmsCliResult, KmsCliResultHelper};
+use crate::{
+    actions::console,
+    error::result::{KmsCliResult, KmsCliResultHelper},
+};
 
 /// Optional rotation policy arguments that can be added to key creation commands.
 ///
@@ -82,5 +87,42 @@ impl RotationPolicyArgs {
         }
 
         Ok(())
+    }
+
+    /// Finish a key pair creation: apply this policy (when set) to the private key,
+    /// which is the keyset anchor, print `message` with `tags` and both key ids,
+    /// and return the `(private, public)` key ids.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the private key id is not a string, the policy cannot be applied,
+    /// or the summary cannot be written.
+    pub(crate) async fn finish_key_pair_creation(
+        &self,
+        kms_rest_client: &KmsClient,
+        response: CreateKeyPairResponse,
+        tags: &Vec<String>,
+        message: &str,
+    ) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
+        if self.is_set() {
+            let sk_id = response
+                .private_key_unique_identifier
+                .as_str()
+                .with_context(|| "the server did not return a private key id as a string")?;
+            self.apply(kms_rest_client, sk_id).await?;
+        }
+
+        let mut stdout = console::Stdout::new(message);
+        stdout.set_tags(Some(tags));
+        stdout.set_key_pair_unique_identifier(
+            &response.private_key_unique_identifier,
+            &response.public_key_unique_identifier,
+        );
+        stdout.write()?;
+
+        Ok((
+            response.private_key_unique_identifier,
+            response.public_key_unique_identifier,
+        ))
     }
 }

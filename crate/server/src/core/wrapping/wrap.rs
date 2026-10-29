@@ -19,7 +19,11 @@ use cosmian_logger::{debug, info, trace, warn};
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{KMS, uid_utils::ObjectHandle, wrapping::unwrap_object},
+    core::{
+        KMS,
+        uid_utils::ObjectHandle,
+        wrapping::{authorize_unwrap_with, unwrap_stored_object},
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -27,6 +31,11 @@ use crate::{
 };
 
 /// Wrap the object using a wrapping key from the database or HSM, then cache the unwrapped copy.
+///
+/// An object that is already wrapped is stored as-is. If its wrapping key is the server
+/// `key_encryption_key`, storing it amounts to asking the server to decrypt it with the KEK
+/// (stored objects are unwrapped with the KEK on behalf of any user, see
+/// `unwrap_stored_object`): it is only accepted from a user allowed to decrypt with the KEK.
 pub(crate) async fn wrap_and_cache(
     kms: &KMS,
     owner: &UserId,
@@ -34,7 +43,7 @@ pub(crate) async fn wrap_and_cache(
     object: &mut Object,
 ) -> Result<(), KmsError> {
     if object.is_wrapped() {
-        // The object is already wrapped
+        reject_server_kek_wrapped(kms, owner, object).await?;
         return Ok(());
     }
 
@@ -241,6 +250,66 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
     Ok(())
 }
 
+/// Refuse an already-wrapped object whose wrapping key is, or resolves to, the server
+/// `key_encryption_key` unless `user` may decrypt with the KEK — the same decision as an
+/// Import with `KeyWrapType::NotWrapped`.
+async fn reject_server_kek_wrapped(kms: &KMS, user: &UserId, object: &Object) -> KResult<()> {
+    let Some(kek) = kms.params.key_wrapping_key.as_deref() else {
+        return Ok(());
+    };
+    // `to_string`, as `unwrap` does: a numeric UID must not slip through
+    let Some(wrapping_key_uid) = object
+        .key_block()
+        .ok()
+        .and_then(|key_block| key_block.key_wrapping_data.as_ref())
+        .and_then(|data| data.encryption_key_information.as_ref())
+        .map(|info| info.unique_identifier.to_string())
+    else {
+        return Ok(());
+    };
+    if !resolves_to_server_kek(kms, kek, &wrapping_key_uid).await? {
+        return Ok(());
+    }
+    // refusals become the import error; storage or HSM failures propagate unchanged
+    authorize_unwrap_with(kms, user, &wrapping_key_uid)
+        .await
+        .map_err(|e| match e {
+            KmsError::Unauthorized(_) | KmsError::NotSupported(_) => KmsError::InvalidRequest(
+                "Keys wrapped by the server key encryption key can only be imported by users \
+                 allowed to decrypt with it: import the key unwrapped (key wrap type \
+                 NotWrapped), or wrapped by another key"
+                    .to_owned(),
+            ),
+            other => other,
+        })
+}
+
+/// Does unwrapping with `uid` decrypt with the server KEK `kek`: `uid` is the KEK, its `_pk`
+/// public key, or a public key / certificate whose `PrivateKeyLink` points at the KEK?
+async fn resolves_to_server_kek(kms: &KMS, kek: &str, uid: &str) -> KResult<bool> {
+    if uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY).unwrap_or(uid) == kek {
+        return Ok(true);
+    }
+    if ObjectHandle::from(uid).is_hsm() {
+        return Ok(false);
+    }
+    let Some(key) = kms
+        .database
+        .retrieve_object_arc(uid)
+        .await
+        .context("resolve the wrapping key")?
+    else {
+        return Ok(false);
+    };
+    Ok(matches!(
+        key.object().object_type(),
+        ObjectType::PublicKey | ObjectType::Certificate
+    ) && key
+        .attributes()
+        .get_link(LinkType::PrivateKeyLink)
+        .is_some_and(|link| link.to_string() == kek))
+}
+
 /// Wrap an Object with a wrapping key
 /// The wrapping key is fetched from the database
 /// The key is wrapped using the wrapping key
@@ -381,7 +450,7 @@ async fn wrap_using_kms(
     let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
         debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
         let mut obj = wrapping_key.object().clone();
-        Box::pin(unwrap_object(&mut obj, kms, user)).await?;
+        Box::pin(unwrap_stored_object(&mut obj, kms, user)).await?;
         obj
     } else {
         wrapping_key.object().clone()
@@ -451,26 +520,17 @@ async fn wrap_using_crypto_oracle(
         .key_wrapping_key
         .as_deref()
         .is_some_and(|kek| kek == wrapping_key_uid);
-    // check permissions
+    // Wrapping encrypts with the HSM key: require the same explicit `Encrypt` grant (or HSM
+    // ownership) as a direct KMIP Encrypt — `Get` is no wildcard for HSM keys.
     if !is_server_kek
         && !kms
-            .database
-            .is_object_owned_by(wrapping_key_uid, user)
+            .is_user_authorized_with_get_wildcard(wrapping_key_uid, user, KmipOperation::Encrypt)
             .await?
     {
-        let ops = kms
-            .database
-            .list_user_operations_on_object(wrapping_key_uid, user, false)
-            .await?;
-        if !ops
-            .iter()
-            .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
-        {
-            return Err(KmsError::NotSupported(format!(
-                "The user {user} does not have the permission to wrap using the key \
-                 {wrapping_key_uid}"
-            )));
-        }
+        return Err(KmsError::Unauthorized(format!(
+            "The user {user} does not have the permission to wrap using the key \
+             {wrapping_key_uid}"
+        )));
     }
 
     // Determine the key data to wrap based on the key format type and encoding

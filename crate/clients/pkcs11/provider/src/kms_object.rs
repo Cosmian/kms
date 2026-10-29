@@ -847,10 +847,7 @@ async fn kms_encrypt_async(
     } else {
         (Vec::new(), Vec::new())
     };
-    debug!(
-        "kms_encrypt_async: ciphertext: {}",
-        hex::encode(&ciphertext)
-    );
+    debug!("kms_encrypt_async: ciphertext_len: {}", ciphertext.len());
     Ok(MessageEncryptionOutput {
         ciphertext,
         iv,

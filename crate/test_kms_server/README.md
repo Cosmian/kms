@@ -469,8 +469,8 @@ replays the steps sequentially.
 | Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
 | Negative / SetAttribute | `negative/set_attribute/readonly_initial_date` | Checks that InitialDate is read-only and remains unchanged after a rejected SetAttribute request. | 6 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
 | Negative / Sign | `negative/sign/invalid_message` | Tests that Sign returns Invalid_Message error as per KMIP spec | 1 |
 | Negative / Sign | `negative/sign/item_not_found` | Tests that Sign returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |

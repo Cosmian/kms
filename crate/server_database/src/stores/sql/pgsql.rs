@@ -34,11 +34,13 @@ use crate::{
             certificate_serial_tag,
         },
         sql::{
+            crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
             locate_query::{
-                LocateParam, LocateQuery, PgSqlPlaceholder, query_all_from_attributes,
-                query_from_attributes,
+                LocateParam, LocateQuery, PgSqlPlaceholder, filter_due_for_rotation,
+                query_all_from_attributes, query_from_attributes,
             },
+            merge_granted_operations,
         },
     },
 };
@@ -114,6 +116,16 @@ fn pg_tls_policy(query_params: &HashMap<String, String>) -> DbResult<(&'static s
         // tokio-postgres has no `allow`; `prefer` can only add encryption.
         "allow" | "prefer" => ("prefer", false, false),
         "require" => ("require", query_params.contains_key("sslrootcert"), false),
+        // Like libpq: without a pinned CA and the hostname check, any certificate issued by a
+        // system CA would be accepted.
+        "verify-ca" if !query_params.contains_key("sslrootcert") => {
+            return Err(DbError::DatabaseError(
+                "PostgreSQL sslmode=verify-ca requires sslrootcert=<ca.pem>: it skips the \
+                 hostname check, so the server must chain to a pinned CA (or use \
+                 sslmode=verify-full)"
+                    .to_owned(),
+            ));
+        }
         "verify-ca" => ("require", true, false),
         "verify-full" => ("require", true, true),
         other => {
@@ -1209,19 +1221,16 @@ impl ObjectsStore for PgPool {
                 .query(&sql, &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut due = Vec::with_capacity(rows.len());
-            for row in rows {
-                let uid: String = row.get(0);
-                let owner: String = row.get(1);
-                let attrs: Attributes = match row.try_get::<_, Json<Attributes>>(2) {
-                    Ok(Json(a)) => a,
-                    Err(_) => Attributes::default(),
-                };
-                if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                    due.push((uid, owner));
-                }
-            }
-            Ok(due)
+            Ok(filter_due_for_rotation(
+                rows.iter().map(|row| {
+                    let attrs = match row.try_get::<_, Json<Attributes>>(2) {
+                        Ok(Json(a)) => a,
+                        Err(_) => Attributes::default(),
+                    };
+                    (row.get(0), row.get(1), attrs)
+                }),
+                now,
+            ))
         })
     }
 
@@ -1377,16 +1386,7 @@ impl PermissionsStore for PgPool {
                 let Json(perms): Json<HashSet<KmipOperation>> = row
                     .try_get(3)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                // The same object may be returned twice: once for the direct
-                // grant and once for the wildcard `*` grant. Union the
-                // permission sets instead of overwriting the entry.
-                map.entry(id)
-                    .and_modify(
-                        |(_, _, existing_perms): &mut (String, State, HashSet<KmipOperation>)| {
-                            existing_perms.extend(perms.iter().copied());
-                        },
-                    )
-                    .or_insert((owner, state, perms));
+                merge_granted_operations(&mut map, id, owner, state, perms);
             }
             Ok(map)
         })
@@ -1609,7 +1609,7 @@ impl PermissionsStore for PgPool {
         generated_at: &str,
         next_update: &str,
     ) -> InterfaceResult<()> {
-        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let crl_number_i = crl_number_to_sql(crl_number);
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare(get_pgsql_query!("upsert-crl"))
@@ -1679,7 +1679,7 @@ impl PermissionsStore for PgPool {
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             // MAX() returns one row; the value is NULL when the table is empty.
             let max: Option<i64> = rows.first().and_then(|row| row.get::<_, Option<i64>>(0));
-            Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+            Ok(max.map(crl_number_from_sql))
         })
     }
 }
@@ -1799,6 +1799,10 @@ mod tests {
     #[test]
     fn test_prepare_pg_connection_maps_sslmode() {
         use tokio_postgres::config::SslMode;
+        let verify_ca = format!(
+            "sslmode=verify-ca&sslrootcert={}/../../test_data/certificates/client_server/ca/ca.crt",
+            env!("CARGO_MANIFEST_DIR")
+        );
 
         let cases = [
             ("", SslMode::Prefer),
@@ -1811,7 +1815,7 @@ mod tests {
             ("sslmode=allow", SslMode::Prefer),
             ("sslmode=prefer", SslMode::Prefer),
             ("sslmode=require", SslMode::Require),
-            ("sslmode=verify-ca", SslMode::Require),
+            (verify_ca.as_str(), SslMode::Require),
             ("sslmode=verify-full", SslMode::Require),
             // `sslmode` appended after other params.
             (
@@ -1859,6 +1863,31 @@ mod tests {
                 "{query}"
             );
         }
+    }
+
+    #[test]
+    fn test_verify_ca_without_sslrootcert_is_rejected() {
+        // libpq refuses `verify-ca` with no root certificate; the system store must not stand in.
+        for url in [
+            "postgresql://u:s3cret-pw@localhost/db?sslmode=verify-ca",
+            "postgresql://u:s3cret-pw@localhost/db?sslmode=verify-ca&sslcert=/c.pem",
+        ] {
+            let message = prepare_pg_connection(url)
+                .err()
+                .map_or_else(String::new, |e| e.to_string());
+            assert!(message.contains("sslrootcert"), "{url} accepted: {message}");
+            assert!(!message.contains("s3cret-pw"), "message: {message}");
+            assert!(!pg_url_verifies_server_cert(url), "{url}");
+        }
+        // `verify-full` keeps using the default store with the hostname check (5.28.0 behavior).
+        let verify_full =
+            prepare_pg_connection("postgresql://u:p@localhost/db?sslmode=verify-full")
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        assert_eq!(verify_full, Ok(()));
+        assert!(pg_url_verifies_server_cert(
+            "postgresql://u:p@localhost/db?sslmode=verify-full"
+        ));
     }
 
     #[test]

@@ -40,11 +40,12 @@ use cosmian_kms_interfaces::{
     KeyType, SigningAlgorithm, SigningKeyMetadata,
 };
 use cosmian_logger::debug;
+use pkcs11_sys::CK_OBJECT_HANDLE;
 use zeroize::Zeroizing;
 
 use crate::{
-    AesKeySize, BaseHsm, RsaKeySize, Session, SessionGuard, base_hsm::aes_key_wrap_mechanism,
-    hsm_capabilities::HsmProvider,
+    AesKeySize, BaseHsm, RsaKeySize, Session, SessionGuard, SlotManager,
+    base_hsm::aes_key_wrap_mechanism, hsm_capabilities::HsmProvider,
 };
 
 #[cfg(not(feature = "non-fips"))]
@@ -145,6 +146,60 @@ fn generate_hsm_keypair(
     Ok(())
 }
 
+impl<P: HsmProvider> BaseHsm<P> {
+    /// Run `f` on a pooled session of `slot_id` inside `spawn_blocking`.
+    ///
+    /// The session is checked back in only when `f` succeeds; on error the guard
+    /// is dropped, which closes the session instead of returning it to the pool.
+    async fn with_session<T, F>(
+        &self,
+        slot_id: usize,
+        for_signature: bool,
+        f: F,
+    ) -> InterfaceResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&SlotManager, &Session) -> InterfaceResult<T> + Send + 'static,
+    {
+        let slot = self.get_slot(slot_id)?;
+        let permit = slot
+            .acquire_session_permit()
+            .await
+            .map_err(|e| InterfaceError::Default(e.to_string()))?;
+        tokio::task::spawn_blocking(move || {
+            let checked_out = if for_signature {
+                slot.checkout_session_for_signature()?
+            } else {
+                slot.checkout_session()?
+            };
+            let session = SessionGuard::new(&slot, checked_out, permit);
+            let result = f(&slot, session.session()?)?;
+            session.checkin();
+            Ok(result)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
+    }
+}
+
+/// Fetch signing-key metadata from the handle cache, populating it on miss.
+fn cached_signing_metadata(
+    session: &Session,
+    handle: CK_OBJECT_HANDLE,
+    not_found: &str,
+) -> InterfaceResult<SigningKeyMetadata> {
+    if let Some(meta) = session.object_handles_cache().get_metadata(handle)? {
+        return Ok(meta);
+    }
+    let meta = session
+        .get_signing_key_metadata(handle)?
+        .ok_or_else(|| InterfaceError::InvalidRequest(not_found.to_owned()))?;
+    session
+        .object_handles_cache()
+        .insert_metadata(handle, meta.clone())?;
+    Ok(meta)
+}
+
 #[async_trait]
 impl<P: HsmProvider> HSM for BaseHsm<P> {
     async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>> {
@@ -172,22 +227,14 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         sensitive: bool,
         tags: &'a HashSet<String>,
     ) -> InterfaceResult<()> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let id = id.to_vec();
         let tags = tags.clone();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-
-            if session.session()?.get_object_handle(&id).is_ok() {
+        self.with_session(slot_id, false, move |_, session| {
+            if session.get_object_handle(&id).is_ok() {
                 return Err(InterfaceError::Default(
                     "A secret key with this id already exists".to_owned(),
                 ));
             }
-
             match algorithm {
                 HsmKeyAlgorithm::AES => {
                     let key_size = match key_length_in_bits {
@@ -199,19 +246,12 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
                             )));
                         }
                     };
-                    let _ = session.session()?.generate_aes_key(
-                        &id,
-                        key_size,
-                        sensitive,
-                        Some(&tags),
-                    )?;
+                    let _ = session.generate_aes_key(&id, key_size, sensitive, Some(&tags))?;
                 }
             }
-            session.checkin();
             Ok(())
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn create_keypair<'a>(
@@ -227,79 +267,51 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
             private: sk_id,
             public: pk_id,
         } = ids;
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let sk_id = sk_id.to_vec();
         let pk_id = pk_id.to_vec();
         let tags = tags.clone();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-
-            if session.session()?.get_object_handle(&sk_id).is_ok() {
+        self.with_session(slot_id, false, move |_, session| {
+            if session.get_object_handle(&sk_id).is_ok() {
                 return Err(InterfaceError::Default(
                     "A private key with this ID already exists".to_owned(),
                 ));
             }
-            if session.session()?.get_object_handle(&pk_id).is_ok() {
+            if session.get_object_handle(&pk_id).is_ok() {
                 return Err(InterfaceError::Default(
                     "A public key with this ID and the '_pk' suffix already exists".to_owned(),
                 ));
             }
-
             generate_hsm_keypair(
-                session.session()?,
+                session,
                 &sk_id,
                 &pk_id,
                 algorithm,
                 key_length_in_bits,
                 sensitive,
                 &tags,
-            )?;
-            session.checkin();
-            Ok(())
+            )
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn export(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<Option<HsmObject>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let object_id = object_id.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&object_id)?;
-            let object = session.session()?.export_key(handle)?;
-            session.checkin();
-            Ok(object)
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&object_id)?;
+            Ok(session.export_key(handle)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn delete(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<()> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let object_id = object_id.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&object_id)?;
-            session.session()?.destroy_object(handle)?;
-            session.session()?.delete_object_handle(&object_id)?;
-            session.checkin();
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&object_id)?;
+            session.destroy_object(handle)?;
+            session.delete_object_handle(&object_id)?;
             Ok(())
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn find(
@@ -307,32 +319,24 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         slot_id: usize,
         object_filter: HsmObjectFilter,
     ) -> InterfaceResult<Vec<Vec<u8>>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handles = session.session()?.list_objects(object_filter)?;
+        self.with_session(slot_id, false, move |_, session| {
+            let handles = session.list_objects(object_filter)?;
             let mut object_ids = Vec::with_capacity(handles.len());
             for handle in handles {
-                if let Ok(Some(object_id)) = session.session()?.get_object_id(handle) {
+                if let Ok(Some(object_id)) = session.get_object_id(handle) {
                     // Pre-populate the object handle cache so that subsequent
                     // export()/get_object_handle() calls get a cache hit instead of
                     // re-searching via find_by_id_or_label() which may fail due to
                     // CKA_ID/CKA_LABEL asymmetry.
-                    drop(session.session()?.cache_object_handle(&object_id, handle));
+                    drop(session.cache_object_handle(&object_id, handle));
                     object_ids.push(object_id);
                 } else {
                     debug!("Invalid object, skipping");
                 }
             }
-            session.checkin();
             Ok(object_ids)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn encrypt<'a>(
@@ -343,41 +347,32 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &'a [u8],
         iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         let iv_counter_nonce = iv_counter_nonce.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            let result = if matches!(
+        self.with_session(slot_id, false, move |slot, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            if matches!(
                 algorithm,
                 CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
             ) {
-                let m = aes_key_wrap_mechanism(&slot, slot_id, &algorithm, false)?;
-                EncryptedContent {
-                    ciphertext: session.session()?.aes_key_wrap(handle, m, &data)?,
+                let m = aes_key_wrap_mechanism(slot, slot_id, &algorithm, false)?;
+                Ok(EncryptedContent {
+                    ciphertext: session.aes_key_wrap(handle, m, &data)?,
                     iv: None,
                     tag: None,
                     cryptographic_algorithm: None,
-                }
+                })
             } else {
-                session.session()?.encrypt(
+                Ok(session.encrypt(
                     handle,
                     algorithm.into(),
                     &data,
                     (!iv_counter_nonce.is_empty()).then_some(&iv_counter_nonce),
-                )?
-            };
-            session.checkin();
-            Ok(result)
+                )?)
+            }
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn decrypt(
@@ -387,32 +382,21 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         algorithm: CryptoAlgorithm,
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
         let data = data.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            let result = if matches!(
+        self.with_session(slot_id, false, move |slot, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            if matches!(
                 algorithm,
                 CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
             ) {
-                let m = aes_key_wrap_mechanism(&slot, slot_id, &algorithm, true)?;
-                session.session()?.aes_key_unwrap(handle, m, &data)?
+                let m = aes_key_wrap_mechanism(slot, slot_id, &algorithm, true)?;
+                Ok(session.aes_key_unwrap(handle, m, &data)?)
             } else {
-                session
-                    .session()?
-                    .decrypt(handle, algorithm.into(), &data)?
-            };
-            session.checkin();
-            Ok(result)
+                Ok(session.decrypt(handle, algorithm.into(), &data)?)
+            }
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn set_key_wrap(
@@ -421,21 +405,12 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
         enabled: bool,
     ) -> InterfaceResult<()> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            session.session()?.set_wrap_attributes(handle, enabled)?;
-            session.checkin();
-            Ok(())
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            Ok(session.set_wrap_attributes(handle, enabled)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn sign_with_metadata(
@@ -450,42 +425,16 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         >,
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
         let data = data.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session_for_signature()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            let metadata = if let Some(meta) = session
-                .session()?
-                .object_handles_cache()
-                .get_metadata(handle)?
-            {
-                meta
-            } else {
-                let meta = session
-                    .session()?
-                    .get_signing_key_metadata(handle)?
-                    .ok_or_else(|| {
-                        InterfaceError::InvalidRequest("Sign: key not found on the HSM".to_owned())
-                    })?;
-                session
-                    .session()?
-                    .object_handles_cache()
-                    .insert_metadata(handle, meta.clone())?;
-                meta
-            };
+        self.with_session(slot_id, true, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            let metadata =
+                cached_signing_metadata(session, handle, "Sign: key not found on the HSM")?;
             let algorithm = resolve_algorithm(&metadata)?;
-            let result = session.session()?.sign(handle, algorithm.into(), &data)?;
-            session.checkin();
-            Ok(result)
+            Ok(session.sign(handle, algorithm.into(), &data)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn verify_with_metadata(
@@ -501,47 +450,20 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
         signature: &[u8],
     ) -> InterfaceResult<bool> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         let signature = signature.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session_for_signature()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            let metadata = if let Some(meta) = session
-                .session()?
-                .object_handles_cache()
-                .get_metadata(handle)?
-            {
-                meta
-            } else {
-                let meta = session
-                    .session()?
-                    .get_signing_key_metadata(handle)?
-                    .ok_or_else(|| {
-                        InterfaceError::InvalidRequest(
-                            "SignatureVerify: key not found on the HSM".to_owned(),
-                        )
-                    })?;
-                session
-                    .session()?
-                    .object_handles_cache()
-                    .insert_metadata(handle, meta.clone())?;
-                meta
-            };
+        self.with_session(slot_id, true, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            let metadata = cached_signing_metadata(
+                session,
+                handle,
+                "SignatureVerify: key not found on the HSM",
+            )?;
             let algorithm = resolve_algorithm(&metadata)?;
-            let result = session
-                .session()?
-                .verify(handle, algorithm.into(), &data, &signature)?;
-            session.checkin();
-            Ok(result)
+            Ok(session.verify(handle, algorithm.into(), &data, &signature)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn get_key_type(
@@ -549,21 +471,12 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         slot_id: usize,
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyType>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            let result = session.session()?.get_key_type(handle)?;
-            session.checkin();
-            Ok(result)
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            Ok(session.get_key_type(handle)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn get_key_metadata(
@@ -571,54 +484,27 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         slot_id: usize,
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            let result = session.session()?.get_key_metadata(handle)?;
-            session.checkin();
-            Ok(result)
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            Ok(session.get_key_metadata(handle)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let result = session.session()?.generate_random(len)?;
-            session.checkin();
-            Ok(result)
+        self.with_session(slot_id, false, move |_, session| {
+            Ok(session.generate_random(len)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let seed = seed.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            session.session()?.seed_random(&seed)?;
-            session.checkin();
-            Ok(())
+        self.with_session(slot_id, false, move |_, session| {
+            Ok(session.seed_random(&seed)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     /// Sets `CKA_START_DATE` and `CKA_END_DATE` on the key identified by `key_id`. Pass `None` to clear a date.
@@ -629,23 +515,12 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         start_date: Option<time::Date>,
         end_date: Option<time::Date>,
     ) -> InterfaceResult<()> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            session
-                .session()?
-                .set_key_dates(handle, start_date, end_date)?;
-            session.checkin();
-            Ok(())
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            Ok(session.set_key_dates(handle, start_date, end_date)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     /// Sets `CKA_LABEL` on the key identified by `key_id`.
@@ -655,22 +530,13 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
         label: &str,
     ) -> InterfaceResult<()> {
-        let slot = self.get_slot(slot_id)?;
-        let permit = slot
-            .acquire_session_permit()
-            .await
-            .map_err(|e| InterfaceError::Default(e.to_string()))?;
         let key_id = key_id.to_vec();
         let label = label.to_owned();
-        tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
-            let handle = session.session()?.get_object_handle(&key_id)?;
-            session.session()?.set_label(handle, &label)?;
-            session.checkin();
-            Ok(())
+        self.with_session(slot_id, false, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            Ok(session.set_label(handle, &label)?)
         })
         .await
-        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
     }
 
     fn hsm_lib(&self) -> Option<&dyn std::any::Any> {

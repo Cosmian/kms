@@ -20,3 +20,17 @@ the `--delegated` flag switches between them. Benchmarks 1, 2, and 3 drive the K
 All five accept `--criterion` to also run single-operation Criterion
 micro-benchmarks alongside the concurrency sweep, and `--sanity` for a quick
 smoke test. See `mise run bench:<task> --help` for the full flag list of each.
+
+## Where a new report goes in the docs nav
+
+The generators write only `documentation/docs/benchmarks/<dir>/`; they never edit the navigation.
+`documentation/docs/SUMMARY.md` and `documentation/nav.yml` group the reports by HSM backend: add a
+report for a new backend under a group named after it (for example `Thales Luna HSMs`), with its
+HSM-backed KEK, HSM-delegated and PKCS#11 HSM-delegated reports in that order. Reports without an HSM
+(`ckms_bench`, `ckms_bench_pkcs11`) stay under `Software (no HSM)`. Keep both files in sync.
+
+A report directory is replaced on every run. To keep a second device of the same HSM model (for
+example Luna 2 next to Luna 1, or Proteccio HR) from overwriting the first, set `BENCH_DOCS_SUFFIX`
+(`BENCH_DOCS_SUFFIX=2_ed25519 mise run bench:hsm --delegated --hsm-model luna` writes
+`ckms_bench_hsm_delegated_luna2_ed25519`). Add the new directory to both nav files by hand; so do
+`_simulator` reports (Crypt2pay simulator) and any new `ckms_bench_hsm_kek_<model>`.

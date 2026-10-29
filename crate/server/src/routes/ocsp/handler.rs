@@ -21,7 +21,7 @@
 //! tooling (`openssl ocsp`, TLS stacks, browsers).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     future::Future,
     pin::Pin,
     sync::{Arc, LazyLock},
@@ -43,6 +43,7 @@ use cosmian_kms_server_database::reexport::{
         ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
         verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
     },
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, info};
 use openssl::{sha::sha256, x509::X509};
@@ -53,12 +54,16 @@ use crate::{
     config::NoncePolicyConfig,
     core::{
         KMS,
-        certificate::oracle_signing::{
-            placeholder_signer_certificate, placeholder_signing_key, sign_ocsp_response_with_oracle,
+        certificate::{
+            find_ca_issued_certificates,
+            oracle_signing::{
+                placeholder_signer_certificate, placeholder_signing_key,
+                sign_ocsp_response_with_oracle,
+            },
         },
         operations::{
             certify::{IssuerKey, load_issuer_key},
-            generate_crl::kmip_reason_to_crl_reason,
+            generate_crl::{is_revoked, kmip_reason_to_crl_reason},
         },
     },
     error::KmsError,
@@ -341,7 +346,7 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
                     reason: Some(CrlReasonCode::CaCompromise),
                 }
             } else {
-                Box::pin(look_up_cert_status(kms, ca_uid, serial)).await?
+                Box::pin(look_up_cert_status(kms, &ca_owm, &ca_cert, serial)).await?
             };
 
             entries.push(OcspStatusEntry {
@@ -449,45 +454,56 @@ const fn map_nonce_policy(config: &NoncePolicyConfig) -> NoncePolicy {
 /// | `Destroyed` after a Revoke | revoked |
 /// | `Destroyed` without Revoke / not found | unknown |
 ///
+/// Only the certificates the CA really issued count (see `find_ca_issued_certificates`); when
+/// several stored records carry the serial, a revoked one wins over an active one.
+///
 /// `revocationTime` and `revocationReason` come from the stored revocation
 /// details (`deactivation_date`, `revocation_reason`), exactly as in the CRL, so
 /// both sources agree and verifiers see when the certificate was actually revoked.
 fn look_up_cert_status<'a>(
     kms: &'a KMS,
-    ca_uid: &'a str,
+    ca: &'a ObjectWithMetadata,
+    ca_cert: &'a X509,
     serial_hex: &'a str,
 ) -> OcspStatusFuture<'a> {
     Box::pin(async move {
-        let result = Box::pin(kms.database.find_certificate_by_serial(
-            ca_uid,
-            serial_hex,
-            kms.vendor_id(),
+        let serial = serial_hex.to_ascii_uppercase();
+        let records = Box::pin(find_ca_issued_certificates(
+            kms,
+            ca,
+            ca_cert,
+            &HashSet::from([serial.clone()]),
         ))
-        .await
-        .context("find_certificate_by_serial")?;
+        .await?
+        .remove(&serial)
+        .unwrap_or_default();
 
-        Ok(match result {
-            None => OcspCertStatus::Unknown,
-            Some((_uid, state, attributes)) => match state {
-                State::Active | State::PreActive => OcspCertStatus::Good,
-                // Mirrors `generate_crl::find_revoked_certificates`.
-                State::Destroyed if attributes.revocation_reason.is_none() => {
-                    OcspCertStatus::Unknown
-                }
-                State::Compromised
-                | State::Destroyed_Compromised
-                | State::Deactivated
-                | State::Destroyed => OcspCertStatus::Revoked {
-                    revocation_time: attributes
-                        .deactivation_date
-                        .unwrap_or_else(OffsetDateTime::now_utc),
-                    reason: attributes
-                        .revocation_reason
-                        .as_ref()
-                        .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
-                },
+        // Mirrors `generate_crl::find_revoked_certificates`.
+        if let Some((_, _, attributes)) = records
+            .iter()
+            .filter(|(_, state, attributes)| is_revoked(*state, attributes))
+            .min_by_key(|(_, _, attributes)| attributes.deactivation_date)
+        {
+            return Ok(OcspCertStatus::Revoked {
+                revocation_time: attributes
+                    .deactivation_date
+                    .unwrap_or_else(OffsetDateTime::now_utc),
+                reason: attributes
+                    .revocation_reason
+                    .as_ref()
+                    .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
+            });
+        }
+        Ok(
+            if records
+                .iter()
+                .any(|(_, state, _)| matches!(state, State::Active | State::PreActive))
+            {
+                OcspCertStatus::Good
+            } else {
+                OcspCertStatus::Unknown
             },
-        })
+        )
     })
 }
 

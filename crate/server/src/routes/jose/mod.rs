@@ -35,6 +35,15 @@ pub(crate) use tags::{
 pub(crate) use unwrap::unwrap_key as unwrap_key_handler;
 pub(crate) use verify::verify as verify_handler;
 
+/// Build the RFC 7515 §2 JWS Signing Input: `ASCII(protected_b64 + "." + payload_b64)`.
+fn jws_signing_input(protected_b64: &str, payload_b64: &str) -> Vec<u8> {
+    let mut signing_input = Vec::with_capacity(protected_b64.len() + 1 + payload_b64.len());
+    signing_input.extend_from_slice(protected_b64.as_bytes());
+    signing_input.push(b'.');
+    signing_input.extend_from_slice(payload_b64.as_bytes());
+    signing_input
+}
+
 /// Return the ECDSA coordinate byte-length for JOSE EC algorithms (None for non-EC algs).
 ///
 /// Per RFC 7518 §3.4:
@@ -241,8 +250,27 @@ pub(super) fn ensure_json_object(json_bytes: &[u8]) -> Result<(), CryptoApiError
     }
     Ok(())
 }
+
+/// Name a `/v1/crypto` request in the audit log as `METHOD /route/pattern` and, when given,
+/// the key it acts on. Calling it again overwrites the previous values.
+pub(crate) fn audit(req: &actix_web::HttpRequest, kid: Option<&str>) {
+    use actix_web::HttpMessage as _;
+
+    use crate::middlewares::{KmipObjectUid, KmipOperationName};
+
+    let operation = req
+        .match_pattern()
+        .map(|pattern| format!("{} {pattern}", req.method()));
+    let mut extensions = req.extensions_mut();
+    if let Some(operation) = operation {
+        extensions.insert(KmipOperationName(operation));
+    }
+    if let Some(kid) = kid {
+        extensions.insert(KmipObjectUid(kid.to_owned()));
+    }
+}
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::assertions_on_result_states)]
+#[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
 mod lenient_str_tests {
     use std::borrow::Cow;
 
@@ -268,14 +296,18 @@ mod lenient_str_tests {
     fn test_ensure_json_object_rejects_arrays_and_primitives() {
         use super::ensure_json_object;
 
-        assert!(ensure_json_object(br#"{"kid":"k1"}"#).is_ok());
-        assert!(ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").is_ok());
+        ensure_json_object(br#"{"kid":"k1"}"#).unwrap();
+        ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").unwrap();
 
-        assert!(ensure_json_object(b"[\"k1\",\"dir\",\"A256GCM\"]").is_err());
-        assert!(ensure_json_object(b"\"just a string\"").is_err());
-        assert!(ensure_json_object(b"12345").is_err());
-        assert!(ensure_json_object(b"true").is_err());
-        assert!(ensure_json_object(b"").is_err());
-        assert!(ensure_json_object(b"   ").is_err());
+        for input in [
+            &b"[\"k1\",\"dir\",\"A256GCM\"]"[..],
+            b"\"just a string\"",
+            b"12345",
+            b"true",
+            b"",
+            b"   ",
+        ] {
+            ensure_json_object(input).unwrap_err();
+        }
     }
 }

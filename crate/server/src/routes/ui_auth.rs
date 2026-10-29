@@ -418,9 +418,9 @@ pub(crate) async fn login_as(
             serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
     }
-    let Some(ref jwks_manager) = auth_verifier_runtime.jwks_manager else {
+    let Some(auth_verifier) = &auth_verifier_runtime.auth_verifier else {
         return HttpResponse::InternalServerError().json(
-            serde_json::json!({ "error": "The Auth Verifier server JWKS manager is not available" }),
+            serde_json::json!({ "error": "The Auth Verifier server validator is not available" }),
         );
     };
     // Guaranteed non-empty by `ui_login_enabled()`.
@@ -528,7 +528,7 @@ pub(crate) async fn login_as(
                 );
             };
 
-            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(jwks_manager, &token).await
+            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(auth_verifier, &token).await
             {
                 Ok(sub) => sub,
                 Err(e) => {
@@ -626,9 +626,9 @@ async fn auth_verifier_session_user(
     auth_verifier_runtime: &AuthVerifierRuntimeConfig,
 ) -> Option<UserId> {
     let realm = auth_verifier_runtime.config.saml_session_realm()?;
-    let jwks_manager = auth_verifier_runtime.jwks_manager.as_ref()?;
+    let auth_verifier = auth_verifier_runtime.auth_verifier.as_ref()?;
     let cookie = req.cookie(AUTH_VERIFIER_SESSION_COOKIE)?;
-    authenticate_auth_verifier_session_cookie(jwks_manager, cookie.value(), realm)
+    authenticate_auth_verifier_session_cookie(auth_verifier, cookie.value(), realm)
         .await
         .inspect_err(|e| debug!("Auth Verifier session cookie rejected: {e}"))
         .ok()
@@ -758,6 +758,10 @@ async fn end_auth_verifier_session(
     {
         warn!("Logout: failed to revoke the Auth Verifier session: {e}");
     }
+    // The session is gone (or the Auth Verifier unreachable): stop trusting it at once here.
+    if let Some(auth_verifier) = &auth_verifier_runtime.auth_verifier {
+        auth_verifier.forget_session(cookie.value());
+    }
     true
 }
 
@@ -852,7 +856,7 @@ mod tests {
         config::{AuthVerifierConfig, AuthVerifierRuntimeConfig, OidcConfig, OidcRuntimeConfig},
         middlewares::{
             AUTH_VERIFIER_SESSION_COOKIE,
-            auth_verifier_test_helpers::{auth_verifier_token, empty_jwks_manager},
+            auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier},
         },
     };
 
@@ -866,7 +870,7 @@ mod tests {
                 auth_verifier_saml_realm: saml_realm.map(str::to_owned),
                 ..AuthVerifierConfig::default()
             },
-            jwks_manager: Some(empty_jwks_manager().await),
+            auth_verifier: Some(live_auth_verifier().await),
         }
     }
 

@@ -24,7 +24,8 @@ info = false
 
 # The HSM model.
 # `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-# `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
+# `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+# are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
 # hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | azure_cloud_hsm | gcp_cloud_hsm | kryoptic | other
 # List of KMS usernames that are granted HSM admin privileges.
@@ -701,3 +702,9 @@ failure_mode = "continue"
 [audit.file]
 
 [audit.postgres]
+# PostgreSQL audit database (URI-style DSN). Setting it selects the PostgreSQL audit backend
+# instead of [audit.file]; must be a different database than [db] database_url.
+# url = "postgresql://kms_audit:password@localhost:5432/kms_audit"
+# Identifies this KMS instance's audit hash chain. Required when `url` is set; must be stable
+# across restarts and unique per KMS instance sharing the audit database.
+# instance_id = "kms-primary"

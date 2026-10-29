@@ -164,7 +164,7 @@ san_upn_regex = "[a-z0-9.]+@iot\\.example"
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `min_rsa_key_bits` | `2048` | Smallest accepted RSA key. Values below 2048 stop the server at startup. |
-| `allowed_ec_curves` | `prime256v1`, `secp384r1`, `secp521r1` | Accepted elliptic curves. Must not be empty. |
+| `allowed_ec_curves` | `prime256v1`, `secp384r1`, `secp521r1` | Accepted elliptic curves. Must not be empty. EST `csrattrs` advertises only the first entry, so list the preferred curve first; enrollment still accepts every listed curve. |
 | `allowed_ekus` | `clientAuth` | Allowed **extended key usages** (what the certificate may be used for), as names or dotted OIDs. Added automatically when the CSR asks for none. Must not be empty. |
 | `max_validity_days` | `365` | Upper bound on a certificate's lifetime. |
 | `default_validity_days` | `90` | Lifetime given to certificates, because neither protocol lets the device request one. |

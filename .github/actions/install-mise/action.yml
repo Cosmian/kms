@@ -19,15 +19,27 @@ runs:
       run: |
         set -euo pipefail
         MISE_VERSION="v2026.10.8"
-        # Recompute pins: curl -fsSL https://github.com/jdx/mise/releases/download/<version>/mise-<version>-linux-<arch> | sha256sum
-        case "$RUNNER_ARCH" in
-          X64)
-            arch="x64"
+        # Recompute pins from https://github.com/jdx/mise/releases/download/<version>/SHASUMS256.txt
+        # musl hosts (Alpine containers) need the -musl build: the glibc one fails to
+        # relocate even with gcompat (`__res_init: symbol not found`).
+        libc="gnu"
+        if compgen -G '/lib/ld-musl-*.so.1' >/dev/null; then libc="musl"; fi
+        case "$RUNNER_ARCH/$libc" in
+          X64/gnu)
+            asset="linux-x64"
             checksum="c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428"
             ;;
-          ARM64)
-            arch="arm64"
+          ARM64/gnu)
+            asset="linux-arm64"
             checksum="6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5"
+            ;;
+          X64/musl)
+            asset="linux-x64-musl"
+            checksum="043dc6b9077db988269ca2f85059851cb09fc080355350021363e95a5e227f84"
+            ;;
+          ARM64/musl)
+            asset="linux-arm64-musl"
+            checksum="d9c5447ad5084b7bf9705ef2913dfad97268235f15849a51e88a21ede7e7204a"
             ;;
           *)
             echo "::error::Unsupported Linux runner architecture: $RUNNER_ARCH"
@@ -37,7 +49,7 @@ runs:
         work_dir="$(mktemp -d)"
         trap 'rm -rf -- "${work_dir:?}"' EXIT
         curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors \
-          -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-${arch}" \
+          -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-${asset}" \
           -o "${work_dir}/mise"
         echo "${checksum}  ${work_dir}/mise" | sha256sum -c -
         install -Dm755 "${work_dir}/mise" "$HOME/.local/bin/mise"

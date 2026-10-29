@@ -46,11 +46,9 @@ pub(crate) fn open_pool(
     let lib = Arc::new(HsmLib::instantiate(dll)?);
     // Reproduces the old split: delegated (`--delegated`) uses v3 message AES-GCM,
     // software keys use classic `C_Encrypt` with `CKM_AES_GCM`
-    // (`supports_aes_gcm_caller_iv` stays `true`).
-    let caps = HsmCapabilities {
-        supports_aes_gcm_message: hsm_prefix.is_some(),
-        ..HsmCapabilities::default()
-    };
+    // (`aes.gcm.supports_caller_iv` stays `true`).
+    let mut caps = HsmCapabilities::default();
+    caps.aes.gcm.supports_message = hsm_prefix.is_some();
     let slot = SlotManager::instantiate(lib.clone(), PROVIDER_SLOT_ID, Some(String::new()), caps)?;
     let sessions = (0..pool_size)
         .map(|_| slot.open_session(true))

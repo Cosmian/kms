@@ -53,7 +53,7 @@ pub(super) enum WriterMsg {
 #[derive(Clone)]
 pub(crate) struct AuditStore {
     sender: mpsc::Sender<WriterMsg>,
-    /// Counts events dropped because the channel was full.
+    /// Counts events dropped because the channel was full or the writer failed to persist them.
     /// Checked by the writer loop to emit a sentinel event before the next real event.
     dropped_count: Arc<AtomicU64>,
     /// Set by the writer once the configured `max_size_bytes` cap is reached.
@@ -1093,10 +1093,9 @@ mod tests {
         }
     }
 
-    /// A single failed write mid-run must not advance the chain: the failed
-    /// draft is lost, and the next successful write reuses its `id`/`prev_hash`
-    /// slot — proving the "do not advance on failure" invariant that was
-    /// previously only exercised on the happy path.
+    /// A single failed write mid-run must not advance the chain: the failed draft is
+    /// lost, the next successful write reuses its `id`/`prev_hash` slot, and that write
+    /// is preceded by an `audit:eviction` sentinel accounting for the loss.
     #[tokio::test]
     async fn faulty_sink_error_does_not_advance_chain_and_reuses_slot() {
         let (tx, rx) = mpsc::channel::<WriterMsg>(TEST_CAPACITY);
@@ -1117,8 +1116,8 @@ mod tests {
         let sink = handle.await.unwrap();
         assert_eq!(
             sink.events.len(),
-            4,
-            "one of the 5 drafts must be lost to the injected write failure"
+            5,
+            "4 of the 5 drafts plus one eviction sentinel for the failed write"
         );
         for (i, ev) in sink.events.iter().enumerate() {
             assert_eq!(
@@ -1127,16 +1126,23 @@ mod tests {
                 "ids must stay contiguous — the failed write's slot must be reused, not skipped"
             );
         }
+        let sentinel = &sink.events[2];
+        assert_eq!(sentinel.operation, "audit:eviction");
+        assert_eq!(
+            sentinel.result,
+            AuditResult::Failure("1 events dropped (channel full or write failed)".to_owned())
+        );
         assert_valid_chain(&sink.events);
     }
 
-    /// When every write fails, nothing is persisted and the writer loop still
-    /// exits cleanly (no panic) once the channel closes.
+    /// A failed eviction sentinel keeps the loss pending: no event is chained until a
+    /// sentinel covering every lost event (including the one it held back) is written.
     #[tokio::test]
-    async fn faulty_sink_all_writes_fail_persists_nothing() {
+    async fn faulty_sink_failed_sentinel_is_retried_with_cumulative_count() {
         let (tx, rx) = mpsc::channel::<WriterMsg>(TEST_CAPACITY);
         let dropped_count = Arc::new(AtomicU64::new(0));
-        let sink = FaultySink::new(|_| true);
+        // Call 0: 1st draft fails. Call 1: sentinel for it fails (2nd draft held back).
+        let sink = FaultySink::new(|idx| idx < 2);
 
         let handle =
             tokio::spawn(async move { writer_loop(sink, 0, [0_u8; 32], rx, dropped_count).await });
@@ -1149,9 +1155,44 @@ mod tests {
         drop(tx);
 
         let sink = handle.await.unwrap();
+        assert_eq!(sink.events.len(), 2, "sentinel + 3rd draft");
+        let sentinel = sink.events.first().unwrap();
+        assert_eq!(sentinel.operation, "audit:eviction");
+        assert_eq!(
+            sentinel.result,
+            AuditResult::Failure("2 events dropped (channel full or write failed)".to_owned())
+        );
+        assert_valid_chain(&sink.events);
+    }
+
+    /// When every write fails, nothing is persisted, every loss stays counted for the
+    /// next sentinel, and the writer loop still exits cleanly once the channel closes.
+    #[tokio::test]
+    async fn faulty_sink_all_writes_fail_persists_nothing() {
+        let (tx, rx) = mpsc::channel::<WriterMsg>(TEST_CAPACITY);
+        let dropped_count = Arc::new(AtomicU64::new(0));
+        let sink = FaultySink::new(|_| true);
+
+        let counter = Arc::clone(&dropped_count);
+        let handle =
+            tokio::spawn(async move { writer_loop(sink, 0, [0_u8; 32], rx, counter).await });
+
+        for _ in 0..3 {
+            tx.send(WriterMsg::Event(Box::new(make_draft())))
+                .await
+                .unwrap();
+        }
+        drop(tx);
+
+        let sink = handle.await.unwrap();
         assert!(
             sink.events.is_empty(),
             "no event should be persisted when every write fails"
+        );
+        assert_eq!(
+            dropped_count.load(std::sync::atomic::Ordering::Relaxed),
+            3,
+            "every failed write must be counted for the eviction sentinel"
         );
     }
 
@@ -1206,8 +1247,9 @@ mod tests {
         let draft = make_draft();
         let mut prev_hash = [0_u8; 32];
 
-        let next_id = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash).await;
+        let (next_id, written) = write_draft_to_chain(&mut sink, draft, 0, &mut prev_hash).await;
 
+        assert!(written);
         assert_eq!(
             next_id, 6,
             "must continue past the resynced position, not the original one"
@@ -1228,7 +1270,7 @@ mod tests {
 /// call site actually recovers content corruption, not just the
 /// `cosmian_kms_server_database` sink underneath it in isolation.
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod live_postgres_tests {
     use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
     use cosmian_kms_interfaces::AuditSink;
@@ -1338,19 +1380,21 @@ mod live_postgres_tests {
             2,
             "generation 1 must contain the reanchor plus the one enqueued event"
         );
-        assert_eq!(gen1[0].operation, "audit:reanchor");
-        assert_eq!(gen1[0].id, 0);
-        assert_eq!(gen1[0].prev_hash, [0_u8; 32]);
+        let reanchor = gen1.first().expect("generation 1 reanchor");
+        let event = gen1.get(1).expect("generation 1 event");
+        assert_eq!(reanchor.operation, "audit:reanchor");
+        assert_eq!(reanchor.id, 0);
+        assert_eq!(reanchor.prev_hash, [0_u8; 32]);
         let details: serde_json::Value =
-            serde_json::from_str(gen1[0].details.as_deref().unwrap()).unwrap();
-        assert_eq!(details["sealed_generation"], 0);
-        assert_eq!(details["new_generation"], 1);
-        assert_eq!(details["first_failure_id"], 2);
-        assert_eq!(details["reason"], "hash_mismatch");
+            serde_json::from_str(reanchor.details.as_deref().unwrap()).unwrap();
+        assert_eq!(details.get("sealed_generation").unwrap(), 0);
+        assert_eq!(details.get("new_generation").unwrap(), 1);
+        assert_eq!(details.get("first_failure_id").unwrap(), 2);
+        assert_eq!(details.get("reason").unwrap(), "hash_mismatch");
 
-        assert_eq!(gen1[1].id, 1);
+        assert_eq!(event.id, 1);
         assert_eq!(
-            gen1[1].prev_hash, gen1[0].row_hash,
+            event.prev_hash, reanchor.row_hash,
             "the event enqueued after recovery must link to the reanchor"
         );
     }

@@ -15,10 +15,10 @@ use pkcs11_sys::{
     CK_UNAVAILABLE_INFORMATION, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
     CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKG_NO_GENERATE,
     CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA,
-    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKM_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
     CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
-    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
-    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
+    CKR_FUNCTION_NOT_SUPPORTED, CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
@@ -31,12 +31,13 @@ use crate::{
     },
     objects_store::OBJECTS_STORE,
     pkcs11::{
-        C_CloseSession, C_DecryptMessage, C_Encrypt, C_EncryptInit, C_EncryptMessage, C_Finalize,
-        C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
-        C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo,
-        C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageDecryptFinal,
-        C_MessageDecryptInit, C_MessageEncryptFinal, C_MessageEncryptInit, C_OpenSession,
-        C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_CloseSession, C_Decrypt, C_DecryptInit, C_DecryptMessage, C_Encrypt, C_EncryptInit,
+        C_EncryptMessage, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
+        C_GenerateKey, C_GetAttributeValue, C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo,
+        C_GetMechanismList, C_GetSessionInfo, C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo,
+        C_Initialize, C_MessageDecryptFinal, C_MessageDecryptInit, C_MessageEncryptFinal,
+        C_MessageEncryptInit, C_MessageSignInit, C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED,
+        SLOT_ID,
     },
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
@@ -1085,6 +1086,81 @@ fn encrypt_buffer_too_small_does_not_overflow() {
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
 }
 
+/// `C_Decrypt` with a too-small buffer must return `CKR_BUFFER_TOO_SMALL`, report the
+/// required length in `pulDataLen` and keep the operation active for the retry
+/// (PKCS#11 v3.0 §5.2).
+#[test]
+#[serial]
+fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session_h = CK_INVALID_HANDLE;
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session_h,
+            )
+        },
+        CKR_OK
+    );
+    let key_handle = test_generate_key(session_h);
+
+    let mut iv = [0_u8; AES_IV_SIZE];
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_AES_CBC_PAD,
+        pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+    };
+    assert_eq!(
+        unsafe { C_DecryptInit(session_h, &raw mut mechanism, key_handle) },
+        CKR_OK
+    );
+    // The test backend returns 32 bytes of cleartext for AES-CBC; offer only 16.
+    let mut ciphertext = [0_u8; 48];
+    let mut output = [0xAA_u8; 32];
+    let mut output_len: CK_ULONG = 16;
+    assert_eq!(
+        unsafe {
+            C_Decrypt(
+                session_h,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        },
+        CKR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(output_len, 32);
+    assert!(
+        output.iter().all(|b| *b == 0xAA),
+        "output buffer was written"
+    );
+
+    // Retry with the reported length on the still-active operation.
+    assert_eq!(
+        unsafe {
+            C_Decrypt(
+                session_h,
+                ciphertext.as_mut_ptr(),
+                ciphertext.len() as CK_ULONG,
+                output.as_mut_ptr(),
+                &raw mut output_len,
+            )
+        },
+        CKR_OK
+    );
+    assert_eq!(output_len, 32);
+    assert_eq!(output, [0_u8; 32]);
+
+    assert_eq!(C_CloseSession(session_h), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
 /// `C_GenerateKey` must reject a null `phKey` instead of writing through it.
 #[test]
 #[serial]
@@ -1330,6 +1406,36 @@ fn find_private_key_by_public_key_id_then_sign() {
         unsafe { C_SignInit(session, &raw mut mechanism, handles[0]) },
         CKR_OK
     );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// `C_MessageSignInit` only supports `CKM_EDDSA`: any other mechanism is rejected with
+/// `CKR_FUNCTION_NOT_SUPPORTED`, even when its parameters are absent (PSS without
+/// `CK_RSA_PKCS_PSS_PARAMS` used to yield a parameter error instead).
+#[test]
+#[serial]
+fn message_sign_init_rejects_non_eddsa_before_parsing_parameters() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("msg_sign_pss");
+    let session = open_test_session();
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"msg_sign_pss");
+    assert_eq!(handles.len(), 1, "expected exactly one private key handle");
+
+    for mechanism_type in [CKM_RSA_PKCS_PSS, CKM_ECDSA] {
+        let mut mechanism = CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        assert_eq!(
+            unsafe { C_MessageSignInit(session, &raw mut mechanism, handles[0]) },
+            CKR_FUNCTION_NOT_SUPPORTED,
+            "mechanism {mechanism_type:#x}"
+        );
+    }
 
     assert_eq!(C_CloseSession(session), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);

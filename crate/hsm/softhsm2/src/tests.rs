@@ -7,6 +7,7 @@ use std::{collections::HashMap, ptr};
 
 use cosmian_kms_base_hsm::{
     HResult,
+    hsm_capabilities::{HsmCapabilities, HsmProvider},
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -156,6 +157,26 @@ fn test_hsm_softhsm2_get_supported_algorithms() -> HResult<()> {
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_generate_aes_key() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
+    shared::generate_aes_key(&slot)
+}
+
+/// `SoftHSM2` posing as an HSM that rejects `CKA_SENSITIVE` (AWS/Azure/GCP Cloud HSM, Luna).
+struct SofthsmWithoutAesSensitiveProvider;
+
+impl HsmProvider for SofthsmWithoutAesSensitiveProvider {
+    fn capabilities() -> HsmCapabilities {
+        let mut capabilities = SofthsmCapabilityProvider::capabilities();
+        capabilities.aes.supports_sensitive_attribute = false;
+        capabilities
+    }
+}
+
+/// A sensitive AES key must still be generated with `CKA_EXTRACTABLE=false` when the HSM
+/// does not accept `CKA_SENSITIVE` (previously left at the token default).
+#[test]
+#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
+fn test_hsm_softhsm2_sensitive_aes_key_without_sensitive_attribute() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<SofthsmWithoutAesSensitiveProvider>(&cfg()?)?;
     shared::generate_aes_key(&slot)
 }
 

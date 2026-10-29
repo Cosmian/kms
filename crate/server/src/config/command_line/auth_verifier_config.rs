@@ -26,8 +26,11 @@ use serde::{Deserialize, Serialize};
 pub struct AuthVerifierConfig {
     /// Base URL of the Auth Verifier server (e.g. `https://auth.example.com`).
     ///
-    /// When set, the KMS validates bearer tokens against the JWKS published by this
-    /// server.  The `sub` claim is used as the user identity.
+    /// When set, the KMS validates bearer tokens and session cookies against the JWKS
+    /// published by this server, and checks that the session is still live with
+    /// `GET {auth_verifier_url}/whoami` (result cached 30 s). The server must therefore be
+    /// reachable at runtime: requests are rejected while it is unreachable.
+    /// The `sub` claim is used as the user identity.
     #[clap(long, env = "KMS_AUTH_VERIFIER_URL", verbatim_doc_comment)]
     pub auth_verifier_url: Option<String>,
 

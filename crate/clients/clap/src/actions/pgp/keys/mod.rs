@@ -1,21 +1,24 @@
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
-use self::{
-    create_key::CreatePgpKeyAction, destroy_key::DestroyPgpKeyAction,
-    revoke_key::RevokePgpKeyAction,
+use self::{create_key::CreatePgpKeyAction, destroy_key::DestroyPgpKeyAction};
+use crate::{
+    actions::shared::{RevokeKeyAction, dispatch_run},
+    error::result::KmsCliResult,
 };
-use crate::error::result::KmsCliResult;
 
 pub mod create_key;
 pub mod destroy_key;
-pub mod revoke_key;
 
 /// Create, revoke, and destroy `OpenPGP` keys.
 #[derive(Subcommand)]
 pub enum KeysCommands {
     Create(CreatePgpKeyAction),
-    Revoke(RevokePgpKeyAction),
+    /// Revoke an `OpenPGP` key.
+    ///
+    /// Once a key is revoked, it can only be exported by the owner of the key,
+    /// using the --allow-revoked flag on the export function.
+    Revoke(RevokeKeyAction),
     Destroy(DestroyPgpKeyAction),
 }
 
@@ -30,17 +33,7 @@ impl KeysCommands {
     ///
     /// Returns an error if the specific key action fails.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        match self {
-            Self::Create(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Revoke(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Destroy(action) => {
-                action.run(kms_rest_client).await?;
-            }
-        }
+        dispatch_run!(self, kms_rest_client, [Create, Revoke, Destroy]);
         Ok(())
     }
 }

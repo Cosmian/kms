@@ -929,3 +929,67 @@ async fn continue_mode_succeeds_after_size_cap_reached_without_new_audit_row() -
     std::fs::remove_file(&path).ok();
     Ok(())
 }
+
+/// Regression (gate #2 F4): `/v1/crypto` requests are audited with their route as the
+/// operation, the key they act on as `object_uid`, and their outcome.
+#[tokio::test]
+async fn audit_records_crypto_api_operations() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+
+    let path = temp_path("crypto_api");
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
+    let (app, _kms) =
+        test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
+
+    let created: serde_json::Value = test_utils::post_json_with_uri(
+        &app,
+        serde_json::json!({"kty": "oct", "alg": "A256GCM"}),
+        "/v1/crypto/keys",
+    )
+    .await?;
+    let kid = created["kid"].as_str().unwrap().to_owned();
+    let _jwe: serde_json::Value = test_utils::post_json_with_uri(
+        &app,
+        serde_json::json!({"kid": kid, "alg": "dir", "enc": "A256GCM", "data": "aGVsbG8"}),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+    let res = call_service(
+        &app,
+        actix_test::TestRequest::delete()
+            .uri("/v1/crypto/keys/no-such-key")
+            .to_request(),
+    )
+    .await;
+    assert!(!res.status().is_success());
+
+    store.flush().await;
+    let file = std::fs::File::open(&path).expect("audit file not created");
+    let events: Vec<cosmian_kms_access::audit::AuditEvent> =
+        std::io::BufRead::lines(std::io::BufReader::new(file))
+            .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+            .collect();
+    let summary: Vec<_> = events
+        .iter()
+        .map(|e| {
+            (
+                e.operation.as_str(),
+                e.object_uid.as_deref(),
+                e.result == AuditResult::Success,
+            )
+        })
+        .collect();
+    // The route pattern `/v1/crypto/keys/{kid}`, built so that it is not read as a format string.
+    let delete_route = format!("DELETE /v1/crypto/keys/{{{}}}", "kid");
+    assert_eq!(
+        summary,
+        [
+            ("POST /v1/crypto/keys", Some(kid.as_str()), true),
+            ("POST /v1/crypto/encrypt", Some(kid.as_str()), true),
+            (delete_route.as_str(), Some("no-such-key"), false),
+        ]
+    );
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}

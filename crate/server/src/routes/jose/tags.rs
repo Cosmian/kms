@@ -30,6 +30,7 @@ pub(crate) async fn add_tags(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "POST /v1/crypto/keys/{kid}/tags");
+    super::audit(&req, Some(&kid));
 
     validate_user_tags(&body.tags)?;
 
@@ -58,6 +59,7 @@ pub(crate) async fn remove_tags(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "DELETE /v1/crypto/keys/{kid}/tags");
+    super::audit(&req, Some(&kid));
 
     validate_user_tags(&body.tags)?;
 
@@ -84,6 +86,7 @@ pub(crate) async fn list_tags(
     let kid = kid.into_inner();
 
     trace!(user = user.as_str(), "GET /v1/crypto/keys/{kid}/tags");
+    super::audit(&req, Some(&kid));
 
     let (_uid, all_tags) = fetch_all_tags(&kms, &kid, &user, KmipOperation::GetAttributes).await?;
 
