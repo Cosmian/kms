@@ -216,6 +216,12 @@ All notable changes to this project will be documented in this file.
 - **KMIP / Server**: cut per-request allocations on the TTLV-JSON, binary TTLV, KMIP `ByteString` decoding, database, audit and middleware paths (4 KiB `Encrypt` decode: 166 µs → 7 µs; `retrieve_object_for_operation` on a cached key: 36 → 3 allocations) ([#1280](https://github.com/Cosmian/kms/pull/1280))
 - **Workspace**: remove every `#[allow(dead_code)]`/`#[expect(dead_code)]`, declare crate versions and shared dependencies once in the root `Cargo.toml`, use safe OpenSSL APIs instead of raw FFI in PQC ([#1267](https://github.com/Cosmian/kms/pull/1267), [#1260](https://github.com/Cosmian/kms/pull/1260))
 - **HSM**: group the `HsmCapabilities` vendor flags into `aes` (`supports_sensitive_attribute`, `key_wrap_pad_is_rfc5649` and the `aes.gcm` sub-struct `supports_caller_iv`, `allows_caller_iv_in_fips`, `supports_message`, which replaces `supports_aes_gcm_message`), `rsa` (`supports_sensitive_attribute`, `oaep_requires_source_data_ptr`, `supports_oaep_key_wrap`) and `ec` (`supports_sensitive_attribute`, `enforces_ecdsa_digest_strength`) sub-structs, add the top-level `supports_message_sign_verify` flag, and remove vendor names from `base_hsm` session code; custom HSM providers must adapt ([#1340](https://github.com/Cosmian/kms/pull/1340), [#1341](https://github.com/Cosmian/kms/pull/1341))
+- **Code consolidation** (no behaviour change):
+    - Server: one auth middleware stack for the `/tokenize`, `/v1/crypto` and default scopes; shared attribute dispatch arms; shared helpers for the AWS XKS error mapping, Google CSE responses, Azure EKM parameter checks, the JWS signing input, wizard prompt errors and the Crypto Officer `Create` grant/revoke checks.
+    - HSM and PKCS#11: one session-checkout helper in `BaseHsm`; shared output-buffer copy and `C_EncryptInit`/`C_DecryptInit` key resolution in the PKCS#11 module.
+    - KMIP and crypto: macro-generated KMIP 1.4 response and key-block conversions; one raw-key path for Ed25519, Ed448, X25519 and X448 key pairs.
+    - SQL stores: shared helpers for merging granted operations, rotation filtering and CRL numbers.
+    - CLI: one `RevokeKeyAction` and one destroy helper for every key group. The per-group `revoke_key` modules of `cosmian_kms_cli_actions` and `RevokePgpKeyAction` are removed; use `actions::shared::RevokeKeyAction`.
 
 ### 🧪 Testing
 
