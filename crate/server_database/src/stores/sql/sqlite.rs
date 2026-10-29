@@ -24,9 +24,14 @@ use serde_json::Value;
 use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
-use super::locate_query::{
-    LocateParam, LocateQuery, SqlitePlaceholder, find_by_rotate_name_query,
-    find_due_for_rotation_query, query_all_from_attributes, query_from_attributes,
+use super::{
+    crl_number_from_sql, crl_number_to_sql,
+    locate_query::{
+        LocateParam, LocateQuery, SqlitePlaceholder, filter_due_for_rotation,
+        find_by_rotate_name_query, find_due_for_rotation_query, query_all_from_attributes,
+        query_from_attributes,
+    },
+    merge_granted_operations,
 };
 use crate::{
     db_error,
@@ -993,14 +998,16 @@ impl ObjectsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
 
-        let mut due = Vec::with_capacity(rows.len());
-        for (uid, owner, attrs_json) in rows {
-            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
-            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                due.push((uid, owner));
-            }
-        }
-        Ok(due)
+        Ok(filter_due_for_rotation(
+            rows.into_iter().map(|(uid, owner, attrs_json)| {
+                (
+                    uid,
+                    owner,
+                    serde_json::from_str(&attrs_json).unwrap_or_default(),
+                )
+            }),
+            now,
+        ))
     }
 
     async fn find_by_rotate_name(
@@ -1197,14 +1204,7 @@ impl PermissionsStore for SqlitePool {
                         let perms_raw: String = r.get(3)?;
                         let perms: HashSet<KmipOperation> = serde_json::from_str(&perms_raw)
                             .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                        // The same object may be returned twice: once for the direct
-                        // grant and once for the wildcard `*` grant. Union the
-                        // permission sets instead of overwriting the entry.
-                        ids.entry(id)
-                            .and_modify(|(_, _, existing_perms)| {
-                                existing_perms.extend(perms.iter().copied());
-                            })
-                            .or_insert((owner, state, perms));
+                        merge_granted_operations(&mut ids, id, owner, state, perms);
                     }
                     Ok(ids)
                 },
@@ -1429,7 +1429,7 @@ impl PermissionsStore for SqlitePool {
         let issuer_id_s = issuer_id.to_owned();
         let crl_der_v = crl_der.to_vec();
 
-        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let crl_number_i = crl_number_to_sql(crl_number);
         let generated_at_s = generated_at.to_owned();
         let next_update_s = next_update.to_owned();
         self.writer
@@ -1511,7 +1511,7 @@ impl PermissionsStore for SqlitePool {
             )
             .await
             .map_err(DbError::from)?;
-        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+        Ok(max.map(crl_number_from_sql))
     }
 }
 

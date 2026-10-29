@@ -48,6 +48,22 @@ use crate::{
     result::KResult,
 };
 
+/// Initial lifecycle state of an imported or registered object (KMIP 2.1 §3.1.7):
+/// `Active` if `ActivationDate` is present and `<= now`, `PreActive` otherwise.
+pub(super) fn initial_state(attributes: &Attributes, operation: &str) -> KResult<State> {
+    let now = time_normalize()?;
+    Ok(if attributes.activation_date.is_some_and(|d| d <= now) {
+        debug!(
+            "{operation}: activation_date={:?} <= now, setting state to Active",
+            attributes.activation_date
+        );
+        State::Active
+    } else {
+        debug!("{operation}: no activation_date or future date, setting state to PreActive");
+        State::PreActive
+    })
+}
+
 /// Import a new object
 pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult<ImportResponse> {
     trace!(
@@ -84,22 +100,8 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
         }
     }
 
-    // Determine lifecycle state per KMIP 2.1 spec (same as Register operation):
-    // - If ActivationDate is absent or in the future → PreActive state
-    // - If ActivationDate is present and <= now → Active state
     let mut request = request;
-    let now = time_normalize()?;
-    let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
-    let mut desired_state = if activation_allows_active {
-        debug!(
-            "Import: activation_date={:?} <= now, setting state to Active",
-            request.attributes.activation_date
-        );
-        State::Active
-    } else {
-        debug!("Import: no activation_date or future date, setting state to PreActive");
-        State::PreActive
-    };
+    let mut desired_state = initial_state(&request.attributes, "Import")?;
 
     // For Active certificates, check CRL revocation status.
     // If revoked, transition directly to Compromised instead of Active.

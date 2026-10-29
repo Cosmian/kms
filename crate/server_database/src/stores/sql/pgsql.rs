@@ -34,11 +34,13 @@ use crate::{
             certificate_serial_tag,
         },
         sql::{
+            crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
             locate_query::{
-                LocateParam, LocateQuery, PgSqlPlaceholder, query_all_from_attributes,
-                query_from_attributes,
+                LocateParam, LocateQuery, PgSqlPlaceholder, filter_due_for_rotation,
+                query_all_from_attributes, query_from_attributes,
             },
+            merge_granted_operations,
         },
     },
 };
@@ -1162,19 +1164,16 @@ impl ObjectsStore for PgPool {
                 .query(&sql, &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let mut due = Vec::with_capacity(rows.len());
-            for row in rows {
-                let uid: String = row.get(0);
-                let owner: String = row.get(1);
-                let attrs: Attributes = match row.try_get::<_, Json<Attributes>>(2) {
-                    Ok(Json(a)) => a,
-                    Err(_) => Attributes::default(),
-                };
-                if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                    due.push((uid, owner));
-                }
-            }
-            Ok(due)
+            Ok(filter_due_for_rotation(
+                rows.iter().map(|row| {
+                    let attrs = match row.try_get::<_, Json<Attributes>>(2) {
+                        Ok(Json(a)) => a,
+                        Err(_) => Attributes::default(),
+                    };
+                    (row.get(0), row.get(1), attrs)
+                }),
+                now,
+            ))
         })
     }
 
@@ -1330,16 +1329,7 @@ impl PermissionsStore for PgPool {
                 let Json(perms): Json<HashSet<KmipOperation>> = row
                     .try_get(3)
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                // The same object may be returned twice: once for the direct
-                // grant and once for the wildcard `*` grant. Union the
-                // permission sets instead of overwriting the entry.
-                map.entry(id)
-                    .and_modify(
-                        |(_, _, existing_perms): &mut (String, State, HashSet<KmipOperation>)| {
-                            existing_perms.extend(perms.iter().copied());
-                        },
-                    )
-                    .or_insert((owner, state, perms));
+                merge_granted_operations(&mut map, id, owner, state, perms);
             }
             Ok(map)
         })
@@ -1562,7 +1552,7 @@ impl PermissionsStore for PgPool {
         generated_at: &str,
         next_update: &str,
     ) -> InterfaceResult<()> {
-        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let crl_number_i = crl_number_to_sql(crl_number);
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare(get_pgsql_query!("upsert-crl"))
@@ -1632,7 +1622,7 @@ impl PermissionsStore for PgPool {
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             // MAX() returns one row; the value is NULL when the table is empty.
             let max: Option<i64> = rows.first().and_then(|row| row.get::<_, Option<i64>>(0));
-            Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+            Ok(max.map(crl_number_from_sql))
         })
     }
 }

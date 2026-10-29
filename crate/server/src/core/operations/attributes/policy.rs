@@ -7,7 +7,12 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 
-use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
+use crate::{
+    core::{KMS, uid_utils::ObjectHandle},
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
+};
 
 /// Error for an attribute the server manages for this operation.
 ///
@@ -41,6 +46,27 @@ pub(crate) fn check_rotate_name(attribute: &Attribute, operation: &str) -> KResu
         Attribute::RotateName(name) if name.contains('@') => {
             Err(KmsError::InvalidRequest(format!(
                 "{operation}: rotate_name must not contain '@' (reserved for keyset versioning)"
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// For SQL (non-HSM) objects, requires `rotate_name` to equal the object's UID.
+///
+/// This enforces the gen-0 UID = keyset name invariant for deterministic `@N` addressing.
+/// `noun` names the object in the error ("key" or "object").
+pub(crate) fn check_sql_rotate_name(
+    uid: &str,
+    attribute: &Attribute,
+    operation: &str,
+    noun: &str,
+) -> KResult<()> {
+    match attribute {
+        Attribute::RotateName(name) if !ObjectHandle::from(uid).is_hsm() && name != uid => {
+            Err(KmsError::InvalidRequest(format!(
+                "{operation}: rotate_name ('{name}') must equal the {noun}'s UID ('{uid}') — \
+                 create the {noun} with the keyset name as its ID"
             )))
         }
         _ => Ok(()),

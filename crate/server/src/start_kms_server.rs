@@ -18,9 +18,10 @@ use actix_files::Files;
 use actix_identity::IdentityMiddleware;
 use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
-    App, HttpRequest, HttpResponse, HttpServer,
+    App, HttpRequest, HttpResponse, HttpServer, Scope,
+    body::MessageBody,
     cookie::{Key, time::Duration},
-    dev::ServerHandle,
+    dev::{ServerHandle, ServiceFactory, ServiceRequest, ServiceResponse, Transform},
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
@@ -1548,6 +1549,20 @@ pub async fn prepare_kms_server(
             app = app.service(azure_ekm_scope);
         }
 
+        let native_auth = NativeAuthStack {
+            kms_server: &kms_server_for_http,
+            use_api_token_auth,
+            use_cert_auth,
+            use_vault_token_auth,
+            auth_verifier: &auth_verifier,
+            auth_verifier_session_realm: &auth_verifier_session_realm,
+            jwt_configurations: &jwt_configurations,
+            spire_cache: &spire_cache,
+            spire_auth_verifier_url: &spire_auth_verifier_url,
+            vault_http_client: &vault_http_client,
+            spire_default_username: &spire_default_username,
+        };
+
         #[cfg(feature = "non-fips")]
         {
             // Middleware registration order: LAST registered = runs FIRST.
@@ -1560,40 +1575,14 @@ pub async fn prepare_kms_server(
             // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
             // the endpoint actually require authentication.
             let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
-            let tokenize_scope = web::scope("/tokenize")
-                .app_data(web::JsonConfig::default().limit(65_536))
-                .wrap(Condition::new(
+            let tokenize_scope = wrap_native_auth(
+                web::scope("/tokenize").app_data(web::JsonConfig::default().limit(65_536)),
+                Condition::new(
                     use_any_auth,
                     ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
-                ))
-                .wrap(SessionAuth)
-                .wrap(Condition::new(
-                    use_api_token_auth,
-                    api_token_middleware(kms_server_for_http.clone()),
-                ))
-                .wrap(Condition::new(
-                    use_auth_verifier,
-                    AuthVerifier::new(
-                        auth_verifier.clone(),
-                        auth_verifier_session_realm.clone(),
-                    ),
-                ))
-                .wrap(Condition::new(
-                    use_jwt_auth,
-                    jwt_auth_middleware(jwt_configurations.clone()),
-                ))
-                .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
-                // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
-                // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
-                .wrap(Condition::new(
-                    use_vault_token_auth,
-                    vault_token_optional_middleware(
-                        spire_cache.clone(),
-                        spire_auth_verifier_url.clone(),
-                        vault_http_client.clone(),
-                        spire_default_username.clone(),
-                    ),
-                ))
+                ),
+                &native_auth,
+            )
                 .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
                 .service(tokenize::hash)
                 .service(tokenize::noise)
@@ -1867,43 +1856,16 @@ pub async fn prepare_kms_server(
         }
 
         // REST Native Crypto API — /v1/crypto/*
-        let crypto_scope = web::scope("/v1/crypto")
-            .app_data(
-                web::JsonConfig::default()
-                    .error_handler(jose::crypto_json_error_handler),
-            )
-            .wrap(ensure_auth_middleware(
+        let crypto_scope = wrap_native_auth(
+            web::scope("/v1/crypto").app_data(
+                web::JsonConfig::default().error_handler(jose::crypto_json_error_handler),
+            ),
+            ensure_auth_middleware(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
-            ))
-            .wrap(SessionAuth)
-            .wrap(Condition::new(
-                use_api_token_auth,
-                api_token_middleware(kms_server_for_http.clone()),
-            ))
-            .wrap(Condition::new(
-                use_auth_verifier,
-                AuthVerifier::new(
-                    auth_verifier.clone(),
-                    auth_verifier_session_realm.clone(),
-                ),
-            ))
-            .wrap(Condition::new(
-                use_jwt_auth,
-                jwt_auth_middleware(jwt_configurations.clone()),
-            ))
-            .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
-            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
-            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
-            .wrap(Condition::new(
-                use_vault_token_auth,
-                vault_token_optional_middleware(
-                    spire_cache.clone(),
-                    spire_auth_verifier_url.clone(),
-                    vault_http_client.clone(),
-                    spire_default_username.clone(),
-                ),
-            ))
+            ),
+            &native_auth,
+        )
             .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
@@ -1919,39 +1881,14 @@ pub async fn prepare_kms_server(
         app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
-        let default_scope = web::scope("")
-            .wrap(ensure_auth_middleware(
+        let default_scope = wrap_native_auth(
+            web::scope(""),
+            ensure_auth_middleware(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
-            ))
-            .wrap(SessionAuth)
-            .wrap(Condition::new(
-                use_api_token_auth,
-                api_token_middleware(kms_server_for_http.clone()),
-            ))
-            .wrap(Condition::new(
-                use_auth_verifier,
-                AuthVerifier::new(
-                    auth_verifier.clone(),
-                    auth_verifier_session_realm.clone(),
-                ),
-            ))
-            .wrap(Condition::new(
-                use_jwt_auth,
-                jwt_auth_middleware(jwt_configurations.clone()),
-            )) // Use JWT for authentication if necessary.
-            .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn))) // Use certificates for authentication if necessary.
-            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
-            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
-            .wrap(Condition::new(
-                use_vault_token_auth,
-                vault_token_optional_middleware(
-                    spire_cache.clone(),
-                    spire_auth_verifier_url.clone(),
-                    vault_http_client.clone(),
-                    spire_default_username.clone(),
-                ),
-            ))
+            ),
+            &native_auth,
+        )
             // Tamper-evident audit logging: wraps every auth method above so both
             // successful and failed authentication attempts are recorded (LIFO wrap order).
             .wrap(AuditMiddleware::new(
@@ -2109,6 +2046,83 @@ fn allowed_origins_cors(allowed_origins: &[String]) -> Cors {
             .supports_credentials(),
         |cors, origin| cors.allowed_origin(origin),
     )
+}
+
+/// Shared native authentication extractors of the `/tokenize`, `/v1/crypto` and default scopes.
+struct NativeAuthStack<'a> {
+    kms_server: &'a Arc<KMS>,
+    use_api_token_auth: bool,
+    use_cert_auth: bool,
+    use_vault_token_auth: bool,
+    /// `Some` exactly when the Auth Verifier is enabled (`use_auth_verifier`).
+    auth_verifier: &'a Option<Arc<AuthVerifierValidator>>,
+    auth_verifier_session_realm: &'a Option<Arc<str>>,
+    /// Non-empty exactly when JWT authentication is enabled (`use_jwt_auth`).
+    jwt_configurations: &'a Arc<Vec<JwtConfig>>,
+    spire_cache: &'a Arc<SpireTokenCache>,
+    spire_auth_verifier_url: &'a Url,
+    vault_http_client: &'a Arc<reqwest::Client>,
+    spire_default_username: &'a Arc<str>,
+}
+
+/// Wraps `scope` with `ensure_auth` (innermost: runs last on ingress), then the session,
+/// API token, Auth Verifier, JWT, client certificate and optional vault-token extractors,
+/// so that every extractor injects `AuthenticatedUser` before `ensure_auth` checks it.
+fn wrap_native_auth<T, M, B>(
+    scope: Scope<T>,
+    ensure_auth: M,
+    stack: &NativeAuthStack<'_>,
+) -> Scope<
+    impl ServiceFactory<
+        ServiceRequest,
+        Config = (),
+        Response = ServiceResponse<impl MessageBody + use<T, M, B>>,
+        Error = actix_web::Error,
+        InitError = (),
+    > + use<T, M, B>,
+>
+where
+    T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>
+        + 'static,
+    M: Transform<
+            T::Service,
+            ServiceRequest,
+            Response = ServiceResponse<B>,
+            Error = actix_web::Error,
+            InitError = (),
+        > + 'static,
+    B: MessageBody + 'static,
+{
+    scope
+        .wrap(ensure_auth)
+        .wrap(SessionAuth)
+        .wrap(Condition::new(
+            stack.use_api_token_auth,
+            api_token_middleware(stack.kms_server.clone()),
+        ))
+        .wrap(Condition::new(
+            stack.auth_verifier.is_some(),
+            AuthVerifier::new(
+                stack.auth_verifier.clone(),
+                stack.auth_verifier_session_realm.clone(),
+            ),
+        ))
+        .wrap(Condition::new(
+            !stack.jwt_configurations.is_empty(),
+            jwt_auth_middleware(stack.jwt_configurations.clone()),
+        ))
+        .wrap(Condition::new(stack.use_cert_auth, from_fn(tls_auth_fn)))
+        // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+        // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+        .wrap(Condition::new(
+            stack.use_vault_token_auth,
+            vault_token_optional_middleware(
+                stack.spire_cache.clone(),
+                stack.spire_auth_verifier_url.clone(),
+                stack.vault_http_client.clone(),
+                stack.spire_default_username.clone(),
+            ),
+        ))
 }
 
 #[cfg(test)]

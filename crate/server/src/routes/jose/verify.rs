@@ -14,7 +14,7 @@ use serde::Deserialize;
 use super::{
     CryptoApiError, CryptoResult, JoseAlgorithm, VerifyRequest,
     VerifyResponse as CryptoVerifyResponse, b64_decode, ecdsa_coord_size, ecdsa_p1363_to_der,
-    ensure_json_object, jose_to_kmip_params,
+    ensure_json_object, jose_to_kmip_params, jws_signing_input,
 };
 use crate::core::KMS;
 
@@ -80,10 +80,7 @@ pub(crate) async fn verify(
     b64_decode("data", &body.data)?;
 
     // RFC 7515 §2 — body.protected is already base64url; body.data is the payload base64url
-    let mut signing_input_bytes = Vec::with_capacity(body.protected.len() + 1 + body.data.len());
-    signing_input_bytes.extend_from_slice(body.protected.as_bytes());
-    signing_input_bytes.push(b'.');
-    signing_input_bytes.extend_from_slice(body.data.as_bytes());
+    let signing_input_bytes = jws_signing_input(&body.protected, &body.data);
 
     let signature_bytes = b64_decode("signature", &body.signature)?;
     // RFC 7518 §3.4: ECDSA JWS signatures are in fixed-size r||s (IEEE P1363) format.

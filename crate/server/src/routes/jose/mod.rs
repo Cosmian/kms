@@ -35,6 +35,15 @@ pub(crate) use tags::{
 pub(crate) use unwrap::unwrap_key as unwrap_key_handler;
 pub(crate) use verify::verify as verify_handler;
 
+/// Build the RFC 7515 §2 JWS Signing Input: `ASCII(protected_b64 + "." + payload_b64)`.
+fn jws_signing_input(protected_b64: &str, payload_b64: &str) -> Vec<u8> {
+    let mut signing_input = Vec::with_capacity(protected_b64.len() + 1 + payload_b64.len());
+    signing_input.extend_from_slice(protected_b64.as_bytes());
+    signing_input.push(b'.');
+    signing_input.extend_from_slice(payload_b64.as_bytes());
+    signing_input
+}
+
 /// Return the ECDSA coordinate byte-length for JOSE EC algorithms (None for non-EC algs).
 ///
 /// Per RFC 7518 §3.4:
