@@ -1,7 +1,6 @@
 //! Lifecycle and usage rules of `ConfigurableKEM` hybrid keys (e.g. ML-KEM-768/P-256):
 //! least-privilege usage masks, encapsulation round trip, refusal of non-KEM uses,
 //! re-key, revocation and algorithm-policy enforcement on use.
-use std::sync::Arc;
 
 use cosmian_kms_client_utils::configurable_kem_utils::{
     KemAlgorithm, build_create_configurable_kem_keypair_request,
@@ -39,14 +38,8 @@ use crate::{
     error::KmsError,
     middlewares::UserId,
     result::KResult,
-    tests::test_utils::https_clap_config,
+    tests::test_utils::{https_clap_config, test_kms_with_config},
 };
-
-async fn kms_from(conf: ClapConfig) -> KResult<Arc<KMS>> {
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?,
-    ))
-}
 
 fn hybrid_request(tag: &str) -> KResult<CreateKeyPair> {
     build_create_configurable_kem_keypair_request(
@@ -147,7 +140,7 @@ async fn assert_round_trip(kms: &KMS, owner: &UserId, sk: &str, pk: &str) -> KRe
 #[tokio::test]
 async fn test_configurable_kem_lifecycle() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms = kms_from(https_clap_config()).await?;
+    let kms = test_kms_with_config(https_clap_config()).await?;
     let owner = UserId::from("configurable_kem_lifecycle");
     let tag = format!("hybrid-kem-{}", Uuid::new_v4());
 
@@ -313,7 +306,7 @@ async fn test_kem_encrypt_decrypt_round_trip_all_algorithms() -> KResult<()> {
             conf.key_encryption_key = kek;
             conf
         };
-        let kms = kms_from(conf_with(None)).await?;
+        let kms = test_kms_with_config(conf_with(None)).await?;
         let kek = if with_kek {
             Some(
                 kms.create(
@@ -337,7 +330,7 @@ async fn test_kem_encrypt_decrypt_round_trip_all_algorithms() -> KResult<()> {
         };
         // keys created by a server that wraps them with the KEK, if any
         drop(kms);
-        let kms = kms_from(conf_with(kek.clone())).await?;
+        let kms = test_kms_with_config(conf_with(kek.clone())).await?;
         let mut pairs = Vec::new();
         for (name, request) in requests()? {
             let (sk, pk) = create(&kms, &owner, request).await?;
@@ -351,7 +344,7 @@ async fn test_kem_encrypt_decrypt_round_trip_all_algorithms() -> KResult<()> {
         }
         // restart: the keys are read back from the database, and unwrapped if wrapped
         drop(kms);
-        let kms = kms_from(conf_with(kek)).await?;
+        let kms = test_kms_with_config(conf_with(kek)).await?;
         for (name, sk, pk) in &pairs {
             for uid in [sk, pk] {
                 let stored =
@@ -384,7 +377,7 @@ async fn test_kem_encrypt_decrypt_round_trip_all_algorithms() -> KResult<()> {
 #[tokio::test]
 async fn test_configurable_kem_requested_mask_is_honoured() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms = kms_from(https_clap_config()).await?;
+    let kms = test_kms_with_config(https_clap_config()).await?;
     let owner = UserId::from("configurable_kem_mask");
     let tag = format!("hybrid-kem-mask-{}", Uuid::new_v4());
 
@@ -461,7 +454,7 @@ async fn test_configurable_kem_policy_on_use() -> KResult<()> {
     // an ML-KEM-768/P-256 key pair, and two imports of its public key: one with the
     // components stripped, one relabelled as ML-KEM-512/P-384
     let (sk, pk, stripped, relabelled) = {
-        let kms = kms_from(conf).await?;
+        let kms = test_kms_with_config(conf).await?;
         let (sk, pk) = create(&kms, &owner, hybrid_request("hybrid-kem-policy")?).await?;
         let stripped = import_relabelled(&kms, &owner, &pk, None, None).await?;
         let relabelled = import_relabelled(
@@ -486,7 +479,7 @@ async fn test_configurable_kem_policy_on_use() -> KResult<()> {
         conf
     };
 
-    let allowed = kms_from(with_policy(
+    let allowed = test_kms_with_config(with_policy(
         CryptographicAlgorithm::MLKEM_768,
         RecommendedCurve::P256,
     ))
@@ -516,7 +509,7 @@ async fn test_configurable_kem_policy_on_use() -> KResult<()> {
             "ML-KEM-768/P-256",
         ),
     ] {
-        let kms = kms_from(with_policy(algorithm, curve)).await?;
+        let kms = test_kms_with_config(with_policy(algorithm, curve)).await?;
         for uid in [&pk, &stripped, &relabelled] {
             assert!(
                 encapsulate(&kms, &owner, uid).await.is_err(),

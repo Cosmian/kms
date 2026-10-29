@@ -9,6 +9,7 @@ nav:
   - PKI Support:
       - Introduction: use_cases/pki.md
       - Revocation & CRL Distribution: use_cases/pki-revocation.md
+      - Delegated sub-CA with an HSM key: use_cases/pki-sub-ca-csr.md
       - OCSP Responder: use_cases/pki-ocsp.md
       - Device enrollment:
           - Overview: use_cases/pki-enrollment.md
@@ -27,6 +28,7 @@ nav:
       - Smart card HSM / Nitrokey HSM 2: hsm_support/sc_hsm.md
       - AWS CloudHSM: hsm_support/aws_cloudhsm.md
       - GCP Cloud HSM: hsm_support/gcp_cloud_hsm.md
+      - Azure Cloud HSM: hsm_support/azure_cloud_hsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
       - Kryoptic: hsm_support/kryoptic.md
       - Other HSMs: hsm_support/other_hsms.md
@@ -138,7 +140,7 @@ nav:
           - Terraform / OpenTofu Provider: integrations/terraform.md
       - Zero Trust M2M (SPIRE / SPIFFE):
           - Vault-compatible integration: integrations/spire_spiffe.md
-          - Native KMIP 2.1 plugins: integrations/spire_spiffe_kmip_plugin.md
+          - Native KMIP 1.4 KeyManager plugin: integrations/spire_spiffe_kmip_plugin.md
           - Web UI gateway SPIFFE authentication: integrations/spire_webui.md
           - CLI (ckms) SPIFFE authentication: integrations/spire_ckms.md
   - Installation:

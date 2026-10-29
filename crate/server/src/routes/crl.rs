@@ -74,7 +74,7 @@ pub(crate) async fn get_crl(
         &kms,
         &issuer_id,
         query.validity_days,
-        &user,
+        crate::core::operations::generate_crl::CrlRequester::User(&user),
     ))
     .await?;
 

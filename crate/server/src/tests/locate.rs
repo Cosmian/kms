@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader},
@@ -22,11 +20,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::log_init;
 
 use crate::{
-    config::{MainDBConfig, ServerParams},
-    core::KMS,
+    config::MainDBConfig,
     middlewares::UserId,
     result::KResult,
-    tests::test_utils::{https_clap_config, post_2_1, test_app},
+    tests::test_utils::{https_clap_config, post_2_1, test_app, test_kms_with_config},
 };
 
 #[tokio::test]
@@ -41,7 +38,7 @@ async fn test_locate() -> KResult<()> {
         clear_database: true,
         ..Default::default()
     };
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // same request of the test in curve_25519_tests.rs in order to minimize debug surface
     // once the issue with ObjectType is fixed, change this request to some key that haven't been

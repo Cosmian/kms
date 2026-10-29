@@ -77,6 +77,8 @@ impl HsmProvider for LunaCapabilityProvider {
             supports_aes_sensitive_attribute: false,
             supports_rsa_sensitive_attribute: false,
             supports_ec_sensitive_attribute: false,
+            aes_key_wrap_pad_is_rfc5649: false,
+            allows_caller_gcm_iv_in_fips: false,
             ..Default::default()
         }
     }

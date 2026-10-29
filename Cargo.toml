@@ -25,6 +25,7 @@ members = [
   "crate/hsm/base_hsm",
   "crate/hsm/aws_cloudhsm",
   "crate/hsm/gcp_cloud_hsm",
+  "crate/hsm/azure_cloud_hsm",
   "crate/hsm/proteccio",
   "crate/hsm/crypt2pay",
   "crate/hsm/softhsm2",
@@ -208,6 +209,7 @@ opt-level = 3
 [workspace.dependencies]
 # Workspace crates
 aws_cloudhsm_pkcs11_loader = { path = "crate/hsm/aws_cloudhsm", version = "5.28.0" }
+azure_cloud_hsm_pkcs11_loader = { path = "crate/hsm/azure_cloud_hsm", version = "5.28.0" }
 ckms = { path = "crate/clients/ckms", version = "5.28.0" }
 cosmian_kmip = { path = "crate/kmip", version = "5.28.0" }
 cosmian_kms_access = { path = "crate/access", version = "5.28.0" }

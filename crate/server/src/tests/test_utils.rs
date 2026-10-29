@@ -41,12 +41,17 @@ pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
-/// Create a test KMS instance from the default HTTPS config.
-pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
-    let clap_config = https_clap_config();
+/// Create an in-process test KMS from `clap_config` (start from `https_clap_config()` and patch fields).
+pub(crate) async fn test_kms_with_config(clap_config: ClapConfig) -> KResult<Arc<KMS>> {
+    crate::openssl_providers::init_openssl_providers_for_tests();
     Ok(Arc::new(
         KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
     ))
+}
+
+/// Create a test KMS instance from the default HTTPS config.
+pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
+    test_kms_with_config(https_clap_config()).await
 }
 
 /// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`

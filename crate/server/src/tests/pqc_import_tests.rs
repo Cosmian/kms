@@ -2,8 +2,6 @@
 //! (native hybrid KEM groups and `ConfigurableKEM`) must be importable into a KMS instance
 //! unchanged, and remain usable for encapsulation afterwards.
 
-use std::sync::Arc;
-
 use cosmian_kms_client_utils::configurable_kem_utils::{
     KemAlgorithm, build_create_configurable_kem_keypair_request,
 };
@@ -22,8 +20,7 @@ use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
+    core::KMS, error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
 };
 
 /// Re-import `object` under a fresh identifier and return that identifier.
@@ -47,8 +44,7 @@ async fn reimport_public_key(kms: &KMS, owner: &UserId, object: &Object) -> KRes
 #[tokio::test]
 async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("pqcimporthybrid");
 
     let cr = kms
@@ -109,8 +105,7 @@ async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
 #[tokio::test]
 async fn test_import_configurable_kem_public_key_cross_instance() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("pqcimportconfigurable");
 
     let cr = kms

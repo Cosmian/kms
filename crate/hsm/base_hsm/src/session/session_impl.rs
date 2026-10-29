@@ -19,7 +19,7 @@ use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE,
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
-    CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
+    CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
     CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE,
     CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
     CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
@@ -43,7 +43,9 @@ use crate::{
     HError, HResult, ObjectHandlesCache, hsm_call,
     hsm_capabilities::HsmCapabilities,
     session::{
-        curve_byte_size, curve_from_der_oid, deserialize_tagged_label, serialize_tagged_label,
+        curve_byte_size, curve_from_der_oid, deserialize_tagged_label,
+        message_context::{MessageMechanismSupport, OpenMessageContexts},
+        serialize_tagged_label,
     },
 };
 
@@ -71,6 +73,8 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
 pub enum HsmEncryptionAlgorithm {
     AesCbc,
     AesGcm,
+    AesKeyWrap,
+    AesKeyWrapPad,
     RsaPkcsV15,
     RsaOaepSha256,
     RsaOaepSha1,
@@ -81,6 +85,8 @@ impl From<CryptoAlgorithm> for HsmEncryptionAlgorithm {
         match algorithm {
             CryptoAlgorithm::AesCbc => Self::AesCbc,
             CryptoAlgorithm::AesGcm => Self::AesGcm,
+            CryptoAlgorithm::AesKeyWrap => Self::AesKeyWrap,
+            CryptoAlgorithm::AesKeyWrapPad => Self::AesKeyWrapPad,
             CryptoAlgorithm::RsaPkcsV15 => Self::RsaPkcsV15,
             CryptoAlgorithm::RsaOaepSha256 => Self::RsaOaepSha256,
             CryptoAlgorithm::RsaOaepSha1 => Self::RsaOaepSha1,
@@ -177,6 +183,21 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
 }
 
+/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
+#[cfg(not(feature = "non-fips"))]
+const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
+    c.supports_aes_gcm_caller_iv && c.allows_caller_gcm_iv_in_fips
+}
+
+#[cfg(feature = "non-fips")]
+const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
+    c.supports_aes_gcm_caller_iv
+}
+
+fn aes_key_wrap_misrouted() -> HError {
+    HError::Default("AES key wrap must go through Session::aes_key_wrap/aes_key_unwrap".to_owned())
+}
+
 #[cfg(not(feature = "non-fips"))]
 pub(super) const fn is_signing_algorithm_supported(algorithm: HsmSigningAlgorithm) -> bool {
     // Both the hashing mechanism and the pre-hashed `DigestInfo` path must be rejected:
@@ -196,7 +217,7 @@ pub(super) const fn is_signing_algorithm_supported(_: HsmSigningAlgorithm) -> bo
 }
 
 /// Returns whether a PKCS#11 return code means a mechanism is unsupported.
-const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
+pub(super) const fn is_mechanism_unsupported_rv(rv: pkcs11_sys::CK_RV) -> bool {
     rv == CKR_MECHANISM_INVALID || rv == CKR_MECHANISM_PARAM_INVALID
 }
 /// An active PKCS#11 session with an HSM.
@@ -205,8 +226,10 @@ pub struct Session {
     handle: CK_SESSION_HANDLE,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
+    message_mechanism_support: Arc<Mutex<MessageMechanismSupport>>,
+    open_message_contexts: Mutex<OpenMessageContexts>,
     logging_in: bool,
-    hsm_capabilities: HsmCapabilities,
+    pub(crate) hsm_capabilities: HsmCapabilities,
 }
 
 /// HKDF (RFC 5869) parameters for [`Session::derive_hkdf_key`].
@@ -232,11 +255,12 @@ pub struct DerivedKeySpec<'a> {
 }
 
 impl Session {
-    pub fn new(
+    pub(crate) fn new(
         hsm: Arc<crate::hsm_lib::HsmLib>,
         session_handle: CK_SESSION_HANDLE,
         object_handles_cache: Arc<ObjectHandlesCache>,
         supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
+        message_mechanism_support: Arc<Mutex<MessageMechanismSupport>>,
         logging_in: bool,
         hsm_capabilities: HsmCapabilities,
     ) -> Self {
@@ -246,6 +270,8 @@ impl Session {
             handle: session_handle,
             object_handles_cache,
             supported_oaep_hash_cache,
+            message_mechanism_support,
+            open_message_contexts: Mutex::new(OpenMessageContexts::default()),
             logging_in,
             hsm_capabilities,
         }
@@ -269,6 +295,16 @@ impl Session {
     /// Get the object handles cache
     pub(crate) fn object_handles_cache(&self) -> Arc<ObjectHandlesCache> {
         self.object_handles_cache.clone()
+    }
+
+    /// Get the per-slot cache of mechanisms rejected by the message-signature API
+    pub(crate) const fn message_mechanism_support(&self) -> &Arc<Mutex<MessageMechanismSupport>> {
+        &self.message_mechanism_support
+    }
+
+    /// Get the message-signature contexts currently open on this session
+    pub(crate) const fn open_message_contexts(&self) -> &Mutex<OpenMessageContexts> {
+        &self.open_message_contexts
     }
 
     /// Pre-populate the object handle cache with a known object_id-to-handle mapping.
@@ -407,6 +443,8 @@ impl Session {
         &self,
         mut template: Vec<CK_ATTRIBUTE>,
     ) -> HResult<Vec<CK_OBJECT_HANDLE>> {
+        // A token may refuse object searches while a message context is active.
+        self.end_message_operations();
         let mut object_handles: Vec<CK_OBJECT_HANDLE> = Vec::new();
         hsm_call!(
             self.hsm,
@@ -877,10 +915,7 @@ impl Session {
             .as_deref()
             .is_none_or(|iv| iv.iter().all(|&b| b == 0))
         {
-            return Err(HError::Default(
-                "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce"
-                    .to_owned(),
-            ));
+            return Err(HError::Default(NO_GENERATED_GCM_IV.to_owned()));
         }
         Ok(content)
     }
@@ -936,11 +971,26 @@ impl Session {
                     && self.hsm().supports_message_encrypt()
                 {
                     self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
-                } else if self.hsm_capabilities().supports_aes_gcm_caller_iv {
+                } else if caller_gcm_iv_allowed(self.hsm_capabilities()) {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
-                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)?
+                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
+                        .map_err(|e| {
+                            if e.to_string() == NO_GENERATED_GCM_IV {
+                                HError::Default(format!(
+                                    "AES-GCM encryption needs an IV generated inside the HSM \
+                                     (FIPS 140-3 IG C.H), and this HSM provided none ({e}). Use \
+                                     AES key wrap instead: key_encryption_key_wrapping_algorithm \
+                                     = \"aes-key-wrap-padding\" (NIST SP 800-38F)"
+                                ))
+                            } else {
+                                e
+                            }
+                        })?
                 }
+            }
+            HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
+                return Err(aes_key_wrap_misrouted());
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
@@ -978,6 +1028,7 @@ impl Session {
                     iv: Some(iv.to_vec()),
                     ciphertext, // no separate tag for CBC
                     tag: None,
+                    cryptographic_algorithm: None,
                 }
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
@@ -1124,6 +1175,9 @@ impl Session {
                     })?,
                 )?;
                 Ok(plaintext)
+            }
+            HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
+                Err(aes_key_wrap_misrouted())
             }
             HsmEncryptionAlgorithm::AesCbc => {
                 if ciphertext.len() < AES_CBC_IV_LENGTH {
@@ -1305,6 +1359,7 @@ impl Session {
             iv: Some(iv.to_vec()),
             ciphertext, // no separate tag for CBC
             tag: None,
+            cryptographic_algorithm: None,
         })
     }
 
@@ -1460,6 +1515,7 @@ impl Session {
             iv: Some(iv.to_vec()),
             ciphertext, // no separate tag for CBC
             tag: None,
+            cryptographic_algorithm: None,
         })
     }
 
@@ -1613,7 +1669,7 @@ impl Session {
         }
     }
 
-    fn encrypt_with_mechanism(
+    pub(super) fn encrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
@@ -1661,7 +1717,7 @@ impl Session {
         Ok(encrypted_data)
     }
 
-    fn decrypt_with_mechanism(
+    pub(super) fn decrypt_with_mechanism(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         mechanism: &mut CK_MECHANISM,
@@ -1987,56 +2043,66 @@ impl Session {
         }
     }
 
-    fn sign_with_buffer(&self, data: &mut [u8]) -> HResult<Vec<u8>> {
+    /// Calls a single-part PKCS#11 signature function into a `MAX_SIGNATURE_BUFFER_LEN`
+    /// buffer; on `CKR_BUFFER_TOO_SMALL` grows the buffer to the reported length and calls
+    /// once more. Returns the final return code and the signature truncated to the length
+    /// written. The caller maps non-`CKR_OK` codes to errors.
+    pub(super) fn call_into_signature_buffer(
+        fn_name: &str,
+        mut call: impl FnMut(*mut u8, &mut CK_ULONG) -> HResult<CK_RV>,
+    ) -> HResult<(CK_RV, Vec<u8>)> {
         let mut signature = vec![0_u8; MAX_SIGNATURE_BUFFER_LEN];
         let mut signature_len = CK_ULONG::try_from(signature.len())?;
-        let mut rv = hsm_call!(
-            self.hsm,
-            "Failed to sign data",
-            C_Sign,
-            self.handle,
-            data.as_mut_ptr(),
-            CK_ULONG::try_from(data.len())?,
-            signature.as_mut_ptr(),
-            &raw mut signature_len;
-            CKR_BUFFER_TOO_SMALL
-        );
+        let mut rv = call(signature.as_mut_ptr(), &mut signature_len)?;
 
         if rv == CKR_BUFFER_TOO_SMALL {
             let required_len = usize::try_from(signature_len)?;
             if required_len <= signature.len() {
                 return Err(HError::Default(format!(
-                    "C_Sign reported an invalid required signature length: {required_len}"
+                    "{fn_name} reported an invalid required signature length: {required_len}"
                 )));
             }
             signature.resize(required_len, 0);
             signature_len = CK_ULONG::try_from(signature.len())?;
-            rv = hsm_call!(
-                self.hsm,
-                "Failed to sign data",
-                C_Sign,
-                self.handle,
-                data.as_mut_ptr(),
-                CK_ULONG::try_from(data.len())?,
-                signature.as_mut_ptr(),
-                &raw mut signature_len;
-                CKR_BUFFER_TOO_SMALL
-            );
+            rv = call(signature.as_mut_ptr(), &mut signature_len)?;
         }
 
+        if rv == CKR_OK {
+            let signature_len = usize::try_from(signature_len)?;
+            if signature_len > signature.len() {
+                return Err(HError::Default(format!(
+                    "{fn_name} returned signature length {signature_len} beyond buffer \
+                     capacity {}",
+                    signature.len()
+                )));
+            }
+            signature.truncate(signature_len);
+        }
+        Ok((rv, signature))
+    }
+
+    fn sign_with_buffer(&self, data: &mut [u8]) -> HResult<Vec<u8>> {
+        let data_len = CK_ULONG::try_from(data.len())?;
+        let data_ptr = data.as_mut_ptr();
+        let (rv, signature) = Self::call_into_signature_buffer("C_Sign", |sig_ptr, sig_len| {
+            #[expect(unsafe_code)]
+            // SAFETY: `data_ptr`/`data_len` describe the live `data` slice; `sig_ptr` points to
+            // a buffer of `*sig_len` bytes owned by `call_into_signature_buffer`.
+            let rv = match self.hsm.C_Sign {
+                Some(func) => unsafe { func(self.handle, data_ptr, data_len, sig_ptr, sig_len) },
+                None => {
+                    return Err(HError::Default(
+                        "C_Sign not available on library".to_owned(),
+                    ));
+                }
+            };
+            Ok(rv)
+        })?;
         if rv != CKR_OK {
             return Err(HError::Default(format!(
                 "Failed to sign data. Return code: {rv}"
             )));
         }
-        let signature_len = usize::try_from(signature_len)?;
-        if signature_len > signature.len() {
-            return Err(HError::Default(format!(
-                "C_Sign returned signature length {signature_len} beyond buffer capacity {}",
-                signature.len()
-            )));
-        }
-        signature.truncate(signature_len);
         Ok(signature)
     }
 
@@ -2046,6 +2112,10 @@ impl Session {
         mechanism: &mut CK_MECHANISM,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
+        if let Some(signature) = self.try_sign_message(key_handle, mechanism, data)? {
+            return Ok(signature);
+        }
+        self.end_message_operations();
         let mut data = data.to_vec();
         #[expect(unsafe_code)]
         // SAFETY: `mechanism` is a valid, live `&mut CK_MECHANISM` for the duration
@@ -2089,8 +2159,10 @@ impl Session {
     /// not support the requested mechanism (e.g. `CKM_EDDSA` on a v2.40-only library),
     /// so callers can distinguish "signature is wrong" from "mechanism unsupported".
     ///
-    /// Requires the loaded library to expose the classic `C_VerifyInit`/`C_Verify`
-    /// functions; virtually every conformant PKCS#11 library (v2.01+) does.
+    /// Uses the PKCS#11 v3.0 message-based `C_VerifyMessage` (persistent context) when the
+    /// provider sets `supports_message_sign_verify` and the token accepts the mechanism;
+    /// otherwise the classic `C_VerifyInit`/`C_Verify` functions, which virtually every
+    /// conformant PKCS#11 library (v2.01+) exposes.
     pub fn verify(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -2360,6 +2432,10 @@ impl Session {
         data: &[u8],
         signature: &[u8],
     ) -> HResult<bool> {
+        if let Some(valid) = self.try_verify_message(key_handle, mechanism, data, signature)? {
+            return Ok(valid);
+        }
+        self.end_message_operations();
         let mut data = data.to_vec();
         let mut signature = signature.to_vec();
 
@@ -3225,7 +3301,7 @@ impl Session {
         Ok(rv)
     }
 
-    fn call_get_attributes(
+    pub(super) fn call_get_attributes(
         &self,
         key_handle: CK_OBJECT_HANDLE,
         template: &mut [CK_ATTRIBUTE],
@@ -3962,12 +4038,49 @@ fn split_aes_gcm_output(
                 .ok_or_else(|| HError::Default("Failed to extract tag".to_owned()))?
                 .to_vec(),
         ),
+        cryptographic_algorithm: None,
     })
 }
+
+/// Error raised when an HSM leaves the `pIv` buffer of a FIPS AES-GCM encryption all-zero.
+const NO_GENERATED_GCM_IV: &str =
+    "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce";
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caller_gcm_iv_policy_development_token() {
+        let development_token = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: true,
+            ..Default::default()
+        };
+        assert!(caller_gcm_iv_allowed(&development_token));
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn caller_gcm_iv_policy_production_non_fips() {
+        let production = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            ..Default::default()
+        };
+        assert!(caller_gcm_iv_allowed(&production));
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn caller_gcm_iv_policy_production_fips() {
+        let production = HsmCapabilities {
+            supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            ..Default::default()
+        };
+        assert!(!caller_gcm_iv_allowed(&production));
+    }
 
     #[test]
     fn split_aes_gcm_output_handles_standard_and_hsm_appended_iv() {

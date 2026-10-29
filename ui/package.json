@@ -19,6 +19,7 @@
         "test:integration": "vitest --run -c tests/vitest.int.config.ts",
         "test:e2e": "playwright test",
         "test:e2e:auth": "playwright test --config playwright.auth.config.ts",
+        "test:e2e:saml": "playwright test --config playwright.saml.config.ts",
         "test:wasm": "cd .. && mise run test:wasm --variant non-fips"
     },
     "dependencies": {

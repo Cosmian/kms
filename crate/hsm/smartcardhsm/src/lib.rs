@@ -36,12 +36,16 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
             supports_rsa_sensitive_attribute: true,
             supports_ec_sensitive_attribute: true,
             supports_aes_gcm_caller_iv: true,
+            allows_caller_gcm_iv_in_fips: false,
+            aes_key_wrap_pad_is_rfc5649: false,
             supports_aes_gcm_message: true,
+            supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
             supports_key_dates: true,
             supports_rsa_oaep_key_wrap: false,
             enforces_ecdsa_digest_strength: false,
+            skip_finalize_on_drop: false,
             max_concurrent_sessions: 8,
         }
     }

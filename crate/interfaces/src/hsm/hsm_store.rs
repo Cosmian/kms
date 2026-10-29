@@ -390,8 +390,29 @@ impl ObjectsStore for HsmStore {
             return Ok(vec![]);
         }
 
+        // A private key creation `hsm_keypair_algorithm` did not recognize: say which algorithm.
+        if let Some((uid, attributes)) = operations.iter().find_map(|op| match op {
+            AtomicOperation::Create((uid, _owner, object, attributes, _tags))
+                if object.object_type() == ObjectType::PrivateKey =>
+            {
+                Some((uid, attributes))
+            }
+            _ => None,
+        }) {
+            #[cfg(not(feature = "non-fips"))]
+            const SUPPORTED: &str = "RSA and elliptic-curve (EC/ECDSA/ECDH) key pairs";
+            #[cfg(feature = "non-fips")]
+            const SUPPORTED: &str = "RSA and elliptic-curve (EC/ECDSA/ECDH, secp256k1, secp192k1, \
+                                     Ed25519, Ed448, X25519) key pairs";
+            return Err(InterfaceError::InvalidRequest(format!(
+                "HSM key pair creation does not support the cryptographic algorithm {:?} (key \
+                 {uid}); an HSM can only create {SUPPORTED}",
+                attributes.cryptographic_algorithm
+            )));
+        }
+
         Err(InterfaceError::InvalidRequest(
-            "HSM atomic operations only support RSA keypair creations for now".to_owned(),
+            "unsupported HSM atomic operation".to_owned(),
         ))
     }
 
@@ -716,6 +737,24 @@ impl ObjectsStore for HsmStore {
     }
 }
 
+/// AES-KW/KWP are only attempted on slots that advertise them.
+fn ensure_key_wrap_supported(
+    algorithm: &CryptoAlgorithm,
+    supported_algorithms: &[CryptoAlgorithm],
+    slot_id: usize,
+) -> InterfaceResult<()> {
+    if matches!(
+        algorithm,
+        CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
+    ) && !supported_algorithms.contains(algorithm)
+    {
+        return Err(InterfaceError::InvalidRequest(format!(
+            "{algorithm:?} is not supported by HSM slot {slot_id}"
+        )));
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl CryptoOracle for HsmStore {
     async fn encrypt(
@@ -733,49 +772,56 @@ impl CryptoOracle for HsmStore {
         }
         let (mut slot_id, mut key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
+        // Key type is needed to pick a default algorithm, and to encrypt with the public half
+        // of an RSA private key UID whatever the (explicit or default) algorithm.
+        let key_type = if cryptographic_algorithm
+            .as_ref()
+            .is_none_or(CryptoAlgorithm::is_rsa)
+        {
+            self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?
+        } else {
+            None
+        };
+        if matches!(key_type, Some(KeyType::RsaPrivateKey)) {
+            // try fetching the corresponding public key
+            let pk_uid = format!("{uid}_pk");
+            debug!(
+                "encrypt: an RSA private key {uid} was specified. Trying to use public key \
+                 {pk_uid} for encryption"
+            );
+            (slot_id, key_id) = parse_uid_with_prefix(&pk_uid, &self.prefix)?;
+            self.hsm
+                .get_key_type(slot_id, key_id.as_bytes())
+                .await?
+                .ok_or_else(|| {
+                    InterfaceError::InvalidRequest(format!(
+                        "The key {uid} is a private key, but no public key {pk_uid} is available"
+                    ))
+                })?;
+        }
         let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
             ca
         } else {
             debug!("Using default algorithm to encrypt");
-            match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+            match key_type {
                 None => {
                     return Err(InterfaceError::InvalidRequest(format!(
                         "The key type of key: {uid}, cannot be determined"
                     )));
                 }
-                Some(key_type) => match key_type {
-                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
-                    KeyType::RsaPublicKey => {
-                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
-                    }
-                    KeyType::RsaPrivateKey => {
-                        // try fetching the corresponding public key
-                        let pk_uid = format!("{uid}_pk");
-                        debug!(
-                            "encrypt: an RSA private key {uid} was specified. Trying to use \
-                             public key {pk_uid} for encryption"
-                        );
-                        (slot_id, key_id) = parse_uid_with_prefix(&pk_uid, &self.prefix)?;
-                        self.hsm
-                            .get_key_type(slot_id, key_id.as_bytes())
-                            .await?
-                            .ok_or_else(|| {
-                                InterfaceError::InvalidRequest(format!(
-                                    "The key {uid} is a private key, but no public key {pk_uid} \
-                                     is available"
-                                ))
-                            })?;
-                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
-                    }
-                    KeyType::EcPrivateKey | KeyType::EcPublicKey => {
-                        return Err(InterfaceError::InvalidRequest(
-                            "EC keys cannot be used to encrypt: EC keys only support Sign/Verify"
-                                .to_owned(),
-                        ));
-                    }
-                },
+                Some(KeyType::AesKey) => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                Some(KeyType::RsaPublicKey | KeyType::RsaPrivateKey) => {
+                    CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                }
+                Some(KeyType::EcPrivateKey | KeyType::EcPublicKey) => {
+                    return Err(InterfaceError::InvalidRequest(
+                        "EC keys cannot be used to encrypt: EC keys only support Sign/Verify"
+                            .to_owned(),
+                    ));
+                }
             }
         };
+        ensure_key_wrap_supported(&cryptographic_algorithm, &supported_algorithms, slot_id)?;
         if matches!(cryptographic_algorithm, CryptoAlgorithm::AesGcm) && iv_counter_nonce.is_some()
         {
             return Err(InterfaceError::InvalidRequest(
@@ -784,15 +830,18 @@ impl CryptoOracle for HsmStore {
                     .to_owned(),
             ));
         }
-        self.hsm
+        let mut content = self
+            .hsm
             .encrypt(
                 slot_id,
                 key_id.as_bytes(),
-                cryptographic_algorithm,
+                cryptographic_algorithm.clone(),
                 data,
                 iv_counter_nonce.unwrap_or_default(),
             )
-            .await
+            .await?;
+        content.cryptographic_algorithm = Some(cryptographic_algorithm);
+        Ok(content)
     }
 
     async fn decrypt(
@@ -838,6 +887,7 @@ impl CryptoOracle for HsmStore {
                 },
             }
         };
+        ensure_key_wrap_supported(&cryptographic_algorithm, &supported_algorithms, slot_id)?;
         self.hsm
             .decrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
             .await
@@ -846,6 +896,24 @@ impl CryptoOracle for HsmStore {
     async fn get_key_type(&self, uid: &str) -> InterfaceResult<Option<KeyType>> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         self.hsm.get_key_type(slot_id, key_id.as_bytes()).await
+    }
+
+    async fn set_key_wrap(&self, uid: &str, enabled: bool) -> InterfaceResult<()> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        if enabled {
+            // Never widen a key's attributes on a slot that cannot use them.
+            let supported = self.hsm.get_supported_algorithms(slot_id).await?;
+            if !supported.contains(&CryptoAlgorithm::AesKeyWrap)
+                && !supported.contains(&CryptoAlgorithm::AesKeyWrapPad)
+            {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "AES key wrap is not supported by HSM slot {slot_id}"
+                )));
+            }
+        }
+        self.hsm
+            .set_key_wrap(slot_id, key_id.as_bytes(), enabled)
+            .await
     }
 
     async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>> {
@@ -2095,6 +2163,38 @@ mod tests {
         );
     }
 
+    /// An explicit RSA algorithm on a private-key UID must still encrypt with the public half.
+    #[tokio::test]
+    async fn test_explicit_rsa_algorithm_on_private_uid_uses_public_key() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_get_supported_algorithms()
+            .returning(|_| Ok(vec![CryptoAlgorithm::RsaOaepSha256]));
+        mock.expect_get_key_type().returning(|_, key_id| {
+            Ok(Some(if key_id == b"k" {
+                KeyType::RsaPrivateKey
+            } else {
+                KeyType::RsaPublicKey
+            }))
+        });
+        mock.expect_encrypt()
+            .withf(|_, key_id, algorithm, _, _| {
+                key_id == b"k_pk" && *algorithm == CryptoAlgorithm::RsaOaepSha256
+            })
+            .times(1)
+            .returning(|_, _, _, _, _| Ok(EncryptedContent::default()));
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        store
+            .encrypt(
+                "hsm::1::k",
+                b"data",
+                Some(CryptoAlgorithm::RsaOaepSha256),
+                None,
+                None,
+            )
+            .await?;
+        Ok(())
+    }
+
     #[test]
     fn test_exported_object_preserves_hsm_tags() {
         let hsm_object = HsmObject::new(
@@ -2180,6 +2280,55 @@ mod tests {
             return Err(InterfaceError::Default(format!(
                 "count_all_non_destroyed ({via_all}) must equal count_non_destroyed_keys \
                  ({via_keys}) for HsmStore"
+            )));
+        }
+        Ok(())
+    }
+
+    /// An unsupported key pair algorithm (ML-DSA) on an `hsm::` id is refused with a message that
+    /// names the algorithm, not a generic "RSA only" error.
+    #[tokio::test]
+    async fn test_atomic_create_of_an_unsupported_keypair_names_the_algorithm()
+    -> InterfaceResult<()> {
+        let store = HsmStore::new(
+            Arc::new(MockHsm::new()),
+            &["admin".to_owned()],
+            "cosmian",
+            "hsm",
+        );
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::MLDSA_44),
+            ..Attributes::default()
+        };
+        let object = cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey(
+            cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey {
+                key_block: cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock {
+                    key_format_type: cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType::PKCS8,
+                    key_compression_type: None,
+                    key_value: None,
+                    cryptographic_algorithm: None,
+                    cryptographic_length: None,
+                    key_wrapping_data: None,
+                },
+            },
+        );
+        let operation = crate::AtomicOperation::Create((
+            "hsm::0::k".to_owned(),
+            UserId::from("admin"),
+            object,
+            attributes,
+            HashSet::new(),
+        ));
+        let Err(InterfaceError::InvalidRequest(message)) =
+            store.atomic(&UserId::from("admin"), &[operation]).await
+        else {
+            return Err(InterfaceError::Default(
+                "an ML-DSA key pair must be refused by the HSM store".to_owned(),
+            ));
+        };
+        if !(message.contains("MLDSA_44") && message.contains("RSA")) {
+            return Err(InterfaceError::Default(format!(
+                "the error must name the algorithm and what is supported: {message}"
             )));
         }
         Ok(())

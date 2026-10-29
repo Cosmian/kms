@@ -34,6 +34,9 @@ test.skip(isFips, 'Non-FIPS feature — skipped in FIPS mode');
 - One `*.spec.ts` file per feature area (matching `ui/src/actions/` modules).
 - Use `test.describe()` to group related scenarios.
 - Use `test.beforeEach()` for shared setup (login, navigation).
+- Never `page.waitForTimeout`; wait with web-first assertions (`expect(locator)...`), `waitForResponse` or `locator.waitFor`.
+- No assertion inside an `if`: a branch that skips the assertion makes the test pass vacuously.
+- Never hard-code `127.0.0.1:9998`; derive the URL from `PLAYWRIGHT_BASE_URL` / the helpers in `helpers.ts`.
 
 ## Documentation
 

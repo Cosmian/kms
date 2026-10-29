@@ -36,6 +36,7 @@
         "oidc": "OIDC",
         "certificate": "客户端证书",
         "authVerifier": "用户名与密码",
+        "saml": "单点登录（SSO）",
         "spiffe": "SPIFFE JWT-SVID",
         "spiffeGatewayNotice": "此服务器使用 SPIFFE JWT-SVID 对浏览器会话进行身份验证。会话由 KMS 前端的入口网关建立，请通过该网关打开 Web 界面。",
         "accessKms": "访问 KMS",

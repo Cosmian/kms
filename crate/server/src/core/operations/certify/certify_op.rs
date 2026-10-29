@@ -2,9 +2,10 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
+            extra::VENDOR_ATTR_X509_EXTENSION,
             kmip_objects::ObjectType,
             kmip_operations::{Certify, CertifyResponse},
-            kmip_types::{LinkType, LinkedObjectIdentifier},
+            kmip_types::{LinkType, LinkedObjectIdentifier, VendorAttributeValue},
         },
     },
     cosmian_kms_interfaces::AtomicOperation,
@@ -12,13 +13,15 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 
 use super::{
-    build_certificate::build_and_sign_certificate, resolve_issuer::get_issuer,
-    resolve_subject::get_subject, subject::Subject,
+    build_certificate::build_and_sign_certificate,
+    resolve_issuer::{get_issuer, private_key_link_of},
+    resolve_subject::get_subject,
+    subject::Subject,
 };
 use crate::{
     config::ServerParams,
     core::{
-        KMS,
+        KMS, ObjectHandle,
         operations::{
             algorithm_policy::{
                 enforce_kmip_algorithm_policy_for_csr, enforce_kmip_algorithm_policy_for_public_key,
@@ -37,10 +40,37 @@ use crate::{
 /// The certificate can be self-signed or signed by another certificate.
 pub(crate) async fn certify(
     kms: &KMS,
-    request: Certify,
+    mut request: Certify,
     user: &UserId,
 ) -> KResult<CertifyResponse> {
+    normalize_kmip1_x509_extension(&mut request, kms.vendor_id());
     Box::pin(certify_for_owner(kms, request, user, user)).await
+}
+
+/// KMIP 1.x clients carry the X.509 extension config as the custom attribute
+/// `y-<vendor_id>::x509-extension` (KMIP 1.4 §3.39; the same name the KMIP 1.x attribute
+/// conversion emits for a vendor attribute), converted to a `KMIP1` vendor attribute.
+/// Rewrite it to the vendor attribute the certify pipeline reads. The pipeline expects a
+/// `ByteString`, so a `TextString` value (the natural 1.x form of the config) is converted.
+fn normalize_kmip1_x509_extension(request: &mut Certify, vendor_id: &str) {
+    let kmip1_name = format!("y-{vendor_id}::{VENDOR_ATTR_X509_EXTENSION}");
+    if let Some(vas) = request
+        .attributes
+        .as_mut()
+        .and_then(|a| a.vendor_attributes.as_mut())
+    {
+        for va in vas
+            .iter_mut()
+            .filter(|va| va.vendor_identification == "KMIP1" && va.attribute_name == kmip1_name)
+        {
+            vendor_id.clone_into(&mut va.vendor_identification);
+            VENDOR_ATTR_X509_EXTENSION.clone_into(&mut va.attribute_name);
+            if let VendorAttributeValue::TextString(text) = &mut va.attribute_value {
+                va.attribute_value =
+                    VendorAttributeValue::ByteString(std::mem::take(text).into_bytes());
+            }
+        }
+    }
 }
 
 /// Certify: the certified key (and a PKCS#10 request's signature) must satisfy the active
@@ -96,13 +126,14 @@ pub(crate) async fn certify_for_owner(
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());
-    let (certificate, tags, attributes) = build_and_sign_certificate(
+    let (certificate, tags, attributes) = Box::pin(build_and_sign_certificate(
         kms,
         &issuer,
         &subject,
         request,
         kms.params.kms_public_url.as_deref(),
-    )?;
+    ))
+    .await?;
 
     let (operations, unique_identifier) = match subject {
         Subject::X509Req(unique_identifier, _) | Subject::Certificate(unique_identifier, _, _) => {
@@ -138,30 +169,31 @@ pub(crate) async fn certify_for_owner(
                 LinkType::PublicKeyLink,
                 LinkedObjectIdentifier::TextString(from_public_key.id().to_owned()),
             );
-            // update the link to the private for the certificate
-            if let Some(private_key_id) = public_key_attributes.get_link(LinkType::PrivateKeyLink) {
+            // update the link to the private key for the certificate
+            let is_hsm_key = ObjectHandle::from(from_public_key.id()).is_hsm();
+            let private_key_id = private_key_link_of(&from_public_key);
+            if let Some(private_key_id) = private_key_id {
                 certificate_attributes.set_link(LinkType::PrivateKeyLink, private_key_id);
             }
-            (
-                vec![
-                    // upsert the certificate
-                    AtomicOperation::Upsert((
-                        unique_identifier.to_string(),
-                        certificate,
-                        certificate_attributes,
-                        Some(tags),
-                        State::Active,
-                    )),
-                    // update the public key
-                    AtomicOperation::UpdateObject((
-                        from_public_key.id().to_owned(),
-                        from_public_key.object().to_owned(),
-                        public_key_attributes,
-                        None,
-                    )),
-                ],
-                unique_identifier,
-            )
+            // upsert the certificate
+            let mut operations = vec![AtomicOperation::Upsert((
+                unique_identifier.to_string(),
+                certificate,
+                certificate_attributes,
+                Some(tags),
+                State::Active,
+            ))];
+            // Update the public key, unless it is an HSM object: it cannot store KMIP links
+            // (`HsmStore::update_object` is a no-op) and the batch runs on the certificate's store.
+            if !is_hsm_key {
+                operations.push(AtomicOperation::UpdateObject((
+                    from_public_key.id().to_owned(),
+                    from_public_key.object().to_owned(),
+                    public_key_attributes,
+                    None,
+                )));
+            }
+            (operations, unique_identifier)
         }
         Subject::KeypairAndSubjectName(unique_identifier, mut keypair_data, _) => {
             trace!(

@@ -483,19 +483,37 @@ pub(crate) fn prepare_ops(
     } else {
         None
     };
-    let ciphertext_gcm: Option<Vec<u8>> = if modes.contains(&ConcreteMode::DecryptAesGcm) {
-        let key = secret_key.ok_or_else(|| {
-            BenchError::Setup("DecryptAesGcm requires a provisioned secret key".to_owned())
-        })?;
-        let c = setup_session.encrypt(key, HsmEncryptionAlgorithm::AesGcm, &plaintext, None)?;
-        Some(
-            [
-                c.iv.unwrap_or_default(),
-                c.ciphertext,
-                c.tag.unwrap_or_default(),
-            ]
-            .concat(),
+    // AES-GCM is probed once, like OAEP below: in FIPS builds the server refuses a GCM
+    // encryption whose IV was not generated inside the HSM (IG C.H), which some HSMs (e.g. the
+    // Crypt2pay simulator) never do. A failed probe skips both GCM modes for this run.
+    let ciphertext_gcm: Option<Vec<u8>> = if modes.iter().any(|mode| {
+        matches!(
+            mode,
+            ConcreteMode::EncryptAesGcm | ConcreteMode::DecryptAesGcm
         )
+    }) {
+        let key = secret_key.ok_or_else(|| {
+            BenchError::Setup(
+                "EncryptAesGcm/DecryptAesGcm require a provisioned secret key".to_owned(),
+            )
+        })?;
+        match setup_session.encrypt(key, HsmEncryptionAlgorithm::AesGcm, &plaintext, None) {
+            Ok(c) => Some(
+                [
+                    c.iv.unwrap_or_default(),
+                    c.ciphertext,
+                    c.tag.unwrap_or_default(),
+                ]
+                .concat(),
+            ),
+            Err(error) => {
+                eprintln!(
+                    "[bench:pkcs11] 'encrypt/aes-gcm'/'decrypt/aes-gcm' unavailable, \
+                     skipping: {error}"
+                );
+                None
+            }
+        }
     } else {
         None
     };
@@ -658,6 +676,10 @@ pub(crate) fn prepare_ops(
                 let Some(secret_key) = secret_key else {
                     continue;
                 };
+                if ciphertext_gcm.is_none() {
+                    // Probe already failed and printed a notice above; skip silently here.
+                    continue;
+                }
                 let plaintext = plaintext.clone();
                 Box::new(move |session: &Session| {
                     session.encrypt(

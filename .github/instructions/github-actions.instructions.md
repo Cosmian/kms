@@ -47,6 +47,10 @@ applyTo: '.github/workflows/**, .github/actions/**'
 - Mask sensitive values in logs with `::add-mask::$VALUE` when echoing.
 - Use `env:` at the step level for locally scoped variables.
 
+## SSH
+
+Never add `-o StrictHostKeyChecking=no` (or `'StrictHostKeyChecking no'`) to a new ssh/scp step. Pin the server key in `~/.ssh/known_hosts` from a repository secret or variable. If none exists for the host, stop and ask the user for the key — do not disable the check. About 19 existing occurrences in 7 workflows (`packaging*.yml`, `build_windows.yml`, `benchmark.yml`, `flamegraph.yml`) are legacy: migrate when you touch the step.
+
 ## Caching and performance
 
 - Cache Cargo registry and build artifacts using `actions/cache` with a key that includes the Rust toolchain version and `Cargo.lock` hash.

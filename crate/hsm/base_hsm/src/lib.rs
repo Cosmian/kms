@@ -23,6 +23,8 @@ mod kms_hsm;
 mod slots;
 
 pub mod hsm_capabilities;
+#[cfg(test)]
+mod test_fixtures;
 pub mod test_helpers;
 pub mod tests_shared;
 
@@ -73,6 +75,20 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_DECRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_WRAP,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_UNWRAP,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
@@ -138,6 +154,20 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_DECRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_WRAP,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_UNWRAP,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),
@@ -210,6 +240,20 @@ macro_rules! aes_key_template {
             },
             pkcs11_sys::CK_ATTRIBUTE {
                 type_: pkcs11_sys::CKA_DECRYPT,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_WRAP,
+                pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
+                    .cast::<std::ffi::c_void>()
+                    .cast_mut(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<pkcs11_sys::CK_BBOOL>())?,
+            },
+            pkcs11_sys::CK_ATTRIBUTE {
+                type_: pkcs11_sys::CKA_UNWRAP,
                 pValue: std::ptr::from_ref::<u8>(&CK_TRUE)
                     .cast::<std::ffi::c_void>()
                     .cast_mut(),

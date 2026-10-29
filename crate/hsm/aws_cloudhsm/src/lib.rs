@@ -39,13 +39,17 @@ impl HsmProvider for AwsCloudHsmCapabilityProvider {
             supports_rsa_sensitive_attribute: false,
             supports_ec_sensitive_attribute: false,
             supports_aes_gcm_caller_iv: false,
+            allows_caller_gcm_iv_in_fips: false,
+            aes_key_wrap_pad_is_rfc5649: false,
             supports_aes_gcm_message: true,
+            supports_message_sign_verify: false,
             rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
             // C_GetAttributeValue on CKA_START_DATE/CKA_END_DATE returns CKR_ATTRIBUTE_TYPE_INVALID.
             supports_key_dates: false,
             supports_rsa_oaep_key_wrap: true,
             enforces_ecdsa_digest_strength: true,
+            skip_finalize_on_drop: false,
             max_concurrent_sessions: 128,
         }
     }

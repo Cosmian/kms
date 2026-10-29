@@ -32,6 +32,7 @@ pub struct AdvancedConfig {
     pub workspace: WorkspaceConfig,
     pub vendor_identification: String,
     pub key_encryption_key: Option<String>,
+    pub key_encryption_key_wrapping_algorithm: Option<String>,
     pub default_unwrap_type: Option<Vec<String>>,
     pub crypto_officer_users: Option<Vec<String>>,
     pub crypto_officer_require_ceremony: bool,
@@ -117,6 +118,26 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         None
     } else {
         Some(kek)
+    };
+    let key_encryption_key_wrapping_algorithm = if key_encryption_key.is_some() {
+        let items = [
+            "default (HSM: AES-GCM or RSA-OAEP; software: AES-KWP)",
+            "aes-gcm",
+            "aes-key-wrap",
+            "aes-key-wrap-padding",
+            "rsa-oaep",
+        ];
+        let idx = Select::with_theme(&theme)
+            .with_prompt("Algorithm used to wrap keys at rest with the KEK")
+            .items(&items)
+            .default(0)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        (idx > 0)
+            .then(|| items.get(idx).map(|s| (*s).to_owned()))
+            .flatten()
+    } else {
+        None
     };
 
     let mut unwrap_type_labels: Vec<&str> = vec!["All"];
@@ -265,6 +286,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         workspace,
         vendor_identification,
         key_encryption_key,
+        key_encryption_key_wrapping_algorithm,
         default_unwrap_type,
         crypto_officer_users,
         crypto_officer_require_ceremony,

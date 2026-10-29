@@ -741,6 +741,7 @@ impl Database {
                     .unwrap_or_default(),
             );
         }
+        drop(map);
         Ok(results)
     }
 
@@ -894,7 +895,7 @@ impl Database {
 /// generated serial numbers have a leading nibble of `0`, and naively trimming all
 /// leading `'0'` characters (rather than only whole zero bytes) desynchronises this
 /// hex string from the OCSP layer's for exactly those certificates.
-fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
+pub(crate) fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
     const UPPER_HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
     let cert_bytes = match object {
@@ -906,6 +907,10 @@ fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
     // `to_bytes_be()` already yields the minimal big-endian representation (no leading
     // zero bytes), matching the canonical form OpenSSL's BIGNUM uses internally.
     let serial_bytes = parsed.serial.to_bytes_be();
+    // ...except for zero, which it yields as `[0]` while `BN_bn2hex` prints `"0"`.
+    if serial_bytes.iter().all(|byte| *byte == 0) {
+        return Some("0".to_owned());
+    }
     serial_bytes.iter().try_fold(
         String::with_capacity(serial_bytes.len().saturating_mul(2)),
         |mut output, byte| {
@@ -1278,6 +1283,28 @@ mod tests {
             hex, "0ABBCCDDEE",
             "leading zero nibble of the most-significant byte must be preserved"
         );
+    }
+
+    /// Zero and high-bit serials must match `BN_to_hex_str` (the form tagged at import/certify
+    /// time): `BN_bn2hex` prints zero as `"0"`, whole leading zero bytes are never printed.
+    #[test]
+    fn test_extract_serial_hex_matches_bn_hex_for_zero_and_high_bit() {
+        for serial in [&[0x00_u8][..], &[0x00, 0x00, 0x05], &[0x80, 0x01], &[0x0F]] {
+            let object = Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: cert_der_with_serial(serial),
+            });
+            let expected = openssl::bn::BigNum::from_slice(serial)
+                .expect("bn")
+                .to_hex_str()
+                .expect("hex")
+                .to_string();
+            assert_eq!(
+                extract_serial_hex_from_object(&object).expect("extract serial hex"),
+                expected,
+                "serial {serial:02X?}"
+            );
+        }
     }
 
     /// Sanity check: a serial with no leading zero nibble round-trips unchanged.

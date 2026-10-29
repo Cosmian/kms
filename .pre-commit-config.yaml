@@ -241,6 +241,14 @@ repos:
         entry: '^(?!\s*#).*\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b'
         files: ^(\.github/(workflows|actions)/.*\.ya?ml|\.mise/.*|scripts/.*)$
 
+      - id: no-direct-kms-instantiate
+        name: Tests reuse in-process KMS helpers
+        description: 'Use crate::tests::test_utils::{test_kms, test_kms_with_config}; see rust.instructions.md § Test KMS servers.'
+        language: pygrep
+        entry: '\bKMS::instantiate\('
+        files: ^crate/server/src/.*\.rs$
+        exclude: ^crate/server/src/(start_kms_server|core/kms/mod|tests/test_utils|tests/google_cse/server_setup)\.rs$
+
       - id: pip-audit-lockfiles
         name: pip-audit on hash-pinned Python requirements
         entry: bash -c 'for f in "$@"; do pip-audit -r "$f" || exit 1; done' --
@@ -598,6 +606,14 @@ repos:
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
+
+      - id: ui-e2e-changed
+        name: UI end-to-end (specs touched by the change, dev server)
+        entry: bash .mise/scripts/pre-commit/ui-e2e-changed.sh
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [pre-push]
 
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)

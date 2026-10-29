@@ -43,7 +43,8 @@ use cosmian_logger::debug;
 use zeroize::Zeroizing;
 
 use crate::{
-    AesKeySize, BaseHsm, RsaKeySize, Session, SessionGuard, hsm_capabilities::HsmProvider,
+    AesKeySize, BaseHsm, RsaKeySize, Session, SessionGuard, base_hsm::aes_key_wrap_mechanism,
+    hsm_capabilities::HsmProvider,
 };
 
 #[cfg(not(feature = "non-fips"))]
@@ -353,12 +354,25 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         tokio::task::spawn_blocking(move || {
             let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
-            let result = session.session()?.encrypt(
-                handle,
-                algorithm.into(),
-                &data,
-                (!iv_counter_nonce.is_empty()).then_some(&iv_counter_nonce),
-            )?;
+            let result = if matches!(
+                algorithm,
+                CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
+            ) {
+                let m = aes_key_wrap_mechanism(&slot, slot_id, &algorithm, false)?;
+                EncryptedContent {
+                    ciphertext: session.session()?.aes_key_wrap(handle, m, &data)?,
+                    iv: None,
+                    tag: None,
+                    cryptographic_algorithm: None,
+                }
+            } else {
+                session.session()?.encrypt(
+                    handle,
+                    algorithm.into(),
+                    &data,
+                    (!iv_counter_nonce.is_empty()).then_some(&iv_counter_nonce),
+                )?
+            };
             session.checkin();
             Ok(result)
         })
@@ -383,11 +397,42 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         tokio::task::spawn_blocking(move || {
             let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
-            let result = session
-                .session()?
-                .decrypt(handle, algorithm.into(), &data)?;
+            let result = if matches!(
+                algorithm,
+                CryptoAlgorithm::AesKeyWrap | CryptoAlgorithm::AesKeyWrapPad
+            ) {
+                let m = aes_key_wrap_mechanism(&slot, slot_id, &algorithm, true)?;
+                session.session()?.aes_key_unwrap(handle, m, &data)?
+            } else {
+                session
+                    .session()?
+                    .decrypt(handle, algorithm.into(), &data)?
+            };
             session.checkin();
             Ok(result)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
+    }
+
+    async fn set_key_wrap(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        enabled: bool,
+    ) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let permit = slot
+            .acquire_session_permit()
+            .await
+            .map_err(|e| InterfaceError::Default(e.to_string()))?;
+        let key_id = key_id.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
+            let handle = session.session()?.get_object_handle(&key_id)?;
+            session.session()?.set_wrap_attributes(handle, enabled)?;
+            session.checkin();
+            Ok(())
         })
         .await
         .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
@@ -413,7 +458,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let key_id = key_id.to_vec();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
+            let session = SessionGuard::new(&slot, slot.checkout_session_for_signature()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let metadata = if let Some(meta) = session
                 .session()?
@@ -465,7 +510,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let data = data.to_vec();
         let signature = signature.to_vec();
         tokio::task::spawn_blocking(move || {
-            let session = SessionGuard::new(&slot, slot.checkout_session()?, permit);
+            let session = SessionGuard::new(&slot, slot.checkout_session_for_signature()?, permit);
             let handle = session.session()?.get_object_handle(&key_id)?;
             let metadata = if let Some(meta) = session
                 .session()?

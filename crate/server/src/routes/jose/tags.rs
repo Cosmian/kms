@@ -181,7 +181,6 @@ fn tags_response(kid: String, all_tags: HashSet<String>) -> TagsResponse {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_access::access::Access;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
@@ -190,17 +189,12 @@ mod tests {
     };
 
     use super::fetch_all_tags;
-    use crate::{
-        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-        tests::test_utils::https_clap_config,
-    };
+    use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
     /// A user holding only `Encrypt` may read tags but not add or remove them.
     #[tokio::test]
     async fn test_tag_changes_require_attribute_permissions() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
         let alice = UserId::from("alice");
         let bob = UserId::from("bob");
         let request = symmetric_key_create_request(

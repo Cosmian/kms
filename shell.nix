@@ -223,8 +223,9 @@ pkgs.mkShell {
       # point it at the one Nix provides alongside libclang.
       CLANG_RESOURCE_INCLUDE="$(echo "${pkgs.llvmPackages.libclang.lib}"/lib/clang/*/include)"
       # Clang's resource-dir headers (e.g. inttypes.h) in turn `#include_next` the real
-      # libc headers; without glibc's dev include dir on the search path those fail too.
-      export BINDGEN_EXTRA_CLANG_ARGS="-isystem $CLANG_RESOURCE_INCLUDE -isystem ${pkgs.glibc.dev}/include"
+      # libc headers; on Linux, without glibc's dev include dir on the search path those fail
+      # too. On Darwin glibc is unavailable and the libc headers come from the SDK.
+      export BINDGEN_EXTRA_CLANG_ARGS="-isystem $CLANG_RESOURCE_INCLUDE${pkgs.lib.optionalString pkgs.stdenv.isLinux " -isystem ${pkgs.glibc.dev}/include"}"
     fi
 
     # Configure OpenSSL based on requested variant

@@ -107,7 +107,6 @@ async fn e2e_kmip_policy_key_wrapping_aes_kw_suite_requires_aes_and_nist_key_wra
             block_cipher_mode: Some(BlockCipherMode::NISTKeyWrap),
             ..Default::default()
         }),
-        None,
     );
 
     let _resp: ExportResponse = post_2_1(&app, &export).await.unwrap();
@@ -134,7 +133,6 @@ async fn e2e_kmip_policy_key_wrapping_aes_kwp_suite_requires_aes_and_kwp_mode() 
             block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
             ..Default::default()
         }),
-        None,
     );
 
     let _resp: ExportResponse = post_2_1(&app, &export).await.unwrap();
@@ -161,7 +159,6 @@ async fn e2e_kmip_policy_key_wrapping_aes_gcm_suite_requires_aes_and_gcm() {
             block_cipher_mode: Some(BlockCipherMode::GCM),
             ..Default::default()
         }),
-        None,
     );
 
     let _resp: ExportResponse = post_2_1(&app, &export).await.unwrap();
@@ -193,7 +190,6 @@ async fn e2e_kmip_policy_key_wrapping_rsa_oaep_sha256_suite_requires_rsa_oaep_an
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         }),
-        None,
     );
 
     let err = post_2_1::<_, _, ExportResponse, _>(&app, &export)
@@ -234,7 +230,6 @@ async fn e2e_kmip_policy_key_wrapping_rsa_aes_key_wrap_sha256_suite_requires_rsa
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
         }),
-        None,
     );
 
     let err = post_2_1::<_, _, ExportResponse, _>(&app, &export)

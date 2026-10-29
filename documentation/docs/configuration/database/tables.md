@@ -133,6 +133,7 @@ Known parameters:
 | `db_state` | The database migration state: `ready` or `upgrading`. |
 | `db_version` | The version of the KMS software that last ran against this database. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
+| `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
 
 ## crypto_officer_activations
 

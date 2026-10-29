@@ -1,9 +1,16 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use actix_session::Session;
-use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use actix_web::{
+    HttpRequest, HttpResponse,
+    cookie::{Cookie, SameSite},
+    get,
+    http::header,
+    post, web,
+};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
+use cosmian_logger::{debug, warn};
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -14,7 +21,9 @@ use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
     middlewares::{
-        JwtConfig, JwtTokenHeaders, UserId, reject_reserved_service_identity, validate_jwt_svid,
+        AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, UserId,
+        authenticate_auth_verifier_session_cookie, reject_reserved_service_identity,
+        validate_jwt_svid,
     },
 };
 
@@ -349,11 +358,6 @@ pub(crate) async fn callback(
         .finish()
 }
 
-/// Session cookie name set by the Auth Verifier server on a successful
-/// `/login` call. Carries a JWT (`sub` = username); mirrors the constant of the same
-/// name in `ckms login cosmian` (`kms/crate/clients/client/src/http_client/login.rs`).
-const AUTH_VERIFIER_SESSION_COOKIE: &str = "_ea_";
-
 /// Request body for `POST /ui/login_as`.
 #[derive(Debug, Deserialize)]
 pub(crate) struct AuthVerifierLoginRequest {
@@ -597,7 +601,15 @@ pub(crate) async fn login_svid(
 }
 
 #[get("/whoami")]
-pub(crate) async fn whoami(session: Session) -> HttpResponse {
+pub(crate) async fn whoami(
+    req: HttpRequest,
+    session: Session,
+    auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
+) -> HttpResponse {
+    // Same precedence as the API middlewares: the Auth Verifier cookie wins over the KMS session.
+    if let Some(user_id) = auth_verifier_session_user(&req, &auth_verifier_runtime).await {
+        return HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id }));
+    }
     match session.get::<String>("user_id") {
         Ok(Some(user_id)) => HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id })),
         Ok(None) => {
@@ -608,22 +620,87 @@ pub(crate) async fn whoami(session: Session) -> HttpResponse {
     }
 }
 
+/// The user of a valid Auth Verifier SAML session cookie, when SAML sign-on is enabled.
+async fn auth_verifier_session_user(
+    req: &HttpRequest,
+    auth_verifier_runtime: &AuthVerifierRuntimeConfig,
+) -> Option<UserId> {
+    let realm = auth_verifier_runtime.config.saml_session_realm()?;
+    let jwks_manager = auth_verifier_runtime.jwks_manager.as_ref()?;
+    let cookie = req.cookie(AUTH_VERIFIER_SESSION_COOKIE)?;
+    authenticate_auth_verifier_session_cookie(jwks_manager, cookie.value(), realm)
+        .await
+        .inspect_err(|e| debug!("Auth Verifier session cookie rejected: {e}"))
+        .ok()
+}
+
+/// Start SAML single sign-on through the Auth Verifier server.
+///
+/// Redirects the browser to the Auth Verifier SAML login of the configured realm, which
+/// must be reverse-proxied on the KMS public origin so that the `_ea_` session cookie it
+/// sets is sent back to the KMS. After sign-in the browser returns to the Web UI.
+#[get("/login_saml")]
+pub(crate) async fn login_saml(
+    session: Session,
+    auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
+    kms_url: web::Data<String>,
+) -> HttpResponse {
+    let Some(realm) = auth_verifier_runtime.config.saml_session_realm() else {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "SAML single sign-on is not configured on this server" }),
+        );
+    };
+    match saml_login_url(kms_url.as_str(), realm) {
+        Ok(url) => {
+            // Drop any previous KMS session so it cannot outlive the SAML identity switch.
+            session.purge();
+            HttpResponse::Found()
+                .insert_header((header::LOCATION, url.as_str()))
+                .insert_header((header::CACHE_CONTROL, "no-store"))
+                .finish()
+        }
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+    }
+}
+
+/// `{origin}/saml/{realm}/login?return_to={kms_public_url}/ui/locate`.
+///
+/// The Auth Verifier binds its SAML login cookie to the `/saml/` path, so the SAML
+/// routes live at the root of the KMS origin even when `kms_public_url` has a path.
+fn saml_login_url(kms_public_url: &str, realm: &str) -> Result<Url, String> {
+    let return_to = format!("{}/ui/locate", kms_public_url.trim_end_matches('/'));
+    let mut url = Url::parse(kms_public_url).map_err(|e| format!("Invalid KMS public URL: {e}"))?;
+    url.set_query(None);
+    url.set_fragment(None);
+    url.path_segments_mut()
+        .map_err(|()| "Invalid KMS public URL: cannot be a base".to_owned())?
+        .clear()
+        .extend(["saml", realm, "login"]);
+    url.query_pairs_mut().append_pair("return_to", &return_to);
+    Ok(url)
+}
+
 #[get("/logout")]
 pub(crate) async fn logout(
+    req: HttpRequest,
     session: Session,
     oidc_runtime: web::Data<OidcRuntimeConfig>,
+    auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
     session.purge();
+
+    let mut response = HttpResponse::Found();
+    if end_auth_verifier_session(&req, &auth_verifier_runtime).await {
+        response.cookie(expired_auth_verifier_session_cookie());
+    }
 
     // When no OIDC logout URL is configured (e.g. the session was established via the
     // Auth Verifier server, or OIDC simply isn't set up), there is no external
     // IdP session to terminate: just drop the local session (done above) and send the
     // browser back to the login page.
     let Some(url) = &oidc_runtime.config.ui_oidc_logout_url else {
-        return HttpResponse::Found()
-            .append_header(("Location", "/ui/login"))
-            .finish();
+        return response.append_header(("Location", "/ui/login")).finish();
     };
     let mut logout_url = match Url::parse(url) {
         Ok(parsed_url) => parsed_url,
@@ -643,9 +720,92 @@ pub(crate) async fn logout(
         .append_pair("client_id", &client_id)
         .append_pair("returnTo", &redirect_url);
 
-    HttpResponse::Found()
+    response
         .append_header(("Location", logout_url.to_string()))
         .finish()
+}
+
+/// Revoke the browser's Auth Verifier SAML session, if any, on the Auth Verifier.
+///
+/// Returns `true` when the browser holds a valid session of the SAML realm, so the caller
+/// expires the `_ea_` cookie. Any other cookie (garbage, another realm of the same Auth
+/// Verifier) is neither forwarded to the Auth Verifier nor expired. Revocation is best
+/// effort: logout still succeeds locally if the Auth Verifier cannot be reached.
+async fn end_auth_verifier_session(
+    req: &HttpRequest,
+    auth_verifier_runtime: &AuthVerifierRuntimeConfig,
+) -> bool {
+    let Some(server_url) = auth_verifier_runtime.config.auth_verifier_url.as_deref() else {
+        return false;
+    };
+    if auth_verifier_session_user(req, auth_verifier_runtime)
+        .await
+        .is_none()
+    {
+        return false;
+    }
+    let Some(cookie) = req.cookie(AUTH_VERIFIER_SESSION_COOKIE) else {
+        return false;
+    };
+    if let Err(e) = revoke_auth_verifier_session(
+        server_url,
+        auth_verifier_runtime
+            .config
+            .auth_verifier_accept_invalid_certs,
+        cookie.value(),
+    )
+    .await
+    {
+        warn!("Logout: failed to revoke the Auth Verifier session: {e}");
+    }
+    true
+}
+
+/// `DELETE {auth_verifier_url}/sessions`, authenticated by the session cookie itself.
+/// The Auth Verifier identifies a session by the SHA-256 of its cookie value.
+async fn revoke_auth_verifier_session(
+    server_url: &str,
+    accept_invalid_certs: bool,
+    token: &str,
+) -> Result<(), String> {
+    let mut url = Url::parse(server_url.trim_end_matches('/'))
+        .map_err(|e| format!("invalid Auth Verifier server URL: {e}"))?;
+    url.path_segments_mut()
+        .map_err(|()| "invalid Auth Verifier server URL: cannot be a base".to_owned())?
+        .push("sessions");
+    let session_id = hex::encode(openssl::sha::sha256(token.as_bytes()));
+
+    let response = Client::builder()
+        .danger_accept_invalid_certs(accept_invalid_certs)
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?
+        .delete(url)
+        .header(
+            reqwest::header::COOKIE,
+            format!("{AUTH_VERIFIER_SESSION_COOKIE}={token}"),
+        )
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(serde_json::json!({ "session_ids": [session_id] }).to_string())
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("Auth Verifier answered {}", response.status()));
+    }
+    Ok(())
+}
+
+/// Removal cookie for the Auth Verifier session; must match the name and path it was set with.
+fn expired_auth_verifier_session_cookie() -> Cookie<'static> {
+    let mut cookie = Cookie::build(AUTH_VERIFIER_SESSION_COOKIE, "")
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .finish();
+    cookie.make_removal();
+    cookie
 }
 
 #[get("/auth_method")]
@@ -671,6 +831,7 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(login)
         .service(callback)
         .service(login_as)
+        .service(login_saml)
         .service(login_svid)
         .service(whoami)
         .service(logout)
@@ -679,9 +840,189 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{App, test, web};
+    use actix_web::{
+        App,
+        cookie::Cookie,
+        http::{StatusCode, header},
+        test, web,
+    };
 
-    use super::get_auth_method;
+    use super::{get_auth_method, login_saml, logout, saml_login_url, whoami};
+    use crate::{
+        config::{AuthVerifierConfig, AuthVerifierRuntimeConfig, OidcConfig, OidcRuntimeConfig},
+        middlewares::{
+            AUTH_VERIFIER_SESSION_COOKIE,
+            auth_verifier_test_helpers::{auth_verifier_token, empty_jwks_manager},
+        },
+    };
+
+    const KMS_URL: &str = "https://kms.example.com";
+
+    async fn saml_runtime(saml_realm: Option<&str>) -> AuthVerifierRuntimeConfig {
+        AuthVerifierRuntimeConfig {
+            config: AuthVerifierConfig {
+                // Unroutable: logout revocation must stay best effort.
+                auth_verifier_url: Some("https://127.0.0.1:9".to_owned()),
+                auth_verifier_saml_realm: saml_realm.map(str::to_owned),
+                ..AuthVerifierConfig::default()
+            },
+            jwks_manager: Some(empty_jwks_manager().await),
+        }
+    }
+
+    #[actix_web::test]
+    async fn saml_login_url_targets_origin_root_and_returns_to_ui() {
+        assert_eq!(
+            saml_login_url("https://kms.example.com/kms/", "my realm/x").map(String::from),
+            Ok("https://kms.example.com/saml/my%20realm%2Fx/login?return_to=https%3A%2F%2Fkms.example.com%2Fkms%2Fui%2Flocate".to_owned())
+        );
+    }
+
+    #[actix_web::test]
+    async fn login_saml_redirects_to_auth_verifier_saml_login() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
+                .app_data(web::Data::new(KMS_URL.to_owned()))
+                .service(login_saml),
+        )
+        .await;
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::get().uri("/login_saml").to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        assert_eq!(
+            resp.headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some(
+                "https://kms.example.com/saml/kms-saml/login?return_to=https%3A%2F%2Fkms.example.com%2Fui%2Flocate"
+            )
+        );
+    }
+
+    #[actix_web::test]
+    async fn login_saml_fails_when_not_configured() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(None).await))
+                .app_data(web::Data::new(KMS_URL.to_owned()))
+                .service(login_saml),
+        )
+        .await;
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::get().uri("/login_saml").to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    async fn whoami_status(
+        saml_realm: Option<&str>,
+        token: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(saml_realm).await))
+                .service(whoami),
+        )
+        .await;
+        let req = test::TestRequest::get()
+            .uri("/whoami")
+            .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token.to_owned()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        (status, test::read_body_json(resp).await)
+    }
+
+    #[actix_web::test]
+    async fn whoami_resolves_user_from_auth_verifier_session_cookie() {
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
+        let (status, body) = whoami_status(Some("kms-saml"), &token).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body.get("user_id").and_then(|v| v.as_str()),
+            Some("alice@example.com")
+        );
+    }
+
+    #[actix_web::test]
+    async fn whoami_rejects_cookie_of_another_realm_or_when_saml_disabled() {
+        let other_realm = auth_verifier_token("alice@example.com", Some("other-app"));
+        assert_eq!(
+            whoami_status(Some("kms-saml"), &other_realm).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
+        assert_eq!(
+            whoami_status(None, &token).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    /// The `_ea_` removal cookie set by `GET /logout` for a request carrying `token`, if any.
+    async fn logout_removal_cookie(
+        token: String,
+    ) -> Option<(
+        String,
+        Option<String>,
+        Option<actix_web::cookie::time::Duration>,
+    )> {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
+                .app_data(web::Data::new(OidcRuntimeConfig {
+                    config: OidcConfig::default(),
+                    discovered: None,
+                }))
+                .app_data(web::Data::new(KMS_URL.to_owned()))
+                .service(logout),
+        )
+        .await;
+        let req = test::TestRequest::get()
+            .uri("/logout")
+            .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        resp.response()
+            .cookies()
+            .find(|c| c.name() == AUTH_VERIFIER_SESSION_COOKIE)
+            .map(|c| {
+                (
+                    c.value().to_owned(),
+                    c.path().map(str::to_owned),
+                    c.max_age(),
+                )
+            })
+    }
+
+    #[actix_web::test]
+    async fn logout_expires_auth_verifier_session_cookie() {
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
+        assert_eq!(
+            logout_removal_cookie(token).await,
+            Some((
+                String::new(),
+                Some("/".to_owned()),
+                Some(actix_web::cookie::time::Duration::ZERO)
+            )),
+            "logout must expire the Auth Verifier session cookie"
+        );
+    }
+
+    /// Logout must neither call the Auth Verifier nor expire cookies it cannot attribute to
+    /// a valid session of the SAML realm (other realm, or garbage).
+    #[actix_web::test]
+    async fn logout_ignores_cookie_that_is_not_a_valid_saml_realm_session() {
+        let other_realm = auth_verifier_token("alice@example.com", Some("other-app"));
+        assert_eq!(logout_removal_cookie(other_realm).await, None);
+        assert_eq!(logout_removal_cookie("not-a-jwt".to_owned()).await, None);
+    }
 
     #[actix_web::test]
     async fn test_auth_method_returns_cosmian_when_configured() {

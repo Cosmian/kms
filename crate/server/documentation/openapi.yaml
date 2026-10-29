@@ -367,6 +367,11 @@ components:
         aad:
           type: string
           description: Additional Authenticated Data encoded as base64url (optional)
+        cek_kid:
+          type: string
+          description: >
+            KMS UID of an AES key used as the CEK instead of a random one; RSA-OAEP /
+            RSA-OAEP-256 only. The key leaves the KMS wrapped under `kid`.
       example:
         kid: 550e8400-e29b-41d4-a716-446655440000
         alg: dir
@@ -538,7 +543,8 @@ components:
       required: [kty]
       description: |
         Generate a new key, or import an existing one by supplying its private
-        key material (e.g. `k`, `d`, or `p`/`q` depending on `kty`).
+        key material (e.g. `k`, `d`, or `p`/`q` depending on `kty`), or a public-only
+        RSA key (`n` and `e` without `d`, stored as a public key usable for encryption).
 
         For ECDH-ES key agreement (RFC 7518 §4.6), set `alg` to `ECDH-ES`,
         `ECDH-ES+A128KW`, or `ECDH-ES+A256KW`:
@@ -566,7 +572,13 @@ components:
           type: array
           items:
             type: string
-          description: JWK key_ops — inferred from `alg` if absent
+          description: >
+            JWK key_ops — inferred from `alg` if absent. For a public-only RSA import
+            (`n` and `e` without `d`) the permitted values are `encrypt`, `wrapKey` and
+            `verify` (default `encrypt` + `verify`).
+        kid:
+          type: string
+          description: Caller-chosen KMS unique identifier (import only)
       examples:
         symmetric_aes256:
           summary: AES-256 symmetric key for AES-GCM encryption
@@ -2484,6 +2496,85 @@ paths:
         '500':
           description: Internal server error — CRL generation failed
 
+  /certificates/csr:
+    post:
+      tags: [Certificates]
+      summary: Generate a PKCS#10 CSR signed by a private key held by the KMS
+      description: |
+        Builds a PKCS#10 certificate signing request for the private key `private_key_id`
+        and signs it with that key. The private key never leaves the server: keys stored
+        in an HSM sign through the HSM and may be non-extractable (a non-sensitive HSM key
+        is refused). Typical use: create a subordinate CA key in the HSM, generate its CSR
+        here, then have it signed by a root CA on another (offline) KMS.
+
+        The caller needs the `Sign` permission on the private key (never `Get`). Subject
+        attributes keep their input order and may repeat; escape a comma in a value with `\,`.
+        No extension is requested: set CA extensions when the root CA signs the CSR.
+      operationId: generateCsr
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject_name]
+              description: |
+                Either `private_key_id` (an existing key) or `algorithm` (generate the key pair
+                first) is required.
+              properties:
+                private_key_id:
+                  type: string
+                  description: |
+                    KMIP unique identifier of the private key, e.g. `hsm::0::subca`. With
+                    `algorithm`, the identifier given to the new key pair (an `hsm::<slot>::<id>`
+                    identifier creates it in the HSM); generated when omitted.
+                subject_name:
+                  type: string
+                  example: C=FR, O=Acme, CN=Acme Sub CA
+                algorithm:
+                  type: string
+                  example: nist-p256
+                  description: |
+                    Generate a key pair of this algorithm first, with the same names as
+                    `ckms certificates certify --algorithm` (`rsa2048`, `nist-p384`, `ed25519`,
+                    `ml-dsa-65`, ...). Key encapsulation algorithms (ML-KEM) cannot sign and are refused.
+                sensitive:
+                  type: boolean
+                  default: false
+                  description: |
+                    Make the generated private key non-extractable. Mandatory for an HSM key;
+                    only valid with `algorithm`.
+      responses:
+        '200':
+          description: The signed CSR
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csr_pem, private_key_id]
+                properties:
+                  csr_pem:
+                    type: string
+                    description: PEM-encoded PKCS#10 certificate signing request
+                  private_key_id:
+                    type: string
+                    description: The private key that signed the CSR
+                  public_key_id:
+                    type: string
+                    description: The public key of the generated pair (only when `algorithm` was set)
+        '401':
+          description: Unauthorized — missing or invalid credentials, or role not permitted
+        '422':
+          description: >-
+            Invalid request — private key not found or caller lacks the `Sign` permission on it,
+            key not Active, empty or malformed subject, not a private key, extractable HSM key,
+            or key refused by the server KMIP algorithm policy
+        '500':
+          description: Internal server error — signing failed
+
   # ── REST Crypto API ──────────────────────────────────────────────────────────
 
   /public/certificates/{issuer_id}/crl:
@@ -4036,6 +4127,24 @@ paths:
         '502':
           description: Cosmian authentication server unreachable or returned an unexpected response
 
+  /ui/login_saml:
+    get:
+      tags: [UI Auth]
+      summary: Start SAML single sign-on through the Auth Verifier
+      description: |
+        Redirects the browser to the Auth Verifier SAML login of the realm configured with
+        `auth_verifier_saml_realm`, at `/saml/{realm}/login` on the KMS public origin, with
+        `return_to` set to the Web UI. The Auth Verifier `/saml/` routes must be
+        reverse-proxied on that origin so the `_ea_` session cookie set after sign-in is sent
+        to the KMS, which then accepts it for that realm only. Any previous KMS UI session is
+        dropped.
+      operationId: uiLoginSaml
+      responses:
+        '302':
+          description: Redirect to the Auth Verifier SAML login
+        '500':
+          description: SAML single sign-on is not configured
+
   /ui/login_svid:
     post:
       tags: [UI Auth]
@@ -4106,7 +4215,11 @@ paths:
     get:
       tags: [UI Auth]
       summary: Current session user
-      description: Returns the user ID of the currently authenticated UI session. Returns 401 if no valid session exists.
+      description: >-
+        Returns the user ID of the currently authenticated UI session. When SAML single
+        sign-on is configured, a valid Auth Verifier `_ea_` session cookie issued for
+        `auth_verifier_saml_realm` takes precedence over the KMS session. Returns 401 if no
+        valid session exists.
       operationId: uiWhoAmI
       responses:
         '200':
@@ -4128,7 +4241,11 @@ paths:
     get:
       tags: [UI Auth]
       summary: Logout
-      description: Clears the session cookie and optionally redirects to the OIDC provider's logout endpoint.
+      description: >-
+        Clears the session cookie and optionally redirects to the OIDC provider's logout
+        endpoint. When SAML single sign-on is configured and the browser holds an Auth
+        Verifier `_ea_` session cookie, the session is also revoked on the Auth Verifier
+        (best effort) and the cookie is expired.
       operationId: uiLogout
       responses:
         '302':
@@ -4141,9 +4258,11 @@ paths:
       description: >-
         Returns the authentication methods configured for the web UI as an ordered
         `auth_methods` array (priority first: OIDC/JWT, then SPIFFE, then auth-verifier
-        username/password, then client certificate). `SPIFFE` is advertised when
+        SAML single sign-on, then auth-verifier username/password, then client certificate).
+        `SPIFFE` is advertised when
         `--jwt-svid-auth` is enabled; the session is established out of band through
-        `/ui/login_svid`. The singular `auth_method`
+        `/ui/login_svid`. `AUTH_VERIFIER_SAML` is advertised when `auth_verifier_saml_realm`
+        is set; the login starts at `/ui/login_saml`. The singular `auth_method`
         field is the primary method (auth_methods[0]) or `None`, retained for
         backward compatibility.
       operationId: uiAuthMethod
@@ -4157,13 +4276,13 @@ paths:
                 properties:
                   auth_method:
                     type: string
-                    enum: [JWT, AUTH_VERIFIER, CERT, None]
+                    enum: [JWT, AUTH_VERIFIER_SAML, AUTH_VERIFIER, CERT, None]
                     description: Highest-priority configured method (auth_methods[0]), or None. Kept for backward compatibility.
                   auth_methods:
                     type: array
                     items:
                       type: string
-                      enum: [JWT, AUTH_VERIFIER, CERT]
+                      enum: [JWT, AUTH_VERIFIER_SAML, AUTH_VERIFIER, CERT]
                     description: Configured UI login methods, ordered by priority (primary first).
                   oidc_issuer:
                     type: string

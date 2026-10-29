@@ -16,6 +16,7 @@ import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
 import CertificateGenerateCrlForm from "./actions/Certificates/CertificateGenerateCrl";
+import CertificateGenerateCsrForm from "./actions/Certificates/CertificateGenerateCsr";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
 import CertificateReCertifyForm from "./actions/Certificates/CertificateReCertify";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
@@ -202,9 +203,11 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                 ? "JWT"
                 : methods.includes("SPIFFE")
                   ? "SPIFFE"
-                  : methods.includes("AUTH_VERIFIER")
-                    ? "AUTH_VERIFIER"
-                    : undefined;
+                  : methods.includes("AUTH_VERIFIER_SAML")
+                    ? "AUTH_VERIFIER_SAML"
+                    : methods.includes("AUTH_VERIFIER")
+                      ? "AUTH_VERIFIER"
+                      : undefined;
 
             if (sessionMethod) {
                 const data = await fetchWhoAmI(location);
@@ -455,6 +458,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="certs/destroy" element={<DestroyForm objectType="certificate" />} />
                             <Route path="certs/validate" element={<CertificateValidateForm />} />
                             <Route path="certs/generate-crl" element={<CertificateGenerateCrlForm />} />
+                            <Route path="certs/generate-csr" element={<CertificateGenerateCsrForm />} />
                             <Route path="encrypt" element={<CertificateEncryptForm />} />
                             <Route path="decrypt" element={<CertificateDecryptForm />} />
                             <Route path="certs/certify" element={<CertificateCertifyForm />} />

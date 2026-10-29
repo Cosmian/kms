@@ -741,6 +741,8 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: sink rejected size-cap sentinel at id={id}` | `src/core/audit/writer.rs` | `id` | - |
 | `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
+| `warn` | `Logout: failed to revoke the Auth Verifier session: {e}` | `src/routes/ui_auth.rs` | `e`: network, TLS or HTTP status error returned while calling `DELETE /sessions` on the Auth Verifier | UI logout still succeeds and the `_ea_` cookie is expired, but the Auth Verifier session stays valid until it expires. Check that `auth_verifier_url` is reachable from the KMS. |
+| `debug` | `Auth Verifier session cookie rejected: {e}` | `src/routes/ui_auth.rs` | `e`: reason the `_ea_` cookie was rejected (invalid signature, expired, wrong realm, empty or reserved subject) | Expected after the SAML session expires. Repeated wrong-realm rejections indicate a cookie issued for another Auth Verifier realm. |
 | `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
 | `warn` | `EST simplereenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
 | `warn` | `SCEP request {} rejected (failInfo={}): {}` | `src/routes/scep/pki_operation.rs` | - | - |
@@ -805,6 +807,12 @@ Crate path: `crate/server`
 | `warn` | `enrollment: refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 | `warn` | `enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
 | `debug` | `The unwrapping key {unwrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid` | - |
+| `debug` | `RSA-OAEP HSM unwrap failed: {e}` | `src/routes/jose/decrypt.rs` | `e` | - |
+| `info` | `POST /certificates/csr` | `src/routes/csr.rs` | - | Request to generate a PKCS#10 CSR; the HSM signs it for non-extractable keys. |
+| `trace` | `found certificate {certificate_id} linked to HSM private key {}` | `src/core/certificate/find.rs` | `certificate_id` | - |
+| `warn` | `could not restore CKA_WRAP/CKA_UNWRAP on HSM key {kek}: {e4}` | `src/core/wrapping/wrap.rs` | `kek`, `e4` | - |
+| `warn` | `unwrap: declared {requested:?} failed for key wrapped by {unwrapping_key_uid} ({e}); retrying with the HSM default for objects wrapped before HSM wrapping honoured the requested mode` | `src/core/wrapping/unwrap.rs` | `requested`, `unwrapping_key_uid`, `e` | - |
+| `info` | `Enabled CKA_WRAP/CKA_UNWRAP on HSM key encryption key {kek} for {alg:?}` | `src/core/wrapping/wrap.rs` | `kek`, `alg` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -857,6 +865,10 @@ Crate path: `crate/server_database`
 | `error` | `atomic: objects {uids:?} were committed but the Findex index could not be updated after {INDEX_WRITE_ATTEMPTS} attempts (index needs repair): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `INDEX_WRITE_ATTEMPTS`, `e` | - |
 | `warn` | `atomic: active-key counter not updated for {uids:?} (reconcile will fix): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `e` | - |
 | `warn` | `atomic: live-object counter not updated for {uids:?} (reconcile will fix): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `e` | - |
+| `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/sqlite.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 
 ### `cosmian_kms_crypto`
 
@@ -1134,6 +1146,8 @@ Crate path: `crate/hsm/base_hsm`
 | `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
 | `debug` | `Could not terminate the decryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
 | `debug` | `Could not terminate the encryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
+| `warn` | `{} failed: {rv:#010x} ({}); context dropped` | `src/session/message_context.rs` | `rv` | - |
+| `debug` | `PKCS#11 message-based {0} unsupported for mechanism {mechanism_type:#x} ({1}); using C_{2}Init` | `src/session/message_context.rs` | `0`, `mechanism_type`, `1`, `2` | - |
 
 ---
 
@@ -1495,6 +1509,7 @@ Crate path: `ui/src/`
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 | `error` | `Error loading OpenPGP algorithms from WASM:` | `actions/Pgp/PgpKeysCreate.tsx` | - | - |
 | `error` | `Error fetching Get for ${row.object_id}:` | `components/common/Locate.tsx` | `row.object_id`: UID whose attributes could not be retrieved | The Locate row remains un-enriched and shows unavailable attributes. Check the browser network request and KMS response for this UID. |
+| `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
 
 ---
 

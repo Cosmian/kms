@@ -575,138 +575,9 @@ sequenceDiagram
 
 ---
 
-### `test:spire-kmip-upstream-authority`
-
-**Description:** SPIRE kmip UpstreamAuthority plugin — KMS-backed CA signing.
-
-#### Architecture Overview
-
-```mermaid
-graph TB
-    subgraph Host4["Host"]
-        Go4["Go toolchain"]
-        OpenSSL4["openssl"]
-        CKMS3["ckms CLI"]
-    end
-
-    subgraph SPIRE_Build4["SPIRE build"]
-        SPIRE_Fork4["Cosmian/spire fork<br/>kmip-upstream-authority"]
-        SPIRE_Bin4["spire-server binary"]
-    end
-
-    subgraph KMS5["KMS"]
-        HTTPS4["HTTPS API :9997"]
-        KMIP_Socket2["Binary KMIP TCP<br/>socket_server :5697"]
-    end
-
-    subgraph Certs4["mTLS certificates"]
-        CA4["Test CA P-384"]
-        KMS_Cert4["KMS server cert"]
-        SP_Cert4["SPIRE client cert"]
-    end
-
-    subgraph Provisioned2["Provisioned in KMS"]
-        RootKey2["Root CA key pair<br/>uid=spire-kmip-upstream-ca-key"]
-        RootCert2["Self-signed root CA certificate"]
-    end
-
-    SPIRE_Fork4 --> |go build| SPIRE_Bin4
-    CKMS3 --> |certify + key create| KMS5
-    KMS5 --> RootKey2
-    KMS5 --> RootCert2
-    SPIRE_Bin4 --> |UpstreamAuthority plugin kmip| KMIP_Socket2
-    SPIRE_Bin4 --> |disk KeyManager| Disk2[(keys.json)]
-    SPIRE_Bin4 --> |mTLS| Certs4
-    KMIP_Socket2 --> |mTLS| Certs4
-```
-
-#### Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant Test as test script
-    participant Cargo as cargo build
-    participant Go as go build
-    participant OpenSSL as openssl
-    participant CKMS as ckms CLI
-    participant KMS as KMS socket_server + HTTPS
-    participant SP as SPIRE Server disk KM + kmip UA
-
-    Test->>Cargo: build KMS server non-fips
-    Test->>Cargo: build ckms CLI
-    Test->>Go: clone Cosmian/spire fork kmip-upstream-authority
-    Test->>Go: go build spire-server
-    Test->>OpenSSL: generate CA + KMS cert + SPIRE client cert
-    Test->>KMS: write kms.toml HTTPS :9997 socket_server :5697 mTLS
-    Test->>KMS: start KMS
-    KMS-->>Test: HTTPS ready, KMIP TCP ready
-    Test->>CKMS: ec keys create CA key uid
-    CKMS->>KMS: Create Key Pair P-384
-    Test->>CKMS: certificates certify self-signed root CA
-    CKMS->>KMS: Certify + Register
-    Test->>SP: write server.conf KeyManager disk UpstreamAuthority kmip
-    Test->>SP: spire-server run -config server.conf
-    SP->>KMS: KMIP Sign using root CA key issue intermediate CA
-    KMS-->>SP: signed intermediate CA cert
-    Test->>SP: spire-server healthcheck
-    SP-->>Test: healthy
-    Test->>SP: spire-server token generate
-    SP-->>Test: join token proves UpstreamAuthority signed CA
-```
-
----
-
 ### `test:spire-kmip`
 
-**Description:** Orchestrator that runs both KeyManager and UpstreamAuthority suites sequentially.
-
-#### Architecture Overview
-
-```mermaid
-graph TB
-    subgraph Orchestrator2["spire-kmip orchestrator"]
-        Task1["test:spire-kmip-key-manager"]
-        Task2["test:spire-kmip-upstream-authority"]
-    end
-
-    subgraph KM_Task["KeyManager Task"]
-        KM_KMS["KMS :9998 HTTPS / :5696 KMIP"]
-        KM_SP["SPIRE Server<br/>eviden-kms-plugins"]
-    end
-
-    subgraph UA_Task["UpstreamAuthority Task"]
-        UA_KMS["KMS :9997 HTTPS / :5697 KMIP"]
-        UA_SP["SPIRE Server<br/>kmip-upstream-authority"]
-    end
-
-    Orchestrator2 --> Task1
-    Orchestrator2 --> Task2
-    Task1 --> KM_KMS
-    Task1 --> KM_SP
-    Task2 --> UA_KMS
-    Task2 --> UA_SP
-```
-
-#### Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant Orch as spire-kmip orchestrator
-    participant KM as test:spire-kmip-key-manager
-    participant UA as test:spire-kmip-upstream-authority
-
-    Orch->>KM: run_suite KeyManager
-    Note over KM: Builds KMS + SPIRE fork KeyManager<br/>Starts KMS with socket_server<br/>Runs SPIRE with kmip KeyManager<br/>Verifies key creation
-    KM-->>Orch: PASSED or FAILED
-    Orch->>UA: run_suite UpstreamAuthority
-    Note over UA: Builds KMS + SPIRE fork UpstreamAuthority<br/>Provisions root CA in KMS<br/>Runs SPIRE with kmip UpstreamAuthority<br/>Verifies CA signing
-    UA-->>Orch: PASSED or FAILED
-    alt Any suite failed
-        Orch-->>Orch: exit 1
-    else All passed
-        Orch-->>Orch: exit 0
-    end
-```
+**Description:** Entry point used by `test:spire`; delegates to `test:spire-kmip-key-manager` (the only SPIRE `kmip` plugin suite).
 
 ---
 
@@ -1563,9 +1434,11 @@ sequenceDiagram
 
 ## 12. Web UI & WASM
 
-**Tasks:** `test:ui`, `test:ui-auth`, `test:ui-oidc`, `test:wasm`
+**Tasks:** `test:ui`, `test:ui-auth`, `test:ui-oidc`, `test:ui-saml`, `test:wasm`
 
-**Orchestrator:** `test:ui` (runs standard + auth + OIDC sequentially). The auth suite is skipped in FIPS mode (the auth-verifier is not FIPS-aware) or when the `authentication` submodule is absent; the OIDC suite needs Auth0 secrets and skips cleanly without them.
+**Orchestrator:** `test:ui` (runs standard + auth + OIDC + SAML sequentially). The auth suite is skipped in FIPS mode (the auth-verifier is not FIPS-aware) or when the `authentication` submodule is absent; the OIDC suite needs Auth0 secrets and skips cleanly without them; the SAML suite is skipped in FIPS mode, when no Docker daemon is available, or when the `authentication` submodule is absent.
+
+**SAML single sign-on:** `test:ui-saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
 
 ### Architecture Overview
 

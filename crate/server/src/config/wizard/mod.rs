@@ -194,6 +194,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         workspace: advanced.workspace,
         vendor_identification: advanced.vendor_identification,
         key_encryption_key: advanced.key_encryption_key,
+        key_encryption_key_wrapping_algorithm: advanced.key_encryption_key_wrapping_algorithm,
         default_unwrap_type: advanced.default_unwrap_type,
         roles: crate::config::RolesConfig {
             crypto_officer_users: advanced.crypto_officer_users,

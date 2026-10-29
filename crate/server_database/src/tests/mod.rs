@@ -21,9 +21,9 @@ use self::{
 use crate::stores::RedisWithFindex;
 #[cfg(feature = "non-fips")]
 use crate::stores::additional_redis_findex_tests::{
-    issue_940_repro::test_issue_940, test_active_key_count_counter, test_corner_case,
-    test_live_count_counter, test_migration_state_markers, test_objects_db, test_permissions_db,
-    test_wrapped_by_backfill,
+    issue_940_repro::test_issue_940, test_active_key_count_counter,
+    test_certificate_serial_tag_backfill, test_corner_case, test_live_count_counter,
+    test_migration_state_markers, test_objects_db, test_permissions_db, test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
@@ -104,6 +104,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_live_count_counter().await?;
     test_active_key_count_counter().await?;
     test_wrapped_by_backfill().await?;
+    test_certificate_serial_tag_backfill().await?;
     Box::pin(test_issue_940()).await?;
     test_migration_state_markers().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
@@ -256,6 +257,109 @@ async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
         ));
     }
 
+    Ok(())
+}
+
+/// A certificate object with serial `0ABBCC` (hex).
+pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_objects::Object {
+    use cosmian_kmip::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_2_1::kmip_objects::{Certificate, Object},
+    };
+    use openssl::{
+        asn1::{Asn1Integer, Asn1Time},
+        bn::BigNum,
+        hash::MessageDigest,
+        pkey::PKey,
+        rsa::Rsa,
+        x509::X509Builder,
+    };
+
+    let mut builder = X509Builder::new().unwrap();
+    let pkey = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+    builder.set_pubkey(&pkey).unwrap();
+    builder
+        .set_not_before(&Asn1Time::days_from_now(0).unwrap())
+        .unwrap();
+    builder
+        .set_not_after(&Asn1Time::days_from_now(1).unwrap())
+        .unwrap();
+    let serial = Asn1Integer::from_bn(&BigNum::from_slice(&[0x0A, 0xBB, 0xCC]).unwrap()).unwrap();
+    builder.set_serial_number(&serial).unwrap();
+    builder.sign(&pkey, MessageDigest::sha256()).unwrap();
+    Object::Certificate(Certificate {
+        certificate_type: CertificateType::X509,
+        certificate_value: builder.build().to_der().unwrap(),
+    })
+}
+
+/// A certificate stored before the `_serial=<HEX>` tag existed (it only carries `_cert`) gets
+/// the tag when the database is re-opened; the marker is recorded.
+#[tokio::test]
+async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
+    use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+    use cosmian_kms_interfaces::ObjectsStore;
+
+    const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
+
+    log_init(Some("info"));
+    let dir = TempDir::new()?;
+    let db_file = dir.path().join("serial_tag_sqlite.db");
+    let db_err = |e: rusqlite::Error| DbError::DatabaseError(e.to_string());
+
+    let object = legacy_certificate_object();
+    let object_json =
+        serde_json::to_string(&object).map_err(|e| DbError::ServerError(e.to_string()))?;
+    let attributes_json = serde_json::to_string(&Attributes::default())
+        .map_err(|e| DbError::ServerError(e.to_string()))?;
+
+    // Create the schema, then drop the pool
+    drop(SqlitePool::instantiate(&db_file, true, None).await?);
+    // Seed a legacy certificate (`_cert` tag only) and clear the completion marker
+    {
+        let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
+        conn.execute(
+            "INSERT INTO objects (id, object, attributes, state, owner) \
+             VALUES ('legacy_cert', ?1, ?2, 'Active', 'legacy_owner')",
+            rusqlite::params![object_json, attributes_json],
+        )
+        .map_err(db_err)?;
+        conn.execute(
+            "INSERT INTO tags (id, tag) VALUES ('legacy_cert', '_cert')",
+            [],
+        )
+        .map_err(db_err)?;
+        conn.execute(
+            "DELETE FROM parameters WHERE name = ?1",
+            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
+        )
+        .map_err(db_err)?;
+    }
+
+    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
+    let tags = pool.retrieve_tags("legacy_cert").await?;
+    let expected: std::collections::HashSet<String> =
+        ["_cert".to_owned(), "_serial=0ABBCC".to_owned()].into();
+    if tags != expected {
+        return Err(DbError::ServerError(format!(
+            "the backfill must add the serial tag, keeping the existing tags; got {tags:?}"
+        )));
+    }
+    drop(pool);
+
+    let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
+    let marker: String = conn
+        .query_row(
+            "SELECT value FROM parameters WHERE name = ?1",
+            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
+            |row| row.get(0),
+        )
+        .map_err(db_err)?;
+    if marker != "true" {
+        return Err(DbError::ServerError(format!(
+            "serial tag backfill marker should be 'true', got '{marker}'"
+        )));
+    }
     Ok(())
 }
 

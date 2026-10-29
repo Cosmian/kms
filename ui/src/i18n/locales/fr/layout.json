@@ -36,6 +36,7 @@
         "oidc": "OIDC",
         "certificate": "Certificat client",
         "authVerifier": "Nom d'utilisateur et mot de passe",
+        "saml": "Authentification unique (SSO)",
         "spiffe": "SPIFFE JWT-SVID",
         "spiffeGatewayNotice": "Ce serveur authentifie les sessions du navigateur avec des JWT-SVID SPIFFE. La session est établie par la passerelle d'entrée placée devant le KMS ; ouvrez l'interface web via cette passerelle.",
         "accessKms": "ACCÉDER AU KMS",

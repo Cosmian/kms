@@ -1,4 +1,5 @@
 mod find;
+pub(crate) mod oracle_signing;
 
 pub(crate) use find::{
     linked_id_str, retrieve_certificate_for_private_key,

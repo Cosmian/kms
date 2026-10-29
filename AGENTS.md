@@ -20,6 +20,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `rust-server.instructions.md` | `crate/server/**/*.rs` | KMIP operations, routes, middleware |
 | `rust-crypto.instructions.md` | `crate/crypto/**/*.rs` | FIPS-approved algorithms, OpenSSL provider |
 | `rust-kmip.instructions.md` | `crate/kmip/**/*.rs` | KMIP 2.1 protocol types and serialisation |
+| `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
 | `rust-database.instructions.md` | `crate/server_database/**/*.rs` | SQLite, PostgreSQL, Redis-findex backends |
 | `database-tables.instructions.md` | `**/*.sql` | Keep `documentation/docs/configuration/database/tables.md` in sync with SQL schema changes |
 | `ui-routes.instructions.md` | `ui/src/App.tsx`, `ui/src/menuItems.tsx`, `ui/src/actions/**/*.tsx`, `ui/src/pages/**/*.tsx` | Sync rule 4.1 — server SPA routes ⇔ React Router ⇔ menu items |
@@ -30,6 +31,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `server-config.instructions.md` | `crate/server/src/config/**/*.rs` | Sync rules 4.6 + 4.7 — clap flags ⇔ wizard ⇔ TOML templates ⇔ client wizard |
 | `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` | Sync rule 4.9 — auth config ⇔ wizard ⇔ middleware ⇔ scope wiring |
 | `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` | Sync rule 4.10 — test vector directory ⇔ runner ⇔ README |
+| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Sync rule 4.20 — KMS / Auth Verifier configs are complete fixtures in `test_data`, never partial inline configs |
 | `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` | Sync rule 4.11 — Nix vendor hashes ⇔ lock files |
 | `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` | Sync rule 4.13 — PKCS#11 loader ⇔ HSM model enum ⇔ wizard ⇔ test vectors ⇔ CI matrix |
@@ -48,7 +50,9 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` | mdBook site (Diátaxis framework); sync rule 4.14 — documentation ⇔ mdBook ⇔ README |
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
 | `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
-| `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset |
+| `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check |
+| `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
+| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
 
 Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
@@ -105,6 +109,7 @@ Start backends with `docker compose up -d`, then set:
 
 > MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
+> `postgres-mtls` and `mysql-mtls` (profile `mtls`), and `jaeger` and `otel-collector` (profile `otel-test`), are not started by a bare `docker compose up -d`. Use `--profile <name>` or name the service, for example `docker compose up -d postgres-mtls`.
 
 ### Pre-commit hooks
 
@@ -245,9 +250,9 @@ Use `--features non-fips` to enable all non-approved algorithms.
 **Cardinal rules** — non-negotiable, apply to every change:
 
 - **No `.unwrap()`** in production code. Use `?` propagation everywhere; never ignore errors in tests.
-- **No inline feature gating**: `#[cfg(feature = "non-fips")]` goes at the function or module level, never inside a function body.
+- **No inline feature gating**: put `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm. Never wrap statements or blocks inside a function body (`#[cfg(..)] { .. }`, `#[cfg(..)] let ..`, paired `#[cfg(feature..)]`/`#[cfg(not(feature..))]` statements) and never branch on `cfg!(feature = "non-fips")` at runtime: split into two functions with opposite `#[cfg]` and call the right one. About 30 existing files violate this (e.g. `create_key_pair.rs`, `export_get.rs`, `decrypt.rs`): legacy — when you touch one, fix it in the same change.
 - **Unsafe code**: every `unsafe` block requires a `// SAFETY:` comment explaining the invariant that makes it sound.
-- **Clippy**: zero warnings (`cargo clippy-all`). Decision tree for `#[allow(clippy::...)]`: (1) fix it; (2) if unfixable, add an inline comment explaining why; (3) if undecided, report the exact warning to the user.
+- **Clippy**: zero warnings (`cargo clippy-all`). `#[allow]` / `#[expect]` is forbidden on new or AI-generated code: fix the lint or refactor. The only exception is a confirmed false positive on pre-existing code, with an inline `// tracked in #<N>` comment; otherwise report the exact warning to the user. Full policy: `.github/instructions/rust.instructions.md` § Clippy and lint suppression.
 - **Tests**: unit tests go in a `#[cfg(test)]` submodule in the same file.
 - **Public API**: all public items that are not trivial require `///` doc comments that explain _why_, _constraints_, _non obvious behaviors_, etc. Comments should not be a paraphrase of the code.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
@@ -256,6 +261,9 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Broad feature rollout**: for any feature that spans server + CLI/UI, deliver it in one branch/PR but as independent, separately buildable commits (server, then CLI, then Web UI) — see "Feature rollout order & commit layering" below.
 - **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
 - **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed — see .github/instructions/rust.instructions.md § Randomness.
+- **Regression test**: every bug fix ships a test that fails before the fix (or the commit message says why that is impossible) — see `rust.instructions.md` § Testing.
+- **Secrets**: compare in constant time, keep in `Zeroizing`, never log — see `rust-security.instructions.md`.
+- **Commit subjects**: conventional-commit type + a descriptive subject (`fix(server): reject MAC with wrong length`); never `fix: PR review`, `fix: commit`, `fix: last fixes`.
 
 For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.
@@ -331,7 +339,7 @@ cargo clippy-all   # zero warnings required
 cargo fmt --all    # apply formatting
 ```
 
-Fix every warning. Do not suppress with `#[allow]` unless there is a documented, irreducible reason with an inline comment.
+Fix every warning. Never suppress with `#[allow]` / `#[expect]` on new code (see the Clippy cardinal rule in §4).
 
 ### 4. Apply synchronization rules
 
@@ -354,8 +362,9 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | OpenSSL upgrade | 4.17 |
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11, 4.19 |
 | New or bumped third-party dependency (crate, npm/Python/Go package, base image, action, installer) | 4.19 (+ 4.11 when a lock file changed) |
+| Test/script needs a KMS, Auth Verifier or ckms config | 4.20 |
 
-> **Full sub-rule checklists** (4.1–4.19) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.20) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
@@ -408,11 +417,13 @@ Key rules:
 ## 7. Copilot Skills
 
 All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` for the full index.
+Prompts matching `.github/copilot-instructions.md` § Automatic skill routing run that skill first.
 
 | Invoke | When |
 |--------|------|
 | `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure through review feedback; reports CI once, never waits for it, never merges |
 | `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
+| `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; run once for significant work (`AGENTS.md` §5.6.3), skip for trivial fixes |
 | `/pre-release` | **Before every release** — orchestrates all AI audits, produces go/no-go report |
 | `/kms-release-notes <version>` | At release time — write the root `## [X.Y.Z]` entry of `CHANGELOG.md` from `git log` since the last tag, then consolidate the branch files |
@@ -424,6 +435,7 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 | `/standards-review [path]` | Verify code against exact text of applicable standards (FIPS, RFC, KMIP, BSI) |
 | `/kmip-compliance [op]` | When adding or modifying a KMIP operation |
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
+| `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse or add a complete fixture in `test_data`; `audit` finds partial inline configs |
 | `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then deletes them |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
@@ -442,6 +454,15 @@ All team-wide skills are in `.github/skills/`. See `.github/skills/README.md` fo
 | `/playwright-kms` | For E2E test creation |
 | `/react-ant-patterns` | React 19 + Ant Design 5 + Tailwind 4 patterns |
 | `/ci-efficiency` | GitHub Actions workflow audit |
+| `/kms-docs-verify [all]` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |
+| `/actix-web-middleware-audit` | When modifying actix-web middleware ordering, `.wrap()`, or extensions in `start_kms_server.rs` |
+| `/ci-dedupe` | Audit GitHub Actions workflows for duplicated step sequences across jobs/files |
+| `/kms-caveman` | One read-only mechanical Rust triage pass (panic/exit patterns, new lint suppressions) before deeper reviews |
+| `/mise` | When writing or editing Bash scripts in `.mise/tasks/`, `.mise/lib/`, or `.mise/scripts/` |
+| `/pkcs11-check` | Run the external PKCS#11 battle-test suite (`mise run test:pkcs11:tool`) and interpret its report |
+| `/rust-clone-audit` | When writing, reviewing, or refactoring Rust — find avoidable `.clone()` calls |
+| `/rust-signature-design` | Classify function parameters and their structs to catch omitted, swapped, or drifting arguments in new signatures |
+| `/simplify-code` | After code changes — clarity, reuse, quality, efficiency |
 
 ---
 

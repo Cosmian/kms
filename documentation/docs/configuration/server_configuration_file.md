@@ -112,7 +112,7 @@ info = false
 # `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
 # `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
-# hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | gcp_cloud_hsm | kryoptic | other
+# hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | azure_cloud_hsm | gcp_cloud_hsm | kryoptic | other
 # List of KMS usernames that are granted HSM admin privileges.
 # HSM admins can create, destroy, and potentially export objects on the HSM.
 # Use "*" as the only entry to grant all authenticated users admin access.
@@ -146,7 +146,7 @@ info = false
 # "hsm::<model>_1", etc. Object UIDs take the form "<prefix>::<slot>::<key-id>".
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | gcp_cloud_hsm | kryoptic | other
+## hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | azure_cloud_hsm | gcp_cloud_hsm | kryoptic | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices (use softhsm2-util --show-slots to list them)
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
@@ -161,6 +161,14 @@ info = false
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.
 # Note: This setting is ignored when a key is imported in JSON TTLV format and is already wrapped.
 # key_encryption_key = "kek ID"
+
+# Algorithm used to wrap keys at rest with `key_encryption_key`:
+# `aes-gcm`, `aes-key-wrap` (NIST SP 800-38F KW, RFC 3394), `aes-key-wrap-padding`
+# (NIST SP 800-38F KWP, RFC 5649) or `rsa-oaep` (SHA-256). The AES modes need an AES key
+# encryption key, `rsa-oaep` an RSA one. Unset: AES-GCM for an HSM AES key, RSA-OAEP
+# (SHA-256) for an HSM RSA key, AES-KWP for a software AES key; a software RSA key requires
+# `rsa-oaep`. Startup probing covers HSM AES keys only.
+# key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"
 
 # Specifies which KMIP object types should be automatically unwrapped when retrieved.
 # Repeat this option to specify multiple object types

@@ -44,14 +44,17 @@ use zeroize::Zeroizing;
 
 use crate::core::KMS;
 
-/// Build the cache UID for a JOSE CEK from the raw `encrypted_key` bytes.
+/// Build the cache UID for a JOSE CEK from the RSA key uid and the raw `encrypted_key` bytes.
 ///
-/// Uses SHA-256 so the map key is compact: 64 hex chars regardless of RSA size.
-fn cek_cache_uid(encrypted_key_bytes: &[u8]) -> String {
-    format!(
-        "jose_cek_{}",
-        hex::encode(openssl::sha::sha256(encrypted_key_bytes))
-    )
+/// The key uid is part of the cache key because the fingerprint of an HSM private key is only a
+/// metadata stub shared by every same-size sensitive key: without the uid, a CEK cached under one
+/// key would be returned for another. Uses SHA-256 so the map key is compact.
+pub(crate) fn cek_cache_uid(key_uid: &str, encrypted_key_bytes: &[u8]) -> String {
+    let mut hasher = openssl::sha::Sha256::new();
+    hasher.update(key_uid.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(encrypted_key_bytes);
+    format!("jose_cek_{}", hex::encode(hasher.finish()))
 }
 
 /// Wrap raw CEK bytes in a minimal [`Object::SymmetricKey`] for storage in
@@ -105,12 +108,13 @@ fn kmip_object_to_cek(obj: Object) -> Option<Zeroizing<Vec<u8>>> {
 ///
 /// `kmip_key_object` is the RSA key KMIP object used for fingerprint validation:
 /// if the key has changed since the entry was inserted, `peek()` returns `None`.
-pub(super) async fn peek_cek(
+pub(crate) async fn peek_cek(
     kms: &KMS,
+    key_uid: &str,
     encrypted_key_bytes: &[u8],
     kmip_key_object: &Object,
 ) -> Option<Zeroizing<Vec<u8>>> {
-    let uid = cek_cache_uid(encrypted_key_bytes);
+    let uid = cek_cache_uid(key_uid, encrypted_key_bytes);
     let cached_obj = match kms
         .database
         .unwrapped_cache()
@@ -143,13 +147,14 @@ pub(super) async fn peek_cek(
 ///
 /// Only call this function with a **genuine** unwrapped CEK. The random
 /// substitute CEK used for implicit rejection must never be passed here.
-pub(super) async fn insert_cek(
+pub(crate) async fn insert_cek(
     kms: &KMS,
+    key_uid: &str,
     encrypted_key_bytes: &[u8],
     kmip_key_object: &Object,
     cek: &[u8],
 ) {
-    let uid = cek_cache_uid(encrypted_key_bytes);
+    let uid = cek_cache_uid(key_uid, encrypted_key_bytes);
     let Some(cek_obj) = cek_to_kmip_object(cek) else {
         return; // warning already emitted by cek_to_kmip_object
     };

@@ -12,7 +12,7 @@ use std::{
 
 use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
-    EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
+    CryptoAlgorithm, EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
 use libloading::Library;
@@ -215,7 +215,7 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
 }
 
 /// `CKA_ID` prefix of every object created by these shared tests.
-const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
+pub const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
 
 /// A fresh, unique `CKA_ID` for an object created by these shared tests.
 fn test_object_id() -> String {
@@ -326,6 +326,55 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
             );
         }
     }
+    Ok(())
+}
+
+/// Export an AES-256 key through RSA-OAEP and verify its bytes outside the HSM.
+pub fn export_aes_key_bytes(slot: &Arc<SlotManager>) -> HResult<()> {
+    let before = object_handles(slot)?;
+    let session = slot.open_session(true)?;
+    let data = b"export the real HSM key bytes";
+    let result = (|| -> HResult<_> {
+        let key_id = test_object_id();
+        let handle =
+            session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
+        let sk_id = test_object_id();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk, pk) = session.generate_rsa_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            RsaKeySize::Rsa3072,
+            true,
+            None,
+        )?;
+        let extractable = session.is_extractable(handle)?;
+        // CKA_EXTRACTABLE permits wrapping, not necessarily reading CKA_VALUE.
+        let wrapped = session.wrap_aes_key_with_rsa_oaep(pk, handle, RsaOaepDigest::SHA256)?;
+        let key_bytes = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &wrapped)?;
+        let encrypted = session.encrypt(handle, HsmEncryptionAlgorithm::AesGcm, data, None)?;
+        Ok((extractable, key_bytes, encrypted))
+    })();
+    // Remove only this test's AES and RSA keys, including on export/encryption failure.
+    destroy_created_since(slot, &before)?;
+    let (extractable, key_bytes, encrypted) = result?;
+    assert_eq!(extractable, Some(true), "CKA_EXTRACTABLE must be true");
+    assert_eq!(key_bytes.len(), 32, "AES-256 export must contain 32 bytes");
+    let iv = encrypted
+        .iv
+        .ok_or_else(|| HError::Default("HSM encryption returned no IV".to_owned()))?;
+    let tag = encrypted
+        .tag
+        .ok_or_else(|| HError::Default("HSM encryption returned no GCM tag".to_owned()))?;
+    let plaintext = openssl::symm::decrypt_aead(
+        openssl::symm::Cipher::aes_256_gcm(),
+        &key_bytes,
+        Some(&iv),
+        &[],
+        &encrypted.ciphertext,
+        &tag,
+    )
+    .map_err(|e| HError::Default(format!("Exported key cannot decrypt HSM ciphertext: {e}")))?;
+    assert_eq!(plaintext, data);
     Ok(())
 }
 
@@ -615,6 +664,43 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with AES GCM");
+    Ok(())
+}
+
+/// AES-KW and AES-KWP round-trip; on the `C_WrapKey` path, wrapping needs `CKA_WRAP`.
+pub fn aes_key_wrap(slot: &Arc<SlotManager>, slot_id: usize) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let key_id = test_object_id();
+    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
+    let data = [7_u8; 32];
+    for alg in [CryptoAlgorithm::AesKeyWrap, CryptoAlgorithm::AesKeyWrapPad] {
+        let m = match crate::base_hsm::aes_key_wrap_mechanism(slot, slot_id, &alg, false) {
+            Ok(m) => m,
+            Err(e) if matches!(alg, CryptoAlgorithm::AesKeyWrapPad) => {
+                info!("Skipping {alg:?}: {e}");
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        let wrapped = session.aes_key_wrap(sk, m, &data)?;
+        assert_eq!(wrapped.len(), 40, "{alg:?}");
+        let unwrapped = session.aes_key_unwrap(sk, m, &wrapped)?;
+        assert_eq!(unwrapped.as_slice(), data.as_slice(), "{alg:?}");
+        if !m.single_part {
+            session.set_wrap_attributes(sk, false)?;
+            assert!(
+                session.aes_key_wrap(sk, m, &data).is_err(),
+                "{alg:?} without CKA_WRAP"
+            );
+            session.set_wrap_attributes(sk, true)?;
+            assert_eq!(session.aes_key_wrap(sk, m, &data)?, wrapped, "{alg:?}");
+        }
+        info!(
+            "Successfully wrapped/unwrapped with {alg:?} (single part: {})",
+            m.single_part
+        );
+    }
     Ok(())
 }
 
