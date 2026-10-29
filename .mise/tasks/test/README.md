@@ -755,6 +755,14 @@ sequenceDiagram
     KMS-->>Test: 404 after expiry
 ```
 
+### `test:openbao-kmip`
+
+**Description:** OpenBao auto-unseal through the KMS binary KMIP listener: the reverse direction of `test:openbao`, with OpenBao as a KMIP consumer. Runs in both variants and needs only Docker. The task generates a throw-away CA, a KMS server certificate and an OpenBao client certificate (`CN=openbao-seal`), starts the KMS with mTLS HTTPS and `[socket_server]` (KMIP over TCP/TLS), then creates and activates an AES-256 wrapping key as the OpenBao identity through `POST /kmip/2_1`. OpenBao (image `ghcr.io/openbao/openbao`, override with `BAO_IMAGE`) is configured with `seal "kmip"` (`endpoint`, `kms_key_id`, `client_cert`, `client_key`, `ca_cert`, `encrypt_alg = "AES_GCM"`).
+
+The scenario checks that `bao operator init` completes with seal type `kmip` (no software seal fallback), that OpenBao is unsealed, and that after a container restart it unseals itself again. [`check_kmip_seal_audit.py`](../../scripts/test/check_kmip_seal_audit.py) then reads the KMS log and asserts that KMIP `Encrypt` and `Decrypt` were served for the `openbao-seal` client certificate identity only, and that the raw requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode.
+
+To run it by hand: `mise run test:openbao-kmip --variant non-fips`. The KMS must listen with `[socket_server]` and `clients_ca_cert_file` set, and OpenBao must trust the CA that signed the KMS certificate (`server_name` must match a SAN of that certificate).
+
 ---
 
 ## 7. PKI & Revocation

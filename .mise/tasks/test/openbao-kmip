@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+#MISE description="OpenBao auto-unseal through the KMS binary KMIP listener (seal \"kmip\", AES-GCM, mTLS)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+# OpenBao uses the KMS as its KMIP seal: the master key stays in the KMS, OpenBao only holds
+# the encrypted copy. The scenario initializes OpenBao, restarts it and checks it unseals
+# itself again by calling Decrypt on the KMS, then proves from the KMS log that the KMIP
+# Encrypt/Decrypt operations came from the OpenBao client certificate.
+
+require_cmd docker
+require_cmd cargo
+require_cmd curl
+require_cmd openssl
+require_cmd python3
+
+BAO_IMAGE="${BAO_IMAGE:-ghcr.io/openbao/openbao:2.7.1}"
+BAO_NAME="kms-openbao-seal-$$"
+BAO_VOLUME="kms-openbao-seal-data-$$"
+BAO_CLIENT_CN="openbao-seal"
+WORK_DIR="$(mktemp -d /tmp/kms-openbao-kmip-XXXXXX)"
+CERTS_DIR="${WORK_DIR}/certs"
+KMS_LOG="${WORK_DIR}/kms.log"
+KMS_PID=""
+mkdir -p "${CERTS_DIR}" "${WORK_DIR}/data"
+
+cleanup() {
+  local rc=$?
+  if [[ -n "${KMS_PID}" ]]; then kill "${KMS_PID}" 2>/dev/null || true; fi
+  docker rm -f "${BAO_NAME}" >/dev/null 2>&1 || true
+  docker volume rm "${BAO_VOLUME}" >/dev/null 2>&1 || true
+  if [[ "${rc}" -ne 0 && -f "${KMS_LOG}" ]]; then tail -n 40 "${KMS_LOG}" >&2 || true; fi
+  rm -rf "${WORK_DIR}"
+  exit "${rc}"
+}
+trap cleanup EXIT
+
+print_header "OpenBao KMIP seal against the KMS socket server (${VARIANT_NAME})"
+
+# --- mTLS material: one CA, the KMS server certificate and the OpenBao client certificate.
+print_status "Generating the mTLS certificates..."
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-384 -nodes \
+  -keyout "${CERTS_DIR}/ca.key" -out "${CERTS_DIR}/ca.crt" -days 2 \
+  -subj "/CN=OpenBao KMIP test CA" 2>/dev/null
+openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+  -keyout "${CERTS_DIR}/kms.key" -out "${CERTS_DIR}/kms.csr" -subj "/CN=localhost" 2>/dev/null
+printf 'subjectAltName = DNS:localhost, IP:127.0.0.1\n' >"${CERTS_DIR}/kms.ext"
+openssl x509 -req -in "${CERTS_DIR}/kms.csr" -CA "${CERTS_DIR}/ca.crt" -CAkey "${CERTS_DIR}/ca.key" \
+  -CAcreateserial -out "${CERTS_DIR}/kms.crt" -days 2 -extfile "${CERTS_DIR}/kms.ext" 2>/dev/null
+openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+  -keyout "${CERTS_DIR}/client.key" -out "${CERTS_DIR}/client.csr" \
+  -subj "/CN=${BAO_CLIENT_CN}" 2>/dev/null
+openssl x509 -req -in "${CERTS_DIR}/client.csr" -CA "${CERTS_DIR}/ca.crt" -CAkey "${CERTS_DIR}/ca.key" \
+  -CAcreateserial -out "${CERTS_DIR}/client.crt" -days 2 2>/dev/null
+# The container user is not the file owner.
+chmod 644 "${CERTS_DIR}"/*
+
+# --- KMS: HTTPS with client-certificate authentication, plus the binary KMIP listener.
+HTTPS_PORT="$(kms_pick_free_port)"
+KMIP_PORT="$(kms_pick_free_port)"
+cat >"${WORK_DIR}/kms.toml" <<TOML
+[db]
+database_type = "sqlite"
+sqlite_path = "${WORK_DIR}/data"
+clear_database = true
+
+[http]
+hostname = "127.0.0.1"
+port = ${HTTPS_PORT}
+
+[tls]
+tls_cert_file = "${CERTS_DIR}/kms.crt"
+tls_key_file = "${CERTS_DIR}/kms.key"
+clients_ca_cert_file = "${CERTS_DIR}/ca.crt"
+
+[socket_server]
+socket_server_start = true
+socket_server_port = ${KMIP_PORT}
+socket_server_hostname = "127.0.0.1"
+
+[logging]
+rust_log = "info,cosmian_kms_server=debug"
+ansi_colors = false
+TOML
+
+print_status "Building KMS server..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+"$(get_kms_bin)" --config "${WORK_DIR}/kms.toml" >"${KMS_LOG}" 2>&1 &
+KMS_PID=$!
+wait_for_port 127.0.0.1 "${HTTPS_PORT}" 120 || print_error "the KMS HTTPS port did not open"
+wait_for_port 127.0.0.1 "${KMIP_PORT}" 60 || print_error "the KMS KMIP socket did not open"
+
+kmip_post() {
+  curl -sS --cacert "${CERTS_DIR}/ca.crt" --cert "${CERTS_DIR}/client.crt" \
+    --key "${CERTS_DIR}/client.key" -X POST -H "Content-Type: application/json" \
+    -d "$1" "https://localhost:${HTTPS_PORT}/kmip/2_1"
+}
+
+# --- The wrapping key, created by the OpenBao identity so it owns it, then activated.
+print_status "Creating and activating the AES-256 wrapping key..."
+CREATE_RESPONSE="$(kmip_post '{"tag":"Create","type":"Structure","value":[
+  {"tag":"ObjectType","type":"Enumeration","value":"SymmetricKey"},
+  {"tag":"Attributes","type":"Structure","value":[
+    {"tag":"CryptographicAlgorithm","type":"Enumeration","value":"AES"},
+    {"tag":"CryptographicLength","type":"Integer","value":256},
+    {"tag":"CryptographicUsageMask","type":"Integer","value":"0x0000000C"},
+    {"tag":"KeyFormatType","type":"Enumeration","value":"TransparentSymmetricKey"},
+    {"tag":"ObjectType","type":"Enumeration","value":"SymmetricKey"}]}]}')"
+KEY_UID="$(printf '%s' "${CREATE_RESPONSE}" | python3 -c "
+import json, sys
+def find(node):
+    if isinstance(node, dict):
+        if node.get('tag') == 'UniqueIdentifier':
+            return node['value']
+        return find(node.get('value'))
+    if isinstance(node, list):
+        for item in node:
+            found = find(item)
+            if found:
+                return found
+    return None
+print(find(json.load(sys.stdin)) or '')")"
+[[ -n "${KEY_UID}" ]] || print_error "key creation failed: ${CREATE_RESPONSE}"
+kmip_post "{\"tag\":\"Activate\",\"type\":\"Structure\",\"value\":[{\"tag\":\"UniqueIdentifier\",\"type\":\"TextString\",\"value\":\"${KEY_UID}\"}]}" >/dev/null
+print_info "Wrapping key: ${KEY_UID}"
+
+# --- OpenBao with the KMIP seal. On Linux the container shares the host network; elsewhere it
+# reaches the host by name, and server_name pins the hostname checked against the KMS certificate.
+BAO_PORT="$(kms_pick_free_port)"
+if [[ "$(uname -s)" == "Linux" ]]; then
+  NETWORK_ARGS=(--network host)
+  KMIP_ENDPOINT="127.0.0.1:${KMIP_PORT}"
+else
+  NETWORK_ARGS=()
+  KMIP_ENDPOINT="host.docker.internal:${KMIP_PORT}"
+fi
+cat >"${WORK_DIR}/bao.hcl" <<HCL
+storage "raft" {
+  path = "/openbao/file"
+  node_id = "seal-test"
+}
+listener "tcp" {
+  address = "127.0.0.1:${BAO_PORT}"
+  tls_disable = true
+}
+api_addr = "http://127.0.0.1:${BAO_PORT}"
+cluster_addr = "http://127.0.0.1:$((BAO_PORT + 1))"
+disable_mlock = true
+seal "kmip" {
+  endpoint = "${KMIP_ENDPOINT}"
+  kms_key_id = "${KEY_UID}"
+  client_cert = "/openbao/tls/client.crt"
+  client_key = "/openbao/tls/client.key"
+  ca_cert = "/openbao/tls/ca.crt"
+  server_name = "localhost"
+  encrypt_alg = "AES_GCM"
+}
+HCL
+chmod 644 "${WORK_DIR}/bao.hcl"
+
+docker volume create "${BAO_VOLUME}" >/dev/null
+# A fresh volume is root-owned; OpenBao runs as an unprivileged user.
+docker run --rm -v "${BAO_VOLUME}:/openbao/file" --user root --entrypoint chown "${BAO_IMAGE}" \
+  -R openbao:openbao /openbao/file
+start_bao() {
+  docker run -d --name "${BAO_NAME}" "${NETWORK_ARGS[@]+"${NETWORK_ARGS[@]}"}" \
+    -v "${WORK_DIR}/bao.hcl:/openbao/config/bao.hcl:ro" \
+    -v "${CERTS_DIR}:/openbao/tls:ro" -v "${BAO_VOLUME}:/openbao/file" \
+    "${BAO_IMAGE}" server -config=/openbao/config/bao.hcl >/dev/null
+}
+bao_cli() {
+  docker exec -e BAO_ADDR="http://127.0.0.1:${BAO_PORT}" "${BAO_NAME}" bao "$@"
+}
+# Prints the status as JSON once the API answers; `bao status` exits 2 while sealed.
+bao_status() {
+  local out
+  for _ in $(seq 1 40); do
+    out="$(bao_cli status -format=json 2>/dev/null || true)"
+    if [[ -n "${out}" ]]; then
+      printf '%s' "${out}"
+      return 0
+    fi
+    sleep 1
+  done
+  docker logs "${BAO_NAME}" >&2 || true
+  return 1
+}
+json_field() {
+  python3 -c "import json, sys; print(json.load(sys.stdin)['$1'])"
+}
+
+print_status "Starting OpenBao with the KMIP seal..."
+start_bao
+STATUS="$(bao_status)" || print_error "OpenBao did not answer"
+[[ "$(printf '%s' "${STATUS}" | json_field type)" == "kmip" ]] ||
+  print_error "the seal type is not kmip: ${STATUS}"
+
+print_status "Initializing OpenBao (auto-unseal through the KMS)..."
+bao_cli operator init -recovery-shares=1 -recovery-threshold=1 -format=json >"${WORK_DIR}/init.json" ||
+  print_error "operator init failed (see the OpenBao and KMS logs)"
+for _ in $(seq 1 30); do
+  STATUS="$(bao_status)"
+  [[ "$(printf '%s' "${STATUS}" | json_field sealed)" == "False" ]] && break
+  sleep 1
+done
+[[ "$(printf '%s' "${STATUS}" | json_field initialized)" == "True" ]] || print_error "OpenBao is not initialized"
+[[ "$(printf '%s' "${STATUS}" | json_field sealed)" == "False" ]] || print_error "OpenBao is still sealed"
+print_success "OpenBao is initialized and unsealed with the KMS key (no software seal fallback)"
+
+print_status "Restarting OpenBao: it must unseal itself again through the KMS..."
+docker restart "${BAO_NAME}" >/dev/null
+for _ in $(seq 1 40); do
+  STATUS="$(bao_status)"
+  [[ "$(printf '%s' "${STATUS}" | json_field sealed)" == "False" ]] && break
+  sleep 1
+done
+[[ "$(printf '%s' "${STATUS}" | json_field sealed)" == "False" ]] ||
+  print_error "OpenBao did not unseal after the restart"
+print_success "OpenBao unsealed again after the restart"
+
+# --- Audit: the KMS must have served KMIP Encrypt and Decrypt for the OpenBao client identity.
+print_status "Checking the KMS log..."
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/check_kmip_seal_audit.py" "${KMS_LOG}" \
+  "${BAO_CLIENT_CN}" "${KEY_UID}"
+
+print_success "OpenBao KMIP seal integration test completed"
