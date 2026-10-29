@@ -502,7 +502,8 @@ impl TryFrom<kmip_2_1::kmip_operations::DeriveKeyResponse> for DeriveKeyResponse
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
-    /// If omitted, then the ID Placeholder value is used by the server.
+    /// The Unique Identifier of the Public Key being certified. If omitted (and no
+    /// Certificate Request is sent), the server uses the ID Placeholder value (§4.7).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<String>,
     /// REQUIRED if the Certificate Request is present.

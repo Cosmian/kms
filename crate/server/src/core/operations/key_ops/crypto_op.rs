@@ -807,6 +807,65 @@ impl KMS {
         }
     }
 
+    /// Load the keyset member `uid` selected for `Op`, after checking `user` may use it.
+    ///
+    /// Keyset members are looked up by name, not by grant (the HSM store returns every
+    /// member whatever the caller), so authorization is enforced here, before the process
+    /// window and state checks: a refused caller gets "not found", unless it already holds a
+    /// grant on the key, so neither the key's existence nor its state leaks (COSMIAN-2026-037).
+    async fn load_keyset_member<Op: CryptoOpSpec>(
+        &self,
+        uid: &str,
+        unique_identifier: &UniqueIdentifier,
+        user: &UserId,
+    ) -> KResult<Arc<ObjectWithMetadata>> {
+        let not_found = || {
+            KmsError::ItemNotFound(format!(
+                "{}: no valid key found for identifier: {unique_identifier}",
+                Op::OP_NAME
+            ))
+        };
+        let owm = self
+            .database
+            .retrieve_object_arc(uid)
+            .await?
+            .ok_or_else(not_found)?;
+        // HSM ownership is HSM-admin membership, which `owm.owner()` alone does not capture
+        if owm.owner() != user
+            && !self
+                .is_user_authorized_with_get_wildcard(uid, user, Op::KMIP_OP)
+                .await?
+        {
+            let has_grant = !self
+                .database
+                .list_user_operations_on_object(uid, user, true)
+                .await?
+                .is_empty();
+            return Err(if has_grant {
+                KmsError::Unauthorized(format!(
+                    "{}: user {user} does not have permission to use key: {unique_identifier}",
+                    Op::OP_NAME,
+                ))
+            } else {
+                not_found()
+            });
+        }
+        owm.check_process_window()?;
+        // KMIP §4.57: enforce state requirements for keyset-addressed keys
+        let effective = owm.effective_state();
+        if !Op::accepted_states().contains(&effective) {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Permission_Denied,
+                format!(
+                    "{}: key {uid} is in state {effective:?} but operation requires one of {:?}",
+                    Op::OP_NAME,
+                    Op::accepted_states()
+                ),
+            ));
+        }
+        Ok(owm)
+    }
+
     /// Resolve the key for a cryptographic operation using the [`CryptoOpSpec`] trait.
     ///
     /// Performs the entire key selection pipeline:
@@ -849,78 +908,23 @@ impl KMS {
 
         // ── Keyset detection ─────────────────────────────────────────────────────
         if let Some(keyset_ref) = as_keyset_ref(object_handle) {
-            match &keyset_ref.version {
-                KeysetVersion::Latest | KeysetVersion::First | KeysetVersion::Generation(_) => {
-                    if let Some(uid) = resolve_keyset_to_single_uid(&keyset_ref, self, user).await?
-                    {
-                        let owm =
-                            self.database
-                                .retrieve_object_arc(&uid)
-                                .await?
-                                .ok_or_else(|| {
-                                    KmsError::ItemNotFound(format!(
-                                        "{}: keyset key not found: {uid}",
-                                        Op::OP_NAME
-                                    ))
-                                })?;
-                        owm.check_process_window()?;
-                        // KMIP §4.57: enforce state requirements for keyset-addressed keys
-                        let effective = owm.effective_state();
-                        if !Op::accepted_states().contains(&effective) {
-                            return Err(KmsError::Kmip21Error(
-                                ErrorReason::Permission_Denied,
-                                format!(
-                                    "{}: key {uid} is in state {effective:?} but operation \
-                                     requires one of {:?}",
-                                    Op::OP_NAME,
-                                    Op::accepted_states()
-                                ),
-                            ));
-                        }
-                        return Ok(ResolvedKey::Local(owm));
+            let single_uid = match (&keyset_ref.version, Op::keyset_mode()) {
+                (KeysetVersion::Bare, KeysetMode::TryEach) => {
+                    let chain = walk_keyset_chain(&keyset_ref.name, self, user).await?;
+                    if !chain.is_empty() {
+                        return Ok(ResolvedKey::Keyset(chain));
                     }
-                    // Not a keyset → fall through to normal UID resolution
+                    None
                 }
-                KeysetVersion::Bare => match Op::keyset_mode() {
-                    KeysetMode::SingleLatest => {
-                        if let Some(uid) =
-                            resolve_keyset_to_single_uid(&keyset_ref, self, user).await?
-                        {
-                            let owm = self.database.retrieve_object_arc(&uid).await?.ok_or_else(
-                                || {
-                                    KmsError::ItemNotFound(format!(
-                                        "{}: keyset key not found: {uid}",
-                                        Op::OP_NAME
-                                    ))
-                                },
-                            )?;
-                            owm.check_process_window()?;
-                            // KMIP §4.57: enforce state requirements for keyset-addressed keys
-                            let effective = owm.effective_state();
-                            if !Op::accepted_states().contains(&effective) {
-                                return Err(KmsError::Kmip21Error(
-                                    ErrorReason::Permission_Denied,
-                                    format!(
-                                        "{}: key {uid} is in state {effective:?} but operation \
-                                         requires one of {:?}",
-                                        Op::OP_NAME,
-                                        Op::accepted_states()
-                                    ),
-                                ));
-                            }
-                            return Ok(ResolvedKey::Local(owm));
-                        }
-                        // Not a keyset → fall through to normal path
-                    }
-                    KeysetMode::TryEach => {
-                        let chain = walk_keyset_chain(&keyset_ref.name, self, user).await?;
-                        if !chain.is_empty() {
-                            return Ok(ResolvedKey::Keyset(chain));
-                        }
-                        // Not a keyset → fall through to normal path
-                    }
-                },
+                _ => resolve_keyset_to_single_uid(&keyset_ref, self, user).await?,
+            };
+            if let Some(uid) = single_uid {
+                return Ok(ResolvedKey::Local(
+                    self.load_keyset_member::<Op>(&uid, unique_identifier, user)
+                        .await?,
+                ));
             }
+            // Not a keyset → fall through to normal UID resolution
         }
 
         // ── Standard UID / tag resolution ────────────────────────────────────────

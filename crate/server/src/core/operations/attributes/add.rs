@@ -194,7 +194,7 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.description = Some(description);
             }
-            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) => {
+            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
                 // Defensive: already refused by `check_read_only`.
                 return Err(read_only_error(KmipOperation::AddAttribute));
             }
@@ -217,13 +217,6 @@ pub(crate) async fn add_attribute(
                     ));
                 }
                 attributes.apply_extractable(extractable);
-            }
-            Attribute::State(_state) => {
-                return Err(KmsError::InvalidRequest(
-                    "Attribute: State cannot be modified. Use Revoke and Destroy to change the \
-                     object state"
-                        .to_owned(),
-                ));
             }
         }
     }

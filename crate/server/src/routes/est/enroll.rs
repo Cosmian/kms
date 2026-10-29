@@ -11,9 +11,12 @@ use actix_web::{
 };
 use base64::{
     Engine as _, alphabet,
-    engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
+    engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig, general_purpose::STANDARD},
 };
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::scep_cms::certs_only_der;
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::{
+    csr_attrs::{csr_challenge_password, csr_has_challenge_password},
+    scep_cms::certs_only_der,
+};
 use cosmian_logger::{info, warn};
 use openssl::x509::{X509, X509Req};
 
@@ -21,7 +24,7 @@ use super::{base64_response, plain_response};
 use crate::{
     core::KMS,
     error::KmsError,
-    middlewares::{PeerCertificate, is_enrollment_issued},
+    middlewares::{PeerCertificate, TlsUnique, is_enrollment_issued},
     result::KResult,
     routes::enrollment::{
         EnrollmentOutcome, audit_enrollment_result, busy_response, client_ip,
@@ -65,6 +68,33 @@ fn decode_csr(body: &[u8]) -> KResult<X509Req> {
     };
     X509Req::from_der(&der)
         .map_err(|e| KmsError::InvalidRequest(format!("invalid PKCS#10 request: {e}")))
+}
+
+/// RFC 7030 §3.5: a CSR `challengePassword` carries base64(tls-unique) of the client's TLS
+/// connection, which the server MUST verify. `tls_unique` is the binding of the current
+/// connection (`None` when undefined, e.g. TLS 1.3). `Err` holds the client-facing reason.
+fn check_tls_unique(csr: &X509Req, tls_unique: Option<&[u8]>) -> Result<(), &'static str> {
+    if !csr_has_challenge_password(csr) {
+        return Ok(());
+    }
+    let Some(binding) = tls_unique else {
+        return Err(
+            "the CSR challengePassword (tls-unique) cannot be verified: this connection has no \
+             tls-unique channel binding (TLS 1.2 is required)",
+        );
+    };
+    match csr_challenge_password(csr) {
+        Some(supplied) if secrets_equal(&supplied, &STANDARD.encode(binding)) => Ok(()),
+        _ => Err(
+            "the CSR challengePassword does not match the tls-unique value of this TLS \
+                  connection",
+        ),
+    }
+}
+
+/// The `tls-unique` channel binding of the request's TLS connection, if any.
+fn connection_tls_unique(req: &HttpRequest) -> Option<Vec<u8>> {
+    req.conn_data::<TlsUnique>().map(|t| t.0.clone())
 }
 
 /// Return the validated `Authorization: Basic` credentials of the request, if any.
@@ -204,8 +234,13 @@ pub(crate) async fn post_simpleenroll(
         Ok(body) => body,
         Err(response) => return Ok(response),
     };
+    let tls_unique = connection_tls_unique(&req);
     let result = async {
         let csr = decode_csr(&body)?;
+        if let Err(reason) = check_tls_unique(&csr, tls_unique.as_deref()) {
+            warn!("EST simpleenroll rejected: {reason}");
+            return Ok(plain_response(StatusCode::BAD_REQUEST, reason));
+        }
         enroll_for_peer(&kms, peer.as_ref(), &csr).await
     }
     .await;
@@ -257,10 +292,12 @@ pub(crate) async fn enroll_for_peer(
 }
 
 /// Re-enrollment core (RFC 7030 §4.2.2): `peer` is the TLS client certificate being renewed,
-/// which must have been issued by the EST CA and still be active.
+/// which must have been issued by the EST CA and still be active; `tls_unique` is the channel
+/// binding of the connection (see [`check_tls_unique`]).
 pub(crate) async fn simple_reenroll(
     kms: &KMS,
     peer: Option<&X509>,
+    tls_unique: Option<&[u8]>,
     body: &[u8],
 ) -> KResult<HttpResponse> {
     let Some(peer) = peer else {
@@ -281,6 +318,10 @@ pub(crate) async fn simple_reenroll(
     }
 
     let csr = decode_csr(body)?;
+    if let Err(reason) = check_tls_unique(&csr, tls_unique) {
+        warn!("EST simplereenroll rejected: {reason}");
+        return Ok(plain_response(StatusCode::BAD_REQUEST, reason));
+    }
     // RFC 7030 §4.2.2: Subject and SubjectAltName MUST be identical to the certificate
     // being renewed.
     if !csr_matches_certificate_identity(&csr, peer)? {
@@ -319,7 +360,8 @@ pub(crate) async fn post_simplereenroll(
         Ok(body) => body,
         Err(response) => return Ok(response),
     };
-    let result = simple_reenroll(&kms, peer.as_ref(), &body).await;
+    let tls_unique = connection_tls_unique(&req);
+    let result = simple_reenroll(&kms, peer.as_ref(), tls_unique.as_deref(), &body).await;
     audit_enrollment_result(
         &kms,
         OP_SIMPLEREENROLL,
@@ -329,4 +371,47 @@ pub(crate) async fn post_simplereenroll(
         &result,
     );
     result
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::csr_attrs::csr_with_challenge_password;
+    use openssl::{hash::MessageDigest, pkey::PKey, rsa::Rsa, x509::X509NameBuilder};
+
+    use super::*;
+
+    fn csr(challenge: Option<&str>) -> X509Req {
+        let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "dev1.iot.example").unwrap();
+        let mut b = X509Req::builder().unwrap();
+        b.set_pubkey(&key).unwrap();
+        b.set_subject_name(&name.build()).unwrap();
+        b.sign(&key, MessageDigest::sha256()).unwrap();
+        let req = b.build();
+        match challenge {
+            Some(c) => csr_with_challenge_password(&req, &key, c).unwrap(),
+            None => req,
+        }
+    }
+
+    #[test]
+    fn tls_unique_challenge_must_match_the_connection() {
+        let binding = [0xA5_u8; 12];
+        let encoded = STANDARD.encode(binding);
+        // no challengePassword: nothing to verify, with or without a binding
+        assert_eq!(check_tls_unique(&csr(None), None), Ok(()));
+        assert_eq!(check_tls_unique(&csr(None), Some(&binding)), Ok(()));
+        // the right tls-unique value is accepted
+        assert_eq!(
+            check_tls_unique(&csr(Some(&encoded)), Some(&binding)),
+            Ok(())
+        );
+        // a value from another connection is refused
+        let other = STANDARD.encode([0x5A_u8; 12]);
+        assert_ne!(check_tls_unique(&csr(Some(&other)), Some(&binding)), Ok(()));
+        // a binding that cannot be checked (TLS 1.3, plain HTTP) is refused, not ignored
+        assert_ne!(check_tls_unique(&csr(Some(&encoded)), None), Ok(()));
+    }
 }

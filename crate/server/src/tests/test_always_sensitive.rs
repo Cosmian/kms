@@ -56,11 +56,12 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
     .await
 }
 
-fn assert_read_only(result: &KResult<impl std::fmt::Debug>) {
-    match result {
-        Err(KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)) => {}
-        other => panic!("expected Attribute_Read_Only error, got: {other:?}"),
-    }
+/// Add/Set refuse with `Read_Only_Attribute`, Modify/Delete with `Attribute_Read_Only`.
+fn assert_read_only(result: &KResult<impl std::fmt::Debug>, expected: ErrorReason) {
+    assert!(
+        matches!(result, Err(KmsError::Kmip21Error(reason, _)) if *reason == expected),
+        "expected {expected:?} error, got: {result:?}"
+    );
 }
 
 #[tokio::test]
@@ -78,6 +79,7 @@ async fn test_attribute_policy_operation_wiring() -> KResult<()> {
             &user,
         )
         .await,
+        ErrorReason::Read_Only_Attribute,
     );
     kms.set_attribute(
         SetAttribute {
@@ -126,6 +128,7 @@ async fn test_attribute_policy_operation_wiring() -> KResult<()> {
                 &user,
             )
             .await,
+            ErrorReason::Attribute_Read_Only,
         );
     }
     assert_eq!(kms.get_attributes(request, &user).await?.attributes, before);
@@ -167,7 +170,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
             &UserId::from(USER),
         )
         .await;
-    assert_read_only(&add);
+    assert_read_only(&add, ErrorReason::Read_Only_Attribute);
 
     let set = kms
         .set_attribute(
@@ -178,7 +181,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
             &UserId::from(USER),
         )
         .await;
-    assert_read_only(&set);
+    assert_read_only(&set, ErrorReason::Read_Only_Attribute);
 
     let modify = kms
         .modify_attribute(
@@ -189,7 +192,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
             &UserId::from(USER),
         )
         .await;
-    assert_read_only(&modify);
+    assert_read_only(&modify, ErrorReason::Attribute_Read_Only);
 
     let delete_by_value = kms
         .delete_attribute(
@@ -201,7 +204,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
             &UserId::from(USER),
         )
         .await;
-    assert_read_only(&delete_by_value);
+    assert_read_only(&delete_by_value, ErrorReason::Attribute_Read_Only);
 
     let delete_by_ref = kms
         .delete_attribute(
@@ -215,7 +218,7 @@ async fn test_always_sensitive_is_read_only() -> KResult<()> {
             &UserId::from(USER),
         )
         .await;
-    assert_read_only(&delete_by_ref);
+    assert_read_only(&delete_by_ref, ErrorReason::Attribute_Read_Only);
 
     // The value must be unchanged after all rejected attempts.
     let response = get_attributes(&kms, &uid, Tag::AlwaysSensitive).await?;

@@ -9,7 +9,9 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_ensure,
-    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId},
+    middlewares::{
+        JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId, refresh_jwks_for_token,
+    },
     result::KResult,
     routes::google_cse::build_google_cse_url,
 };
@@ -254,13 +256,11 @@ pub async fn validate_cse_authentication_token(
         }
     }
 
-    // If no config matched, refresh the JWKS and retry once.
-    // The KACLS `/certs` key may have been evicted during a periodic refresh
+    // If no config matched, refresh the JWKS of the token's issuer and retry once.
+    // The KACLS `/certs` key may have been rotated, or evicted during a periodic refresh
     // failure (the JwksManager replaces the entire map on each refresh).
     if decoded_token.is_none() {
-        if let Some(first) = cse_config.authentication.first() {
-            first.jwks.refresh().await?;
-        }
+        refresh_jwks_for_token(cse_config.authentication.iter(), authentication_token).await?;
         for idp_config in cse_config.authentication.iter() {
             if let Ok(token) = idp_config.validate_authentication_token(authentication_token, false)
             {

@@ -140,7 +140,7 @@ fn eku_to_oid(name: &str) -> KResult<String> {
 }
 
 /// Canonical lower-case key for an EC curve name, folding the common aliases.
-fn canonical_curve(name: &str) -> String {
+pub(crate) fn canonical_curve(name: &str) -> String {
     match name.trim().to_ascii_lowercase().as_str() {
         "prime256v1" | "secp256r1" | "p-256" | "p256" => "prime256v1".to_owned(),
         "secp384r1" | "p-384" | "p384" => "secp384r1".to_owned(),

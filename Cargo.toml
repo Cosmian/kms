@@ -189,23 +189,6 @@ incremental = false
 [profile.dev.package."*"]
 opt-level = 0
 
-# Pure-Rust RSA prime search (OpenPGP keygen via the `pgp`/`rsa` crates) is extremely slow at
-# opt-level 0: a 3072-bit key + subkey can exceed 150s on a loaded CI runner (UI e2e timeouts).
-[profile.dev.package.rsa]
-opt-level = 3
-
-[profile.dev.package.num-bigint-dig]
-opt-level = 3
-
-[profile.dev.package.num-integer]
-opt-level = 3
-
-[profile.dev.package.num-iter]
-opt-level = 3
-
-[profile.dev.package.num-traits]
-opt-level = 3
-
 [workspace.dependencies]
 # Workspace crates
 aws_cloudhsm_pkcs11_loader = { path = "crate/hsm/aws_cloudhsm", version = "5.28.0" }

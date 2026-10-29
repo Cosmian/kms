@@ -1,6 +1,9 @@
 //! GCP Cloud HSM PKCS#11 provider.
 
-use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
+use cosmian_kms_base_hsm::hsm_capabilities::{
+    AesCapabilities, AesGcmCapabilities, EcCapabilities, HsmCapabilities, HsmProvider,
+    RsaCapabilities,
+};
 
 /// Default path for Google's `libkmsp11.so` PKCS#11 compatibility library.
 pub const GCP_CLOUD_HSM_PKCS11_LIB: &str = "/usr/lib/x86_64-linux-gnu/libkmsp11.so";
@@ -17,19 +20,27 @@ impl HsmProvider for GcpCloudHsmCapabilityProvider {
         HsmCapabilities {
             max_cbc_data_size: None,
             find_max_object_count: 64,
-            supports_aes_sensitive_attribute: false,
-            supports_rsa_sensitive_attribute: false,
-            supports_ec_sensitive_attribute: false,
-            supports_aes_gcm_caller_iv: false,
-            allows_caller_gcm_iv_in_fips: false,
-            aes_key_wrap_pad_is_rfc5649: false,
-            supports_aes_gcm_message: false,
+            aes: AesCapabilities {
+                supports_sensitive_attribute: false,
+                key_wrap_pad_is_rfc5649: false,
+                gcm: AesGcmCapabilities {
+                    supports_caller_iv: false,
+                    allows_caller_iv_in_fips: false,
+                    supports_message: false,
+                },
+            },
+            rsa: RsaCapabilities {
+                supports_sensitive_attribute: false,
+                oaep_requires_source_data_ptr: false,
+                supports_oaep_key_wrap: false,
+            },
+            ec: EcCapabilities {
+                supports_sensitive_attribute: false,
+                enforces_ecdsa_digest_strength: false,
+            },
             supports_message_sign_verify: false,
-            rsa_oaep_requires_source_data_ptr: false,
             max_label_len: None,
             supports_key_dates: false,
-            supports_rsa_oaep_key_wrap: false,
-            enforces_ecdsa_digest_strength: false,
             skip_finalize_on_drop: false,
             max_concurrent_sessions: 128,
         }

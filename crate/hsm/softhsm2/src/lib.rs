@@ -1,6 +1,9 @@
 //! Copyright 2024 Cosmian Tech SAS
 
-use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
+use cosmian_kms_base_hsm::hsm_capabilities::{
+    AesCapabilities, AesGcmCapabilities, EcCapabilities, HsmCapabilities, HsmProvider,
+    RsaCapabilities,
+};
 
 /// Path to the `SoftHSM2` `PKCS#11` shared library.
 /// Overridable at runtime via the `SOFTHSM2_PKCS11_LIB` environment variable.
@@ -38,22 +41,30 @@ impl HsmProvider for SofthsmCapabilityProvider {
         HsmCapabilities {
             max_cbc_data_size: None,
             find_max_object_count: 32,
-            supports_aes_sensitive_attribute: true,
-            supports_rsa_sensitive_attribute: true,
-            supports_ec_sensitive_attribute: true,
-            supports_aes_gcm_caller_iv: true,
-            // Development token, not a FIPS-validated module.
-            allows_caller_gcm_iv_in_fips: true,
-            aes_key_wrap_pad_is_rfc5649: true,
-            supports_aes_gcm_message: false,
+            aes: AesCapabilities {
+                supports_sensitive_attribute: true,
+                key_wrap_pad_is_rfc5649: true,
+                gcm: AesGcmCapabilities {
+                    supports_caller_iv: true,
+                    // Development token, not a FIPS-validated module.
+                    allows_caller_iv_in_fips: true,
+                    supports_message: false,
+                },
+            },
+            rsa: RsaCapabilities {
+                supports_sensitive_attribute: true,
+                oaep_requires_source_data_ptr: true,
+                supports_oaep_key_wrap: false,
+            },
+            ec: EcCapabilities {
+                supports_sensitive_attribute: true,
+                enforces_ecdsa_digest_strength: false,
+            },
             supports_message_sign_verify: false,
-            rsa_oaep_requires_source_data_ptr: true,
             max_label_len: None,
             // `C_SetAttributeValue` stores CKA_START_DATE/CKA_END_DATE in plaintext on private
             // objects, then `C_GetAttributeValue` fails to decrypt them (CKR_GENERAL_ERROR).
             supports_key_dates: false,
-            supports_rsa_oaep_key_wrap: false,
-            enforces_ecdsa_digest_strength: false,
             skip_finalize_on_drop: false,
             max_concurrent_sessions: 128,
         }
@@ -70,11 +81,10 @@ pub struct OtherCapabilityProvider;
 
 impl HsmProvider for OtherCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
-        HsmCapabilities {
-            allows_caller_gcm_iv_in_fips: false,
-            supports_aes_gcm_message: true,
-            ..SofthsmCapabilityProvider::capabilities()
-        }
+        let mut capabilities = SofthsmCapabilityProvider::capabilities();
+        capabilities.aes.gcm.allows_caller_iv_in_fips = false;
+        capabilities.aes.gcm.supports_message = true;
+        capabilities
     }
 }
 
@@ -89,7 +99,17 @@ mod capability_tests {
 
     #[test]
     fn only_the_development_token_may_send_a_caller_gcm_iv_in_fips() {
-        assert!(!OtherCapabilityProvider::capabilities().allows_caller_gcm_iv_in_fips);
-        assert!(SofthsmCapabilityProvider::capabilities().allows_caller_gcm_iv_in_fips);
+        assert!(
+            !OtherCapabilityProvider::capabilities()
+                .aes
+                .gcm
+                .allows_caller_iv_in_fips
+        );
+        assert!(
+            SofthsmCapabilityProvider::capabilities()
+                .aes
+                .gcm
+                .allows_caller_iv_in_fips
+        );
     }
 }

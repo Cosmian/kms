@@ -41,7 +41,7 @@ use zeroize::Zeroizing;
 pub use crate::session::{aes::AesKeySize, rsa::RsaKeySize};
 use crate::{
     HError, HResult, ObjectHandlesCache, hsm_call,
-    hsm_capabilities::HsmCapabilities,
+    hsm_capabilities::{AesGcmCapabilities, HsmCapabilities},
     session::{
         curve_byte_size, curve_from_der_oid, deserialize_tagged_label,
         message_context::{MessageMechanismSupport, OpenMessageContexts},
@@ -57,6 +57,13 @@ const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
 
 /// Initial output capacity covers RSA-4096, ECDSA P-521, and Ed448 signatures.
 const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
+
+/// EC key types listed by `list_ec_objects`.
+#[cfg(not(feature = "non-fips"))]
+const EC_KEY_TYPES: &[CK_KEY_TYPE] = &[CKK_EC];
+/// EC key types listed by `list_ec_objects`.
+#[cfg(feature = "non-fips")]
+const EC_KEY_TYPES: &[CK_KEY_TYPE] = &[CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY];
 
 /// Generate a random nonce of size T
 /// This function is used to generate a random nonce for the AES GCM or a random IV for AES CBC encryption
@@ -185,13 +192,13 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
 
 /// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
 #[cfg(not(feature = "non-fips"))]
-const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
-    c.supports_aes_gcm_caller_iv && c.allows_caller_gcm_iv_in_fips
+const fn caller_gcm_iv_allowed(c: &AesGcmCapabilities) -> bool {
+    c.supports_caller_iv && c.allows_caller_iv_in_fips
 }
 
 #[cfg(feature = "non-fips")]
-const fn caller_gcm_iv_allowed(c: &HsmCapabilities) -> bool {
-    c.supports_aes_gcm_caller_iv
+const fn caller_gcm_iv_allowed(c: &AesGcmCapabilities) -> bool {
+    c.supports_caller_iv
 }
 
 fn aes_key_wrap_misrouted() -> HError {
@@ -748,13 +755,8 @@ impl Session {
     }
 
     fn list_ec_objects(&self, class: Option<CK_OBJECT_CLASS>) -> HResult<Vec<CK_OBJECT_HANDLE>> {
-        #[cfg(not(feature = "non-fips"))]
-        let ec_key_types = [CKK_EC];
-        #[cfg(feature = "non-fips")]
-        let ec_key_types = [CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY];
-
         let mut object_handles = Vec::new();
-        for key_type in ec_key_types {
+        for &key_type in EC_KEY_TYPES {
             let mut template = Vec::new();
             if let Some(class) = class {
                 template.push(CK_ATTRIBUTE {
@@ -899,7 +901,7 @@ impl Session {
     }
 
     /// AES-GCM encryption for HSMs that reject a caller-supplied IV
-    /// (`HsmCapabilities::supports_aes_gcm_caller_iv == false`): a zeroed
+    /// (`AesGcmCapabilities::supports_caller_iv == false`): a zeroed
     /// `pIv` buffer is passed and the HSM writes the IV it drew from its own RNG back
     /// into it. An IV still all-zero afterwards means the HSM did not generate one;
     /// it is rejected to rule out nonce reuse under a constant IV.
@@ -967,11 +969,11 @@ impl Session {
                             .to_owned(),
                     ));
                 }
-                if self.hsm_capabilities().supports_aes_gcm_message
+                if self.hsm_capabilities().aes.gcm.supports_message
                     && self.hsm().supports_message_encrypt()
                 {
                     self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
-                } else if caller_gcm_iv_allowed(self.hsm_capabilities()) {
+                } else if caller_gcm_iv_allowed(&self.hsm_capabilities().aes.gcm) {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
                     self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
@@ -1048,9 +1050,9 @@ impl Session {
             }
             HsmEncryptionAlgorithm::RsaOaepSha256 => {
                 // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
-                // CloudHSM requires NULL (see `rsa_oaep_requires_source_data_ptr`).
+                // CloudHSM requires NULL (see `RsaCapabilities::oaep_requires_source_data_ptr`).
                 let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
                     (&raw mut oaep_label).cast::<std::ffi::c_void>()
                 } else {
                     std::ptr::null_mut()
@@ -1080,7 +1082,7 @@ impl Session {
             }
             HsmEncryptionAlgorithm::RsaOaepSha1 => {
                 let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
                     (&raw mut oaep_label).cast::<std::ffi::c_void>()
                 } else {
                     ptr::null_mut()
@@ -1132,7 +1134,7 @@ impl Session {
                 let encrypted = ciphertext
                     .get(AES_GCM_IV_LENGTH..)
                     .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?;
-                if self.hsm_capabilities().supports_aes_gcm_message
+                if self.hsm_capabilities().aes.gcm.supports_message
                     && self.hsm().supports_message_decrypt()
                 {
                     let split_at = encrypted
@@ -1228,7 +1230,7 @@ impl Session {
             }
             HsmEncryptionAlgorithm::RsaOaepSha256 => {
                 let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
                     (&raw mut oaep_label).cast::<std::ffi::c_void>()
                 } else {
                     std::ptr::null_mut()
@@ -1251,7 +1253,7 @@ impl Session {
             }
             HsmEncryptionAlgorithm::RsaOaepSha1 => {
                 let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
                     (&raw mut oaep_label).cast::<std::ffi::c_void>()
                 } else {
                     std::ptr::null_mut()
@@ -4052,9 +4054,9 @@ mod tests {
 
     #[test]
     fn caller_gcm_iv_policy_development_token() {
-        let development_token = HsmCapabilities {
-            supports_aes_gcm_caller_iv: true,
-            allows_caller_gcm_iv_in_fips: true,
+        let development_token = AesGcmCapabilities {
+            supports_caller_iv: true,
+            allows_caller_iv_in_fips: true,
             ..Default::default()
         };
         assert!(caller_gcm_iv_allowed(&development_token));
@@ -4063,9 +4065,9 @@ mod tests {
     #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_policy_production_non_fips() {
-        let production = HsmCapabilities {
-            supports_aes_gcm_caller_iv: true,
-            allows_caller_gcm_iv_in_fips: false,
+        let production = AesGcmCapabilities {
+            supports_caller_iv: true,
+            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(caller_gcm_iv_allowed(&production));
@@ -4074,9 +4076,9 @@ mod tests {
     #[cfg(not(feature = "non-fips"))]
     #[test]
     fn caller_gcm_iv_policy_production_fips() {
-        let production = HsmCapabilities {
-            supports_aes_gcm_caller_iv: true,
-            allows_caller_gcm_iv_in_fips: false,
+        let production = AesGcmCapabilities {
+            supports_caller_iv: true,
+            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(!caller_gcm_iv_allowed(&production));

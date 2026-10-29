@@ -1,6 +1,9 @@
 //! Azure Cloud HSM PKCS#11 loader.
 
-use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
+use cosmian_kms_base_hsm::hsm_capabilities::{
+    AesCapabilities, AesGcmCapabilities, EcCapabilities, HsmCapabilities, HsmProvider,
+    RsaCapabilities,
+};
 
 /// Default path to the Azure Cloud HSM PKCS#11 shared library on Linux.
 pub const AZURE_CLOUD_HSM_PKCS11_LIB: &str = "/opt/azurecloudhsm/lib64/libazcloudhsm_pkcs11.so";
@@ -17,12 +20,23 @@ impl HsmProvider for AzureCloudHsmCapabilityProvider {
         HsmCapabilities {
             max_cbc_data_size: None,
             find_max_object_count: 64,
-            supports_aes_sensitive_attribute: false,
-            supports_rsa_sensitive_attribute: false,
-            supports_ec_sensitive_attribute: false,
-            supports_aes_gcm_caller_iv: false,
-            allows_caller_gcm_iv_in_fips: false,
-            aes_key_wrap_pad_is_rfc5649: false,
+            aes: AesCapabilities {
+                supports_sensitive_attribute: false,
+                key_wrap_pad_is_rfc5649: false,
+                gcm: AesGcmCapabilities {
+                    supports_caller_iv: false,
+                    allows_caller_iv_in_fips: false,
+                    ..AesGcmCapabilities::default()
+                },
+            },
+            rsa: RsaCapabilities {
+                supports_sensitive_attribute: false,
+                ..RsaCapabilities::default()
+            },
+            ec: EcCapabilities {
+                supports_sensitive_attribute: false,
+                ..EcCapabilities::default()
+            },
             max_label_len: None,
             skip_finalize_on_drop: true,
             // Same Cavium/Liquidsec PKCS#11 stack as AWS CloudHSM and Crypt2pay: reading

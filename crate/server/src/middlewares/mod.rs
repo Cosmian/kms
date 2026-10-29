@@ -7,7 +7,7 @@ pub(crate) use audit::{
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
 pub(crate) use tls_auth::{
-    PeerCertificate, extract_peer_certificate, is_enrollment_issued, tls_auth_fn,
+    PeerCertificate, TlsUnique, extract_peer_certificate, is_enrollment_issued, tls_auth_fn,
     user_from_client_certificate, verified_issuers,
 };
 
@@ -18,8 +18,8 @@ mod auth_verifier;
 #[cfg(test)]
 pub(crate) use auth_verifier::test_helpers as auth_verifier_test_helpers;
 pub(crate) use auth_verifier::{
-    AUTH_VERIFIER_SESSION_COOKIE, AuthVerifier, authenticate_auth_verifier_session_cookie,
-    verify_auth_verifier_jwt_subject,
+    AUTH_VERIFIER_SESSION_COOKIE, AuthVerifier, AuthVerifierValidator,
+    authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt_subject,
 };
 
 mod ensure_auth;
@@ -27,7 +27,8 @@ pub(crate) use ensure_auth::ensure_auth_middleware;
 
 mod jwt;
 pub(crate) use jwt::{
-    JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware, validate_jwt_svid,
+    JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware,
+    refresh_jwks_for_token, validate_jwt_svid,
 };
 
 mod rate_limiter;

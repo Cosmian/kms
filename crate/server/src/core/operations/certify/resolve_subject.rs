@@ -19,11 +19,12 @@ use cosmian_kms_server_database::reexport::{
         KmipOperation,
         kmip_objects::ObjectType,
         kmip_operations::{Certify, CreateKeyPair},
-        kmip_types::{CertificateRequestType, UniqueIdentifier},
+        kmip_types::{CertificateRequestType, LinkType, UniqueIdentifier},
     },
     cosmian_kms_crypto::openssl::{
         certificate_attributes_to_subject_name, kmip_certificate_to_openssl,
     },
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::info;
 use openssl::x509::X509Req;
@@ -76,6 +77,45 @@ async fn authorize_destination_uid(
         kms.enforce_create_permission(user).await?;
     }
     Ok(())
+}
+
+/// The public key linked to `private_key`, retrieved with the caller's `Certify` rights.
+async fn linked_public_key(
+    kms: &KMS,
+    private_key: &ObjectWithMetadata,
+    user: &UserId,
+) -> KResult<ObjectWithMetadata> {
+    let public_key_id = private_key
+        .attributes()
+        .get_link(LinkType::PublicKeyLink)
+        .or_else(|| {
+            private_key
+                .object()
+                .attributes()
+                .ok()
+                .and_then(|a| a.get_link(LinkType::PublicKeyLink))
+        })
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "Certify: the private key {} has no linked public key to certify",
+                private_key.id()
+            ))
+        })?
+        .to_string();
+    let public_key = Box::pin(retrieve_object_for_operation(
+        ObjectHandle::from(public_key_id.as_str()),
+        KmipOperation::Certify,
+        kms,
+        user,
+    ))
+    .await?;
+    if public_key.object().object_type() != ObjectType::PublicKey {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "Certify: the object linked as public key of {} is not a public key",
+            private_key.id()
+        )));
+    }
+    Ok(std::sync::Arc::unwrap_or_clone(public_key))
 }
 
 #[cfg(not(feature = "non-fips"))]
@@ -170,6 +210,9 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
                 }
                 // If the user passed a public key, it is a new certificate signing this public key
                 ObjectType::PublicKey => Some(std::sync::Arc::unwrap_or_clone(owm)),
+                // A private key (e.g. the ID Placeholder after CreateKeyPair): certify the
+                // public key of its pair.
+                ObjectType::PrivateKey => Some(linked_public_key(kms, &owm, user).await?),
                 // Invalid request
                 x => kms_bail!("Invalid Certify request for object type {x:?}"),
             }

@@ -70,8 +70,23 @@ pub fn csr_challenge_password(req: &X509ReqRef) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
+/// `true` when a certification request carries a PKCS#9 `challengePassword` attribute,
+/// whatever its type (unlike [`csr_challenge_password`], which only returns readable values).
+#[must_use]
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+pub fn csr_has_challenge_password(req: &X509ReqRef) -> bool {
+    // SAFETY: `req` is a live X509_REQ that the lookup only reads.
+    unsafe {
+        openssl_sys::X509_REQ_get_attr_by_NID(
+            req.as_ptr(),
+            openssl_sys::NID_pkcs9_challengePassword,
+            -1,
+        ) >= 0
+    }
+}
+
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
 mod tests {
     use openssl::{pkey::PKey, rsa::Rsa, x509::X509NameBuilder};
 
@@ -100,6 +115,8 @@ mod tests {
             Some("SecretChallenge123")
         );
         assert_eq!(csr_challenge_password(&build(None)), None);
+        assert!(csr_has_challenge_password(&build(Some("pw"))));
+        assert!(!csr_has_challenge_password(&build(None)));
         // The re-signed request keeps a valid proof of possession.
         let req = build(Some("pw"));
         assert!(req.verify(&req.public_key().unwrap()).unwrap());

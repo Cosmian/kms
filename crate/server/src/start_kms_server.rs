@@ -59,10 +59,10 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuditMiddleware, AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
-        UserId, api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
-        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
-        vault_token_optional_middleware,
+        AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig, SessionAuth,
+        SpireTokenCache, UserId, api_token_middleware, ensure_auth_middleware,
+        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
+        spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -493,7 +493,8 @@ async fn import_cse_migration_key(
 ///   When provided, the server uses [`HttpServer::listen()`] / [`HttpServer::listen_openssl()`]
 ///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
 ///   probing a free port and re-binding it later. Tests pass a listener from
-///   `allocate_dynamic_port`; production callers pass `None`.
+///   `allocate_dynamic_port`; production callers pass `None`. A pre-bound listener also raises
+///   the HTTP client request (header) timeout from 10 s to 60 s for queued test clients.
 /// * `pre_bound_socket_listener` - An optional pre-bound TCP listener for the KMIP socket
 ///   server (only meaningful when `socket_server_start` is enabled). Same TOCTOU rationale
 ///   as `pre_bound_http_listener`; production callers pass `None`.
@@ -1064,7 +1065,7 @@ pub async fn prepare_kms_server(
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
     // Determine if Auth Verifier should be used for authentication.
-    let (use_auth_verifier, auth_verifier_jwks_manager) =
+    let (use_auth_verifier, auth_verifier) =
         if let Some(ref auth_verifier_cfg) = kms_server.params.auth_verifier_config {
             let jwks_uri = auth_verifier_cfg.jwks_uri().ok_or_else(|| {
                 KmsError::ServerError(
@@ -1095,7 +1096,13 @@ pub async fn prepare_kms_server(
                     ))
                 })?,
             );
-            (true, Some(mgr))
+            (
+                true,
+                Some(Arc::new(AuthVerifierValidator::new(
+                    mgr,
+                    auth_verifier_cfg,
+                )?)),
+            )
         } else {
             (false, None)
         };
@@ -1567,7 +1574,7 @@ pub async fn prepare_kms_server(
                 .wrap(Condition::new(
                     use_auth_verifier,
                     AuthVerifier::new(
-                        auth_verifier_jwks_manager.clone(),
+                        auth_verifier.clone(),
                         auth_verifier_session_realm.clone(),
                     ),
                 ))
@@ -1740,7 +1747,7 @@ pub async fn prepare_kms_server(
                     .auth_verifier_config
                     .clone()
                     .unwrap_or_default(),
-                jwks_manager: auth_verifier_jwks_manager.clone(),
+                auth_verifier: auth_verifier.clone(),
             };
 
             // These paths mirror the React application's client-side routes
@@ -1877,7 +1884,7 @@ pub async fn prepare_kms_server(
             .wrap(Condition::new(
                 use_auth_verifier,
                 AuthVerifier::new(
-                    auth_verifier_jwks_manager.clone(),
+                    auth_verifier.clone(),
                     auth_verifier_session_realm.clone(),
                 ),
             ))
@@ -1925,7 +1932,7 @@ pub async fn prepare_kms_server(
             .wrap(Condition::new(
                 use_auth_verifier,
                 AuthVerifier::new(
-                    auth_verifier_jwks_manager.clone(),
+                    auth_verifier.clone(),
                     auth_verifier_session_realm.clone(),
                 ),
             ))
@@ -1984,7 +1991,11 @@ pub async fn prepare_kms_server(
     .keep_alive(actix_web::http::KeepAlive::Timeout(
         std::time::Duration::from_secs(120),
     ))
-    .client_request_timeout(std::time::Duration::from_secs(60)); // allow queued integration-test clients to send their request
+    // Pre-authentication slow-header bound: keep it short in production (DoS margin). Only test
+    // harnesses pre-bind the listener; their concurrent clients may queue before sending.
+    .client_request_timeout(std::time::Duration::from_secs(
+        if pre_bound_http_listener.is_some() { 60 } else { 10 },
+    ));
 
     // Apply worker count if configured; otherwise default to available_parallelism
     // (total logical cores). HTTP workers are I/O-bound (connection handling), so
@@ -2011,31 +2022,19 @@ pub async fn prepare_kms_server(
     // surfaced in the client test (reqwest) when it attempted to reuse the pooled
     // socket. Extending the keep-alive timeout prevents these false negatives and
     // lets us observe true protocol-level failures instead of transport resets.
-    // Additionally, Actix-web's default client_request_timeout of 5 seconds caused
-    // 408 errors when concurrent integration-test clients were delayed before sending
-    // their request. Allow one minute for the client request while retaining a finite limit.
 
     // Start and return the main KMS server
     Ok(match tls_config {
         Some(ssl_acceptor) => {
-            if use_cert_auth {
-                trace!("Using Client Certificate Authentication with OpenSSL");
-                let s = server.on_connect(extract_peer_certificate);
-                if let Some(lst) = pre_bound_http_listener {
-                    s.listen_openssl(lst, ssl_acceptor)?
-                } else {
-                    s.bind_openssl(address, ssl_acceptor)?
-                }
-                .run()
+            // Per-connection TLS data: the client certificate (mTLS) and the tls-unique channel
+            // binding EST verifies (RFC 7030 §3.5), with or without client certificates.
+            let s = server.on_connect(extract_peer_certificate);
+            if let Some(lst) = pre_bound_http_listener {
+                s.listen_openssl(lst, ssl_acceptor)?
             } else {
-                trace!("Not using Client Certificate Authentication with OpenSSL");
-                if let Some(lst) = pre_bound_http_listener {
-                    server.listen_openssl(lst, ssl_acceptor)?
-                } else {
-                    server.bind_openssl(address, ssl_acceptor)?
-                }
-                .run()
+                s.bind_openssl(address, ssl_acceptor)?
             }
+            .run()
         }
         _ => if let Some(lst) = pre_bound_http_listener {
             server.listen(lst)?

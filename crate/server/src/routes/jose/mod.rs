@@ -242,7 +242,7 @@ pub(super) fn ensure_json_object(json_bytes: &[u8]) -> Result<(), CryptoApiError
     Ok(())
 }
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::assertions_on_result_states)]
+#[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
 mod lenient_str_tests {
     use std::borrow::Cow;
 
@@ -268,14 +268,18 @@ mod lenient_str_tests {
     fn test_ensure_json_object_rejects_arrays_and_primitives() {
         use super::ensure_json_object;
 
-        assert!(ensure_json_object(br#"{"kid":"k1"}"#).is_ok());
-        assert!(ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").is_ok());
+        ensure_json_object(br#"{"kid":"k1"}"#).unwrap();
+        ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").unwrap();
 
-        assert!(ensure_json_object(b"[\"k1\",\"dir\",\"A256GCM\"]").is_err());
-        assert!(ensure_json_object(b"\"just a string\"").is_err());
-        assert!(ensure_json_object(b"12345").is_err());
-        assert!(ensure_json_object(b"true").is_err());
-        assert!(ensure_json_object(b"").is_err());
-        assert!(ensure_json_object(b"   ").is_err());
+        for input in [
+            &b"[\"k1\",\"dir\",\"A256GCM\"]"[..],
+            b"\"just a string\"",
+            b"12345",
+            b"true",
+            b"",
+            b"   ",
+        ] {
+            ensure_json_object(input).unwrap_err();
+        }
     }
 }

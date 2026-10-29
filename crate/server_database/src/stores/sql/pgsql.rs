@@ -114,6 +114,16 @@ fn pg_tls_policy(query_params: &HashMap<String, String>) -> DbResult<(&'static s
         // tokio-postgres has no `allow`; `prefer` can only add encryption.
         "allow" | "prefer" => ("prefer", false, false),
         "require" => ("require", query_params.contains_key("sslrootcert"), false),
+        // Like libpq: without a pinned CA and the hostname check, any certificate issued by a
+        // system CA would be accepted.
+        "verify-ca" if !query_params.contains_key("sslrootcert") => {
+            return Err(DbError::DatabaseError(
+                "PostgreSQL sslmode=verify-ca requires sslrootcert=<ca.pem>: it skips the \
+                 hostname check, so the server must chain to a pinned CA (or use \
+                 sslmode=verify-full)"
+                    .to_owned(),
+            ));
+        }
         "verify-ca" => ("require", true, false),
         "verify-full" => ("require", true, true),
         other => {
@@ -1742,6 +1752,10 @@ mod tests {
     #[test]
     fn test_prepare_pg_connection_maps_sslmode() {
         use tokio_postgres::config::SslMode;
+        let verify_ca = format!(
+            "sslmode=verify-ca&sslrootcert={}/../../test_data/certificates/client_server/ca/ca.crt",
+            env!("CARGO_MANIFEST_DIR")
+        );
 
         let cases = [
             ("", SslMode::Prefer),
@@ -1754,7 +1768,7 @@ mod tests {
             ("sslmode=allow", SslMode::Prefer),
             ("sslmode=prefer", SslMode::Prefer),
             ("sslmode=require", SslMode::Require),
-            ("sslmode=verify-ca", SslMode::Require),
+            (verify_ca.as_str(), SslMode::Require),
             ("sslmode=verify-full", SslMode::Require),
             // `sslmode` appended after other params.
             (
@@ -1802,6 +1816,31 @@ mod tests {
                 "{query}"
             );
         }
+    }
+
+    #[test]
+    fn test_verify_ca_without_sslrootcert_is_rejected() {
+        // libpq refuses `verify-ca` with no root certificate; the system store must not stand in.
+        for url in [
+            "postgresql://u:s3cret-pw@localhost/db?sslmode=verify-ca",
+            "postgresql://u:s3cret-pw@localhost/db?sslmode=verify-ca&sslcert=/c.pem",
+        ] {
+            let message = prepare_pg_connection(url)
+                .err()
+                .map_or_else(String::new, |e| e.to_string());
+            assert!(message.contains("sslrootcert"), "{url} accepted: {message}");
+            assert!(!message.contains("s3cret-pw"), "message: {message}");
+            assert!(!pg_url_verifies_server_cert(url), "{url}");
+        }
+        // `verify-full` keeps using the default store with the hostname check (5.28.0 behavior).
+        let verify_full =
+            prepare_pg_connection("postgresql://u:p@localhost/db?sslmode=verify-full")
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        assert_eq!(verify_full, Ok(()));
+        assert!(pg_url_verifies_server_cert(
+            "postgresql://u:p@localhost/db?sslmode=verify-full"
+        ));
     }
 
     #[test]

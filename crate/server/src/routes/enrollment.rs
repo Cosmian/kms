@@ -495,6 +495,20 @@ pub(crate) async fn ensure_active_certificate_of_ca(
             "the certificate is not within its validity period".to_owned(),
         ));
     }
+    // Any user allowed to `Import` can store a copy (or a same-serial certificate) linked to
+    // the CA and carrying any tag, so only the presented certificate stored under the CA owner
+    // counts, on both lookup paths.
+    let Some(ca_owner) = kms
+        .database
+        .retrieve_object(ca_uid)
+        .await
+        .context("retrieve CA certificate")?
+        .map(|ca_certificate| ca_certificate.owner_id().to_owned())
+    else {
+        return Err(KmsError::InvalidRequest(format!(
+            "the enrollment CA {ca_uid} is not stored in the KMS"
+        )));
+    };
     let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
     let tag = HashSet::from([serial_tag(ca_uid, &serial_hex)]);
     let presented_der = cert.to_der()?;
@@ -514,55 +528,46 @@ pub(crate) async fn ensure_active_certificate_of_ca(
             continue;
         };
         // The tag only locates candidates: the stored certificate must be the presented one.
-        if kmip_certificate_to_openssl(owm.object())?.to_der()? == presented_der {
+        if owm.owner_id() == &ca_owner
+            && kmip_certificate_to_openssl(owm.object())?.to_der()? == presented_der
+        {
             found = Some((uid, owm.state()));
             break;
         }
     }
     if found.is_none() {
         // Certificates issued before the serial index existed (or in the short window between
-        // issuance and indexing): fall back to the certificates linked to the CA. Any user
-        // allowed to `Import` can store a copy (or a same-serial certificate) linked to the CA,
-        // so every candidate is checked: only the presented certificate stored under the CA
-        // owner counts.
-        let ca_owner = kms
+        // issuance and indexing): fall back to the certificates linked to the CA.
+        let mut linked = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Attributes::default()
+        };
+        linked.set_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
+        );
+        for (uid, state, _) in kms
             .database
-            .retrieve_object(ca_uid)
+            .find_all(Some(&linked), None, kms.vendor_id())
             .await
-            .context("retrieve CA certificate")?
-            .map(|ca_certificate| ca_certificate.owner_id().to_owned());
-        if let Some(ca_owner) = ca_owner {
-            let mut linked = Attributes {
-                object_type: Some(ObjectType::Certificate),
-                ..Attributes::default()
-            };
-            linked.set_link(
-                LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
-            );
-            for (uid, state, _) in kms
+            .context("find certificates of the CA")?
+        {
+            let Some(stored) = kms
                 .database
-                .find_all(Some(&linked), None, kms.vendor_id())
+                .retrieve_object_arc(&uid)
                 .await
-                .context("find certificates of the CA")?
+                .context("retrieve enrolled certificate")?
+            else {
+                continue;
+            };
+            let Object::Certificate(stored_certificate) = stored.object() else {
+                continue;
+            };
+            if stored.owner_id() == &ca_owner
+                && stored_certificate.certificate_value == presented_der
             {
-                let Some(stored) = kms
-                    .database
-                    .retrieve_object_arc(&uid)
-                    .await
-                    .context("retrieve enrolled certificate")?
-                else {
-                    continue;
-                };
-                let Object::Certificate(stored_certificate) = stored.object() else {
-                    continue;
-                };
-                if stored.owner_id() == &ca_owner
-                    && stored_certificate.certificate_value == presented_der
-                {
-                    found = Some((uid, state));
-                    break;
-                }
+                found = Some((uid, state));
+                break;
             }
         }
     }

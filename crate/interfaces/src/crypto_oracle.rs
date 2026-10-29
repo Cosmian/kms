@@ -312,30 +312,11 @@ impl SigningAlgorithm {
             };
         }
 
-        // 2. cryptographic_algorithm alone (EdDSA — KMIP has no DigitalSignatureAlgorithm
-        // variant for Ed25519/Ed448; the algorithm is carried directly by
-        // CryptographicAlgorithm, and `EdDSA` never takes a separate hashing_algorithm or
-        // padding_method). Non-FIPS: mirrors the software `EdDSA` signing gating (issue #1157).
-        #[cfg(feature = "non-fips")]
+        // 2. cryptographic_algorithm alone (EdDSA)
+        if let Some(eddsa) =
+            Self::eddsa_from_algorithm(params.cryptographic_algorithm, input_is_digest)
         {
-            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed25519) {
-                if input_is_digest {
-                    return Err(InterfaceError::InvalidRequest(
-                        "Ed25519 does not support KMIP digested_data signing via CKM_EDDSA"
-                            .to_owned(),
-                    ));
-                }
-                return Ok(Self::Ed25519);
-            }
-            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed448) {
-                if input_is_digest {
-                    return Err(InterfaceError::InvalidRequest(
-                        "Ed448 does not support KMIP digested_data signing via CKM_EDDSA"
-                            .to_owned(),
-                    ));
-                }
-                return Ok(Self::Ed448);
-            }
+            return eddsa;
         }
 
         // Same up-front key-family guard as for an explicit `digital_signature_algorithm`
@@ -417,6 +398,38 @@ impl SigningAlgorithm {
         }
 
         Self::default_for_key(key_type, curve, input_is_digest, input_len)
+    }
+
+    /// `EdDSA` is selected by `cryptographic_algorithm` alone: KMIP has no
+    /// `DigitalSignatureAlgorithm` variant for Ed25519/Ed448, and `EdDSA` never takes a separate
+    /// hashing algorithm or padding method. Non-FIPS: mirrors the software `EdDSA` signing
+    /// gating (issue #1157).
+    #[cfg(feature = "non-fips")]
+    fn eddsa_from_algorithm(
+        algorithm: Option<CryptographicAlgorithm>,
+        input_is_digest: bool,
+    ) -> Option<Result<Self, InterfaceError>> {
+        let (name, eddsa) = match algorithm? {
+            CryptographicAlgorithm::Ed25519 => ("Ed25519", Self::Ed25519),
+            CryptographicAlgorithm::Ed448 => ("Ed448", Self::Ed448),
+            _ => return None,
+        };
+        Some(if input_is_digest {
+            Err(InterfaceError::InvalidRequest(format!(
+                "{name} does not support KMIP digested_data signing via CKM_EDDSA"
+            )))
+        } else {
+            Ok(eddsa)
+        })
+    }
+
+    /// `EdDSA` HSM signing is not available in FIPS builds.
+    #[cfg(not(feature = "non-fips"))]
+    const fn eddsa_from_algorithm(
+        _algorithm: Option<CryptographicAlgorithm>,
+        _input_is_digest: bool,
+    ) -> Option<Result<Self, InterfaceError>> {
+        None
     }
 
     fn default_for_key(

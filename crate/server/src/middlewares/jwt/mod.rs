@@ -8,7 +8,7 @@ mod jwt_config;
 pub(crate) use jwt_config::{JwtConfig, JwtTokenHeaders, UserClaim};
 
 mod jwks;
-pub(crate) use jwks::JwksManager;
+pub(crate) use jwks::{JwksManager, refresh_jwks_for_token};
 
 mod jwt_middleware;
 pub(crate) use jwt_middleware::jwt_auth_middleware;

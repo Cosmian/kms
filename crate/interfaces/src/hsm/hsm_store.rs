@@ -69,18 +69,25 @@ const fn ec_curve_to_algorithm(curve: EcCurve) -> CryptographicAlgorithm {
     }
 }
 
+/// X25519 keys are ECDH-only (non-FIPS); every other curve signs.
+#[cfg(feature = "non-fips")]
+const fn is_x25519(curve: Option<EcCurve>) -> bool {
+    matches!(curve, Some(EcCurve::X25519))
+}
+
+/// X25519 is not available in FIPS builds.
+#[cfg(not(feature = "non-fips"))]
+const fn is_x25519(_curve: Option<EcCurve>) -> bool {
+    false
+}
+
 fn ec_curve_to_usage_mask(
     curve: Option<EcCurve>,
     object_type: ObjectType,
 ) -> CryptographicUsageMask {
-    #[cfg(feature = "non-fips")]
-    if matches!(curve, Some(EcCurve::X25519)) {
-        return CryptographicUsageMask::DeriveKey;
-    }
-    #[cfg(not(feature = "non-fips"))]
-    let _ = curve;
-
-    if object_type == ObjectType::PublicKey {
+    if is_x25519(curve) {
+        CryptographicUsageMask::DeriveKey
+    } else if object_type == ObjectType::PublicKey {
         CryptographicUsageMask::Verify
     } else {
         CryptographicUsageMask::Sign
@@ -598,11 +605,9 @@ impl ObjectsStore for HsmStore {
         &self,
         name: &str,
         generation: Option<i32>,
-        // PKCS#11 objects have no KMIP "owner" field — ownership cannot be filtered
-        // at the HSM layer.  The KMS server is assumed to be single-tenant with respect
-        // to a given HSM instance (each deployment's HSM is dedicated to one server).
-        // The `owner` parameter is intentionally unused here; the SQL implementation
-        // (which is multi-tenant) does filter by owner.
+        // PKCS#11 objects have no KMIP "owner": every keyset member is returned whatever
+        // the caller. The KMS enforces ownership/grants on the member it selects
+        // (`load_keyset_member` / TryEach in the server's `crypto_op.rs`).
         _owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         // If `name` matches `{prefix}::{slot_id}::{key_id}`, only scan that specific slot.

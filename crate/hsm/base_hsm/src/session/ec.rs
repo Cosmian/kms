@@ -66,6 +66,31 @@ const fn curve_der_named_curve_oid(curve: EcCurve) -> Option<&'static [u8]> {
     }
 }
 
+/// FIPS builds only accept the DER `OBJECT IDENTIFIER` form returned by [`curve_der_oid`].
+#[cfg(not(feature = "non-fips"))]
+#[must_use]
+const fn curve_der_named_curve_oid(_curve: EcCurve) -> Option<&'static [u8]> {
+    None
+}
+
+/// Curves recognized when decoding `CKA_EC_PARAMS`.
+#[cfg(not(feature = "non-fips"))]
+const SUPPORTED_CURVES: &[EcCurve] = &[EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521];
+
+/// Curves recognized when decoding `CKA_EC_PARAMS`.
+#[cfg(feature = "non-fips")]
+const SUPPORTED_CURVES: &[EcCurve] = &[
+    EcCurve::P224,
+    EcCurve::P256,
+    EcCurve::P384,
+    EcCurve::P521,
+    EcCurve::Secp256k1,
+    EcCurve::Secp192k1,
+    EcCurve::Ed25519,
+    EcCurve::Ed448,
+    EcCurve::X25519,
+];
+
 #[must_use]
 pub(crate) const fn curve_key_pair_gen_mechanism(curve: EcCurve) -> CK_MECHANISM_TYPE {
     match curve {
@@ -97,20 +122,6 @@ pub(crate) const fn curve_key_type(curve: EcCurve) -> CK_KEY_TYPE {
 }
 
 pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
-    #[cfg(not(feature = "non-fips"))]
-    let curves = [EcCurve::P224, EcCurve::P256, EcCurve::P384, EcCurve::P521];
-    #[cfg(feature = "non-fips")]
-    let curves = [
-        EcCurve::P224,
-        EcCurve::P256,
-        EcCurve::P384,
-        EcCurve::P521,
-        EcCurve::Secp256k1,
-        EcCurve::Secp192k1,
-        EcCurve::Ed25519,
-        EcCurve::Ed448,
-        EcCurve::X25519,
-    ];
     // If the DER OID starts with tag 0x06, decode the exact length of the ASN.1 TLV
     // in case the HSM padded the buffer with trailing zeroes.
     let trimmed_oid = if oid.first() == Some(&0x06) && oid.len() >= 2 {
@@ -128,13 +139,11 @@ pub(crate) fn curve_from_der_oid(oid: &[u8]) -> HResult<EcCurve> {
         oid
     };
 
-    for curve in curves {
-        if curve_der_oid(curve) == oid || curve_der_oid(curve) == trimmed_oid {
-            return Ok(curve);
-        }
-        #[cfg(feature = "non-fips")]
-        if curve_der_named_curve_oid(curve)
-            .is_some_and(|candidate| candidate == oid || candidate == trimmed_oid)
+    for &curve in SUPPORTED_CURVES {
+        if curve_der_oid(curve) == oid
+            || curve_der_oid(curve) == trimmed_oid
+            || curve_der_named_curve_oid(curve)
+                .is_some_and(|candidate| candidate == oid || candidate == trimmed_oid)
         {
             return Ok(curve);
         }
@@ -324,7 +333,7 @@ impl Session {
         // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
         // since it explicitly rejects any explicit value for EC keys.
         // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
-        if !self.hsm_capabilities().supports_ec_sensitive_attribute {
+        if !self.hsm_capabilities().ec.supports_sensitive_attribute {
             priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
         }
 
@@ -363,7 +372,7 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
     use cosmian_kms_interfaces::EcCurve;
     use pkcs11_sys::{CKK_EC, CKM_EC_KEY_PAIR_GEN};
 
@@ -401,7 +410,7 @@ mod tests {
 /// PKCS#11 parameter-encoding logic (`CKA_EC_PARAMS`, `CKA_KEY_TYPE`, mechanism selection).
 #[cfg(all(test, feature = "non-fips"))]
 mod non_fips_tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
     use cosmian_kms_interfaces::EcCurve;
     use pkcs11_sys::{
         CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKM_EC_EDWARDS_KEY_PAIR_GEN,

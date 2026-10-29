@@ -264,7 +264,7 @@ pub fn destroy_created_since<S: std::hash::BuildHasher>(
 
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
-    let supports_exportable_keys = slot.capabilities().supports_aes_sensitive_attribute;
+    let supports_exportable_keys = slot.capabilities().aes.supports_sensitive_attribute;
     log_init(None);
     let session = slot.open_session(true)?;
     if supports_exportable_keys {
@@ -316,15 +316,12 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
-    // Without `CKA_SENSITIVE` support, `CKA_EXTRACTABLE` is left at the HSM default and cannot
-    // be asserted.
-    if supports_exportable_keys {
-        if let Some(extractable) = session.is_extractable(key_handle)? {
-            assert!(
-                !extractable,
-                "A sensitive AES key must have CKA_EXTRACTABLE=false"
-            );
-        }
+    // Sent explicitly even without `CKA_SENSITIVE` support, so it holds on every HSM.
+    if let Some(extractable) = session.is_extractable(key_handle)? {
+        assert!(
+            !extractable,
+            "A sensitive AES key must have CKA_EXTRACTABLE=false"
+        );
     }
     Ok(())
 }
@@ -535,7 +532,7 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
 
 pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<()> {
     log_init(None);
-    if !slot.capabilities().supports_rsa_oaep_key_wrap {
+    if !slot.capabilities().rsa.supports_oaep_key_wrap {
         info!("RSA-OAEP key wrap not supported by this HSM (capability), skipping");
         return Ok(());
     }
@@ -1262,7 +1259,7 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
         };
 
         for (name, algorithm, ckm, digest_nid) in algorithms {
-            if slot.capabilities().enforces_ecdsa_digest_strength
+            if slot.capabilities().ec.enforces_ecdsa_digest_strength
                 && ((matches!(curve, EcCurve::P384 | EcCurve::P521)
                     && matches!(digest_nid, Nid::SHA256))
                     || (matches!(curve, EcCurve::P521) && matches!(digest_nid, Nid::SHA384)))

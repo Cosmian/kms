@@ -10,15 +10,19 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Error for an attribute the server manages for this operation.
+///
+/// KMIP 2.1 names two result reasons: Add and Set Attribute return `Read Only Attribute`
+/// (§6.1.2.1 Table 169, §6.1.51.1 Table 324); Modify and Delete Attribute return
+/// `Attribute Read Only` (§6.1.34.1 Table 267, §6.1.13.1 Table 204).
 pub(crate) fn read_only_error(operation: KmipOperation) -> KmsError {
-    let verb = match operation {
-        KmipOperation::AddAttribute => "added",
-        KmipOperation::SetAttribute => "set",
-        KmipOperation::DeleteAttribute => "deleted",
-        _ => "modified",
+    let (verb, reason) = match operation {
+        KmipOperation::AddAttribute => ("added", ErrorReason::Read_Only_Attribute),
+        KmipOperation::SetAttribute => ("set", ErrorReason::Read_Only_Attribute),
+        KmipOperation::DeleteAttribute => ("deleted", ErrorReason::Attribute_Read_Only),
+        _ => ("modified", ErrorReason::Attribute_Read_Only),
     };
     KmsError::Kmip21Error(
-        ErrorReason::Attribute_Read_Only,
+        reason,
         format!("DENIED: this attribute is server-managed and cannot be {verb} by the user"),
     )
 }
@@ -84,6 +88,33 @@ mod tests {
             (Attribute::Comment("private value".to_owned()), "Comment"),
         ] {
             assert_eq!(attribute.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn read_only_reason_follows_operation() {
+        for (operation, expected) in [
+            (
+                KmipOperation::AddAttribute,
+                ErrorReason::Read_Only_Attribute,
+            ),
+            (
+                KmipOperation::SetAttribute,
+                ErrorReason::Read_Only_Attribute,
+            ),
+            (
+                KmipOperation::ModifyAttribute,
+                ErrorReason::Attribute_Read_Only,
+            ),
+            (
+                KmipOperation::DeleteAttribute,
+                ErrorReason::Attribute_Read_Only,
+            ),
+        ] {
+            assert!(
+                matches!(read_only_error(operation), KmsError::Kmip21Error(reason, _) if reason == expected),
+                "{operation:?}"
+            );
         }
     }
 }

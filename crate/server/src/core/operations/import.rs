@@ -8,10 +8,9 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
             extra::tagging::{
-                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX,
-                SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY, SYSTEM_TAG_PRIVATE_KEY,
-                SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA, SYSTEM_TAG_SYMMETRIC_KEY,
-                set_certificate_serial_tag,
+                SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY,
+                SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA,
+                SYSTEM_TAG_SYMMETRIC_KEY, set_certificate_serial_tag,
             },
             kmip_attributes::Attributes,
             kmip_data_structures::KeyValue,
@@ -176,11 +175,9 @@ pub(super) fn recover_tags(
     object: &Object,
 ) -> HashSet<String> {
     // extract the tags from the request attributes
-    let mut tags = request_attributes.get_tags(vendor_id);
+    let tags = request_attributes.get_tags(vendor_id);
     if !tags.is_empty() {
-        // remove system tags starting with '_'
-        tags.retain(|t| !t.starts_with('_'));
-        return tags;
+        return without_system_tags(tags);
     }
     // try extracting the tags from the object attributes
     if let Ok(key_block) = object.key_block() {
@@ -193,6 +190,12 @@ pub(super) fn recover_tags(
         }
     }
     HashSet::new()
+}
+
+/// Drop the system tags (starting with `_`): only the server sets them.
+fn without_system_tags(mut tags: HashSet<String>) -> HashSet<String> {
+    tags.retain(|t| !t.starts_with('_'));
+    tags
 }
 
 pub(super) async fn process_symmetric_key(
@@ -695,15 +698,13 @@ async fn process_pkcs12(
     replace_existing: bool,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("Processing PKCS12 import");
+    // system tags (`_`-prefixed, e.g. the enrollment serial index) are reserved to the server
+    let user_tags = without_system_tags(request_attributes.get_tags(kms.vendor_id()));
     // recover the PKCS#12 bytes from the object
     let pkcs12_bytes = match object {
         Object::PrivateKey(PrivateKey { key_block }) => key_block.pkcs_der_bytes()?,
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
-    let mut user_tags = request_attributes.get_tags(kms.vendor_id());
-    // the serial tag is computed from the certificate, never taken from the request (it would
-    // otherwise also be copied onto the keys)
-    user_tags.retain(|t| !t.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX));
 
     // recover the password from the attributes
     let password = request_attributes
@@ -1237,4 +1238,84 @@ pub(super) fn process_opaque_object(
             user,
         )],
     ))
+}
+
+#[cfg(all(test, feature = "non-fips"))]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+mod tests {
+    use cosmian_kms_client_utils::import_utils::build_private_key_from_der_bytes;
+    use openssl::{
+        asn1::Asn1Time, hash::MessageDigest, pkcs12::Pkcs12, pkey::PKey, rsa::Rsa,
+        x509::X509NameBuilder,
+    };
+    use zeroize::Zeroizing;
+
+    use super::*;
+    use crate::tests::test_utils::test_kms;
+
+    /// A PKCS#12 import must not let the caller set system tags (such as the
+    /// `_enrolled_serial:` index trusted by the enrollment renewal check) on the objects it
+    /// creates. Non-FIPS only: the FIPS provider has no PKCS12KDF to compute or check the MAC.
+    #[tokio::test]
+    async fn pkcs12_import_drops_system_tags() -> KResult<()> {
+        let kms = test_kms().await?;
+        let key = PKey::from_rsa(Rsa::generate(2048)?)?;
+        let mut name = X509NameBuilder::new()?;
+        name.append_entry_by_text("CN", "p12")?;
+        let name = name.build();
+        let mut cert = X509::builder()?;
+        cert.set_version(2)?;
+        cert.set_subject_name(&name)?;
+        cert.set_issuer_name(&name)?;
+        cert.set_pubkey(&key)?;
+        let (not_before, not_after) = (Asn1Time::days_from_now(0)?, Asn1Time::days_from_now(1)?);
+        cert.set_not_before(&not_before)?;
+        cert.set_not_after(&not_after)?;
+        cert.sign(&key, MessageDigest::sha256())?;
+        let p12 = Pkcs12::builder()
+            .name("p12")
+            .pkey(&key)
+            .cert(&cert.build())
+            .build2("secret")?;
+
+        let mut attributes = Attributes::default();
+        attributes.set_link(
+            LinkType::PKCS12PasswordLink,
+            LinkedObjectIdentifier::TextString("secret".to_owned()),
+        );
+        attributes.set_tags(kms.vendor_id(), ["_enrolled_serial:ca:01", "mine"])?;
+        let sk_uid = kms
+            .import(
+                Import {
+                    unique_identifier: UniqueIdentifier::TextString(String::new()),
+                    object_type: ObjectType::PrivateKey,
+                    replace_existing: None,
+                    key_wrap_type: None,
+                    attributes,
+                    object: build_private_key_from_der_bytes(
+                        KeyFormatType::PKCS12,
+                        Zeroizing::new(p12.to_der()?),
+                    ),
+                },
+                &UserId::from("p12_importer"),
+            )
+            .await?
+            .unique_identifier
+            .to_string();
+
+        let leaf_uid = sk_uid.strip_suffix(SYSTEM_TAG_PRIVATE_KEY).unwrap();
+        for uid in [
+            sk_uid.clone(),
+            format!("{leaf_uid}{SYSTEM_TAG_PUBLIC_KEY}"),
+            leaf_uid.to_owned(),
+        ] {
+            let tags = kms.database.retrieve_tags(&uid).await?;
+            assert!(tags.contains("mine"), "{uid}: {tags:?}");
+            assert!(
+                !tags.iter().any(|t| t.starts_with("_enrolled")),
+                "{uid}: {tags:?}"
+            );
+        }
+        Ok(())
+    }
 }

@@ -258,6 +258,7 @@ impl HsmObject {
         &self.id
     }
 
+    /// Tags carried by the object (decoded from its HSM label).
     #[must_use]
     pub const fn tags(&self) -> &HashSet<String> {
         &self.tags

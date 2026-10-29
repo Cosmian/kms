@@ -78,13 +78,19 @@ fn check_extractable_and_sensitive(
     // For PKCS#12 export, the password is recovered from the key wrapping spec's
     // encryption_key_information. A dummy wrapping spec with no password would yield
     // an empty password and return sensitive key material unprotected.
+    // The export path never wraps PGP keys, Opaque Objects or Split Keys, so a wrapping
+    // specification does not protect them.
+    let unwrappable = matches!(
+        owm.object().object_type(),
+        ObjectType::PGPKey | ObjectType::OpaqueObject | ObjectType::SplitKey
+    );
     let is_wrapped = if is_pkcs12 {
         key_wrapping_specification
             .as_ref()
             .and_then(|kws| kws.encryption_key_information.as_ref())
             .is_some_and(|eki| !eki.unique_identifier.to_string().is_empty())
     } else {
-        key_wrapping_specification.is_some()
+        key_wrapping_specification.is_some() && !unwrappable
     };
 
     // A sensitive HSM key is never readable by the KMS (the HSM refuses CKA_VALUE and the object
@@ -94,6 +100,17 @@ fn check_extractable_and_sensitive(
         return Err(KmsError::Kmip21Error(
             ErrorReason::Sensitive,
             "DENIED".to_owned(),
+        ));
+    }
+
+    // Refuse rather than silently return plaintext when wrapping was requested.
+    if unwrappable && key_wrapping_specification.is_some() {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Key_Wrap_Type_Not_Supported,
+            format!(
+                "export: key wrapping is not supported for objects of type {}",
+                owm.object().object_type()
+            ),
         ));
     }
 
@@ -1646,4 +1663,93 @@ async fn persist_fresh_false(
     }
 
     Ok(())
+}
+
+#[cfg(all(test, feature = "non-fips"))]
+#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::KeyWrappingSpecification,
+            kmip_objects::ObjectType,
+            kmip_operations::{Create, Get},
+            kmip_types::{
+                CryptographicAlgorithm, EncryptionKeyInformation, UniqueIdentifier, WrappingMethod,
+            },
+        },
+    };
+
+    use crate::{
+        error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
+    };
+
+    fn get_request(uid: &str, key_wrapping_specification: Option<KeyWrappingSpecification>) -> Get {
+        Get {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            key_wrapping_specification,
+            key_compression_type: None,
+            key_format_type: None,
+            key_wrap_type: None,
+        }
+    }
+
+    /// A wrapping specification is not protection when the export path never wraps the object:
+    /// a Sensitive PGP key must not leave in plaintext with a dummy wrapping specification.
+    #[tokio::test]
+    async fn test_sensitive_pgp_key_export_ignores_dummy_wrapping() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("pgp_export_owner");
+        let dummy_wrapping = KeyWrappingSpecification {
+            wrapping_method: WrappingMethod::Encrypt,
+            encryption_key_information: Some(EncryptionKeyInformation {
+                unique_identifier: UniqueIdentifier::TextString("does-not-exist".to_owned()),
+                cryptographic_parameters: None,
+            }),
+            ..KeyWrappingSpecification::default()
+        };
+
+        for sensitive in [true, false] {
+            let create = Create {
+                object_type: ObjectType::PGPKey,
+                attributes: Attributes {
+                    object_type: Some(ObjectType::PGPKey),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
+                    sensitive: Some(sensitive),
+                    ..Attributes::default()
+                },
+                protection_storage_masks: None,
+            };
+            let uid = kms
+                .create(create, &owner)
+                .await?
+                .unique_identifier
+                .to_string();
+
+            let dummy_wrapped = kms
+                .get(get_request(&uid, Some(dummy_wrapping.clone())), &owner)
+                .await;
+            let expected = if sensitive {
+                ErrorReason::Sensitive
+            } else {
+                ErrorReason::Key_Wrap_Type_Not_Supported
+            };
+            assert!(
+                matches!(&dummy_wrapped, Err(KmsError::Kmip21Error(reason, _)) if *reason == expected),
+                "sensitive={sensitive}: {dummy_wrapped:?}"
+            );
+
+            let plain = kms.get(get_request(&uid, None), &owner).await;
+            if sensitive {
+                assert!(matches!(
+                    plain,
+                    Err(KmsError::Kmip21Error(ErrorReason::Sensitive, _))
+                ));
+            } else {
+                plain?;
+            }
+        }
+        Ok(())
+    }
 }
