@@ -76,21 +76,21 @@ export const ATTRIBUTE_REGISTRY: AttributeEntry[] = [
     },
 
     // ── Cryptographic properties ──────────────────────────────────────────────
+    // Cryptographic Algorithm/Length are server-managed (KMIP 2.1 §4.13, §4.15):
+    // shown only in the Get selector.
     {
         value: "cryptographic_algorithm",
-        deleteValue: "CryptographicAlgorithm",
         label: "Cryptographic Algorithm",
         inputType: "algorithm",
-        writable: true,
-        deletable: true,
+        writable: false,
+        deletable: false,
     },
     {
         value: "cryptographic_length",
-        deleteValue: "CryptographicLength",
         label: "Cryptographic Length",
         inputType: "number",
-        writable: true,
-        deletable: true,
+        writable: false,
+        deletable: false,
     },
     {
         value: "key_usage",
