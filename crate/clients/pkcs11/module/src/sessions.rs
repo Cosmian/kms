@@ -149,6 +149,39 @@ pub(crate) struct Session {
     pub message_decrypt_active: bool,
 }
 
+/// PKCS#11 two-phase output: reports the required length when `p_out` is null,
+/// fails with `BufferTooSmall` (still reporting the length) when the caller buffer is
+/// too short, else copies `data` and writes its length. Returns `true` only when copied.
+///
+/// # Safety
+/// `pul_len` must be non-null and writable; when non-null, `p_out` must point to at
+/// least `*pul_len` writable bytes.
+unsafe fn copy_to_output_buffer(
+    data: &[u8],
+    p_out: CK_BYTE_PTR,
+    pul_len: CK_ULONG_PTR,
+) -> ModuleResult<bool> {
+    let len: CK_ULONG = data.len().try_into()?;
+    if p_out.is_null() {
+        // SAFETY: `pul_len` is non-null and writable per this function's contract.
+        unsafe { *pul_len = len };
+        return Ok(false);
+    }
+    // SAFETY: `pul_len` is non-null and readable per this function's contract.
+    if unsafe { usize::try_from(*pul_len)? } < data.len() {
+        // SAFETY: `pul_len` is non-null and writable per this function's contract.
+        unsafe { *pul_len = len };
+        return Err(ModuleError::BufferTooSmall);
+    }
+    let copy = profiling::phase(SignPhase::SignatureCopy);
+    // SAFETY: `p_out` is non-null and `*pul_len >= data.len()` was checked above.
+    unsafe { std::slice::from_raw_parts_mut(p_out, data.len()) }.copy_from_slice(data);
+    drop(copy);
+    // SAFETY: `pul_len` is non-null and writable per this function's contract.
+    unsafe { *pul_len = len };
+    Ok(true)
+}
+
 impl Session {
     fn fixed_signature_len(sign_ctx: &SignContext) -> Option<usize> {
         match (&sign_ctx.algorithm, sign_ctx.private_key.algorithm()) {
@@ -711,33 +744,12 @@ impl Session {
             });
             signature
         };
-        if pSignature.is_null() {
-            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
-            unsafe {
-                *pulSignatureLen = signature.len().try_into()?;
-            }
-            return Ok(());
-        }
-        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
-        if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
-            // Keep the operation (and the cached signature) initialized so the
-            // caller can retry with a larger buffer using the SAME signature.
-            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
-            unsafe {
-                *pulSignatureLen = signature.len().try_into()?;
-            }
-            return Err(ModuleError::BufferTooSmall);
-        }
-        let signature_copy = profiling::phase(SignPhase::SignatureCopy);
-        // SAFETY: `pSignature` is non-null and `*pulSignatureLen >= signature.len()` was checked
-        // above, so the caller's buffer holds `signature.len()` writable bytes.
-        unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
-            .copy_from_slice(&signature);
-        drop(signature_copy);
-        self.sign_ctx = None;
-        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
-        unsafe {
-            *pulSignatureLen = signature.len().try_into()?;
+        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`) and, when
+        // non-null, a `pSignature` buffer of `*pulSignatureLen` writable bytes.
+        // On CKR_BUFFER_TOO_SMALL the operation (and cached signature) stays initialized so
+        // the caller can retry with a larger buffer using the SAME signature.
+        if unsafe { copy_to_output_buffer(&signature, pSignature, pulSignatureLen) }? {
+            self.sign_ctx = None;
         }
         Ok(())
     }
@@ -782,32 +794,9 @@ impl Session {
                 ModuleError::BadArguments(format!("message signature failed: {error:?}"))
             })?;
         drop(private_key_sign);
-        if p_signature.is_null() {
-            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
-            unsafe {
-                *p_signature_len = signature.len().try_into()?;
-            }
-            return Ok(());
-        }
-        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
-        if unsafe { usize::try_from(*p_signature_len)? } < signature.len() {
-            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
-            unsafe {
-                *p_signature_len = signature.len().try_into()?;
-            }
-            return Err(ModuleError::BufferTooSmall);
-        }
-
-        let signature_copy = profiling::phase(SignPhase::SignatureCopy);
-        // SAFETY: `p_signature` is non-null and `*p_signature_len >= signature.len()` was checked
-        // above, so the caller's buffer holds `signature.len()` writable bytes.
-        unsafe { std::slice::from_raw_parts_mut(p_signature, signature.len()) }
-            .copy_from_slice(&signature);
-        drop(signature_copy);
-        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
-        unsafe {
-            *p_signature_len = signature.len().try_into()?;
-        }
+        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`) and, when
+        // non-null, a `p_signature` buffer of `*p_signature_len` writable bytes.
+        unsafe { copy_to_output_buffer(&signature, p_signature, p_signature_len) }?;
         Ok(())
     }
 
@@ -878,20 +867,9 @@ impl Session {
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
         // SAFETY: pulEncryptedDataLen is non-null (checked by C_Encrypt); pEncryptedData,
-        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes. The caller's
-        // size must be read before it is overwritten, or the check below is vacuous.
-        unsafe {
-            if !pEncryptedData.is_null() {
-                if (usize::try_from(*pulEncryptedDataLen)?) < ciphertext.len() {
-                    *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
-                    return Err(ModuleError::BufferTooSmall);
-                }
-                std::slice::from_raw_parts_mut(pEncryptedData, ciphertext.len())
-                    .copy_from_slice(&ciphertext);
-                *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
-                self.encrypt_ctx = None;
-            }
-            *pulEncryptedDataLen = ciphertext.len() as CK_ULONG;
+        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes.
+        if unsafe { copy_to_output_buffer(&ciphertext, pEncryptedData, pulEncryptedDataLen) }? {
+            self.encrypt_ctx = None;
         }
         Ok(())
     }

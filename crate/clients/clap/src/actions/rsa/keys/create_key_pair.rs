@@ -5,7 +5,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::{console, shared::RotationPolicyArgs},
+    actions::shared::RotationPolicyArgs,
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -114,28 +114,13 @@ impl CreateKeyPairAction {
             .await
             .with_context(|| "failed creating a RSA key pair")?;
 
-        let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-        let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
-
-        // Apply rotation policy on the private key (which is the keyset anchor)
-        if self.rotation_policy.is_set() {
-            let sk_id = private_key_unique_identifier
-                .as_str()
-                .with_context(|| "the server did not return a private key id as a string")?;
-            self.rotation_policy.apply(&kms_rest_client, sk_id).await?;
-        }
-
-        let mut stdout = console::Stdout::new("The RSA key pair has been created.");
-        stdout.set_tags(Some(&self.tags));
-        stdout.set_key_pair_unique_identifier(
-            private_key_unique_identifier,
-            public_key_unique_identifier,
-        );
-        stdout.write()?;
-
-        Ok((
-            private_key_unique_identifier.to_owned(),
-            public_key_unique_identifier.to_owned(),
-        ))
+        self.rotation_policy
+            .finish_key_pair_creation(
+                &kms_rest_client,
+                create_key_pair_response,
+                &self.tags,
+                "The RSA key pair has been created.",
+            )
+            .await
     }
 }

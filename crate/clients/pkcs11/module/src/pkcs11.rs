@@ -162,6 +162,38 @@ fn iv_and_aad_from_mechanism(mechanism: &Mechanism) -> ModuleResult<IvAndAad> {
     }
 }
 
+/// Resolve the `(remote id, algorithm, iv, aad)` of a `C_EncryptInit`/`C_DecryptInit` key:
+/// symmetric keys and data objects carry the mechanism's `(iv, aad)`; the asymmetric key
+/// (public for encrypt, private for decrypt) carries none. Other objects are `KeyHandleInvalid`.
+fn crypto_init_target(
+    object: Option<&Object>,
+    decrypt: bool,
+    mechanism: Mechanism,
+    h_key: CK_OBJECT_HANDLE,
+) -> ModuleResult<(String, EncryptionAlgorithm, IvAndAad)> {
+    match object {
+        Some(Object::PublicKey(pk)) if !decrypt => Ok((
+            pk.remote_id().to_owned(),
+            mechanism.try_into()?,
+            (None, None),
+        )),
+        Some(Object::PrivateKey(sk)) if decrypt => Ok((
+            sk.remote_id().to_owned(),
+            mechanism.try_into()?,
+            (None, None),
+        )),
+        Some(Object::SymmetricKey(sk)) => {
+            let iv_aad = iv_and_aad_from_mechanism(&mechanism)?;
+            Ok((sk.remote_id().to_owned(), mechanism.try_into()?, iv_aad))
+        }
+        Some(Object::DataObject(data)) => {
+            let iv_aad = iv_and_aad_from_mechanism(&mechanism)?;
+            Ok((data.remote_id().to_owned(), mechanism.try_into()?, iv_aad))
+        }
+        Some(_) | None => Err(ModuleError::KeyHandleInvalid(h_key)),
+    }
+}
+
 pub static mut FUNC_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     // In this structure 'version' is the cryptoki specification version number. The major and minor
     // versions must be set to 0x02 and 0x28 indicating a version 2.40 compatible structure.
@@ -1177,38 +1209,15 @@ cryptoki_fn!(
                 "C_EncryptInit: session: {hSession:?}, hKey: {hKey:?}, mechanism: {mechanism:?}, \
                  object: {object:?}",
             );
-            match object.as_deref() {
-                Some(Object::PublicKey(pk)) => {
-                    session.encrypt_ctx = Some(EncryptContext {
-                        remote_object_id: pk.remote_id().to_owned(),
-                        algorithm: mechanism.try_into()?,
-                        iv: None,
-                        aad: None,
-                    });
-                    Ok(())
-                }
-                Some(Object::SymmetricKey(sk)) => {
-                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
-                    session.encrypt_ctx = Some(EncryptContext {
-                        remote_object_id: sk.remote_id().to_owned(),
-                        algorithm: EncryptionAlgorithm::try_from(mechanism)?,
-                        iv,
-                        aad,
-                    });
-                    Ok(())
-                }
-                Some(Object::DataObject(data)) => {
-                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
-                    session.encrypt_ctx = Some(EncryptContext {
-                        remote_object_id: data.remote_id().to_owned(),
-                        algorithm: EncryptionAlgorithm::try_from(mechanism)?,
-                        iv,
-                        aad,
-                    });
-                    Ok(())
-                }
-                Some(_) | None => Err(ModuleError::KeyHandleInvalid(hKey)),
-            }
+            let (remote_object_id, algorithm, (iv, aad)) =
+                crypto_init_target(object.as_deref(), false, mechanism, hKey)?;
+            session.encrypt_ctx = Some(EncryptContext {
+                remote_object_id,
+                algorithm,
+                iv,
+                aad,
+            });
+            Ok(())
         })
     }
 );
@@ -1285,39 +1294,15 @@ cryptoki_fn!(
                 "C_DecryptInit: session: {hSession:?}, hKey: {hKey:?}, mechanism: {mechanism:?}, \
                  object: {object:?}",
             );
-            match object.as_deref() {
-                Some(Object::PrivateKey(sk)) => {
-                    session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: sk.remote_id().to_owned(),
-                        algorithm: mechanism.try_into()?,
-                        iv: None,
-                        aad: None,
-                    });
-                    Ok(())
-                }
-                Some(Object::SymmetricKey(sk)) => {
-                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
-
-                    session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: sk.remote_id().to_owned(),
-                        algorithm: mechanism.try_into()?,
-                        iv,
-                        aad,
-                    });
-                    Ok(())
-                }
-                Some(Object::DataObject(data)) => {
-                    let (iv, aad) = iv_and_aad_from_mechanism(&mechanism)?;
-                    session.decrypt_ctx = Some(DecryptContext {
-                        remote_object_id: data.remote_id().to_owned(),
-                        algorithm: mechanism.try_into()?,
-                        iv,
-                        aad,
-                    });
-                    Ok(())
-                }
-                Some(_) | None => Err(ModuleError::KeyHandleInvalid(hKey)),
-            }
+            let (remote_object_id, algorithm, (iv, aad)) =
+                crypto_init_target(object.as_deref(), true, mechanism, hKey)?;
+            session.decrypt_ctx = Some(DecryptContext {
+                remote_object_id,
+                algorithm,
+                iv,
+                aad,
+            });
+            Ok(())
         })
     }
 );
