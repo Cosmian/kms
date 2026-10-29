@@ -75,13 +75,15 @@ impl HsmProvider for SofthsmCapabilityProvider {
 pub type Softhsm2 = cosmian_kms_base_hsm::BaseHsm<SofthsmCapabilityProvider>;
 
 /// Capability profile for `hsm_model = "other"`: `SoftHSM2`'s PKCS#11 quirks, but treated as a
-/// FIPS-validated module (no caller-chosen AES-GCM IV in FIPS builds) and trying the
-/// PKCS#11 v3 message API when the library exports it.
+/// FIPS-validated module: AES-GCM IVs are always generated inside the HSM, in FIPS and
+/// non-FIPS KMS builds alike (a FIPS-mode HSM rejects a caller-chosen nonce whatever the
+/// build of the KMS), and the PKCS#11 v3 message API is tried when the library exports it.
 pub struct OtherCapabilityProvider;
 
 impl HsmProvider for OtherCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
         let mut capabilities = SofthsmCapabilityProvider::capabilities();
+        capabilities.aes.gcm.supports_caller_iv = false;
         capabilities.aes.gcm.allows_caller_iv_in_fips = false;
         capabilities.aes.gcm.supports_message = true;
         capabilities
@@ -110,6 +112,24 @@ mod capability_tests {
                 .aes
                 .gcm
                 .allows_caller_iv_in_fips
+        );
+    }
+
+    /// A non-FIPS KMS build must not send a caller nonce to an unknown (possibly FIPS-mode)
+    /// HSM either: `SoftHSM2` accepts one, `other` never does.
+    #[test]
+    fn other_never_sends_a_caller_gcm_iv_in_any_build() {
+        assert!(
+            !OtherCapabilityProvider::capabilities()
+                .aes
+                .gcm
+                .supports_caller_iv
+        );
+        assert!(
+            SofthsmCapabilityProvider::capabilities()
+                .aes
+                .gcm
+                .supports_caller_iv
         );
     }
 }

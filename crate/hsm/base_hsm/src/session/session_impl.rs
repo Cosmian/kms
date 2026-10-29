@@ -4110,6 +4110,68 @@ mod tests {
         assert_eq!(split(&[ct.as_slice(), &tag, &[3_u8; 16]].concat()), None);
     }
 
+    /// Drives `Session::encrypt` against `tests/fixtures/fips_gcm_hsm.c`, an HSM in FIPS mode
+    /// that rejects any caller-chosen GCM nonce and returns the IV it generated through `pIv`.
+    fn fips_hsm_gcm_encrypt(
+        supports_caller_iv: bool,
+        fixture_args: &[&str],
+    ) -> HResult<EncryptedContent> {
+        let hsm_lib = crate::hsm_lib::HsmLib::instantiate(&crate::test_fixtures::compile_fixture(
+            "fips_gcm_hsm.c",
+            fixture_args,
+        )?)?;
+        let mut capabilities = crate::hsm_capabilities::HsmCapabilities::default();
+        capabilities.aes.gcm.supports_caller_iv = supports_caller_iv;
+        capabilities.aes.gcm.allows_caller_iv_in_fips = false;
+        capabilities.aes.gcm.supports_message = false;
+        crate::test_fixtures::fixture_session(hsm_lib, capabilities).encrypt(
+            1,
+            HsmEncryptionAlgorithm::AesGcm,
+            b"hello",
+            None,
+        )
+    }
+
+    /// Regression: a FIPS-mode HSM rejects a caller nonce with "algorithm not allowed using
+    /// FIPS mode". With the HSM-generated IV flow (any build) the IV it returns is used.
+    #[test]
+    fn gcm_encrypt_uses_the_iv_generated_by_a_fips_mode_hsm() {
+        let content = fips_hsm_gcm_encrypt(false, &[]).ok();
+        assert_eq!(
+            content
+                .as_ref()
+                .map(|c| (c.ciphertext.as_slice(), c.tag.as_deref())),
+            Some((
+                b"hello".map(|b| b ^ 0x42).as_slice(),
+                Some([0x7E_u8; 16].as_slice())
+            ))
+        );
+        let iv = content.and_then(|c| c.iv);
+        assert_eq!(iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
+        assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
+    }
+
+    /// A non-FIPS build of the KMS that treats the HSM as accepting caller nonces is the
+    /// reported failure; pin it so the capability profile (not the build) stays the guard.
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn gcm_encrypt_with_caller_nonce_is_rejected_by_a_fips_mode_hsm() {
+        assert!(matches!(
+            fips_hsm_gcm_encrypt(true, &[]),
+            Err(e) if e.to_string().contains("Failed to allocate encrypted data length")
+        ));
+    }
+
+    /// Known limit of a capability profile without caller IV (`hsm_model = "other"`): an HSM
+    /// that ignores the `pIv` buffer fails closed, and the all-zero IV is never returned.
+    #[test]
+    fn gcm_encrypt_fails_closed_when_the_hsm_generates_no_iv() {
+        assert!(matches!(
+            fips_hsm_gcm_encrypt(false, &["-DIGNORE_IV_BUFFER"]),
+            Err(e) if e.to_string().contains("needs an IV generated inside the HSM")
+        ));
+    }
+
     #[test]
     fn rsa_pkcs_pss_params_defaults_salt_length_to_digest_length() {
         let params = Session::rsa_pkcs_pss_params(CKM_SHA256, CKG_MGF1_SHA256, 32, None);
