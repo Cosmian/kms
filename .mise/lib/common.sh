@@ -46,6 +46,25 @@ export PINNED_NIXPKGS_URL="$PIN_URL"
 
 # ── macOS SDK helpers ─────────────────────────────────────────────────────────
 
+# Prepends $2 to the flag variable $1, first removing the prefix recorded by the previous
+# call. A task re-exec'd inside the non-pure nix-shell inherits the host's flags: without
+# this, the host SDK's `-isysroot` stays last and wins over Nix's, and Nix's ld64 then
+# fails to link against the newer host `libSystem`.
+_kms_set_flag_prefix() {
+  local var="$1" record="_KMS_SDK_PREFIX_$1" prefix="$2"
+  local current="${!var:-}" previous="${!record:-}"
+  if [ -n "$previous" ]; then
+    current="${current#"$previous"}"
+    current="${current# }"
+  fi
+  if [ -n "$current" ]; then
+    export "$var=${prefix} ${current}"
+  else
+    export "$var=${prefix}"
+  fi
+  export "$record=${prefix}"
+}
+
 ensure_macos_sdk_env() {
   if [ "$(uname -s)" != "Darwin" ]; then return 0; fi
 
@@ -87,21 +106,9 @@ ensure_macos_sdk_env() {
       framework_flags="-F${framework_dir} -iframework ${framework_dir}"
     fi
 
-    if [ -n "${CFLAGS:-}" ]; then
-      export CFLAGS="${sysroot_flag} ${framework_flags} ${CFLAGS}"
-    else
-      export CFLAGS="${sysroot_flag} ${framework_flags}"
-    fi
-    if [ -n "${CPPFLAGS:-}" ]; then
-      export CPPFLAGS="${sysroot_flag} ${framework_flags} ${CPPFLAGS}"
-    else
-      export CPPFLAGS="${sysroot_flag} ${framework_flags}"
-    fi
-    if [ -n "${CXXFLAGS:-}" ]; then
-      export CXXFLAGS="${sysroot_flag} ${framework_flags} ${CXXFLAGS}"
-    else
-      export CXXFLAGS="${sysroot_flag} ${framework_flags}"
-    fi
+    _kms_set_flag_prefix CFLAGS "${sysroot_flag} ${framework_flags}"
+    _kms_set_flag_prefix CPPFLAGS "${sysroot_flag} ${framework_flags}"
+    _kms_set_flag_prefix CXXFLAGS "${sysroot_flag} ${framework_flags}"
   fi
 }
 
@@ -115,17 +122,8 @@ ensure_macos_frameworks_ldflags() {
   local frameworks_dir="${SDKROOT}/System/Library/Frameworks"
   if [ ! -d "${frameworks_dir}" ]; then return 0; fi
 
-  local fw_ldflags="-F${frameworks_dir} -Wl,-F,${frameworks_dir}"
-  if [ -n "${LDFLAGS:-}" ]; then
-    export LDFLAGS="${fw_ldflags} ${LDFLAGS}"
-  else
-    export LDFLAGS="${fw_ldflags}"
-  fi
-  if [ -n "${RUSTFLAGS:-}" ]; then
-    export RUSTFLAGS="-C link-arg=-F${frameworks_dir} -C link-arg=-Wl,-F,${frameworks_dir} ${RUSTFLAGS}"
-  else
-    export RUSTFLAGS="-C link-arg=-F${frameworks_dir} -C link-arg=-Wl,-F,${frameworks_dir}"
-  fi
+  _kms_set_flag_prefix LDFLAGS "-F${frameworks_dir} -Wl,-F,${frameworks_dir}"
+  _kms_set_flag_prefix RUSTFLAGS "-C link-arg=-F${frameworks_dir} -C link-arg=-Wl,-F,${frameworks_dir}"
 }
 
 # ── Core helpers ──────────────────────────────────────────────────────────────
