@@ -42,6 +42,7 @@ pub(crate) async fn verify(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "POST /v1/crypto/verify");
+    super::audit(&req, None);
 
     let header_bytes = b64_decode("protected", &body.protected)?;
     ensure_json_object(&header_bytes)?;
@@ -58,6 +59,7 @@ pub(crate) async fn verify(
             CryptoApiError::BadRequest("Protected header missing required 'kid' field".to_owned())
         })?
         .to_owned();
+    super::audit(&req, Some(&kid));
 
     let alg_str = header.alg.as_deref().ok_or_else(|| {
         CryptoApiError::BadRequest("Protected header missing required 'alg' field".to_owned())

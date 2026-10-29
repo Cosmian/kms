@@ -1866,6 +1866,12 @@ pub async fn prepare_kms_server(
             ),
             &native_auth,
         )
+            // Same place as in the default scope: outside every auth method, inside CORS.
+            .wrap(AuditMiddleware::new(
+                kms_server_for_http.audit_store.clone(),
+                kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                kms_server_for_http.params.audit_failure_mode.clone(),
+            ))
             .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)

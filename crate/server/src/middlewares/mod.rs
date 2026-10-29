@@ -28,7 +28,7 @@ pub(crate) use ensure_auth::ensure_auth_middleware;
 mod jwt;
 pub(crate) use jwt::{
     JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware,
-    refresh_jwks_for_token, validate_jwt_svid,
+    refresh_jwks_for_token, reqwest_proxy, validate_jwt_svid,
 };
 
 mod rate_limiter;

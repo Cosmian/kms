@@ -5,14 +5,20 @@ use actix_web::{
     web::{Data, Json},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::EMPTY_TAGS, kmip_types::UniqueIdentifier,
+    extra::tagging::EMPTY_TAGS, kmip_operations::Operation, kmip_types::UniqueIdentifier,
     requests::create_signing_key_pair_request,
 };
 use cosmian_logger::info;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    core::{KMS, ObjectHandle, operations::generate_csr::validate_subject_name},
+    core::{
+        KMS, ObjectHandle,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_request,
+            generate_csr::validate_subject_name,
+        },
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -110,6 +116,11 @@ pub(crate) async fn post_csr(
             body.sensitive,
         )
         .map_err(|e| KmsError::InvalidRequest(format!("CSR generation: {e}")))?;
+        // The KMIP dispatcher is bypassed: apply its request-time policy before any key exists
+        enforce_kmip_algorithm_policy_for_request(
+            &kms.params,
+            &Operation::CreateKeyPair(Box::new(create.clone())),
+        )?;
         let created = Box::pin(kms.create_key_pair(create, &user)).await?;
         (
             created.private_key_unique_identifier.to_string(),
@@ -145,4 +156,52 @@ pub(crate) async fn post_csr(
         private_key_id,
         public_key_id,
     }))
+}
+
+#[cfg(test)]
+#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+mod tests {
+    use actix_web::{App, test};
+
+    use super::*;
+    use crate::tests::test_utils::{https_clap_config, test_kms_with_config};
+
+    /// A key pair the KMIP algorithm policy forbids is refused before it is created.
+    #[actix_web::test]
+    async fn test_csr_algorithm_policy_runs_before_key_creation() -> KResult<()> {
+        let mut conf = https_clap_config();
+        conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
+        let kms = Box::pin(test_kms_with_config(conf)).await?;
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(kms.clone()))
+                .service(post_csr),
+        )
+        .await;
+        for (algorithm, allowed) in [("nist-p224", false), ("nist-p256", true)] {
+            let private_key_id = format!("csr-{algorithm}");
+            let response = test::call_service(
+                &app,
+                test::TestRequest::post()
+                    .uri("/certificates/csr")
+                    .set_json(serde_json::json!({
+                        "private_key_id": private_key_id,
+                        "subject_name": "CN=CSR policy",
+                        "algorithm": algorithm,
+                    }))
+                    .to_request(),
+            )
+            .await;
+            assert_eq!(response.status().is_success(), allowed, "{algorithm}");
+            assert_eq!(
+                kms.database
+                    .retrieve_object_arc(&private_key_id)
+                    .await?
+                    .is_some(),
+                allowed,
+                "{algorithm}: a refused request must leave no key behind"
+            );
+        }
+        Ok(())
+    }
 }

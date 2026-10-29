@@ -17,24 +17,28 @@ use cosmian_kms_interfaces::{
     HsmObject, HsmObjectFilter, HsmStore, InterfaceError, InterfaceResult, KeyMaterial,
     KeyMetadata, KeyType, SigningAlgorithm, SigningKeyMetadata,
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::KeyWrapType,
-    kmip_2_1::{
-        KmipOperation,
-        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-        kmip_attributes::Attributes,
-        kmip_data_structures::{
-            KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue, KeyWrappingSpecification,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{CertificateType, KeyWrapType},
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_attributes::Attributes,
+            kmip_data_structures::{
+                KeyBlock, KeyMaterial as KmipKeyMaterial, KeyValue, KeyWrappingSpecification,
+            },
+            kmip_objects::{Certificate, Object, ObjectType, SymmetricKey},
+            kmip_operations::{Encrypt, Export, Import, Register},
+            kmip_types::{
+                CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyFormatType,
+                Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+            },
+            requests::{create_rsa_key_pair_request, symmetric_key_create_request},
         },
-        kmip_objects::{Object, ObjectType, SymmetricKey},
-        kmip_operations::{Encrypt, Export, Import, Register},
-        kmip_types::{
-            CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyFormatType,
-            UniqueIdentifier,
-        },
-        requests::symmetric_key_create_request,
     },
+    cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_wrap,
 };
+use openssl::x509::X509;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -50,6 +54,7 @@ use crate::{
 const ADMIN: &str = "hsm.admin@acme.com";
 const GRANTEE: &str = "grantee@acme.com";
 const OUTSIDER: &str = "outsider@acme.com";
+const VICTIM: &str = "victim@acme.com";
 
 /// HSM key used to "wrap" imported keys.
 const HSM_KEY: &str = "hsm::0::wrapping_key";
@@ -522,14 +527,8 @@ async fn test_kek_wrapped_import_is_refused() -> KResult<()> {
         for kek_uid in [HSM_KEK, kek_pk.as_str()] {
             let uid = import_as(&kms, user, key_wrapped_by(kek_uid, &ciphertext), None).await?;
             assert!(is_stored_wrapped_by(&kms, &uid, kek_uid).await?);
-            let export = Export {
-                unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-                key_wrap_type: Some(KeyWrapType::NotWrapped),
-                ..Export::default()
-            };
-            let exported = kms.export(export, &UserId::from(user)).await?.object;
             assert_eq!(
-                exported.key_block()?.key_bytes()?.to_vec(),
+                export_unwrapped_bytes(&kms, user, &uid).await?,
                 bitwise_not(&ciphertext)
             );
         }
@@ -555,6 +554,242 @@ async fn test_kek_wrapped_import_is_refused() -> KResult<()> {
     // A key wrapped by another key is stored as-is
     let uid = import_as(&kms, OUTSIDER, key_wrapped_by(HSM_KEY, &ciphertext), None).await?;
     assert!(is_stored_wrapped_by(&kms, &uid, HSM_KEY).await?);
+    Ok(())
+}
+
+/// `Export` the key `uid` unwrapped (`KeyWrapType::NotWrapped`), as `user`.
+async fn export_unwrapped(kms: &KMS, user: &str, uid: &str) -> KResult<Object> {
+    let export = Export {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+        key_wrap_type: Some(KeyWrapType::NotWrapped),
+        ..Export::default()
+    };
+    Ok(kms.export(export, &UserId::from(user)).await?.object)
+}
+
+async fn export_unwrapped_bytes(kms: &KMS, user: &str, uid: &str) -> KResult<Vec<u8>> {
+    Ok(export_unwrapped(kms, user, uid)
+        .await?
+        .key_block()?
+        .key_bytes()?
+        .to_vec())
+}
+
+/// Replace the wrapping key UID recorded in the wrapped `object`.
+fn set_wrapping_key_uid(object: &mut Object, wrapping_key_uid: UniqueIdentifier) -> KResult<()> {
+    object
+        .key_block_mut()?
+        .key_wrapping_data
+        .as_mut()
+        .and_then(|data| data.encryption_key_information.as_mut())
+        .ok_or_else(|| KmsError::ServerError("the object is not wrapped".to_owned()))?
+        .unique_identifier = wrapping_key_uid;
+    Ok(())
+}
+
+/// One of `user`'s own RSA public keys.
+async fn own_public_key(kms: &KMS, user: &str) -> KResult<Object> {
+    let request =
+        create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?;
+    let public_key = kms
+        .create_key_pair(request, &UserId::from(user))
+        .await?
+        .public_key_unique_identifier
+        .to_string();
+    export_unwrapped(kms, user, &public_key).await
+}
+
+/// Any certificate (certificates are not wrapped at rest, whatever the KEK).
+fn a_certificate() -> KResult<Object> {
+    let pem = include_bytes!("../../../../../test_data/certificates/client_server/ca/ca.crt");
+    Ok(Object::Certificate(Certificate {
+        certificate_type: CertificateType::X509,
+        certificate_value: X509::from_pem(pem)?.to_der()?,
+    }))
+}
+
+/// As `user`, `Import` `object` (a public key or certificate) under `uid` with a
+/// `PrivateKeyLink` to `private_key_uid`: a user-made alias of that key.
+async fn import_alias(
+    kms: &KMS,
+    user: &str,
+    uid: &str,
+    private_key_uid: &str,
+    object: Object,
+) -> KResult<()> {
+    let request = Import {
+        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        object_type: object.object_type(),
+        replace_existing: None,
+        key_wrap_type: None,
+        attributes: Attributes {
+            link: Some(vec![Link {
+                link_type: LinkType::PrivateKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(
+                    private_key_uid.to_owned(),
+                ),
+            }]),
+            ..Attributes::default()
+        },
+        object,
+    };
+    kms.import(request, &UserId::from(user)).await?;
+    Ok(())
+}
+
+/// A user holding only `Create` and a ciphertext `wrapped` under the server KEK `kek` cannot
+/// have it decrypted through an alias (`alias_object`, a public key or certificate) whose
+/// `PrivateKeyLink` points at the KEK.
+async fn assert_kek_alias_is_no_oracle(
+    kms: &KMS,
+    kek: &str,
+    wrapped: &Object,
+    alias_object: &Object,
+) -> KResult<()> {
+    let wrapped_by = |alias: &str| -> KResult<Object> {
+        let mut object = wrapped.clone();
+        set_wrapping_key_uid(&mut object, UniqueIdentifier::TextString(alias.to_owned()))?;
+        Ok(object)
+    };
+
+    // The alias exists: storing a block wrapped by it is refused
+    let alias = format!("alias-{}", Uuid::new_v4());
+    import_alias(kms, OUTSIDER, &alias, kek, alias_object.clone()).await?;
+    let refused = import_as(kms, OUTSIDER, wrapped_by(&alias)?, None).await;
+    assert!(
+        matches!(refused, Err(KmsError::InvalidRequest(_))),
+        "a key wrapped by an alias of the server KEK must not be imported: {refused:?}"
+    );
+
+    // The block is stored before the alias exists: reading it unwrapped is refused
+    let alias = format!("alias-{}", Uuid::new_v4());
+    let uid = import_as(kms, OUTSIDER, wrapped_by(&alias)?, None).await?;
+    import_alias(kms, OUTSIDER, &alias, kek, alias_object.clone()).await?;
+    let leaked = export_unwrapped(kms, OUTSIDER, &uid).await.map(|_| ());
+    assert!(
+        leaked.is_err(),
+        "the server KEK must not decrypt through a user-made alias: {leaked:?}"
+    );
+    Ok(())
+}
+
+/// HSM KEK (exportable): a user-made alias of the KEK is no decryption oracle.
+#[tokio::test]
+async fn test_hsm_kek_alias_is_no_decryption_oracle() -> KResult<()> {
+    let kms = kms_with_fake_hsm(true).await?;
+    // the fake HSM KEK exports its bytes ([2; 32]): unwrapping through an alias runs in software
+    let wrapped = key_wrapped_by("alias", &rfc5649_wrap(&[0x5A; 32], &[2; 32])?);
+    for alias_object in [own_public_key(&kms, OUTSIDER).await?, a_certificate()?] {
+        assert_kek_alias_is_no_oracle(&kms, HSM_KEK, &wrapped, &alias_object).await?;
+    }
+    Ok(())
+}
+
+/// KMS whose `key_encryption_key` is the database key `kek` owned by `ADMIN`: an AES key, or
+/// an RSA private key wrapping with RSA-OAEP.
+async fn kms_with_db_kek(kek: &str, rsa: bool) -> KResult<Arc<KMS>> {
+    let conf = https_clap_config();
+    let sqlite_path = conf.db.sqlite_path.clone();
+    let kms = Box::pin(test_kms_with_config(conf)).await?;
+    let kek_uid = Some(UniqueIdentifier::TextString(kek.to_owned()));
+    if rsa {
+        let request =
+            create_rsa_key_pair_request(VENDOR_ID_COSMIAN, kek_uid, EMPTY_TAGS, 2048, false, None)?;
+        kms.create_key_pair(request, &UserId::from(ADMIN)).await?;
+    } else {
+        let request = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            kek_uid,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        kms.create(request, &UserId::from(ADMIN)).await?;
+    }
+    drop(kms);
+
+    let mut conf = https_clap_config();
+    conf.db.sqlite_path = sqlite_path;
+    conf.db.disable_unwrapped_cache = true;
+    conf.key_encryption_key = Some(kek.to_owned());
+    conf.key_encryption_key_wrapping_algorithm = rsa.then(|| "rsa-oaep".to_owned());
+    Box::pin(test_kms_with_config(conf)).await
+}
+
+/// A key of `VICTIM`, wrapped at rest by the server KEK: its stored (wrapped) object, and the
+/// key bytes `VICTIM` reads back.
+async fn victim_key(kms: &KMS) -> KResult<(Object, Vec<u8>)> {
+    let request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let uid = kms
+        .create(request, &UserId::from(VICTIM))
+        .await?
+        .unique_identifier
+        .to_string();
+    let stored = kms
+        .database
+        .retrieve_object_arc(&uid)
+        .await?
+        .ok_or_else(|| KmsError::ItemNotFound(uid.clone()))?
+        .object()
+        .clone();
+    assert!(stored.is_wrapped(), "the key must be KEK-wrapped at rest");
+    // the owner reads its key at rest (unwrapped cache disabled)
+    Ok((stored, export_unwrapped_bytes(kms, VICTIM, &uid).await?))
+}
+
+/// Database KEK (AES, and RSA): a user-made alias of the KEK is no decryption oracle, while
+/// at-rest reads and imports by users allowed to decrypt with the KEK keep working.
+#[tokio::test]
+async fn test_db_kek_alias_is_no_decryption_oracle() -> KResult<()> {
+    for rsa in [false, true] {
+        let kek = format!("kek-{}", Uuid::new_v4());
+        let kms = kms_with_db_kek(&kek, rsa).await?;
+        let (wrapped, secret) = victim_key(&kms).await?;
+        let mut alias_objects = vec![a_certificate()?];
+        // RSA-OAEP cannot wrap an RSA private key at rest: no own key pair with an RSA KEK
+        if !rsa {
+            alias_objects.push(own_public_key(&kms, OUTSIDER).await?);
+        }
+        for alias_object in &alias_objects {
+            assert_kek_alias_is_no_oracle(&kms, &kek, &wrapped, alias_object).await?;
+        }
+
+        // The KEK owner, and a user granted Decrypt on the KEK: the KEK-wrapped block is
+        // accepted and reads back unwrapped
+        grant(&kms, &kek, GRANTEE, KmipOperation::Decrypt).await?;
+        for user in [ADMIN, GRANTEE] {
+            let uid = import_as(&kms, user, wrapped.clone(), None).await?;
+            assert_eq!(export_unwrapped_bytes(&kms, user, &uid).await?, secret);
+        }
+    }
+    Ok(())
+}
+
+/// A numeric `UniqueIdentifier` naming the KEK is the KEK: storing a block wrapped by it needs
+/// the right to decrypt with the KEK.
+#[tokio::test]
+async fn test_numeric_kek_uid_wrapped_import_is_refused() -> KResult<()> {
+    let kms = kms_with_db_kek("42", false).await?;
+    let (mut wrapped, secret) = victim_key(&kms).await?;
+    set_wrapping_key_uid(&mut wrapped, UniqueIdentifier::Integer(42))?;
+
+    let refused = import_as(&kms, OUTSIDER, wrapped.clone(), None).await;
+    assert!(
+        matches!(refused, Err(KmsError::InvalidRequest(_))),
+        "a key wrapped by the numeric server KEK UID must not be imported: {refused:?}"
+    );
+    let uid = import_as(&kms, ADMIN, wrapped, None).await?;
+    assert_eq!(export_unwrapped_bytes(&kms, ADMIN, &uid).await?, secret);
     Ok(())
 }
 

@@ -76,16 +76,16 @@ async fn test_jose_public_import_and_cek_kid_encryption() -> KResult<()> {
     let recipient = Rsa::generate(2048)?;
     let recipient_kid = format!("recipient-kpub-{}", Uuid::new_v4());
 
-    // Import the recipient's public key under its own kid.
+    // Import the recipient's public key under its own kid; `cek_kid` needs `wrapKey`.
     let imported: Value = post_json_with_uri(
         &app,
-        public_jwk(&recipient, &recipient_kid, &json!(["encrypt"])),
+        public_jwk(&recipient, &recipient_kid, &json!(["encrypt", "wrapKey"])),
         "/v1/crypto/keys",
     )
     .await?;
     assert_eq!(imported["kid"], recipient_kid.as_str());
     assert_eq!(imported["kty"], "RSA");
-    assert_eq!(imported["key_ops"], json!(["encrypt"]));
+    assert_eq!(imported["key_ops"], json!(["encrypt", "wrapKey"]));
     assert!(imported.get("kid_public").is_none(), "{imported}");
 
     // KMS-held CEK.
@@ -156,7 +156,7 @@ async fn test_jose_public_import_and_cek_kid_errors() -> KResult<()> {
 
     let recipient = Rsa::generate(2048)?;
     let recipient_kid = format!("recipient-kpub-{}", Uuid::new_v4());
-    let import = public_jwk(&recipient, &recipient_kid, &json!(["encrypt"]));
+    let import = public_jwk(&recipient, &recipient_kid, &json!(["encrypt", "wrapKey"]));
     drop(post_json_with_uri::<_, _, Value, _>(&app, import.clone(), "/v1/crypto/keys").await?);
 
     let cek_key = create_aes_key(&app, "A256GCM").await?;
@@ -262,7 +262,7 @@ async fn test_public_only_import_caches_no_cek_and_bounds_exponent() -> KResult<
     drop(
         post_json_with_uri::<_, _, Value, _>(
             &app,
-            public_jwk(&recipient, &recipient_kid, &json!(["encrypt"])),
+            public_jwk(&recipient, &recipient_kid, &json!(["encrypt", "wrapKey"])),
             "/v1/crypto/keys",
         )
         .await?,
@@ -419,5 +419,70 @@ async fn test_private_import_refused_when_derived_public_uid_exists() -> KResult
     )
     .await?;
     assert_eq!(imported["kid"], kid.as_str());
+    Ok(())
+}
+
+/// Regression (gate #2 F3): a `cek_kid` export follows the rules of the equivalent wrapped KMIP
+/// Export: the recipient key must allow `WrapKey`, and the RSA-OAEP hashes must pass the
+/// algorithm policy (DEFAULT excludes SHA-1, so `RSA-OAEP` is refused, `RSA-OAEP-256` is not).
+#[tokio::test]
+async fn test_cek_kid_enforces_wrap_usage_and_algorithm_policy() -> KResult<()> {
+    let mut clap_config = https_clap_config();
+    clap_config.google_cse_config.google_cse_enable = false;
+    clap_config.kmip_policy.policy_id = Some("DEFAULT".to_owned());
+    let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
+    let app = test_utils::test_app_with_kms(kms, None).await;
+
+    let recipient = Rsa::generate(3072)?;
+    let import = |key_ops: Value| {
+        let kid = format!("recipient-kpub-{}", Uuid::new_v4());
+        (public_jwk(&recipient, &kid, &key_ops), kid)
+    };
+    let (wrap_jwk, wrap_kid) = import(json!(["encrypt", "wrapKey"]));
+    let (encrypt_only_jwk, encrypt_only_kid) = import(json!(["encrypt"]));
+    for jwk in [wrap_jwk, encrypt_only_jwk] {
+        drop(post_json_with_uri::<_, _, Value, _>(&app, jwk, "/v1/crypto/keys").await?);
+    }
+    let cek_key = create_aes_key(&app, "A256GCM").await?;
+    let encrypt = |kid: &str, alg: &str| {
+        json!({
+            "kid": kid,
+            "alg": alg,
+            "enc": "A256GCM",
+            "data": B64.encode(DATA),
+            "cek_kid": cek_key,
+        })
+    };
+
+    // Recipient without WrapKey: refused.
+    let (status, body) = post_json_raw(
+        &app,
+        encrypt(&encrypt_only_kid, "RSA-OAEP-256"),
+        "/v1/crypto/encrypt",
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["description"].to_string().contains("WrapKey"),
+        "{body}"
+    );
+
+    // RSA-OAEP (SHA-1 / MGF1-SHA-1) is outside the DEFAULT policy: refused.
+    let (status, body) =
+        post_json_raw(&app, encrypt(&wrap_kid, "RSA-OAEP"), "/v1/crypto/encrypt").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["description"].to_string().contains("Deprecated hash"),
+        "{body}"
+    );
+
+    // Allowed: WrapKey usage and RSA-OAEP-256.
+    let jwe: Value = post_json_with_uri(
+        &app,
+        encrypt(&wrap_kid, "RSA-OAEP-256"),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+    assert!(!field_bytes(&jwe, "encrypted_key")?.is_empty(), "{jwe}");
     Ok(())
 }

@@ -250,6 +250,25 @@ pub(super) fn ensure_json_object(json_bytes: &[u8]) -> Result<(), CryptoApiError
     }
     Ok(())
 }
+
+/// Name a `/v1/crypto` request in the audit log as `METHOD /route/pattern` and, when given,
+/// the key it acts on. Calling it again overwrites the previous values.
+pub(crate) fn audit(req: &actix_web::HttpRequest, kid: Option<&str>) {
+    use actix_web::HttpMessage as _;
+
+    use crate::middlewares::{KmipObjectUid, KmipOperationName};
+
+    let operation = req
+        .match_pattern()
+        .map(|pattern| format!("{} {pattern}", req.method()));
+    let mut extensions = req.extensions_mut();
+    if let Some(operation) = operation {
+        extensions.insert(KmipOperationName(operation));
+    }
+    if let Some(kid) = kid {
+        extensions.insert(KmipObjectUid(kid.to_owned()));
+    }
+}
 #[cfg(test)]
 #[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
 mod lenient_str_tests {

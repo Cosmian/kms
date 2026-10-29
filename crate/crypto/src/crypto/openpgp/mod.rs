@@ -1,4 +1,7 @@
-use std::io::Read;
+use std::{
+    io::Read,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client_utils::openpgp_format::parse_secret_or_public;
@@ -22,7 +25,7 @@ use pgp::{
     },
     packet::{
         Features, KeyFlags, PubKeyInner, PublicKey, PublicSubkey, SecretKey, SecretSubkey,
-        SignatureType, UserId,
+        Signature, SignatureType, UserId,
     },
     ser::Serialize,
     types::{
@@ -359,45 +362,95 @@ fn decrypt_session_key(
     crypto_bail!("failed to decrypt OpenPGP message: no matching secret key")
 }
 
-/// Subkeys of `public` paired with the Key Flags of each of their Subkey Binding signatures that
-/// verifies against the primary key (RFC 9580 Section 10.1.3). A binding that flags the subkey for
-/// signing only counts if its embedded Primary Key Binding signature (type 0x19), made by the
-/// subkey, also verifies (RFC 9580 Section 5.2.1.8).
+/// Whether a component created at `created_at` is past the Key Expiration Time of its
+/// self-signature `sig` (RFC 9580 Section 5.2.3.13: absent or zero means it never expires).
+fn is_expired(created_at: Timestamp, sig: &Signature) -> bool {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    sig.key_expiration_time().is_some_and(|validity| {
+        validity.as_secs() != 0
+            && u64::from(created_at.as_secs()) + u64::from(validity.as_secs()) <= now
+    })
+}
+
+/// Subkeys of `public` that are usable now, paired with the Key Flags of their newest Subkey
+/// Binding signature that verifies against the primary key (RFC 9580 Section 10.1.3). A binding
+/// that flags the subkey for signing only counts if its embedded Primary Key Binding signature
+/// (type 0x19), made by the subkey, also verifies (RFC 9580 Section 5.2.1.8). A subkey is skipped
+/// when the primary key revoked it (type 0x28, RFC 9580 Section 5.2.1.12) or when that newest
+/// binding's Key Expiration Time is past (RFC 9580 Section 5.2.3.13).
 fn bound_subkeys(
     public: &SignedPublicKey,
 ) -> impl Iterator<Item = (&SignedPublicSubKey, KeyFlags)> {
     let primary = &public.primary_key;
-    public.public_subkeys.iter().flat_map(move |subkey| {
-        subkey.signatures.iter().filter_map(move |sig| {
-            let flags = sig.key_flags();
-            let bound = sig.typ() == Some(SignatureType::SubkeyBinding)
-                && sig.verify_subkey_binding(primary, &subkey.key).is_ok()
-                && (!flags.sign()
-                    || sig.embedded_signature().is_some_and(|back_signature| {
-                        back_signature
-                            .verify_primary_key_binding(&subkey.key, primary)
-                            .is_ok()
-                    }));
-            bound.then_some((subkey, flags))
-        })
+    public.public_subkeys.iter().filter_map(move |subkey| {
+        let signed_by_primary = |sig: &Signature, typ: SignatureType| {
+            sig.typ() == Some(typ) && sig.verify_subkey_binding(primary, &subkey.key).is_ok()
+        };
+        if subkey
+            .signatures
+            .iter()
+            .any(|sig| signed_by_primary(sig, SignatureType::SubkeyRevocation))
+        {
+            return None;
+        }
+        let binding = subkey
+            .signatures
+            .iter()
+            .filter(|sig| {
+                signed_by_primary(sig, SignatureType::SubkeyBinding)
+                    && (!sig.key_flags().sign()
+                        || sig.embedded_signature().is_some_and(|back_signature| {
+                            back_signature
+                                .verify_primary_key_binding(&subkey.key, primary)
+                                .is_ok()
+                        }))
+            })
+            .max_by_key(|sig| sig.created())?;
+        (!is_expired(subkey.key.created_at(), binding)).then(|| (subkey, binding.key_flags()))
     })
+}
+
+/// Direct-key and User ID self-signatures over the primary key that verify against it.
+fn primary_self_signatures(public: &SignedPublicKey) -> impl Iterator<Item = &Signature> {
+    let primary = &public.primary_key;
+    let direct = public.details.direct_signatures.iter().filter(move |sig| {
+        sig.typ() == Some(SignatureType::Key) && sig.verify_key(primary).is_ok()
+    });
+    let certifications = public.details.users.iter().flat_map(move |user| {
+        user.signatures.iter().filter(move |sig| {
+            sig.typ() != Some(SignatureType::CertRevocation)
+                && sig
+                    .verify_certification(primary, Tag::UserId, &user.id)
+                    .is_ok()
+        })
+    });
+    direct.chain(certifications)
+}
+
+/// Errors if the primary key revoked itself (type 0x20, RFC 9580 Section 5.2.1.11) or is past the
+/// Key Expiration Time of its newest self-signature (RFC 9580 Section 5.2.3.13): no component of
+/// such a certificate may be used.
+fn check_certificate_valid(public: &SignedPublicKey) -> Result<(), CryptoError> {
+    let primary = &public.primary_key;
+    if public.details.revocation_signatures.iter().any(|sig| {
+        sig.typ() == Some(SignatureType::KeyRevocation) && sig.verify_key(primary).is_ok()
+    }) {
+        crypto_bail!("OpenPGP certificate is revoked");
+    }
+    if primary_self_signatures(public)
+        .max_by_key(|sig| sig.created())
+        .is_some_and(|sig| is_expired(primary.created_at(), sig))
+    {
+        crypto_bail!("OpenPGP certificate is expired");
+    }
+    Ok(())
 }
 
 /// Whether a self-signature that verifies against the primary key flags it for encryption.
 fn primary_key_can_encrypt(public: &SignedPublicKey) -> bool {
-    let primary = &public.primary_key;
-    let direct = public
-        .details
-        .direct_signatures
-        .iter()
-        .filter(|sig| sig.verify_key(primary).is_ok());
-    let certifications = public.details.users.iter().flat_map(|user| {
-        user.signatures.iter().filter(move |sig| {
-            sig.verify_certification(primary, Tag::UserId, &user.id)
-                .is_ok()
-        })
-    });
-    direct.chain(certifications).any(|sig| {
+    primary_self_signatures(public).any(|sig| {
         let flags = sig.key_flags();
         flags.encrypt_comms() || flags.encrypt_storage()
     })
@@ -634,7 +687,8 @@ pub fn openpgp_key_metadata(
 
 /// Binary `OpenPGP` message (PKESK + SEIPD) encrypted to the key's encryption-capable subkey.
 /// Accepts a secret or public armored certificate. Only subkeys bound to the primary key by a
-/// verified binding signature are used; errors if the certificate has no such encryption key.
+/// verified binding signature, neither revoked nor expired, are used; errors if the certificate
+/// is revoked or expired, or has no such encryption key.
 pub fn openpgp_encrypt(
     rng: &KmsRng,
     armored_cert: &[u8],
@@ -646,6 +700,7 @@ pub fn openpgp_encrypt(
         (None, Some(pubk)) => pubk,
         (None, None) => crypto_bail!("no OpenPGP key parsed"),
     };
+    check_certificate_valid(&public)?;
 
     // Keep the signed subkey wrapper as the recipient. Its key identity and
     // binding signature must remain coupled to the public-key material used
@@ -785,6 +840,7 @@ pub fn openpgp_sign_detached(
 /// Accepts binary or armored signature. Tries the primary key, then every signing subkey whose
 /// binding to the primary key verifies (including its back-signature), so signatures produced
 /// by `GnuPG` with a signing subkey verify while subkeys grafted onto the certificate do not.
+/// Signatures by a revoked or expired certificate or subkey are invalid.
 /// Returns `Ok(false)` on cryptographic mismatch; `Err` only on malformed input.
 pub fn openpgp_verify_detached(
     armored_cert: &[u8],
@@ -797,6 +853,9 @@ pub fn openpgp_verify_detached(
         (None, Some(pubk)) => pubk,
         (None, None) => crypto_bail!("no OpenPGP key parsed"),
     };
+    if check_certificate_valid(&public).is_err() {
+        return Ok(false);
+    }
 
     let sig = if let Ok(s) = DetachedSignature::from_bytes(std::io::Cursor::new(signature)) {
         s
@@ -1156,5 +1215,222 @@ mod tests {
         );
         let error = openpgp_decrypt_bounded(&secret_armored, &ciphertext, limit - 1).unwrap_err();
         assert!(error.to_string().contains("exceeds"), "{error}");
+    }
+
+    /// Ed25519 certificate created an hour ago, its primary key flagged sign + certify only.
+    fn hour_old_certificate(subkeys: Vec<pgp::composed::SubkeyParams>) -> SignedSecretKey {
+        let mut params = SecretKeyParamsBuilder::default();
+        params
+            .key_type(KeyType::Ed25519Legacy)
+            .can_sign(true)
+            .can_certify(true)
+            .created_at(Timestamp::from_secs(Timestamp::now().as_secs() - 3600))
+            .primary_user_id("Carol <carol@example.com>".to_owned())
+            .subkeys(subkeys);
+        params
+            .build()
+            .unwrap()
+            .generate(openssl_seeded_rng(&KmsRng::new()).unwrap())
+            .unwrap()
+    }
+
+    fn encryption_subkey() -> pgp::composed::SubkeyParams {
+        SubkeyParamsBuilder::default()
+            .key_type(KeyType::ECDH(ECCCurve::Curve25519Legacy))
+            .can_encrypt(EncryptionCaps::All)
+            .created_at(Timestamp::from_secs(Timestamp::now().as_secs() - 3600))
+            .build()
+            .unwrap()
+    }
+
+    /// Signature config of type `typ` by the primary key of `secret`, with `extra` hashed
+    /// subpackets. Created one second in the future so it is newer than the generated ones.
+    fn self_signature(
+        secret: &SignedSecretKey,
+        typ: SignatureType,
+        extra: Vec<pgp::packet::SubpacketData>,
+    ) -> pgp::packet::SignatureConfig {
+        use pgp::packet::{Subpacket, SubpacketData};
+        let primary = &secret.primary_key;
+        let mut config = pgp::packet::SignatureConfig::from_key(
+            openssl_seeded_rng(&KmsRng::new()).unwrap(),
+            primary,
+            typ,
+        )
+        .unwrap();
+        config.hashed_subpackets = [
+            SubpacketData::SignatureCreationTime(Timestamp::from_secs(
+                Timestamp::now().as_secs() + 1,
+            )),
+            SubpacketData::IssuerFingerprint(primary.fingerprint()),
+        ]
+        .into_iter()
+        .chain(extra)
+        .map(|data| Subpacket::regular(data).unwrap())
+        .collect();
+        config
+    }
+
+    fn armored(public: &SignedPublicKey) -> Vec<u8> {
+        public.to_armored_bytes(ArmorOptions::default()).unwrap()
+    }
+
+    /// A subkey revoked by the primary key (type 0x28) is never an encryption recipient.
+    #[test]
+    fn test_openpgp_encrypt_skips_revoked_subkey() {
+        let secret = hour_old_certificate(vec![encryption_subkey(), encryption_subkey()]);
+        let mut public = secret.to_public_key();
+        let revoked = public.public_subkeys.first_mut().unwrap();
+        let revocation = self_signature(&secret, SignatureType::SubkeyRevocation, vec![])
+            .sign_subkey_binding(
+                &secret.primary_key,
+                secret.primary_key.public_key(),
+                &Password::empty(),
+                &revoked.key,
+            )
+            .unwrap();
+        revoked.signatures.push(revocation);
+
+        let data = b"for the second subkey only";
+        let ciphertext = openpgp_encrypt(&KmsRng::new(), &armored(&public), data).unwrap();
+        let with_subkey = |subkey: Option<&SignedSecretSubKey>| {
+            let mut only = secret.clone();
+            only.secret_subkeys = vec![subkey.unwrap().clone()];
+            only.to_armored_bytes(ArmorOptions::default()).unwrap()
+        };
+        openpgp_decrypt(&with_subkey(secret.secret_subkeys.first()), &ciphertext).unwrap_err();
+        assert_eq!(
+            &openpgp_decrypt(&with_subkey(secret.secret_subkeys.last()), &ciphertext).unwrap()[..],
+            data
+        );
+    }
+
+    /// A certificate whose only encryption subkey is past its Key Expiration Time is refused.
+    #[test]
+    fn test_openpgp_encrypt_refuses_expired_subkey() {
+        let secret = hour_old_certificate(vec![encryption_subkey()]);
+        let mut public = secret.to_public_key();
+        let subkey = public.public_subkeys.first_mut().unwrap();
+        let mut flags = KeyFlags::default();
+        flags.set_encrypt_comms(true);
+        flags.set_encrypt_storage(true);
+        let expired_binding = self_signature(
+            &secret,
+            SignatureType::SubkeyBinding,
+            vec![
+                pgp::packet::SubpacketData::KeyFlags(flags),
+                pgp::packet::SubpacketData::KeyExpirationTime(pgp::types::Duration::from_secs(60)),
+            ],
+        )
+        .sign_subkey_binding(
+            &secret.primary_key,
+            secret.primary_key.public_key(),
+            &Password::empty(),
+            &subkey.key,
+        )
+        .unwrap();
+        let data = b"expired";
+        // The newest binding is the one that applies, so the older non-expiring one is ignored.
+        subkey.signatures.push(expired_binding);
+        let error = openpgp_encrypt(&KmsRng::new(), &armored(&public), data).unwrap_err();
+        assert!(
+            error.to_string().contains("no encryption-capable key"),
+            "{error}"
+        );
+
+        // Control: the same certificate encrypts without the expired binding.
+        public.public_subkeys.first_mut().unwrap().signatures.pop();
+        openpgp_encrypt(&KmsRng::new(), &armored(&public), data).unwrap();
+    }
+
+    /// A signature made by a signing subkey that the primary key revoked is invalid.
+    #[test]
+    fn test_openpgp_verify_rejects_revoked_signing_subkey() {
+        let secret = hour_old_certificate(vec![
+            SubkeyParamsBuilder::default()
+                .key_type(KeyType::Ed25519Legacy)
+                .can_sign(true)
+                .build()
+                .unwrap(),
+        ]);
+        let data = b"signed by the subkey";
+        let mut signature = Vec::new();
+        DetachedSignature::sign_binary_data(
+            openssl_seeded_rng(&KmsRng::new()).unwrap(),
+            &secret.secret_subkeys.first().unwrap().key,
+            &Password::empty(),
+            HashAlgorithm::Sha256,
+            &data[..],
+        )
+        .unwrap()
+        .to_writer(&mut signature)
+        .unwrap();
+        let mut public = secret.to_public_key();
+        assert!(openpgp_verify_detached(&armored(&public), data, &signature).unwrap());
+
+        let subkey = public.public_subkeys.first_mut().unwrap();
+        let revocation = self_signature(&secret, SignatureType::SubkeyRevocation, vec![])
+            .sign_subkey_binding(
+                &secret.primary_key,
+                secret.primary_key.public_key(),
+                &Password::empty(),
+                &subkey.key,
+            )
+            .unwrap();
+        subkey.signatures.push(revocation);
+        assert!(!openpgp_verify_detached(&armored(&public), data, &signature).unwrap());
+    }
+
+    /// A certificate revoked by its primary key (type 0x20), or whose primary key is past its Key
+    /// Expiration Time, neither encrypts nor verifies.
+    #[test]
+    fn test_openpgp_refuses_revoked_or_expired_certificate() {
+        let secret = hour_old_certificate(vec![encryption_subkey()]);
+        let secret_armored = secret.to_armored_bytes(ArmorOptions::default()).unwrap();
+        let data = b"certificate validity";
+        let signature = openpgp_sign_detached(&KmsRng::new(), &secret_armored, data).unwrap();
+        let public = secret.to_public_key();
+        openpgp_encrypt(&KmsRng::new(), &armored(&public), data).unwrap();
+        assert!(openpgp_verify_detached(&armored(&public), data, &signature).unwrap());
+
+        let mut revoked = public.clone();
+        revoked.details.revocation_signatures.push(
+            self_signature(&secret, SignatureType::KeyRevocation, vec![])
+                .sign_key(
+                    &secret.primary_key,
+                    &Password::empty(),
+                    secret.primary_key.public_key(),
+                )
+                .unwrap(),
+        );
+        let error = openpgp_encrypt(&KmsRng::new(), &armored(&revoked), data).unwrap_err();
+        assert!(error.to_string().contains("revoked"), "{error}");
+        assert!(!openpgp_verify_detached(&armored(&revoked), data, &signature).unwrap());
+
+        let mut flags = KeyFlags::default();
+        flags.set_sign(true);
+        flags.set_certify(true);
+        let mut expired = public;
+        expired.details.direct_signatures.push(
+            self_signature(
+                &secret,
+                SignatureType::Key,
+                vec![
+                    pgp::packet::SubpacketData::KeyFlags(flags),
+                    pgp::packet::SubpacketData::KeyExpirationTime(pgp::types::Duration::from_secs(
+                        60,
+                    )),
+                ],
+            )
+            .sign_key(
+                &secret.primary_key,
+                &Password::empty(),
+                secret.primary_key.public_key(),
+            )
+            .unwrap(),
+        );
+        let error = openpgp_encrypt(&KmsRng::new(), &armored(&expired), data).unwrap_err();
+        assert!(error.to_string().contains("expired"), "{error}");
+        assert!(!openpgp_verify_detached(&armored(&expired), data, &signature).unwrap());
     }
 }

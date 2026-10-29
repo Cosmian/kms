@@ -18,7 +18,10 @@ use url::Url;
 
 use super::token::AUTH_VERIFIER_SESSION_COOKIE;
 use crate::{
-    config::AuthVerifierConfig, error::KmsError, middlewares::JwksManager, result::KResult,
+    config::AuthVerifierConfig,
+    error::KmsError,
+    middlewares::{JwksManager, reqwest_proxy},
+    result::KResult,
 };
 
 /// How long a session the Auth Verifier confirmed live is trusted without asking again.
@@ -48,7 +51,8 @@ impl fmt::Debug for AuthVerifierValidator {
 }
 
 impl AuthVerifierValidator {
-    /// Build the validator of the Auth Verifier at `config.auth_verifier_url`.
+    /// Build the validator of the Auth Verifier at `config.auth_verifier_url`. The session
+    /// check goes through the same `[proxy]` as the fetch of `jwks`.
     ///
     /// # Errors
     /// When the server URL is missing or invalid, or the HTTP client cannot be built.
@@ -66,11 +70,14 @@ impl AuthVerifierValidator {
                 KmsError::ServerError("invalid auth_verifier_url: cannot be a base".to_owned())
             })?
             .push("whoami");
-        let client = reqwest::Client::builder()
+        let mut client = reqwest::Client::builder()
             .danger_accept_invalid_certs(config.auth_verifier_accept_invalid_certs)
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(10))
-            .build()?;
+            .timeout(Duration::from_secs(10));
+        if let Some(proxy_params) = &jwks.proxy_params {
+            client = client.proxy(reqwest_proxy(proxy_params)?);
+        }
+        let client = client.build()?;
         Ok(Self {
             jwks,
             whoami_url,
@@ -181,5 +188,66 @@ mod tests {
             .ensure_live_session(&token)
             .await
             .expect_err("a revoked session must be rejected after the cache TTL");
+    }
+
+    /// Regression (gate #2 F5): the session check goes through the configured `[proxy]`, like
+    /// the JWKS fetch. The Auth Verifier host does not resolve: only the proxy can answer.
+    #[tokio::test]
+    async fn session_check_goes_through_the_configured_proxy() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+
+        use super::AuthVerifierValidator;
+        use crate::{
+            config::{AuthVerifierConfig, ProxyParams},
+            middlewares::JwksManager,
+        };
+
+        let proxy = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = proxy.local_addr().expect("local address").port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = proxy.accept().await {
+                let mut buf = vec![0_u8; 8192];
+                let read = stream.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(buf.get(..read).unwrap_or_default());
+                let status = if request.starts_with("GET http://auth-verifier.invalid/whoami ") {
+                    "200 OK"
+                } else {
+                    "502 Bad Gateway"
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("proxy response");
+            }
+        });
+        let proxy_params = ProxyParams {
+            url: format!("http://127.0.0.1:{port}")
+                .parse()
+                .expect("proxy URL"),
+            basic_auth_username: None,
+            basic_auth_password: None,
+            custom_auth_header: None,
+            exclusion_list: vec![],
+        };
+        let jwks = Arc::new(
+            JwksManager::new(vec![], Some(&proxy_params))
+                .await
+                .expect("empty JwksManager must build without network access"),
+        );
+        let config = AuthVerifierConfig {
+            auth_verifier_url: Some("http://auth-verifier.invalid".to_owned()),
+            ..AuthVerifierConfig::default()
+        };
+        let validator = AuthVerifierValidator::new(jwks, &config).expect("validator");
+        validator
+            .ensure_live_session(&auth_verifier_token("alice@example.com", None))
+            .await
+            .expect("the session check must reach the Auth Verifier through the proxy");
     }
 }

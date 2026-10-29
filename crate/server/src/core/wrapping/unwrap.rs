@@ -42,8 +42,9 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &UserId)
 
 /// Unwrap an Object read from the server's own storage.
 ///
-/// Same as [`unwrap_object`], except that an HSM-resident server `key_encryption_key` is usable
-/// by every user: it wrapped the object at rest on their behalf (mirrors `wrap_and_cache`).
+/// Same as [`unwrap_object`], except that the server `key_encryption_key`, when the key block
+/// names it literally, is usable by every user: it wrapped the object at rest on their behalf
+/// (mirrors `wrap_and_cache`).
 pub(crate) async fn unwrap_stored_object(
     object: &mut Object,
     kms: &KMS,
@@ -167,15 +168,18 @@ fn unwrapping_key_uid(key_block: &KeyBlock) -> KResult<String> {
         .to_string())
 }
 
-/// Is `uid` (or `resolved_uid`, the key it resolves to) the server `key_encryption_key`, and
-/// may it be used by every user (stored objects only)?
-fn is_exempt_server_kek(kms: &KMS, allow_server_kek: bool, uid: &str, resolved_uid: &str) -> bool {
+/// Is `uid`, the wrapping key UID recorded in a stored key block, the server
+/// `key_encryption_key` (or its `_pk` public key), usable by every user (stored objects only)?
+///
+/// Literal match only: the key a UID resolves to through a link is never exempt, since the
+/// link of a user-made public key or certificate is caller-controlled.
+fn is_exempt_server_kek(kms: &KMS, allow_server_kek: bool, uid: &str) -> bool {
     allow_server_kek
         && kms
             .params
             .key_wrapping_key
             .as_deref()
-            .is_some_and(|kek| kek == uid || kek == resolved_uid)
+            .is_some_and(|kek| uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY).unwrap_or(uid) == kek)
 }
 
 /// Fetch the database key `unwrapping_key_uid` (the private key for a public key or
@@ -217,17 +221,23 @@ async fn authorized_kms_unwrapping_key(
                      {unwrapping_key_uid}"
                 );
             };
-            let unwrapping_key = kms
+            let private_key = kms
                 .database
                 .retrieve_object_arc(&sk_id)
                 .await
-                .context("wrap using KMS")?;
-            unwrapping_key.ok_or_else(|| {
-                KmsError::NotSupported(format!(
-                    "The unwrapping private key {sk_id} does not exist or is not accessible for \
-                     the public key {unwrapping_key_uid}"
-                ))
-            })?
+                .context("wrap using KMS")?
+                .ok_or_else(|| {
+                    KmsError::NotSupported(format!(
+                        "The unwrapping private key {sk_id} does not exist or is not accessible \
+                         for the public key {unwrapping_key_uid}"
+                    ))
+                })?;
+            if private_key.object().object_type() != ObjectType::PrivateKey {
+                return Err(KmsError::NotSupported(format!(
+                    "The key {sk_id} linked to {unwrapping_key_uid} is not a private key"
+                )));
+            }
+            private_key
         }
         _ => kms_bail!("unwrap_key: unsupported object type: {}", object_type),
     };
@@ -247,14 +257,10 @@ async fn authorized_kms_unwrapping_key(
             "The key: {unwrapping_key_uid}, is not meant to unwrap keys"
         )));
     }
-    // check user permissions; the server KEK wrapped stored objects on behalf of every user
-    // (mirrors `wrap_using_kms`)
-    if !is_exempt_server_kek(
-        kms,
-        allow_server_kek,
-        unwrapping_key_uid,
-        unwrapping_key.id(),
-    ) && unwrapping_key.owner() != user
+    // check user permissions on the resolved key; the server KEK wrapped stored objects on
+    // behalf of every user (mirrors `wrap_using_kms`)
+    if !is_exempt_server_kek(kms, allow_server_kek, unwrapping_key_uid)
+        && unwrapping_key.owner() != user
         && user != kms.params.default_username.as_str()
     {
         let ops = kms
@@ -323,7 +329,7 @@ async fn authorize_oracle_unwrap(
     let oracle_key_uid = unwrapping_key_uid
         .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
         .unwrap_or(unwrapping_key_uid);
-    if !is_exempt_server_kek(kms, allow_server_kek, unwrapping_key_uid, oracle_key_uid)
+    if !is_exempt_server_kek(kms, allow_server_kek, unwrapping_key_uid)
         && !kms
             .is_user_authorized_with_get_wildcard(oracle_key_uid, user, KmipOperation::Decrypt)
             .await?

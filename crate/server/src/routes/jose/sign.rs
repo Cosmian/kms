@@ -37,6 +37,7 @@ pub(crate) async fn sign(
         user = user.as_str(),
         "POST /v1/crypto/sign kid={}", body.kid
     );
+    super::audit(&req, Some(&body.kid));
 
     // JWS convention (RFC 7515 §4.1.4): `kid` in the protected header identifies
     // the public key that can verify the signature, not the signing private key.

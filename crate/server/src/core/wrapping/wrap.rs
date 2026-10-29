@@ -250,31 +250,28 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
     Ok(())
 }
 
-/// Refuse an already-wrapped object whose wrapping key is the server `key_encryption_key` (or
-/// its `_pk` public key, which unwrapping resolves to the KEK), unless `user` may decrypt with
-/// the KEK — the same decision as an Import with `KeyWrapType::NotWrapped`.
+/// Refuse an already-wrapped object whose wrapping key is, or resolves to, the server
+/// `key_encryption_key` unless `user` may decrypt with the KEK — the same decision as an
+/// Import with `KeyWrapType::NotWrapped`.
 async fn reject_server_kek_wrapped(kms: &KMS, user: &UserId, object: &Object) -> KResult<()> {
     let Some(kek) = kms.params.key_wrapping_key.as_deref() else {
         return Ok(());
     };
+    // `to_string`, as `unwrap` does: a numeric UID must not slip through
     let Some(wrapping_key_uid) = object
         .key_block()
         .ok()
         .and_then(|key_block| key_block.key_wrapping_data.as_ref())
         .and_then(|data| data.encryption_key_information.as_ref())
-        .and_then(|info| info.unique_identifier.as_str())
+        .map(|info| info.unique_identifier.to_string())
     else {
         return Ok(());
     };
-    if wrapping_key_uid
-        .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
-        .unwrap_or(wrapping_key_uid)
-        != kek
-    {
+    if !resolves_to_server_kek(kms, kek, &wrapping_key_uid).await? {
         return Ok(());
     }
     // refusals become the import error; storage or HSM failures propagate unchanged
-    authorize_unwrap_with(kms, user, wrapping_key_uid)
+    authorize_unwrap_with(kms, user, &wrapping_key_uid)
         .await
         .map_err(|e| match e {
             KmsError::Unauthorized(_) | KmsError::NotSupported(_) => KmsError::InvalidRequest(
@@ -285,6 +282,32 @@ async fn reject_server_kek_wrapped(kms: &KMS, user: &UserId, object: &Object) ->
             ),
             other => other,
         })
+}
+
+/// Does unwrapping with `uid` decrypt with the server KEK `kek`: `uid` is the KEK, its `_pk`
+/// public key, or a public key / certificate whose `PrivateKeyLink` points at the KEK?
+async fn resolves_to_server_kek(kms: &KMS, kek: &str, uid: &str) -> KResult<bool> {
+    if uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY).unwrap_or(uid) == kek {
+        return Ok(true);
+    }
+    if ObjectHandle::from(uid).is_hsm() {
+        return Ok(false);
+    }
+    let Some(key) = kms
+        .database
+        .retrieve_object_arc(uid)
+        .await
+        .context("resolve the wrapping key")?
+    else {
+        return Ok(false);
+    };
+    Ok(matches!(
+        key.object().object_type(),
+        ObjectType::PublicKey | ObjectType::Certificate
+    ) && key
+        .attributes()
+        .get_link(LinkType::PrivateKeyLink)
+        .is_some_and(|link| link.to_string() == kek))
 }
 
 /// Wrap an Object with a wrapping key

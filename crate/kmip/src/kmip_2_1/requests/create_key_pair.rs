@@ -324,7 +324,7 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
             None,
         )
     };
-    #[cfg(feature = "non-fips")]
+    // Always `None` in a FIPS build (ML-DSA / SLH-DSA are non-FIPS).
     if let Some(pqc_algorithm) = pqc_signing_algorithm(algorithm) {
         let mut request = create_pqc_key_pair_request(vendor_id, &tags, pqc_algorithm, sensitive)?;
         if let Some(attributes) = request.private_key_attributes.as_mut() {
@@ -378,4 +378,10 @@ fn pqc_signing_algorithm(name: &str) -> Option<CryptographicAlgorithm> {
         "slh-dsa-shake-256f" => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
         _ => return None,
     })
+}
+
+/// No ML-DSA / SLH-DSA in a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+const fn pqc_signing_algorithm(_name: &str) -> Option<CryptographicAlgorithm> {
+    None
 }

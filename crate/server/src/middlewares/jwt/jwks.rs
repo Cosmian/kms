@@ -248,6 +248,30 @@ fn unverified_issuer(token: &str) -> Option<String> {
         .map(|claims| claims.iss)
 }
 
+/// The `reqwest` proxy of the `[proxy]` server settings, shared by the outbound clients of
+/// the identity providers (JWKS fetch, Auth Verifier session check).
+pub(crate) fn reqwest_proxy(proxy_params: &ProxyParams) -> KResult<reqwest::Proxy> {
+    let mut proxy = reqwest::Proxy::all(proxy_params.url.clone())
+        .map_err(|e| kms_error!("Failed to configure the HTTPS proxy: {e}"))?;
+    if let Some(username) = &proxy_params.basic_auth_username {
+        proxy = proxy.basic_auth(
+            username,
+            &proxy_params.basic_auth_password.clone().unwrap_or_default(),
+        );
+    } else if let Some(custom_auth_header) = &proxy_params.custom_auth_header {
+        proxy = proxy.custom_http_auth(
+            HeaderValue::from_str(custom_auth_header)
+                .map_err(|e| kms_error!("Failed to set the custom HTTP proxy auth header: {e}"))?,
+        );
+    }
+    if !proxy_params.exclusion_list.is_empty() {
+        proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
+            &proxy_params.exclusion_list.join(","),
+        ));
+    }
+    Ok(proxy)
+}
+
 /// Fetch a JWKS from the provided URI and parse it.
 ///
 /// This function will log errors for invalid JWKs
@@ -268,25 +292,7 @@ async fn parse_jwks(
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {
-        let mut proxy = reqwest::Proxy::all(proxy_params.url.clone())
-            .map_err(|e| kms_error!("Failed to configure the HTTPS proxy for JWKS fetch: {e}"))?;
-        if let Some(username) = &proxy_params.basic_auth_username {
-            proxy = proxy.basic_auth(
-                username,
-                &proxy_params.basic_auth_password.clone().unwrap_or_default(),
-            );
-        } else if let Some(custom_auth_header) = &proxy_params.custom_auth_header {
-            proxy =
-                proxy.custom_http_auth(HeaderValue::from_str(custom_auth_header).map_err(|e| {
-                    kms_error!("Failed to set custom HTTP auth header for JWKS fetch: {e}")
-                })?);
-        }
-        if !proxy_params.exclusion_list.is_empty() {
-            proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
-                &proxy_params.exclusion_list.join(","),
-            ));
-        }
-        client = client.proxy(proxy);
+        client = client.proxy(reqwest_proxy(proxy_params)?);
     }
 
     let response = client

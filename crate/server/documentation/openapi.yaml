@@ -365,7 +365,9 @@ components:
           type: string
           description: >
             KMS UID of an AES key used as the CEK instead of a random one; RSA-OAEP /
-            RSA-OAEP-256 only. The key leaves the KMS wrapped under `kid`.
+            RSA-OAEP-256 only. The key leaves the KMS wrapped under `kid`, as by a KMIP
+            Export: the wrapping key needs the WrapKey usage and the OAEP hashes must pass
+            the KMIP algorithm policy.
       example:
         kid: 550e8400-e29b-41d4-a716-446655440000
         alg: dir
