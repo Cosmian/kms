@@ -194,17 +194,19 @@ nav:
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
-      - Software Baseline: benchmarks/ckms_bench/report.md
-      - HSM-Backed KEK: benchmarks/ckms_bench_hsm_kek_softhsm2/report.md
-      - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md
-      - PKCS#11 (Software Crypto): benchmarks/ckms_bench_pkcs11/report.md
-      - PKCS#11 with HSM-Delegated Crypto: benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md
+      - Software (no HSM):
+          - Software Baseline: benchmarks/ckms_bench/report.md
+          - PKCS#11 (Software Crypto): benchmarks/ckms_bench_pkcs11/report.md
+      - SoftHSM2:
+          - HSM-Backed KEK: benchmarks/ckms_bench_hsm_kek_softhsm2/report.md
+          - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md
+          - PKCS#11 with HSM-Delegated Crypto: benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md
       - Thales Luna HSMs:
           - Overview: benchmarks/luna_hsms.md
-          - Luna 1 HSM-Delegated ECDSA: benchmarks/ckms_bench_hsm_delegated_luna/report.md
-          - Luna 2 HSM-Delegated ECDSA & EdDSA: benchmarks/ckms_bench_hsm_delegated_luna_pqc/report.md
-          - Luna 2 HSM-Delegated EdDSA: benchmarks/ckms_bench_hsm_delegated_luna2_ed25519/report.md
-          - Luna 2 HSM-Delegated AES-GCM: benchmarks/ckms_bench_hsm_delegated_luna2_aesgcm/report.md
+          - Luna HSM-Delegated ECDSA: benchmarks/ckms_bench_hsm_delegated_luna/report.md
+          - Luna HSM-Delegated ECDSA & EdDSA: benchmarks/ckms_bench_hsm_delegated_luna_pqc/report.md
+          - Luna PQC HSM-Delegated EdDSA: benchmarks/ckms_bench_hsm_delegated_luna2_ed25519/report.md
+          - Luna PQC HSM-Delegated AES-GCM: benchmarks/ckms_bench_hsm_delegated_luna2_aesgcm/report.md
       - Trustway Proteccio HSM:
           - Overview: benchmarks/proteccio_hsms.md
           - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_proteccio/report.md
