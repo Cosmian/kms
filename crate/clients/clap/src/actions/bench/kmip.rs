@@ -758,8 +758,11 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
         // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
-        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
-            .expect("KEM encapsulation tuple");
+        let Ok((_, ct)) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default()) else {
+            eprintln!("[bench] KEM {label} returned a malformed encapsulation, skipping");
+            bench_ko(format!("{slug}/kem/configurable"));
+            continue;
+        };
         let ct = ct.to_vec();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
@@ -824,8 +827,11 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
         );
 
         // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
-        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
-            .expect("KEM encapsulation tuple");
+        let Ok((_, ct)) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default()) else {
+            eprintln!("[bench] PQC KEM {label} returned a malformed encapsulation, skipping");
+            bench_ko(format!("{slug}/kem/pqc"));
+            continue;
+        };
         let ct = ct.to_vec();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(

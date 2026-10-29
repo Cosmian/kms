@@ -98,8 +98,7 @@ impl SignAction {
                 ..CryptographicParameters::default()
             },
         });
-        #[cfg(feature = "non-fips")]
-        if self.digested && matches!(self.curve, Curve::Ed25519 | Curve::Ed448) {
+        if self.digested && is_eddsa(self.curve) {
             return Err(crate::error::KmsCliError::Default(
                 "Ed25519/Ed448 signing expects the raw message; --digested is not supported"
                     .to_owned(),
@@ -116,4 +115,16 @@ impl SignAction {
         )
         .await
     }
+}
+
+/// Whether `curve` is an `EdDSA` curve, which signs the raw message (no pre-hash).
+#[cfg(feature = "non-fips")]
+const fn is_eddsa(curve: Curve) -> bool {
+    matches!(curve, Curve::Ed25519 | Curve::Ed448)
+}
+
+/// FIPS builds expose no `EdDSA` curve.
+#[cfg(not(feature = "non-fips"))]
+const fn is_eddsa(_curve: Curve) -> bool {
+    false
 }

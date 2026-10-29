@@ -44,6 +44,7 @@ use pkcs11_sys::{
     CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
     CRYPTOKI_VERSION_MINOR,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     MResultHelper, ModuleError, ModuleResult,
@@ -856,7 +857,7 @@ fn parse_utf8_argument(
     len: CK_ULONG,
     max_len: usize,
     name: &str,
-) -> ModuleResult<Option<String>> {
+) -> ModuleResult<Option<Zeroizing<String>>> {
     if len == 0 {
         return Ok(None);
     }
@@ -874,7 +875,7 @@ fn parse_utf8_argument(
     #[expect(unsafe_code)]
     let bytes = unsafe { slice::from_raw_parts(ptr, len) };
     std::str::from_utf8(bytes)
-        .map(|value| Some(value.to_owned()))
+        .map(|value| Some(Zeroizing::new(value.to_owned())))
         .map_err(|e| ModuleError::BadArguments(format!("{name} is not valid UTF-8: {e}")))
 }
 
@@ -1238,12 +1239,10 @@ cryptoki_fn!(
                 unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
             unsafe {
                 debug!(
-                    "C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?}, \
-                     cleartext: {:?}",
+                    "C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?}",
                     hSession,
                     cleartext_data.len(),
                     usize::try_from(*pulEncryptedDataLen)?,
-                    hex::encode(cleartext_data)
                 );
                 session.encrypt(cleartext_data.to_vec(), pEncryptedData, pulEncryptedDataLen)
             }?;
@@ -1351,12 +1350,10 @@ cryptoki_fn!(
             };
             unsafe {
                 debug!(
-                    "C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?}, \
-                     ciphertext: {:?}",
+                    "C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?}",
                     hSession,
                     encrypted_data.len(),
                     usize::try_from(*pulDataLen)?,
-                    hex::encode(encrypted_data)
                 );
                 session.decrypt(encrypted_data.to_vec(), pData, pulDataLen)
             }?;
@@ -1482,6 +1479,9 @@ cryptoki_fn!(
             not_null!(pData, "C_Sign: pData");
             not_null!(pulSignatureLen, "C_Sign: pulSignatureLen");
             sessions::session(hSession, |session| -> ModuleResult<()> {
+                // SAFETY: `pData` is non-null (checked above) and the PKCS#11 caller guarantees
+                // `ulDataLen` readable bytes; `pulSignatureLen` is non-null and `session.sign`
+                // only writes to `pSignature` after checking `*pulSignatureLen` capacity.
                 let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
                 unsafe { session.sign(Some(data), pSignature, pulSignatureLen) }?;
                 Ok(())
@@ -1505,6 +1505,8 @@ cryptoki_fn!(
             sign_ctx
                 .payload
                 .get_or_insert(vec![])
+                // SAFETY: `pPart` is non-null (checked above) and the caller guarantees
+                // `ulPartLen` readable bytes for the duration of the call.
                 .extend_from_slice(unsafe {
                     slice::from_raw_parts(pPart, usize::try_from(ulPartLen)?)
                 });
@@ -1565,6 +1567,8 @@ cryptoki_fn!(
             let Some(Object::PublicKey(public_key)) = object.as_deref() else {
                 return Err(ModuleError::KeyHandleInvalid(hKey));
             };
+            // SAFETY: `pMechanism` is non-null (checked above) and points to a caller-owned
+            // `CK_MECHANISM`; `parse_mechanism` validates `pParameter`/`ulParameterLen`.
             let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
             session.verify_ctx = Some(VerifyContext {
                 algorithm: mechanism.try_into()?,
@@ -1589,6 +1593,8 @@ cryptoki_fn!(
         not_null!(pData, "C_Verify: pData");
         not_null!(pSignature, "C_Verify: pSignature");
         sessions::session(hSession, |session| -> ModuleResult<()> {
+            // SAFETY: `pData`/`pSignature` are non-null (checked above) and the caller guarantees
+            // `ulDataLen`/`ulSignatureLen` readable bytes for the duration of the call.
             let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
             let signature =
                 unsafe { slice::from_raw_parts(pSignature, usize::try_from(ulSignatureLen)?) };
@@ -1609,6 +1615,8 @@ cryptoki_fn!(
             verify_ctx
                 .payload
                 .get_or_insert(vec![])
+                // SAFETY: `pPart` is non-null (checked above) and the caller guarantees
+                // `ulPartLen` readable bytes for the duration of the call.
                 .extend_from_slice(unsafe {
                     slice::from_raw_parts(pPart, usize::try_from(ulPartLen)?)
                 });
@@ -1627,6 +1635,8 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pSignature, "C_VerifyFinal: pSignature");
         sessions::session(hSession, |session| -> ModuleResult<()> {
+            // SAFETY: `pSignature` is non-null (checked above) and the caller guarantees
+            // `ulSignatureLen` readable bytes for the duration of the call.
             let signature =
                 unsafe { slice::from_raw_parts(pSignature, usize::try_from(ulSignatureLen)?) };
             session.verify(None, signature)
@@ -2156,10 +2166,17 @@ cryptoki_fn!(
             let Some(Object::PrivateKey(private_key)) = object.as_deref() else {
                 return Err(ModuleError::KeyHandleInvalid(hKey));
             };
-            let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
-            if !matches!(mechanism, Mechanism::EdDsa) {
+            // SAFETY: `pMechanism` is non-null (checked above) and points to a caller-owned
+            // `CK_MECHANISM`, read by value.
+            let raw_mechanism = unsafe { pMechanism.read() };
+            // Only EdDSA supports message-based signing: reject anything else before its
+            // parameters are parsed, so the answer does not depend on how they are filled.
+            if raw_mechanism.mechanism != CKM_EDDSA {
                 return Err(ModuleError::FunctionNotSupported);
             }
+            // SAFETY: `parse_mechanism` validates `pParameter`/`ulParameterLen` of the
+            // caller-owned mechanism before dereferencing them.
+            let mechanism = unsafe { parse_mechanism(raw_mechanism) }?;
             session.sign_ctx = Some(SignContext {
                 algorithm: mechanism.try_into()?,
                 private_key: private_key.clone(),
@@ -2194,6 +2211,9 @@ cryptoki_fn!(
                 ));
             }
             sessions::session(hSession, |session| -> ModuleResult<()> {
+                // SAFETY: `pData` is non-null (checked above) and the caller guarantees
+                // `ulDataLen` readable bytes; `pulSignatureLen` is non-null and `sign_message`
+                // only writes to `pSignature` after checking `*pulSignatureLen` capacity.
                 let data = unsafe { slice::from_raw_parts(pData, usize::try_from(ulDataLen)?) };
                 unsafe { session.sign_message(data, pSignature, pulSignatureLen) }
             })

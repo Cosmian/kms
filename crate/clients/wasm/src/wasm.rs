@@ -1145,7 +1145,7 @@ pub fn create_secret_data_ttlv_request(
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+/// Builds the TTLV `Create` request for an `OpenPGP` key (`Ed25519` or `RSA`).
 #[wasm_bindgen]
 pub fn create_pgp_key_ttlv_request(
     key_id: Option<String>,
@@ -1179,7 +1179,7 @@ pub fn create_pgp_key_ttlv_request(
         user_id.as_deref(),
         PgpKeyCreateCommon {
             vendor_id,
-            tags: &tags,
+            tags,
             sensitive,
             wrap_key_id: wrap_key_id.as_ref(),
         },

@@ -651,14 +651,17 @@ impl Session {
                 // A PKCS#11 length query must leave the operation initialized for
                 // the subsequent buffer-filling call. EdDSA and RSA signature sizes
                 // are fixed by the key, so no remote KMS Sign is needed to answer it.
+                // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
                 unsafe {
                     *pulSignatureLen = signature_len.try_into()?;
                 }
                 return Ok(());
             }
+            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
             if unsafe { usize::try_from(*pulSignatureLen)? } < signature_len {
                 // The required size is known without signing; report it and keep the
                 // operation initialized so the caller can retry with a larger buffer.
+                // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
                 unsafe {
                     *pulSignatureLen = signature_len.try_into()?;
                 }
@@ -709,24 +712,30 @@ impl Session {
             signature
         };
         if pSignature.is_null() {
+            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
             unsafe {
                 *pulSignatureLen = signature.len().try_into()?;
             }
             return Ok(());
         }
+        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
         if (unsafe { usize::try_from(*pulSignatureLen)? }) < signature.len() {
             // Keep the operation (and the cached signature) initialized so the
             // caller can retry with a larger buffer using the SAME signature.
+            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
             unsafe {
                 *pulSignatureLen = signature.len().try_into()?;
             }
             return Err(ModuleError::BufferTooSmall);
         }
         let signature_copy = profiling::phase(SignPhase::SignatureCopy);
+        // SAFETY: `pSignature` is non-null and `*pulSignatureLen >= signature.len()` was checked
+        // above, so the caller's buffer holds `signature.len()` writable bytes.
         unsafe { std::slice::from_raw_parts_mut(pSignature, signature.len()) }
             .copy_from_slice(&signature);
         drop(signature_copy);
         self.sign_ctx = None;
+        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
         unsafe {
             *pulSignatureLen = signature.len().try_into()?;
         }
@@ -749,12 +758,15 @@ impl Session {
         }
         if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
             if p_signature.is_null() {
+                // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
                 unsafe {
                     *p_signature_len = signature_len.try_into()?;
                 }
                 return Ok(());
             }
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
             if unsafe { usize::try_from(*p_signature_len)? } < signature_len {
+                // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
                 unsafe {
                     *p_signature_len = signature_len.try_into()?;
                 }
@@ -771,12 +783,15 @@ impl Session {
             })?;
         drop(private_key_sign);
         if p_signature.is_null() {
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
             unsafe {
                 *p_signature_len = signature.len().try_into()?;
             }
             return Ok(());
         }
+        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
         if unsafe { usize::try_from(*p_signature_len)? } < signature.len() {
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
             unsafe {
                 *p_signature_len = signature.len().try_into()?;
             }
@@ -784,9 +799,12 @@ impl Session {
         }
 
         let signature_copy = profiling::phase(SignPhase::SignatureCopy);
+        // SAFETY: `p_signature` is non-null and `*p_signature_len >= signature.len()` was checked
+        // above, so the caller's buffer holds `signature.len()` writable bytes.
         unsafe { std::slice::from_raw_parts_mut(p_signature, signature.len()) }
             .copy_from_slice(&signature);
         drop(signature_copy);
+        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
         unsafe {
             *p_signature_len = signature.len().try_into()?;
         }

@@ -15,10 +15,10 @@ use pkcs11_sys::{
     CK_UNAVAILABLE_INFORMATION, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
     CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKG_NO_GENERATE,
     CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA,
-    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKM_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
     CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
-    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
-    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
+    CKR_FUNCTION_NOT_SUPPORTED, CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
@@ -35,8 +35,8 @@ use crate::{
         C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit, C_GenerateKey, C_GetAttributeValue,
         C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo, C_GetMechanismList, C_GetSessionInfo,
         C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo, C_Initialize, C_MessageDecryptFinal,
-        C_MessageDecryptInit, C_MessageEncryptFinal, C_MessageEncryptInit, C_OpenSession,
-        C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_MessageDecryptInit, C_MessageEncryptFinal, C_MessageEncryptInit, C_MessageSignInit,
+        C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
     },
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
@@ -1330,6 +1330,36 @@ fn find_private_key_by_public_key_id_then_sign() {
         unsafe { C_SignInit(session, &raw mut mechanism, handles[0]) },
         CKR_OK
     );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// `C_MessageSignInit` only supports `CKM_EDDSA`: any other mechanism is rejected with
+/// `CKR_FUNCTION_NOT_SUPPORTED`, even when its parameters are absent (PSS without
+/// `CK_RSA_PKCS_PSS_PARAMS` used to yield a parameter error instead).
+#[test]
+#[serial]
+fn message_sign_init_rejects_non_eddsa_before_parsing_parameters() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("msg_sign_pss");
+    let session = open_test_session();
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"msg_sign_pss");
+    assert_eq!(handles.len(), 1, "expected exactly one private key handle");
+
+    for mechanism_type in [CKM_RSA_PKCS_PSS, CKM_ECDSA] {
+        let mut mechanism = CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        assert_eq!(
+            unsafe { C_MessageSignInit(session, &raw mut mechanism, handles[0]) },
+            CKR_FUNCTION_NOT_SUPPORTED,
+            "mechanism {mechanism_type:#x}"
+        );
+    }
 
     assert_eq!(C_CloseSession(session), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);

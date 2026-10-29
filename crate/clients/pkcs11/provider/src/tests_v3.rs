@@ -377,7 +377,7 @@ fn test_ed25519_key_discovery() -> Pkcs11Result<()> {
 /// implemented in `kms_object::kms_encrypt_async`/`kms_decrypt_async`.
 #[test]
 #[serial]
-#[expect(unsafe_code, clippy::indexing_slicing)]
+#[expect(unsafe_code)]
 fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -408,7 +408,6 @@ fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
     // Locate the pre-imported "vol1" AES key, exactly like `test_generate_key_encrypt_decrypt`.
     let mut label_bytes = b"vol1".to_vec();
     let label_len: CK_ULONG = label_bytes.len().try_into()?;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_LABEL,
         pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
@@ -470,7 +469,10 @@ fn test_aes_gcm_encrypt_decrypt_roundtrip() -> Pkcs11Result<()> {
         CKR_OK
     );
     ciphertext.truncate(usize::try_from(ciphertext_len)?);
-    assert_ne!(ciphertext[..ciphertext.len() - 16], plaintext[..]);
+    assert_ne!(
+        ciphertext.get(..plaintext.len()),
+        Some(plaintext.as_slice())
+    );
 
     assert_eq!(
         unsafe { C_DecryptInit(handle, &raw mut mechanism, key_handle) },
@@ -536,7 +538,6 @@ fn test_aes_gcm_encrypt_rejects_undersized_output_buffer() -> Pkcs11Result<()> {
 
     let mut label_bytes = b"vol1".to_vec();
     let label_len: CK_ULONG = label_bytes.len().try_into()?;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_LABEL,
         pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
@@ -900,7 +901,6 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
 
     // Search for CKO_PROFILE objects (no login performed on this session).
     let mut class: CK_OBJECT_CLASS = CKO_PROFILE;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_CLASS,
         pValue: (&raw mut class).cast::<std::ffi::c_void>(),
@@ -969,7 +969,6 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
         let mut private_value: pkcs11_sys::CK_BBOOL = 0;
         let mut profile_id_value: CK_PROFILE_ID = 0;
         let mut unique_id_value = [0_u8; 64];
-        #[allow(clippy::cast_ptr_alignment)]
         let mut attr_template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
