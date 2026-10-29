@@ -14,6 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use dialoguer::{Confirm, Input, MultiSelect, Select, theme::ColorfulTheme};
 use strum::IntoEnumIterator;
 
+use super::PromptResultExt;
 use crate::{
     config::{
         AzureEkmConfig, EstConfig, GoogleCseConfig, KmipPolicyConfig, KmipPolicyId, ScepConfig,
@@ -56,7 +57,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         .with_prompt("KMS data root directory")
         .default("./cosmian-kms".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     // Create the root data directory immediately for early validation.
     let root_data_pb = PathBuf::from(&root_data_path);
@@ -79,7 +80,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         .with_prompt("Temporary data directory")
         .default(default_tmp)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     // Create the temporary directory immediately for early validation.
     let tmp_pb = PathBuf::from(&tmp_path);
@@ -103,7 +104,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .default(VENDOR_ID_COSMIAN.to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     // ── Key Management ────────────────────────────────────────────────────────
     let kek: String = Input::with_theme(&theme)
@@ -113,7 +114,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let key_encryption_key = if kek.trim().is_empty() {
         None
     } else {
@@ -132,7 +133,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
             .items(&items)
             .default(0)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         (idx > 0)
             .then(|| items.get(idx).map(|s| (*s).to_owned()))
             .flatten()
@@ -149,7 +150,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .items(&unwrap_type_labels)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let default_unwrap_type = if selected_unwrap.is_empty() {
         None
     } else {
@@ -169,7 +170,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let crypto_officer_users = if crypto_officer_str.trim().is_empty() {
         None
     } else {
@@ -194,7 +195,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
             )
             .default(true)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?
+            .prompt_err()?
     } else {
         false
     };
@@ -207,7 +208,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let ms_dke_service_url = if ms_dke.trim().is_empty() {
         None
     } else {
@@ -220,7 +221,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let kms_public_url = if public_url.trim().is_empty() {
         None
     } else {
@@ -235,7 +236,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         .items(&policy_items)
         .default(0)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let kmip_policy = KmipPolicyConfig {
         policy_id: if policy_idx == 0 {
             None
@@ -261,7 +262,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         .with_prompt("UI distribution folder path")
         .default(crate::config::get_default_ui_dist_path())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     ui.ui_index_html_folder = Some(ui_dist);
 
     let session_salt: String = Input::with_theme(&theme)
@@ -271,7 +272,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     ui.ui_session_salt = if session_salt.trim().is_empty() {
         None
     } else {
@@ -308,7 +309,7 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         .with_prompt("Enable Google Client-Side Encryption (CSE) endpoints?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable {
         return Ok(GoogleCseConfig::default());
@@ -318,7 +319,7 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         .with_prompt("Disable Google CSE token validation? (not recommended for production)")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let whitelist_str: String = Input::with_theme(theme)
         .with_prompt(
@@ -326,7 +327,7 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let google_cse_incoming_url_whitelist = if whitelist_str.trim().is_empty() {
         None
     } else {
@@ -343,7 +344,7 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         .with_prompt("CSE migration key (PEM PKCS#8 RSA key; leave blank to auto-generate)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     Ok(GoogleCseConfig {
         google_cse_enable: true,
@@ -364,7 +365,6 @@ fn configure_enrollment(
     theme: &ColorfulTheme,
     tls: &TlsConfig,
 ) -> KResult<(EstConfig, ScepConfig, HashMap<String, CertTemplate>)> {
-    let prompt_err = |e: dialoguer::Error| KmsError::ServerError(format!("Prompt error: {e}"));
     let mut est = EstConfig::default();
     let mut scep = ScepConfig::default();
     let mut templates = HashMap::new();
@@ -373,12 +373,12 @@ fn configure_enrollment(
         .with_prompt("Enable EST (RFC 7030) device enrollment endpoints?")
         .default(false)
         .interact()
-        .map_err(prompt_err)?;
+        .prompt_err()?;
     scep.scep_enabled = Confirm::with_theme(theme)
         .with_prompt("Enable SCEP (RFC 8894) device enrollment endpoint?")
         .default(false)
         .interact()
-        .map_err(prompt_err)?;
+        .prompt_err()?;
     if est.est_enabled && !tls.is_tls_enabled() {
         println!(
             "  ⚠  EST requires TLS (RFC 7030 §3.3) but no TLS certificate is configured: \
@@ -395,7 +395,7 @@ fn configure_enrollment(
                 "EST: unique identifier of the CA certificate that signs enrolled certificates",
             )
             .interact_text()
-            .map_err(prompt_err)?;
+            .prompt_err()?;
         est.est_ca_uid = Some(ca.trim().to_owned());
         // Mutual TLS needs a client CA to validate the presented certificate.
         if tls.clients_ca_cert_file.is_some() {
@@ -406,7 +406,7 @@ fn configure_enrollment(
                 )
                 .default(true)
                 .interact()
-                .map_err(prompt_err)?;
+                .prompt_err()?;
         } else {
             println!(
                 "  ℹ  No clients CA certificate is configured: EST uses HTTP Basic bootstrap credentials."
@@ -424,7 +424,7 @@ fn configure_enrollment(
                     }
                 })
                 .interact_text()
-                .map_err(prompt_err)?;
+                .prompt_err()?;
             let password: String = dialoguer::Password::with_theme(theme)
                 .with_prompt("EST: bootstrap password (at least 8 characters)")
                 .with_confirmation("Confirm password", "Passwords do not match")
@@ -436,7 +436,7 @@ fn configure_enrollment(
                     }
                 })
                 .interact()
-                .map_err(prompt_err)?;
+                .prompt_err()?;
             est.est_bootstrap_username = Some(user.trim().to_owned());
             est.est_bootstrap_password = Some(password);
         }
@@ -444,8 +444,7 @@ fn configure_enrollment(
     if scep.scep_enabled {
         let ca: String = Input::with_theme(theme)
             .with_prompt("SCEP: unique identifier of the RSA CA certificate that signs enrolled certificates")
-            .interact_text()
-            .map_err(prompt_err)?;
+            .interact_text().prompt_err()?;
         scep.scep_ca_uid = Some(ca.trim().to_owned());
         let challenge: String = dialoguer::Password::with_theme(theme)
             .with_prompt("SCEP: challenge password devices must present (at least 8 characters)")
@@ -458,7 +457,7 @@ fn configure_enrollment(
                 }
             })
             .interact()
-            .map_err(prompt_err)?;
+            .prompt_err()?;
         scep.scep_challenge_password = Some(challenge);
     }
 
@@ -477,7 +476,7 @@ fn configure_enrollment(
         )
         .validate_with(valid_regex)
         .interact_text()
-        .map_err(prompt_err)?;
+        .prompt_err()?;
     // SANs are default-deny: without a pattern, CSRs carrying DNS SANs are refused.
     let san_dns_regex: String = Input::with_theme(theme)
         .with_prompt(
@@ -487,7 +486,7 @@ fn configure_enrollment(
         .allow_empty(true)
         .validate_with(valid_regex)
         .interact_text()
-        .map_err(prompt_err)?;
+        .prompt_err()?;
     templates.insert(
         ENROLLMENT_TEMPLATE.to_owned(),
         CertTemplate {
@@ -522,7 +521,7 @@ fn configure_azure_ekm(theme: &ColorfulTheme) -> KResult<AzureEkmConfig> {
         .with_prompt("Enable Azure EKM proxy endpoints?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable {
         return Ok(AzureEkmConfig::default());
@@ -532,37 +531,37 @@ fn configure_azure_ekm(theme: &ColorfulTheme) -> KResult<AzureEkmConfig> {
         .with_prompt("Azure EKM path prefix (leave blank to skip)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let disable_client_auth: bool = Confirm::with_theme(theme)
         .with_prompt("⚠  Disable mTLS client auth? (testing only)")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let proxy_vendor: String = Input::with_theme(theme)
         .with_prompt("EKM proxy vendor name")
         .default("Cosmian".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let proxy_name: String = Input::with_theme(theme)
         .with_prompt("EKM proxy name")
         .default("EKM Proxy Service".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let ekm_vendor: String = Input::with_theme(theme)
         .with_prompt("EKMS vendor name")
         .default("Cosmian".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let ekm_product: String = Input::with_theme(theme)
         .with_prompt("EKMS product name and version")
         .default(format!("Cosmian KMS v{}", env!("CARGO_PKG_VERSION")))
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     Ok(AzureEkmConfig {
         azure_ekm_enable: true,
@@ -584,7 +583,7 @@ fn configure_aws_xks(theme: &ColorfulTheme) -> KResult<AwsXksConfig> {
         .with_prompt("Enable AWS External Key Store (XKS) endpoints?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable {
         return Ok(AwsXksConfig::default());
@@ -593,23 +592,23 @@ fn configure_aws_xks(theme: &ColorfulTheme) -> KResult<AwsXksConfig> {
     let region: String = Input::with_theme(theme)
         .with_prompt("AWS region (for SigV4 signing)")
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let service: String = Input::with_theme(theme)
         .with_prompt("AWS service name (for SigV4 signing)")
         .default("kms".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let access_key_id: String = Input::with_theme(theme)
         .with_prompt("AWS XKS SigV4 access key ID")
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let secret_access_key: String = dialoguer::Password::with_theme(theme)
         .with_prompt("AWS XKS SigV4 secret access key")
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     Ok(AwsXksConfig {
         aws_xks_enable: true,

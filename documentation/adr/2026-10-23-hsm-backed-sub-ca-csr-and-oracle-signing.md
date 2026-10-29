@@ -84,9 +84,12 @@ changes, see NEG-001.
    non-root `ocsp_ca_uid`, not only HSM keys.
 
 Signature algorithms for oracle-signed structures are `sha256WithRSAEncryption` (PKCS#1 v1.5),
-`ecdsa-with-SHA256` (any curve), and, in non-FIPS builds, `id-Ed25519` / `id-Ed448` (RFC 8410, no parameters). For
-RSA and EC the SHA-256 digest of the TBS is signed (`digested_data`, mapped by the HSM layer to `CKM_RSA_PKCS` or raw
-`CKM_ECDSA`); for EdDSA the raw TBS is signed (`data`, `CKM_EDDSA`), as the HSM cannot take a digest.
+`ecdsa-with-SHA256` / `ecdsa-with-SHA384` / `ecdsa-with-SHA512` (digest matching the curve strength, RFC 5480 §4:
+SHA-384 for P-384, SHA-512 for P-521, SHA-256 otherwise), and, in non-FIPS builds, `id-Ed25519` / `id-Ed448`
+(RFC 8410, no parameters). For RSA and EC the digest of the TBS is signed (`digested_data`, mapped by the HSM layer to
+`CKM_RSA_PKCS` or raw `CKM_ECDSA`); for EdDSA the raw TBS is signed (`data`, `CKM_EDDSA`), as the HSM cannot take a
+digest. Software-key CSRs, certificates, CRLs and OCSP responses use the same digest selection
+(`cosmian_kms_crypto::openssl::x509_signing_digest`).
 
 Out of scope: the Auditor role of issue #651 (delivered with the OPA authorization work) and first-year support.
 
@@ -101,17 +104,17 @@ Out of scope: the Auditor role of issue #651 (delivered with the OPA authorizati
   key rotation resolving to another generation) fail closed instead of publishing an invalid certificate or CRL.
 - **POS-004**: Operators locate certificates by serial with `ckms locate --tag _serial=…` or the UI, with no KMIP
   knowledge and no custom tagging scripts.
-- **POS-005**: Software-key behaviour is unchanged; the existing CRL, revoke, enrollment, certify and OCSP suites pass in
-  FIPS and non-FIPS builds.
+- **POS-005**: Software-key behaviour is unchanged apart from the curve-matched ECDSA digest; the existing CRL,
+  revoke, enrollment, certify and OCSP suites pass in FIPS and non-FIPS builds.
 
 ### Negative
 
-- **NEG-001**: Oracle (HSM) signing supports RSA and EC keys, and Ed25519/Ed448 (non-FIPS builds only). RSA and EC
-  always sign with SHA-256 (PKCS#1 v1.5 for RSA, ECDSA for EC, whatever the curve). RSA-PSS keys and any HSM CA key
-  that is not RSA, EC or EdDSA are rejected with `NotSupported`. Database-stored keys are not affected.
+- **NEG-001**: Oracle (HSM) signing supports RSA and EC keys, and Ed25519/Ed448 (non-FIPS builds only). RSA signs
+  with SHA-256 (PKCS#1 v1.5), ECDSA with the digest matching the curve (see above). RSA-PSS keys and any HSM CA key
+  that is not RSA, EC or EdDSA are rejected with `NotSupported`; database-stored keys keep signing in process.
   **Behaviour change for existing HSM users:** every `hsm::` issuer key now goes through the oracle in `Certify`,
   `ReCertify`, `GenerateCrl` and the OCSP responder, *including non-sensitive keys* that previously signed by export.
-  A P-384 HSM CA now signs `ecdsa-with-SHA256` instead of the digest the old path chose.
+  A P-384 (P-521) HSM CA signs `ecdsa-with-SHA384` (`ecdsa-with-SHA512`).
   Gating the oracle path on `sensitive == Some(true)` would preserve the old behaviour but keep exporting
   non-sensitive CA keys, contradicting the non-disclosure goal.
 - **NEG-002**: Automatic CRL regeneration (post-Revoke, refresh cron) reads only the issuer *certificate* without an

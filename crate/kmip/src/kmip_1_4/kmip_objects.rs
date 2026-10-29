@@ -118,23 +118,32 @@ pub struct SymmetricKey {
     pub key_block: KeyBlock,
 }
 
-impl From<SymmetricKey> for kmip_2_1::kmip_objects::SymmetricKey {
-    fn from(val: SymmetricKey) -> Self {
-        Self {
-            key_block: val.key_block.into(),
-        }
-    }
+/// Implements `From<$t>` / `TryFrom<kmip_2_1::$t>` for objects that only wrap a [`KeyBlock`].
+macro_rules! impl_key_block_object_conversions {
+    ($($t:ident),+ $(,)?) => {
+        $(
+            impl From<$t> for kmip_2_1::kmip_objects::$t {
+                fn from(val: $t) -> Self {
+                    Self {
+                        key_block: val.key_block.into(),
+                    }
+                }
+            }
+
+            impl TryFrom<kmip_2_1::kmip_objects::$t> for $t {
+                type Error = KmipError;
+
+                fn try_from(val: kmip_2_1::kmip_objects::$t) -> Result<Self, Self::Error> {
+                    Ok(Self {
+                        key_block: val.key_block.try_into()?,
+                    })
+                }
+            }
+        )+
+    };
 }
 
-impl TryFrom<kmip_2_1::kmip_objects::SymmetricKey> for SymmetricKey {
-    type Error = KmipError;
-
-    fn try_from(val: kmip_2_1::kmip_objects::SymmetricKey) -> Result<Self, Self::Error> {
-        Ok(Self {
-            key_block: val.key_block.try_into()?,
-        })
-    }
-}
+impl_key_block_object_conversions!(SymmetricKey, PrivateKey, PublicKey);
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
@@ -143,47 +152,11 @@ pub struct PrivateKey {
     pub key_block: KeyBlock,
 }
 
-impl From<PrivateKey> for kmip_2_1::kmip_objects::PrivateKey {
-    fn from(val: PrivateKey) -> Self {
-        Self {
-            key_block: val.key_block.into(),
-        }
-    }
-}
-
-impl TryFrom<kmip_2_1::kmip_objects::PrivateKey> for PrivateKey {
-    type Error = KmipError;
-
-    fn try_from(val: kmip_2_1::kmip_objects::PrivateKey) -> Result<Self, Self::Error> {
-        Ok(Self {
-            key_block: val.key_block.try_into()?,
-        })
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct PublicKey {
     #[serde(rename = "KeyBlock")]
     pub key_block: KeyBlock,
-}
-
-impl From<PublicKey> for kmip_2_1::kmip_objects::PublicKey {
-    fn from(val: PublicKey) -> Self {
-        Self {
-            key_block: val.key_block.into(),
-        }
-    }
-}
-
-impl TryFrom<kmip_2_1::kmip_objects::PublicKey> for PublicKey {
-    type Error = KmipError;
-
-    fn try_from(val: kmip_2_1::kmip_objects::PublicKey) -> Result<Self, Self::Error> {
-        Ok(Self {
-            key_block: val.key_block.try_into()?,
-        })
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

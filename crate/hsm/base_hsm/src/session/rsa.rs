@@ -205,7 +205,7 @@ impl Session {
         // AWS CloudHSM workaround: remove CKA_SENSITIVE attribute entirely
         // since it explicitly rejects any explicit value for RSA keys.
         // Rely on CKA_EXTRACTABLE alone to control sensitivity/extractability.
-        if !self.hsm_capabilities().supports_rsa_sensitive_attribute {
+        if !self.hsm_capabilities().rsa.supports_sensitive_attribute {
             priv_key_template.retain(|attr| attr.type_ != CKA_SENSITIVE);
         }
 
@@ -247,7 +247,7 @@ impl Session {
         aes_key_handle: CK_OBJECT_HANDLE,
         digest: RsaOaepDigest,
     ) -> HResult<Vec<u8>> {
-        if !self.hsm_capabilities().supports_rsa_oaep_key_wrap {
+        if !self.hsm_capabilities().rsa.supports_oaep_key_wrap {
             return Err(HError::Default(
                 "RSA-OAEP key wrapping (CKM_RSA_PKCS_OAEP C_WrapKey/C_UnwrapKey) is not \
                  supported by this HSM"
@@ -306,7 +306,7 @@ impl Session {
         aes_key_label: &str,
         digest: RsaOaepDigest,
     ) -> HResult<CK_OBJECT_HANDLE> {
-        if !self.hsm_capabilities().supports_rsa_oaep_key_wrap {
+        if !self.hsm_capabilities().rsa.supports_oaep_key_wrap {
             return Err(HError::Default(
                 "RSA-OAEP key wrapping (CKM_RSA_PKCS_OAEP C_WrapKey/C_UnwrapKey) is not \
                  supported by this HSM"
@@ -315,9 +315,9 @@ impl Session {
         }
         let mut wrapped_key = wrapped_aes_key.to_vec();
         // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
-        // CloudHSM requires NULL (see `rsa_oaep_requires_source_data_ptr`).
+        // CloudHSM requires NULL (see `RsaCapabilities::oaep_requires_source_data_ptr`).
         let mut oaep_label = 0_u8;
-        let source_data = if self.hsm_capabilities().rsa_oaep_requires_source_data_ptr {
+        let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
             (&raw mut oaep_label).cast::<std::ffi::c_void>()
         } else {
             ptr::null_mut()

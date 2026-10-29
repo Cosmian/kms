@@ -540,75 +540,9 @@ impl Database {
         Ok(results)
     }
 
-    /// Find a certificate object by its X.509 serial number.
-    ///
-    /// Searches across all states so OCSP responses correctly distinguish
-    /// `good` (Active/PreActive), `revoked` (Compromised/Deactivated/Destroyed/DestroyedCompromised),
-    /// and `unknown` (not found).
-    ///
-    /// Returns `(uid, state, attributes)` for the first match or `None` if not found;
-    /// the attributes carry the revocation date and reason reported by OCSP.
-    pub async fn find_certificate_by_serial(
-        &self,
-        issuer_certificate_uid: &str,
-        serial_hex: &str,
-        vendor_id: &str,
-    ) -> DbResult<
-        Option<(
-            String,
-            cosmian_kmip::kmip_0::kmip_types::State,
-            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
-        )>,
-    > {
-        use cosmian_kmip::kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_objects::ObjectType,
-            kmip_types::{LinkType, LinkedObjectIdentifier},
-        };
-
-        // Build search filter: certificate objects linked to the given issuer.
-        let mut search_attrs = Attributes {
-            object_type: Some(ObjectType::Certificate),
-            ..Attributes::default()
-        };
-        search_attrs.link = Some(vec![cosmian_kmip::kmip_2_1::kmip_types::Link {
-            link_type: LinkType::CertificateLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                issuer_certificate_uid.to_owned(),
-            ),
-        }]);
-
-        // Search every lifecycle state so OCSP can report accurate status.
-        for state in [
-            cosmian_kmip::kmip_0::kmip_types::State::Active,
-            cosmian_kmip::kmip_0::kmip_types::State::PreActive,
-            cosmian_kmip::kmip_0::kmip_types::State::Compromised,
-            cosmian_kmip::kmip_0::kmip_types::State::Deactivated,
-            cosmian_kmip::kmip_0::kmip_types::State::Destroyed,
-            cosmian_kmip::kmip_0::kmip_types::State::Destroyed_Compromised,
-        ] {
-            let candidates = self
-                .find_all(Some(&search_attrs), Some(state), vendor_id)
-                .await?;
-
-            for (uid, obj_state, attrs) in candidates {
-                if let Some(owm) = self.retrieve_object_arc(&uid).await? {
-                    let found_serial = extract_serial_hex_from_object(owm.object());
-                    if let Some(s) = found_serial {
-                        if s.eq_ignore_ascii_case(serial_hex) {
-                            return Ok(Some((uid, obj_state, attrs)));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
     /// Find a certificate object by an exact match on its DER-encoded bytes.
     ///
-    /// Unlike [`Self::find_certificate_by_serial`], this does **not** require a known
+    /// It does **not** require a known
     /// issuer UID: it scans every certificate object across all lifecycle states and
     /// compares `certificate_value` byte-for-byte against `der_bytes`. This lets
     /// callers determine whether an *externally supplied* certificate (e.g. raw DER
@@ -862,9 +796,9 @@ impl Database {
 ///
 /// The output **must** exactly match the hex string the OCSP crypto layer computes
 /// for the same certificate (`extract_serial_hex` in `cosmian_kms_crypto::openssl::ocsp`,
-/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or `find_certificate_by_serial`
-/// silently fails to match and OCSP incorrectly reports `unknown` for a real, issued
-/// certificate. `BN_bn2hex` strips whole leading zero *bytes* (already true of
+/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or the `_serial=` tag
+/// silently fails to match a real, issued certificate. `BN_bn2hex` strips whole leading
+/// zero *bytes* (already true of
 /// `to_bytes_be()`'s minimal big-endian output) but always prints both hex digits of
 /// the remaining most-significant byte — so a serial such as `0x0A…` renders as `"0A…"`,
 /// not `"A…"`. Do **not** strip leading zero *characters* here: about 1-in-16 randomly
@@ -1245,8 +1179,8 @@ mod tests {
     /// byte, so a serial number whose leading byte is e.g. `0x0A` must render as `"0A…"`,
     /// not `"A…"`. Naively trimming all leading `'0'` characters previously desynced
     /// this from the OCSP layer for ~1-in-16 randomly generated serial numbers, making
-    /// `find_certificate_by_serial` (and therefore OCSP) intermittently report a
-    /// perfectly valid, just-issued certificate as `unknown`.
+    /// the `_serial=` tag lookups intermittently miss a perfectly valid, just-issued
+    /// certificate.
     #[test]
     fn test_extract_serial_hex_preserves_leading_zero_nibble() {
         let der = cert_der_with_serial(&[0x0A, 0xBB, 0xCC, 0xDD, 0xEE]);

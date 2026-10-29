@@ -56,6 +56,8 @@ ckms certificates generate-csr \
 
 The command prints the private and public key ids. Without `--private-key-id` the server chooses the identifier of a database key pair. In the Web UI, choose **Generate a new key pair** on the same page, pick the algorithm, and tick **Generate the key pair in the HSM** to create it in the HSM.
 
+The KMIP algorithm policy is checked before the key pair is created: an algorithm the policy refuses (for example `nist-p224` under the `DEFAULT` policy) leaves no key behind.
+
 ## 3. Sign the CSR on the offline root
 
 ```bash
@@ -97,6 +99,11 @@ HSM CA key need the `Certify` permission on that key (HSM grants are per operati
 
 - Certificate, CRL and OCSP signing with an HSM-resident issuer key support RSA, EC and (non-FIPS builds)
   Ed25519/Ed448 keys. ML-DSA and SLH-DSA HSM keys are not supported.
+- RSA keys sign with `sha256WithRSAEncryption`. EC keys sign with the digest matching their curve
+  (RFC 5480): `ecdsa-with-SHA256` for P-256, `ecdsa-with-SHA384` for P-384, `ecdsa-with-SHA512` for P-521.
+  This applies to CSRs, certificates, CRLs and OCSP responses, whether the key is in the HSM or the database.
+- `certify` accepts the identifier of an HSM private key (for example the ID placeholder after an HSM
+  `create-key-pair` in a batch): it certifies the public key `<id>_pk`, which needs the `Certify` permission.
 - The SCEP enrollment endpoint refuses a non-extractable HSM CA key (clear error, no fallback to an exported key).
   EST works, as it issues through `certify`.
 - Automatic CRL regeneration (after a revocation and from the refresh cron) signs as the owner of the issuer

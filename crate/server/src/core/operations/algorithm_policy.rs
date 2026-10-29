@@ -7,6 +7,8 @@ use cosmian_kms_server_database::reexport::{
         },
         kmip_2_1::{
             kmip_attributes::Attributes,
+            kmip_data_structures::KeyMaterial,
+            kmip_objects::ObjectType,
             kmip_operations::{
                 Create, CreateKeyPair, DeriveKey, Export, Hash, MAC, MACVerify, Operation, Sign,
                 SignatureVerify,
@@ -18,7 +20,9 @@ use cosmian_kms_server_database::reexport::{
         },
         ttlv::{TTLV, TtlvDeserializer},
     },
-    cosmian_kms_crypto::openssl::oid::nid_of,
+    cosmian_kms_crypto::openssl::{
+        kmip_private_key_to_openssl, kmip_public_key_to_openssl, oid::nid_of,
+    },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use openssl::{
@@ -409,6 +413,12 @@ impl KmipWhitelists {
     }
 }
 
+/// Policy check for a stored key before it is used.
+///
+/// Attributes are the fast path. When one is missing, the `KeyBlock` algorithm and length
+/// (set from the key material, not editable through attribute operations) stand in for it,
+/// and the curve is read from the key itself. A curve-based key whose curve cannot be
+/// determined is refused when a curve allowlist is active (fail closed).
 pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
     params: &ServerParams,
     operation_tag: &str,
@@ -419,70 +429,109 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_retrieved_key(
         return Ok(());
     }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
-    let attrs = owm
-        .object()
-        .attributes()
-        .unwrap_or_else(|_| owm.attributes());
-
-    if let Some(alg) = attrs.cryptographic_algorithm {
-        validate_algorithm(alg, wl.algorithms.as_ref()).map_err(|e| match e {
-            KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
-            other => KmsError::Kmip21Error(
-                ErrorReason::Cryptographic_Failure,
-                format!(
-                    "{operation_tag} denied by algorithm policy (uid={uid_for_error}): {other}"
-                ),
-            ),
-        })?;
+    let object = owm.object();
+    let attrs = object.attributes().unwrap_or_else(|_| owm.attributes());
+    let key_block = object.key_block().ok();
+    // A `ConfigurableKEM` key is judged by the components serialized in its key bytes, where it
+    // is used (`enforce_kmip_algorithm_policy_for_kem_components`): its importer-controlled
+    // attributes must neither deny nor allow it.
+    if key_block.is_some_and(|kb| {
+        matches!(
+            kb.key_format_type,
+            KeyFormatType::ConfigurableKEMPublicKey | KeyFormatType::ConfigurableKEMSecretKey
+        )
+    }) {
+        return Ok(());
     }
-
-    if let (Some(alg), Some(bits)) = (attrs.cryptographic_algorithm, attrs.cryptographic_length) {
-        validate_key_size_bits(alg, bits, &wl).map_err(|e| match e {
-            KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
-            other => KmsError::Kmip21Error(
-                ErrorReason::Cryptographic_Failure,
-                format!("{operation_tag} denied by key-size policy (uid={uid_for_error}): {other}"),
-            ),
-        })?;
-    }
-
-    // Enforce curves for EC keys when the curve is known.
-    // `ConfigurableKEM` components are enforced from the key bytes, see
-    // `enforce_kmip_algorithm_policy_for_kem_components`.
-    if let Ok(kb) = owm.object().key_block() {
-        match kb.key_format_type {
-            KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentECPrivateKey => {
-                if let Some(domain) = attrs.cryptographic_domain_parameters.as_ref() {
-                    if let Some(curve) = domain.recommended_curve {
-                        validate_curve(curve, wl.curves.as_ref()).map_err(|e| match e {
-                            KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
-                            other => KmsError::Kmip21Error(
-                                ErrorReason::Cryptographic_Failure,
-                                format!(
-                                    "{operation_tag} denied by curve policy (uid={uid_for_error}): {other}"
-                                ),
-                            ),
-                        })?;
-                    }
-                }
+    let alg = attrs
+        .cryptographic_algorithm
+        .or_else(|| key_block.and_then(|kb| kb.cryptographic_algorithm));
+    (|| -> KResult<()> {
+        if let Some(alg) = alg {
+            validate_algorithm(alg, wl.algorithms.as_ref())?;
+            if let Some(bits) = attrs
+                .cryptographic_length
+                .or_else(|| key_block.and_then(|kb| kb.cryptographic_length))
+            {
+                validate_key_size_bits(alg, bits, &wl)?;
             }
-            _ => {}
         }
-    } else if let Some(domain) = attrs.cryptographic_domain_parameters.as_ref() {
-        if let Some(curve) = domain.recommended_curve {
-            validate_curve(curve, wl.curves.as_ref()).map_err(|e| match e {
-                KmsError::Kmip21Error(_, _) | KmsError::InvalidRequest(_) => e,
-                other => KmsError::Kmip21Error(
-                    ErrorReason::Cryptographic_Failure,
-                    format!(
-                        "{operation_tag} denied by curve policy (uid={uid_for_error}): {other}"
-                    ),
-                ),
-            })?;
-        }
-    }
+        // Stored parameters fill what a request omits (e.g. Encrypt's block cipher mode) and
+        // clients may edit them, so they are checked when the key is used.
+        validate_cryptographic_parameters(&attrs.cryptographic_parameters, &wl)?;
+        validate_retrieved_key_curve(params, operation_tag, owm, attrs, alg, &wl)
+    })()
+    .map_err(|e| {
+        wrap_policy_error(
+            e,
+            operation_tag,
+            &format!("denied by algorithm policy (uid={uid_for_error})"),
+        )
+    })
+}
 
-    Ok(())
+/// Curve check of [`enforce_kmip_algorithm_policy_for_retrieved_key`].
+fn validate_retrieved_key_curve(
+    params: &ServerParams,
+    operation_tag: &str,
+    owm: &ObjectWithMetadata,
+    attrs: &Attributes,
+    alg: Option<CryptographicAlgorithm>,
+    wl: &KmipWhitelists,
+) -> KResult<()> {
+    let object = owm.object();
+    if let Ok(
+        KeyMaterial::TransparentECPrivateKey {
+            recommended_curve, ..
+        }
+        | KeyMaterial::TransparentECPublicKey {
+            recommended_curve, ..
+        },
+    ) = object.key_block().and_then(|kb| kb.key_material())
+    {
+        return validate_curve(*recommended_curve, wl.curves.as_ref());
+    }
+    if let Some(curve) = attrs
+        .cryptographic_domain_parameters
+        .and_then(|d| d.recommended_curve)
+    {
+        return validate_curve(curve, wl.curves.as_ref());
+    }
+    let is_asymmetric_key = matches!(
+        object.object_type(),
+        ObjectType::PrivateKey | ObjectType::PublicKey
+    );
+    let needs_key_material = (alg.is_none() && wl.algorithms.is_some())
+        || (alg.is_some_and(is_curve_algorithm) && wl.curves.is_some());
+    if !is_asymmetric_key || !needs_key_material {
+        return Ok(());
+    }
+    if object.is_wrapped() {
+        return deny(
+            ErrorReason::Constraint_Violation,
+            "the algorithm or curve of this wrapped key is not recorded in its attributes",
+        );
+    }
+    if object.object_type() == ObjectType::PrivateKey {
+        let key = kmip_private_key_to_openssl(object)?;
+        enforce_kmip_algorithm_policy_for_public_key(params, operation_tag, &key, Some(attrs))
+    } else {
+        let key = kmip_public_key_to_openssl(object)?;
+        enforce_kmip_algorithm_policy_for_public_key(params, operation_tag, &key, Some(attrs))
+    }
+}
+
+/// Algorithms whose keys are defined on a named curve.
+const fn is_curve_algorithm(alg: CryptographicAlgorithm) -> bool {
+    matches!(
+        alg,
+        CryptographicAlgorithm::EC
+            | CryptographicAlgorithm::ECDSA
+            | CryptographicAlgorithm::ECDH
+            | CryptographicAlgorithm::ECMQV
+            | CryptographicAlgorithm::Ed25519
+            | CryptographicAlgorithm::Ed448
+    )
 }
 
 /// Enforce the policy on the components of a `ConfigurableKEM` key as read from the key
@@ -1236,4 +1285,127 @@ fn validate_domain_qlength(alg: CryptographicAlgorithm, q: i32) -> KResult<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+mod tests {
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                extra::tagging::VENDOR_ID_COSMIAN, kmip_data_structures::KeyWrappingData,
+                kmip_objects::Object, requests::create_symmetric_key_kmip_object,
+            },
+        },
+        cosmian_kms_crypto::openssl::openssl_private_key_to_kmip,
+    };
+    use openssl::{
+        ec::{EcGroup, EcKey},
+        nid::Nid,
+        pkey::PKey,
+    };
+
+    use super::*;
+    use crate::config::{ClapConfig, KmipAllowlistsConfig};
+
+    fn custom_policy(allowlists: KmipAllowlistsConfig) -> KResult<ServerParams> {
+        let mut conf = ClapConfig::default();
+        conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
+        conf.kmip_policy.allowlists = allowlists;
+        ServerParams::try_from(conf)
+    }
+
+    fn curves(curves: Vec<RecommendedCurve>) -> KResult<ServerParams> {
+        custom_policy(KmipAllowlistsConfig {
+            curves: Some(curves),
+            ..KmipAllowlistsConfig::default()
+        })
+    }
+
+    /// A P-256 private key whose algorithm and curve attributes were stripped (as a
+    /// `DeleteAttribute` allowed before 5.29.0 did).
+    fn stripped_p256_key(key_format_type: KeyFormatType) -> KResult<ObjectWithMetadata> {
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        let key = PKey::from_ec_key(EcKey::generate(&group)?)?;
+        let mut object: Object = openssl_private_key_to_kmip(&key, key_format_type, None)?;
+        let attributes = object.attributes_mut()?;
+        attributes.cryptographic_algorithm = None;
+        attributes.cryptographic_domain_parameters = None;
+        Ok(ObjectWithMetadata::new(
+            "key".to_owned(),
+            object,
+            "owner",
+            State::Active,
+            Attributes::default(),
+        ))
+    }
+
+    fn is_denied(result: &KResult<()>) -> bool {
+        matches!(
+            result,
+            Err(KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _))
+        )
+    }
+
+    #[test]
+    fn retrieved_key_curve_is_read_from_key_material() -> KResult<()> {
+        let p384_only = curves(vec![RecommendedCurve::P384])?;
+        let p256_only = curves(vec![RecommendedCurve::P256])?;
+        for key_format_type in [KeyFormatType::TransparentECPrivateKey, KeyFormatType::PKCS8] {
+            let owm = stripped_p256_key(key_format_type)?;
+            let denied =
+                enforce_kmip_algorithm_policy_for_retrieved_key(&p384_only, "Sign", "key", &owm);
+            assert!(is_denied(&denied), "{key_format_type:?}: {denied:?}");
+            enforce_kmip_algorithm_policy_for_retrieved_key(&p256_only, "Sign", "key", &owm)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn retrieved_wrapped_key_with_unknown_curve_is_refused() -> KResult<()> {
+        let mut owm = stripped_p256_key(KeyFormatType::PKCS8)?;
+        owm.object_mut().key_block_mut()?.key_wrapping_data = Some(KeyWrappingData::default());
+        let result = enforce_kmip_algorithm_policy_for_retrieved_key(
+            &curves(vec![RecommendedCurve::P256])?,
+            "Sign",
+            "key",
+            &owm,
+        );
+        assert!(is_denied(&result), "{result:?}");
+        Ok(())
+    }
+
+    /// Stored Cryptographic Parameters stay client-editable and fill request gaps, so the
+    /// block cipher mode they name is checked when the key is used.
+    #[test]
+    fn retrieved_key_stored_block_cipher_mode_is_checked() -> KResult<()> {
+        let mut object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[0; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Attributes::default()
+            },
+        )?;
+        object.attributes_mut()?.cryptographic_parameters = Some(CryptographicParameters {
+            block_cipher_mode: Some(BlockCipherMode::ECB),
+            ..CryptographicParameters::default()
+        });
+        let owm = ObjectWithMetadata::new(
+            "key".to_owned(),
+            object,
+            "owner",
+            State::Active,
+            Attributes::default(),
+        );
+        let params = custom_policy(KmipAllowlistsConfig {
+            block_cipher_modes: Some(vec![BlockCipherMode::GCM]),
+            ..KmipAllowlistsConfig::default()
+        })?;
+        let result =
+            enforce_kmip_algorithm_policy_for_retrieved_key(&params, "Encrypt", "key", &owm);
+        assert!(is_denied(&result), "{result:?}");
+        Ok(())
+    }
 }

@@ -5,9 +5,7 @@
 
 use clap::ValueEnum;
 use cosmian_kms_cli_actions::{
-    actions::{
-        attributes::CCryptographicAlgorithm, secret_data::create_secret::CreateSecretDataAction,
-    },
+    actions::secret_data::create_secret::CreateSecretDataAction,
     reexport::cosmian_kms_client::{
         cosmian_kmip::kmip_2_1::kmip_types::Tag,
         reexport::cosmian_kms_client_utils::{
@@ -72,7 +70,6 @@ fn delete_attributes(cli_conf_path: &str, key_id: &str, extra_args: &[&str]) -> 
 /// Build the CLI args for setting a specific attribute combination.
 fn build_set_args(
     activation_date: Option<i64>,
-    cryptographic_length: Option<i32>,
     key_usage: &[&str],
     links: &[(&str, &str)],
     name: Option<&str>,
@@ -82,10 +79,6 @@ fn build_set_args(
     if let Some(date) = activation_date {
         args.push("--activation-date".to_owned());
         args.push(date.to_string());
-    }
-    if let Some(length) = cryptographic_length {
-        args.push("--cryptographic-length".to_owned());
-        args.push(length.to_string());
     }
     for usage in key_usage {
         args.push("--key-usage".to_owned());
@@ -130,19 +123,12 @@ fn set_attribute(cli_conf_path: &str, key_id: &str, extra_args: &[&str]) -> Cosm
 fn verify_attributes_present(
     json: &Value,
     activation_date: Option<i64>,
-    cryptographic_length: Option<i32>,
     key_usage: &[&str],
     name: Option<&str>,
 ) {
     if let Some(date) = activation_date {
         let got = json[&Tag::ActivationDate.to_string()].as_i64().unwrap();
         assert_eq!(got, date, "ActivationDate mismatch");
-    }
-    if let Some(length) = cryptographic_length {
-        let got = json[&Tag::CryptographicLength.to_string()]
-            .as_i64()
-            .unwrap();
-        assert_eq!(got, i64::from(length), "CryptographicLength mismatch");
     }
     if !key_usage.is_empty() {
         assert!(
@@ -167,7 +153,6 @@ fn verify_attributes_present(
 fn verify_attributes_absent(
     json: &Value,
     activation_date: Option<i64>,
-    cryptographic_length: Option<i32>,
     key_usage: &[&str],
     name: Option<&str>,
 ) {
@@ -175,12 +160,6 @@ fn verify_attributes_absent(
         assert!(
             json.get(&Tag::ActivationDate.to_string()).is_none(),
             "ActivationDate should be absent after deletion"
-        );
-    }
-    if cryptographic_length.is_some() {
-        assert!(
-            json.get(&Tag::CryptographicLength.to_string()).is_none(),
-            "CryptographicLength should be absent after deletion"
         );
     }
     if !key_usage.is_empty() {
@@ -210,74 +189,42 @@ fn check_set_delete_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResu
         ("child-id", "child_id"),
     ];
 
-    // Test combinations of activation_date × cryptographic_length
     for activation_date in [None, Some(5)] {
-        for cryptographic_length in [None, Some(256)] {
-            let args = build_set_args(
-                activation_date,
-                cryptographic_length,
-                key_usage,
-                &links,
-                Some("my-object-name"),
-                Some(("cosmian", "my_new_attribute", "AABBCCDDEEFF")),
-            );
-            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            set_attribute(cli_conf_path, key_id, &args_ref)?;
+        let args = build_set_args(
+            activation_date,
+            key_usage,
+            &links,
+            Some("my-object-name"),
+            Some(("cosmian", "my_new_attribute", "AABBCCDDEEFF")),
+        );
+        let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        set_attribute(cli_conf_path, key_id, &args_ref)?;
 
-            // Get and verify attributes are present
-            let json = get_attributes(cli_conf_path, key_id)?;
-            verify_attributes_present(
-                &json,
-                activation_date,
-                cryptographic_length,
-                key_usage,
-                Some("my-object-name"),
-            );
+        // Get and verify attributes are present
+        let json = get_attributes(cli_conf_path, key_id)?;
+        verify_attributes_present(&json, activation_date, key_usage, Some("my-object-name"));
 
-            // Delete same attributes
-            delete_attributes(cli_conf_path, key_id, &args_ref)?;
+        // Delete same attributes
+        delete_attributes(cli_conf_path, key_id, &args_ref)?;
 
-            // Verify attributes are gone
-            let json = get_attributes(cli_conf_path, key_id)?;
-            verify_attributes_absent(
-                &json,
-                activation_date,
-                cryptographic_length,
-                key_usage,
-                Some("my-object-name"),
-            );
-        }
+        // Verify attributes are gone
+        let json = get_attributes(cli_conf_path, key_id)?;
+        verify_attributes_absent(&json, activation_date, key_usage, Some("my-object-name"));
     }
 
-    // Test cryptographic algorithm one by one
-    for algo in CCryptographicAlgorithm::iter() {
-        let algo_str = algo
-            .to_possible_value()
-            .expect("valid value")
-            .get_name()
-            .to_string();
-        set_attribute(
-            cli_conf_path,
-            key_id,
-            &["--cryptographic-algorithm", &algo_str],
-        )?;
-
-        let json = get_attributes(cli_conf_path, key_id)?;
+    // Cryptographic Algorithm/Length are server-managed (KMIP 2.1 §4.13, §4.15): the
+    // CLI no longer offers flags to set or delete them.
+    for args in [
+        ["--cryptographic-algorithm", "aes"],
+        ["--cryptographic-length", "256"],
+    ] {
         assert!(
-            json.get(&Tag::CryptographicAlgorithm.to_string()).is_some(),
-            "CryptographicAlgorithm should be present after setting {algo_str}"
+            set_attribute(cli_conf_path, key_id, &args).is_err(),
+            "{args:?} must not be accepted by `attributes set`"
         );
-
-        delete_attributes(
-            cli_conf_path,
-            key_id,
-            &["--cryptographic-algorithm", &algo_str],
-        )?;
-
-        let json = get_attributes(cli_conf_path, key_id)?;
         assert!(
-            json.get(&Tag::CryptographicAlgorithm.to_string()).is_none(),
-            "CryptographicAlgorithm should be absent after deleting {algo_str}"
+            delete_attributes(cli_conf_path, key_id, &args).is_err(),
+            "{args:?} must not be accepted by `attributes delete`"
         );
     }
 

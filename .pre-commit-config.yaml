@@ -238,7 +238,10 @@ repos:
         name: No unverified `curl | sh` bootstrap
         description: Download the script, verify its SHA-256, then run it.
         language: pygrep
-        entry: '^(?!\s*#).*\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b'
+        # --multiline (re.MULTILINE|re.DOTALL, so no `.`): also catch a pipe split across lines
+        # (`curl ... | \` then `sh` on the next line).
+        entry: '^(?![ \t]*#)[^\n]*\b(curl|wget)\b(?:[^\n|]|\\\n)*\|\s*(?:\\\n\s*)?(sudo\s+)?(ba|z)?sh\b'
+        args: [--multiline]
         files: ^(\.github/(workflows|actions)/.*\.ya?ml|\.mise/.*|scripts/.*)$
 
       - id: no-direct-kms-instantiate

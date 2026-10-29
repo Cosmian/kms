@@ -393,12 +393,6 @@ Set the KMIP object attributes.
 
 `--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key. Epoch time (or Unix time) in milliseconds
 
-`--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
-
-Possible values:  `"aes", "rsa", "ecdsa", "ecdh", "ec", "chacha20", "chacha20-poly1305", "sha3224", "sha3256", "sha3384", "sha3512", "ed25519", "ed448", "covercrypt", "covercrypt-bulk"`
-
-`--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
-
 `--key-usage [-u] <KEY_USAGE>` The key usage. Add multiple times to specify multiple key usages
 
 Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-key", "mac-generate", "mac-verify", "derive-key", "key-agreement", "certificate-sign", "crl-sign", "authenticate", "unrestricted"`
@@ -445,12 +439,6 @@ Delete the KMIP object attributes.
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
 `--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key. Epoch time (or Unix time) in milliseconds
-
-`--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
-
-Possible values:  `"aes", "rsa", "ecdsa", "ecdh", "ec", "chacha20", "chacha20-poly1305", "sha3224", "sha3256", "sha3384", "sha3512", "ed25519", "ed448", "covercrypt", "covercrypt-bulk"`
-
-`--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
 
 `--key-usage [-u] <KEY_USAGE>` The key usage. Add multiple times to specify multiple key usages
 
@@ -501,12 +489,6 @@ Modify existing KMIP object attributes.
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
 `--activation-date [-d] <ACTIVATION_DATE>` Set the activation date of the key. Epoch time (or Unix time) in milliseconds
-
-`--cryptographic-algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` The cryptographic algorithm used by the key
-
-Possible values:  `"aes", "rsa", "ecdsa", "ecdh", "ec", "chacha20", "chacha20-poly1305", "sha3224", "sha3256", "sha3384", "sha3512", "ed25519", "ed448", "covercrypt", "covercrypt-bulk"`
-
-`--cryptographic-length <CRYPTOGRAPHIC_LENGTH>` The length of the cryptographic key
 
 `--key-usage [-u] <KEY_USAGE>` The key usage. Add multiple times to specify multiple key usages
 

@@ -36,7 +36,8 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::openssl::{
-        csr_attrs::{csr_challenge_password, csr_with_challenge_password},
+        csr_attrs::csr_with_challenge_password,
+        kmip_certificate_to_openssl,
         scep_cms::{
             FAIL_INFO_BAD_CERT_ID, FAIL_INFO_BAD_REQUEST, MESSAGE_TYPE_CERT_REP,
             MESSAGE_TYPE_PKCS_REQ, MESSAGE_TYPE_RENEWAL_REQ, NONCE_LEN, PKI_STATUS_FAILURE,
@@ -60,7 +61,8 @@ use x509_parser::prelude::{FromDer, X509Certificate};
 use crate::{
     config::{EstConfig, ScepConfig, ServerParams, TlsConfig},
     core::{
-        KMS, certificate::retrieve_issuer_private_key_and_certificate,
+        KMS,
+        certificate::{find_ca_issued_certificates, retrieve_issuer_private_key_and_certificate},
         operations::certify::template::CertTemplate,
     },
     middlewares::{UserId, user_from_client_certificate},
@@ -366,7 +368,7 @@ async fn est_cacerts_returns_base64_certs_only_chain() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn est_csrattrs_advertises_extension_request() -> KResult<()> {
+async fn est_csrattrs_advertises_extension_request_and_key_requirements() -> KResult<()> {
     let (kms, _) = make_kms(true, false, true).await?;
     let app = app!(kms);
     let resp = test::call_service(
@@ -380,12 +382,20 @@ async fn est_csrattrs_advertises_extension_request() -> KResult<()> {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(h(&headers, "content-type"), "application/csrattrs");
     let der = STANDARD.decode(&body).unwrap();
-    // SEQUENCE { OID 1.2.840.113549.1.9.14 (extensionRequest) }
+    let contains = |needle: &[u8]| der.windows(needle.len()).any(|w| w == needle);
+    // SEQUENCE { OID 1.2.840.113549.1.9.14 (extensionRequest), ... }
     assert_eq!(der[0], 0x30);
-    assert!(
-        der.windows(9)
-            .any(|w| w == [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x0E])
-    );
+    assert!(contains(&[
+        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x0E
+    ]));
+    // exactly one key type (RFC 9908 §3.2): id-ecPublicKey SET { prime256v1 }, no rsaEncryption
+    assert!(!contains(&[
+        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01
+    ]));
+    assert!(contains(&[
+        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01, 0x31, 0x0A, 0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE,
+        0x3D, 0x03, 0x01, 0x07
+    ]));
     Ok(())
 }
 
@@ -598,7 +608,8 @@ async fn est_simplereenroll_requires_matching_identity_and_ca_issued_certificate
     let renew = |c: &X509Req| STANDARD.encode(c.to_der().unwrap()).into_bytes();
 
     // no TLS client certificate -> 401
-    let resp = est::simple_reenroll(&kms, None, &renew(&csr(&key, "dev1.iot.example"))).await?;
+    let resp =
+        est::simple_reenroll(&kms, None, None, &renew(&csr(&key, "dev1.iot.example"))).await?;
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
     // same Subject, fresh key (rekey) -> 200 with a new certificate
@@ -606,6 +617,7 @@ async fn est_simplereenroll_requires_matching_identity_and_ca_issued_certificate
     let resp = est::simple_reenroll(
         &kms,
         Some(&current),
+        None,
         &renew(&csr(&new_key, "dev1.iot.example")),
     )
     .await?;
@@ -623,15 +635,44 @@ async fn est_simplereenroll_requires_matching_identity_and_ca_issued_certificate
         current.serial_number().to_bn().unwrap()
     );
 
+    // RFC 7030 §3.5: a tls-unique challengePassword must match the connection's binding
+    let binding = [0x42_u8; 12];
+    let bound = |value: &str| {
+        csr_with_challenge_password(&csr(&new_key, "dev1.iot.example"), &new_key, value).unwrap()
+    };
+    for (value, tls_unique, expected) in [
+        (
+            STANDARD.encode([0x24_u8; 12]),
+            Some(&binding[..]),
+            StatusCode::BAD_REQUEST,
+        ),
+        (STANDARD.encode(binding), None, StatusCode::BAD_REQUEST),
+        (STANDARD.encode(binding), Some(&binding[..]), StatusCode::OK),
+    ] {
+        let resp =
+            est::simple_reenroll(&kms, Some(&current), tls_unique, &renew(&bound(&value))).await?;
+        assert_eq!(resp.status(), expected, "{value} / {tls_unique:?}");
+    }
+
     // different Subject -> 400
-    let resp =
-        est::simple_reenroll(&kms, Some(&current), &renew(&csr(&key, "dev2.iot.example"))).await?;
+    let resp = est::simple_reenroll(
+        &kms,
+        Some(&current),
+        None,
+        &renew(&csr(&key, "dev2.iot.example")),
+    )
+    .await?;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     // certificate not issued by the EST CA -> 403
     let foreign = self_signed(&key, "dev1.iot.example");
-    let resp =
-        est::simple_reenroll(&kms, Some(&foreign), &renew(&csr(&key, "dev1.iot.example"))).await?;
+    let resp = est::simple_reenroll(
+        &kms,
+        Some(&foreign),
+        None,
+        &renew(&csr(&key, "dev1.iot.example")),
+    )
+    .await?;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     Ok(())
 }
@@ -660,13 +701,7 @@ async fn est_simpleenroll_rejects_revoked_ca_issued_client_certificate() -> KRes
         .to_hex_str()
         .unwrap()
         .to_string();
-    let (uid, _, _) = Box::pin(kms.database.find_certificate_by_serial(
-        CA_UID,
-        &serial_hex,
-        kms.vendor_id(),
-    ))
-    .await?
-    .expect("issued certificate is tracked");
+    let uid = Box::pin(issued_certificate_uid(&kms, &serial_hex)).await?;
     let owner: UserId = kms.params.default_username.clone().into();
     kms.revoke(
         Revoke {
@@ -1036,9 +1071,42 @@ async fn scep_pkcsreq_under_default_kmip_policy_requires_compliant_keys() -> KRe
     Ok(())
 }
 
-/// Captures of the native macOS SCEP client (`mise run test:scep-apple`) must stay parseable by
-/// the server: a signed `PKCSReq` whose envelope decrypts with the test CA to an RSA-2048 CSR
+/// The native macOS client encrypts its envelope with PKCS#1 v1.5 (`rsaEncryption`) key
+/// transport, which only the non-FIPS build accepts: the envelope decrypts to an RSA-2048 CSR
 /// carrying the challenge and the profile's CN.
+#[cfg(feature = "non-fips")]
+fn check_apple_envelope(envelope: &[u8], ca_key: &PKey<Private>, ca: &X509) {
+    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::csr_attrs::csr_challenge_password;
+
+    let csr = X509Req::from_der(&decrypt_envelope(envelope, ca_key, ca).unwrap()).unwrap();
+    let key = csr.public_key().unwrap();
+    assert!(csr.verify(&key).unwrap(), "CSR proof of possession");
+    assert_eq!(key.bits(), 2048);
+    assert_eq!(csr_challenge_password(&csr).as_deref(), Some(CHALLENGE));
+    let cn = csr
+        .subject_name()
+        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+        .next()
+        .unwrap()
+        .data()
+        .as_slice();
+    assert_eq!(cn, b"mac-01.iot.example");
+}
+
+/// The FIPS build refuses the macOS client's PKCS#1 v1.5 key transport before decrypting.
+#[cfg(not(feature = "non-fips"))]
+fn check_apple_envelope(envelope: &[u8], ca_key: &PKey<Private>, ca: &X509) {
+    let err = decrypt_envelope(envelope, ca_key, ca)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("key-transport algorithm rsaEncryption is not allowed"),
+        "{err}"
+    );
+}
+
+/// Captures of the native macOS SCEP client (`mise run test:scep-apple`) must stay parseable by
+/// the server (see [`check_apple_envelope`] for the envelope).
 #[tokio::test]
 async fn apple_scep_fixtures_parse() {
     init_openssl_providers_for_tests();
@@ -1061,21 +1129,7 @@ async fn apple_scep_fixtures_parse() {
             dir.display()
         );
         assert!(!parsed.attrs.transaction_id.is_empty());
-        let csr =
-            X509Req::from_der(&decrypt_envelope(&parsed.content, &ca_key, &ca).unwrap()).unwrap();
-        let key = csr.public_key().unwrap();
-        assert!(csr.verify(&key).unwrap(), "CSR proof of possession");
-        assert_eq!(key.bits(), 2048);
-        assert_eq!(csr_challenge_password(&csr).as_deref(), Some(CHALLENGE));
-        let cn = csr
-            .subject_name()
-            .entries_by_nid(openssl::nid::Nid::COMMONNAME)
-            .next()
-            .unwrap()
-            .data()
-            .as_slice();
-        assert_eq!(cn, b"mac-01.iot.example");
-
+        check_apple_envelope(&parsed.content, &ca_key, &ca);
         // Renewal capture (if any) is observational: it only has to be a valid pkiMessage.
         if dir.join("renewal.der").exists() {
             let renewal = parse_signed_pkimessage(&read("renewal.der")).unwrap();
@@ -1220,13 +1274,7 @@ async fn scep_renewal_rejects_foreign_and_revoked_signers() -> KResult<()> {
         .to_hex_str()
         .unwrap()
         .to_string();
-    let (uid, _, _) = Box::pin(kms.database.find_certificate_by_serial(
-        CA_UID,
-        &serial_hex,
-        kms.vendor_id(),
-    ))
-    .await?
-    .expect("issued certificate is tracked");
+    let uid = Box::pin(issued_certificate_uid(&kms, &serial_hex)).await?;
     let owner: UserId = kms.params.default_username.clone().into();
     kms.revoke(
         Revoke {
@@ -1398,13 +1446,7 @@ async fn issued_certificate_is_owned_by_the_ca_owner_not_the_service_identity() 
     let app = app!(kms);
     let (_, cert) = enroll_device(&app, &ca, "dev1.iot.example").await;
     let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
-    let (uid, _, _) = Box::pin(kms.database.find_certificate_by_serial(
-        CA_UID,
-        &serial_hex,
-        kms.vendor_id(),
-    ))
-    .await?
-    .expect("issued certificate is tracked");
+    let uid = Box::pin(issued_certificate_uid(&kms, &serial_hex)).await?;
     let owm = kms.database.retrieve_object(&uid).await?.expect("stored");
     assert_eq!(owm.owner_id(), CA_OWNER);
     Ok(())
@@ -1416,6 +1458,30 @@ async fn certificate_uids(kms: &KMS) -> KResult<HashSet<String>> {
         .database
         .list_uids_for_tags(&HashSet::from([SYSTEM_TAG_CERTIFICATE.to_owned()]))
         .await?)
+}
+
+/// UID of the stored certificate with `serial_hex` issued by the enrollment CA.
+async fn issued_certificate_uid(kms: &KMS, serial_hex: &str) -> KResult<String> {
+    let ca = kms
+        .database
+        .retrieve_object_arc(CA_UID)
+        .await?
+        .expect("the CA is stored");
+    let ca_x509 = kmip_certificate_to_openssl(ca.object())?;
+    let serial = serial_hex.to_ascii_uppercase();
+    let records = Box::pin(find_ca_issued_certificates(
+        kms,
+        &ca,
+        &ca_x509,
+        &HashSet::from([serial.clone()]),
+    ))
+    .await?;
+    Ok(records
+        .get(&serial)
+        .and_then(|records| records.first())
+        .expect("issued certificate is tracked")
+        .0
+        .clone())
 }
 
 #[tokio::test]
@@ -1902,5 +1968,88 @@ async fn scep_renewal_does_not_clear_the_lockout() -> KResult<()> {
         test::call_service(&app, req).await.status(),
         StatusCode::TOO_MANY_REQUESTS
     );
+    Ok(())
+}
+
+/// The serial index tag on an `Active` copy stored under another owner (as a user could plant
+/// it through a PKCS#12 import) must not make the revoked original renewable: only certificates
+/// owned by the CA owner count, on the tag lookup as on the fallback.
+#[tokio::test]
+async fn serial_tag_on_a_copy_owned_by_another_user_does_not_revive_a_revoked_certificate()
+-> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let (_, body, _) = est_enroll(
+        &app,
+        &csr(&rsa_key(2048), "dev1.iot.example"),
+        Some(basic_auth("testuser", "testpass")),
+    )
+    .await;
+    let cert = certs_of(&STANDARD.decode(&body).unwrap()).remove(0);
+    let serial_hex = cert.serial_number().to_bn()?.to_hex_str()?.to_string();
+    let tag = crate::routes::enrollment::serial_tag(CA_UID, &serial_hex);
+    let uid = kms
+        .database
+        .list_uids_for_tags(&HashSet::from([tag.clone()]))
+        .await?
+        .into_iter()
+        .next()
+        .unwrap();
+    let genuine = kms.database.retrieve_object(&uid).await?.unwrap();
+    let mut tags = kms.database.retrieve_tags(&uid).await?;
+    let mut attributes = genuine.attributes().clone();
+    attributes.state = Some(State::Active);
+    kms.database
+        .create(
+            Some("attacker-copy".to_owned()),
+            &UserId::from("mallory@example.com"),
+            genuine.object(),
+            &attributes,
+            &tags,
+        )
+        .await?;
+    // The genuine certificate keeps only its CA link (as before the serial index), so the tag
+    // lookup meets the attacker's copy alone.
+    tags.remove(&tag);
+    kms.database
+        .update_object(&uid, genuine.object(), genuine.attributes(), Some(&tags))
+        .await?;
+    let owner: UserId = kms.params.default_username.clone().into();
+    kms.revoke(
+        Revoke {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid)),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        },
+        &owner,
+    )
+    .await?;
+    let resp =
+        est::enroll_for_peer(&kms, Some(&cert), &csr(&rsa_key(2048), "dev1.iot.example")).await?;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    Ok(())
+}
+
+/// RFC 7030 §3.5: a CSR carrying tls-unique (challengePassword) is refused when the connection
+/// binding cannot be checked (here: no TLS), never issued unchecked.
+#[tokio::test]
+async fn est_simpleenroll_refuses_an_unverifiable_tls_unique() -> KResult<()> {
+    let (kms, _) = make_kms(true, false, true).await?;
+    let app = app!(kms);
+    let key = rsa_key(2048);
+    let bound = csr_with_challenge_password(
+        &csr(&key, "dev1.iot.example"),
+        &key,
+        &STANDARD.encode([0x42_u8; 12]),
+    )
+    .unwrap();
+    let (status, body, _) =
+        est_enroll(&app, &bound, Some(basic_auth("testuser", "testpass"))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(String::from_utf8_lossy(&body).contains("tls-unique"));
     Ok(())
 }

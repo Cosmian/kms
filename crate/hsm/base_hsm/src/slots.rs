@@ -12,6 +12,7 @@ use pkcs11_sys::{
     CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use zeroize::Zeroizing;
 
 use crate::{
     HError, HResult, Session, hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
@@ -178,7 +179,7 @@ impl<'a> SessionGuard<'a> {
 }
 
 struct LoginSessionState {
-    password: Option<String>,
+    password: Option<Zeroizing<String>>,
     session: Option<Session>,
 }
 
@@ -250,7 +251,7 @@ impl SlotManager {
             supported_oaep_hash_cache,
             message_mechanism_support,
             login_state: Mutex::new(LoginSessionState {
-                password: login_password,
+                password: login_password.map(Zeroizing::new),
                 session: None,
             }),
             session_pool,
@@ -353,7 +354,7 @@ impl SlotManager {
             .map_err(|e| HError::Default(format!("Failed to lock HSM login state: {e}")))?;
         if login_state.session.is_none() {
             if let Some(password) = login_state.password.take() {
-                match self.open_session_(false, Some(&password)) {
+                match self.open_session_(false, Some(password.as_str())) {
                     Ok(session) => login_state.session = Some(session),
                     Err(error) => {
                         login_state.password = Some(password);
@@ -442,7 +443,7 @@ impl SlotManager {
         }
     }
 
-    fn open_session_(&self, read_write: bool, login_password: Option<&String>) -> HResult<Session> {
+    fn open_session_(&self, read_write: bool, login_password: Option<&str>) -> HResult<Session> {
         let hsm_lib = &self.hsm_lib;
         let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(self.slot_id)?;
         let flags: CK_FLAGS = if read_write {
@@ -470,9 +471,11 @@ impl SlotManager {
 
         if let Some(login_password) = login_password {
             debug!("Logging in session {session_handle} with password");
-            let mut pwd_bytes = login_password.as_bytes().to_vec();
+            let mut pwd_bytes = Zeroizing::new(login_password.as_bytes().to_vec());
 
             #[expect(unsafe_code)]
+            // SAFETY: `pwd_bytes` is a live owned buffer of exactly `pwd_bytes.len()` bytes (null when
+            // empty), outliving the call; `session_handle` was just returned by `C_OpenSession`.
             let mut rv = unsafe {
                 hsm_lib
                     .C_Login
@@ -491,10 +494,12 @@ impl SlotManager {
                 if let (Some(login_user), Some((username, password))) =
                     (hsm_lib.C_LoginUser, login_password.split_once(':'))
                 {
-                    let mut username_bytes = username.as_bytes().to_vec();
-                    let mut password_bytes = password.as_bytes().to_vec();
+                    let mut username_bytes = Zeroizing::new(username.as_bytes().to_vec());
+                    let mut password_bytes = Zeroizing::new(password.as_bytes().to_vec());
                     #[expect(unsafe_code)]
                     {
+                        // SAFETY: both buffers are live owned vectors passed with their exact
+                        // lengths (null when empty) and outlive the `C_LoginUser` call.
                         rv = unsafe {
                             login_user(
                                 session_handle,

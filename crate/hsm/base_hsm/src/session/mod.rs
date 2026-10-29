@@ -216,13 +216,8 @@ mod tests {
     }
 }
 
-// Tests assert on exact fixture counter values (fixed-size arrays, deterministic stubs).
 #[cfg(test)]
-#[allow(
-    clippy::panic_in_result_fn,
-    clippy::indexing_slicing,
-    clippy::expect_used
-)]
+#[allow(clippy::panic_in_result_fn, clippy::expect_used)] // tests: a panic is the failure signal
 mod message_signature_tests;
 
 mod aes;

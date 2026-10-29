@@ -233,8 +233,12 @@ cookie. Logging out of the UI revokes the Authentication Verifier session and ex
     assertion. Configure the realm's `subject_attribute` (for example `email`) so that it matches the identities
     used in KMS access rights.
 
-!!! warning
-    The KMS validates the session cookie locally (signature, realm and expiry). A session revoked directly on the
-    Authentication Verifier remains accepted by the KMS until it expires: keep the realm's session lifetime short.
+!!! note
+    Besides its signature, realm and expiry, the KMS checks that the session of every Authentication Verifier token
+    (`_ea_` cookie or `Authorization: Bearer`) is still live, with `GET {auth_verifier_url}/whoami`; a live session is
+    cached for 30 seconds. A session ended by UI logout is refused at once by the KMS instance that served the logout;
+    one revoked on the Authentication Verifier, or idle past the realm's stale age, is refused within 30 seconds. The
+    KMS must reach `auth_verifier_url`, through the `[proxy]` settings when they are configured (as for the JWKS
+    fetch): when it cannot, Authentication Verifier tokens are refused.
 
 ---

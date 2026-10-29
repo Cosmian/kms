@@ -9,30 +9,32 @@ use crate::{
     error::result::KmsCliResult,
 };
 
-/// Revoke a public or private key.
+/// Revoke a key.
 ///
-/// Once a key is revoked, it can only be exported by the owner of the key,
-/// using the --allow-revoked flag on the export function.
-///
-/// Revoking a public or private key will revoke the whole key pair
-/// (the two keys need to be stored in the KMS).
+/// Shared by the `keys revoke` subcommands; each `KeysCommands::Revoke`
+/// variant carries the help text for its key family.
 #[derive(Parser, Debug)]
 pub struct RevokeKeyAction {
     #[clap(flatten)]
-    reason: RevokeReasonArgs,
+    pub(crate) reason: RevokeReasonArgs,
 
     /// The key unique identifier of the key to revoke.
     /// If not specified, tags should be specified
     #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
-    key_id: Option<String>,
+    pub(crate) key_id: Option<String>,
 
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
-    tags: Option<Vec<String>>,
+    pub(crate) tags: Option<Vec<String>>,
 }
 
 impl RevokeKeyAction {
+    /// Run the revoke key action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if key UID resolution or revocation fails.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
         revoke(

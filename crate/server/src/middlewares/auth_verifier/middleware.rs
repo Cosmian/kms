@@ -21,28 +21,28 @@ use futures::{
     future::{Ready, ok},
 };
 
-use super::token::handle_auth_verifier;
-use crate::middlewares::{AuthenticatedUser, JwksManager};
+use super::{AuthVerifierValidator, token::handle_auth_verifier};
+use crate::middlewares::AuthenticatedUser;
 
 /// Transformer — registered once during app startup.
 #[derive(Clone)]
 pub(crate) struct AuthVerifier {
-    jwks_manager: Option<Arc<JwksManager>>,
+    auth_verifier: Option<Arc<AuthVerifierValidator>>,
     session_cookie_realm: Option<Arc<str>>,
 }
 
 impl AuthVerifier {
     /// Create a new `AuthVerifier` transformer.
-    /// When `jwks_manager` is `None`, the middleware is a no-op (used with `Condition::new(false, …)`).
+    /// When `auth_verifier` is `None`, the middleware is a no-op (used with `Condition::new(false, …)`).
     /// When `session_cookie_realm` is set, requests without a bearer token may authenticate
     /// with an Auth Verifier `_ea_` session cookie issued for that realm.
     #[must_use]
     pub(crate) const fn new(
-        jwks_manager: Option<Arc<JwksManager>>,
+        auth_verifier: Option<Arc<AuthVerifierValidator>>,
         session_cookie_realm: Option<Arc<str>>,
     ) -> Self {
         Self {
-            jwks_manager,
+            auth_verifier,
             session_cookie_realm,
         }
     }
@@ -62,7 +62,7 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(AuthVerifierMiddleware {
             service: Rc::new(service),
-            jwks_manager: self.jwks_manager.clone(),
+            auth_verifier: self.auth_verifier.clone(),
             session_cookie_realm: self.session_cookie_realm.clone(),
         })
     }
@@ -71,7 +71,7 @@ where
 /// Middleware service — processes each request.
 pub(crate) struct AuthVerifierMiddleware<S> {
     service: Rc<S>,
-    jwks_manager: Option<Arc<JwksManager>>,
+    auth_verifier: Option<Arc<AuthVerifierValidator>>,
     session_cookie_realm: Option<Arc<str>>,
 }
 
@@ -90,7 +90,7 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
-        let jwks_manager = self.jwks_manager.clone();
+        let auth_verifier = self.auth_verifier.clone();
         let session_cookie_realm = self.session_cookie_realm.clone();
 
         Box::pin(async move {
@@ -99,8 +99,10 @@ where
                 debug!(
                     "AuthVerifier Middleware: an authenticated user was already found; skipping."
                 );
-            } else if let Some(ref jwks) = jwks_manager {
-                match handle_auth_verifier(jwks, &req, session_cookie_realm.as_deref()).await {
+            } else if let Some(auth_verifier) = &auth_verifier {
+                match handle_auth_verifier(auth_verifier, &req, session_cookie_realm.as_deref())
+                    .await
+                {
                     Ok(user) => {
                         debug!(
                             "AuthVerifier Middleware: authenticated user `{}`",
@@ -122,7 +124,10 @@ where
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     use actix_web::{
         App, HttpMessage, HttpRequest, HttpResponse,
@@ -131,10 +136,10 @@ mod tests {
         test, web,
     };
 
-    use super::AuthVerifier;
+    use super::{AuthVerifier, AuthVerifierValidator};
     use crate::middlewares::{
         AUTH_VERIFIER_SESSION_COOKIE, AuthMethod, AuthenticatedUser,
-        auth_verifier_test_helpers::{auth_verifier_token, empty_jwks_manager},
+        auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier, mock_auth_verifier},
     };
 
     /// Echoes `<auth method>:<username>`, or 401 when no middleware authenticated the request.
@@ -146,12 +151,17 @@ mod tests {
     }
 
     async fn call(realm: Option<&str>, request: test::TestRequest) -> (StatusCode, String) {
+        call_with(live_auth_verifier().await, realm, request).await
+    }
+
+    async fn call_with(
+        auth_verifier: Arc<AuthVerifierValidator>,
+        realm: Option<&str>,
+        request: test::TestRequest,
+    ) -> (StatusCode, String) {
         let app = test::init_service(
             App::new()
-                .wrap(AuthVerifier::new(
-                    Some(empty_jwks_manager().await),
-                    realm.map(Arc::from),
-                ))
+                .wrap(AuthVerifier::new(Some(auth_verifier), realm.map(Arc::from)))
                 .route("/", web::route().to(identity)),
         )
         .await;
@@ -173,6 +183,39 @@ mod tests {
         assert_eq!(
             body,
             format!("{:?}:alice@example.com", AuthMethod::AuthVerifierSession)
+        );
+    }
+
+    /// Regression (logout replay): once the Auth Verifier session is ended (logout, admin
+    /// revocation, idle timeout), a captured `_ea_` value no longer authenticates, neither
+    /// as the cookie nor replayed as a bearer token.
+    #[actix_web::test]
+    async fn token_of_ended_session_does_not_authenticate() {
+        let live = Arc::new(AtomicBool::new(true));
+        let auth_verifier = mock_auth_verifier(live.clone()).await;
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
+        let bearer = || {
+            test::TestRequest::get()
+                .insert_header((header::AUTHORIZATION, format!("Bearer {token}")))
+        };
+        let (status, _) = call_with(auth_verifier.clone(), Some("kms-saml"), bearer()).await;
+        assert_eq!(status, StatusCode::OK, "live session");
+
+        live.store(false, Ordering::SeqCst);
+        // Logout on this KMS drops the cached session; revocations elsewhere expire with it.
+        auth_verifier.forget_session(&token);
+        let (status, _) =
+            call_with(auth_verifier.clone(), Some("kms-saml"), with_cookie(&token)).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "cookie of an ended session"
+        );
+        let (status, _) = call_with(auth_verifier, Some("kms-saml"), bearer()).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "bearer of an ended session"
         );
     }
 

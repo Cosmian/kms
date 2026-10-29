@@ -251,6 +251,7 @@ impl Database {
         &self.object_cache
     }
 
+    /// Cache of [`Self::find_by_rotate_name`] results.
     pub const fn rotate_name_cache(&self) -> &RotateNameCache {
         &self.rotate_name_cache
     }

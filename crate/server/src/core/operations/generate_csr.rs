@@ -11,7 +11,9 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::OperationEnumeration,
         },
     },
-    cosmian_kms_crypto::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+    cosmian_kms_crypto::openssl::{
+        kmip_private_key_to_openssl, kmip_public_key_to_openssl, x509_signing_digest,
+    },
 };
 use openssl::{
     hash::MessageDigest,
@@ -217,11 +219,8 @@ pub(crate) async fn generate_csr(
         builder.set_version(0)?;
         builder.set_subject_name(&name)?;
         builder.set_pubkey(&public_key)?;
-        // RSA and EC need an explicit digest; EdDSA and PQC algorithms hash internally.
-        let digest = match private_key.id() {
-            Id::RSA | Id::EC => MessageDigest::sha256(),
-            _ => MessageDigest::null(),
-        };
+        // RSA and ECDSA hash with the digest matching the key; EdDSA and PQC hash internally.
+        let digest = x509_signing_digest(&private_key);
         // Key-agreement keys cannot sign: a client error, not a server failure
         if matches!(private_key.id(), Id::X25519 | Id::X448) {
             kms_bail!(KmsError::InvalidRequest(format!(

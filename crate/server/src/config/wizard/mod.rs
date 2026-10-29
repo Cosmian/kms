@@ -57,6 +57,18 @@ use crate::{
     result::KResult,
 };
 
+/// Maps a failed `dialoguer` prompt to the wizard's `KmsError`.
+trait PromptResultExt<T> {
+    /// Converts the prompt error into `KmsError::ServerError("Prompt error: …")`.
+    fn prompt_err(self) -> KResult<T>;
+}
+
+impl<T> PromptResultExt<T> for Result<T, dialoguer::Error> {
+    fn prompt_err(self) -> KResult<T> {
+        self.map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))
+    }
+}
+
 /// Run the interactive configuration wizard and write the configuration file.
 ///
 /// # Errors
@@ -131,7 +143,7 @@ pub fn run_configure_wizard() -> KResult<()> {
             let ca: String = Input::with_theme(&ColorfulTheme::default())
                 .with_prompt("Clients CA certificate file path (--clients-ca-cert-file)")
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             tls.clients_ca_cert_file = Some(std::path::PathBuf::from(ca));
         }
     }

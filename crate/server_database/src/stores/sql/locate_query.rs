@@ -698,13 +698,26 @@ pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime)
     now >= next_rotation
 }
 
+/// Keep the `(uid, owner)` of the `(uid, owner, attributes)` rows that are due
+/// for rotation at `now` (see [`is_due_for_rotation`]).
+pub(super) fn filter_due_for_rotation(
+    rows: impl IntoIterator<Item = (String, String, Attributes)>,
+    now: time::OffsetDateTime,
+) -> Vec<(String, String)> {
+    rows.into_iter()
+        .filter(|(_, _, attrs)| is_due_for_rotation(attrs, now))
+        .map(|(uid, owner, _)| (uid, owner))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use cosmian_kmip::kmip_2_1::{extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes};
     use cosmian_kms_interfaces::FindOptions;
 
     use super::{
-        LocateParam, MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder, query_from_attributes,
+        LocateParam, MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder,
+        filter_due_for_rotation, query_from_attributes,
     };
 
     fn tagged_attributes() -> Attributes {
@@ -818,5 +831,29 @@ mod tests {
         );
         assert!(sql.contains("INNER JOIN tags t0"), "{sql}");
         assert!(sql.contains("LIMIT $"), "{sql}");
+    }
+
+    #[test]
+    fn filter_due_for_rotation_keeps_only_due_rows() {
+        let now = time::OffsetDateTime::now_utc();
+        let due = Attributes {
+            rotate_interval: Some(10),
+            rotate_date: Some(now - time::Duration::seconds(20)),
+            ..Attributes::default()
+        };
+        let not_due = Attributes {
+            rotate_interval: Some(10),
+            rotate_date: Some(now),
+            ..Attributes::default()
+        };
+        let rows = vec![
+            ("a".to_owned(), "alice".to_owned(), due),
+            ("b".to_owned(), "bob".to_owned(), not_due),
+            ("c".to_owned(), "carol".to_owned(), Attributes::default()),
+        ];
+        assert_eq!(
+            filter_due_for_rotation(rows, now),
+            vec![("a".to_owned(), "alice".to_owned())]
+        );
     }
 }

@@ -427,6 +427,7 @@ async fn lifecycle(alg: Alg) -> KResult<()> {
     assert!(wrapped_sk.is_wrapped());
 
     // 4. Import: plain objects are wrapped by the server KEK, wrapped ones are stored as-is
+    // (the owner is an HSM admin, hence may decrypt with the KEK)
     let sk_imp = format!("{sk}-imp");
     let pk_imp = format!("{pk}-imp");
     let sk_impw = format!("{sk}-impw");

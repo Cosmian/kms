@@ -1,6 +1,8 @@
 //! Auth Verifier Token Validation
 //!
-//! Validates bearer tokens issued by the Auth Verifier server.
+//! Validates bearer tokens and `_ea_` session cookies issued by the Auth Verifier server:
+//! signature against its JWKS, then liveness of the session against the Auth Verifier
+//! itself (see [`super::session`]), so logout and revocation are enforced by the KMS.
 //!
 //! Key differences from the standard OIDC/JWT middleware (`JwtAuth`):
 //!
@@ -29,6 +31,7 @@ use jsonwebtoken::dangerous;
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header, jwk::Jwk};
 use serde::Deserialize;
 
+use super::AuthVerifierValidator;
 use crate::{
     error::KmsError,
     middlewares::{
@@ -70,11 +73,11 @@ pub(crate) const AUTH_VERIFIER_SESSION_COOKIE: &str = "_ea_";
 /// Core authentication handler for Auth Verifier server tokens.
 ///
 /// Validates the bearer token from the `Authorization` header against every key in
-/// the JWKS (these tokens carry no `kid`). When no bearer token is present and
-/// `session_cookie_realm` is set, falls back to the Auth Verifier `_ea_` session
-/// cookie, accepted only for that realm.
+/// the JWKS (these tokens carry no `kid`), then checks that its session is still live.
+/// When no bearer token is present and `session_cookie_realm` is set, falls back to the
+/// Auth Verifier `_ea_` session cookie, accepted only for that realm.
 pub(super) async fn handle_auth_verifier(
-    jwks_manager: &Arc<JwksManager>,
+    auth_verifier: &AuthVerifierValidator,
     req: &ServiceRequest,
     session_cookie_realm: Option<&str>,
 ) -> KResult<AuthenticatedUser> {
@@ -96,7 +99,7 @@ pub(super) async fn handle_auth_verifier(
             }
             return Ok(AuthenticatedUser {
                 username: authenticate_auth_verifier_session_cookie(
-                    jwks_manager,
+                    auth_verifier,
                     cookie.value(),
                     realm,
                 )
@@ -106,7 +109,7 @@ pub(super) async fn handle_auth_verifier(
         }
     };
 
-    let username = UserId::from(verify_auth_verifier_jwt_subject(jwks_manager, token).await?);
+    let username = UserId::from(verify_auth_verifier_jwt_subject(auth_verifier, token).await?);
     reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
@@ -137,13 +140,14 @@ fn is_not_forgeable_cross_origin(req: &ServiceRequest) -> bool {
 ///
 /// Unlike bearer tokens, a browser cookie is sent ambiently, so the token must have
 /// been issued for `expected_realm`: a session from any other realm of the same
-/// Auth Verifier (another application, the admin realm, ...) is rejected.
+/// Auth Verifier (another application, the admin realm, ...) is rejected. The session
+/// must still be live on the Auth Verifier.
 pub(crate) async fn authenticate_auth_verifier_session_cookie(
-    jwks_manager: &Arc<JwksManager>,
+    auth_verifier: &AuthVerifierValidator,
     token: &str,
     expected_realm: &str,
 ) -> KResult<UserId> {
-    let claims = verify_auth_verifier_jwt(jwks_manager, token).await?;
+    let claims = verify_auth_verifier_jwt(&auth_verifier.jwks, token).await?;
     if claims.realm_id.as_deref() != Some(expected_realm) {
         return Err(KmsError::Unauthorized(format!(
             "Auth Verifier: session cookie was not issued for realm `{expected_realm}`"
@@ -152,11 +156,12 @@ pub(crate) async fn authenticate_auth_verifier_session_cookie(
     let username = UserId::try_new(claims.sub)
         .map_err(|e| KmsError::Unauthorized(format!("Auth Verifier: {e}")))?;
     reject_reserved_service_identity(&username)?;
+    auth_verifier.ensure_live_session(token).await?;
     Ok(username)
 }
 
-/// Validate a Auth Verifier server JWT and return its `sub` claim (the
-/// authenticated username).
+/// Validate a Auth Verifier server JWT, check that its session is still live, and return
+/// its `sub` claim (the authenticated username).
 ///
 /// Shared between the bearer-token `AuthVerifier` middleware
 /// (`handle_auth_verifier`) and the UI's BFF login proxy
@@ -165,10 +170,12 @@ pub(crate) async fn authenticate_auth_verifier_session_cookie(
 /// the resulting username in the actix session. Keeping a single
 /// implementation avoids the two call sites drifting apart on trust logic.
 pub(crate) async fn verify_auth_verifier_jwt_subject(
-    jwks_manager: &Arc<JwksManager>,
+    auth_verifier: &AuthVerifierValidator,
     token: &str,
 ) -> KResult<String> {
-    Ok(verify_auth_verifier_jwt(jwks_manager, token).await?.sub)
+    let claims = verify_auth_verifier_jwt(&auth_verifier.jwks, token).await?;
+    auth_verifier.ensure_live_session(token).await?;
+    Ok(claims.sub)
 }
 
 /// Validate a Auth Verifier server JWT and return its claims.
@@ -274,13 +281,24 @@ async fn verify_auth_verifier_jwt(
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 pub(crate) mod tests {
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
 
-    use super::{authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt_subject};
+    use super::{
+        AUTH_VERIFIER_SESSION_COOKIE, AuthVerifierValidator,
+        authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt_subject,
+    };
     use crate::{
+        config::AuthVerifierConfig,
         error::KmsError,
         middlewares::{JwksManager, UserId},
         routes::aws_xks::AWS_XKS_SERVICE_USER,
@@ -295,7 +313,7 @@ pub(crate) mod tests {
     }
 
     async fn verify(header: &str) -> crate::result::KResult<String> {
-        verify_auth_verifier_jwt_subject(&empty_jwks_manager().await, &token(header)).await
+        verify_auth_verifier_jwt_subject(&*live_auth_verifier().await, &token(header)).await
     }
 
     #[tokio::test]
@@ -338,19 +356,71 @@ pub(crate) mod tests {
         .expect("sign test JWT")
     }
 
-    pub(crate) async fn empty_jwks_manager() -> Arc<JwksManager> {
-        Arc::new(
+    /// A validator of a mock Auth Verifier whose `GET /whoami` answers 200 to an `_ea_`
+    /// cookie while `live` is set (the session exists), and 401 otherwise.
+    pub(crate) async fn mock_auth_verifier(live: Arc<AtomicBool>) -> Arc<AuthVerifierValidator> {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("local address").port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = vec![0_u8; 8192];
+                let read = stream.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(buf.get(..read).unwrap_or_default());
+                let status = if live.load(Ordering::SeqCst)
+                    && request.starts_with("GET /whoami ")
+                    && request.contains(&format!("{AUTH_VERIFIER_SESSION_COOKIE}="))
+                {
+                    "200 OK"
+                } else {
+                    "401 Unauthorized"
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("mock Auth Verifier response");
+            }
+        });
+        let jwks = Arc::new(
             JwksManager::new(vec![], None)
                 .await
                 .expect("empty JwksManager must build without network access"),
-        )
+        );
+        let config = AuthVerifierConfig {
+            auth_verifier_url: Some(format!("http://127.0.0.1:{port}")),
+            ..AuthVerifierConfig::default()
+        };
+        Arc::new(AuthVerifierValidator::new(jwks, &config).expect("Auth Verifier validator"))
+    }
+
+    /// A validator of a mock Auth Verifier on which every session is live.
+    pub(crate) async fn live_auth_verifier() -> Arc<AuthVerifierValidator> {
+        mock_auth_verifier(Arc::new(AtomicBool::new(true))).await
+    }
+
+    /// Regression: a correctly signed token whose Auth Verifier session ended (logout,
+    /// revocation, idle timeout) must no longer authenticate, as a cookie or a bearer.
+    #[tokio::test]
+    async fn token_of_ended_session_is_rejected() {
+        let ended = mock_auth_verifier(Arc::new(AtomicBool::new(false))).await;
+        let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
+        let error = authenticate_auth_verifier_session_cookie(&ended, &token, "kms-saml")
+            .await
+            .expect_err("the cookie of an ended session must be rejected");
+        assert!(matches!(error, KmsError::Unauthorized(_)), "{error}");
+        let error = verify_auth_verifier_jwt_subject(&ended, &token)
+            .await
+            .expect_err("the bearer token of an ended session must be rejected");
+        assert!(matches!(error, KmsError::Unauthorized(_)), "{error}");
     }
 
     #[tokio::test]
     async fn session_cookie_of_configured_realm_is_accepted() {
         let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
         let user = authenticate_auth_verifier_session_cookie(
-            &empty_jwks_manager().await,
+            &*live_auth_verifier().await,
             &token,
             "kms-saml",
         )
@@ -363,12 +433,13 @@ pub(crate) mod tests {
     /// the `_` admin realm) or without a realm claim must never authenticate to the KMS.
     #[tokio::test]
     async fn session_cookie_of_another_or_no_realm_is_rejected() {
-        let jwks = empty_jwks_manager().await;
+        let auth_verifier = live_auth_verifier().await;
         for realm in [Some("other-app"), Some("_"), Some(""), None] {
             let token = auth_verifier_token("alice@example.com", realm);
-            let error = authenticate_auth_verifier_session_cookie(&jwks, &token, "kms-saml")
-                .await
-                .expect_err("cookie of another realm must be rejected");
+            let error =
+                authenticate_auth_verifier_session_cookie(&auth_verifier, &token, "kms-saml")
+                    .await
+                    .expect_err("cookie of another realm must be rejected");
             assert!(
                 matches!(error, KmsError::Unauthorized(_)),
                 "{realm:?}: {error}"
@@ -378,12 +449,13 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn session_cookie_with_empty_or_reserved_subject_is_rejected() {
-        let jwks = empty_jwks_manager().await;
+        let auth_verifier = live_auth_verifier().await;
         for sub in ["", AWS_XKS_SERVICE_USER] {
             let token = auth_verifier_token(sub, Some("kms-saml"));
-            let error = authenticate_auth_verifier_session_cookie(&jwks, &token, "kms-saml")
-                .await
-                .expect_err("empty or reserved subject must be rejected");
+            let error =
+                authenticate_auth_verifier_session_cookie(&auth_verifier, &token, "kms-saml")
+                    .await
+                    .expect_err("empty or reserved subject must be rejected");
             assert!(matches!(error, KmsError::Unauthorized(_)), "{sub}: {error}");
         }
     }
@@ -391,7 +463,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn malformed_session_cookie_is_rejected() {
         let error = authenticate_auth_verifier_session_cookie(
-            &empty_jwks_manager().await,
+            &*live_auth_verifier().await,
             "not-a-jwt",
             "kms-saml",
         )

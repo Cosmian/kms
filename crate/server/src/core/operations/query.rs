@@ -139,7 +139,7 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic)]
+#[allow(clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::{DRBGAlgorithm, RNGAlgorithm},
@@ -159,9 +159,8 @@ mod tests {
         .await
         .expect("query");
         let rngs = response.rng_parameters.expect("rng_parameters");
-        let [rng] = rngs.as_slice() else {
-            panic!("expected exactly one RNG, got {}", rngs.len());
-        };
+        assert_eq!(rngs.len(), 1, "expected exactly one RNG");
+        let rng = rngs.first().expect("one RNG");
         assert_eq!(rng.rng_algorithm, RNGAlgorithm::DRBG);
         assert_eq!(rng.drbg_algorithm, Some(DRBGAlgorithm::CTR));
         assert_eq!(rng.cryptographic_length, Some(256));

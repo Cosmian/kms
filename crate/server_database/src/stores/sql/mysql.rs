@@ -33,11 +33,14 @@ use crate::{
             certificate_serial_tag,
         },
         sql::{
+            crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
             locate_query::{
-                LocateParam, LocateQuery, MySqlPlaceholder, find_by_rotate_name_query,
-                find_due_for_rotation_query, query_all_from_attributes, query_from_attributes,
+                LocateParam, LocateQuery, MySqlPlaceholder, filter_due_for_rotation,
+                find_by_rotate_name_query, find_due_for_rotation_query, query_all_from_attributes,
+                query_from_attributes,
             },
+            merge_granted_operations,
         },
     },
 };
@@ -877,14 +880,16 @@ impl ObjectsStore for MySqlPool {
             .exec(&sql, ())
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut due = Vec::with_capacity(rows.len());
-        for (uid, owner, attrs_val) in rows {
-            let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
-            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                due.push((uid, owner));
-            }
-        }
-        Ok(due)
+        Ok(filter_due_for_rotation(
+            rows.into_iter().map(|(uid, owner, attrs_val)| {
+                (
+                    uid,
+                    owner,
+                    serde_json::from_value(attrs_val).unwrap_or_default(),
+                )
+            }),
+            now,
+        ))
     }
 
     async fn find_by_rotate_name(
@@ -1127,7 +1132,7 @@ impl PermissionsStore for MySqlPool {
     ) -> InterfaceResult<()> {
         let sql = get_mysql_query!("upsert-crl");
 
-        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let crl_number_i = crl_number_to_sql(crl_number);
         let mut conn = self
             .pool
             .get_conn()
@@ -1195,10 +1200,10 @@ impl PermissionsStore for MySqlPool {
         // `take::<Option<i64>>` handles NULL gracefully: row.take returns
         // Some(None) for NULL, Some(Some(v)) for an actual value, and None
         // when the column index is out of bounds.
-        let max: Option<i64> = row_opt
+        Ok(row_opt
             .and_then(|mut row| row.take::<Option<i64>, _>(0))
-            .flatten();
-        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+            .flatten()
+            .map(crl_number_from_sql))
     }
 }
 
@@ -1494,12 +1499,7 @@ pub(super) async fn list_user_granted_access_rights_(
         let ops: HashSet<KmipOperation> = serde_json::from_value(ops_val).map_err(|e| {
             DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
         })?;
-        // The same object may be returned twice: once for the direct grant and
-        // once for the wildcard `*` grant. Union the permission sets instead of
-        // overwriting the entry.
-        ids.entry(uid)
-            .and_modify(|(_, _, existing_ops)| existing_ops.extend(ops.iter().copied()))
-            .or_insert((owner, state, ops));
+        merge_granted_operations(&mut ids, uid, owner, state, ops);
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
