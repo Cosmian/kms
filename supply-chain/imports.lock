@@ -606,8 +606,8 @@ user-id = 55123
 user-login = "rust-lang-owner"
 
 [[publisher.libz-sys]]
-version = "1.1.29"
-when = "2026-05-31"
+version = "1.1.31"
+when = "2026-10-28"
 user-id = 980
 user-login = "Byron"
 user-name = "Sebastian Thiel"

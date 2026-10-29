@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**654 vectors** across 16 categories (including KAT):
+**655 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -220,6 +220,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
 | KMIP Operations | `rekey_with_offset_state` | Verifies that ReKey with Offset=0 produces an Active key, and ReKey with Offset=86400 (24h future) produces a PreActive key. | 13 |
 | KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Creates a wrapping key and a wrapped dependent key, verifies wrapping, revokes the dependent, then verifies that ReKey on the deactivated wrapped key succeeds per KMIP §6.1.46. | 12 |
+| KMIP Operations | `rekey_wrapped_fails` | Verifies that ReKey on a wrapped key fails with an appropriate error. The server cannot safely rekey a wrapped object. | 6 |
 | KMIP Operations | `rekey_wrapped_key` | Creates a wrapping key and a wrapped dependent key, then re-keys the wrapped key. Verifies the new key has fresh material, is still wrapped, and works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key` | Creates a wrapping key, creates a dependent key wrapped by it, then re-keys the wrapping key and verifies the dependent key was automatically re-wrapped and still works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key_double_chain` | Creates a wrapping key K0 with two wrapped dependants. Rotates K0 → K1, then K1 → K2. Verifies the full link chain (K0 → K1 → K2) and that both dependants are re-wrapped each time and still work for encryption. | 24 |
