@@ -1,7 +1,7 @@
 # KMS Performance Comparison
 
-**Versions**: `v5.28.0`
-**Generated**: 2026-10-20
+**Versions**: `v5.29.0`
+**Generated**: 2026-10-29
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-10-20 04:18:42 UTC |
+| Date | 2026-10-29 13:08:22 UTC |
 | HSM backend | SoftHSM2 |
 | Command | `mise run bench:pkcs11 --delegated --hsm-model softhsm2` |
 | Build | bench / non-fips |
 | Database | SQLite (temporary, single benchmark run) |
-| CPU | Intel(R) Core(TM) i9-14900T @ 1,215 MHz |
+| CPU | Intel(R) Core(TM) i9-14900T @ 800 MHz |
 | CPU cores | 24 physical / 32 logical (HT) |
 | RAM | 31.1 GB |
 | OS | Ubuntu 24.04.5 LTS |
@@ -48,7 +48,7 @@ Thread(s) per core:                      2
 Core(s) per socket:                      24
 Socket(s):                               1
 Stepping:                                1
-CPU(s) scaling MHz:                      23%
+CPU(s) scaling MHz:                      22%
 CPU max MHz:                             5500,0000
 CPU min MHz:                             800,0000
 BogoMIPS:                                2227,20
@@ -178,11 +178,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 593 |
-| 2 | 611 |
-| 4 | 581 |
-| 8 | 576 |
-| 16 | 558 |
+| 1 | 659 |
+| 2 | 659 |
+| 4 | 630 |
+| 8 | 638 |
+| 16 | 620 |
 
 ![Throughput — key-creation/aes](load/key-creation_aes.svg)
 
@@ -192,11 +192,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 2,351 |
-| 2 | 3,271 |
-| 4 | 5,036 |
-| 8 | 8,154 |
-| 16 | 11,824 |
+| 1 | 2,708 |
+| 2 | 2,296 |
+| 4 | 2,265 |
+| 8 | 10,628 |
+| 16 | 13,000 |
 
 ![Throughput — encrypt/aes-cbc](load/encrypt_aes-cbc.svg)
 
@@ -206,11 +206,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 4,644 |
-| 2 | 6,638 |
-| 4 | 10,150 |
-| 8 | 16,391 |
-| 16 | 22,742 |
+| 1 | 5,650 |
+| 2 | 3,810 |
+| 4 | 4,480 |
+| 8 | 21,292 |
+| 16 | 23,129 |
 
 ![Throughput — encrypt/aes-gcm](load/encrypt_aes-gcm.svg)
 
@@ -220,11 +220,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 4,228 |
-| 2 | 5,617 |
-| 4 | 8,262 |
-| 8 | 12,483 |
-| 16 | 12,997 |
+| 1 | 3,991 |
+| 2 | 2,329 |
+| 4 | 3,935 |
+| 8 | 6,448 |
+| 16 | 4,521 |
 
 ![Throughput — encrypt/rsa-pkcs](load/encrypt_rsa-pkcs.svg)
 
@@ -234,11 +234,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 5,064 |
-| 2 | 6,492 |
-| 4 | 10,208 |
-| 8 | 16,422 |
-| 16 | 23,114 |
+| 1 | 6,348 |
+| 2 | 3,763 |
+| 4 | 3,485 |
+| 8 | 21,660 |
+| 16 | 16,496 |
 
 ![Throughput — decrypt/aes-cbc](load/decrypt_aes-cbc.svg)
 
@@ -248,11 +248,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 4,870 |
-| 2 | 6,492 |
-| 4 | 10,231 |
-| 8 | 15,801 |
-| 16 | 22,516 |
+| 1 | 6,319 |
+| 2 | 3,091 |
+| 4 | 3,412 |
+| 8 | 20,659 |
+| 16 | 23,147 |
 
 ![Throughput — decrypt/aes-gcm](load/decrypt_aes-gcm.svg)
 
@@ -262,11 +262,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 1,203 |
-| 2 | 1,996 |
-| 4 | 3,309 |
-| 8 | 4,759 |
-| 16 | 6,426 |
+| 1 | 1,468 |
+| 2 | 2,457 |
+| 4 | 3,776 |
+| 8 | 5,633 |
+| 16 | 6,923 |
 
 ![Throughput — decrypt/rsa-pkcs](load/decrypt_rsa-pkcs.svg)
 
@@ -276,11 +276,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 1,170 |
-| 2 | 1,974 |
-| 4 | 3,267 |
-| 8 | 4,584 |
-| 16 | 6,263 |
+| 1 | 1,456 |
+| 2 | 2,440 |
+| 4 | 3,825 |
+| 8 | 5,367 |
+| 16 | 6,875 |
 
 ![Throughput — sign/rsa-pkcs-sha256](load/sign_rsa-pkcs-sha256.svg)
 
@@ -290,11 +290,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 1,165 |
-| 2 | 1,941 |
-| 4 | 3,188 |
-| 8 | 4,571 |
-| 16 | 6,200 |
+| 1 | 1,433 |
+| 2 | 2,404 |
+| 4 | 3,778 |
+| 8 | 5,306 |
+| 16 | 6,879 |
 
 ![Throughput — sign/rsa-pss-sha256](load/sign_rsa-pss-sha256.svg)
 
@@ -304,11 +304,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 7,052 |
-| 2 | 9,997 |
-| 4 | 15,111 |
-| 8 | 21,920 |
-| 16 | 22,710 |
+| 1 | 8,791 |
+| 2 | 5,038 |
+| 4 | 5,529 |
+| 8 | 29,413 |
+| 16 | 10,745 |
 
 ![Throughput — sign/ecdsa-p256](load/sign_ecdsa-p256.svg)
 
@@ -318,11 +318,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 1,491 |
-| 2 | 2,443 |
-| 4 | 3,952 |
-| 8 | 6,029 |
-| 16 | 9,005 |
+| 1 | 1,878 |
+| 2 | 3,088 |
+| 4 | 4,830 |
+| 8 | 6,953 |
+| 16 | 9,750 |
 
 ![Throughput — sign/ecdsa-p384](load/sign_ecdsa-p384.svg)
 
@@ -332,11 +332,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 2,540 |
-| 2 | 3,955 |
-| 4 | 6,179 |
-| 8 | 9,757 |
-| 16 | 14,211 |
+| 1 | 3,189 |
+| 2 | 5,128 |
+| 4 | 7,627 |
+| 8 | 10,965 |
+| 16 | 15,376 |
 
 ![Throughput — sign/ecdsa-secp256k1](load/sign_ecdsa-secp256k1.svg)
 
@@ -346,11 +346,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 6,618 |
-| 2 | 8,810 |
-| 4 | 13,243 |
-| 8 | 20,091 |
-| 16 | 21,717 |
+| 1 | 7,784 |
+| 2 | 5,559 |
+| 4 | 10,883 |
+| 8 | 24,560 |
+| 16 | 9,847 |
 
 ![Throughput — sign/eddsa-ed25519](load/sign_eddsa-ed25519.svg)
 
@@ -360,11 +360,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 9,545 |
-| 2 | 12,392 |
-| 4 | 18,374 |
-| 8 | 25,336 |
-| 16 | 26,865 |
+| 1 | 11,932 |
+| 2 | 7,806 |
+| 4 | 8,294 |
+| 8 | 34,101 |
+| 16 | 30,156 |
 
 ![Throughput — verify/rsa-pkcs-sha256](load/verify_rsa-pkcs-sha256.svg)
 
@@ -374,11 +374,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 9,296 |
-| 2 | 12,267 |
-| 4 | 17,773 |
-| 8 | 25,801 |
-| 16 | 27,013 |
+| 1 | 11,547 |
+| 2 | 7,983 |
+| 4 | 6,834 |
+| 8 | 33,649 |
+| 16 | 24,976 |
 
 ![Throughput — verify/rsa-pss-sha256](load/verify_rsa-pss-sha256.svg)
 
@@ -388,11 +388,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 5,184 |
-| 2 | 7,172 |
-| 4 | 9,317 |
-| 8 | 6,710 |
-| 16 | 10,113 |
+| 1 | 7,059 |
+| 2 | 9,532 |
+| 4 | 12,904 |
+| 8 | 14,221 |
+| 16 | 6,541 |
 
 ![Throughput — verify/ecdsa-p256](load/verify_ecdsa-p256.svg)
 
@@ -402,11 +402,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 1,639 |
-| 2 | 2,776 |
-| 4 | 4,534 |
-| 8 | 6,511 |
-| 16 | 8,636 |
+| 1 | 2,036 |
+| 2 | 3,375 |
+| 4 | 5,231 |
+| 8 | 7,379 |
+| 16 | 9,194 |
 
 ![Throughput — verify/ecdsa-p384](load/verify_ecdsa-p384.svg)
 
@@ -416,11 +416,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 2,587 |
-| 2 | 4,065 |
-| 4 | 6,240 |
-| 8 | 8,772 |
-| 16 | 9,730 |
+| 1 | 3,231 |
+| 2 | 5,171 |
+| 4 | 7,308 |
+| 8 | 9,842 |
+| 16 | 10,434 |
 
 ![Throughput — verify/ecdsa-secp256k1](load/verify_ecdsa-secp256k1.svg)
 
@@ -430,11 +430,11 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Concurrency | pkcs11 (req/s) |
 |---|---|
-| 1 | 5,992 |
-| 2 | 8,583 |
-| 4 | 13,473 |
-| 8 | 20,617 |
-| 16 | 21,006 |
+| 1 | 7,634 |
+| 2 | 9,695 |
+| 4 | 9,798 |
+| 8 | 23,850 |
+| 16 | 9,754 |
 
 ![Throughput — verify/eddsa-ed25519](load/verify_eddsa-ed25519.svg)
 
@@ -446,8 +446,8 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Benchmark | pkcs11 |
 |---|---|
-| aes-cbc | 501.0 µs |
-| aes-gcm | 198.9 µs |
+| aes-cbc | 305.9 µs |
+| aes-gcm | 234.5 µs |
 
 ---
 
@@ -455,7 +455,7 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Benchmark | pkcs11 |
 |---|---|
-| rsa-pkcs | 236.2 µs |
+| rsa-pkcs | 193.9 µs |
 
 ---
 
@@ -463,17 +463,17 @@ Recorded metrics per *(operation, concurrency)* pair:
 
 | Benchmark | pkcs11 |
 |---|---|
-| ecdsa-p256/sign | 127.2 µs |
-| ecdsa-p256/verify | 183.8 µs |
-| ecdsa-p384/sign | 752.6 µs |
-| ecdsa-p384/verify | 614.8 µs |
-| ecdsa-secp256k1/sign | 400.5 µs |
-| ecdsa-secp256k1/verify | 380.3 µs |
-| eddsa-ed25519/sign | 172.0 µs |
-| eddsa-ed25519/verify | 156.2 µs |
-| rsa-pkcs-sha256/sign | 974.9 µs |
-| rsa-pkcs-sha256/verify | 99.6 µs |
-| rsa-pss-sha256/sign | 901.6 µs |
-| rsa-pss-sha256/verify | 112.6 µs |
+| ecdsa-p256/sign | 104.2 µs |
+| ecdsa-p256/verify | 205.8 µs |
+| ecdsa-p384/sign | 517.6 µs |
+| ecdsa-p384/verify | 561.7 µs |
+| ecdsa-secp256k1/sign | 402.6 µs |
+| ecdsa-secp256k1/verify | 352.6 µs |
+| eddsa-ed25519/sign | 216.3 µs |
+| eddsa-ed25519/verify | 122.5 µs |
+| rsa-pkcs-sha256/sign | 763.0 µs |
+| rsa-pkcs-sha256/verify | 119.2 µs |
+| rsa-pss-sha256/sign | 754.5 µs |
+| rsa-pss-sha256/verify | 125.7 µs |
 
 ---
