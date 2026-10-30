@@ -462,10 +462,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 128,
         'nist_pqc_level': 0,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_openssl_provider'],
-        'usage': 'Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt',
+        'usage': 'Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt (non-FIPS only)',
         'patterns': [
             r'cover_crypt|Covercrypt'
         ],  # P256 KEM is internal to cosmian_cover_crypt; used via Covercrypt API
@@ -492,11 +492,11 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 800,
         'classical_security': 128,
         'nist_pqc_level': 1,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
-        'implementing_libs': ['ml-kem'],
-        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 1); used in CoverCrypt hybrid KEM',
-        'oid': '1.3.6.1.4.1.22554.5.6.1',
+        'implementing_libs': ['openssl', 'ml-kem'],
+        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 1): OpenSSL ML-KEM provider (crate/crypto pqc module) and RustCrypto ml-kem inside the CoverCrypt hybrid KEM; non-FIPS only',
+        'oid': '2.16.840.1.101.3.4.4.1',
         'patterns': [r'MlKem512|ml_kem.*512'],
     },
     {
@@ -506,11 +506,11 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 1184,
         'classical_security': 192,
         'nist_pqc_level': 3,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
-        'implementing_libs': ['ml-kem'],
-        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 3); used in CoverCrypt hybrid KEM',
-        'oid': '1.3.6.1.4.1.22554.5.6.2',
+        'implementing_libs': ['openssl', 'ml-kem'],
+        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 3): OpenSSL ML-KEM provider (crate/crypto pqc module) and RustCrypto ml-kem inside the CoverCrypt hybrid KEM; non-FIPS only',
+        'oid': '2.16.840.1.101.3.4.4.2',
         'patterns': [r'MlKem768|ml_kem.*768'],
     },
     {
@@ -520,10 +520,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 128,
         'nist_pqc_level': 1,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_cover_crypt'],
-        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption',
+        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption; non-FIPS only',
         'patterns': [r'cover_crypt|Covercrypt'],
     },
     {
@@ -533,10 +533,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 192,
         'nist_pqc_level': 3,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_cover_crypt'],
-        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption',
+        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption; non-FIPS only',
         'patterns': [r'cover_crypt|Covercrypt'],
     },
     {
@@ -572,10 +572,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 128,
         'nist_pqc_level': 0,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_crypto_core'],
-        'usage': 'Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure',
+        'usage': 'Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure; only reachable through the non-FIPS CoverCrypt/KEM modules',
         'patterns': [
             r'cover_crypt|Covercrypt'
         ],  # combiner is internal to cosmian_cover_crypt / cosmian_crypto_core
@@ -1216,11 +1216,28 @@ def find_in_sources(root: Path, patterns: list[str]) -> bool:
         return True  # grep not available (Windows); skip scan
 
 
-def certification_level(fips: bool | str) -> list[str]:
-    if fips is True:
-        return ['fips140-3']
-    if fips == 'restricted':
-        return ['fips140-3']  # conditionally approved
+# OpenSSL FIPS Provider 3.1.2: CMVP certificate #4985, overall security level 1
+# (https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985).
+FIPS_CERTIFICATION_LEVEL = 'fips140-3-l1'
+
+# CycloneDX 1.6 vocabularies (validate_cbom.py checks them against the official schema).
+# Catalogue values the schema lacks (XTS, key wrap, PSS) are emitted as 'other' or as the
+# closest function, and the exact value is kept in a cosmian:* property.
+_SCHEMA_MODES = {'cbc', 'ecb', 'ccm', 'gcm', 'cfb', 'ofb', 'ctr'}
+_SCHEMA_PADDINGS = {'pkcs5', 'pkcs7', 'pkcs1v15', 'oaep', 'raw'}
+_SCHEMA_FUNCTION_ALIASES = {'wrap': 'encrypt', 'unwrap': 'decrypt'}
+
+
+def certification_level(algo: dict[str, Any]) -> list[str]:
+    """Certified only when approved AND implemented by the validated OpenSSL FIPS provider.
+
+    Algorithms built on other libraries (RustCrypto, cosmian_*) are not covered by the
+    certificate, whatever their FIPS flag says.
+    """
+    if algo['fips'] is not False and 'openssl' in algo['implementing_libs']:
+        return [
+            FIPS_CERTIFICATION_LEVEL
+        ]  # True, or 'restricted' (conditionally approved)
     return []
 
 
@@ -1228,19 +1245,30 @@ def build_algorithm_component(
     algo: dict[str, Any],
     found_in_source: bool,
 ) -> dict[str, Any]:
+    functions = [_SCHEMA_FUNCTION_ALIASES.get(f, f) for f in algo['functions']]
     algo_props: dict[str, Any] = {
         'primitive': algo['primitive'],
         'executionEnvironment': 'software-plain-ram',
-        'implementationLevel': 'library',
-        'certificationLevel': certification_level(algo['fips']),
-        'cryptoFunctions': algo['functions'],
+        'certificationLevel': certification_level(algo),
+        'cryptoFunctions': functions,
         'classicalSecurityLevel': algo['classical_security'],
         'nistQuantumSecurityLevel': algo['nist_pqc_level'],
     }
+    exact: list[dict[str, str]] = []
+    if functions != algo['functions']:
+        exact.append(
+            {'name': 'cosmian:crypto-functions', 'value': ','.join(algo['functions'])}
+        )
     if algo.get('mode'):
-        algo_props['mode'] = algo['mode']
+        in_schema = algo['mode'] in _SCHEMA_MODES
+        algo_props['mode'] = algo['mode'] if in_schema else 'other'
+        if not in_schema:
+            exact.append({'name': 'cosmian:mode', 'value': algo['mode']})
     if algo.get('padding'):
-        algo_props['padding'] = algo['padding']
+        in_schema = algo['padding'] in _SCHEMA_PADDINGS
+        algo_props['padding'] = algo['padding'] if in_schema else 'other'
+        if not in_schema:
+            exact.append({'name': 'cosmian:padding', 'value': algo['padding']})
     if algo.get('parameter_set'):
         algo_props['parameterSetIdentifier'] = algo['parameter_set']
     elif algo.get('key_size') is not None:
@@ -1276,6 +1304,7 @@ def build_algorithm_component(
                 'name': 'cosmian:found-in-source',
                 'value': str(found_in_source).lower(),
             },
+            *exact,
         ],
     }
     return comp
@@ -1356,14 +1385,16 @@ def build_cbom(
         'version': 1,
         'metadata': {
             'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'tools': [
-                {
-                    'type': 'application',
-                    'name': 'generate_cbom.py',
-                    'version': '1.0',
-                    'description': 'Cosmian KMS CBOM generator — combines cargo metadata with source scanning',
-                }
-            ],
+            'tools': {
+                'components': [
+                    {
+                        'type': 'application',
+                        'name': 'generate_cbom.py',
+                        'version': '1.0',
+                        'description': 'Cosmian KMS CBOM generator — combines cargo metadata with source scanning',
+                    }
+                ]
+            },
             'component': {
                 'type': 'application',
                 'bom-ref': 'kms-server',

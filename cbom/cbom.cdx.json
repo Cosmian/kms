@@ -1,18 +1,20 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:4c8ae0e8-c169-4ce0-a11e-5d1446e57d76",
+  "serialNumber": "urn:uuid:f1a070f9-2424-4a97-9fa0-45ce12066eac",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-30T09:16:16Z",
-    "tools": [
-      {
-        "type": "application",
-        "name": "generate_cbom.py",
-        "version": "1.0",
-        "description": "Cosmian KMS CBOM generator — combines cargo metadata with source scanning"
-      }
-    ],
+    "timestamp": "2026-10-30T11:02:33Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "generate_cbom.py",
+          "version": "1.0",
+          "description": "Cosmian KMS CBOM generator — combines cargo metadata with source scanning"
+        }
+      ]
+    },
     "component": {
       "type": "application",
       "bom-ref": "kms-server",
@@ -129,9 +131,8 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -169,9 +170,8 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -209,9 +209,8 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -249,9 +248,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -289,9 +287,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -329,9 +326,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -369,9 +365,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -409,9 +404,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -449,9 +443,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -489,9 +482,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -499,7 +491,7 @@
           ],
           "classicalSecurityLevel": 128,
           "nistQuantumSecurityLevel": 0,
-          "mode": "xts",
+          "mode": "other",
           "parameterSetIdentifier": "128"
         }
       },
@@ -515,6 +507,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:mode",
+          "value": "xts"
         }
       ]
     },
@@ -528,9 +524,8 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
@@ -538,7 +533,7 @@
           ],
           "classicalSecurityLevel": 256,
           "nistQuantumSecurityLevel": 0,
-          "mode": "xts",
+          "mode": "other",
           "parameterSetIdentifier": "256"
         }
       },
@@ -554,6 +549,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:mode",
+          "value": "xts"
         }
       ]
     },
@@ -567,7 +566,6 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
@@ -604,7 +602,6 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
@@ -641,7 +638,6 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
@@ -677,17 +673,16 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 128,
           "nistQuantumSecurityLevel": 0,
-          "mode": "kw"
+          "mode": "other"
         },
         "oid": "2.16.840.1.101.3.4.1.5"
       },
@@ -703,6 +698,14 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "wrap,unwrap"
+        },
+        {
+          "name": "cosmian:mode",
+          "value": "kw"
         }
       ]
     },
@@ -716,17 +719,16 @@
         "algorithmProperties": {
           "primitive": "block-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 128,
           "nistQuantumSecurityLevel": 0,
-          "mode": "kwp"
+          "mode": "other"
         },
         "oid": "2.16.840.1.101.3.4.1.8"
       },
@@ -742,6 +744,14 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "wrap,unwrap"
+        },
+        {
+          "name": "cosmian:mode",
+          "value": "kwp"
         }
       ]
     },
@@ -755,15 +765,14 @@
         "algorithmProperties": {
           "primitive": "pke",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "encrypt",
             "decrypt",
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 112,
           "nistQuantumSecurityLevel": 0,
@@ -783,6 +792,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "encrypt,decrypt,wrap,unwrap"
         }
       ]
     },
@@ -796,13 +809,12 @@
         "algorithmProperties": {
           "primitive": "pke",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 112,
           "nistQuantumSecurityLevel": 0,
@@ -821,6 +833,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "wrap,unwrap"
         }
       ]
     },
@@ -834,13 +850,12 @@
         "algorithmProperties": {
           "primitive": "pke",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
             "decrypt",
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 112,
           "nistQuantumSecurityLevel": 0,
@@ -860,6 +875,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "encrypt,decrypt,wrap,unwrap"
         }
       ]
     },
@@ -873,13 +892,12 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
             "decrypt",
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 128,
           "nistQuantumSecurityLevel": 0,
@@ -898,6 +916,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "encrypt,decrypt,wrap,unwrap"
         }
       ]
     },
@@ -911,13 +933,12 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
             "decrypt",
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 192,
           "nistQuantumSecurityLevel": 0,
@@ -936,6 +957,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "encrypt,decrypt,wrap,unwrap"
         }
       ]
     },
@@ -949,13 +974,12 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
             "decrypt",
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 260,
           "nistQuantumSecurityLevel": 0,
@@ -974,6 +998,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "encrypt,decrypt,wrap,unwrap"
         }
       ]
     },
@@ -987,13 +1015,12 @@
         "algorithmProperties": {
           "primitive": "ae",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
             "decrypt",
-            "wrap",
-            "unwrap"
+            "encrypt",
+            "decrypt"
           ],
           "classicalSecurityLevel": 128,
           "nistQuantumSecurityLevel": 0,
@@ -1012,6 +1039,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:crypto-functions",
+          "value": "encrypt,decrypt,wrap,unwrap"
         }
       ]
     },
@@ -1019,16 +1050,13 @@
       "type": "cryptographic-asset",
       "bom-ref": "algo-kem-p256",
       "name": "P256-KEM",
-      "description": "Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt",
+      "description": "Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt (non-FIPS only)",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
-          "certificationLevel": [
-            "fips140-3"
-          ],
+          "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
             "decapsulate"
@@ -1041,11 +1069,11 @@
       "properties": [
         {
           "name": "fips140-3:approved",
-          "value": "true"
+          "value": "false"
         },
         {
           "name": "cosmian:non-fips-feature-required",
-          "value": "false"
+          "value": "true"
         },
         {
           "name": "cosmian:found-in-source",
@@ -1063,7 +1091,6 @@
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
@@ -1093,16 +1120,13 @@
       "type": "cryptographic-asset",
       "bom-ref": "algo-ml-kem-512",
       "name": "ML-KEM-512",
-      "description": "Post-quantum KEM (NIST FIPS 203 Level 1); used in CoverCrypt hybrid KEM",
+      "description": "Post-quantum KEM (NIST FIPS 203 Level 1): OpenSSL ML-KEM provider (crate/crypto pqc module) and RustCrypto ml-kem inside the CoverCrypt hybrid KEM; non-FIPS only",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
-          "certificationLevel": [
-            "fips140-3"
-          ],
+          "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
             "decapsulate"
@@ -1111,16 +1135,16 @@
           "nistQuantumSecurityLevel": 1,
           "parameterSetIdentifier": "800"
         },
-        "oid": "1.3.6.1.4.1.22554.5.6.1"
+        "oid": "2.16.840.1.101.3.4.4.1"
       },
       "properties": [
         {
           "name": "fips140-3:approved",
-          "value": "true"
+          "value": "false"
         },
         {
           "name": "cosmian:non-fips-feature-required",
-          "value": "false"
+          "value": "true"
         },
         {
           "name": "cosmian:found-in-source",
@@ -1132,16 +1156,13 @@
       "type": "cryptographic-asset",
       "bom-ref": "algo-ml-kem-768",
       "name": "ML-KEM-768",
-      "description": "Post-quantum KEM (NIST FIPS 203 Level 3); used in CoverCrypt hybrid KEM",
+      "description": "Post-quantum KEM (NIST FIPS 203 Level 3): OpenSSL ML-KEM provider (crate/crypto pqc module) and RustCrypto ml-kem inside the CoverCrypt hybrid KEM; non-FIPS only",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
-          "certificationLevel": [
-            "fips140-3"
-          ],
+          "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
             "decapsulate"
@@ -1150,16 +1171,16 @@
           "nistQuantumSecurityLevel": 3,
           "parameterSetIdentifier": "1184"
         },
-        "oid": "1.3.6.1.4.1.22554.5.6.2"
+        "oid": "2.16.840.1.101.3.4.4.2"
       },
       "properties": [
         {
           "name": "fips140-3:approved",
-          "value": "true"
+          "value": "false"
         },
         {
           "name": "cosmian:non-fips-feature-required",
-          "value": "false"
+          "value": "true"
         },
         {
           "name": "cosmian:found-in-source",
@@ -1171,16 +1192,13 @@
       "type": "cryptographic-asset",
       "bom-ref": "algo-hybrid-kem-p256-mlkem512",
       "name": "P256+ML-KEM-512 Hybrid KEM",
-      "description": "Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption",
+      "description": "Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption; non-FIPS only",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
-          "certificationLevel": [
-            "fips140-3"
-          ],
+          "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
             "decapsulate"
@@ -1193,11 +1211,11 @@
       "properties": [
         {
           "name": "fips140-3:approved",
-          "value": "true"
+          "value": "false"
         },
         {
           "name": "cosmian:non-fips-feature-required",
-          "value": "false"
+          "value": "true"
         },
         {
           "name": "cosmian:found-in-source",
@@ -1209,16 +1227,13 @@
       "type": "cryptographic-asset",
       "bom-ref": "algo-hybrid-kem-p256-mlkem768",
       "name": "P256+ML-KEM-768 Hybrid KEM",
-      "description": "Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption",
+      "description": "Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption; non-FIPS only",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
-          "certificationLevel": [
-            "fips140-3"
-          ],
+          "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
             "decapsulate"
@@ -1231,11 +1246,11 @@
       "properties": [
         {
           "name": "fips140-3:approved",
-          "value": "true"
+          "value": "false"
         },
         {
           "name": "cosmian:non-fips-feature-required",
-          "value": "false"
+          "value": "true"
         },
         {
           "name": "cosmian:found-in-source",
@@ -1253,7 +1268,6 @@
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
@@ -1289,7 +1303,6 @@
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
@@ -1319,16 +1332,13 @@
       "type": "cryptographic-asset",
       "bom-ref": "algo-kem-combiner",
       "name": "KEM Combiner (SHA-256)",
-      "description": "Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure",
+      "description": "Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure; only reachable through the non-FIPS CoverCrypt/KEM modules",
       "cryptoProperties": {
         "assetType": "algorithm",
         "algorithmProperties": {
           "primitive": "combiner",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
-          "certificationLevel": [
-            "fips140-3"
-          ],
+          "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
             "decapsulate"
@@ -1341,11 +1351,11 @@
       "properties": [
         {
           "name": "fips140-3:approved",
-          "value": "true"
+          "value": "false"
         },
         {
           "name": "cosmian:non-fips-feature-required",
-          "value": "false"
+          "value": "true"
         },
         {
           "name": "cosmian:found-in-source",
@@ -1363,9 +1373,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1373,7 +1382,7 @@
           ],
           "classicalSecurityLevel": 112,
           "nistQuantumSecurityLevel": 0,
-          "padding": "pss",
+          "padding": "other",
           "parameterSetIdentifier": "2048"
         },
         "oid": "1.2.840.113549.1.1.10"
@@ -1390,6 +1399,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:padding",
+          "value": "pss"
         }
       ]
     },
@@ -1403,9 +1416,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1413,7 +1425,7 @@
           ],
           "classicalSecurityLevel": 128,
           "nistQuantumSecurityLevel": 0,
-          "padding": "pss",
+          "padding": "other",
           "parameterSetIdentifier": "3072"
         },
         "oid": "1.2.840.113549.1.1.10"
@@ -1430,6 +1442,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:padding",
+          "value": "pss"
         }
       ]
     },
@@ -1443,9 +1459,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1453,7 +1468,7 @@
           ],
           "classicalSecurityLevel": 140,
           "nistQuantumSecurityLevel": 0,
-          "padding": "pss",
+          "padding": "other",
           "parameterSetIdentifier": "4096"
         },
         "oid": "1.2.840.113549.1.1.10"
@@ -1470,6 +1485,10 @@
         {
           "name": "cosmian:found-in-source",
           "value": "true"
+        },
+        {
+          "name": "cosmian:padding",
+          "value": "pss"
         }
       ]
     },
@@ -1483,9 +1502,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1522,9 +1540,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1561,9 +1578,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1600,7 +1616,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -1636,9 +1651,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1675,9 +1689,8 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "sign",
@@ -1714,9 +1727,8 @@
         "algorithmProperties": {
           "primitive": "key-agree",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "generate"
@@ -1752,9 +1764,8 @@
         "algorithmProperties": {
           "primitive": "key-agree",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "generate"
@@ -1790,9 +1801,8 @@
         "algorithmProperties": {
           "primitive": "key-agree",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "generate"
@@ -1828,7 +1838,6 @@
         "algorithmProperties": {
           "primitive": "key-agree",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "generate"
@@ -1864,9 +1873,8 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "keyderive"
@@ -1901,9 +1909,8 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "keyderive"
@@ -1938,9 +1945,8 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "keyderive"
@@ -1975,9 +1981,8 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "keyderive"
@@ -2011,9 +2016,8 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "keyderive"
@@ -2047,9 +2051,8 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "keyderive"
@@ -2083,7 +2086,6 @@
         "algorithmProperties": {
           "primitive": "kdf",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "keyderive"
@@ -2118,9 +2120,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2155,9 +2156,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2192,9 +2192,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2229,9 +2228,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2266,9 +2264,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2303,9 +2300,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2340,9 +2336,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2377,9 +2372,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2414,9 +2408,8 @@
         "algorithmProperties": {
           "primitive": "hash",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [
-            "fips140-3"
+            "fips140-3-l1"
           ],
           "cryptoFunctions": [
             "digest"
@@ -2451,7 +2444,6 @@
         "algorithmProperties": {
           "primitive": "xof",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "digest"
@@ -2485,7 +2477,6 @@
         "algorithmProperties": {
           "primitive": "xof",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "digest"
@@ -2519,7 +2510,6 @@
         "algorithmProperties": {
           "primitive": "stream-cipher",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encrypt",
@@ -2555,7 +2545,6 @@
         "algorithmProperties": {
           "primitive": "key-agree",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "generate"
@@ -2591,7 +2580,6 @@
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
@@ -2628,7 +2616,6 @@
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
@@ -2664,7 +2651,6 @@
         "algorithmProperties": {
           "primitive": "kem",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "encapsulate",
@@ -2700,7 +2686,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2737,7 +2722,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2774,7 +2758,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2811,7 +2794,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2848,7 +2830,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2885,7 +2866,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2922,7 +2902,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2959,7 +2938,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -2996,7 +2974,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3033,7 +3010,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3070,7 +3046,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3107,7 +3082,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3144,7 +3118,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3181,7 +3154,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3218,7 +3190,6 @@
         "algorithmProperties": {
           "primitive": "signature",
           "executionEnvironment": "software-plain-ram",
-          "implementationLevel": "library",
           "certificationLevel": [],
           "cryptoFunctions": [
             "sign",
@@ -3501,12 +3472,14 @@
     {
       "ref": "algo-ml-kem-512",
       "dependsOn": [
+        "lib-openssl",
         "lib-ml-kem"
       ]
     },
     {
       "ref": "algo-ml-kem-768",
       "dependsOn": [
+        "lib-openssl",
         "lib-ml-kem"
       ]
     },
