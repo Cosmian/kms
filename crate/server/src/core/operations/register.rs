@@ -1,5 +1,4 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::State,
     kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::{Register, RegisterResponse},
@@ -9,7 +8,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::import::process_opaque_object;
+use super::import::{initial_state, process_opaque_object};
 use crate::{
     core::{
         KMS,
@@ -40,21 +39,7 @@ pub(crate) async fn register(
     }
 
     // Update lifecycle: determine state based on ActivationDate per KMIP 2.1 spec.
-    // Per KMIP 2.1 section 3.1.7 "Key States and Transitions":
-    // - If ActivationDate is absent or in the future → PreActive state
-    // - If ActivationDate is present and <= now → Active state
-    let now = time_normalize()?;
-    let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
-    let desired_state = if activation_allows_active {
-        debug!(
-            "Register: activation_date={:?} <= now, setting state to Active",
-            request.attributes.activation_date
-        );
-        State::Active
-    } else {
-        debug!("Register: no activation_date or future date, setting state to PreActive");
-        State::PreActive
-    };
+    let desired_state = initial_state(&request.attributes, "Register")?;
 
     // Set the state in the request attributes (used by process_* functions)
     request.attributes.state = Some(desired_state);

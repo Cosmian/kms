@@ -10,7 +10,7 @@ applyTo: '**/*.rs'
 
 - Never use `.unwrap()` in production code — use `?` propagation with context.
 - Use `thiserror`-based error types; each crate defines its own `Error` enum.
-- In tests, prefer `.expect("reason")` over `.unwrap()` for better failure messages.
+- In tests, return `KResult<()>` / `Result` and use `?`. Where a panic is unavoidable use `.expect("<why this cannot fail>")`; never a bare `.unwrap()`.
 
 ## Panics and brutal exits — FORBIDDEN in production code
 
@@ -52,7 +52,7 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 ## Feature-flag discipline
 
-- `#[cfg(feature = "non-fips")]` goes at the **function or module level only** — never inside a function body.
+- Put `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm. Never wrap statements or blocks inside a function body (`#[cfg(..)] { .. }`, `#[cfg(..)] let ..`, paired `#[cfg(feature..)]`/`#[cfg(not(feature..))]` statements) and never branch on `cfg!(feature = "non-fips")` at runtime: split into two functions with opposite `#[cfg]` and call the right one. About 30 existing files violate this (e.g. `create_key_pair.rs`, `export_get.rs`, `decrypt.rs`): legacy — when you touch one, fix it in the same change.
 - Non-FIPS-only items: Covercrypt, Redis-findex, PQC CLI module, AES-XTS.
 - FIPS is the default build mode (no feature flag needed).
 
@@ -93,7 +93,7 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
 
 **Functional tests** (new file `crate/server/src/tests/<feature>_tests.rs`):
 
-- Use `make_kms()` / `test_kms()` for in-process SQLite tests (no network).
+- Use `test_kms()` / `test_kms_with_config()` (§ Test KMS servers) for in-process SQLite tests (no network).
 - Cover the full lifecycle: create → operate → verify state.
 - Test all output formats (DER, PEM, JSON) when applicable.
 - Test that the result is persisted and retrievable from cache/DB.
@@ -133,7 +133,7 @@ Study this file before implementing tests for any new cryptographic feature.
 //! | Functional | <list tests here> |
 //! | Security | <list security tests here> |
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 
 // ... imports ...
 
@@ -159,6 +159,40 @@ async fn test_<feature>_rejects_invalid_input() -> KResult<()> { ... }
 - Run targeted tests: `cargo test -p <crate> <test_name>` — not the full suite.
 - **Never mark a test `#[ignore]` to make the suite green.** If a test requires infrastructure (DB, network), annotate it with the reason: `#[ignore = "Requires running PostgreSQL"]`.
 - Register every new test module in `crate/server/src/tests/mod.rs`.
+- Every test asserts an observable result: a value, a state transition or an error substring (`assert!(err.to_string().contains("..."))`). `is_ok()`, `is_err()`, a bare `?`, `a || !a` and `assert!(true)` are not assertions. Assert the error *kind/message*, not just "an error occurred".
+- A missing prerequisite (HSM, DB, env var, network) is `#[ignore = "<missing infrastructure>"]` or a hard failure — never `eprintln!` + `return Ok(())`, which reports as a pass. Reasons such as "to be fixed", "noisy", "flaky" are forbidden.
+- Never hard-code a TCP port. Bind `127.0.0.1:0`, keep the listener and hand it to the code under test (pattern: `crate/test_kms_server/src/test_server.rs`, `ttlv_tests/mod.rs`). A deliberately unreachable address comes from a `:0` listener that is bound, read, then dropped — never from `9998` or `1xxxx` literals. Never bind, drop, then reuse a port for a live server.
+- Temporary files use `tempfile::TempDir` / `NamedTempFile`; never a fixed name under `std::env::temp_dir()` or `/tmp`.
+- Never use `sleep` to wait for a condition: pre-bind the listener, poll with a deadline, or use `tokio::time::pause()` + `advance()` for TTL tests. A real sleep needs a one-line comment saying what elapses.
+- Use `#[serial]` only with a one-line comment naming the global state it protects.
+- Every bug fix ships a test that fails before the fix. If that is impossible (timing, concurrency), say why in the commit message.
+
+### Test KMS servers
+
+- Never call `KMS::instantiate`, `start_kms_server` or `ServerParams::try_from` in a test. If a variant is missing, add a helper first: a singleton goes through `start_singleton_from_toml` in `crate/test_kms_server/src/test_server.rs` with its own `OnceCell` and a complete fixture under `test_data/configs/server/` (per `test-configs.instructions.md`); a one-off server uses `start_test_server_with_patch`; inside `crate/server`, extend `tests/test_utils.rs`. The `no-direct-kms-instantiate` pre-commit hook enforces this for `crate/server/src`.
+- Inside `crate/server` (no `test_kms_server` dependency: cycle): use `test_kms()`, `test_kms_with_config(cfg)` (patch `https_clap_config()` / `https_clap_config_opts(url)`), `test_app*` for in-process Actix services, and `ttlv_tests::get_client()` for the binary KMIP socket server.
+- Servers from `start_default_test_kms_server*()` are process-wide singletons per configuration, and `start_test_kms_server_with_config` shares the default server's `ONCE` cell: whichever test runs first wins. A test that counts or `Locate`s objects uses unique tags/UIDs generated for that test.
+- Reuse before writing a helper: `crate/test_kms_server` (incl. `mock_gmail.rs` for one-shot mock HTTP servers) and the helpers below.
+
+Every other crate uses the `test_kms_server` helpers:
+
+| Helper | Fixture / behaviour |
+|---|---|
+| `start_default_test_kms_server` | `auth/plain.toml`: SQLite, plain HTTP, no auth, `KMS_TEST_DB` override |
+| `start_default_test_kms_server_with_cert_auth` | `auth/cert.toml`: TLS + client-cert auth + socket server |
+| `_with_jwt_auth` | `auth/plain_jwt.toml`: plain HTTP + JWT auth |
+| `_with_non_revocable_key_ids(ids)` | `test/non_revocable.toml` + the given non-revocable key IDs |
+| `_with_crypto_officer_users(users)` | `rbac/crypto_officer_users.toml` + the given crypto officers |
+| `_with_multi_crypto_officer_users` | `rbac/crypto_officer_users.toml` + two crypto officers |
+| `start_ceremony_test_kms_server` | `rbac/crypto_officers.toml`: `require_ceremony = true` |
+| `start_test_kms_server_with_pqc_tls` | `tls/pqc_tls.toml`: ML-DSA-44 TLS certificate (non-FIPS) |
+| `_with_utimaco_hsm` | `hsm/hsm_test.toml`: Utimaco HSM |
+| `_with_utimaco_and_kek` | Utimaco HSM + HSM key encryption key |
+| `_with_hsm_and_kek` | HSM from `HSM_MODEL` / `HSM_SLOT_ID` + HSM key encryption key |
+| `_with_three_softhsm2` | `hsm/three_softhsm2.toml`: three SoftHSM2 slots |
+| `start_test_kms_server_with_config(ClapConfig)` | Custom config; shares the default `ONCE` cell |
+| `start_test_server(path, TestClientOptions)` / `start_test_server_with_patch(path, patch, opts)` / `start_test_server_from_toml(path)` | Fresh owned server; call `stop_server()` |
+| `*_for_vectors` | Vector runner only |
 
 ## Documentation
 
@@ -171,6 +205,7 @@ async fn test_<feature>_rejects_invalid_input() -> KResult<()> { ... }
 - **`#[allow(warnings)]` and `#[allow(unused_imports)]` / `#[allow(dead_code)]` and similar** are forbidden on new code. Unused items must be removed, not silenced.
 - **`#[expect(clippy::...)]` / `#[expect(dead_code)]`** (Rust 1.81+) is subject to the same rule as `#[allow]` — forbidden on new code.
 - **Do not silence any lint to make code compile faster.** Every lint exists for a reason.
+- **Test code carve-out (the only one):** a test module or test file may carry one `#[allow(clippy::unwrap_used, clippy::expect_used, clippy::unwrap_in_result, clippy::panic_in_result_fn)]` (inner `#![allow(..)]` for a whole test file) ending with the comment `// tests: a panic is the failure signal`. No other lint may be suppressed in tests.
 
 ### Fully forbidden lint suppressions (no exception, ever)
 
@@ -201,15 +236,32 @@ Any of the above added to **new code** is a blocker that must be fixed before re
 Agents must run the following scan before every commit and after every AI code-generation step:
 
 ```bash
-# All newly added #[allow(...)] and #[expect(...)] on any lint — not just clippy
+# All newly added outer #[allow(...)] / #[expect(...)] and inner #![allow(...)] attributes on any lint — not just clippy
 git diff origin/develop...HEAD -- '*.rs' \
   | grep '^+' \
   | grep -v '^+++' \
-  | grep -E '#\[(allow|expect)\(' \
-  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive\|//.*SAFETY'
+  | grep -E '#!?\[(allow|expect)\(' \
+  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive\|//.*SAFETY' \
+  | grep -v 'tests: a panic is the failure signal'
 ```
 
 Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justification. Report every match to the reviewer.
+
+## OIDs — reuse rust-openssl, never hardcode
+
+- Use `openssl::nid::Nid` constants (`Nid::SERVER_AUTH`, `Nid::SUBJECT_ALT_NAME`, `Nid::SECP256K1`, `Nid::ID_PKIX_OCSP_NOCHECK`, …) instead of dotted-string literals (`"2.5.29.17"`) or hand-written DER bytes. Get an `Asn1Object` or a dotted string from a `Nid` only through the helpers in `cosmian_kms_crypto::openssl::oid`: `asn1_object(Nid)`, `oid_string(Nid)`, `nid_of(&str)`. `rust-openssl` has no `Asn1Object::from_nid`; do not write it.
+- Check `openssl::nid::Nid` before adding any OID. Dotted literals are allowed only (a) for OIDs OpenSSL has no `Nid` for, e.g. SCEP `2.16.840.1.113733.1.9.*` or private arcs such as `1.3.6.1.4.1.16376.*` — as a named `const` with a one-line doc citing the spec, never repeated inline; and (b) in tests/vectors that assert OID values (e.g. the round-trip test in `oid.rs`).
+- Never duplicate an OID that already exists as a `const` in the workspace; import it.
+
+## Randomness — KmsRng only (mechanically enforced)
+
+- Every random byte comes from `cosmian_kms_crypto::crypto::KmsRng`: keys, seeds, nonces/IVs, salts, serials, tokens, test fixtures. Use `fill_bytes` / `random_vec` for values that stay secret and `fill_public_bytes` for values that leave the server in clear (nonces, IVs, serials, `RNGRetrieve`, `C_GenerateRandom`). Use `kms.rng` when a `KMS` is in scope, else `KmsRng::new()` (zero-sized).
+- An API that needs an infallible `rand_core` RNG gets `KmsRng::seeded_csrng()` (its state is overwritten on drop); `<Prg>::from_seed` with a seed filled by `KmsRng::fill_bytes` only for non-secret output such as test fixtures or anonymization noise.
+- The root `clippy.toml` bans every other entropy source: OpenSSL `rand` / `BigNum` rand / raw `RAND_*` / `BN_*rand*`, rand's `rng` / `thread_rng` / `random*` / `fill` / `make_rng`, `ThreadRng`, `OsRng`, `SysRng`, `SeedableRng::{from_entropy, from_os_rng, try_from_os_rng, seed_from_u64}`, `getrandom::*`, `cookie::Key::generate`, and non-CSPRNGs.
+- Never suppress those lints (nor `clippy::style` / `clippy::all`), never override their level, and never add another `clippy.toml`; review must reject any of these.
+- A dependency adds a new entropy API: add it to `clippy.toml` with `allow-invalid = true`.
+- The lint cannot see the following, so review must reject them: FFI declarations of OpenSSL `RAND_*` / `BN_*rand*` outside `crypto/src/crypto/rng/mod.rs`, reads of `/dev/urandom`, and shelling out to `openssl rand`.
+- Accepted exceptions: OpenSSL key generation (RSA / EC / EdDSA / SLH-DSA / hybrid KEM) and Covercrypt, which have no injection point; `uuid::Uuid::new_v4` identifiers; the `oauth2` PKCE/CSRF helpers in `cosmian_kms_client`, which does not depend on `cosmian_kms_crypto`.
 
 ## Style
 
@@ -219,18 +271,15 @@ Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justifica
 
 ---
 
-## AI skill triggers — automatically invoke for Rust code
+## AI audit routing — one mechanical pass, scoped reasoning
 
-Agents editing Rust files **must** invoke the following skills at the relevant moments:
-
-| Trigger | Skill | When |
-|---------|-------|------|
-| Any code change | `/rust-panic-audit` | When new `unwrap`/`expect`/`panic!`/`todo!` is added |
-| Error handling change | `/rust-error-propagation` | When modifying `Result` chains, adding new error types |
-| Async code change | `/rust-async-refactor` | When modifying `.await` chains or `tokio::spawn` calls |
-| Code simplification | `/rust-simplify` | When functions grow beyond 60 lines or nesting exceeds 3 levels |
-| New pattern / duplication | `/rust-refactor` | When a similar code block already exists elsewhere |
-| Before PR | `/rust-review-all` | Full Rust quality gate — runs all review skills sequentially |
-| Crypto code | `/cryptography-review` | Any change in `crate/crypto/` |
-| Security concern | `/security-review` | Any auth, key handling, or FFI change |
-| KMIP operation | `/kmip-compliance` | Any change in `crate/server/src/core/operations/` |
+- Before deeper Rust audits, run `/kms-caveman` once on the scoped Rust changes. Reuse its findings; it is read-only mechanical triage, not a substitute for semantic or security review.
+- Run `/rust-panic-audit` for a dedicated panic-only request. `/rust-review-all` uses the KMS Caveman phase and must not duplicate the standalone panic audit.
+- Run `/rust-error-propagation` when changed code affects fallible operations or error handling; run `/rust-async-refactor` when changed code or affected callers touch async/blocking paths.
+- Run `/rust-refactor` and `/rust-simplify` for full audits or when the scoped change affects duplication or complexity. A negative text search does not prove these concerns are absent.
+- Run `/cryptography-review` for `crate/crypto/` changes and for algorithm selection, key lifecycle/policy, provider initialization, or FIPS-gate changes wherever they occur.
+- Run `/security-review` for security-sensitive flows, auth, externally reachable data paths, FFI, or user-controlled rendering.
+  Skip only a confirmed static presentation-only UI change with no dynamic data, auth/session, API, or sensitive-data behavior.
+  A clean mechanical scan is never grounds to skip security review.
+- Run `/kmip-compliance` for changed KMIP operations or protocol behavior. Run `/threat-model` when a trust boundary or security-relevant data flow changes; skip only in a confirmed incremental review with no such change.
+- Explicit full, release, and pre-release gates override focused-scope skips. Report each inapplicable skill and its evidence; never claim measured token savings without usage data.

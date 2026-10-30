@@ -8,30 +8,20 @@ on:
         required: true
         type: string
 
-env:
-  OPENSSL_DIR: /usr/local/openssl
-
 jobs:
   forward-proxy:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - uses: ./.github/actions/install-mise
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
-
-      - name: Local OpenSSL Install
-        run: |
-          sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
-          sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
-          sudo chown -R $USER ${{ env.OPENSSL_DIR }}
-          mise run build:openssl-binaries --os-name ubuntu_24_04 --openssl-dir ${{ env.OPENSSL_DIR }}
 
       - name: Prerequisites
         run: |

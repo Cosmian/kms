@@ -4,7 +4,7 @@
 # Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     ports:
       - ${KMS_SLOT_POSTGRES_PORT:-5432}:5432
     environment:
@@ -13,13 +13,29 @@ services:
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
 
+  # ── PostgreSQL audit backend ────────────────────────────────────────────────
+  # Dedicated instance for the PostgreSQL audit backend's #[ignore]-gated live
+  # tests (crate/server_database's stores::audit::pgsql::live_tests and
+  # crate/clients/clap's actions::audit::tests). Kept separate from the main
+  # `postgres` service on purpose: the audit backend refuses to start if its
+  # database is the same as the main object-storage database.
+  postgres-audit:
+    image: postgres:18
+    ports:
+      - ${KMS_SLOT_AUDIT_POSTGRES_PORT:-5436}:5432
+    environment:
+      - POSTGRES_USER=kms_audit
+      - POSTGRES_DB=kms_audit
+      - POSTGRES_PASSWORD=kms_audit
+      - PGDATA=/tmp/postgres-audit
+
   # ── PostgreSQL failover-retry test nodes ────────────────────────────────────
   # Two independent PostgreSQL instances used by test_db_postgresql_failover.
   # Start with: docker compose --profile pg-failover up -d
   # The container names (pg1, pg2) are referenced by docker stop/start inside
   # the test to simulate a primary failure and recovery.
   pg-failover-1:
-    image: postgres:16
+    image: postgres:18
     container_name: pg1
     profiles: [pg-failover]
     ports:
@@ -31,7 +47,7 @@ services:
       - PGDATA=/tmp/postgres-fo1
 
   pg-failover-2:
-    image: postgres:16
+    image: postgres:18
     container_name: pg2
     profiles: [pg-failover]
     ports:
@@ -70,8 +86,11 @@ services:
       - MYSQL_DATABASE=kms
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
+  # ── mTLS database variants ──────────────────────────────────────────────────
+  # Start with: docker compose --profile mtls up -d
   postgres-mtls:
-    image: postgres:16
+    image: postgres:18
+    profiles: [mtls]
     ports:
       - ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433}:5432
     environment:
@@ -105,8 +124,16 @@ services:
           -c ssl_ca_file=/var/lib/postgresql/ca.crt \
           -c ssl_min_protocol_version=TLSv1.2 \
           -c listen_addresses='*'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -h 127.0.0.1 -U kms -d kms
+      interval: 2s
+      timeout: 5s
+      retries: 30
   mysql-mtls:
     image: mysql:8.0
+    profiles: [mtls]
     ports:
       - ${KMS_SLOT_MYSQL_MTLS_PORT:-3309}:3306
     environment:
@@ -128,8 +155,11 @@ services:
     ports:
       - ${KMS_SLOT_REDIS_PORT:-6379}:6379
 
+  # ── OTLP integration-test stack (jaeger + otel-collector) ───────────────────
+  # Start with: docker compose --profile otel-test up -d
   jaeger:
     image: jaegertracing/all-in-one:1.55
+    profiles: [otel-test]
     ports:
       - ${KMS_SLOT_JAEGER_PORT:-16686}:16686
     environment:
@@ -140,6 +170,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.144.0
+    profiles: [otel-test]
     command: [--config=/etc/otel-collector-config.yaml]
     volumes:
       - ./monitoring/ci-otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
@@ -149,9 +180,9 @@ services:
       - ENVIRONMENT=test
       - KMS_VERSION=dev
     ports:
-      - ${KMS_SLOT_OTEL_GRPC_PORT:-4317}:4317   # OTLP gRPC receiver (host)
-      - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
-      - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
+      - ${KMS_SLOT_OTEL_GRPC_PORT:-4317}:4317 # OTLP gRPC receiver (host)
+      - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318 # OTLP HTTP receiver (host)
+      - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889 # Prometheus metrics endpoint (host)
 
   # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
   #
@@ -288,8 +319,8 @@ services:
     profiles:
       - iris
     ports:
-      - ${KMS_SLOT_IRIS_WEB_PORT:-52773}:52773     # IRIS Management Portal
-      - ${KMS_SLOT_IRIS_SUPER_PORT:-1972}:1972      # IRIS SuperServer
+      - ${KMS_SLOT_IRIS_WEB_PORT:-52773}:52773 # IRIS Management Portal
+      - ${KMS_SLOT_IRIS_SUPER_PORT:-1972}:1972 # IRIS SuperServer
     volumes:
       - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
       - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro
@@ -571,7 +602,7 @@ services:
     container_name: envoy-sds-downstream
     depends_on:
       envoy-sds-upstream:
-        condition: service_started  # test_sds.sh waits explicitly via wait_envoy_ready
+        condition: service_started # test_sds.sh waits explicitly via wait_envoy_ready
     volumes:
       - spire-agent-socket-a:/tmp/spire-agent:ro
       - ./test_data/spire/config/envoy-downstream.yaml:/etc/envoy/envoy.yaml:ro
@@ -592,7 +623,7 @@ services:
     container_name: socat-probe
     depends_on:
       envoy-sds-downstream:
-        condition: service_started  # test_sds.sh waits for Envoy readiness before running the probe
+        condition: service_started # test_sds.sh waits for Envoy readiness before running the probe
     # Send a single probe string through the mTLS proxy and capture the echo.
     # Exit 0 if the response matches, non-zero otherwise.
     entrypoint:

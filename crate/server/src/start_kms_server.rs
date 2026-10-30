@@ -18,9 +18,10 @@ use actix_files::Files;
 use actix_identity::IdentityMiddleware;
 use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
-    App, HttpRequest, HttpResponse, HttpServer,
+    App, HttpRequest, HttpResponse, HttpServer, Scope,
+    body::MessageBody,
     cookie::{Key, time::Duration},
-    dev::ServerHandle,
+    dev::{ServerHandle, ServiceFactory, ServiceRequest, ServiceResponse, Transform},
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
@@ -59,21 +60,21 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuditMiddleware, AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
-        UserId, api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
-        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
-        vault_token_optional_middleware,
+        AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig, SessionAuth,
+        SpireTokenCache, UserId, api_token_middleware, ensure_auth_middleware,
+        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
+        spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
-        get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, csr, est, get_hsm_status,
+        get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, ocsp, root_redirect,
+        ms_dke, ocsp, root_redirect, scep,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -493,7 +494,8 @@ async fn import_cse_migration_key(
 ///   When provided, the server uses [`HttpServer::listen()`] / [`HttpServer::listen_openssl()`]
 ///   instead of [`HttpServer::bind()`], which eliminates the TOCTOU race that occurs between
 ///   probing a free port and re-binding it later. Tests pass a listener from
-///   `allocate_dynamic_port`; production callers pass `None`.
+///   `allocate_dynamic_port`; production callers pass `None`. A pre-bound listener also raises
+///   the HTTP client request (header) timeout from 10 s to 60 s for queued test clients.
 /// * `pre_bound_socket_listener` - An optional pre-bound TCP listener for the KMIP socket
 ///   server (only meaningful when `socket_server_start` is enabled). Same TOCTOU rationale
 ///   as `pre_bound_http_listener`; production callers pass `None`.
@@ -522,6 +524,9 @@ pub async fn start_kms_server(
             .await
             .context("start KMS server: failed instantiating the server")?,
     );
+    crate::core::wrapping::ensure_kek_wrapping(&kms_server)
+        .await
+        .context("start KMS server: key_encryption_key wrapping check")?;
 
     // Spawn background metrics cron thread and retain shutdown signal
     let metrics_shutdown_tx = if kms_server.metrics.is_some() {
@@ -983,66 +988,72 @@ pub async fn prepare_kms_server(
             .google_cse_disable_tokens_validation
         && kms_server.params.kms_public_url.is_some();
 
-    // Prepare the JWT configurations and the JWKS manager if the server uses JWT for authentication.
-    let (jwt_configurations, jwks_manager) = if let Some(identity_provider_configurations) =
-        &kms_server.params.identity_provider_configurations
-    {
-        // Prepare all the needed URIs from all the configured Identity Providers
-        let mut all_jwks_uris: Vec<_> = identity_provider_configurations
-            .iter()
-            .map(|idp_config| {
-                IdpAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
-            })
-            .collect();
-        // Add the one from Google if CSE is enabled.
-        if enable_google_cse_authentication {
-            all_jwks_uris.extend(google_cse::list_jwks_uri(
-                kms_server
-                    .params
-                    .google_cse
-                    .google_cse_incoming_url_whitelist
-                    .clone(),
-            ));
-        }
-
-        // Security guard: all JWKS URIs must use HTTPS to prevent credential exposure and
-        // MITM attacks on the public-key material used to verify bearer tokens.
-        // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
-        // check is compiled out to allow http:// URIs.
-        #[cfg(not(feature = "insecure"))]
-        validate_jwks_uris_are_https(&all_jwks_uris)?;
-
-        let jwks_manager = Arc::new(
-            JwksManager::new(all_jwks_uris, kms_server.params.proxy_params.as_ref()).await?,
-        );
-
-        let mut built_jwt_configurations = identity_provider_configurations
-            .iter()
-            .map(|idp_config| JwtConfig {
-                jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
-                jwks: jwks_manager.clone(),
-                jwt_audience: idp_config.jwt_audience.clone(),
-                accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
-            })
-            .collect::<Vec<_>>();
-
-        // Add the one from Google if CSE is enabled and some external urls are whitelisted
-        if enable_google_cse_authentication {
-            if let Some(white_list) = &kms_server
+    // Prepare the JWT configurations if the server uses JWT for authentication.
+    // Each issuer gets its own JWKS manager: a token claiming issuer X must only verify
+    // against keys fetched from X's JWKS, never against a key published by another
+    // configured identity provider (cross-issuer token forgery).
+    let proxy_params = kms_server.params.proxy_params.as_ref();
+    let (jwt_configurations, google_cse_jwks_manager) =
+        if let Some(identity_provider_configurations) =
+            &kms_server.params.identity_provider_configurations
+        {
+            let idp_jwks_uris: Vec<_> = identity_provider_configurations
+                .iter()
+                .map(|idp_config| {
+                    IdpAuthConfig::uri(&idp_config.jwt_issuer_uri, idp_config.jwks_uri.as_deref())
+                })
+                .collect();
+            let google_cse_whitelist = kms_server
                 .params
                 .google_cse
                 .google_cse_incoming_url_whitelist
+                .as_deref()
+                .filter(|_| enable_google_cse_authentication);
+
+            // Security guard: all JWKS URIs must use HTTPS to prevent credential exposure and
+            // MITM attacks on the public-key material used to verify bearer tokens.
+            // In `insecure` builds (dev / integration tests with a local HTTP JWKS mock) this
+            // check is compiled out to allow http:// URIs.
+            #[cfg(not(feature = "insecure"))]
             {
-                built_jwt_configurations.extend(google_cse::list_jwt_configurations(
-                    white_list,
-                    &jwks_manager,
-                ));
+                validate_jwks_uris_are_https(&idp_jwks_uris)?;
+                if enable_google_cse_authentication {
+                    validate_jwks_uris_are_https(&google_cse::list_jwks_uri(
+                        google_cse_whitelist.map(<[String]>::to_vec),
+                    ))?;
+                }
             }
-        }
-        (Arc::new(built_jwt_configurations), Some(jwks_manager))
-    } else {
-        (Arc::new(Vec::new()), None)
-    };
+
+            let mut built_jwt_configurations =
+                Vec::with_capacity(identity_provider_configurations.len());
+            for (idp_config, jwks_uri) in identity_provider_configurations.iter().zip(idp_jwks_uris)
+            {
+                built_jwt_configurations.push(JwtConfig {
+                    jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
+                    jwks: Arc::new(JwksManager::new(vec![jwks_uri], proxy_params).await?),
+                    jwt_audience: idp_config.jwt_audience.clone(),
+                    accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
+                });
+            }
+
+            let google_cse_jwks_manager = if enable_google_cse_authentication {
+                // Add the whitelisted external KACLS issuers, each bound to its own JWKS
+                if let Some(white_list) = google_cse_whitelist {
+                    built_jwt_configurations.extend(
+                        google_cse::list_jwt_configurations(white_list, proxy_params).await?,
+                    );
+                }
+                // Google-operated token issuers only (no IdP or whitelisted KACLS keys)
+                Some(Arc::new(
+                    JwksManager::new(google_cse::list_jwks_uri(None), proxy_params).await?,
+                ))
+            } else {
+                None
+            };
+            (Arc::new(built_jwt_configurations), google_cse_jwks_manager)
+        } else {
+            (Arc::new(Vec::new()), None)
+        };
 
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server
@@ -1055,7 +1066,7 @@ pub async fn prepare_kms_server(
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
     // Determine if Auth Verifier should be used for authentication.
-    let (use_auth_verifier, auth_verifier_jwks_manager) =
+    let (use_auth_verifier, auth_verifier) =
         if let Some(ref auth_verifier_cfg) = kms_server.params.auth_verifier_config {
             let jwks_uri = auth_verifier_cfg.jwks_uri().ok_or_else(|| {
                 KmsError::ServerError(
@@ -1086,10 +1097,43 @@ pub async fn prepare_kms_server(
                     ))
                 })?,
             );
-            (true, Some(mgr))
+            (
+                true,
+                Some(Arc::new(AuthVerifierValidator::new(
+                    mgr,
+                    auth_verifier_cfg,
+                )?)),
+            )
         } else {
             (false, None)
         };
+    let auth_verifier_session_realm: Option<Arc<str>> = kms_server
+        .params
+        .auth_verifier_config
+        .as_ref()
+        .and_then(AuthVerifierConfig::saml_session_realm)
+        .map(Arc::from);
+
+    // Insecure defaults remain supported for development; make them visible in production logs.
+    if !(use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier) {
+        cosmian_logger::warn!(
+            "SECURITY: no authentication method is configured: every request is served as the \
+             default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for \
+             production deployments.",
+            kms_server.params.default_username
+        );
+    }
+    if kms_server.params.key_wrapping_key.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: no key_encryption_key is configured: objects are stored without \
+             server-side KEK wrapping. Configure a KEK for production deployments."
+        );
+    }
+    if kms_server.params.rate_limit_per_second.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: rate_limit_per_second is not set: request rate limiting is disabled."
+        );
+    }
 
     // Determine the address to bind the server to.
     let address = format!(
@@ -1100,7 +1144,7 @@ pub async fn prepare_kms_server(
     // Get the Google Client-Side Encryption JWT authorization config
     debug!("Enable Google CSE JWT Authorization: {enable_google_cse_authentication}");
     let google_cse_jwt_config = if enable_google_cse_authentication {
-        let Some(jwks_manager) = jwks_manager else {
+        let Some(jwks_manager) = google_cse_jwks_manager else {
             return Err(KmsError::ServerError(
                 "No JWKS manager to handle Google CSE JWT authorization".to_owned(),
             ));
@@ -1210,6 +1254,18 @@ pub async fn prepare_kms_server(
         )
     });
 
+    // The Auth Verifier only redirects to https:// return URLs after SAML sign-on.
+    if auth_verifier_session_realm.is_some() && !kms_public_url.starts_with("https://") {
+        return Err(KmsError::ServerError(
+            "auth_verifier_saml_realm requires kms_public_url to use https://".to_owned(),
+        ));
+    }
+    if let Some(auth_verifier_config) = kms_server.params.auth_verifier_config.as_ref() {
+        auth_verifier_config
+            .validate_saml()
+            .map_err(KmsError::ServerError)?;
+    }
+
     // Set the `Secure` flag on the session cookie only when the server is reachable
     // via HTTPS.  Over plain HTTP the browser never sends a Secure-flagged cookie
     // back, which breaks the post-login session for auth-verifier and OIDC flows.
@@ -1236,7 +1292,11 @@ pub async fn prepare_kms_server(
              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
              random secret value."
         );
-        Key::generate()
+        let random_key_bytes = kms_server
+            .rng
+            .random_vec(64)
+            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
+        Key::from(random_key_bytes.as_slice())
     };
 
     // Clone kms_server for HttpServer closure
@@ -1489,6 +1549,20 @@ pub async fn prepare_kms_server(
             app = app.service(azure_ekm_scope);
         }
 
+        let native_auth = NativeAuthStack {
+            kms_server: &kms_server_for_http,
+            use_api_token_auth,
+            use_cert_auth,
+            use_vault_token_auth,
+            auth_verifier: &auth_verifier,
+            auth_verifier_session_realm: &auth_verifier_session_realm,
+            jwt_configurations: &jwt_configurations,
+            spire_cache: &spire_cache,
+            spire_auth_verifier_url: &spire_auth_verifier_url,
+            vault_http_client: &vault_http_client,
+            spire_default_username: &spire_default_username,
+        };
+
         #[cfg(feature = "non-fips")]
         {
             // Middleware registration order: LAST registered = runs FIRST.
@@ -1501,38 +1575,15 @@ pub async fn prepare_kms_server(
             // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
             // the endpoint actually require authentication.
             let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
-            let tokenize_scope = web::scope("/tokenize")
-                .app_data(web::JsonConfig::default().limit(65_536))
-                .wrap(Condition::new(
+            let tokenize_scope = wrap_native_auth(
+                web::scope("/tokenize").app_data(web::JsonConfig::default().limit(65_536)),
+                Condition::new(
                     use_any_auth,
                     ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
-                ))
-                .wrap(SessionAuth)
-                .wrap(Condition::new(
-                    use_api_token_auth,
-                    api_token_middleware(kms_server_for_http.clone()),
-                ))
-                .wrap(Condition::new(
-                    use_auth_verifier,
-                    AuthVerifier::new(auth_verifier_jwks_manager.clone()),
-                ))
-                .wrap(Condition::new(
-                    use_jwt_auth,
-                    jwt_auth_middleware(jwt_configurations.clone()),
-                ))
-                .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
-                // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
-                // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
-                .wrap(Condition::new(
-                    use_vault_token_auth,
-                    vault_token_optional_middleware(
-                        spire_cache.clone(),
-                        spire_auth_verifier_url.clone(),
-                        vault_http_client.clone(),
-                        spire_default_username.clone(),
-                    ),
-                ))
-                .wrap(Cors::permissive())
+                ),
+                &native_auth,
+            )
+                .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
                 .service(tokenize::hash)
                 .service(tokenize::noise)
                 .service(tokenize::word_mask)
@@ -1636,10 +1687,11 @@ pub async fn prepare_kms_server(
             // Ordered list of UI login methods, highest priority first. The Web UI
             // renders the first entry as the primary login action and the rest as
             // secondary actions (a button when a single alternative exists, a
-            // dropdown when several do). Priority is JWT > SPIFFE > AUTH_VERIFIER > CERT:
-            // the interactive, per-user methods come before the ambient client
-            // certificate probe. AUTH_VERIFIER is only offered when its UI login is
-            // enabled. The singular `auth_method` served by `get_auth_method` is
+            // dropdown when several do). Priority is JWT > SPIFFE > AUTH_VERIFIER_SAML >
+            // AUTH_VERIFIER > CERT: the interactive, per-user methods come before the
+            // ambient client certificate probe. AUTH_VERIFIER is only offered when its UI
+            // login is enabled, AUTH_VERIFIER_SAML when a SAML realm is configured. The
+            // singular `auth_method` served by `get_auth_method` is
             // derived as the first entry for backward compatibility.
             //
             // SPIFFE is not an interactive login: the browser session is established by a
@@ -1658,6 +1710,9 @@ pub async fn prepare_kms_server(
             }
             if use_spiffe_ui_auth {
                 auth_methods.push("SPIFFE".to_owned());
+            }
+            if use_auth_verifier && auth_verifier_session_realm.is_some() {
+                auth_methods.push("AUTH_VERIFIER_SAML".to_owned());
             }
             if use_auth_verifier
                 && kms_server_for_http
@@ -1681,7 +1736,7 @@ pub async fn prepare_kms_server(
                     .auth_verifier_config
                     .clone()
                     .unwrap_or_default(),
-                jwks_manager: auth_verifier_jwks_manager.clone(),
+                auth_verifier: auth_verifier.clone(),
             };
 
             // These paths mirror the React application's client-side routes
@@ -1697,6 +1752,7 @@ pub async fn prepare_kms_server(
                 "/rsa{_:.*}",
                 "/ec{_:.*}",
                 "/pqc{_:.*}",
+                "/pgp{_:.*}",
                 "/mac{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
@@ -1718,7 +1774,7 @@ pub async fn prepare_kms_server(
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_methods))
-                .wrap(Cors::permissive())
+                .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
                 .configure(configure_auth_routes);
             // Add all SPA routes
             for route in spa_routes {
@@ -1762,6 +1818,15 @@ pub async fn prepare_kms_server(
             // Public OCSP responder (no authentication, RFC 6960 §2 — public information).
             .service(ocsp::get_ocsp)
             .service(ocsp::post_ocsp)
+            // EST (RFC 7030) and SCEP (RFC 8894) enrollment. Registered at app level, before
+            // the `/.well-known` JWKS scope, so they are not shadowed. Authentication is done
+            // by the handlers themselves (TLS client certificate / Basic / CMS signature).
+            .service(est::get_cacerts)
+            .service(est::get_csrattrs)
+            .service(est::post_simpleenroll)
+            .service(est::post_simplereenroll)
+            .service(scep::scep_get)
+            .service(scep::scep_post)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)
@@ -1791,41 +1856,23 @@ pub async fn prepare_kms_server(
         }
 
         // REST Native Crypto API — /v1/crypto/*
-        let crypto_scope = web::scope("/v1/crypto")
-            .app_data(
-                web::JsonConfig::default()
-                    .error_handler(jose::crypto_json_error_handler),
-            )
-            .wrap(ensure_auth_middleware(
+        let crypto_scope = wrap_native_auth(
+            web::scope("/v1/crypto").app_data(
+                web::JsonConfig::default().error_handler(jose::crypto_json_error_handler),
+            ),
+            ensure_auth_middleware(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+            ),
+            &native_auth,
+        )
+            // Same place as in the default scope: outside every auth method, inside CORS.
+            .wrap(AuditMiddleware::new(
+                kms_server_for_http.audit_store.clone(),
+                kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                kms_server_for_http.params.audit_failure_mode.clone(),
             ))
-            .wrap(SessionAuth)
-            .wrap(Condition::new(
-                use_api_token_auth,
-                api_token_middleware(kms_server_for_http.clone()),
-            ))
-            .wrap(Condition::new(
-                use_auth_verifier,
-                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
-            ))
-            .wrap(Condition::new(
-                use_jwt_auth,
-                jwt_auth_middleware(jwt_configurations.clone()),
-            ))
-            .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
-            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
-            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
-            .wrap(Condition::new(
-                use_vault_token_auth,
-                vault_token_optional_middleware(
-                    spire_cache.clone(),
-                    spire_auth_verifier_url.clone(),
-                    vault_http_client.clone(),
-                    spire_default_username.clone(),
-                ),
-            ))
-            .wrap(Cors::permissive())
+            .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
             .service(jose::sign_handler)
@@ -1840,36 +1887,14 @@ pub async fn prepare_kms_server(
         app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
-        let default_scope = web::scope("")
-            .wrap(ensure_auth_middleware(
+        let default_scope = wrap_native_auth(
+            web::scope(""),
+            ensure_auth_middleware(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
-            ))
-            .wrap(SessionAuth)
-            .wrap(Condition::new(
-                use_api_token_auth,
-                api_token_middleware(kms_server_for_http.clone()),
-            ))
-            .wrap(Condition::new(
-                use_auth_verifier,
-                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
-            ))
-            .wrap(Condition::new(
-                use_jwt_auth,
-                jwt_auth_middleware(jwt_configurations.clone()),
-            )) // Use JWT for authentication if necessary.
-            .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn))) // Use certificates for authentication if necessary.
-            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
-            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
-            .wrap(Condition::new(
-                use_vault_token_auth,
-                vault_token_optional_middleware(
-                    spire_cache.clone(),
-                    spire_auth_verifier_url.clone(),
-                    vault_http_client.clone(),
-                    spire_default_username.clone(),
-                ),
-            ))
+            ),
+            &native_auth,
+        )
             // Tamper-evident audit logging: wraps every auth method above so both
             // successful and failed authentication attempts are recorded (LIFO wrap order).
             .wrap(AuditMiddleware::new(
@@ -1877,25 +1902,10 @@ pub async fn prepare_kms_server(
                 kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
                 kms_server_for_http.params.audit_failure_mode.clone(),
             ))
-            // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
-            // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
-            // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
-            // (Google CSE, MS DKE, AWS XKS) have their own permissive CORS configuration.
-            // When origins are configured, allow any method and header for those origins so that
-            // browser WASM clients (which use POST with Content-Type: application/octet-stream) can
-            // pass the CORS preflight check and carry session cookies (`credentials: "include"`).
-            // When no origins are configured, Cors::default() with no allowed origins effectively
-            // blocks all cross-origin requests (same-origin only).
-            .wrap({
-                let mut cors = Cors::default()
-                    .allow_any_method()
-                    .allow_any_header()
-                    .supports_credentials();
-                for origin in &kms_server_for_http.params.cors_allowed_origins {
-                    cors = cors.allowed_origin(origin.as_str());
-                }
-                cors
-            })
+            // CORS: same-origin plus `cors_allowed_origins` (see `allowed_origins_cors`).
+            // Enterprise-integration scopes (Google CSE, MS DKE, AWS XKS) have their own
+            // permissive CORS configuration.
+            .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(get_server_info)
@@ -1909,6 +1919,7 @@ pub async fn prepare_kms_server(
             .service(access::get_create_access)
             .service(access::get_privileged_access)
             .service(crl::get_crl)
+            .service(csr::post_csr)
             .service(access::get_crypto_officer_status)
             .service(access::disable_crypto_officer)
             .service(access::activate_crypto_officer_ceremony)
@@ -1923,7 +1934,11 @@ pub async fn prepare_kms_server(
     .keep_alive(actix_web::http::KeepAlive::Timeout(
         std::time::Duration::from_secs(120),
     ))
-    .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
+    // Pre-authentication slow-header bound: keep it short in production (DoS margin). Only test
+    // harnesses pre-bind the listener; their concurrent clients may queue before sending.
+    .client_request_timeout(std::time::Duration::from_secs(
+        if pre_bound_http_listener.is_some() { 60 } else { 10 },
+    ));
 
     // Apply worker count if configured; otherwise default to available_parallelism
     // (total logical cores). HTTP workers are I/O-bound (connection handling), so
@@ -1950,30 +1965,19 @@ pub async fn prepare_kms_server(
     // surfaced in the client test (reqwest) when it attempted to reuse the pooled
     // socket. Extending the keep-alive timeout prevents these false negatives and
     // lets us observe true protocol-level failures instead of transport resets.
-    // Additionally, actix-web has a default client_request_timeout of 5 seconds which
-    // was causing "408 Request Timeout" errors during long-running test operations.
 
     // Start and return the main KMS server
     Ok(match tls_config {
         Some(ssl_acceptor) => {
-            if use_cert_auth {
-                trace!("Using Client Certificate Authentication with OpenSSL");
-                let s = server.on_connect(extract_peer_certificate);
-                if let Some(lst) = pre_bound_http_listener {
-                    s.listen_openssl(lst, ssl_acceptor)?
-                } else {
-                    s.bind_openssl(address, ssl_acceptor)?
-                }
-                .run()
+            // Per-connection TLS data: the client certificate (mTLS) and the tls-unique channel
+            // binding EST verifies (RFC 7030 §3.5), with or without client certificates.
+            let s = server.on_connect(extract_peer_certificate);
+            if let Some(lst) = pre_bound_http_listener {
+                s.listen_openssl(lst, ssl_acceptor)?
             } else {
-                trace!("Not using Client Certificate Authentication with OpenSSL");
-                if let Some(lst) = pre_bound_http_listener {
-                    server.listen_openssl(lst, ssl_acceptor)?
-                } else {
-                    server.bind_openssl(address, ssl_acceptor)?
-                }
-                .run()
+                s.bind_openssl(address, ssl_acceptor)?
             }
+            .run()
         }
         _ => if let Some(lst) = pre_bound_http_listener {
             server.listen(lst)?
@@ -2032,6 +2036,99 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
         }
     }
     Ok(())
+}
+
+/// CORS policy for the scopes that accept session cookies (KMIP, `/v1/crypto`, `/tokenize`):
+/// same-origin plus the configured `cors_allowed_origins`, with credentials. Any method and
+/// header is allowed for those origins so browser clients (WASM `application/octet-stream`
+/// POSTs, a Vite dev server in E2E tests) pass the preflight and carry the session cookie.
+/// Other origins get no CORS headers, so they can neither read responses nor send
+/// preflighted (JSON) requests with the user's cookie.
+fn allowed_origins_cors(allowed_origins: &[String]) -> Cors {
+    allowed_origins.iter().fold(
+        Cors::default()
+            .allow_any_method()
+            .allow_any_header()
+            .supports_credentials(),
+        |cors, origin| cors.allowed_origin(origin),
+    )
+}
+
+/// Shared native authentication extractors of the `/tokenize`, `/v1/crypto` and default scopes.
+struct NativeAuthStack<'a> {
+    kms_server: &'a Arc<KMS>,
+    use_api_token_auth: bool,
+    use_cert_auth: bool,
+    use_vault_token_auth: bool,
+    /// `Some` exactly when the Auth Verifier is enabled (`use_auth_verifier`).
+    auth_verifier: &'a Option<Arc<AuthVerifierValidator>>,
+    auth_verifier_session_realm: &'a Option<Arc<str>>,
+    /// Non-empty exactly when JWT authentication is enabled (`use_jwt_auth`).
+    jwt_configurations: &'a Arc<Vec<JwtConfig>>,
+    spire_cache: &'a Arc<SpireTokenCache>,
+    spire_auth_verifier_url: &'a Url,
+    vault_http_client: &'a Arc<reqwest::Client>,
+    spire_default_username: &'a Arc<str>,
+}
+
+/// Wraps `scope` with `ensure_auth` (innermost: runs last on ingress), then the session,
+/// API token, Auth Verifier, JWT, client certificate and optional vault-token extractors,
+/// so that every extractor injects `AuthenticatedUser` before `ensure_auth` checks it.
+fn wrap_native_auth<T, M, B>(
+    scope: Scope<T>,
+    ensure_auth: M,
+    stack: &NativeAuthStack<'_>,
+) -> Scope<
+    impl ServiceFactory<
+        ServiceRequest,
+        Config = (),
+        Response = ServiceResponse<impl MessageBody + use<T, M, B>>,
+        Error = actix_web::Error,
+        InitError = (),
+    > + use<T, M, B>,
+>
+where
+    T: ServiceFactory<ServiceRequest, Config = (), Error = actix_web::Error, InitError = ()>
+        + 'static,
+    M: Transform<
+            T::Service,
+            ServiceRequest,
+            Response = ServiceResponse<B>,
+            Error = actix_web::Error,
+            InitError = (),
+        > + 'static,
+    B: MessageBody + 'static,
+{
+    scope
+        .wrap(ensure_auth)
+        .wrap(SessionAuth)
+        .wrap(Condition::new(
+            stack.use_api_token_auth,
+            api_token_middleware(stack.kms_server.clone()),
+        ))
+        .wrap(Condition::new(
+            stack.auth_verifier.is_some(),
+            AuthVerifier::new(
+                stack.auth_verifier.clone(),
+                stack.auth_verifier_session_realm.clone(),
+            ),
+        ))
+        .wrap(Condition::new(
+            !stack.jwt_configurations.is_empty(),
+            jwt_auth_middleware(stack.jwt_configurations.clone()),
+        ))
+        .wrap(Condition::new(stack.use_cert_auth, from_fn(tls_auth_fn)))
+        // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+        // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+        .wrap(Condition::new(
+            stack.use_vault_token_auth,
+            vault_token_optional_middleware(
+                stack.spire_cache.clone(),
+                stack.spire_auth_verifier_url.clone(),
+                stack.vault_http_client.clone(),
+                stack.spire_default_username.clone(),
+            ),
+        ))
 }
 
 #[cfg(test)]

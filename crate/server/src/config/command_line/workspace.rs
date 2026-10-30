@@ -98,28 +98,91 @@ impl WorkspaceConfig {
 
         fs::canonicalize(path).map_err(|e| kms_error!(e))
     }
+}
 
-    /// Transform a relative path to `root_data_path` to an absolute path.
-    /// An absolute path is left unchanged.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path to be transformed.
-    ///
-    /// # Returns
-    ///
-    /// Returns the canonicalized path.
-    ///
-    /// # Errors
-    ///
-    /// Returns if an error occurs while calling `std::fs::canonicalize`
-    #[expect(dead_code)]
-    pub(crate) fn finalize_file_path(&self, path: &PathBuf) -> KResult<PathBuf> {
-        let path = if path.is_relative() {
-            self.root_data_path.join(path)
-        } else {
-            path.clone()
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use super::WorkspaceConfig;
+
+    /// A relative path is resolved against the given root, created when missing,
+    /// and returned canonicalized.
+    #[test]
+    fn finalize_directory_path_resolves_relative_to_root_and_creates() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+
+        let resolved =
+            WorkspaceConfig::finalize_directory_path(&PathBuf::from("a/b"), Some(&root)).unwrap();
+
+        assert_eq!(resolved, root.join("a").join("b"));
+        assert!(resolved.is_dir(), "directory must have been created");
+    }
+
+    /// An absolute path ignores the relative root and is only created/canonicalized.
+    #[test]
+    fn finalize_directory_path_keeps_absolute_path() {
+        let tmp = TempDir::new().unwrap();
+        let other_root = TempDir::new().unwrap();
+        let absolute = tmp.path().join("abs");
+
+        let resolved =
+            WorkspaceConfig::finalize_directory_path(&absolute, Some(other_root.path())).unwrap();
+
+        assert_eq!(resolved, absolute.canonicalize().unwrap());
+        assert!(
+            !other_root.path().join("abs").exists(),
+            "an absolute path must not be re-rooted"
+        );
+    }
+
+    /// `finalize_directory` resolves against the workspace `root_data_path`.
+    #[test]
+    fn finalize_directory_uses_root_data_path() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let workspace = WorkspaceConfig {
+            root_data_path: root.clone(),
+            tmp_path: root.join("tmp"),
         };
-        fs::canonicalize(path).map_err(|e| kms_error!(e))
+
+        let resolved = workspace
+            .finalize_directory(&PathBuf::from("sqlite"))
+            .unwrap();
+
+        assert_eq!(resolved, root.join("sqlite"));
+        assert!(resolved.is_dir());
+    }
+
+    /// `init` creates the root data path and resolves a relative `tmp_path` under it,
+    /// while an absolute `tmp_path` is kept as is.
+    #[test]
+    fn init_creates_root_and_resolves_tmp_path() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("kms-data");
+        let abs_tmp = tmp.path().join("abs-tmp");
+
+        let relative_tmp = WorkspaceConfig {
+            root_data_path: root.clone(),
+            tmp_path: PathBuf::from("scratch"),
+        }
+        .init()
+        .unwrap();
+        let canonical_root = root.canonicalize().unwrap();
+        assert_eq!(relative_tmp.root_data_path, canonical_root);
+        assert_eq!(relative_tmp.tmp_path, canonical_root.join("scratch"));
+        assert!(relative_tmp.tmp_path.is_dir());
+
+        let absolute_tmp = WorkspaceConfig {
+            root_data_path: root,
+            tmp_path: abs_tmp.clone(),
+        }
+        .init()
+        .unwrap();
+        assert_eq!(absolute_tmp.tmp_path, abs_tmp.canonicalize().unwrap());
     }
 }

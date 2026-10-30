@@ -73,7 +73,6 @@ pub(crate) struct CreateTransitKeyRequest {
     pub key_type: String,
     /// `exportable` is accepted in the JSON body but always forced to `false`.
     #[serde(default)]
-    #[allow(dead_code)]
     pub exportable: bool,
     /// Vault's key auto-rotation interval. The KMS performs **no** time-based
     /// key rotation, so only a disabled value (absent, `0`, `"0"`, `""` or
@@ -491,6 +490,15 @@ async fn create_transit_key_impl(
         body.key_type
     );
 
+    // Vault lets a client request an exportable key; transit keys here are never
+    // exportable, so make the override visible in the logs instead of hiding it.
+    if body.exportable {
+        debug!(
+            "vault transit: 'exportable: true' requested for key '{name}' is ignored, transit \
+             keys are always created non-exportable"
+        );
+    }
+
     // The KMS performs no time-based key rotation; reject a non-zero
     // auto_rotate_period rather than silently ignoring it. SPIRE sends `0`.
     if !auto_rotate_disabled(body.auto_rotate_period.as_ref()) {
@@ -605,7 +613,7 @@ pub(crate) async fn get_transit_key(
     };
     let (public_key_pem, key_type) = match attrs.get_link(LinkType::PublicKeyLink) {
         Some(LinkedObjectIdentifier::TextString(pub_uid)) => {
-            match kms.database.retrieve_object(&pub_uid).await {
+            match kms.database.retrieve_object_arc(&pub_uid).await {
                 Ok(Some(owm)) => kmip_public_key_to_openssl(owm.object()).map_or_else(
                     |_| fallback(),
                     |pkey| {
@@ -834,6 +842,12 @@ async fn sign_with_transit_key_impl(
             None
         };
 
+    let (data, digested_data) = if body.prehashed {
+        (None, Some(input_bytes))
+    } else {
+        (Some(Zeroizing::new(input_bytes)), None)
+    };
+
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_uid)),
         cryptographic_parameters: Some(CryptographicParameters {
@@ -841,16 +855,8 @@ async fn sign_with_transit_key_impl(
             digital_signature_algorithm,
             ..Default::default()
         }),
-        digested_data: if body.prehashed {
-            Some(input_bytes.clone())
-        } else {
-            None
-        },
-        data: if body.prehashed {
-            None
-        } else {
-            Some(Zeroizing::new(input_bytes))
-        },
+        digested_data,
+        data,
         ..Default::default()
     };
 
@@ -886,9 +892,9 @@ mod tests {
     };
 
     use super::{
-        auto_rotate_disabled, rsa_digital_signature_algorithm, transit_curve_from_key_type,
-        transit_hash_alg_to_kmip, transit_key_type_from_attrs, transit_rsa_bits_from_key_type,
-        transit_tag_name,
+        CreateTransitKeyRequest, auto_rotate_disabled, rsa_digital_signature_algorithm,
+        transit_curve_from_key_type, transit_hash_alg_to_kmip, transit_key_type_from_attrs,
+        transit_rsa_bits_from_key_type, transit_tag_name,
     };
 
     #[test]
@@ -904,6 +910,37 @@ mod tests {
         assert!(!auto_rotate_disabled(Some(&json!(3600))));
         assert!(!auto_rotate_disabled(Some(&json!("24h"))));
         assert!(!auto_rotate_disabled(Some(&json!("720h"))));
+    }
+
+    #[test]
+    fn create_request_parses_exportable_in_all_forms() {
+        let absent: CreateTransitKeyRequest =
+            serde_json::from_str(r#"{"type":"ecdsa-p256"}"#).unwrap();
+        assert_eq!(absent.key_type, "ecdsa-p256");
+        assert!(!absent.exportable);
+        assert!(absent.auto_rotate_period.is_none());
+
+        let not_exportable: CreateTransitKeyRequest = serde_json::from_str(
+            r#"{"type":"ecdsa-p256","exportable":false,"auto_rotate_period":0}"#,
+        )
+        .unwrap();
+        assert!(!not_exportable.exportable);
+        assert!(auto_rotate_disabled(
+            not_exportable.auto_rotate_period.as_ref()
+        ));
+
+        // `exportable: true` is accepted (and later ignored by the handler)...
+        let exportable: CreateTransitKeyRequest =
+            serde_json::from_str(r#"{"type":"rsa-2048","exportable":true}"#).unwrap();
+        assert!(exportable.exportable);
+
+        // ...but a non-boolean value is still a malformed request.
+        assert!(
+            serde_json::from_str::<CreateTransitKeyRequest>(
+                r#"{"type":"rsa-2048","exportable":"yes"}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1080,16 +1117,11 @@ mod tests {
         requests::{create_ec_key_pair_request, get_ec_private_key_request},
     };
 
-    use crate::{
-        config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
-    };
+    use crate::{core::KMS, result::KResult, tests::test_utils::test_kms};
 
     /// Create a KMS instance backed by a fresh in-memory `SQLite` database.
     async fn isolation_test_kms() -> KResult<Arc<KMS>> {
-        let clap_config = https_clap_config();
-        Ok(Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
-        ))
+        test_kms().await
     }
 
     /// Build a P-256 key-pair creation request tagged as a transit key for `name`.

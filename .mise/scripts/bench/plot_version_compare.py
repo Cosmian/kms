@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -38,8 +39,14 @@ _JWA_SYMMETRIC_RE = re.compile(r'^a\d+(gcm|cbc)', re.IGNORECASE)
 
 
 def _is_symmetric(algorithm: str) -> bool:
-    """Return True if the algorithm name suggests a symmetric cipher."""
-    alg = algorithm.lower()
+    """Return True if the algorithm name suggests a symmetric cipher.
+
+    Strips an optional 'hsm-' prefix first: HSM-delegated benchmarks (see
+    `bench/hsm --delegated`) label their algorithm 'hsm-aes-gcm', 'hsm-rsa-oaep',
+    etc. so the criterion group's op_type still parses correctly (a bare 'hsm/'
+    path segment would shift `bench_id_to_parts`'s op_type/algorithm split).
+    """
+    alg = algorithm.lower().removeprefix('hsm-')
     return any(alg.startswith(p) for p in _SYMMETRIC_PREFIXES) or bool(
         _JWA_SYMMETRIC_RE.match(alg)
     )
@@ -86,7 +93,12 @@ def _normalize_jwa_algo(jwa: str) -> tuple[str, str]:
 # ── Shared criterion-classification helpers ───────────────────────────────────
 
 # Display order of protocols in table columns and chart bars.
-_PROTOCOL_ORDER: dict[str, int] = {'ttlv-json': 0, 'ttlv-bytes': 1, 'jose': 2}
+_PROTOCOL_ORDER: dict[str, int] = {
+    'ttlv-json': 0,
+    'ttlv-bytes': 1,
+    'jose': 2,
+    'pkcs11': 3,
+}
 
 
 def _criterion_algo_key(algorithm: str, bench_fn: str) -> str:
@@ -155,7 +167,7 @@ def _normalize_load_records(records: list[dict]) -> None:
 
 
 # Known protocol prefixes that may appear at the start of a criterion group name.
-_KNOWN_PROTOCOLS = ('ttlv-bytes', 'ttlv-json', 'jose')
+_KNOWN_PROTOCOLS = ('ttlv-bytes', 'ttlv-json', 'jose', 'pkcs11')
 
 
 def bench_id_to_parts(bid: str) -> tuple[str, str, str]:
@@ -246,6 +258,31 @@ def parse_criterion_json(path: Path, version: str) -> dict[str, float]:
         except (json.JSONDecodeError, KeyError, TypeError):
             continue
     return results
+
+
+def _finite_number(value: object, *, positive: bool = False) -> float | None:
+    """Return a finite non-negative JSON number, or None when invalid."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        return None
+    if not math.isfinite(number) or number < 0 or (positive and number == 0):
+        return None
+    return number
+
+
+def _optional_measurements(
+    record: dict[str, object], names: tuple[str, ...]
+) -> dict[str, float]:
+    """Extract valid optional timing measurements from a schema record."""
+    measurements: dict[str, float] = {}
+    for name in names:
+        value = _finite_number(record.get(name))
+        if value is not None:
+            measurements[name] = value
+    return measurements
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -547,7 +584,33 @@ def parse_env_json(version_dir: Path) -> dict:
         return {}
 
 
-def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[str]:
+def _normalize_hsm_backend_name(raw_name: str | None) -> str:
+    """Normalize an HSM backend identifier to a display name."""
+    if not raw_name or raw_name.lower() in ('none', 'software', 'null', '—', '-'):
+        return 'None (Software)'
+    key = raw_name.lower()
+    if key == 'softhsm2':
+        return 'SoftHSM2'
+    if key == 'proteccio':
+        return 'Proteccio'
+    if key == 'kryoptic':
+        return 'Kryoptic'
+    if key == 'crypt2pay':
+        return 'Crypt2Pay'
+    if key == 'utimaco':
+        return 'Utimaco'
+    if key == 'aws_cloudhsm':
+        return 'AWS CloudHSM'
+    return raw_name
+
+
+def _render_env_section(
+    env_data: dict[str, dict],
+    versions: list[str],
+    *,
+    default_hsm_backend: str | None = None,
+    default_command: str | None = None,
+) -> list[str]:
     """Render the ## Benchmark Environment section from per-version env.json data."""
     if not env_data:
         return []
@@ -567,6 +630,13 @@ def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[
         # ── System / server info ──────────────────────────────────────────────
         rows: list[tuple[str, str]] = []
         rows.append(('Date', env.get('date', '—')))
+
+        hsm_val = env.get('hsm_backend') or default_hsm_backend
+        rows.append(('HSM backend', _normalize_hsm_backend_name(hsm_val)))
+
+        cmd_val = env.get('command') or default_command
+        if cmd_val:
+            rows.append(('Command', f"`{cmd_val}`"))
 
         build = env.get('build_mode', 'release')
         variant = env.get('variant', 'non-fips')
@@ -625,11 +695,423 @@ def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[
     return lines
 
 
-def _render_protocol_section() -> list[str]:
-    """Render the static ## Protocols section."""
+def _fmt_signed_time(ns: float) -> str:
+    """Format a signed nanosecond delta."""
+    if ns == 0:
+        return '0 ns'
+    prefix = '+' if ns > 0 else '−'
+    return f"{prefix}{_fmt_time(abs(ns))}"
+
+
+def _render_architecture_section(
+    *,
+    is_hsm: bool = False,
+    is_hsm_kek: bool = False,
+    is_pkcs11: bool = False,
+    hsm_backend_name: str = 'SoftHSM2',
+    active_ops: set[str] | None = None,
+    command_str: str | None = None,
+) -> list[str]:
+    """Render ## Architecture section with Mermaid diagram dynamically accorded with scenario and backend."""
+    ops = active_ops or set()
+    hsm_label = (
+        hsm_backend_name if hsm_backend_name != 'None (Software)' else 'SoftHSM2'
+    )
+
+    has_enc = any('encrypt' in op or 'decrypt' in op for op in ops)
+    has_sign = any('sign' in op for op in ops)
+    has_verify = any('verify' in op for op in ops)
+    has_key = any('key-creation' in op for op in ops)
+
+    has_rsa = any('rsa' in op.lower() for op in ops)
+    has_ecdsa = any('ecdsa' in op.lower() for op in ops)
+    has_eddsa = any(
+        'eddsa' in op.lower() or 'ed448' in op.lower() or 'ed25519' in op.lower()
+        for op in ops
+    )
+    has_aes = any('aes' in op.lower() for op in ops)
+
+    if is_pkcs11:
+        if is_hsm:
+            # PKCS#11 HSM-delegated
+            pkcs11_calls: list[str] = []
+            if has_sign:
+                pkcs11_calls.append('C_Sign')
+            if has_verify:
+                pkcs11_calls.append('C_Verify')
+            if has_enc:
+                pkcs11_calls.append('C_Encrypt/C_Decrypt')
+            if has_key:
+                pkcs11_calls.append('C_GenerateKey')
+            if not pkcs11_calls:
+                pkcs11_calls = ['C_Sign/C_Encrypt']
+            call_edge = '/'.join(pkcs11_calls)
+
+            key_types: list[str] = []
+            if has_ecdsa:
+                key_types.append('ECDSA')
+            if has_rsa:
+                key_types.append('RSA')
+            if has_eddsa:
+                key_types.append('EdDSA')
+            if has_aes:
+                key_types.append('AES')
+            if not key_types:
+                key_types = ['HSM Keys']
+            key_desc = '<br/>'.join(key_types) + '<br/>(Resident)'
+
+            cmd_desc = f'`{command_str}`' if command_str else '`ckms pkcs11 bench`'
+            return [
+                '## Architecture',
+                '',
+                '```mermaid',
+                'graph TB',
+                '    subgraph cli["Local Machine"]',
+                '        ckms["<b>ckms pkcs11 bench</b>"]',
+                '        lib["<b>cosmian_pkcs11.so</b>"]',
+                '    end',
+                '    ',
+                '    subgraph srv["KMS Server"]',
+                '        kmip["KMIP 2.1"]',
+                '        oracle["CryptoOracle"]',
+                '    end',
+                '    ',
+                f'    subgraph hsm["{hsm_label}"]',
+                '        slot["PKCS#11 Slot"]',
+                f'        keys["{key_desc}"]',
+                '    end',
+                '    ',
+                f'    ckms -->|{call_edge}| lib',
+                '    lib -->|HTTP| kmip',
+                '    kmip --> oracle',
+                '    oracle -->|PKCS#11| slot',
+                '    slot --> keys',
+                '    ',
+                '    style ckms fill:#4A90E2',
+                '    style lib fill:#FF6B6B',
+                '    style kmip fill:#7ED321',
+                '    style oracle fill:#F5A623',
+                '    style slot fill:#BD10E0',
+                '```',
+                '',
+                '**Components**:',
+                f'- **ckms**: PKCS#11 load test driver ({cmd_desc})',
+                '- **cosmian_pkcs11.so**: PKCS#11 provider bridge',
+                '- **KMIP Endpoint**: Server-side protocol handler',
+                f'- **CryptoOracle**: Routes operations to HSM-resident keys ({call_edge} on {hsm_label})',
+                f'- **PKCS#11 Slot**: {hsm_label} backend for key storage and cryptographic ops',
+                '',
+                '',
+            ]
+        else:
+            # PKCS#11 software
+            return [
+                '## Architecture',
+                '',
+                '```mermaid',
+                'graph TB',
+                '    subgraph cli["Local Machine"]',
+                '        ckms["<b>ckms pkcs11 bench</b>"]',
+                '        lib["<b>cosmian_pkcs11.so</b><br/>(PKCS#11 Provider)"]',
+                '    end',
+                '    ',
+                '    subgraph srv["KMS Server"]',
+                '        kmip["KMIP 2.1<br/>(HTTP/TLS)"]',
+                '        crypto["Software Crypto<br/>(OpenSSL 3.6.2)"]',
+                '    end',
+                '    ',
+                '    subgraph hsm["SoftHSM2"]',
+                '        slot["PKCS#11 Slot"]',
+                '        keys["Test Keys"]',
+                '    end',
+                '    ',
+                '    ckms -->|C_Initialize/C_Sign| lib',
+                '    lib -->|HTTP| kmip',
+                '    lib -->|PKCS#11| slot',
+                '    kmip --> crypto',
+                '    slot --> keys',
+                '    ',
+                '    style ckms fill:#4A90E2',
+                '    style lib fill:#FF6B6B',
+                '    style kmip fill:#7ED321',
+                '    style crypto fill:#F5A623',
+                '    style slot fill:#BD10E0',
+                '```',
+                '',
+                '**Components**:',
+                '- **ckms**: PKCS#11 load test generator',
+                '- **cosmian_pkcs11.so**: Bridge between PKCS#11 callers and KMIP server',
+                '- **KMIP Endpoint**: Server-side request/response marshaling',
+                '- **Software Crypto**: AES/RSA/ECDSA operations via OpenSSL',
+                '- **PKCS#11 Slot**: HSM backend for key storage',
+                '',
+                '',
+            ]
+    elif is_hsm:
+        # HSM-resident keys (bench:hsm --delegated)
+        hsm_ops: list[str] = []
+        if has_sign:
+            hsm_ops.append('C_Sign')
+        if has_enc:
+            hsm_ops.append('C_Encrypt')
+        if has_key:
+            hsm_ops.append('C_GenerateKey')
+        if not hsm_ops:
+            hsm_ops = ['C_Sign/C_Encrypt']
+        hsm_ops_label = '/'.join(hsm_ops)
+
+        key_labels: list[str] = []
+        if has_rsa:
+            key_labels.append('RSA')
+        if has_ecdsa:
+            key_labels.append('ECDSA')
+        if has_eddsa:
+            key_labels.append('EdDSA')
+        if has_aes:
+            key_labels.append('AES')
+        if not key_labels:
+            key_labels = ['HSM-resident']
+        else:
+            key_labels.append('(HSM-resident)')
+        keys_block = '<br/>'.join(key_labels)
+
+        cmd_desc = f'`{command_str}`' if command_str else '`ckms bench --load --hsm`'
+        return [
+            '## Architecture',
+            '',
+            '```mermaid',
+            'graph TB',
+            '    subgraph cli["Local: ckms CLI"]',
+            '        ckms["<b>ckms bench --hsm</b>"]',
+            '    end',
+            '    ',
+            '    subgraph srv["Local KMS Server"]',
+            '        kmip["KMIP 2.1<br/>(HTTP)"]',
+            '        oracle["CryptoOracle<br/>(HSM Router)"]',
+            '    end',
+            '    ',
+            f'    subgraph hsm["{hsm_label}"]',
+            '        pkcs11["PKCS#11 Slot"]',
+            f'        hsm_keys["{keys_block}"]',
+            '    end',
+            '    ',
+            '    ckms -->|HTTP| kmip',
+            '    kmip --> oracle',
+            f'    oracle -->|{hsm_ops_label}| pkcs11',
+            '    pkcs11 --> hsm_keys',
+            '    ',
+            '    style ckms fill:#4A90E2',
+            '    style kmip fill:#7ED321',
+            '    style oracle fill:#FF6B6B',
+            '    style pkcs11 fill:#BD10E0',
+            '```',
+            '',
+            '**Components**:',
+            f'- **ckms**: Concurrent load generator ({cmd_desc})',
+            '- **KMIP Endpoint**: HTTP protocol handler',
+            f'- **CryptoOracle**: Routes crypto ops directly to {hsm_label} (no software fallback)',
+            f'- **PKCS#11 Slot**: {hsm_label} engine for {hsm_ops_label} operations',
+            '- **HSM-Resident Keys**: Keys generated on and never leave hardware',
+            '',
+            '',
+        ]
+    elif is_hsm_kek:
+        # HSM KEK-wrapped keys (bench:hsm without --delegated)
+        return [
+            '## Architecture',
+            '',
+            '```mermaid',
+            'graph TB',
+            '    subgraph cli["Local: ckms CLI"]',
+            '        ckms["<b>ckms load</b>"]',
+            '    end',
+            '    ',
+            f'    subgraph srv["Local KMS Server + {hsm_label}"]',
+            '        kmip["KMIP 2.1<br/>(HTTP)"]',
+            '        crypto["Software Crypto"]',
+            '        kek["KEK<br/>(HSM-resident)"]',
+            '    end',
+            '    ',
+            f'    subgraph hsm["{hsm_label}"]',
+            '        pkcs11["PKCS#11 Slot"]',
+            '        kek_material["KEK Material"]',
+            '    end',
+            '    ',
+            '    db["Key Storage<br/>(wrapped)"]',
+            '    ',
+            '    ckms -->|HTTP| kmip',
+            '    kmip --> crypto',
+            '    crypto -->|unwrap| kek',
+            '    kek -->|C_Decrypt| pkcs11',
+            '    pkcs11 --> kek_material',
+            '    crypto --> db',
+            '    ',
+            '    style ckms fill:#4A90E2',
+            '    style kmip fill:#7ED321',
+            '    style crypto fill:#F5A623',
+            '    style kek fill:#FF6B6B',
+            '    style pkcs11 fill:#BD10E0',
+            '```',
+            '',
+            '**Components**:',
+            '- **ckms**: Concurrent load generator',
+            '- **KMIP Endpoint**: HTTP protocol handler',
+            '- **Software Crypto**: Handles data encryption/decryption with unwrapped keys',
+            f'- **KEK**: {hsm_label}-resident Key Encryption Key (used to wrap/unwrap data keys)',
+            f'- **PKCS#11 Slot**: {hsm_label} backend for KEK unwrap operations',
+            '- **Key Storage**: Database of wrapped keys',
+            '',
+            '',
+        ]
+    else:
+        # Software baseline (bench:load)
+        return [
+            '## Architecture',
+            '',
+            '```mermaid',
+            'graph TB',
+            '    subgraph cli["Local: ckms CLI"]',
+            '        ckms["<b>ckms load</b><br/>(concurrent load driver)"]',
+            '    end',
+            '    ',
+            '    subgraph srv["KMS Server"]',
+            '        kmip["KMIP 2.1<br/>(HTTP/TLS)"]',
+            '        crypto["Software Crypto<br/>(OpenSSL 3.6.2)"]',
+            '        db["Key Storage<br/>(SQLite/PostgreSQL)"]',
+            '    end',
+            '    ',
+            '    ckms -->|HTTP/TLS| kmip',
+            '    kmip --> crypto',
+            '    crypto --> db',
+            '    ',
+            '    style ckms fill:#4A90E2',
+            '    style kmip fill:#7ED321',
+            '    style crypto fill:#F5A623',
+            '    style db fill:#BD10E0',
+            '```',
+            '',
+            '**Components**:',
+            '- **ckms**: Configurable concurrent load generator (ops/sec sweep)',
+            '- **KMIP Endpoint**: Protocol handler for request/response marshaling',
+            '- **Software Crypto**: AES-GCM, RSA-PKCS, ECDSA-P256, EdDSA-Ed25519 via OpenSSL 3.6.2',
+            '- **Key Storage**: Key material persistence (SQLite or PostgreSQL)',
+            '',
+            '',
+        ]
+
+
+def _render_protocol_section(
+    *,
+    is_hsm: bool = False,
+    is_hsm_kek: bool = False,
+    is_pkcs11: bool = False,
+    hsm_backend_name: str = 'SoftHSM2',
+    active_ops: set[str] | None = None,
+) -> list[str]:
+    """Render the static/dynamic ## Protocols section."""
+    hsm_label = (
+        hsm_backend_name if hsm_backend_name != 'None (Software)' else 'SoftHSM2'
+    )
+    if is_pkcs11:
+        return [
+            '## Protocols',
+            '',
+            'The caller-facing protocol benchmarked here is the `cosmian_pkcs11`'
+            " provider's real PKCS#11 v3.1 Cryptoki C ABI: the benchmark `dlopen()`s"
+            ' the built'
+            ' shared library (`libcosmian_pkcs11.{so,dylib}`) and resolves its'
+            ' standard interface through `C_GetInterface` — the same call path'
+            ' v3-aware PKCS#11'
+            ' consumers (Oracle TDE, OpenSSH, disk-encryption tools) use. For remote'
+            ' Sign, the provider wraps the KMIP operation in a KMIP 2.1'
+            ' `RequestMessage`, serializes binary TTLV, and sends'
+            ' `application/octet-stream` to `POST /kmip`; the binary TTLV response is'
+            ' fully deserialized before `C_SignMessage` returns.',
+            *(
+                [
+                    '',
+                    'This delegated variant provisions `hsm::<slot>::...` keys.'
+                    ' After the provider sends each KMIP request, KMS routes the key to'
+                    ' its `CryptoOracle`; the cryptographic operation executes through'
+                    f' the server-side {hsm_label} PKCS#11 backend rather than software crypto.',
+                ]
+                if is_hsm
+                else []
+            ),
+            '',
+            '| Interface | Transport | Description |',
+            '|---|---|---|',
+            '| **PKCS#11 (Cryptoki v3.1)** | `C_GetInterface` + C ABI | `C_Initialize`,'
+            ' `C_OpenSession`, `C_EncryptInit`/`C_Encrypt`, `C_DecryptInit`/`C_Decrypt`,'
+            ' `C_MessageSignInit`/`C_SignMessage`, `C_VerifyInit`/`C_Verify`,'
+            ' `C_GenerateKey` |',
+            '| **Provider → KMS Sign** | KMIP 2.1 binary TTLV over HTTP |'
+            ' `POST /kmip`, `application/octet-stream` |',
+            *(
+                [
+                    '| **KMS → HSM** | PKCS#11 via `CryptoOracle` | HSM-resident key'
+                    ' generation and cryptographic operations |',
+                ]
+                if is_hsm
+                else []
+            ),
+            '',
+            '',
+        ]
+    if is_hsm:
+        return [
+            '## Protocols',
+            '',
+            f'This report benchmarks cryptographic operations delegated to an HSM ({hsm_label})'
+            ' via the KMS `CryptoOracle`, exercised over a single wire protocol: **ttlv-json**.',
+            '',
+            '| Protocol | Transport | Encoding | Endpoint | Description |',
+            '|---|---|---|---|---|',
+            '| **ttlv-json** | HTTP/1.1 | KMIP 2.1 JSON-TTLV | `POST /kmip/2_1` |'
+            ' Primary interoperability protocol — any KMIP 2.1 compliant client can use it |',
+            '',
+            '**KMIP TTLV** (Tag-Type-Length-Value) is the native encoding of the KMIP 2.1 standard'
+            ' (OASIS KMIP Spec v2.1, §9.1).'
+            " The **JSON** variant wraps every field in a `{\"tag\": …, \"type\": …, \"value\": …}`"
+            ' JSON object and base64-encodes binary values.',
+            '',
+            '**ttlv-bytes is not benchmarked here.** Measuring it would require running it'
+            ' either against the same HSM-resident key/token as the ttlv-json sweep (strictly'
+            ' after it completes) or on a fresh token started specifically for that purpose.'
+            f' The former was tried first and rejected: cumulative {hsm_label} token load from the'
+            ' preceding ttlv-json sweep contaminated every ttlv-bytes measurement, making'
+            ' ttlv-json appear *faster* than ttlv-bytes in every single operation — the'
+            ' opposite of the software baseline (where ttlv-bytes is consistently faster, as'
+            ' expected, since it skips JSON parsing). Rather than publish numbers that are'
+            ' measurement artefacts of test ordering, ttlv-bytes is omitted from this report'
+            ' until the harness can measure both protocols under equivalent conditions'
+            ' (e.g. independent tokens per protocol).',
+            '',
+            '**JOSE is not benchmarked here.** The JOSE REST key-creation endpoint'
+            ' (`POST /v1/crypto/keys`) has no parameter to request a caller-chosen'
+            ' `kid`, and HSM-resident key delegation requires the client to choose'
+            ' the `hsm::<slot>::<uuid>` unique identifier up front (the HSM has no'
+            ' server-assigned ID scheme) — so an HSM-resident key cannot be created'
+            ' through the JOSE endpoints at all.',
+            '',
+        ]
     return [
         '## Protocols',
         '',
+        *(
+            [
+                f'> **HSM-backed KEK, software crypto.** The root key-encryption-key (KEK)'
+                f' used to wrap every benchmarked key is HSM-resident ({hsm_label}); only its'
+                ' unwrap touches the HSM. Encrypt/Sign themselves still execute in KMS'
+                ' software (OpenSSL), same as the plain software baseline — this report'
+                ' isolates the cost of HSM-backed key wrapping. For benchmarks where the'
+                ' cryptographic operation itself executes ON the HSM, see the dedicated'
+                ' HSM-delegated-crypto report.',
+                '',
+            ]
+            if is_hsm_kek
+            else []
+        ),
         'The KMS server was exercised over three distinct wire protocols.',
         'Each benchmark column is labelled with the protocol name it used.',
         '',
@@ -658,11 +1140,279 @@ def _render_protocol_section() -> list[str]:
     ]
 
 
-def _render_methodology_section() -> list[str]:
-    """Render the static ## Benchmark Methodology section."""
+def _render_methodology_section(
+    *,
+    is_hsm: bool = False,
+    is_hsm_kek: bool = False,
+    is_pkcs11: bool = False,
+    hsm_backend_name: str = 'SoftHSM2',
+    active_ops: set[str] | None = None,
+    command_str: str | None = None,
+) -> list[str]:
+    """Render ## Benchmark Methodology dynamically accorded with benchmark scenario and backend."""
+    ops = active_ops or set()
+    hsm_label = (
+        hsm_backend_name if hsm_backend_name != 'None (Software)' else 'SoftHSM2'
+    )
+    is_simulator = hsm_label.lower() in ('softhsm2', 'kryoptic')
+
+    has_enc = any('encrypt' in op or 'decrypt' in op for op in ops)
+    has_sign = any('sign' in op for op in ops)
+    has_verify = any('verify' in op for op in ops)
+    has_key = any('key-creation' in op for op in ops)
+
+    has_rsa = any('rsa' in op.lower() for op in ops)
+    has_ecdsa = any('ecdsa' in op.lower() for op in ops)
+    has_eddsa = any(
+        'eddsa' in op.lower() or 'ed448' in op.lower() or 'ed25519' in op.lower()
+        for op in ops
+    )
+    has_aes = any('aes' in op.lower() for op in ops)
+
+    pkcs11_task = (
+        command_str
+        if command_str
+        else ('`mise bench:pkcs11 --delegated`' if is_hsm else '`mise bench:pkcs11`')
+    )
+    if not pkcs11_task.startswith('`'):
+        pkcs11_task = f"`{pkcs11_task}`"
+
+    if is_pkcs11:
+        res = [
+            '## Benchmark Methodology',
+            '',
+            '### Real Cryptoki C ABI, one session per worker',
+            '',
+            f'The benchmark subcommand `ckms pkcs11 bench` (driven by {pkcs11_task})'
+            ' `dlopen()`s the built `cosmian_pkcs11` shared library,'
+            ' resolves the v3.1 function table through `C_GetInterface`, and calls it'
+            ' directly — the same'
+            ' code path a real PKCS#11 consumer application uses, as opposed to'
+            ' `mise bench:load`, which drives the KMIP REST API directly through the'
+            ' `ckms` client library.',
+            '',
+            'By default each worker thread owns a dedicated `C_OpenSession` handle.'
+            ' The provider looks the handle up in its session map and serializes only'
+            ' access to that individual session with a per-session lock, so unrelated'
+            ' worker sessions can progress independently. `--shared-session` is an'
+            ' opt-in comparison mode that reproduces the former single-session'
+            ' contention model; it is not the default methodology.',
+        ]
+
+        if has_eddsa:
+            res += [
+                '',
+                'For the Ed25519 Sign path measured in this report,'
+                ' `C_MessageSignInit` runs once during setup and each'
+                ' `C_SignMessage` crosses the'
+                ' synchronous PKCS#11 boundary, builds a KMIP 2.1 `RequestMessage`,'
+                ' serializes it as binary TTLV, sends it to the `/kmip` octet-stream'
+                ' endpoint, and parses the binary TTLV response before copying the'
+                ' signature into the caller-owned buffer.',
+            ]
+
+        if is_hsm:
+            res += [
+                '',
+                '### HSM-resident key execution',
+                '',
+                'With `--delegated`, provisioning assigns `hsm::<slot>::...` UIDs and'
+                ' persists discovery tags in a versioned PKCS#11 `CKA_LABEL` envelope'
+                ' while retaining the raw key ID in `CKA_ID`. The provider locates those'
+                ' tagged keys through KMS, while operations are executed by the KMS `CryptoOracle` on'
+                f' the {hsm_label} backend. For full test suites on simulator tokens, submodes run against'
+                ' separate fresh tokens so cumulative key generation does not contaminate later measurements.',
+            ]
+
+        res += [
+            '',
+            '### Independent operations',
+            '',
+            'Unlike the software/HSM reports where requests may be bundled, this report measures each Cryptoki'
+            ' operation **independently**:',
+        ]
+        measured_ops_desc: list[str] = []
+        if has_enc:
+            measured_ops_desc.append(
+                '- **Encryption/Decryption**: `C_EncryptInit`/`C_Encrypt` and `C_DecryptInit`/`C_Decrypt` against pre-generated ciphertext'
+            )
+        if has_sign:
+            measured_ops_desc.append(
+                '- **Sign**: `C_SignInit`/`C_Sign` (or `C_MessageSignInit`/`C_SignMessage` for Ed25519) crossing the synchronous PKCS#11 boundary'
+            )
+        if has_verify:
+            measured_ops_desc.append(
+                '- **Verify**: `C_VerifyInit`/`C_Verify` implemented and benchmarked through the real Cryptoki function table'
+            )
+        if has_key:
+            measured_ops_desc.append(
+                '- **Key Creation**: symmetric `C_GenerateKey` with immediate `C_DestroyObject` per iteration'
+            )
+
+        if measured_ops_desc:
+            res += measured_ops_desc
+        else:
+            res.append(
+                '- Measured Cryptoki operations get their own concurrency sweep and row/chart below.'
+            )
+
+        res += [
+            '',
+            f'### Load test ({pkcs11_task})',
+            '',
+            'The load test sweeps a configurable list of concurrency levels, mirroring'
+            ' `mise bench:load`'
+            "'s own sweep mechanics exactly: at each level *N* concurrent OS threads"
+            ' call the target Cryptoki function in a tight loop for a fixed'
+            ' **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+            ' (default: 5 s) that is excluded from measurements, followed by a'
+            ' **cooldown** (default: 2 s) before the next level.',
+            'Recorded metrics per *(operation, concurrency)* pair:',
+            '',
+            '- **Throughput** — Cryptoki calls per second',
+            '- **p50 / p95 / p99** — per-call latency percentiles (ms)',
+            '',
+            '> **Infrastructure note:** The benchmark server uses a **local SQLite**'
+            ' backend (temporary, discarded after the run). Throughput figures will'
+            ' differ on a production deployment backed by PostgreSQL or Redis-Findex.',
+            '',
+        ]
+        return res
+
+    if is_hsm:
+        load_cmd = command_str if command_str else '`ckms bench --load --hsm`'
+        if not load_cmd.startswith('`'):
+            load_cmd = f"`{load_cmd}`"
+
+        res = [
+            '## Benchmark Methodology',
+            '',
+            '### HSM delegation model',
+            '',
+            'Every operation in this report is executed against an `hsm::<slot>::<uuid>`'
+            ' unique identifier. The KMS server routes both key generation'
+            ' (`Create`/`CreateKeyPair`) and cryptographic operations (`Encrypt`/`Sign`)'
+            ' for such keys to the HSM'
+            f"'s `CryptoOracle` (PKCS#11) on {hsm_label} instead of executing them in KMS software —"
+            ' the benchmarked latency/throughput is therefore dominated by the PKCS#11'
+            ' round-trip to the HSM, not by in-process OpenSSL.',
+            '',
+            f"> **HSM Backend:** {hsm_label}"
+            + (
+                ' (software PKCS#11 simulator). A hardware HSM will exhibit different absolute numbers bound by hardware crypto acceleration and transport latency.'
+                if is_simulator
+                else ' (hardware/appliance HSM backend).'
+            ),
+            '',
+            f'### Algorithm coverage and {hsm_label} constraints',
+            '',
+            'Operations benchmarked in this scenario:',
+            '',
+            '| Category | Algorithms covered | Notes |',
+            '|---|---|---|',
+        ]
+        if has_enc:
+            res.append(
+                '| Encrypt | AES-GCM, AES-CBC, RSA-OAEP, RSA-PKCS1v15 | 2048-bit RSA, 256-bit AES |'
+            )
+        if has_sign:
+            if has_rsa:
+                res.append(
+                    '| Sign | RSA-PSS, RSA-PKCS1v15 (SHA1/256/384/512) | 2048-bit RSA |'
+                )
+            if has_ecdsa:
+                res.append('| Sign | ECDSA P-256 | Prehashed message digest |')
+            if has_eddsa:
+                res.append(
+                    '| Sign | EdDSA Ed25519 / Ed448 | Non-FIPS pure un-hashed CKM_EDDSA |'
+                )
+        if has_key:
+            res.append(
+                '| Key creation | AES-256, RSA-2048 | Dynamic unique identifiers per iteration |'
+            )
+
+        if not has_enc and not has_sign and not has_key:
+            res.append('| Crypto | See Load Tests below | Active scenario operations |')
+
+        res += [
+            '',
+            '### Payload sizes',
+            '',
+            'All encrypt benchmarks use a **64-byte** fixed-size random payload'
+            ' (128 bytes for AES-CBC/PKCS1v15, which pad to a whole block); all sign'
+            ' benchmarks use a **32-byte** fixed-size message (or, for prehashed ECDSA,'
+            ' a 32-byte SHA-256 digest of that same message).',
+        ]
+
+        if is_simulator and has_key:
+            res += [
+                '',
+                f'### {hsm_label} per-token degradation (key creation only)',
+                '',
+                f'Concurrent/cumulative key generation against a single {hsm_label} token progressively degrades'
+                ' that token in simulators. Key-creation concurrency is capped and mode isolation is applied.',
+            ]
+
+        res += [
+            '',
+            '### Why ttlv-json only (no ttlv-bytes)',
+            '',
+            'An earlier version of this report benchmarked both `ttlv-json` and `ttlv-bytes`'
+            ' for every HSM-delegated operation, sharing one HSM-resident key between the two'
+            ' protocol variants and measuring `ttlv-json`'
+            "'s full concurrency sweep before `ttlv-bytes`"
+            "'s. Every single result inverted the expected direction — `ttlv-json` appeared"
+            ' *faster* than `ttlv-bytes`, the opposite of the software baseline (where binary'
+            ' TTLV is consistently faster, since it skips JSON parsing). This report therefore'
+            ' benchmarks `ttlv-json` only, until the harness can measure both protocols under equivalent conditions.',
+            '',
+            f'### Load test ({load_cmd})',
+            '',
+            'The load test sweeps a configurable list of concurrency levels.'
+            ' At each level *N* concurrent async tasks send pre-serialised requests in tight loops'
+            ' for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+            ' (default: 5 s) that is excluded from measurements.'
+            ' Pre-serialisation happens once at setup time and the same bytes are reused on every iteration,'
+            ' isolating server-side (and HSM-side) latency from client-side encoding overhead.'
+            ' Recorded metrics per *(protocol, operation, concurrency)* triple:',
+            '',
+            '- **Throughput** — requests per second (req/s)',
+            '- **p50 / p95 / p99** — round-trip latency percentiles (ms)',
+            '',
+            '### Criterion micro-benchmarks (`ckms bench --hsm`)',
+            '',
+            'Criterion (Rust, v0.5) measures the **round-trip latency of a single request**'
+            ' from the ckms client library through the KMS server (and onward to the HSM) and back over a loopback TCP connection.',
+            ' The reported value is the **mean ± 95 % confidence interval** over a configurable number of samples.',
+            '',
+            '> **Infrastructure note:** The load test and criterion benchmarks both use a'
+            ' **local SQLite** backend (temporary, discarded after the run) for the KMS server metadata store'
+            f' — key material resides on {hsm_label}.',
+            '',
+        ]
+        return res
+
+    # Software baseline or HSM KEK
+    load_cmd = command_str if command_str else '`ckms bench --load`'
+    if not load_cmd.startswith('`'):
+        load_cmd = f"`{load_cmd}`"
+
     return [
         '## Benchmark Methodology',
         '',
+        *(
+            [
+                f'> **HSM-backed KEK.** The server is started with a {hsm_label}-registered'
+                ' `key_encryption_key` (KEK): every benchmarked software key is wrapped by'
+                ' this HSM-resident KEK at rest, and unwrapped via a PKCS#11 round-trip on'
+                ' each use. All other methodology below (payload sizes, load-test/criterion'
+                ' procedure) is identical to the plain software baseline — the only'
+                ' difference is this extra HSM unwrap step per operation.',
+                '',
+            ]
+            if is_hsm_kek
+            else []
+        ),
         '### Plaintext / payload sizes',
         '',
         'All encrypt/decrypt benchmarks use a **fixed-size random payload**.'
@@ -686,7 +1436,7 @@ def _render_methodology_section() -> list[str]:
         '| Sign / Verify — all algorithms | 32 bytes | Message is hashed internally |',
         '| JOSE JWS / MAC | 32 bytes | |',
         '',
-        '### Load test (`ckms bench --load`)',
+        f'### Load test ({load_cmd})',
         '',
         'The load test sweeps a configurable list of concurrency levels.'
         ' At each level *N* concurrent async tasks send pre-serialised requests in tight loops'
@@ -723,6 +1473,12 @@ def generate_report(
     load_charts: list[str],
     crit_charts: list[str],
     env_data: dict[str, dict] | None = None,
+    *,
+    is_hsm: bool = False,
+    is_hsm_kek: bool = False,
+    is_pkcs11: bool = False,
+    default_hsm_backend: str | None = None,
+    default_command: str | None = None,
 ) -> None:
     """Write report.md combining load-test and criterion sections."""
     sep = ['', '---', '']
@@ -734,19 +1490,63 @@ def generate_report(
         *sep,
     ]
 
+    # Derive backend name and command from env or defaults
+    sample_env = next(iter((env_data or {}).values()), {})
+    hsm_backend_val = sample_env.get('hsm_backend') or default_hsm_backend
+    hsm_backend_name = _normalize_hsm_backend_name(hsm_backend_val)
+    command_str = sample_env.get('command') or default_command
+
+    # Gather all active operations from load_data
+    active_ops: set[str] = {
+        rec.get('operation', '')
+        for v_records in load_data.values()
+        for rec in v_records
+        if rec.get('operation')
+    }
+
     # ── Environment ───────────────────────────────────────────────────────────
     if env_data:
-        env_lines = _render_env_section(env_data, versions)
+        env_lines = _render_env_section(
+            env_data,
+            versions,
+            default_hsm_backend=default_hsm_backend,
+            default_command=default_command,
+        )
         if env_lines:
             lines += env_lines
             lines += sep
+    # ── Architecture ──────────────────────────────────────────────────────────
+    arch_lines = _render_architecture_section(
+        is_hsm=is_hsm,
+        is_hsm_kek=is_hsm_kek,
+        is_pkcs11=is_pkcs11,
+        hsm_backend_name=hsm_backend_name,
+        active_ops=active_ops,
+        command_str=command_str,
+    )
+    if arch_lines:
+        lines += arch_lines
+        lines += sep
 
     # ── Protocols ─────────────────────────────────────────────────────────────
-    lines += _render_protocol_section()
+    lines += _render_protocol_section(
+        is_hsm=is_hsm,
+        is_hsm_kek=is_hsm_kek,
+        is_pkcs11=is_pkcs11,
+        hsm_backend_name=hsm_backend_name,
+        active_ops=active_ops,
+    )
     lines += sep
 
     # ── Methodology ───────────────────────────────────────────────────────────
-    lines += _render_methodology_section()
+    lines += _render_methodology_section(
+        is_hsm=is_hsm,
+        is_hsm_kek=is_hsm_kek,
+        is_pkcs11=is_pkcs11,
+        hsm_backend_name=hsm_backend_name,
+        active_ops=active_ops,
+        command_str=command_str,
+    )
     lines += sep
 
     # ── Load tests ────────────────────────────────────────────────────────
@@ -837,12 +1637,53 @@ def generate_report(
 
 
 def main() -> None:
-    if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ...")
+    # --hsm documents HSM/CryptoOracle execution. --kek documents software
+    # crypto with an HSM-resident wrapping key. --pkcs11 documents the real
+    # dlopen()-based Cryptoki C ABI and may be combined with --hsm for delegated
+    # PKCS#11 benchmarks.
+    argv = sys.argv[1:]
+    is_hsm = '--hsm' in argv
+    is_hsm_kek = '--kek' in argv and not is_hsm
+    is_pkcs11 = '--pkcs11' in argv
+
+    hsm_backend_arg = None
+    command_arg = None
+    cleaned_argv: list[str] = []
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg in ('--hsm', '--kek', '--pkcs11'):
+            idx += 1
+            continue
+        if arg == '--hsm-backend' and idx + 1 < len(argv):
+            hsm_backend_arg = argv[idx + 1]
+            idx += 2
+            continue
+        if arg.startswith('--hsm-backend='):
+            hsm_backend_arg = arg.split('=', 1)[1]
+            idx += 1
+            continue
+        if arg == '--command' and idx + 1 < len(argv):
+            command_arg = argv[idx + 1]
+            idx += 2
+            continue
+        if arg.startswith('--command='):
+            command_arg = arg.split('=', 1)[1]
+            idx += 1
+            continue
+        cleaned_argv.append(arg)
+        idx += 1
+    argv = cleaned_argv
+
+    if len(argv) < 2:
+        print(
+            f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... "
+            '[--hsm] [--kek] [--pkcs11] [--hsm-backend <name>] [--command <cmd>]'
+        )
         sys.exit(1)
 
-    out_dir = Path(sys.argv[1])
-    versions = sys.argv[2:]
+    out_dir = Path(argv[0])
+    versions = argv[1:]
 
     print('── Environment data ──')
     env_data: dict[str, dict] = {}
@@ -904,6 +1745,11 @@ def main() -> None:
         load_charts,
         crit_charts,
         env_data=env_data or None,
+        is_hsm=is_hsm,
+        is_hsm_kek=is_hsm_kek,
+        is_pkcs11=is_pkcs11,
+        default_hsm_backend=hsm_backend_arg,
+        default_command=command_arg,
     )
 
 

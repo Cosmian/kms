@@ -1,6 +1,6 @@
 ---
 name: meta-security
-description: 'Comprehensive security audit orchestrator: invokes /security-review, /cryptography-review, /threat-model, and /standards-review in sequence. Produces a unified go/no-go report. Use for full security audit before release or after significant changes.'
+description: 'Full security-audit orchestrator running /security-review, /cryptography-review, /threat-model, and /standards-review in canonical order per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Use before release or major changes; incremental skips only when explicitly requested for follow-ups.'
 ---
 
 # Meta-Security — Comprehensive Security Audit
@@ -12,19 +12,48 @@ single unified go/no-go report. This is the most thorough security review availa
 > feature addition, when onboarding a new cloud provider integration, or when a
 > comprehensive security posture assessment is requested.
 
+---
+
 ## Step 0 — Load Anti-Hallucination Discipline
 
 Read `.github/skills/shared/anti-hallucination.md` **before any analysis**. All rules in
 that file are mandatory for every sub-skill invoked below. Do not proceed until you have read it.
 
+### Sub-Agent Routing
+
+Phases run as sub-agents (contract §6); the orchestrator contract in
+`.github/skills/shared/orchestrator-contract.md` sections 1 and 6 control:
+
+- **Phase ordering** (Section 1: security audit phases 1–4)
+- **Sub-agent routing** (Section 6: `slow` model for judgment/reasoning phases)
+- **Overlap deduplication** (Section 3: report overlaps once under earliest phase)
+- **Unified report schema** (Section 4: SUMMARY.md structure)
+- **Blocking criteria** (Section 5: go/no-go gates)
+
+This skill's manual steps below align with that contract. For orchestration rules and
+report format details, see the shared contract.
+
 ## Step 1 — Determine Scope
 
+Collect the union of branch changes, staged and unstaged changes, and untracked files. For example:
+
 ```bash
-git diff --name-only origin/develop...HEAD 2>/dev/null || git diff --name-only HEAD~5
+git diff --name-only origin/develop...HEAD
+git diff --name-only HEAD
+git diff --name-only --cached
+git ls-files --others --exclude-standard
 ```
+
+If `origin/develop` is unavailable, state that and use a known base or the supplied path; never treat an empty or failed diff as a clean scope.
 
 If a path was provided (e.g. `/meta-security crate/server/`), restrict all sub-skills to that path.
 Otherwise, use the full workspace.
+
+### Full and Incremental Gates (per Orchestrator Contract Section 2)
+
+- **Full/comprehensive or release-oriented** requests run all four sub-skills. A supplied path narrows their scope; it does not itself authorize skipping a review.
+- **Incremental mode** applies relevance skips *only when the user explicitly requests* a follow-up. If scope or applicability is uncertain, run the review.
+- Record which areas changed and apply the conservative skip rules from the shared contract (Section 2).
 
 Record which areas changed:
 
@@ -40,11 +69,15 @@ Record which areas changed:
 - [ ] `ui/` — Web UI
 - [ ] `.github/` — CI / scripts
 
+---
+
 ## Step 2 — Security Review
 
-Invoke `/security-review` on the scoped path.
+In full/comprehensive mode, always invoke `/security-review` on the scoped path. In an explicitly incremental review, apply the gate from Step 1 and record any skip.
 
-This covers:
+See `.github/skills/shared/orchestrator-contract.md` Section 2 (Skip Gates) for conservative skip rules.
+
+This phase covers (per `security-review` skill):
 
 - OWASP Top 10 / CWE Top 25 vulnerability families
 - Memory & type safety (FFI, `unsafe` blocks)
@@ -61,13 +94,16 @@ This covers:
 - FIPS feature flag consistency
 - KMIP protocol authorization
 
-Collect all findings. Record the severity summary.
+Collect all findings. Record the severity summary. If skipped in incremental mode, record the evidence and checked areas.
 
 ## Step 3 — Cryptographic Review
 
-Invoke `/cryptography-review` on the scoped path.
+In full/comprehensive mode, invoke `/cryptography-review` on the scoped path. In incremental mode, invoke it for crypto primitives/call sites,
+algorithm selection, key lifecycle/policy, provider initialization, or FIPS gates. Skip only after confirming none apply.
 
-This covers:
+See `.github/skills/shared/orchestrator-contract.md` Section 2 (Skip Gates) for conservative skip rules.
+
+This phase covers (per `cryptography-review` skill):
 
 - Algorithm inventory and FIPS/BSI/ANSSI compliance
 - Feature flag gating audit
@@ -79,30 +115,25 @@ This covers:
 - Multi-standard compliance matrix
 - Academic research flags (known cryptanalytic attacks)
 
-Collect all findings. Record the compliance matrix.
+Collect all findings. If skipped in incremental mode, record the checked areas and reason.
 
 ## Step 4 — Threat Model
 
-Invoke `/threat-model`:
+In full/comprehensive mode, invoke `/threat-model`. If a prior threat model exists, use incremental mode; otherwise use single analysis mode.
 
-- If a prior threat model exists (`threat-model-*/` directory): use **incremental mode**
-- If no prior threat model exists: use **single analysis mode**
+For an explicitly incremental review, skip only after confirming no trust boundary or security-relevant data flow changed (authentication, routes, middleware, config/TLS, DB/HSM, crypto, external integrations).
 
-Focus on areas identified in Step 1 that affect trust boundaries:
+See `.github/skills/shared/orchestrator-contract.md` Section 2 (Skip Gates) for conservative skip rules.
 
-- New or modified authentication methods
-- New or modified endpoints (especially unauthenticated ones)
-- New outbound calls (cloud provider integrations)
-- New HSM / database backend integrations
-- Changes to TLS configuration
-
-Collect all findings. Record new/changed threats.
+Collect all findings or record the evidence for an incremental skip.
 
 ## Step 5 — Standards Compliance Review
 
-Invoke `/standards-review` on the scoped path.
+In full/comprehensive mode, invoke `/standards-review` on the scoped path. In an explicitly incremental review, run it when protocol or standards-constrained behavior changed; otherwise record why it is not applicable.
 
-This covers:
+See `.github/skills/shared/orchestrator-contract.md` Section 2 (Skip Gates) for conservative skip rules.
+
+This phase covers (per `standards-review` skill):
 
 - KMIP 2.1 spec conformance (local HTML verification)
 - RFC conformance (URL-verified section citations)
@@ -110,69 +141,74 @@ This covers:
 - BSI / ANSSI guideline conformance
 - Per-algorithm compliance checklist cross-reference
 
-Collect all findings. Record the applicability matrix and conformance gaps.
+Collect all findings. Record applicability and conformance gaps.
+
+---
 
 ## Step 6 — Unified Report
 
-Produce this exact report structure:
+Produce a report using the unified schema from `.github/skills/shared/orchestrator-contract.md` Section 4 (Unified Report Schema).
+
+**Report structure** (adapted for security audit):
 
 ```markdown
-## Meta-Security Audit Report — [scope] — [date]
+# Meta-Security — <Scope> Report
 
-### Consolidated Status
+**Generated**: <ISO 8601 timestamp>
+**Scope**: <full workspace | path | specific changed files>
+**Mode**: <full | incremental>
 
-| Skill | Status | Critical | High | Medium | Low |
-|-------|--------|----------|------|--------|-----|
-| Security Review | ✅ PASS / ❌ BLOCK | N | N | N | N |
-| Cryptographic Review | ✅ PASS / ❌ BLOCK | N | N | N | N |
-| Threat Model | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | N | N | N | N |
-| Standards Review | ✅ PASS / ❌ BLOCK | N | N | N | N |
+## Summary
 
-### Blocking Findings (CRITICAL + HIGH)
+- **Total Findings**: N
+- **Critical**: N
+- **High**: N
+- **Medium**: N
+- **Low**: N
+- **Skipped Phases**: <list with evidence>
 
-| # | Source Skill | Category | File:Line | Title | Severity |
-|---|-------------|----------|-----------|-------|----------|
-| 1 | security-review | Side-Channel | `crate/crypto/src/rsa.rs:42` | Non-constant-time MAC comparison | 🔴 CRITICAL |
-| 2 | ... | ... | ... | ... | ... |
+## Verdict
 
-### Multi-Standard Compliance Matrix
-[From cryptography-review Step 9 — only rows with divergences]
+**GO** / **NO-GO** (with reason)
 
-### Standards Conformance Gaps
-[From standards-review — only violations and deviations]
+## Findings (ordered by phase)
 
-### New/Changed Threats
-[From threat-model — only new or severity-changed threats since baseline]
+### Phase 1: Security Review [PASS | FAIL | SKIPPED]
+...
 
-### Full Findings by Skill
-[Complete findings from each skill, grouped]
+### Phase 2: Cryptography Review [PASS | FAIL | SKIPPED]
+...
 
-### Unverified Items
-[All items marked REQUIRES MANUAL VERIFICATION across all skills]
+### Phase 3: Threat Model [PASS | FAIL | SKIPPED]
+...
 
-### Verdict
-
-**PASS** — no CRITICAL or HIGH findings across all four skills.
-Proceed with release / merge.
-
-— or —
-
-**BLOCK** — N blocking findings must be resolved before proceeding.
-[List each blocking finding with its source skill and recommended fix]
+### Phase 4: Standards Review [PASS | FAIL | SKIPPED]
+...
 ```
 
-### Blocking criteria
+## Step 7 — Blocking Criteria (per Orchestrator Contract Section 5)
 
-- Any 🔴 CRITICAL finding from any skill → **BLOCK**
-- Any 🟠 HIGH finding from security-review or cryptography-review → **BLOCK**
-- Any 🔴 Violation from standards-review → **BLOCK**
-- Unmitigated CRITICAL/HIGH threats from threat-model → **BLOCK**
-- ⏭ SKIPPED skills are acceptable when skip condition is confirmed
+Determine go/no-go using this order:
 
-## Output Rules
+### BLOCKER (GO → NO-GO)
 
-- **Never** auto-apply fixes — present the unified report for human review
-- **Always** attribute each finding to its source skill
-- **Always** deduplicate findings that appear in multiple skills (keep the most detailed version, note the overlap)
+- Any 🔴 **CRITICAL** finding from any phase
+- Any 🟠 **HIGH** finding from security-review or cryptography-review
+- Any 🔴 **Violation** from standards-review
+- Unmitigated **CRITICAL/HIGH** threats from threat-model
+- ⏭ **SKIPPED** phases are acceptable only in an explicitly requested incremental review with confirmed inapplicability; never skip in full/comprehensive or release mode
+
+### WARNING (recorded but non-blocking)
+
+- **MEDIUM** findings; must be addressed before merge if count > 5
+- **LOW** findings
+
+## Step 8 — Output Rules
+
+- **Never** auto-apply fixes within this audit — present the unified report for human review (auto-fixing self-review is `/kms-pr-review`'s job)
+- **Always** attribute each finding to its source phase (per deduplication rules in shared contract Section 3)
+- **Always** deduplicate findings that appear in multiple phases (keep the most detailed version, note the overlap)
 - **Group** blocking findings at the top for immediate visibility
-- If all skills pass cleanly, say so clearly with a summary of what was scanned
+- If all phases pass cleanly, say so clearly with a summary of what was scanned
+
+> **Note**: An incremental PASS is not a release go/no-go; use the full `/pre-release` gate before release.

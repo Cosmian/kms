@@ -54,19 +54,64 @@ pub(crate) enum BenchSpeed {
 }
 
 /// Benchmark mode selection (operation category).
-#[derive(Clone, Debug, Default, ValueEnum)]
-pub(crate) enum BenchMode {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub enum BenchMode {
     /// Run ALL benchmark categories in order
     #[default]
     All,
-    /// Encrypt/decrypt: AES-GCM, `ChaCha20` (non-FIPS), RSA-OAEP, RSA-AES-KWP, RSA-PKCS1v15 (non-FIPS)
+    /// Encrypt/decrypt: AES-GCM, AES-XTS, `AES-GCM-SIV`/`ChaCha20`/ECIES/Salsa/Covercrypt/KEM/PQC-KEM (non-FIPS), RSA-OAEP, RSA-AES-KWP, RSA-PKCS1v15 (non-FIPS)
     Encrypt,
-    /// Key creation: symmetric, RSA, EC key pairs
+    /// Key creation: symmetric (AES, `ChaCha20` non-FIPS), RSA (2048, 4096), EC (P-256, P-384, P-521, secp256k1/Ed25519/Ed448 non-FIPS), ML-KEM/PQC-KEM (non-FIPS)
     KeyCreation,
-    /// Sign/verify: ECDSA, `EdDSA` (non-FIPS), RSA-PSS, ML-DSA, SLH-DSA (non-FIPS)
+    /// Sign/verify: ECDSA (P-256, P-384, P-521), `EdDSA` (Ed25519, Ed448 non-FIPS), ECDSA secp256k1 (non-FIPS), RSA-PSS, ML-DSA (non-FIPS), SLH-DSA (non-FIPS)
+    #[value(alias = "sign")]
     SignVerify,
-    /// KMIP Message batch: AES `BulkData`, RSA KMIP Message
+    /// KMIP Message batch: AES `BulkData`, RSA KMIP Message (OAEP, KWP)
     Batch,
+}
+
+/// Filter criteria for benchmark algorithms and key sizes.
+#[derive(Clone, Debug, Default, clap::Args)]
+pub struct BenchFilter {
+    /// Filter benchmark algorithms by name substring (case-insensitive, comma-separated, e.g. "aes-gcm,rsa-pss,ecdsa").
+    #[clap(long = "algorithm", short = 'a', value_delimiter = ',')]
+    pub algorithms: Vec<String>,
+
+    /// Filter benchmark key sizes or curves by substring/number (comma-separated, e.g. "128,256,2048,p256").
+    #[clap(long = "key-size", short = 'k', value_delimiter = ',')]
+    pub key_sizes: Vec<String>,
+}
+
+impl BenchFilter {
+    /// Check whether an algorithm name and optional key size / curve label match this filter.
+    #[must_use]
+    pub fn matches(&self, algo: &str, key_size_or_curve: Option<&str>) -> bool {
+        let algo_matches = if self.algorithms.is_empty() {
+            true
+        } else {
+            let algo_lower = algo.to_ascii_lowercase();
+            self.algorithms
+                .iter()
+                .any(|a| algo_lower.contains(&a.trim().to_ascii_lowercase()))
+        };
+
+        let size_matches = if self.key_sizes.is_empty() {
+            true
+        } else if let Some(ks) = key_size_or_curve {
+            let ks_lower = ks.to_ascii_lowercase();
+            self.key_sizes
+                .iter()
+                .any(|k| ks_lower.contains(&k.trim().to_ascii_lowercase()))
+        } else {
+            // If key size filter was specified but this item has no key size, check if algo matches key_size
+            let algo_lower = algo.to_ascii_lowercase();
+            self.key_sizes
+                .iter()
+                .any(|k| algo_lower.contains(&k.trim().to_ascii_lowercase()))
+        };
+
+        algo_matches && size_matches
+    }
 }
 
 /// Benchmark protocol / transport selection.
@@ -122,12 +167,17 @@ impl BenchProtocol {
 ///   ckms bench --mode encrypt --load                  # load test encrypt only
 ///   ckms bench --protocol jose --load                 # JOSE load test
 ///   ckms bench --load --format html                   # gnuplot HTML report
+///   ckms bench --hsm --hsm-slot 1 --load              # HSM-direct load test (see bench/load-hsm --delegated)
+///   ckms bench --hsm --mode sign-verify --speed quick # HSM-direct criterion sign/encrypt
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct BenchAction {
     /// Benchmark category (default: all)
     #[clap(long = "mode", short = 'm', default_value = "all")]
     pub(super) mode: BenchMode,
+    /// Algorithm and key-size filtering options
+    #[clap(flatten)]
+    pub(super) filter: BenchFilter,
 
     /// Protocol / transport to benchmark (default: all).
     /// - `ttlv-json`: KMIP over JSON TTLV (`POST /kmip/2_1`)
@@ -208,4 +258,29 @@ pub struct BenchAction {
     /// and release memory before the next level starts fresh.
     #[clap(long = "cooldown-time", default_value = "20")]
     pub(super) cooldown_time: u64,
+
+    /// Benchmark cryptographic operations executed directly ON an HSM
+    /// (PKCS#11), instead of in KMS software. Requires the KMS server to be
+    /// started with the legacy flat HSM config (`hsm_model`/`hsm_slot`/
+    /// `hsm_admin`/`hsm_password` — see the `bench/load-hsm --delegated`
+    /// mise task), which registers the `hsm::<slot>::<uuid>`
+    /// unique-identifier prefix. Keys created under this prefix have both
+    /// their generation and Encrypt/Sign routed to the HSM's `CryptoOracle`.
+    /// Algorithm scope is limited to what the oracle supports: AES-GCM/CBC
+    /// and RSA-OAEP/PKCS1v15 encrypt; RSA-PSS/PKCS1v15/SHA*`WithRSA` and
+    /// ECDSA (prehashed) sign.
+    /// `Verify` is not implemented for HSM-resident keys and is skipped.
+    /// Composable with `--mode`/`--protocol`/`--load`. Only the `ttlv-json`
+    /// protocol is benchmarked: `ttlv-bytes` is skipped (measuring it after
+    /// `ttlv-json` against the same HSM-resident key/token would be
+    /// contaminated by cumulative `SoftHSM2` load from the preceding run) and
+    /// `jose` is unsupported (no way to request a caller-chosen `kid`).
+    #[clap(long = "hsm", default_value = "false")]
+    pub(super) hsm: bool,
+
+    /// HSM slot id, used to build the `hsm::<slot>::` unique identifier
+    /// prefix for `--hsm`. Must match the slot the server's legacy flat HSM
+    /// config (`hsm_slot`) has registered.
+    #[clap(long = "hsm-slot", default_value = "0")]
+    pub(super) hsm_slot: usize,
 }

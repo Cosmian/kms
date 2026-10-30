@@ -18,6 +18,16 @@ Verification methods (in order of preference):
 
 If none of these methods succeeds, the section number is **unverified** and must not be cited.
 
+**Optional corroboration** (not a verification method): when
+`omp-jev-tools` is installed (OMP only — not available in VS Code Copilot
+Chat, Copilot CLI, or Copilot Cloud Agent) and a citation was just verified
+by one of the three methods above, run `jev_verify` with `claim` set to the
+cited requirement text, `evidence` set to the verified source excerpt, and
+`quote` set to the exact wording if quoted. A `contradicts` verdict or a
+`verbatim` noul below 0.5 is a signal to re-read the source before citing —
+it never replaces Rule 1, and it is never grounds to cite something that
+was not verified by Rule 1. Skip this step if the tool is unavailable.
+
 ## Rule 2 — Citation format
 
 Use this exact format for all standard citations:

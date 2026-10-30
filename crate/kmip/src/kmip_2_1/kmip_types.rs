@@ -116,8 +116,10 @@ pub enum KeyFormatType {
     ConfigurableKEMPublicKey = 0x8880_0004,
     EnclaveECKeyPair = 0x8880_0005,
     EnclaveECSharedKey = 0x8880_0006,
-    // Available slot 0x8880_0007,
-    // Available slot 0x8880_0008,
+    /// Cosmian extension: armored `OpenPGP` Transferable Secret Key (RFC 9580 §10.2).
+    OpenPgpSecretKey = 0x8880_0007,
+    /// Cosmian extension: armored `OpenPGP` Transferable Public Key (RFC 9580 §10.1).
+    OpenPgpPublicKey = 0x8880_0008,
     // Available slot 0x8880_0009,
     // Available slot 0x8880_000A,
     // Available slot 0x8880_000B,
@@ -867,52 +869,64 @@ impl Display for VendorAttributeValue {
 #[serde(rename_all = "PascalCase")]
 pub struct CertificateAttributes {
     // Certificate Subject CN
+    #[serde(alias = "CertificateSubjectCN")]
     pub certificate_subject_cn: String,
     // Certificate Subject O
     pub certificate_subject_o: String,
     // Certificate Subject OU
+    #[serde(alias = "CertificateSubjectOU")]
     pub certificate_subject_ou: String,
     // Certificate Subject Email
     pub certificate_subject_email: String,
     // Certificate Subject C
     pub certificate_subject_c: String,
     // Certificate Subject ST
+    #[serde(alias = "CertificateSubjectST")]
     pub certificate_subject_st: String,
     // Certificate Subject L
     pub certificate_subject_l: String,
     // Certificate Subject UID
+    #[serde(alias = "CertificateSubjectUID")]
     pub certificate_subject_uid: String,
     // Certificate Subject Serial Number
     pub certificate_subject_serial_number: String,
     // Certificate Subject Title
     pub certificate_subject_title: String,
     // Certificate Subject DC
+    #[serde(alias = "CertificateSubjectDC")]
     pub certificate_subject_dc: String,
     // Certificate Subject DN Qualifier
+    #[serde(alias = "CertificateSubjectDNQualifier")]
     pub certificate_subject_dn_qualifier: String,
     // Certificate Issuer CN
+    #[serde(alias = "CertificateIssuerCN")]
     pub certificate_issuer_cn: String,
     // Certificate Issuer O
     pub certificate_issuer_o: String,
     // Certificate Issuer OU
+    #[serde(alias = "CertificateIssuerOU")]
     pub certificate_issuer_ou: String,
     // Certificate Issuer Email
     pub certificate_issuer_email: String,
     // Certificate Issuer C
     pub certificate_issuer_c: String,
     // Certificate Issuer ST
+    #[serde(alias = "CertificateIssuerST")]
     pub certificate_issuer_st: String,
     // Certificate Issuer L
     pub certificate_issuer_l: String,
     // Certificate Issuer UID
+    #[serde(alias = "CertificateIssuerUID")]
     pub certificate_issuer_uid: String,
     // Certificate Issuer Serial Number
     pub certificate_issuer_serial_number: String,
     // Certificate Issuer Title
     pub certificate_issuer_title: String,
     // Certificate Issuer DC
+    #[serde(alias = "CertificateIssuerDC")]
     pub certificate_issuer_dc: String,
     // Certificate Issuer DN Qualifier
+    #[serde(alias = "CertificateIssuerDNQualifier")]
     pub certificate_issuer_dn_qualifier: String,
 }
 
@@ -2187,5 +2201,43 @@ impl From<UsageLimits> for crate::kmip_0::kmip_types::UsageLimits {
             usage_limits_count: v.usage_limits_count,
             usage_limits_total: v.usage_limits_total,
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod certificate_attributes_wire_tests {
+    use super::{CertificateAttributes, Tag};
+    use crate::ttlv::{TTLVBytesDeserializer, TTLVBytesSerializer, from_ttlv, to_ttlv};
+
+    /// The binary TTLV tags of the abbreviated fields (`CN`, `OU`, `UID`, ...) are upper-case,
+    /// the serde names are not: every field must survive a binary round trip.
+    #[test]
+    fn certificate_attributes_binary_round_trip() {
+        let attributes = CertificateAttributes::parse_subject_line(
+            "CN=cn, O=o, OU=ou, C=c, ST=st, L=l, DC=dc, UID=uid",
+        )
+        .unwrap();
+        let attributes = CertificateAttributes {
+            certificate_issuer_cn: "icn".to_owned(),
+            certificate_issuer_ou: "iou".to_owned(),
+            certificate_issuer_st: "ist".to_owned(),
+            certificate_issuer_uid: "iuid".to_owned(),
+            certificate_issuer_dc: "idc".to_owned(),
+            certificate_issuer_dn_qualifier: "idnq".to_owned(),
+            certificate_subject_dn_qualifier: "dnq".to_owned(),
+            ..attributes
+        };
+        let mut buffer = Vec::new();
+        TTLVBytesSerializer::new(&mut buffer)
+            .write_ttlv::<Tag>(&to_ttlv(&attributes).unwrap())
+            .unwrap();
+        let (ttlv, _) = TTLVBytesDeserializer::new(buffer.as_slice())
+            .read_ttlv::<Tag>()
+            .unwrap();
+        assert_eq!(
+            from_ttlv::<CertificateAttributes>(ttlv).unwrap(),
+            attributes
+        );
     }
 }

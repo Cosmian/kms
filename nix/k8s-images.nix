@@ -67,7 +67,8 @@ let
         "org.opencontainers.image.description" = "Kubernetes Operator for KMSSecret CRDs";
         "org.opencontainers.image.version" = version;
         "org.opencontainers.image.vendor" = "Cosmian";
-        "org.opencontainers.image.url" = "https://docs.cosmian.com/integrations/kubernetes/operator/";
+        "org.opencontainers.image.url" =
+          "https://docs.cosmian.com/key_management_system/integrations/kubernetes/operator.html";
         "org.opencontainers.image.source" = "https://github.com/Cosmian/kms";
       };
     };
@@ -99,7 +100,8 @@ let
         "org.opencontainers.image.description" = "Kubernetes Secrets Store CSI Driver Provider";
         "org.opencontainers.image.version" = version;
         "org.opencontainers.image.vendor" = "Cosmian";
-        "org.opencontainers.image.url" = "https://docs.cosmian.com/integrations/kubernetes/csi-provider/";
+        "org.opencontainers.image.url" =
+          "https://docs.cosmian.com/key_management_system/integrations/kubernetes/csi-provider.html";
         "org.opencontainers.image.source" = "https://github.com/Cosmian/kms";
       };
     };

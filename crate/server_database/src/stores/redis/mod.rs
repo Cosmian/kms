@@ -1,7 +1,7 @@
 pub(crate) mod findex;
 pub(crate) mod objects_db;
 pub(crate) mod permissions;
-mod redis_with_findex;
+pub(crate) mod redis_with_findex;
 
 pub(crate) use redis_with_findex::RedisWithFindex;
 #[cfg(test)]

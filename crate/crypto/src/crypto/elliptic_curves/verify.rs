@@ -3,18 +3,16 @@ use cosmian_kmip::{
     kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, ValidityIndicator},
 };
 #[cfg(feature = "non-fips")]
-use k256::ecdsa::{Signature as K256Signature, VerifyingKey as K256VerifyingKey};
+use k256::ecdsa::{
+    Signature as K256Signature, VerifyingKey as K256VerifyingKey,
+    signature::hazmat::PrehashVerifier as _,
+};
 #[cfg(feature = "non-fips")]
 use openssl::bn::BigNumContext;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Public},
     sign::Verifier,
-};
-#[cfg(feature = "non-fips")]
-use p256::ecdsa::{
-    Signature as P256Signature, VerifyingKey as P256VerifyingKey,
-    signature::hazmat::PrehashVerifier as _,
 };
 
 #[cfg(feature = "non-fips")]
@@ -54,15 +52,13 @@ pub fn ecdsa_verify(
         }
     };
 
-    // RFC6979 path for non-fips builds
+    // secp256k1 (non-fips): `k256` is ~3x faster than OpenSSL and rejects high-S signatures
+    // (BIP-62), which OpenSSL would accept.
     #[cfg(feature = "non-fips")]
     {
-        if dsa == DigitalSignatureAlgorithm::ECDSAWithSHA256 {
+        if dsa == DigitalSignatureAlgorithm::ECDSAWithSHA256 && is_digested {
             if let Ok(ec_key) = verification_key.ec_key() {
-                let curve_nid = ec_key.group().curve_name();
-                let is_p256 = curve_nid == Some(openssl::nid::Nid::X9_62_PRIME256V1);
-                let is_k256 = curve_nid == Some(openssl::nid::Nid::SECP256K1);
-                if is_digested && (is_p256 || is_k256) {
+                if ec_key.group().curve_name() == Some(openssl::nid::Nid::SECP256K1) {
                     if data.len() != VERIFY_256_DATA_LENGTH {
                         return Err(CryptoError::InvalidSize(format!(
                             "SHA-256 digest for verify must be exactly {} bytes, is {} bytes.",
@@ -76,33 +72,17 @@ pub fn ecdsa_verify(
                         openssl::ec::PointConversionForm::UNCOMPRESSED,
                         &mut ctx,
                     )?;
-                    let is_valid = if is_p256 {
-                        let verifying_key = P256VerifyingKey::from_sec1_bytes(&pub_key_sec1)
-                            .map_err(|e| {
-                                CryptoError::ConversionError(format!(
-                                    "Verify - invalid P256 public key: {e}"
-                                ))
-                            })?;
-                        let signature = P256Signature::from_der(signature).map_err(|e| {
+                    let verifying_key =
+                        K256VerifyingKey::from_sec1_bytes(&pub_key_sec1).map_err(|e| {
                             CryptoError::ConversionError(format!(
-                                "Verify - invalid ECDSA P256 signature: {e}"
+                                "Verify - invalid K256 public key: {e}"
                             ))
                         })?;
-                        verifying_key.verify_prehash(data, &signature).is_ok()
-                    } else {
-                        let verifying_key = K256VerifyingKey::from_sec1_bytes(&pub_key_sec1)
-                            .map_err(|e| {
-                                CryptoError::ConversionError(format!(
-                                    "Verify - invalid K256 public key: {e}"
-                                ))
-                            })?;
-                        let signature = K256Signature::from_der(signature).map_err(|e| {
-                            CryptoError::ConversionError(format!(
-                                "Verify - invalid ECDSA K256 signature: {e}"
-                            ))
-                        })?;
-                        verifying_key.verify_prehash(data, &signature).is_ok()
-                    };
+                    // A malformed/undecodable `signature` is attacker-controlled input, not
+                    // a server-side error: per KMIP semantics (and PKCS#11's CKR_SIGNATURE_INVALID
+                    // contract), it must yield ValidityIndicator::Invalid, not propagate as Err.
+                    let is_valid = K256Signature::from_der(signature)
+                        .is_ok_and(|sig| verifying_key.verify_prehash(data, &sig).is_ok());
                     return Ok(if is_valid {
                         ValidityIndicator::Valid
                     } else {
@@ -113,21 +93,20 @@ pub fn ecdsa_verify(
         }
     }
 
-    // For non-P256/K256 EC keys with prehashed data, use raw EcdsaSig::verify
+    // For non-secp256k1 EC keys with prehashed data (P-256 included: OpenSSL is ~8x faster than
+    // the pure-Rust `p256` crate), use raw EcdsaSig::verify
     // (symmetric to EcdsaSig::sign used in the sign path).  Verifier::new_without_digest
     // with verify_oneshot still applies the algorithm-default hash, so ECDSA_verify of a
     // raw digest would fail.  EcdsaSig::verify maps to ECDSA_do_verify and takes the
     // digest bytes directly without any additional hashing.
     if is_digested {
         if let Ok(ec_key) = verification_key.ec_key() {
-            let ecdsa_sig = openssl::ecdsa::EcdsaSig::from_der(signature).map_err(|e| {
-                CryptoError::ConversionError(format!(
-                    "ECDSA prehash verify: invalid DER signature: {e}"
-                ))
-            })?;
-            let is_valid = ecdsa_sig
-                .verify(data, &ec_key)
-                .map_err(|e| CryptoError::Kmip(format!("ECDSA prehash verify failed: {e}")))?;
+            // As above: a malformed `signature` (bad DER, or one OpenSSL otherwise rejects
+            // during verification) must map to Invalid, not an operation error.
+            let is_valid = openssl::ecdsa::EcdsaSig::from_der(signature)
+                .ok()
+                .and_then(|ecdsa_sig| ecdsa_sig.verify(data, &ec_key).ok())
+                .unwrap_or(false);
             return Ok(if is_valid {
                 ValidityIndicator::Valid
             } else {
@@ -141,7 +120,8 @@ pub fn ecdsa_verify(
     } else {
         Verifier::new(md, verification_key)?
     };
-    let ok = verifier.verify_oneshot(signature, data)?;
+    // A malformed `signature` must yield Invalid, not an operation error (see above).
+    let ok = verifier.verify_oneshot(signature, data).unwrap_or(false);
     Ok(if ok {
         ValidityIndicator::Valid
     } else {
@@ -155,7 +135,8 @@ pub fn ed_verify(
     signature: &[u8],
 ) -> CryptoResult<ValidityIndicator> {
     let mut verifier = Verifier::new_without_digest(verification_key)?;
-    let ok = verifier.verify_oneshot(signature, data)?;
+    // A malformed `signature` must yield Invalid, not an operation error (see above).
+    let ok = verifier.verify_oneshot(signature, data).unwrap_or(false);
     Ok(if ok {
         ValidityIndicator::Valid
     } else {

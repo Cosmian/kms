@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt::Write, time::Duration};
 
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -271,6 +271,22 @@ impl HttpResponse {
     }
 }
 
+/// Render an error with its full `source()` chain, e.g. `client error (Connect): tcp connect
+/// error: ...: certificate verify failed`. hyper-util's `Display` alone hides the root cause.
+fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut msg = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        let cause_msg = cause.to_string();
+        // Some wrappers already embed their source's text in their own Display.
+        if !msg.contains(&cause_msg) {
+            let _ = write!(msg, ": {cause_msg}");
+        }
+        source = cause.source();
+    }
+    msg
+}
+
 /// The inner hyper client type used by [`HttpClient`].
 type InnerClient = Client<HttpsConnector<SmartConnector>, Full<Bytes>>;
 
@@ -419,13 +435,12 @@ impl HttpClient {
     /// # Errors
     /// Returns an error if the request fails.
     pub async fn get(&self, url: &str) -> HttpClientResult<HttpResponse> {
-        let mut builder = http::Request::builder().method("GET").uri(url);
-        builder = self.apply_default_headers(builder);
-        let request = builder
-            .body(Full::new(Bytes::new()))
-            .map_err(|e| HttpClientError::Default(format!("Failed to build GET request: {e}")))?;
-
-        self.send(request).await
+        self.send(|| {
+            self.apply_default_headers(http::Request::builder().method("GET").uri(url))
+                .body(Full::new(Bytes::new()))
+                .map_err(|e| HttpClientError::Default(format!("Failed to build GET request: {e}")))
+        })
+        .await
     }
 
     /// Send an HTTP GET request with query parameters serialized from `query`.
@@ -460,17 +475,18 @@ impl HttpClient {
         let json_bytes = serde_json::to_vec(body).map_err(|e| {
             HttpClientError::Default(format!("Failed to serialize request body: {e}"))
         })?;
+        let body = Bytes::from(json_bytes);
 
-        let mut builder = http::Request::builder()
-            .method("POST")
-            .uri(url)
-            .header("Content-Type", "application/json");
-        builder = self.apply_default_headers(builder);
-        let request = builder
-            .body(Full::new(Bytes::from(json_bytes)))
-            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
-
-        self.send(request).await
+        self.send(|| {
+            let builder = http::Request::builder()
+                .method("POST")
+                .uri(url)
+                .header("Content-Type", "application/json");
+            self.apply_default_headers(builder)
+                .body(Full::new(body.clone()))
+                .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))
+        })
+        .await
     }
 
     /// Send an HTTP POST request with raw bytes and a specified content type.
@@ -480,19 +496,20 @@ impl HttpClient {
     pub async fn post_bytes(
         &self,
         url: &str,
-        body: Vec<u8>,
+        body: impl Into<Bytes>,
         content_type: &str,
     ) -> HttpClientResult<HttpResponse> {
-        let mut builder = http::Request::builder()
-            .method("POST")
-            .uri(url)
-            .header("Content-Type", content_type);
-        builder = self.apply_default_headers(builder);
-        let request = builder
-            .body(Full::new(Bytes::from(body)))
-            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
-
-        self.send(request).await
+        let body: Bytes = body.into();
+        self.send(|| {
+            let builder = http::Request::builder()
+                .method("POST")
+                .uri(url)
+                .header("Content-Type", content_type);
+            self.apply_default_headers(builder)
+                .body(Full::new(body.clone()))
+                .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))
+        })
+        .await
     }
 
     /// Send an HTTP POST request without a body.
@@ -500,13 +517,12 @@ impl HttpClient {
     /// # Errors
     /// Returns an error if the request fails.
     pub async fn post_empty(&self, url: &str) -> HttpClientResult<HttpResponse> {
-        let mut builder = http::Request::builder().method("POST").uri(url);
-        builder = self.apply_default_headers(builder);
-        let request = builder
-            .body(Full::new(Bytes::new()))
-            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
-
-        self.send(request).await
+        self.send(|| {
+            self.apply_default_headers(http::Request::builder().method("POST").uri(url))
+                .body(Full::new(Bytes::new()))
+                .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))
+        })
+        .await
     }
 
     /// Send an HTTP DELETE request with a JSON body.
@@ -521,19 +537,20 @@ impl HttpClient {
         let json_bytes = serde_json::to_vec(body).map_err(|e| {
             HttpClientError::Default(format!("Failed to serialize request body: {e}"))
         })?;
+        let body = Bytes::from(json_bytes);
 
-        let mut builder = http::Request::builder()
-            .method("DELETE")
-            .uri(url)
-            .header("Content-Type", "application/json");
-        builder = self.apply_default_headers(builder);
-        let request = builder
-            .body(Full::new(Bytes::from(json_bytes)))
-            .map_err(|e| {
-                HttpClientError::Default(format!("Failed to build DELETE request: {e}"))
-            })?;
-
-        self.send(request).await
+        self.send(|| {
+            let builder = http::Request::builder()
+                .method("DELETE")
+                .uri(url)
+                .header("Content-Type", "application/json");
+            self.apply_default_headers(builder)
+                .body(Full::new(body.clone()))
+                .map_err(|e| {
+                    HttpClientError::Default(format!("Failed to build DELETE request: {e}"))
+                })
+        })
+        .await
     }
 
     /// Send an HTTP POST with form-urlencoded body (for `OAuth2` token exchange).
@@ -546,22 +563,24 @@ impl HttpClient {
         form_body: &str,
         extra_headers: &HeaderMap,
     ) -> HttpClientResult<HttpResponse> {
-        let mut builder = http::Request::builder()
-            .method("POST")
-            .uri(url)
-            .header("Content-Type", "application/x-www-form-urlencoded");
-        builder = self.apply_default_headers(builder);
-        for (name, value) in extra_headers {
-            builder = builder.header(name, value);
-        }
-        let request = builder
-            .body(Full::new(Bytes::from(form_body.to_owned())))
-            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
-
-        self.send(request).await
+        let body = Bytes::copy_from_slice(form_body.as_bytes());
+        self.send(|| {
+            let mut builder = http::Request::builder()
+                .method("POST")
+                .uri(url)
+                .header("Content-Type", "application/x-www-form-urlencoded");
+            builder = self.apply_default_headers(builder);
+            for (name, value) in extra_headers {
+                builder = builder.header(name, value);
+            }
+            builder
+                .body(Full::new(body.clone()))
+                .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))
+        })
+        .await
     }
 
-    /// Send a prepared HTTP request and collect the response.
+    /// Build an HTTP request with `build`, send it and collect the response.
     ///
     /// Retries a connection-level error (`is_connect()`) a few times with a short backoff.
     /// This covers both a stale idle connection handed back by hyper's connection pool
@@ -569,31 +588,36 @@ impl HttpClient {
     /// refuses new connections — the latter happens intermittently in CI against the
     /// in-process test server.  A `Connect` error means the TCP connection was never
     /// established, so the request body is untouched and retrying is always safe.
-    async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
-        let (req, mut retry_req) = Self::split_for_retry(request)?;
-        let response = match self.client.request(req).await {
+    /// `build` is called again for each retry, so the success path builds exactly one request.
+    async fn send(
+        &self,
+        build: impl Fn() -> HttpClientResult<http::Request<Full<Bytes>>>,
+    ) -> HttpClientResult<HttpResponse> {
+        let request = build()?;
+        // `Uri` is ref-counted: this clone is O(1) and lets error messages name the target
+        // after `request` has been moved into the client.
+        let uri = request.uri().clone();
+        let response = match self.client.request(request).await {
             Ok(r) => r,
             Err(e) if e.is_connect() => {
                 tracing::debug!("Connection error, retrying with backoff (is_connect): {e}");
                 let mut last_err = e;
                 for attempt in 1..=3 {
-                    let (retry, next) = Self::split_for_retry(*retry_req)?;
                     tokio::time::sleep(Duration::from_millis(100 * attempt)).await;
-                    match self.client.request(retry).await {
+                    match self.client.request(build()?).await {
                         Ok(r) => return Self::collect_response(r).await,
-                        Err(e) => {
-                            last_err = e;
-                            retry_req = next;
-                        }
+                        Err(e) => last_err = e,
                     }
                 }
                 return Err(HttpClientError::Default(format!(
-                    "HTTP request failed: {last_err}"
+                    "HTTP request to {uri} failed: {}",
+                    error_chain(&last_err)
                 )));
             }
             Err(e) => {
                 return Err(HttpClientError::Default(format!(
-                    "HTTP request failed: {e}"
+                    "HTTP request to {uri} failed: {}",
+                    error_chain(&e)
                 )));
             }
         };
@@ -601,50 +625,20 @@ impl HttpClient {
         Self::collect_response(response).await
     }
 
-    /// Clone `request` for a potential retry and return both the original and
-    /// the boxed copy.
-    ///
-    /// [`http::request::Parts`] does not implement `Clone` (extensions are
-    /// type-erased), so method, URI, version, and headers are copied
-    /// individually.  The copy is `Box`ed so the async state machine in
-    /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
-    /// `.await`, avoiding `clippy::large_futures` in callers.
-    #[expect(
-        clippy::type_complexity,
-        reason = "Box is load-bearing for state machine compactness; a type alias would obscure this"
-    )]
-    fn split_for_retry(
-        request: http::Request<Full<Bytes>>,
-    ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
-        let mut builder = http::Request::builder()
-            .method(request.method().clone())
-            .uri(request.uri().clone())
-            .version(request.version());
-        for (name, value) in request.headers() {
-            builder = builder.header(name, value);
-        }
-        let retry = builder
-            .body(request.body().clone())
-            .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))?;
-        Ok((request, Box::new(retry)))
-    }
-
     /// Consume a hyper response and convert it to [`HttpResponse`].
     async fn collect_response(
         response: http::Response<Incoming>,
     ) -> HttpClientResult<HttpResponse> {
-        let status = response.status();
-        let headers = response.headers().clone();
-        let body = response
-            .into_body()
+        let (parts, body) = response.into_parts();
+        let body = body
             .collect()
             .await
             .map_err(|e| HttpClientError::Default(format!("Failed to read response body: {e}")))?
             .to_bytes();
 
         Ok(HttpResponse {
-            status,
-            headers,
+            status: parts.status,
+            headers: parts.headers,
             body,
         })
     }
@@ -702,5 +696,71 @@ mod default_header_tests {
             HttpClient::instantiate(&HttpClientConfig::default()).expect("client instantiates");
         assert!(client.default_headers.get("Authorization").is_none());
         assert!(client.default_headers.get("X-Vault-Token").is_none());
+    }
+}
+
+#[cfg(test)]
+mod response_tests {
+    use super::{Bytes, HeaderMap, HttpResponse};
+
+    fn response(body: &'static [u8]) -> HttpResponse {
+        HttpResponse {
+            status: http::StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: Bytes::from_static(body),
+        }
+    }
+
+    #[test]
+    fn json_failure_reports_deserialization_context() {
+        let res: Result<serde_json::Map<String, serde_json::Value>, _> =
+            response(b"not json").json();
+        let message = res.err().map(|e| e.to_string()).unwrap_or_default();
+        assert!(
+            message.starts_with("Failed to deserialize response body as JSON: "),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn json_success_deserializes_the_body() {
+        let res: Result<serde_json::Value, _> = response(br#"{"a":1}"#).json();
+        assert_eq!(res.ok(), Some(serde_json::json!({"a": 1})));
+    }
+
+    #[test]
+    fn text_failure_reports_utf8_context() {
+        let message = response(&[0xff, 0xfe, 0xfd])
+            .text()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            message.starts_with("Response body is not UTF-8: "),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn text_success_returns_the_body() {
+        assert_eq!(response(b"hello").text().ok().as_deref(), Some("hello"));
+    }
+}
+
+#[cfg(test)]
+mod error_chain_tests {
+    use super::error_chain;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    struct Layer(String, #[source] Option<Box<Self>>);
+
+    #[test]
+    fn joins_causes_and_skips_repeated_text() {
+        let root = Layer("tls failure".to_owned(), None);
+        // Wrapper that already embeds its cause in its own Display.
+        let embedded = Layer("connect: tls failure".to_owned(), Some(Box::new(root)));
+        let top = Layer("client error".to_owned(), Some(Box::new(embedded)));
+        assert_eq!(error_chain(&top), "client error: connect: tls failure");
     }
 }

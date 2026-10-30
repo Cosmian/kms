@@ -39,14 +39,14 @@ information in the Certificate Request takes precedence.
 
 ## Implementation
 
-The KMIP implementation does not:
+The KMIP specification leaves several aspects of `Certify` open. In particular, it does not define:
 
-- specify how the signer is selected and whether self-signing is allowed
-- specify how the certificate extensions are provided
-- and only supports Certificate Signing Request (CSR) and certifying public keys
+- how the signer is selected, and whether self-signing is allowed
+- how the X.509 certificate extensions (e.g. `basicConstraints`, `keyUsage`) are provided
+- how the subject name is provided when neither a CSR nor an existing certificate is given
 
-Eviden has extended the specifications and offers 4 possibilities to generate a
-certificate
+Eviden KMS fills these gaps with the conventions below, and offers 4 ways to generate a
+certificate:
 
 1. Providing a Certificate Signing Request (CSR)
 2. Providing a public key id to certify as well as a subject name
@@ -60,7 +60,7 @@ one of this parameter is specified, the other one will be inferred
 from the links of the cryptographic object behind the provided parameter.
 
 If no signer is provided, the certificate will be self-signed.
-It is not possible to self-sign a CSR.
+A CSR is always signed by an existing issuer: the request is rejected if it carries no issuer link.
 
 When re-certifying a certificate, if no certificate unique identifier is provided,
 the original certificate id will be used and the original certificate will
@@ -86,7 +86,8 @@ detailed usage instructions, OID tables, CLI examples, and cross-algorithm PKI g
 
 ## Supply X509 extensions (optional)
 
-Specify X509 extensions for a `Certify` operation is possible using the [KMS CLI](../kms_clients/index.md).
+The KMIP specification does not define how to provide X.509 extensions. Eviden KMS reads them from
+a vendor attribute of the `Certify` request, and the [KMS CLI](../kms_clients/index.md) fills it for you.
 
 The `--certificate-extensions` arg (short version `-e`) expects a path to a configuration file
 written in `ini` format (roughly the same format
@@ -98,13 +99,20 @@ Example of a configuration file containing `v3_ca` parag describing extensions t
 
 ```ini
 [v3_ca]
-basicConstraints=critical,CA:FALSE,pathlen:0
-keyUsage=keyCertSign,digitalSignature
+basicConstraints=critical,CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
 extendedKeyUsage=emailProtection
 crlDistributionPoints=URI:http://cse.example.com/crl.pem
 ```
 
-These extensions are embedded in the `Certify` request within the vendor attributes.
+These extensions are embedded in the `Certify` request within the vendor attributes:
+
+| KMIP version | Attribute | Value |
+|---|---|---|
+| 2.1 | Vendor Attribute, `VendorIdentification` = `cosmian`, `AttributeName` = `x509-extension` | the extension file content, as a `ByteString` |
+| 1.4 | Custom Attribute named `y-cosmian::x509-extension` (server-defined `y-` name, KMIP 1.4 §3.39) | the extension file content, as a `TextString` (a `ByteString` is also accepted) |
+
+`cosmian` is the default vendor identification of the server.
 
 Example of the corresponding [KMS CLI](../kms_clients/index.md) command:
 
@@ -113,6 +121,15 @@ ckms certificates certify \
   -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert" \
   -e /some/path/to/ext.cnf
 ```
+
+## KMIP 1.4 Certify
+
+`Certify` is also accepted on KMIP 1.4 connections (for example from `ovh/kmip-go` clients).
+The Certificate Request (tag `CertificateRequest`, 0x420018) and its Certificate Request Type are
+optional, as in the specification, and the Unique Identifier may be omitted for a CSR. The issuer
+private key is given as a `PrivateKeyLink` in the Template Attribute, and the extensions in the
+custom attribute above. The subject name is taken from the CSR (the flow covered by the
+integration tests); the KMIP 2.1 `CertificateAttributes` structure has no KMIP 1.4 counterpart.
 
 ## Example - PKCS#10 Certificate Signing Request
 

@@ -48,17 +48,18 @@ Options:
 
       --hsm-model <HSM_MODEL>
           The HSM model.
-          `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, and `SoftHSM2` are natively supported.
+          `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+          are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, other]
+          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, gcp_cloud_hsm, kryoptic, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
           HSM admins can create, destroy, and potentially export objects on the HSM.
-          Use `"*"` as the only entry to grant all authenticated users admin access.
+          Use "*" as the only entry to grant all authenticated users admin access.
           Repeat the option or use a comma-separated list to specify multiple admins:
             `--hsm-admin alice@example.com --hsm-admin bob@example.com`
             or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
@@ -85,6 +86,17 @@ Options:
           Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
 
           [env: KMS_HSM_PASSWORD=]
+
+      --key-encryption-key-wrapping-algorithm <KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM>
+          Algorithm used to wrap keys at rest with `key_encryption_key`:
+          `aes-gcm`, `aes-key-wrap` (NIST SP 800-38F KW, RFC 3394), `aes-key-wrap-padding`
+          (NIST SP 800-38F KWP, RFC 5649) or `rsa-oaep` (SHA-256). The AES modes need an AES key
+          encryption key, `rsa-oaep` an RSA one. Unset: AES-GCM for an HSM AES key, RSA-OAEP
+          (SHA-256) for an HSM RSA key, AES-KWP for a software AES key; a software RSA key requires
+          `rsa-oaep`. Startup probing covers HSM AES keys only.
+
+          [env: KMS_KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM=]
+          [possible values: aes-gcm, aes-key-wrap, aes-key-wrap-padding, rsa-oaep]
 
       --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
           Specifies which KMIP object types should be automatically unwrapped when retrieved.
@@ -480,7 +492,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.28.0"]
+          [default: "Cosmian KMS v5.29.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -855,13 +867,41 @@ Options:
       --audit-file-max-size-bytes <AUDIT_FILE_MAX_SIZE_BYTES>
           Stops all further writes once the audit file reaches this many bytes.
 
-          The event that pushes the file to or past this size is still persisted; every event
-          after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
-          and the KMS is restarted.
+          The event that would reach this size is replaced by a final
+          `audit:size-cap-reached` event. Later events are dropped according to
+          `--audit-failure-mode` until the log is remediated and the KMS is restarted.
 
           Omitted (the default) means unlimited. Must be > 0 when set.
 
           [env: KMS_AUDIT_FILE_MAX_SIZE_BYTES=]
+
+      --audit-postgres-url <AUDIT_POSTGRES_URL>
+          `PostgreSQL` connection URL for the audit database.
+
+          When set, audit events are written to this `PostgreSQL` database instead of the
+          JSONL file — backend selection is config-time only, based solely on whether this
+          is set; there is no runtime fallback between the two: a connectivity failure at
+          startup still aborts the server. If `--audit-file-path` is also set, it is only
+          used to log a warning that it's ignored (or, on connection failure, that it is
+          NOT used as a fallback). This database MUST be a different database than the
+          main object-storage database (`--database-url`) when that database is also
+          `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+          would let the KMS's own object-store role bypass the audit database's
+          append-only grants.
+
+          [env: KMS_AUDIT_POSTGRES_URL=]
+
+      --audit-instance-id <AUDIT_INSTANCE_ID>
+          Identifies this KMS instance's audit hash chain when using the `PostgreSQL`
+          backend.
+
+          Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
+          database — a second instance reusing an `instance_id` is rejected at startup by an
+          advisory-lock check, before any event is written. Required (no default) when
+          `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+          `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
+
+          [env: KMS_AUDIT_INSTANCE_ID=]
 
       --audit-channel-capacity <AUDIT_CHANNEL_CAPACITY>
           Capacity of the bounded in-memory channel between request threads and the
@@ -880,11 +920,11 @@ Options:
       --audit-trusted-proxy-cidrs <AUDIT_TRUSTED_PROXY_CIDRS>
           Only set this if the KMS sits behind a reverse proxy or load balancer.
 
-          When set, the audit middleware trusts the `X-Forwarded-For` header only if
-          the direct TCP peer is one of the proxy addresses listed here, and records
-          the header's value as `client_ip` instead. This must be scoped to your
-          proxy's own address(es) — trusting it from any peer lets a remote attacker
-          forge `client_ip` in the audit trail.
+          When set, `X-Forwarded-For` is trusted only if the direct TCP peer is one of the
+          proxy addresses listed here; the client address is then the rightmost entry that is
+          not itself a listed proxy. It is recorded as the audit `client_ip` and keys the EST/SCEP
+          failed-authentication lockout. This must be scoped to your proxy's own address(es) —
+          trusting it from any peer lets a remote attacker forge `client_ip` in the audit trail.
 
           Format: comma-separated IP addresses or CIDR blocks, e.g.
           `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)
@@ -1046,6 +1086,91 @@ Options:
           Typical values: 365 days = 31536000.
 
           [default: 0]
+
+      --est-enabled
+          Enable the EST endpoints under `/.well-known/est/`.
+
+          When `false` (default) all `/.well-known/est/` routes return 404.
+
+      --est-ca-uid <EST_CA_UID>
+          UID of the CA certificate object in the KMS that signs EST-enrolled certificates.
+
+          The CA private key must be linked to this certificate. Must be set when
+          `est_enabled = true`. Certificates are issued as the reserved `[enrollment-service]`
+          identity: the CA owner must grant it `certify` on this certificate and on its private
+          key (plus `create` when `crypto_officer_users` is set). Issued certificates are owned by
+          the CA owner.
+
+      --est-require-client-cert <EST_REQUIRE_CLIENT_CERT>
+          Require TLS client-certificate authentication for `/simpleenroll` (RFC 7030 §3.3.2).
+
+          When `true` (default) initial enrollment is only accepted over mutual TLS.
+          When `false`, HTTP Basic authentication (RFC 7030 §3.2.3) with
+          `est_bootstrap_username` / `est_bootstrap_password` is accepted as a fallback for
+          devices that have no certificate yet. `/simplereenroll` always requires a client
+          certificate (RFC 7030 §4.2.2).
+
+          [default: true]
+          [possible values: true, false]
+
+      --est-bootstrap-username <EST_BOOTSTRAP_USERNAME>
+          Username accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
+
+      --est-bootstrap-password <EST_BOOTSTRAP_PASSWORD>
+          Password accepted for HTTP Basic bootstrap authentication on `/simpleenroll`.
+
+          At least 8 characters. Prefer the `KMS_EST_BOOTSTRAP_PASSWORD` environment variable (or
+          the configuration file) to the command line, where it is visible in the process list.
+
+          [env: KMS_EST_BOOTSTRAP_PASSWORD]
+
+      --est-template <EST_TEMPLATE>
+          Name of the `[templates.<name>]` section whose issuance policy (key type and size,
+          EKU, Subject/SAN patterns, validity) is enforced on EST enrollments.
+
+          Required when `est_enabled = true`. The template must set `subject_cn_regex` (or
+          `allow_any_identity = true`): the enrollment secret authenticates a class of devices,
+          not the name a device asks for.
+
+      --scep-enabled
+          Enable the SCEP endpoint at `/scep`.
+
+          When `false` (default) the `/scep` route returns 404.
+
+      --scep-ca-uid <SCEP_CA_UID>
+          UID of the CA certificate object in the KMS that signs SCEP-enrolled certificates.
+
+          SCEP encrypts requests to the CA public key, so this MUST be an RSA CA whose private
+          key is linked to the certificate. Must be set when `scep_enabled = true`.
+          Certificates are issued as the reserved `[enrollment-service]` identity: the CA owner
+          must grant it `certify` on this certificate and on its private key (plus `create` when
+          `crypto_officer_users` is set). Issued certificates are owned by the CA owner.
+
+      --scep-challenge-password <SCEP_CHALLENGE_PASSWORD>
+          Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
+          initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.
+
+          At least 8 characters. Prefer the `KMS_SCEP_CHALLENGE_PASSWORD` environment variable (or
+          the configuration file) to the command line, where it is visible in the process list.
+
+          [env: KMS_SCEP_CHALLENGE_PASSWORD]
+
+      --scep-allow-renewal-without-challenge <SCEP_ALLOW_RENEWAL_WITHOUT_CHALLENGE>
+          Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
+          CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
+
+          When `false`, renewal requests are rejected with `badRequest`.
+
+          [default: true]
+          [possible values: true, false]
+
+      --scep-template <SCEP_TEMPLATE>
+          Name of the `[templates.<name>]` section whose issuance policy (key type and size,
+          EKU, Subject/SAN patterns, validity) is enforced on SCEP enrollments.
+
+          Required when `scep_enabled = true`. The template must set `subject_cn_regex` (or
+          `allow_any_identity = true`): the enrollment secret authenticates a class of devices,
+          not the name a device asks for.
 
   -h, --help
           Print help (see a summary with '-h')

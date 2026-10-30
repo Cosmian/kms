@@ -16,11 +16,11 @@ jobs:
     name: ${{ inputs.archive-name }} - cargo test
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
@@ -43,21 +43,11 @@ jobs:
               return
             }
           }
-          # Fallback: install via chocolatey (fast, <5 MB binary)
-          choco install ninja -y --no-progress
+          # Fallback: pinned, SHA-256-verified release of Ninja
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          # Use the pre-installed Strawberry Perl so vcpkg does not attempt to
-          # download it from GitHub (which fails with 504 under rate-limiting).
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Tests
         shell: pwsh
@@ -75,20 +65,20 @@ jobs:
     name: ${{ inputs.archive-name }} - UI E2E tests
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ inputs.toolchain }}
           targets: wasm32-unknown-unknown
 
-      - uses: pnpm/action-setup@v6.1.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.17.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
 
@@ -107,18 +97,10 @@ jobs:
               return
             }
           }
-          choco install ninja -y --no-progress
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Install wasm-pack
         shell: pwsh
@@ -132,7 +114,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ui-test-logs-windows
           path: |
@@ -145,11 +127,11 @@ jobs:
     name: ${{ inputs.archive-name }} - CNG KSP integration tests
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ inputs.toolchain }}
 
@@ -168,18 +150,10 @@ jobs:
               return
             }
           }
-          choco install ninja -y --no-progress
+          .\.mise\scripts\windows\install_ninja.ps1
 
       - name: Build static OpenSSL
-        shell: pwsh
-        env:
-          PERL: C:\Strawberry\perl\bin\perl.exe
-          PERL_ROOT: C:\Strawberry\perl
-        run: |
-          $ErrorActionPreference = "Stop"
-          vcpkg install --triplet x64-windows-static
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          vcpkg integrate install
+        uses: ./.github/actions/build-static-openssl
 
       - name: Run CNG KSP integration tests
         shell: pwsh
@@ -189,9 +163,65 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cng-ksp-test-logs
           path: |
             ${{ runner.temp }}\kms-cng-test-server.log
             ${{ runner.temp }}\kms-cng-test-server.log.err
+
+  test-est-interop:
+    name: ${{ inputs.archive-name }} - EST interoperability tests
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          .\.mise\scripts\windows\install_ninja.ps1
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: Run EST interoperability tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .mise\scripts\windows\test_est_windows.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: est-interop-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log.err
+            ${{ runner.temp }}\kms-est-win-*\kms.log
+            ${{ runner.temp }}\kms-est-win-*\kms.log.err

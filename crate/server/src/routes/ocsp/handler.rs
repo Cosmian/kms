@@ -21,7 +21,7 @@
 //! tooling (`openssl ocsp`, TLS stacks, browsers).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     future::Future,
     pin::Pin,
     sync::{Arc, LazyLock},
@@ -38,14 +38,12 @@ use base64::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::kmip_types::LinkType},
-    cosmian_kms_crypto::openssl::{
-        kmip_private_key_to_openssl,
-        ocsp::{
-            CrlReasonCode, NoncePolicy, OcspBuildConfig, OcspCertStatus, OcspStatusEntry,
-            ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
-            verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
-        },
+    cosmian_kms_crypto::openssl::ocsp::{
+        CrlReasonCode, NoncePolicy, OcspBuildConfig, OcspCertStatus, OcspStatusEntry,
+        ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
+        verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
     },
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, info};
 use openssl::{sha::sha256, x509::X509};
@@ -54,7 +52,20 @@ use tokio::sync::RwLock;
 
 use crate::{
     config::NoncePolicyConfig,
-    core::{KMS, operations::generate_crl::kmip_reason_to_crl_reason},
+    core::{
+        KMS,
+        certificate::{
+            find_ca_issued_certificates,
+            oracle_signing::{
+                placeholder_signer_certificate, placeholder_signing_key,
+                sign_ocsp_response_with_oracle,
+            },
+        },
+        operations::{
+            certify::{IssuerKey, load_issuer_key},
+            generate_crl::{is_revoked, kmip_reason_to_crl_reason},
+        },
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -95,8 +106,7 @@ const fn is_ocsp_get_path_too_long(encoded_len: usize) -> bool {
 
 type OcspResponseFuture<'a> = Pin<Box<dyn Future<Output = KResult<HttpResponse>> + 'a>>;
 type OcspStatusFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspCertStatus>> + 'a>>;
-type OcspSignerKey = openssl::pkey::PKey<openssl::pkey::Private>;
-type OcspSignerMaterials = (X509, OcspSignerKey);
+type OcspSignerMaterials = (X509, IssuerKey);
 type OcspSignerFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspSignerMaterials>> + 'a>>;
 type OcspCacheEntry = (Vec<u8>, Instant);
 type OcspCache = RwLock<HashMap<String, OcspCacheEntry>>;
@@ -261,7 +271,7 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
 
         let ca_owm = kms
             .database
-            .retrieve_object(ca_uid)
+            .retrieve_object_arc(ca_uid)
             .await
             .context("retrieve CA certificate for OCSP")?
             .ok_or_else(|| {
@@ -269,17 +279,17 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
             })?;
 
         let ca_der = match ca_owm.object() {
-        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
-            c.certificate_value.clone()
-        }
-        _ => {
-            return Err(KmsError::InvalidRequest(format!(
-                "Object '{ca_uid}' is not a certificate"
-            )))
-        }
-    };
+            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
+                c.certificate_value.as_slice()
+            }
+            _ => {
+                return Err(KmsError::InvalidRequest(format!(
+                    "Object '{ca_uid}' is not a certificate"
+                )))
+            }
+        };
 
-        let ca_cert = X509::from_der(&ca_der).map_err(|e| {
+        let ca_cert = X509::from_der(ca_der).map_err(|e| {
             KmsError::InvalidRequest(format!("Failed to parse CA certificate: {e}"))
         })?;
 
@@ -336,7 +346,7 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
                     reason: Some(CrlReasonCode::CaCompromise),
                 }
             } else {
-                Box::pin(look_up_cert_status(kms, ca_uid, serial)).await?
+                Box::pin(look_up_cert_status(kms, &ca_owm, &ca_cert, serial)).await?
             };
 
             entries.push(OcspStatusEntry {
@@ -363,15 +373,38 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
             archive_cutoff_secs: archive_cutoff,
         };
 
-        let resp_der = build_ocsp_response(
-            request_der,
-            &ca_cert,
-            &signer_cert,
-            &signer_key,
-            &entries,
-            &config,
-        )
+        let resp_der = match &signer_key {
+            IssuerKey::Local(key) => {
+                build_ocsp_response(request_der, &ca_cert, &signer_cert, key, &entries, &config)
+            }
+            // HSM key: build with a throwaway key and a certificate carrying the signer's
+            // name, then have the HSM sign the real response.
+            IssuerKey::Oracle(_) => {
+                let placeholder = placeholder_signing_key()?;
+                let placeholder_cert = placeholder_signer_certificate(&signer_cert, &placeholder)?;
+                build_ocsp_response(
+                    request_der,
+                    &ca_cert,
+                    &placeholder_cert,
+                    &placeholder,
+                    &entries,
+                    &config,
+                )
+            }
+        }
         .map_err(|e| KmsError::CryptographicError(format!("OCSP response build failed: {e}")))?;
+        let resp_der = match &signer_key {
+            IssuerKey::Local(_) => resp_der,
+            IssuerKey::Oracle(key) => {
+                Box::pin(sign_ocsp_response_with_oracle(
+                    kms,
+                    key,
+                    &signer_cert,
+                    &resp_der,
+                ))
+                .await?
+            }
+        };
 
         // ── 8. Cache + respond ────────────────────────────────────────────────────
         // `unknown` responses are not cached: they are what random-serial requests
@@ -421,45 +454,56 @@ const fn map_nonce_policy(config: &NoncePolicyConfig) -> NoncePolicy {
 /// | `Destroyed` after a Revoke | revoked |
 /// | `Destroyed` without Revoke / not found | unknown |
 ///
+/// Only the certificates the CA really issued count (see `find_ca_issued_certificates`); when
+/// several stored records carry the serial, a revoked one wins over an active one.
+///
 /// `revocationTime` and `revocationReason` come from the stored revocation
 /// details (`deactivation_date`, `revocation_reason`), exactly as in the CRL, so
 /// both sources agree and verifiers see when the certificate was actually revoked.
 fn look_up_cert_status<'a>(
     kms: &'a KMS,
-    ca_uid: &'a str,
+    ca: &'a ObjectWithMetadata,
+    ca_cert: &'a X509,
     serial_hex: &'a str,
 ) -> OcspStatusFuture<'a> {
     Box::pin(async move {
-        let result = Box::pin(kms.database.find_certificate_by_serial(
-            ca_uid,
-            serial_hex,
-            kms.vendor_id(),
+        let serial = serial_hex.to_ascii_uppercase();
+        let records = Box::pin(find_ca_issued_certificates(
+            kms,
+            ca,
+            ca_cert,
+            &HashSet::from([serial.clone()]),
         ))
-        .await
-        .context("find_certificate_by_serial")?;
+        .await?
+        .remove(&serial)
+        .unwrap_or_default();
 
-        Ok(match result {
-            None => OcspCertStatus::Unknown,
-            Some((_uid, state, attributes)) => match state {
-                State::Active | State::PreActive => OcspCertStatus::Good,
-                // Mirrors `generate_crl::find_revoked_certificates`.
-                State::Destroyed if attributes.revocation_reason.is_none() => {
-                    OcspCertStatus::Unknown
-                }
-                State::Compromised
-                | State::Destroyed_Compromised
-                | State::Deactivated
-                | State::Destroyed => OcspCertStatus::Revoked {
-                    revocation_time: attributes
-                        .deactivation_date
-                        .unwrap_or_else(OffsetDateTime::now_utc),
-                    reason: attributes
-                        .revocation_reason
-                        .as_ref()
-                        .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
-                },
+        // Mirrors `generate_crl::find_revoked_certificates`.
+        if let Some((_, _, attributes)) = records
+            .iter()
+            .filter(|(_, state, attributes)| is_revoked(*state, attributes))
+            .min_by_key(|(_, _, attributes)| attributes.deactivation_date)
+        {
+            return Ok(OcspCertStatus::Revoked {
+                revocation_time: attributes
+                    .deactivation_date
+                    .unwrap_or_else(OffsetDateTime::now_utc),
+                reason: attributes
+                    .revocation_reason
+                    .as_ref()
+                    .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
+            });
+        }
+        Ok(
+            if records
+                .iter()
+                .any(|(_, state, _)| matches!(state, State::Active | State::PreActive))
+            {
+                OcspCertStatus::Good
+            } else {
+                OcspCertStatus::Unknown
             },
-        })
+        )
     })
 }
 
@@ -486,7 +530,7 @@ fn retrieve_signer_cert_and_key<'a>(
         // Retrieve the signing certificate.
         let cert_owm = kms
             .database
-            .retrieve_object(signer_cert_uid)
+            .retrieve_object_arc(signer_cert_uid)
             .await
             .context("retrieve OCSP signer certificate")?
             .ok_or_else(|| {
@@ -526,7 +570,7 @@ fn retrieve_signer_cert_and_key<'a>(
 
         let signer_cert_der = match cert_owm.object() {
             cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(c) => {
-                c.certificate_value.clone()
+                c.certificate_value.as_slice()
             }
             _ => {
                 return Err(KmsError::InvalidRequest(format!(
@@ -541,7 +585,7 @@ fn retrieve_signer_cert_and_key<'a>(
         // cannot be pointed at an arbitrary, unqualified certificate/key pair (e.g. a
         // TLS server cert) already present in the KMS. Direct CA signing is exempt.
         if signer_cert_uid != ca_uid {
-            verify_delegated_responder_authorization(&signer_cert_der).map_err(|e| {
+            verify_delegated_responder_authorization(signer_cert_der).map_err(|e| {
                 KmsError::InvalidRequest(format!(
                     "OCSP delegated responder certificate '{signer_cert_uid}' is not \
                      authorized to sign OCSP responses: {e}"
@@ -549,7 +593,7 @@ fn retrieve_signer_cert_and_key<'a>(
             })?;
         }
 
-        let signer_cert = X509::from_der(&signer_cert_der)
+        let signer_cert = X509::from_der(signer_cert_der)
             .map_err(|e| KmsError::InvalidRequest(format!("Cannot parse OCSP signer cert: {e}")))?;
 
         // If signer == CA, return CA cert directly (we already have the CA X509).
@@ -573,22 +617,22 @@ fn retrieve_signer_cert_and_key<'a>(
 
         let key_owm = kms
             .database
-            .retrieve_object(&key_uid)
+            .retrieve_object_arc(&key_uid)
             .await
             .context("retrieve OCSP signer private key")?
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("OCSP signer private key not found: {key_uid}"))
             })?;
-
-        // The key may be wrapped at rest (server `key_encryption_key` or a user KEK).
-        // The responder is unauthenticated, so unwrap on behalf of the key's owner.
-        let signer_key_object =
-            Box::pin(kms.get_unwrapped(key_owm.id(), key_owm.object(), key_owm.owner_id()))
-                .await
-                .context("unwrap OCSP signer private key")?;
-        let signer_key = kmip_private_key_to_openssl(&signer_key_object).map_err(|e| {
-            KmsError::CryptographicError(format!("Cannot load OCSP signing key: {e}"))
-        })?;
+        // The key may be wrapped at rest (server `key_encryption_key` or a user KEK), or live in
+        // an HSM. The responder is unauthenticated, so load it on behalf of the key's owner.
+        let signer_key = Box::pin(load_issuer_key(
+            kms,
+            &key_owm,
+            signer_x509.public_key()?,
+            key_owm.owner_id(),
+        ))
+        .await
+        .context("load OCSP signer private key")?;
 
         Ok((signer_x509, signer_key))
     })

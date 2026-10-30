@@ -45,6 +45,8 @@ let
   withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
   # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
+  # GnuPG smartcard PKCS#11 test: gnupg-pkcs11-scd + opensc (pkcs11-tool) on Linux
+  withGnupgPkcs11 = (builtins.getEnv "WITH_GNUPG_PKCS11") == "1";
   # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
   withAws = (builtins.getEnv "WITH_AWS") == "1";
   # IRIS mTLS test / Vault secret backend test: Docker CLI must be available inside the nix-shell to pull and run containers
@@ -158,6 +160,16 @@ pkgs.mkShell {
         softhsmDrv
         pkgs.openvpn
         pkgs.wget
+        # Kryoptic's standard feature includes its SQLite-backed object store;
+        # provide the native library explicitly for its final link step.
+        pkgs.sqlite
+        # kryoptic-lib's build.rs uses bindgen to generate PKCS#11 header bindings,
+        # which needs libclang. Without this, bindgen falls back to scanning the host
+        # system and can find a broken/incomplete install there (e.g. Ubuntu's
+        # llvm-18 package shipping a libclang.so whose libffi.so.8 dependency is
+        # missing), failing with "Unable to find libclang". Providing Nix's own,
+        # correctly-linked libclang avoids depending on the host's LLVM install.
+        pkgs.llvmPackages.libclang
       ]
       # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys
       # have CKA_ID set and do not trigger pkcs11-tool warnings (#745).
@@ -185,6 +197,12 @@ pkgs.mkShell {
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
   ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
+  # GnuPG smartcard test: gnupg-pkcs11-scd bridges GnuPG to the provider; opensc provides
+  # pkcs11-tool for the raw CKA_ID cross-check.
+  ++ pkgs.lib.optionals (withGnupgPkcs11 && pkgs.stdenv.isLinux) [
+    pkgs.gnupg-pkcs11-scd
+    pkgs.opensc
+  ]
   # AWS secret backend test: include awscli2 for SSM parameter management
   ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]
   # IRIS mTLS test + Vault secret backend test: include docker CLI
@@ -199,6 +217,15 @@ pkgs.mkShell {
     # Add softhsm2 binaries to PATH when WITH_HSM=1
     if [ "''${WITH_HSM:-}" = "1" ]; then
       export PATH="${softhsmDrv}/bin:$PATH"
+      export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
+      # bindgen's clang invocation does not automatically find clang's own builtin
+      # resource-dir headers (stdarg.h, stddef.h, ...) from a standalone libclang;
+      # point it at the one Nix provides alongside libclang.
+      CLANG_RESOURCE_INCLUDE="$(echo "${pkgs.llvmPackages.libclang.lib}"/lib/clang/*/include)"
+      # Clang's resource-dir headers (e.g. inttypes.h) in turn `#include_next` the real
+      # libc headers; on Linux, without glibc's dev include dir on the search path those fail
+      # too. On Darwin glibc is unavailable and the libc headers come from the SDK.
+      export BINDGEN_EXTRA_CLANG_ARGS="-isystem $CLANG_RESOURCE_INCLUDE${pkgs.lib.optionalString pkgs.stdenv.isLinux " -isystem ${pkgs.glibc.dev}/include"}"
     fi
 
     # Configure OpenSSL based on requested variant
@@ -248,7 +275,14 @@ pkgs.mkShell {
 
       # Runtime library path for FIPS (shared)
       if [ "''${WITH_HSM:-}" = "1" ]; then
-        export LD_LIBRARY_PATH="$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        # SoftHSM2's PKCS#11 module (nix-built or the system apt package used by
+        # some HSM test scripts, e.g. /usr/lib/softhsm/libsofthsm2.so) is a C++
+        # shared object requiring libstdc++.so.6 at dlopen time. Keep the gcc lib
+        # path on LD_LIBRARY_PATH so the KMS server can dlopen it — dropping it
+        # here caused "libstdc++.so.6: cannot open shared object file" whenever
+        # the server dlopen'd the HSM's PKCS#11 library (surfaced by
+        # `mise run test:hsm-pkcs11-tool`).
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
         if [ "$(uname)" = "Linux" ]; then
@@ -288,7 +322,9 @@ pkgs.mkShell {
 
       # Runtime library path for non-FIPS
       if [ "''${WITH_HSM:-}" = "1" ]; then
-        export LD_LIBRARY_PATH="$OPENSSL_PKG_PATH/lib"
+        # See the FIPS branch above: softhsm2's PKCS#11 module needs libstdc++.so.6
+        # at dlopen time, so the gcc lib path must stay on LD_LIBRARY_PATH here too.
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
         if [ "$(uname)" = "Linux" ]; then

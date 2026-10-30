@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | "SPIFFE" | undefined;
+export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | "AUTH_VERIFIER_SAML" | "SPIFFE" | undefined;
 
 /** Root of the Cosmian docs site (not the KMS-specific book — see `docsUrl`). */
 export const DOCS_BASE_URL = "https://docs.cosmian.com";
@@ -7,7 +7,8 @@ export const DOCS_BASE_URL = "https://docs.cosmian.com";
  * Build a link into the KMS mdBook docs site from a `documentation/docs/` file path
  * (no `.md`, no leading/trailing slash — e.g. `configuration/authorization/key_ceremony`).
  */
-export const docsUrl = (path: string, hash?: string): string => `${DOCS_BASE_URL}/key_management_system/${path}/${hash ? `#${hash}` : ""}`;
+export const docsUrl = (path: string, hash?: string): string =>
+    `${DOCS_BASE_URL}/key_management_system/${path}.html${hash ? `#${hash}` : ""}`;
 
 /** Strip HTML tags from error responses (server may return HTML error pages). */
 const stripHtml = (text: string): string =>
@@ -152,23 +153,36 @@ export const loginAuthVerifier = async (
     return (data as { next_step: AuthVerifierLoginNextStep }).next_step;
 };
 
-export const sendKmipRequest = async (request: object, serverUrl: string) => {
+interface KmipRequestOptions {
+    timeoutMs?: number;
+}
+
+export const sendKmipRequest = async (request: object, serverUrl: string, options?: KmipRequestOptions) => {
     const kmsUrl = serverUrl + "/kmip/2_1";
-    const response = await fetch(kmsUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-    });
+    const timeoutMs = options?.timeoutMs;
+    const controller = timeoutMs === undefined ? undefined : new AbortController();
+    const timeoutHandle = timeoutMs === undefined ? undefined : setTimeout(() => controller?.abort(), timeoutMs);
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+    try {
+        const response = await fetch(kmsUrl, {
+            method: "POST",
+            credentials: "include",
+            signal: controller?.signal,
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(request),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+        }
+
+        return JSON.stringify(await response.json());
+    } finally {
+        clearTimeout(timeoutHandle);
     }
-
-    return JSON.stringify(await response.json());
 };
 
 export const postNoTTLVRequest = async (path: string, request: object, serverUrl: string) => {
@@ -307,7 +321,17 @@ export const getMimeType = (fileName: string): string => {
     return mimeTypes[extension] || "application/octet-stream";
 };
 
-export type ObjectType = "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "certificate" | "secret-data" | "opaque-object";
+export type ObjectType =
+    | "rsa"
+    | "ec"
+    | "symmetric"
+    | "fpe"
+    | "covercrypt"
+    | "pqc"
+    | "pgp"
+    | "certificate"
+    | "secret-data"
+    | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
@@ -317,6 +341,7 @@ export const getObjectLabel = (type: ObjectType): string => {
         case "fpe":
         case "covercrypt":
         case "pqc":
+        case "pgp":
             return "key";
         case "certificate":
             return "certificate";

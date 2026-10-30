@@ -18,3 +18,4 @@ A configuration change must propagate to the clap struct, the wizard, and the TO
 - [ ] `crate/clients/client/src/config.rs` — client config struct kept consistent (server ↔ client wizard parity)
 
 > Rules 4.6 + 4.7 of `/kms-sync-rules`.
+> Run `/threat-model` when configuration changes alter authentication, TLS, trust boundaries, or security-relevant data flow; skip only in a confirmed incremental review when none are affected.

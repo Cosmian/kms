@@ -218,6 +218,18 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
         # UI wasm vendor - non-fips
         elif [[ "$last_drv_name" =~ ui-wasm-non-fips.*-vendor ]]; then
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
+        # Alpine/.apk musl vendor derivations — explicit "musl-dynamic"/"musl-static"
+        # markers identify the variant directly (FIPS=dynamic, non-FIPS=static — the
+        # opposite of the glibc convention below). See nix/kms-server-musl.nix /
+        # nix/cli-musl.nix.
+        elif [[ "$last_drv_name" =~ cosmian-kms-server-musl ]]; then
+          musl_variant="fips"
+          [[ "$last_drv_name" == *musl-static* ]] && musl_variant="non-fips"
+          target_file="$EXPECTED_DIR/server.vendor.musl-${musl_variant}.sha256"
+        elif [[ "$last_drv_name" =~ cosmian-kms-cli-musl ]]; then
+          musl_variant="fips"
+          [[ "$last_drv_name" == *musl-static* ]] && musl_variant="non-fips"
+          target_file="$EXPECTED_DIR/cli.vendor.musl-${musl_variant}.sha256"
         # Cargo vendor derivations for CLI and server.
         # CLI vendor hash varies by linkage mode (static/dynamic) AND OS (linux/darwin).
         # Server vendor hash varies by linkage mode (static/dynamic), platform-stable.

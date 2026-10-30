@@ -39,6 +39,32 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 ///
 /// The tokio runtime is sized to the available parallelism reported by the OS.
 fn main() {
+    // Raise the default stack size of every std-spawned thread. actix-server (pinned at
+    // 2.6.0) spawns its acceptor and worker OS threads via a bare
+    // `std::thread::Builder::spawn` with no `.stack_size()` override and exposes no API
+    // to configure one, so `RUST_MIN_STACK` is the only lever; deep KMIP/TTLV + middleware
+    // call chains under concurrent load otherwise overflow the small platform default
+    // stack (observed: "actix-server worker N ... stack overflow" under >16 concurrent
+    // clients).
+    //
+    // This minimum applies to *every* std-spawned thread without an explicit stack size,
+    // including each actix worker's Tokio blocking pool (where HSM PKCS#11 calls run via
+    // `spawn_blocking`; ~512 threads in total by default). Stacks are reserved as virtual
+    // memory and only committed on use, so the resident cost is unchanged, but hosts that
+    // cap address space (`ulimit -v`, `RLIMIT_AS`) must budget for it. The variable is
+    // also inherited by every child process this server spawns. Operators can set
+    // `RUST_MIN_STACK` explicitly to override this default.
+    if std::env::var_os("RUST_MIN_STACK").is_none() {
+        // SAFETY: this runs before any other thread (including the Tokio multi-thread
+        // runtime's worker pool, built below, and later the actix-server threads) exists,
+        // so nothing can read or write the environment concurrently. Rust's std reads
+        // `RUST_MIN_STACK` once, on the first-ever thread spawn, so it must be set here.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("RUST_MIN_STACK", (16 * 1024 * 1024).to_string());
+        }
+    }
+
     // On Windows, attempt to register with the SCM.  If the process was launched
     // by the SCM, `try_run_as_service()` blocks until the service stops and then
     // returns Ok(()).  If launched from a console, it returns Err (not an SCM
@@ -503,6 +529,8 @@ failure_mode = "continue"
 
 [audit.file]
 
+[audit.postgres]
+
 [crl]
 crl_default_validity_days = 7
 crl_refresh_check_hours = 1
@@ -514,6 +542,14 @@ ocsp_cache_ttl_secs = 86400
 ocsp_nonce_policy = "optional"
 ocsp_include_cert_chain = true
 ocsp_archive_cutoff_secs = 0
+
+[est]
+est_enabled = false
+est_require_client_cert = true
+
+[scep]
+scep_enabled = false
+scep_allow_renewal_without_challenge = true
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

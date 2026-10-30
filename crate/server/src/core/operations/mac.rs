@@ -14,6 +14,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::trace;
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
+use subtle::ConstantTimeEq;
 
 use crate::{
     core::{
@@ -49,7 +50,7 @@ impl CryptoOpSpec for MacOp {
         matches!(owm.object(), Object::SymmetricKey { .. })
     }
 
-    async fn execute_local(
+    fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
@@ -77,14 +78,20 @@ impl CryptoOpSpec for MacOp {
         let digest = if let Some(correlation_value) = &request.correlation_value {
             compute_hmac(correlation_value, data, algorithm)?
         } else {
-            let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
-            compute_hmac(key_bytes.as_slice(), data, algorithm)?
+            let key_bytes = owm.object().key_block()?.key_bytes_ref().context("mac")?;
+            compute_hmac(key_bytes, data, algorithm)?
+        };
+
+        let (mac_data, correlation_value) = if request.init_indicator.unwrap_or(false) {
+            (None, Some(digest))
+        } else {
+            (Some(digest), None)
         };
 
         Ok(MACResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
-            correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
+            mac_data,
+            correlation_value,
         })
     }
 
@@ -141,14 +148,14 @@ impl CryptoOpSpec for MacVerifyOp {
         matches!(owm.object(), Object::SymmetricKey { .. })
     }
 
-    async fn execute_local(
+    fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
         _user: &UserId,
     ) -> KResult<Self::Response> {
         let key_block = owm.object().key_block()?;
-        let key_bytes = key_block.key_bytes().context("mac_verify")?;
+        let key_bytes = key_block.key_bytes_ref().context("mac_verify")?;
 
         // Determine hashing algorithm: prefer explicit request param; otherwise infer from key.
         let algorithm = if let Some(cp) = &request.cryptographic_parameters {
@@ -162,8 +169,8 @@ impl CryptoOpSpec for MacVerifyOp {
             infer_hmac_hashing_algorithm(key_block, owm.attributes())?
         };
 
-        let expected_mac = compute_hmac(key_bytes.as_slice(), &request.data, algorithm)?;
-        let validity = if expected_mac == request.mac_data {
+        let expected_mac = compute_hmac(key_bytes, &request.data, algorithm)?;
+        let validity = if bool::from(expected_mac.ct_eq(&request.mac_data)) {
             ValidityIndicator::Valid
         } else {
             ValidityIndicator::Invalid
@@ -291,24 +298,22 @@ fn infer_hmac_hashing_algorithm(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{
             extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-            kmip_operations::MAC,
-            kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+            kmip_operations::{MAC, MACVerify},
+            kmip_types::{CryptographicAlgorithm, CryptographicParameters, ValidityIndicator},
             requests::symmetric_key_create_request,
         },
     };
 
     use crate::{
-        config::ServerParams,
-        core::{KMS, operations::mac::compute_hmac},
+        core::operations::mac::compute_hmac,
         middlewares::UserId,
-        result::KResult,
-        tests::test_utils::https_clap_config,
+        result::{KResult, KResultHelper},
+        tests::test_utils::test_kms,
     };
 
     #[test]
@@ -363,9 +368,7 @@ mod tests {
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
 
         let unique_identifier = Some(
             kms.create(
@@ -430,6 +433,74 @@ mod tests {
         let response = kms.mac(request, &UserId::from("user")).await?;
         assert_eq!(response.mac_data.unwrap().len(), 32);
         assert_eq!(response.correlation_value, None);
+        Ok(())
+    }
+
+    /// Pins the `MACVerify` verdicts. It passes before and after the switch to a
+    /// constant-time compare (only timing differs); it guards the verdicts against regressions.
+    #[tokio::test]
+    async fn test_server_mac_verify_rejects_tampered_mac() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let unique_identifier = kms
+            .create(
+                symmetric_key_create_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    256,
+                    CryptographicAlgorithm::SHA3256,
+                    EMPTY_TAGS,
+                    false,
+                    None,
+                )?,
+                &user,
+            )
+            .await?
+            .unique_identifier;
+        let parameters = CryptographicParameters {
+            hashing_algorithm: Some(HashingAlgorithm::SHA3256),
+            ..Default::default()
+        };
+        let mac = kms
+            .mac(
+                MAC {
+                    unique_identifier: Some(unique_identifier.clone()),
+                    cryptographic_parameters: Some(parameters.clone()),
+                    data: Some(vec![1, 2, 3]),
+                    correlation_value: None,
+                    init_indicator: None,
+                    final_indicator: None,
+                },
+                &user,
+            )
+            .await?
+            .mac_data
+            .context("MAC response has no mac_data")?;
+
+        let mut flipped = mac.clone();
+        *flipped.last_mut().context("empty MAC")? ^= 1;
+        let mut truncated = mac.clone();
+        truncated.pop();
+
+        for (mac_data, expected) in [
+            (mac, ValidityIndicator::Valid),
+            (flipped, ValidityIndicator::Invalid),
+            (truncated, ValidityIndicator::Invalid),
+            (vec![], ValidityIndicator::Invalid),
+        ] {
+            let response = kms
+                .mac_verify(
+                    MACVerify {
+                        unique_identifier: unique_identifier.clone(),
+                        cryptographic_parameters: Some(parameters.clone()),
+                        data: vec![1, 2, 3],
+                        mac_data,
+                    },
+                    &user,
+                )
+                .await?;
+            assert_eq!(response.validity_indicator, expected);
+        }
         Ok(())
     }
 }

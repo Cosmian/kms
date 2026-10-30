@@ -5,7 +5,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::C
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_2_1::{
-            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::SYSTEM_TAG_CERTIFICATE},
+            extra::{
+                VENDOR_ATTR_X509_EXTENSION,
+                tagging::{SYSTEM_TAG_CERTIFICATE, set_certificate_serial_tag},
+            },
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
             kmip_operations::Certify,
@@ -13,8 +16,12 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_crypto::openssl::{
-        openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes, x509_extensions,
+    cosmian_kms_crypto::{
+        crypto::KmsRng,
+        openssl::{
+            oid::asn1_object, openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes,
+            x509_extensions, x509_signing_digest,
+        },
     },
 };
 use cosmian_logger::debug;
@@ -23,29 +30,38 @@ use cosmian_logger::warn;
 #[cfg(feature = "non-fips")]
 use openssl::x509::extension::KeyUsage;
 use openssl::{
-    asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
+    asn1::{Asn1Integer, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
-    pkey::Id,
+    nid::Nid,
     x509::{X509, X509Extension},
 };
 
-use super::{issuer::Issuer, rfc9608, subject::Subject};
+use super::{
+    issuer::{Issuer, IssuerKey},
+    rfc9608,
+    subject::Subject,
+};
 #[cfg(feature = "non-fips")]
 use super::{rfc9881, rfc9909, rfc9935};
 use crate::{
+    core::{
+        KMS,
+        certificate::oracle_signing::{placeholder_signing_key, sign_certificate_with_oracle},
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
 
 const X509_VERSION3: i32 = 2;
 
-pub(crate) fn build_and_sign_certificate(
-    vendor_id: &str,
-    issuer: &Issuer,
+pub(crate) async fn build_and_sign_certificate(
+    kms: &KMS,
+    issuer: &Issuer<'_>,
     subject: &Subject,
     request: Certify,
     kms_public_url: Option<&str>,
 ) -> KResult<(Object, HashSet<String>, Attributes)> {
+    let vendor_id = kms.vendor_id();
     debug!("Building and signing certificate");
     // recover the attributes
     let mut attributes = request.attributes.unwrap_or_default();
@@ -125,15 +141,27 @@ pub(crate) fn build_and_sign_certificate(
     // RFC 9608 §2–§3: auto-add noRevAvail for self-signed end-entity certs
     apply_no_rev_avail(&mut x509_builder, issuer, &attributes, vendor_id, has_cdp)?;
 
-    // The digest must match the *issuer's signing key* type, not the subject key.
-    let digest = signing_digest(issuer.private_key());
-
-    // Set the issuer name and private key
+    // Set the issuer name and serial number
     x509_builder.set_issuer_name(issuer.subject_name())?;
-    x509_builder.set_serial_number(generate_serial_number()?.as_ref())?;
-    x509_builder.sign(issuer.private_key(), digest)?;
-
-    let x509 = x509_builder.build();
+    x509_builder.set_serial_number(generate_serial_number(&kms.rng)?.as_ref())?;
+    let x509 = match issuer.key() {
+        IssuerKey::Local(key) => {
+            // The digest must match the *issuer's signing key* type, not the subject key.
+            x509_builder.sign(key, x509_signing_digest(key))?;
+            x509_builder.build()
+        }
+        IssuerKey::Oracle(key) => {
+            // HSM key: OpenSSL serialises the certificate with a throwaway key, the HSM then
+            // signs the real TBS bytes.
+            let draft = {
+                let placeholder = placeholder_signing_key()?;
+                x509_builder.sign(&placeholder, MessageDigest::sha256())?;
+                x509_builder.build()
+            };
+            Box::pin(sign_certificate_with_oracle(kms, key, &draft)).await?
+        }
+    };
+    let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
 
     // Process the tags
     let mut tags = attributes.remove_tags(vendor_id).unwrap_or_default();
@@ -144,6 +172,11 @@ pub(crate) fn build_and_sign_certificate(
     tags.extend(subject.tags(vendor_id).iter().cloned());
     // add the certificate "system" tag
     tags.insert(SYSTEM_TAG_CERTIFICATE.to_owned());
+    // a renewed certificate inherits the old certificate's tags: replace the old serial tag
+    set_certificate_serial_tag(
+        &mut tags,
+        &certificate_attributes.certificate_subject_serial_number,
+    );
 
     // link the certificate to the issuer certificate
     attributes.set_link(
@@ -161,7 +194,6 @@ pub(crate) fn build_and_sign_certificate(
     attributes.key_format_type = Some(KeyFormatType::X509);
 
     // Add certificate attributes
-    let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
     attributes.certificate_attributes = Some(certificate_attributes);
 
     // KMIP §4.48 / §4.51: set initial_date so the auto-rotation scheduler can
@@ -376,7 +408,7 @@ fn inject_server_crl_dp(
     let mut outer = vec![0x30_u8]; // SEQUENCE
     encode_der_length(&mut outer, dp_seq.len())?;
     outer.extend_from_slice(&dp_seq);
-    let oid = Asn1Object::from_str("2.5.29.31")?;
+    let oid = asn1_object(Nid::CRL_DISTRIBUTION_POINTS)?;
     let val = Asn1OctetString::new_from_bytes(&outer)?;
     x509_builder.append_extension(X509Extension::new_from_der(
         oid.as_ref(),
@@ -426,18 +458,6 @@ fn apply_no_rev_avail(
     rfc9608::apply_extensions(x509_builder, issuer, attributes, vendor_id, has_cdp)
 }
 
-/// Select the correct `MessageDigest` for signing based on the issuer key type.
-///
-/// RSA and EC (ECDSA) require an explicit external digest (SHA-256).
-/// `EdDSA` and PQC algorithms (`ML-DSA`, `SLH-DSA`) handle their digest internally
-/// and must receive a null digest.
-fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> MessageDigest {
-    match key.id() {
-        Id::RSA | Id::EC => MessageDigest::sha256(),
-        _ => MessageDigest::null(),
-    }
-}
-
 /// Generate a fresh random certificate serial number (RFC 5280 §4.1.2.2).
 ///
 /// The serial must be unique per issuer. It used to be SHA-1(SPKI) of the subject
@@ -446,9 +466,10 @@ fn signing_digest(key: &openssl::pkey::PKeyRef<openssl::pkey::Private>) -> Messa
 /// certificates by serial, so revoking one silently revoked (or masked) the other.
 /// 159 random bits (high bit cleared so the INTEGER stays positive and fits in
 /// 20 octets) also satisfy the CA/Browser Forum ≥ 64-bit entropy requirement.
-fn generate_serial_number() -> KResult<Asn1Integer> {
+pub(crate) fn generate_serial_number(rng: &KmsRng) -> KResult<Asn1Integer> {
     let mut serial_number_bytes = [0_u8; 20];
-    openssl::rand::rand_bytes(&mut serial_number_bytes)?;
+    rng.fill_public_bytes(&mut serial_number_bytes)
+        .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
     // Clear the high bit (positive INTEGER) and set the lowest one so the encoding
     // keeps the full 20 octets and the serial can never be zero.
     if let Some(first) = serial_number_bytes.first_mut() {

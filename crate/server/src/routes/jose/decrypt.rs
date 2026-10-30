@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use actix_web::{
     HttpRequest, post,
@@ -11,9 +11,10 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
             KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_objects::Object,
             kmip_operations::Decrypt,
-            kmip_types::{LinkType, UniqueIdentifier},
+            kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier},
         },
     },
     cosmian_kms_crypto::{
@@ -24,16 +25,64 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
+    cosmian_kms_interfaces::CryptoAlgorithm,
 };
 use cosmian_logger::{debug, trace};
-use openssl::rand::rand_bytes;
+use openssl::pkey::{PKey, Private};
+use serde::Deserialize;
 use zeroize::Zeroizing;
 
+#[derive(Deserialize, Default)]
+struct JweEpk<'a> {
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    kty: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    crv: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    x: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    y: Option<Cow<'a, str>>,
+}
+
+/// A non-object `epk` is treated like an object without members, as the
+/// `Value`-based parsing did.
+fn lenient_epk<'de, D>(deserializer: D) -> Result<Option<JweEpk<'de>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MaybeEpk<'a> {
+        #[serde(borrow)]
+        Obj(JweEpk<'a>),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(Some(
+        match <MaybeEpk as Deserialize>::deserialize(deserializer)? {
+            MaybeEpk::Obj(e) => e,
+            MaybeEpk::Other(_) => JweEpk::default(),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct JweProtectedHeader<'a> {
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    kid: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    alg: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+    enc: Option<Cow<'a, str>>,
+    #[serde(default, borrow, deserialize_with = "lenient_epk")]
+    epk: Option<JweEpk<'a>>,
+    apu: Option<serde_json::Value>,
+    apv: Option<serde_json::Value>,
+}
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
     JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode, cek_cache,
-    cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
-    keys::nid_from_crv,
+    cek_size_bytes, encrypt::build_jwe_aad, ensure_json_object, jose_oaep_hashes,
+    jose_to_kmip_params, keys::nid_from_crv,
 };
 use crate::{
     core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
@@ -59,57 +108,50 @@ pub(crate) async fn decrypt(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "POST /v1/crypto/decrypt");
+    super::audit(&req, None);
 
     // Parse protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
-    let header_json: serde_json::Value = serde_json::from_slice(&header_bytes).map_err(|e| {
+    ensure_json_object(&header_bytes)?;
+    let header: JweProtectedHeader<'_> = serde_json::from_slice(&header_bytes).map_err(|e| {
         CryptoApiError::BadRequest(format!(
             "Field 'protected' is not valid JSON after base64url decode: {e}"
         ))
     })?;
 
-    let kid = header_json
-        .get("kid")
-        .and_then(|v| v.as_str())
+    let kid = header
+        .kid
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'kid' field".to_owned())
         })?
         .to_owned();
+    super::audit(&req, Some(&kid));
 
-    let alg: JoseAlgorithm = header_json
-        .get("alg")
-        .and_then(|v| v.as_str())
+    let alg: JoseAlgorithm = header
+        .alg
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'alg' field".to_owned())
         })?
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
-    let enc: JoseEncAlgorithm = header_json
-        .get("enc")
-        .and_then(|v| v.as_str())
+    let enc: JoseEncAlgorithm = header
+        .enc
+        .as_deref()
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'enc' field".to_owned())
         })?
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
-
     match alg {
         JoseAlgorithm::Dir => decrypt_dir(&kms, &user, kid, alg, enc, &body).await,
         JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {
             Box::pin(decrypt_rsa_oaep(&kms, &user, kid, alg, enc, &body)).await
         }
         JoseAlgorithm::EcdhEs | JoseAlgorithm::EcdhEsA128KW | JoseAlgorithm::EcdhEsA256KW => {
-            Box::pin(decrypt_ecdh_es(
-                &kms,
-                &user,
-                kid,
-                alg,
-                enc,
-                &header_json,
-                &body,
-            ))
-            .await
+            Box::pin(decrypt_ecdh_es(&kms, &user, kid, alg, enc, &header, &body)).await
         }
         _ => Err(CryptoApiError::UnsupportedAlgorithm(format!(
             "Algorithm '{alg}' is not a key-management algorithm. Supported: dir, RSA-OAEP, \
@@ -154,7 +196,7 @@ async fn decrypt_dir(
         )));
     }
 
-    let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;
+    let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?.into_owned();
 
     let decrypt_req = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(kid.clone())),
@@ -179,6 +221,12 @@ async fn decrypt_dir(
         kid,
         data: b64_encode(&plaintext_bytes),
     }))
+}
+
+/// Where the RSA-OAEP CEK unwrap runs: in-process OpenSSL or the HSM crypto oracle.
+enum OaepUnwrapper {
+    Software(PKey<Private>),
+    Hsm { prefix: String, uid: String },
 }
 
 /// RSA-OAEP decrypt with implicit rejection (RFC 7516 §11.5 countermeasure).
@@ -226,23 +274,32 @@ async fn decrypt_rsa_oaep(
     let private_key_owm = match owm.object() {
         Object::PrivateKey { .. } => owm,
         Object::PublicKey { .. } => {
-            // Resolve linked private key
+            // Resolve the private key: explicit link, else the `_pk` naming convention
+            // (same fallback as key unwrapping, e.g. for HSM key pairs).
             let priv_key_uid = owm
                 .attributes()
                 .get_link(LinkType::PrivateKeyLink)
+                .map(|l| l.to_string())
+                .or_else(|| kid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY).map(str::to_owned))
                 .ok_or_else(|| {
                     CryptoApiError::CryptoFailure(
                         "RSA-OAEP decrypt: public key has no linked private key".to_owned(),
                     )
                 })?;
             Box::pin(retrieve_object_for_operation(
-                ObjectHandle::from(&priv_key_uid.to_string()),
+                ObjectHandle::from(priv_key_uid.as_str()),
                 KmipOperation::Decrypt,
                 kms,
                 user,
             ))
             .await
             .map_err(CryptoApiError::from)?
+        }
+        // Sensitive HSM private keys come back as metadata stubs, not `PrivateKey` objects.
+        _ if ObjectHandle::from(owm.id()).is_hsm()
+            && owm.attributes().cryptographic_algorithm == Some(CryptographicAlgorithm::RSA) =>
+        {
+            owm
         }
         _ => {
             return Err(CryptoApiError::CryptoFailure(format!(
@@ -253,25 +310,38 @@ async fn decrypt_rsa_oaep(
         }
     };
 
-    // Convert KMIP private key to OpenSSL PKey<Private>
-    let private_key = kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
-        CryptoApiError::CryptoFailure(format!("RSA-OAEP decrypt: failed to load private key: {e}"))
-    })?;
+    let unwrapper = if let ObjectHandle::Hsm { prefix, .. } =
+        ObjectHandle::from(private_key_owm.id())
+    {
+        // The HSM holds the key and rejects a non-RSA-OAEP-capable key at use time
+        OaepUnwrapper::Hsm {
+            prefix: prefix.to_owned(),
+            uid: private_key_owm.id().to_owned(),
+        }
+    } else {
+        // Convert KMIP private key to OpenSSL PKey<Private>
+        let private_key = kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
+            CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: failed to load private key: {e}"
+            ))
+        })?;
 
-    // Validate RSA key type and minimum size
-    if private_key.id() != openssl::pkey::Id::RSA {
-        return Err(CryptoApiError::CryptoFailure(format!(
-            "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
-            kid,
-            private_key.id()
-        )));
-    }
-    if private_key.bits() < 2048 {
-        return Err(CryptoApiError::CryptoFailure(format!(
-            "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
-            private_key.bits()
-        )));
-    }
+        // Validate RSA key type and minimum size
+        if private_key.id() != openssl::pkey::Id::RSA {
+            return Err(CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
+                kid,
+                private_key.id()
+            )));
+        }
+        if private_key.bits() < 2048 {
+            return Err(CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
+                private_key.bits()
+            )));
+        }
+        OaepUnwrapper::Software(private_key)
+    };
 
     let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
     let expected_cek_len = cek_size_bytes(enc);
@@ -282,47 +352,74 @@ async fn decrypt_rsa_oaep(
     //
     // RFC 7516 §11.5 implicit rejection is preserved: the cache is only
     // populated with genuine CEKs; random substitute keys are never inserted.
-    let cek: Zeroizing<Vec<u8>> =
-        match cek_cache::peek_cek(kms, &encrypted_key_bytes, private_key_owm.object()).await {
-            Some(cached_cek) => cached_cek,
-            None => {
-                // Cache miss — perform RSA-OAEP unwrap.
-                // Implicit rejection: attempt unwrap; on failure substitute random CEK.
-                // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
-                match ckm_rsa_pkcs_oaep_key_unwrap(
-                    &private_key,
-                    oaep_hash,
-                    mgf1_hash,
-                    None,
-                    &encrypted_key_bytes,
-                ) {
-                    Ok(unwrapped) if unwrapped.len() == expected_cek_len => {
-                        // Cache the CEK for subsequent decryptions of this JWE token.
-                        cek_cache::insert_cek(
-                            kms,
-                            &encrypted_key_bytes,
-                            private_key_owm.object(),
-                            &unwrapped,
-                        )
-                        .await;
-                        unwrapped
-                    }
-                    _ => {
-                        // Substitute random CEK — AES-GCM will fail on tag verification
-                        debug!(
-                            "RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection"
-                        );
-                        let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
-                        rand_bytes(&mut random_cek).map_err(|e| {
-                            CryptoApiError::InternalError(format!(
-                                "Failed to generate random CEK for implicit rejection: {e}"
-                            ))
-                        })?;
-                        random_cek
-                    }
-                }
+    let cek: Zeroizing<Vec<u8>> = if let Some(cached_cek) = cek_cache::peek_cek(
+        kms,
+        private_key_owm.id(),
+        &encrypted_key_bytes,
+        private_key_owm.object(),
+    )
+    .await
+    {
+        cached_cek
+    } else {
+        // Cache miss — perform RSA-OAEP unwrap.
+        // Implicit rejection: attempt unwrap; on failure substitute random CEK.
+        // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
+        let unwrapped = match &unwrapper {
+            OaepUnwrapper::Software(private_key) => ckm_rsa_pkcs_oaep_key_unwrap(
+                private_key,
+                oaep_hash,
+                mgf1_hash,
+                None,
+                &encrypted_key_bytes,
+            )
+            .ok(),
+            OaepUnwrapper::Hsm { prefix, uid } => {
+                let oaep_alg = if alg == JoseAlgorithm::RsaOaep {
+                    CryptoAlgorithm::RsaOaepSha1
+                } else {
+                    CryptoAlgorithm::RsaOaepSha256
+                };
+                let lock = kms.crypto_oracles.read().await;
+                let oracle = lock.get(prefix).ok_or_else(|| {
+                    CryptoApiError::InternalError(format!(
+                        "RSA-OAEP decrypt: unknown crypto oracle prefix: {prefix}"
+                    ))
+                })?;
+                let res = oracle
+                    .decrypt(uid, &encrypted_key_bytes, Some(oaep_alg), None)
+                    .await;
+                drop(lock);
+                res.inspect_err(|e| debug!("RSA-OAEP HSM unwrap failed: {e}"))
+                    .ok()
             }
         };
+        match unwrapped {
+            Some(unwrapped) if unwrapped.len() == expected_cek_len => {
+                // Cache the CEK for subsequent decryptions of this JWE token.
+                cek_cache::insert_cek(
+                    kms,
+                    private_key_owm.id(),
+                    &encrypted_key_bytes,
+                    private_key_owm.object(),
+                    &unwrapped,
+                )
+                .await;
+                unwrapped
+            }
+            _ => {
+                // Substitute random CEK — AES-GCM will fail on tag verification
+                debug!("RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection");
+                let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
+                kms.rng.fill_bytes(&mut random_cek).map_err(|e| {
+                    CryptoApiError::InternalError(format!(
+                        "Failed to generate random CEK for implicit rejection: {e}"
+                    ))
+                })?;
+                random_cek
+            }
+        }
+    };
 
     // AAD reconstruction (RFC 7516 §5.2 step 15)
     let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;
@@ -334,7 +431,7 @@ async fn decrypt_rsa_oaep(
         &iv_bytes,
         &ciphertext_bytes,
         &tag_bytes,
-        &aad_bytes,
+        aad_bytes.as_ref(),
     )?;
 
     Ok(Json(CryptoDecryptResponse {
@@ -363,18 +460,18 @@ async fn decrypt_ecdh_es(
     kid: String,
     alg: JoseAlgorithm,
     enc: JoseEncAlgorithm,
-    header_json: &serde_json::Value,
+    header: &JweProtectedHeader<'_>,
     body: &DecryptRequest,
 ) -> CryptoResult<CryptoDecryptResponse> {
-    let epk = header_json.get("epk").ok_or_else(|| {
+    let epk = header.epk.as_ref().ok_or_else(|| {
         CryptoApiError::BadRequest(
             "Protected header missing required 'epk' field for ECDH-ES".to_owned(),
         )
     })?;
-    let epk_kty = epk.get("kty").and_then(|v| v.as_str()).ok_or_else(|| {
+    let epk_kty = epk.kty.as_deref().ok_or_else(|| {
         CryptoApiError::BadRequest("'epk' is missing required 'kty' field".to_owned())
     })?;
-    let epk_crv = epk.get("crv").and_then(|v| v.as_str()).ok_or_else(|| {
+    let epk_crv = epk.crv.as_deref().ok_or_else(|| {
         CryptoApiError::BadRequest("'epk' is missing required 'crv' field".to_owned())
     })?;
 
@@ -474,10 +571,10 @@ async fn decrypt_ecdh_es(
                 )));
             }
 
-            let x_b64 = epk.get("x").and_then(|v| v.as_str()).ok_or_else(|| {
+            let x_b64 = epk.x.as_deref().ok_or_else(|| {
                 CryptoApiError::BadRequest("'epk' is missing required 'x' field".to_owned())
             })?;
-            let y_b64 = epk.get("y").and_then(|v| v.as_str()).ok_or_else(|| {
+            let y_b64 = epk.y.as_deref().ok_or_else(|| {
                 CryptoApiError::BadRequest("'epk' is missing required 'y' field".to_owned())
             })?;
             let x_bytes = b64_decode("epk.x", x_b64)?;
@@ -500,7 +597,7 @@ async fn decrypt_ecdh_es(
                     private_key.id()
                 )));
             }
-            let x_b64 = epk.get("x").and_then(|v| v.as_str()).ok_or_else(|| {
+            let x_b64 = epk.x.as_deref().ok_or_else(|| {
                 CryptoApiError::BadRequest("'epk' is missing required 'x' field".to_owned())
             })?;
             let peer_public_bytes = b64_decode("epk.x", x_b64)?;
@@ -524,7 +621,7 @@ async fn decrypt_ecdh_es(
     // Per RFC 7159/7518, if present these header members MUST be base64url-encoded
     // strings; a present-but-non-string value (e.g. a number or boolean) is a
     // malformed header and must be rejected rather than silently treated as absent.
-    let apu = match header_json.get("apu") {
+    let apu = match &header.apu {
         None | Some(serde_json::Value::Null) => Vec::new(),
         Some(serde_json::Value::String(s)) => b64_decode("apu", s)?,
         Some(_) => {
@@ -533,7 +630,7 @@ async fn decrypt_ecdh_es(
             ));
         }
     };
-    let apv = match header_json.get("apv") {
+    let apv = match &header.apv {
         None | Some(serde_json::Value::Null) => Vec::new(),
         Some(serde_json::Value::String(s)) => b64_decode("apv", s)?,
         Some(_) => {
@@ -567,14 +664,8 @@ async fn decrypt_ecdh_es(
             let key_data_len_bits = u32::try_from(cek_size_bytes(enc) * 8).map_err(|e| {
                 CryptoApiError::InternalError(format!("ECDH-ES decrypt: CEK size overflow: {e}"))
             })?;
-            concat_kdf(
-                &z,
-                key_data_len_bits,
-                enc.to_string().as_bytes(),
-                &apu,
-                &apv,
-            )
-            .map_err(|e| CryptoApiError::CryptoFailure(e.to_string()))?
+            concat_kdf(&z, key_data_len_bits, enc.as_str().as_bytes(), &apu, &apv)
+                .map_err(|e| CryptoApiError::CryptoFailure(e.to_string()))?
         }
         JoseAlgorithm::EcdhEsA128KW | JoseAlgorithm::EcdhEsA256KW => {
             // Key wrapping: encrypted_key must be present, and the Concat KDF
@@ -596,7 +687,7 @@ async fn decrypt_ecdh_es(
             } else {
                 256
             };
-            let kek = concat_kdf(&z, kek_bits, alg.to_string().as_bytes(), &apu, &apv)
+            let kek = concat_kdf(&z, kek_bits, alg.as_str().as_bytes(), &apu, &apv)
                 .map_err(|e| CryptoApiError::CryptoFailure(e.to_string()))?;
 
             rfc3394_unwrap(&encrypted_key_bytes, &kek)
@@ -618,7 +709,7 @@ async fn decrypt_ecdh_es(
         &iv_bytes,
         &ciphertext_bytes,
         &tag_bytes,
-        &aad_bytes,
+        aad_bytes.as_ref(),
     )?;
 
     Ok(Json(CryptoDecryptResponse {

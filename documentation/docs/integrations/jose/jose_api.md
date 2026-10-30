@@ -67,7 +67,7 @@ conventions — specify `kty` (key type) and `alg` (algorithm) at minimum.
 | `k` | import oct | Base64url-encoded symmetric key material |
 | `d` | import EC/RSA/OKP | Base64url-encoded private key scalar (EC/OKP) or private exponent (RSA) |
 | `n` | import RSA | Base64url-encoded RSA modulus |
-| `e` | import RSA | Base64url-encoded RSA public exponent |
+| `e` | import RSA | Base64url-encoded RSA public exponent (odd, < 2^256) |
 | `p` | import RSA | Base64url-encoded first prime factor |
 | `q` | import RSA | Base64url-encoded second prime factor |
 | `dp` | import RSA | Base64url-encoded d mod (p-1) |
@@ -83,8 +83,18 @@ conventions — specify `kty` (key type) and `alg` (algorithm) at minimum.
 }
 ```
 
-> **Note**: Imported asymmetric keys return `kid_public: null` because only the private key
-> is stored. The KMS derives the public key internally when needed for verification or encryption.
+> **Note**: Imported private asymmetric keys return `kid_public` too: the public key is derived
+> and stored next to the private one (`<kid>_pk`). A public-only RSA import (`n` + `e`, no `d`)
+> stores a standalone public key and returns `kid_public: null`.
+
+**RSA usage masks.** The public-key usage depends on `alg`: `RSA-OAEP`/`RSA-OAEP-256` →
+`Encrypt | WrapKey`; signature algorithms (`RS*`, `PS*`) or no `alg` → `Verify`. Generated
+pairs get a matching private mask (`Decrypt | UnwrapKey`, resp. `Sign`); private-key imports
+use `Encrypt | Decrypt`, resp. `Sign | Verify`.
+
+**Public-only RSA import.** Send `kty`, `n`, `e` (no `d`), optionally `kid` (caller-chosen UID,
+import only) and `key_ops` (`encrypt`, `wrapKey`, `verify`; default `encrypt` + `verify`).
+`e` must be odd and below 2^256.
 
 #### Examples
 
@@ -315,6 +325,11 @@ sequenceDiagram
 | `enc` | ✓ | Content encryption algorithm: `A128GCM`, `A192GCM`, `A256GCM` |
 | `data` | ✓ | Base64url-encoded plaintext |
 | `aad` | | Optional additional authenticated data (base64url) |
+| `cek_kid` | | RSA-OAEP only: UID of a KMS AES key to use as the CEK instead of a random one (its size must match `enc`). Requires `Export` permission on that key; the key must be active, extractable and not in an HSM. The CEK is never returned: it leaves the KMS only wrapped under `kid`, under the rules of a KMIP `Export` with that wrapping: the key used to wrap (the public key of `kid`) must have the `WrapKey` usage (`key_ops` `wrapKey` on a public key import, set by `alg` `RSA-OAEP`/`RSA-OAEP-256` on a generated pair), and the OAEP hashes must pass the KMIP algorithm policy (`RSA-OAEP`, SHA-1, is refused when the configured policy excludes it, e.g. `DEFAULT`; with no policy, or an allowlist that includes SHA-1, it is accepted) |
+
+`kid` can be a public key imported with `POST /v1/crypto/keys` (see above), e.g. a third party's
+encryption key. The JWE protected header carries the linked private key UID when there is one,
+otherwise `kid` itself; for such a public-only key nothing is cached for `/decrypt`.
 
 #### Response body (Flattened JWE)
 

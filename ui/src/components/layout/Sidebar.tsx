@@ -128,7 +128,25 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
     // Menu labels are i18n keys: translate via the "menu" namespace, falling
     // back to the English/branding label. rawLabel items (e.g. the branding-
     // provided PQC label) are rendered verbatim.
-    const displayLabel = (item: MenuItem) => (item.rawLabel ? item.label : t(item.key, { defaultValue: item.label }));
+    const displayLabel = useCallback((item: MenuItem) => (item.rawLabel ? item.label : t(item.key, { defaultValue: item.label })), [t]);
+
+    // Calculate sidebar width based on longest label in the current language.
+    const siderWidth = useMemo(() => {
+        if (collapsed) {
+            return undefined; // Let AntD handle collapsedWidth
+        }
+        // Recursively extract all translated labels from menu items.
+        const allLabels: string[] = [];
+        const traverse = (menuItem: MenuItem) => {
+            allLabels.push(displayLabel(menuItem));
+            menuItem.children?.forEach(traverse);
+        };
+        processedMenuItems.forEach(traverse);
+        const longestLabelLength = allLabels.reduce((max, label) => Math.max(max, label.length), 0);
+        // Base width calculation: ~8.5 px per character + 80 px for padding/icon/chevron.
+        // Clamp between 220 px (minimum for "Symmetric" or similar) and 360 px (reasonable max).
+        return Math.max(220, Math.min(360, Math.ceil(longestLabelLength * 8.5 + 80)));
+    }, [processedMenuItems, collapsed, displayLabel]);
 
     // Recursively decorate every menu level so that sub-menu labels are
     // translated too, not just the top level. Ant Design handles hiding text
@@ -148,6 +166,8 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
             collapsible
             collapsed={collapsed}
             onCollapse={setCollapsed}
+            width={siderWidth}
+            collapsedWidth={80}
             className="h-full"
             style={{ position: "sticky", top: 0, overflow: "auto", background: "var(--cosmian-sidebar-bg)" }}
         >

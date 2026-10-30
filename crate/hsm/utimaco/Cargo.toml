@@ -17,10 +17,12 @@ workspace = true
 doctest = false
 
 [dependencies]
-cosmian_kms_base_hsm = { path = "../base_hsm", version = "5.28.0" }
+cosmian_kms_base_hsm = { workspace = true }
 
 [dev-dependencies]
 
 [features]
 # Enable this feature to run utimaco tests (they require a utimaco HSM)
 utimaco = []
+# Enable HSM-delegated EdDSA/X25519 support (see cosmian_kms_base_hsm's `non-fips` feature).
+non-fips = ["cosmian_kms_base_hsm/non-fips"]

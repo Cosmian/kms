@@ -8,6 +8,7 @@
         - [Changelog Entries](#changelog-entries)
     - [Contributing to the UI](#contributing-to-the-ui)
     - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
+    - [Supply-chain / dependency policy](#supply-chain--dependency-policy)
     - [Testing](#testing)
     - [Contributor License Agreement](#contributor-license-agreement)
     - [Code of Conduct](#code-of-conduct)
@@ -93,8 +94,10 @@ Create a file `CHANGELOG/<your-branch-name-with-slashes-replaced-by-underscores>
 your change. For example, for branch `fix/my-bug` create `CHANGELOG/fix_my-bug.md`.
 
 Use one of these section headers: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`,
-`Security`. Group related entries under a sub-feature or component if applicable. See existing files in
-[CHANGELOG/](CHANGELOG/) for examples.
+`Security`. Group related entries under a sub-feature or component if applicable. The folder is emptied at each release
+(maintainers run `/kms-changelog consolidate <version>`), so for examples see the entry format in
+[`.github/skills/kms-changelog/SKILL.md`](.github/skills/kms-changelog/SKILL.md) or the released entries in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing to the UI
 
@@ -104,7 +107,7 @@ have a corresponding UI action.
 For new features, open an issue first describing the use case and approach - A Cosmian KMS collaborator will review it and might assist you in coding the feature if it's accepted. Bug fixes can go straight to a PR.
 
 All three test layers must pass before merging (E2E Playwright, Vitest integration, Vitest unit). See
-[§8 Web UI & Playwright E2E tests](AGENTS.md#8-web-ui--playwright-e2e-tests) in AGENTS.md for how to run them.
+[§8.1 UI-specific rules](AGENTS.md#81-ui-specific-rules) in AGENTS.md for how to run them.
 
 ## Setting up Rust to work on Cosmian KMS
 
@@ -116,8 +119,8 @@ If you have never worked with Rust before, you will have to complete the followi
 4. Build the project: `cargo build --release`
 
 For build commands and local setup, see [Quick start](README.md#-quick-start) in the README. For Nix-based
-reproducible builds and CI, see [§1 Build & test cheatsheet](AGENTS.md#1-build--test-cheatsheet) and
-[§13 Nix packaging](AGENTS.md#13-nix-packaging) in AGENTS.md.
+reproducible builds and CI, see [§2 Build & test cheatsheet](AGENTS.md#build--test-cheatsheet) and
+[§8.6 Nix packaging](AGENTS.md#86-nix-packaging) in AGENTS.md.
 
 If you are using an AI coding assistant that does not natively support `AGENTS.md` (e.g. Claude Code, at the time of
 writing), create a symbolic link so it picks up the agent instructions automatically:
@@ -150,6 +153,44 @@ For React/TypeScript/WASM conventions, see
 
 ---
 
+## Supply-chain / dependency policy
+
+- **Rust dependencies** — after adding or bumping a crate, run `cargo vet check`. If it fails, either add an
+  exemption (`cargo vet add-exemption <crate> <version>`) with a reason, or record a real audit
+  (`cargo vet certify`). The `cargo-vet` CI job blocks the merge otherwise. Existing exemptions for build-time code
+  (`-sys`, proc-macro, `build.rs` crates) are tagged `priority: build-time code` in `supply-chain/config.toml` and are
+  the audit backlog.
+  Dependabot opens **security** PRs only for Cargo (version-update PRs are disabled in `.github/dependabot.yml`):
+  it cannot edit `supply-chain/`, so a maintainer must run `cargo vet check` (without `--locked`: it fetches imported
+  Mozilla/Google/… audits into `supply-chain/imports.lock`, which may already cover the bumped version), then add an
+  exemption for what is still reported (`cargo vet suggest` lists it) on the PR branch before merging. Routine bumps
+  are done by hand (`cargo update -p <crate> --precise <version>`).
+- **Python test dependencies** — edit the human-authored `.in` file next to the requirements (for example
+  `.mise/scripts/test/requirements-jose.in`), then regenerate the hash-pinned lockfile with
+  `pip-compile --generate-hashes --output-file=<name>.txt <name>.in` and commit both. Never hand-edit the `.txt`;
+  install sites use `pip install --require-hashes`. The `jose` and `cef` lockfiles are compiled with Python 3.9 because
+  `.mise/scripts/common.sh` puts the macOS Command Line Tools `python3` first in `PATH`; the other lockfiles are
+  compiled with Python 3.12 (the CI `ubuntu-24.04` interpreter) and need Python ≥ 3.10. Check each result with
+  `pip-audit -r <name>.txt`; the `python-dependency-audit` CI job runs it on every lockfile.
+- **Go test dependencies** — `.mise/scripts/kmip-go/go.mod` pins the Go `toolchain`; the `govulncheck` CI job
+  (`govulncheck -test ./...`) must report no vulnerabilities.
+- **GitHub Actions** — every `uses:` reference must be a full 40-character commit SHA followed by a `# <tag>`
+  comment (local `./.github/actions/...` paths excepted). Dependabot (`github-actions` ecosystem) bumps these
+  automatically.
+- **Docker base images** in `.mise/scripts/docker/**` must be pinned by digest (`FROM image:tag@sha256:...`).
+- **Bootstrap installers** — never pipe a remote script into a shell. Download it, verify its SHA-256, then run it
+  (see `.github/actions/install-mise/action.yml`), or use a version pinned by a git submodule.
+
+Pre-commit hooks enforce the policy locally (`.pre-commit-config.yaml`): `cargo-vet`, `github-actions-sha-pin`,
+`docker-base-image-digest-pin` and `no-curl-pipe-shell` run on commit; `pip-audit-lockfiles` and `govulncheck`
+(which need `pip-audit` and `govulncheck` installed, and network access) run on `pre-push`.
+
+Reference: [`supply-chain/config.toml`](supply-chain/config.toml), [`.github/dependabot.yml`](.github/dependabot.yml),
+[`.github/workflows/main_base.yml`](.github/workflows/main_base.yml), and the pre-existing
+[`.cargo/audit.toml`](.cargo/audit.toml) / [`deny.toml`](deny.toml).
+
+---
+
 ## Testing
 
 Before submitting a pull request, please ensure that:
@@ -160,9 +201,9 @@ Before submitting a pull request, please ensure that:
 • If you've added new functionality, include appropriate unit and/or integration tests
 
 For database-specific testing, you may need to set up local database instances. See
-[§1 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
+[§2 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
 
-If you have access to LLM coding tools, we recommend to use the [kms-last-test-vx](.github/skills/kms-last-test-v5) skill before considering work as finished, as it operates as last human-like sanity check.
+If you have access to LLM coding tools, we recommend to use the [kms-adversarial-test](.github/skills/kms-adversarial-test) skill before considering work as finished, as it operates as last human-like sanity check.
 
 ## Contributor License Agreement
 

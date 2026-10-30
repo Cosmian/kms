@@ -5,7 +5,9 @@ use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::kmip_types::UniqueIdentifier,
     read_bytes_from_file,
-    reexport::cosmian_kms_client_utils::certificate_utils::{Algorithm, build_certify_request},
+    reexport::cosmian_kms_client_utils::certificate_utils::{
+        Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
+    },
 };
 
 use crate::{
@@ -197,6 +199,52 @@ impl Default for CertifyAction {
 }
 
 impl CertifyAction {
+    /// Select what to certify, in priority order: a certificate signing request,
+    /// a public key id, an existing certificate id to re-certify, or a key pair to generate.
+    fn certification_source(
+        &self,
+        csr_bytes: Option<Vec<u8>>,
+    ) -> KmsCliResult<CertificationSource> {
+        if let Some(request) = csr_bytes {
+            return Ok(CertificationSource::Csr {
+                request,
+                format: Some(self.certificate_signing_request_format.clone()),
+            });
+        }
+        if let Some(id) = &self.public_key_id_to_certify {
+            let subject_name = self.subject_name.clone().ok_or_else(|| {
+                KmsCliError::Default(
+                    "subject name is required when certifying a public key".to_owned(),
+                )
+            })?;
+            return Ok(CertificationSource::PublicKey {
+                id: id.clone(),
+                subject_name,
+            });
+        }
+        if let Some(certificate_id) = &self.certificate_id_to_re_certify {
+            return Ok(CertificationSource::ReCertify {
+                certificate_id: certificate_id.clone(),
+            });
+        }
+        if self.generate_key_pair {
+            let subject_name = self.subject_name.clone().ok_or_else(|| {
+                KmsCliError::Default(
+                    "subject name is required when generating a keypair".to_owned(),
+                )
+            })?;
+            return Ok(CertificationSource::GenerateKeyPair {
+                subject_name,
+                algorithm: self.algorithm,
+            });
+        }
+        Err(KmsCliError::Default(
+            "Supply a certificate signing request, a public key id or an existing certificate id \
+             or request a keypair to be generated"
+                .to_owned(),
+        ))
+    }
+
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let certificate_signing_request_bytes = self
             .certificate_signing_request
@@ -210,21 +258,19 @@ impl CertifyAction {
             .map(std::fs::read)
             .transpose()?;
 
+        let certification_source = self.certification_source(certificate_signing_request_bytes)?;
+
         let certify_request = build_certify_request(
             kms_rest_client.config.vendor_id.as_str(),
-            &self.certificate_id,
-            &Some(self.certificate_signing_request_format.clone()),
-            &certificate_signing_request_bytes,
-            &self.public_key_id_to_certify,
-            &self.certificate_id_to_re_certify,
-            self.generate_key_pair,
-            &self.subject_name,
-            self.algorithm,
-            &self.issuer_private_key_id,
-            &self.issuer_certificate_id,
-            self.number_of_days,
-            &certificate_extensions_bytes,
-            &self.tags,
+            &CertifyRequestParams {
+                certificate_id: self.certificate_id.clone(),
+                source: certification_source,
+                issuer_private_key_id: self.issuer_private_key_id.clone(),
+                issuer_certificate_id: self.issuer_certificate_id.clone(),
+                number_of_days: self.number_of_days,
+                certificate_extensions: certificate_extensions_bytes,
+                tags: self.tags.clone(),
+            },
         )?;
 
         let certificate_unique_identifier = kms_rest_client

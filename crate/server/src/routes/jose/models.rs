@@ -10,9 +10,7 @@ use super::algorithm::{JoseAlgorithm, JoseEncAlgorithm};
 /// - **Import**: additionally provide key material fields (`k` for oct; `d`/`x`/`y` for EC;
 ///   `d`/`n`/`e`/`p`/`q`/`dp`/`dq`/`qi` for RSA).
 #[derive(Debug, Deserialize)]
-// Import-only fields (k, d, x, y, n, e, p, q, dp, dq, qi, key_ops) are deserialized but not
-// yet consumed — they will be used when the import path is implemented.
-#[allow(dead_code)]
+// Other unknown JWK members are ignored on deserialization.
 pub(crate) struct KeyCreateRequest {
     /// JWK key type: `"oct"`, `"EC"`, `"RSA"`, `"OKP"`
     pub(crate) kty: String,
@@ -22,8 +20,6 @@ pub(crate) struct KeyCreateRequest {
     pub(crate) crv: Option<String>,
     /// RSA key size in bits (default: 2048)
     pub(crate) bits: Option<usize>,
-    /// JWK `key_ops` — when absent, inferred from `alg`
-    pub(crate) key_ops: Option<Vec<String>>,
     // ── Import-only fields (presence triggers import mode) ──
     /// Symmetric key value (base64url, for `kty=oct`)
     pub(crate) k: Option<String>,
@@ -47,12 +43,17 @@ pub(crate) struct KeyCreateRequest {
     pub(crate) dq: Option<String>,
     /// RSA CRT coefficient (base64url)
     pub(crate) qi: Option<String>,
+    /// Caller-chosen KMS unique identifier (import only)
+    pub(crate) kid: Option<String>,
+    /// Permitted operations for a public-only RSA import: `encrypt`, `wrapKey`, `verify`
+    pub(crate) key_ops: Option<Vec<String>>,
 }
 
 impl KeyCreateRequest {
-    /// Returns `true` when the request contains private key material (import mode).
+    /// Returns `true` when the request carries key material (import mode): a symmetric
+    /// value `k`, a private exponent `d`, or a full RSA public key (`n` and `e`).
     pub(crate) const fn is_import(&self) -> bool {
-        self.k.is_some() || self.d.is_some()
+        self.k.is_some() || self.d.is_some() || (self.n.is_some() && self.e.is_some())
     }
 }
 
@@ -107,6 +108,9 @@ pub(crate) struct EncryptRequest {
     pub(crate) data: String,
     /// Additional Authenticated Data as base64url (no padding), optional
     pub(crate) aad: Option<String>,
+    /// KMS UID of an AES key used as the CEK instead of a random one; RSA-OAEP / RSA-OAEP-256
+    /// only. The key leaves the KMS wrapped under `kid`.
+    pub(crate) cek_kid: Option<String>,
 }
 
 /// POST /v1/crypto/encrypt — flattened JWE JSON response
@@ -271,4 +275,46 @@ pub(crate) struct KeyUnwrapResponse {
     pub(crate) alg: String,
     /// Permitted key operations
     pub(crate) key_ops: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KeyCreateRequest;
+
+    type Summary = (String, Option<String>, Option<usize>, bool);
+
+    fn summary(json: &str) -> Option<Summary> {
+        serde_json::from_str::<KeyCreateRequest>(json)
+            .ok()
+            .map(|r| (r.kty.clone(), r.alg.clone(), r.bits, r.is_import()))
+    }
+
+    /// `key_ops` is a standard JWK member that clients may send; it is not consumed
+    /// (the permitted operations are always inferred from `alg`), but it must not make
+    /// the request fail and must not change how the other members are parsed.
+    #[test]
+    fn key_create_request_tolerates_key_ops_member() {
+        let expected = Some((
+            "oct".to_owned(),
+            Some("A256GCM".to_owned()),
+            Some(256),
+            false,
+        ));
+        assert_eq!(
+            summary(r#"{"kty":"oct","alg":"A256GCM","bits":256,"key_ops":["encrypt","decrypt"]}"#),
+            expected
+        );
+        assert_eq!(
+            summary(r#"{"kty":"oct","alg":"A256GCM","bits":256}"#),
+            expected
+        );
+    }
+
+    #[test]
+    fn key_create_request_with_key_ops_still_detects_import_mode() {
+        assert_eq!(
+            summary(r#"{"kty":"oct","alg":"HS256","k":"AAAA","key_ops":["sign","verify"]}"#),
+            Some(("oct".to_owned(), Some("HS256".to_owned()), None, true))
+        );
+    }
 }

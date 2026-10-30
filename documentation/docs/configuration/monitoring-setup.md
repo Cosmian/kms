@@ -12,7 +12,8 @@
 3. [Local mode — KMS included](#local-mode--kms-included)
 4. [External mode — existing KMS](#external-mode--existing-kms)
 5. [Explore Grafana](#explore-grafana)
-6. [Troubleshooting](#troubleshooting)
+6. [Proven integrations](#proven-integrations)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -52,7 +53,7 @@ unzip cosmian-kms-monitoring.zip
 cd monitoring/
 ```
 
-Replace `<version>` with the KMS version you are deploying (e.g. `5.28.0`).
+Replace `<version>` with the KMS version you are deploying (e.g. `5.29.0`).
 The list of available versions is at <https://package.cosmian.com/kms/>.
 
 Alternatively, clone the [KMS repository](https://github.com/Cosmian/kms) and navigate to the
@@ -337,6 +338,20 @@ Pre-provisioned dashboards are available under **Dashboards → Browse**:
 After few seconds metrics will be available
 
 ![monitor07](images/monitor-07.png)
+
+---
+
+## Proven integrations
+
+All tests use the product's official Docker image and fail if no evidence is found. These
+products consume KMS metrics, not audit events; see [SIEM integration](./siems.md) for audit
+event integrations.
+
+| Product | Role | What is proven |
+|---|---|---|
+| **OpenTelemetry Collector** | Metrics pipeline | KMS gRPC OTLP push received; KMS metric lines confirmed on Prometheus endpoint (count varies by version) |
+| **VictoriaMetrics** | Metrics backend | Receives KMS metrics from OTel Collector via remote_write |
+| **Grafana** | Dashboarding | Full monitoring stack operational; `/api/health` returns `database=ok` |
 
 ---
 

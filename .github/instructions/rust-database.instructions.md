@@ -53,3 +53,5 @@ schema or backend behaviour changes:
 
 When adding or removing a page, also update the navigation in `documentation/docs/SUMMARY.md` and
 `documentation/nav.yml`.
+
+> Run `/threat-model` when database changes alter trust boundaries, authorization, or security-relevant data flows; skip only for a confirmed incremental change outside those areas.

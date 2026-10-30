@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     KmipResultHelper,
     kmip_0::{
@@ -14,16 +16,35 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         extra::tagging::VENDOR_ATTR_TAG,
         kmip_messages::ResponseMessageBatchItem,
         kmip_operations::{InteropResponse, LogResponse, Operation},
-        kmip_types::{OperationEnumeration, UniqueIdentifier, UniqueIdentifierEnumeration},
+        kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration},
     },
     time_normalize,
     ttlv::KmipFlavor,
 };
-use cosmian_logger::{info, trace};
+use cosmian_logger::{error, info, trace};
 use strum::IntoEnumIterator;
 
 use super::modify_attribute;
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
+
+/// Maximum number of batch items processed from one `RequestMessage`: items run
+/// sequentially, so an unbounded batch would monopolise a worker and DB connections.
+pub(crate) const MAX_BATCH_ITEMS: usize = 10_000;
+
+/// Lazily formats the operations of the first batch items as a list (same output as a
+/// `Vec<OperationEnumeration>` debug print, without allocating the `Vec`).
+struct BatchOperations<'a>(&'a [RequestMessageBatchItemVersioned]);
+
+impl std::fmt::Debug for BatchOperations<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.0.iter().map(|bi| match bi {
+                RequestMessageBatchItemVersioned::V14(item) => item.operation.into(),
+                RequestMessageBatchItemVersioned::V21(item) => item.operation,
+            }))
+            .finish()
+    }
+}
 
 /// Processing of an input KMIP Message
 ///
@@ -41,17 +62,22 @@ pub(crate) async fn message(
         user = user.as_str(),
         "KMIP Request message with {} operation(s): {:?}",
         request.batch_item.len(),
-        request
-            .batch_item
-            .get(..request.batch_item.len().min(10))
-            .unwrap_or(&[])
-            .iter()
-            .map(|bi| match bi {
-                RequestMessageBatchItemVersioned::V14(item) => item.operation.into(),
-                RequestMessageBatchItemVersioned::V21(item) => item.operation,
-            })
-            .collect::<Vec<OperationEnumeration>>(),
+        BatchOperations(
+            request
+                .batch_item
+                .get(..request.batch_item.len().min(10))
+                .unwrap_or(&[])
+        ),
     );
+    if request.batch_item.len() > MAX_BATCH_ITEMS {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Message,
+            format!(
+                "KMIP request message has {} batch items; the maximum is {MAX_BATCH_ITEMS}",
+                request.batch_item.len()
+            ),
+        ));
+    }
     trace!("Entering message KMIP operation: {request}");
 
     let mut response_items = Vec::with_capacity(request.batch_item.len());
@@ -94,7 +120,7 @@ pub(crate) async fn message(
         resolve_id_placeholder_for_operation(&mut request_operation, &id_placeholder);
 
         // Capture whether this batch item explicitly requested attributes (used for KMIP 1.x shaping)
-        let get_attrs_requested_refs = extract_get_attrs_requested_refs(&request_operation);
+        let get_attrs_explicit_refs = get_attrs_has_explicit_refs(&request_operation);
 
         // 2) Expand KMIP 2.1 GetAttributes with empty AttributeReference into the full explicit list
         expand_kmip2_get_attributes_request(&mut request_operation, kmip_version);
@@ -111,9 +137,9 @@ pub(crate) async fn message(
         let forced_size_error =
             enforce_max_response_size_for_query(&response_operation, remaining_max_response_size)?;
 
-        match response_operation {
-            Ok(ref op) => trace!("Operation processed successfully: {op}"),
-            Err(ref e) => trace!("Operation processing failed: {e}"),
+        match &response_operation {
+            Ok(op) => trace!("Operation processed successfully: {op}"),
+            Err(e) => error!(target: "kmip", "Operation processing failed: {e}"),
         }
 
         let (result_status, result_reason, result_message, response_payload) =
@@ -179,9 +205,7 @@ pub(crate) async fn message(
         shape_kmip1_get_attributes_response(
             kmip_version,
             &mut response_message_batch_item,
-            get_attrs_requested_refs
-                .as_ref()
-                .is_some_and(|v| !v.is_empty()),
+            get_attrs_explicit_refs,
             kms.vendor_id(),
         );
 
@@ -288,13 +312,15 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
         retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     };
 
-    let mut owm = Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(uid),
-        KmipOperation::GetAttributes,
-        kms,
-        user,
-    ))
-    .await?;
+    let mut owm = Arc::unwrap_or_clone(
+        Box::pin(retrieve_object_for_operation(
+            ObjectHandle::from(uid),
+            KmipOperation::GetAttributes,
+            kms,
+            user,
+        ))
+        .await?,
+    );
 
     // Reset internal attributes
     if let Ok(attrs) = owm.object_mut().attributes_mut() {
@@ -317,42 +343,6 @@ async fn revert_activation_to_preactive(kms: &KMS, uid: &str, user: &UserId) -> 
     Ok(())
 }
 
-/// Helper function to get the operation name from an Operation enum variant
-#[allow(clippy::missing_const_for_fn)]
-fn get_operation_name(operation: &Operation) -> &'static str {
-    match operation {
-        Operation::Activate(_) => "Activate",
-        Operation::AddAttribute(_) => "AddAttribute",
-        Operation::Certify(_) => "Certify",
-        Operation::Create(_) => "Create",
-        Operation::CreateKeyPair(_) => "CreateKeyPair",
-        Operation::Decrypt(_) => "Decrypt",
-        Operation::DeleteAttribute(_) => "DeleteAttribute",
-        Operation::DeriveKey(_) => "DeriveKey",
-        Operation::Destroy(_) => "Destroy",
-        Operation::DiscoverVersions(_) => "DiscoverVersions",
-        Operation::Encrypt(_) => "Encrypt",
-        Operation::Export(_) => "Export",
-        Operation::Get(_) => "Get",
-        Operation::GetAttributes(_) => "GetAttributes",
-        Operation::Hash(_) => "Hash",
-        Operation::Import(_) => "Import",
-        Operation::Locate(_) => "Locate",
-        Operation::MAC(_) => "MAC",
-        Operation::Query(_) => "Query",
-        Operation::Register(_) => "Register",
-        Operation::ReCertify(_) => "ReCertify",
-        Operation::ReKey(_) => "ReKey",
-        Operation::ReKeyKeyPair(_) => "ReKeyKeyPair",
-        Operation::Revoke(_) => "Revoke",
-        Operation::SetAttribute(_) => "SetAttribute",
-        Operation::Sign(_) => "Sign",
-        Operation::SignatureVerify(_) => "SignatureVerify",
-        Operation::Validate(_) => "Validate",
-        _ => "Unknown",
-    }
-}
-
 async fn process_operation(
     kms: &KMS,
     user: &UserId,
@@ -360,8 +350,9 @@ async fn process_operation(
     request_operation: Operation,
     protocol_version: Option<ProtocolVersion>,
 ) -> Result<Operation, KmsError> {
-    // Get operation name for metrics
-    let operation_name = get_operation_name(&request_operation);
+    // The KMIP operation enumeration drives both the role check and the metrics label
+    let operation = request_operation.operation_enum();
+    let operation_name: &'static str = operation.into();
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
     // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
@@ -369,8 +360,13 @@ async fn process_operation(
 
     // Enforce role-based access control for the RequestMessage path.
     // This mirrors the check in dispatch_inner() for the single-operation TTLV path.
-    super::dispatch::check_role_permission(kms, user, operation_name, &kms.params.crypto_officer)
+    super::dispatch::check_role_permission(kms, user, operation, &kms.params.crypto_officer)
         .await?;
+    // Request-time algorithm policy, as on the single-operation TTLV path.
+    super::algorithm_policy::enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &request_operation,
+    )?;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = Box::pin(async {
@@ -608,64 +604,72 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_messages::ResponseMessageBatchItem as V21ResponseMessageBatchItem, kmip_types as v21types,
 };
 
+/// Fill a missing (or `IDPlaceholder`) Unique Identifier from the batch ID Placeholder.
+fn fill_from_id_placeholder(
+    unique_identifier: &mut Option<v21types::UniqueIdentifier>,
+    id_placeholder: &Option<v21types::UniqueIdentifier>,
+) {
+    if matches!(
+        unique_identifier,
+        None | Some(v21types::UniqueIdentifier::Enumeration(
+            UniqueIdentifierEnumeration::IDPlaceholder
+        ))
+    ) {
+        if let Some(uid) = id_placeholder {
+            *unique_identifier = Some(uid.clone());
+        }
+    }
+}
+
 fn resolve_id_placeholder_for_operation(
     op: &mut Operation,
     id_placeholder: &Option<v21types::UniqueIdentifier>,
 ) {
     match op {
-        Operation::Get(get_request) => match &get_request.unique_identifier {
-            None
-            | Some(v21types::UniqueIdentifier::Enumeration(
-                UniqueIdentifierEnumeration::IDPlaceholder,
-            )) => {
-                if let Some(uid) = id_placeholder {
-                    get_request.unique_identifier = Some(uid.clone());
-                }
-            }
-            _ => {}
-        },
-        Operation::GetAttributes(get_attrs_request) => match &get_attrs_request.unique_identifier {
-            None
-            | Some(v21types::UniqueIdentifier::Enumeration(
-                UniqueIdentifierEnumeration::IDPlaceholder,
-            )) => {
-                if let Some(uid) = id_placeholder {
-                    get_attrs_request.unique_identifier = Some(uid.clone());
-                }
-            }
-            _ => {}
-        },
-        Operation::GetAttributeList(gal_request) => match &gal_request.unique_identifier {
-            None
-            | Some(v21types::UniqueIdentifier::Enumeration(
-                UniqueIdentifierEnumeration::IDPlaceholder,
-            )) => {
-                if let Some(uid) = id_placeholder {
-                    gal_request.unique_identifier = Some(uid.clone());
-                }
-            }
-            _ => {}
-        },
-        Operation::ModifyAttribute(mod_attr_request) => match &mod_attr_request.unique_identifier {
-            None
-            | Some(v21types::UniqueIdentifier::Enumeration(
-                UniqueIdentifierEnumeration::IDPlaceholder,
-            )) => {
-                if let Some(uid) = id_placeholder {
-                    mod_attr_request.unique_identifier = Some(uid.clone());
-                }
-            }
-            _ => {}
-        },
+        Operation::Get(get_request) => {
+            fill_from_id_placeholder(&mut get_request.unique_identifier, id_placeholder);
+        }
+        Operation::GetAttributes(get_attrs_request) => {
+            fill_from_id_placeholder(&mut get_attrs_request.unique_identifier, id_placeholder);
+        }
+        Operation::GetAttributeList(gal_request) => {
+            fill_from_id_placeholder(&mut gal_request.unique_identifier, id_placeholder);
+        }
+        Operation::ModifyAttribute(mod_attr_request) => {
+            fill_from_id_placeholder(&mut mod_attr_request.unique_identifier, id_placeholder);
+        }
+        // KMIP 1.4 §4.7 / 2.1 §6.1.6: an omitted public key UID is the ID Placeholder.
+        // A Certify carrying a certificate request certifies that request's key instead.
+        Operation::Certify(certify_request)
+            if certify_request.certificate_request_value.is_none() =>
+        {
+            fill_from_id_placeholder(&mut certify_request.unique_identifier, id_placeholder);
+        }
+        // KMIP 1.4 §4.8: an omitted certificate UID is the ID Placeholder.
+        Operation::ReCertify(recertify_request) => {
+            fill_from_id_placeholder(&mut recertify_request.unique_identifier, id_placeholder);
+        }
         _ => {}
     }
 }
 
-fn extract_get_attrs_requested_refs(op: &Operation) -> Option<Vec<v21types::AttributeReference>> {
-    if let Operation::GetAttributes(ga) = op {
-        return ga.attribute_reference.clone();
+/// Whether this batch item is a `GetAttributes` request that explicitly lists attribute references.
+fn get_attrs_has_explicit_refs(op: &Operation) -> bool {
+    matches!(op, Operation::GetAttributes(ga) if ga.attribute_reference.as_ref().is_some_and(|v| !v.is_empty()))
+}
+
+/// `io::Write` sink that only counts the bytes written (no allocation).
+struct ByteCounter(usize);
+
+impl std::io::Write for ByteCounter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(buf.len());
+        Ok(buf.len())
     }
-    None
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn expand_kmip2_get_attributes_request(op: &mut Operation, kmip_version: KmipFlavor) {
@@ -698,8 +702,9 @@ fn enforce_max_response_size_for_query(
     // Use serialized JSON payload length as a pragmatic proxy for response size.
     if let Ok(Operation::QueryResponse(resp)) = response_operation {
         if let Some(max_total) = remaining_max_response_size {
-            if let Ok(payload_json) = serde_json::to_string(resp) {
-                let payload_len = i32::try_from(payload_json.len())?;
+            let mut counter = ByteCounter(0);
+            if serde_json::to_writer(&mut counter, resp).is_ok() {
+                let payload_len = i32::try_from(counter.0)?;
                 let approx_total = payload_len.saturating_add(128);
                 if approx_total > max_total {
                     return Ok(Some((
@@ -774,6 +779,13 @@ fn update_id_placeholder_from_response(
         Some(Operation::RegisterResponse(rr)) => {
             *id_placeholder = Some(rr.unique_identifier.clone());
         }
+        // Certify / ReCertify: the new certificate (KMIP 1.4 §4.7, §4.8; 2.1 §6.1.6)
+        Some(Operation::CertifyResponse(cr)) => {
+            *id_placeholder = Some(cr.unique_identifier.clone());
+        }
+        Some(Operation::ReCertifyResponse(rr)) => {
+            *id_placeholder = Some(rr.unique_identifier.clone());
+        }
         // CreateKeyPair returns public+private UIDs; prefer the private key as placeholder
         Some(Operation::CreateKeyPairResponse(ckpr)) => {
             *id_placeholder = Some(ckpr.private_key_unique_identifier.clone());
@@ -824,4 +836,393 @@ fn mark_successes_undone(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::{
+            kmip_messages::{
+                RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+                ResponseMessageBatchItemVersioned,
+            },
+            kmip_types::{CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration},
+        },
+        kmip_1_4,
+        kmip_2_1::{
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_attributes::Attributes,
+            kmip_messages::RequestMessageBatchItem,
+            kmip_objects::ObjectType,
+            kmip_operations::{Certify, Get, GetAttributes, Operation, Register},
+            kmip_types::{
+                CertificateAttributes, LinkType, LinkedObjectIdentifier, RecommendedCurve,
+                UniqueIdentifier,
+            },
+            requests::create_ec_key_pair_request,
+        },
+        time_normalize,
+    };
+    use openssl::{
+        ec::{EcGroup, EcKey},
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::PKey,
+        x509::{X509NameBuilder, X509Req},
+    };
+
+    use super::message;
+    use crate::{
+        core::KMS, error::KmsError, middlewares::UserId, result::KResult,
+        tests::test_utils::test_kms,
+    };
+
+    const OWNER: &str = "id_placeholder_owner";
+
+    fn batch(
+        major: i32,
+        minor: i32,
+        batch_item: Vec<RequestMessageBatchItemVersioned>,
+    ) -> KResult<RequestMessage> {
+        Ok(RequestMessage {
+            request_header: RequestMessageHeader {
+                protocol_version: ProtocolVersion {
+                    protocol_version_major: major,
+                    protocol_version_minor: minor,
+                },
+                batch_count: i32::try_from(batch_item.len())?,
+                ..Default::default()
+            },
+            batch_item,
+        })
+    }
+
+    fn subject(cn: &str) -> KResult<Attributes> {
+        Ok(Attributes {
+            certificate_attributes: Some(CertificateAttributes::parse_subject_line(cn)?),
+            ..Attributes::default()
+        })
+    }
+
+    /// An Active (able to sign) EC P-256 key pair: `(private key, public key)` UIDs.
+    async fn key_pair(kms: &KMS, owner: &UserId) -> KResult<(UniqueIdentifier, UniqueIdentifier)> {
+        let mut request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            EMPTY_TAGS,
+            RecommendedCurve::P256,
+            false,
+            None,
+        )?;
+        request
+            .common_attributes
+            .get_or_insert_default()
+            .activation_date = Some(time_normalize()?);
+        let response = kms.create_key_pair(request, owner).await?;
+        Ok((
+            response.private_key_unique_identifier,
+            response.public_key_unique_identifier,
+        ))
+    }
+
+    /// KMIP 2.1 §6.1.6: `Certify` without a Unique Identifier certifies the ID Placeholder
+    /// public key, and the new certificate becomes the ID Placeholder.
+    #[tokio::test]
+    async fn certify_uses_and_sets_id_placeholder_2_1() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from(OWNER);
+        let (sk_uid, pk_uid) = key_pair(&kms, &owner).await?;
+        let public_key = kms
+            .get(
+                Get {
+                    unique_identifier: Some(pk_uid),
+                    ..Get::default()
+                },
+                &owner,
+            )
+            .await?
+            .object;
+        let mut attributes = Attributes::default();
+        attributes.set_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(sk_uid.to_string()),
+        );
+        let items = [
+            Operation::Register(Box::new(Register {
+                object_type: ObjectType::PublicKey,
+                attributes,
+                object: public_key,
+                protection_storage_masks: None,
+            })),
+            Operation::Certify(Box::new(Certify {
+                attributes: Some(subject("CN=id-placeholder")?),
+                ..Certify::default()
+            })),
+            Operation::Get(Get::default()),
+        ]
+        .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)));
+
+        let response = message(&kms, batch(2, 1, items.into())?, &owner).await?;
+        let [
+            ResponseMessageBatchItemVersioned::V21(register),
+            ResponseMessageBatchItemVersioned::V21(certify),
+            ResponseMessageBatchItemVersioned::V21(get),
+        ] = response.batch_item.as_slice()
+        else {
+            return Err(KmsError::ServerError(format!(
+                "unexpected response: {response}"
+            )));
+        };
+        for item in [register, certify, get] {
+            assert_eq!(
+                item.result_status,
+                ResultStatusEnumeration::Success,
+                "{:?}",
+                item.result_message
+            );
+        }
+        let (
+            Some(Operation::RegisterResponse(register)),
+            Some(Operation::CertifyResponse(certify)),
+            Some(Operation::GetResponse(get)),
+        ) = (
+            &register.response_payload,
+            &certify.response_payload,
+            &get.response_payload,
+        )
+        else {
+            return Err(KmsError::ServerError(format!(
+                "unexpected payloads: {response}"
+            )));
+        };
+        assert_eq!(get.object_type, ObjectType::Certificate);
+        assert_eq!(get.unique_identifier, certify.unique_identifier);
+        // The certificate is for the registered public key, not for a generated one.
+        let certificate_attributes = kms
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(certify.unique_identifier.clone()),
+                    attribute_reference: None,
+                },
+                &owner,
+            )
+            .await?
+            .attributes;
+        assert_eq!(
+            certificate_attributes.get_link(LinkType::PublicKeyLink),
+            Some(LinkedObjectIdentifier::TextString(
+                register.unique_identifier.to_string()
+            ))
+        );
+        Ok(())
+    }
+
+    /// After `CreateKeyPair` the ID Placeholder is the private key; a following `Certify`
+    /// without a Unique Identifier certifies the public key of that pair.
+    #[tokio::test]
+    async fn certify_after_create_key_pair_certifies_its_public_key() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from(OWNER);
+        let mut create_key_pair = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            EMPTY_TAGS,
+            RecommendedCurve::P256,
+            false,
+            None,
+        )?;
+        create_key_pair
+            .common_attributes
+            .get_or_insert_default()
+            .activation_date = Some(time_normalize()?);
+        let items = [
+            Operation::CreateKeyPair(Box::new(create_key_pair)),
+            Operation::Certify(Box::new(Certify {
+                attributes: Some(subject("CN=id-placeholder-key-pair")?),
+                ..Certify::default()
+            })),
+            Operation::Get(Get::default()),
+        ]
+        .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)));
+
+        let response = message(&kms, batch(2, 1, items.into())?, &owner).await?;
+        let [
+            ResponseMessageBatchItemVersioned::V21(create_key_pair),
+            ResponseMessageBatchItemVersioned::V21(certify),
+            ResponseMessageBatchItemVersioned::V21(get),
+        ] = response.batch_item.as_slice()
+        else {
+            return Err(KmsError::ServerError(format!(
+                "unexpected response: {response}"
+            )));
+        };
+        for item in [create_key_pair, certify, get] {
+            assert_eq!(
+                item.result_status,
+                ResultStatusEnumeration::Success,
+                "{:?}",
+                item.result_message
+            );
+        }
+        let (
+            Some(Operation::CreateKeyPairResponse(create_key_pair)),
+            Some(Operation::CertifyResponse(certify)),
+            Some(Operation::GetResponse(get)),
+        ) = (
+            &create_key_pair.response_payload,
+            &certify.response_payload,
+            &get.response_payload,
+        )
+        else {
+            return Err(KmsError::ServerError(format!(
+                "unexpected payloads: {response}"
+            )));
+        };
+        assert_eq!(get.object_type, ObjectType::Certificate);
+        assert_eq!(get.unique_identifier, certify.unique_identifier);
+        let certificate_attributes = kms
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(certify.unique_identifier.clone()),
+                    attribute_reference: None,
+                },
+                &owner,
+            )
+            .await?
+            .attributes;
+        assert_eq!(
+            certificate_attributes.get_link(LinkType::PublicKeyLink),
+            Some(LinkedObjectIdentifier::TextString(
+                create_key_pair.public_key_unique_identifier.to_string()
+            ))
+        );
+        Ok(())
+    }
+
+    /// KMIP 1.4 §4.7: the certificate returned by `Certify` replaces the ID Placeholder, so a
+    /// following `Get` without a Unique Identifier returns it. A KMIP 1.4 `Certify` cannot
+    /// name the subject of a bare public key, hence the PKCS#10 request.
+    #[tokio::test]
+    async fn certify_sets_id_placeholder_1_4() -> KResult<()> {
+        use kmip_1_4::{
+            kmip_attributes::Attribute,
+            kmip_data_structures::TemplateAttribute,
+            kmip_messages::RequestMessageBatchItem as Item14,
+            kmip_operations::{Certify as Certify14, Create, Get as Get14, Operation as Op14},
+            kmip_types::{
+                CertificateRequestType, CryptographicAlgorithm, Link, LinkType as LinkType14,
+                ObjectType as ObjectType14, OperationEnumeration as OpEnum14,
+            },
+        };
+
+        let kms = test_kms().await?;
+        let owner = UserId::from(OWNER);
+        let (sk_uid, pk_uid) = key_pair(&kms, &owner).await?;
+        let issuer_certificate = kms
+            .certify(
+                Certify {
+                    unique_identifier: Some(pk_uid),
+                    attributes: Some(subject("CN=id-placeholder-issuer")?),
+                    ..Certify::default()
+                },
+                &owner,
+            )
+            .await?
+            .unique_identifier;
+
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        let csr_key = PKey::from_ec_key(EcKey::generate(&group)?)?;
+        let mut name = X509NameBuilder::new()?;
+        name.append_entry_by_text("CN", "id-placeholder-leaf")?;
+        let mut csr = X509Req::builder()?;
+        csr.set_subject_name(&name.build())?;
+        csr.set_pubkey(&csr_key)?;
+        csr.sign(&csr_key, MessageDigest::sha256())?;
+
+        let item = |operation, request_payload| {
+            RequestMessageBatchItemVersioned::V14(Item14 {
+                operation,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload,
+                message_extension: None,
+            })
+        };
+        let items = vec![
+            // Sets the ID Placeholder to a symmetric key.
+            item(
+                OpEnum14::Create,
+                Op14::Create(Create {
+                    object_type: ObjectType14::SymmetricKey,
+                    template_attribute: TemplateAttribute {
+                        attribute: Some(vec![
+                            Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+                            Attribute::CryptographicLength(256),
+                            Attribute::CryptographicUsageMask(CryptographicUsageMask::Encrypt),
+                        ]),
+                    },
+                }),
+            ),
+            item(
+                OpEnum14::Certify,
+                Op14::Certify(Certify14 {
+                    unique_identifier: None,
+                    certificate_request_type: Some(CertificateRequestType::PKCS10),
+                    certificate_request: Some(csr.build().to_der()?),
+                    template_attribute: Some(TemplateAttribute {
+                        attribute: Some(vec![
+                            Attribute::Link(Link {
+                                link_type: LinkType14::PrivateKeyLink,
+                                linked_object_identifier: sk_uid.to_string(),
+                            }),
+                            Attribute::Link(Link {
+                                link_type: LinkType14::CertificateLink,
+                                linked_object_identifier: issuer_certificate.to_string(),
+                            }),
+                        ]),
+                    }),
+                }),
+            ),
+            item(
+                OpEnum14::Get,
+                Op14::Get(Get14 {
+                    unique_identifier: None,
+                    key_format_type: None,
+                    key_compression_type: None,
+                    key_wrapping_specification: None,
+                }),
+            ),
+        ];
+
+        let response = message(&kms, batch(1, 4, items)?, &owner).await?;
+        let [
+            ResponseMessageBatchItemVersioned::V14(create),
+            ResponseMessageBatchItemVersioned::V14(certify),
+            ResponseMessageBatchItemVersioned::V14(get),
+        ] = response.batch_item.as_slice()
+        else {
+            return Err(KmsError::ServerError(format!(
+                "unexpected response: {response}"
+            )));
+        };
+        for item in [create, certify, get] {
+            assert_eq!(
+                item.result_status,
+                ResultStatusEnumeration::Success,
+                "{:?}",
+                item.result_message
+            );
+        }
+        let (Some(Op14::CertifyResponse(certify)), Some(Op14::GetResponse(get))) =
+            (&certify.response_payload, &get.response_payload)
+        else {
+            return Err(KmsError::ServerError(format!(
+                "unexpected payloads: {response}"
+            )));
+        };
+        assert_eq!(get.object_type, ObjectType14::Certificate);
+        assert_eq!(get.unique_identifier, certify.unique_identifier);
+        Ok(())
+    }
 }

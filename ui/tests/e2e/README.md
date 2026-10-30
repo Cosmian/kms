@@ -5,7 +5,7 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 ## FIPS mode
 
 Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
-against a FIPS-mode KMS server. Three spec files are automatically skipped in
+against a FIPS-mode KMS server. Six spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 
 | Skipped spec      | Reason                                            |
@@ -15,6 +15,7 @@ FIPS mode because they exercise algorithms that are not NIST-approved:
 | `pqc-encaps-sign` | ML-KEM, ML-DSA, SLH-DSA, Hybrid KEMs are non-FIPS |
 | `fpe`             | FPE-FF1 is a non-FIPS algorithm                   |
 | `tokenize`        | Anonymization endpoints are non-FIPS only         |
+| `pgp-key-flow`    | OpenPGP is not available in FIPS mode             |
 
 In addition, specific individual tests inside otherwise-FIPS-compatible spec files
 are skipped because the underlying algorithm is not FIPS 140-3 approved:
@@ -30,6 +31,17 @@ which `test_ui.sh` injects automatically when run with `--variant fips`.
 
 All remaining specs (symmetric, RSA, EC/P-256 sign/verify, certificates, MAC, locate,
 attributes, access-rights, cloud integrations, …) run unchanged in FIPS mode.
+
+### fips-menu
+
+Runs against any server variant: it overrides the `fips_mode` field of `/server-info`.
+
+```mermaid
+graph LR
+    A[Force fips_mode=true] --> B[Sidebar hides PGP, PQC, FPE, Anonymize, Covercrypt]
+    A --> C[Non-FIPS URLs redirect to /ui/locate]
+    A --> D[MAC menu and pages stay reachable]
+```
 
 ## Symmetric Keys
 
@@ -246,6 +258,15 @@ graph LR
     end
 ```
 
+### certificates-csr
+
+```mermaid
+graph LR
+    A[Open Generate CSR page] --> B[Submit empty form]
+    B --> C[Private key ID required error]
+    B --> D[Subject DN required error]
+```
+
 ## Locate & Filters
 
 ### locate-flow
@@ -379,6 +400,12 @@ Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
 - Error when key ID is missing
 - Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
 - Wrong MAC → `invalid`
+
+## OpenPGP (non-FIPS only)
+
+`pgp-key-flow.spec.ts` verifies armored and binary GnuPG secret/public key imports and exports through
+the Web UI. `mise test:gnupg` exercises CKMS import/export interoperability with GnuPG-generated
+armored and binary transferable keys.
 
 ## FPE — Format-Preserving Encryption (non-FIPS only)
 
@@ -668,9 +695,7 @@ Covers:
 - Navigation to get/set/modify/delete attribute pages
 - `child_id` link: set+delete; set+modify
 - Name attribute (KMIP standard, issue #746): set; set → get (not hex); set → modify → delete
-- `cryptographic_length`: set → get → modify
 - `key_usage`: set → delete
-- `cryptographic_algorithm`: set
 - Multiple link attributes on one key
 - Non-existent object ID returns response (no crash)
 
@@ -748,3 +773,14 @@ Key facts verified by these tests:
 - The server accepts **all** KMIP protocol versions (1.0, 1.3, 1.4, 2.1) for backward compatibility.
 - The Swagger UI JS/CSS are served locally from the KMS server (no external CDN dependency).
 - The CSP enforces `default-src 'none'` with `'self'` allowed and `frame-ancestors 'none'` for clickjacking protection.
+
+## Authentication suites (separate Playwright configs)
+
+These suites need a UI built without `VITE_DEV_MODE` and a dedicated server stack, so they
+live outside `tests/e2e/` and have their own Playwright config and mise task:
+
+| Suite             | Config                      | Task                    | What it covers                                                                                                                        |
+| ----------------- | --------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/e2e-auth/` | `playwright.auth.config.ts` | `mise run test:ui-auth` | `auth-verifier-login`: real Auth Verifier login; `saml-login`: mocked UI contract of the SAML button (`/ui/login_saml`, `/ui/whoami`) |
+| `tests/e2e-saml/` | `playwright.saml.config.ts` | `mise run test:ui-saml` | `saml-sso`: real SAML 2.0 round trip (KMS → Auth Verifier SP → Keycloak IdP → ACS → `_ea_` session cookie → KMS)                      |
+| `tests/e2e-oidc/` | `playwright.oidc.config.ts` | `mise run test:ui-oidc` | `oidc-login`: real OIDC (Auth0) login, no token in the browser, session persistence and logout                                        |

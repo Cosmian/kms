@@ -295,12 +295,12 @@ for PostgreSQL and MySQL-compatible databases. All TLS parameters are configured
 
 PostgreSQL TLS is configured using the standard `libpq`-style query parameters in the connection URL.
 
-| Parameter     | Description                                                                    |
-| ------------- | ------------------------------------------------------------------------------ |
-| `sslmode`     | TLS mode: `disable`, `prefer` (default), `require`, `verify-ca`, `verify-full` |
-| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server                     |
-| `sslcert`     | Path to the client certificate (PEM) for mTLS                                  |
-| `sslkey`      | Path to the client private key (PEM) for mTLS                                  |
+| Parameter     | Description                                                                             |
+| ------------- | --------------------------------------------------------------------------------------- |
+| `sslmode`     | TLS mode: `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, `verify-full` |
+| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server                              |
+| `sslcert`     | Path to the client certificate (PEM) for mTLS                                           |
+| `sslkey`      | Path to the client private key (PEM) for mTLS                                           |
 
 **Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
 
@@ -338,11 +338,20 @@ PostgreSQL TLS is configured using the standard `libpq`-style query parameters i
 
 !!! note "sslmode behaviour"
     - `disable` – no TLS at all.
-    - `prefer` (default) / `require` – TLS is used but the server certificate is **not** verified.
-    - `verify-ca` – the server certificate is verified against the CA but the hostname is **not** checked.
+    - `allow` / `prefer` (default) – TLS is used if the server offers it, otherwise the connection
+      silently falls back to plaintext. The server certificate is **not** verified.
+    - `require` – the connection fails if the server does not support TLS. The server certificate
+      is **not** verified, unless `sslrootcert` is also set, in which case it is verified against
+      that CA (the hostname is still **not** checked).
+    - `verify-ca` – the server certificate is verified against the `sslrootcert` CA but the hostname
+      is **not** checked. `sslrootcert` is mandatory: as with `libpq`, the KMS refuses to start
+      with `verify-ca` and no `sslrootcert`.
     - `verify-full` – the server certificate is verified against the CA **and** the hostname must match.
+      This is the recommended mode for production.
 
-    All certificates must be in **PEM** format.
+    Any other `sslmode` value is rejected at startup. When `sslrootcert` is set, only that CA is
+    trusted (the system CA store is not consulted); `verify-full` without `sslrootcert` verifies
+    against the system CA store. All certificates must be in **PEM** format.
 
 ### MySQL / MariaDB TLS / mTLS
 

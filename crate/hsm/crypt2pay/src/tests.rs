@@ -5,10 +5,10 @@
 //! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features crypt2pay -- tests::test_hsm_crypt2pay_all
 //! ```
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest,
+    HError, HResult, RsaOaepDigest, SlotManager,
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -26,9 +26,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
             Some(user_password),
         )]),
         slot_id_for_tests: SLOT_ID,
-        rsa_oaep_digest: Some(RsaOaepDigest::SHA256),
         threads: 4,
-        supports_rsa_wrap: true,
     })
 }
 
@@ -43,6 +41,18 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_all() -> HResult<()> {
+    crypt2pay_all(shared::aes_gcm_encrypt)
+}
+
+// Deliberately not named `test_hsm_crypt2pay*`: the hardware task selects that substring, and its
+// FIPS expectations (GCM succeeds) contradict the simulator's (no HSM-generated IV).
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and the Crypt2pay simulator"]
+fn test_crypt2pay_simulator_all() -> HResult<()> {
+    crypt2pay_all(simulator_aes_gcm_encrypt)
+}
+
+fn crypt2pay_all(aes_gcm_check: fn(&Arc<SlotManager>) -> HResult<()>) -> HResult<()> {
     // Use a single BaseHsm for the entire test to prevent repeated C_Initialize/C_Finalize
     // cycles. Some PKCS#11 native libraries are not safely re-initializable within the same
     // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
@@ -52,22 +62,57 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     let slot = shared::get_slot::<Crypt2payCapabilityProvider>(&hsm, &cfg)?;
     shared::get_mechanisms_and_hashes(&slot)?;
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
-    shared::destroy_all(&slot)?;
+    let before = shared::object_handles(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
+    shared::generate_ec_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
-    shared::aes_gcm_encrypt(&slot)?;
+    aes_gcm_check(&slot)?;
+    shared::aes_cbc_encrypt(&slot)?;
+    shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)?;
+    ec_signatures(&slot)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
+    shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
-    shared::destroy_all(&slot)?;
+    shared::destroy_created_since(&slot, &before)?;
     Ok(())
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn simulator_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
+    let Err(error) = shared::aes_gcm_encrypt(slot) else {
+        return Err(HError::Default(
+            "The simulator accepted AES-GCM without generating an IV in FIPS mode".to_owned(),
+        ));
+    };
+    if !error.to_string().contains("did not generate an AES-GCM IV") {
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+fn simulator_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
+    shared::aes_gcm_encrypt(slot)
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn ec_signatures(slot: &Arc<SlotManager>) -> HResult<()> {
+    shared::ecdsa_sign_all_curves_and_hashes(slot)
+}
+
+#[cfg(feature = "non-fips")]
+fn ec_signatures(slot: &Arc<SlotManager>) -> HResult<()> {
+    shared::ecdsa_sign_all_curves_and_hashes(slot)?;
+    shared::eddsa_sign_all_curves(slot)
 }
 
 #[test]
@@ -102,11 +147,26 @@ fn test_hsm_crypt2pay_generate_aes_key() -> HResult<()> {
     shared::generate_aes_key(&slot)
 }
 
+/// Prove real-C2P wrapped export yields usable AES bytes, without requiring clear `CKA_VALUE`.
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and a real Crypt2pay HSM"]
+fn test_hsm_crypt2pay_exportable_aes_key() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::export_aes_key_bytes(&slot)
+}
+
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_generate_rsa_keypair() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::generate_rsa_keypair(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_generate_ec_keypair() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::generate_ec_keypair(&slot)
 }
 
 #[test]
@@ -139,6 +199,20 @@ fn test_hsm_crypt2pay_aes_gcm_encrypt() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_aes_cbc_encrypt() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::aes_cbc_encrypt(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_aes_cbc_multi_round_encrypt() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::aes_cbc_multi_round(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_rsa_pkcs_v15_sign() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::rsa_pkcs_v15_sign(&slot)
@@ -160,9 +234,38 @@ fn test_hsm_crypt2pay_rsa_sign_all_algorithms() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_rsa_pss_sign_all_algorithms() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::rsa_pss_sign_all_algorithms(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::ecdsa_sign_all_curves_and_hashes(&slot)
+}
+
+#[cfg(feature = "non-fips")]
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_eddsa_sign_all_curves() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::eddsa_sign_all_curves(&slot)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
+}
+
+#[test]
+#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
+fn test_hsm_crypt2pay_concurrent_sign_does_not_degrade() -> HResult<()> {
+    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
+    shared::concurrent_sign_does_not_degrade(&slot)
 }
 
 #[test]
@@ -189,7 +292,21 @@ fn test_hsm_crypt2pay_search_incompatible_key() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_destroy_all() -> HResult<()> {
+fn test_hsm_crypt2pay_zz_cleanup_test_objects() -> HResult<()> {
+    // The serial prefix runner sorts this last, after standalone tests have created their keys.
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::destroy_all(&slot)
+    let session = slot.open_session(true)?;
+    let mut before = shared::object_handles(&slot)?;
+    before.retain(|handle| {
+        !matches!(session.get_object_id(*handle),
+            Ok(Some(id)) if id.starts_with(shared::TEST_OBJECT_ID_PREFIX.as_bytes()))
+    });
+    shared::generate_aes_key(&slot)?;
+    shared::destroy_created_since(&slot, &before)?;
+    if shared::object_handles(&slot)? != before {
+        return Err(HError::Default(
+            "Cleanup must remove test-created objects and preserve non-test objects".to_owned(),
+        ));
+    }
+    Ok(())
 }

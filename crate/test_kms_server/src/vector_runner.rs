@@ -111,6 +111,10 @@ pub struct TestManifest {
     /// Used for HSM tests that require `HSM_SLOT_ID` to be set by the CI script.
     #[serde(default)]
     pub requires_env: Vec<String>,
+    /// HSM models this vector applies to.
+    /// If non-empty and `HSM_MODEL` is set to a model not in this list, the vector is skipped.
+    #[serde(default)]
+    pub requires_hsm_models: Vec<String>,
     /// Database backends this vector should be tested against.
     ///
     /// Defaults to `["sqlite"]`. When `KMS_TEST_BACKENDS` env var is set
@@ -245,7 +249,10 @@ pub struct TestStep {
     pub assert_error_contains: Option<String>,
     /// Values to capture from the response for use in subsequent steps.
     /// Keys are capture variable names (used as `{{name}}` in later request files);
-    /// values are the TTLV tag name whose leaf value should be captured.
+    /// values are the TTLV tag name whose leaf value should be captured. A tag may be
+    /// suffixed with `:kem_shared_secret` or `:kem_encapsulation` to capture one part of the
+    /// packed `(shared secret, encapsulation)` `Data` of a KEM `Encrypt` response, e.g.
+    /// `ciphertext = "Data:kem_encapsulation"`.
     #[serde(default)]
     pub capture: HashMap<String, String>,
     /// When `true`, the request JSON file contains a complete `RequestMessage` envelope
@@ -713,16 +720,65 @@ fn capture_values(
     captures: &mut HashMap<String, String>,
     step_operation: &str,
 ) -> Result<(), KmsClientError> {
-    for (var_name, tag) in capture_rules {
-        let value = find_field_in_json(response, tag).ok_or_else(|| {
+    for (var_name, rule) in capture_rules {
+        let (tag, kem_part) = rule
+            .split_once(':')
+            .map_or((rule.as_str(), None), |(tag, part)| (tag, Some(part)));
+        let mut value = find_field_in_json(response, tag).ok_or_else(|| {
             KmsClientError::UnexpectedError(format!(
                 "Step '{step_operation}': cannot capture '{var_name}': \
                  tag '{tag}' not found in response"
             ))
         })?;
+        if let Some(part) = kem_part {
+            value = kem_packed_part(&value, part).ok_or_else(|| {
+                KmsClientError::UnexpectedError(format!(
+                    "Step '{step_operation}': cannot capture '{var_name}': '{tag}' is not a \
+                     packed (shared secret, encapsulation) tuple, or '{part}' is not \
+                     kem_shared_secret/kem_encapsulation"
+                ))
+            })?;
+        }
         captures.insert(var_name.clone(), value);
     }
     Ok(())
+}
+
+/// Read one LEB128 length-prefixed byte string; returns it and the remaining bytes.
+fn read_length_prefixed(data: &[u8]) -> Option<(&[u8], &[u8])> {
+    let mut len = 0_usize;
+    let mut used = 0_usize;
+    for shift in (0..35).step_by(7) {
+        let byte = *data.get(used)?;
+        used += 1;
+        len |= usize::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            let end = used.checked_add(len)?;
+            return Some((data.get(used..end)?, data.get(end..)?));
+        }
+    }
+    None
+}
+
+/// Split the hex `Data` of a KEM `Encrypt` response, a serialized `(shared secret,
+/// encapsulation)` tuple, and return the hex of the requested part in the same letter case.
+fn kem_packed_part(hex_data: &str, part: &str) -> Option<String> {
+    let bytes = hex::decode(hex_data).ok()?;
+    let (shared_secret, rest) = read_length_prefixed(&bytes)?;
+    let (encapsulation, rest) = read_length_prefixed(rest)?;
+    if !rest.is_empty() {
+        return None;
+    }
+    let chosen = match part {
+        "kem_shared_secret" => shared_secret,
+        "kem_encapsulation" => encapsulation,
+        _ => return None,
+    };
+    Some(if hex_data.bytes().any(|b| b.is_ascii_lowercase()) {
+        hex::encode(chosen)
+    } else {
+        hex::encode_upper(chosen)
+    })
 }
 
 /// Resolve a path relative to the repository root (two levels up from `CARGO_MANIFEST_DIR`).
@@ -893,19 +949,31 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
         }
     }
 
+    // Check required HSM models if specified
+    if !manifest.requires_hsm_models.is_empty() {
+        let active_model = std::env::var("HSM_MODEL").unwrap_or_else(|_| "softhsm2".to_owned());
+        if !manifest
+            .requires_hsm_models
+            .iter()
+            .any(|m| m == &active_model)
+        {
+            eprintln!(
+                "SKIP vector '{}': active HSM model '{active_model}' not in requires_hsm_models {:?}",
+                manifest.name, manifest.requires_hsm_models
+            );
+            return Ok(());
+        }
+    }
     // If server_type is set, use a dedicated server instead of the backend-driven ones
     if let Some(server_type) = &manifest.server_type {
         match server_type.as_str() {
             "hsm_kek" => {
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 let context = ONCE_VECTOR_HSM_KEK
                     .get_or_try_init(|| async {
-                        crate::start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
-                            .await
+                        crate::start_default_test_kms_server_with_hsm_and_kek_for_vectors().await
                     })
                     .await?;
-                // Serialise PKCS#11 access: SoftHSM2 state is not safe under concurrent
-                // access on the same slot (CKR_OBJECT_HANDLE_INVALID races).
-                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek'",
                     manifest.name
@@ -913,13 +981,13 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                 return execute_steps(context, &manifest, &vector_path).await;
             }
             "hsm_kek_uncreated" => {
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 let context = ONCE_VECTOR_HSM_KEK_UNCREATED
                     .get_or_try_init(|| async {
-                        crate::start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+                        crate::start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
                             .await
                     })
                     .await?;
-                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek_uncreated'",
                     manifest.name
@@ -927,13 +995,12 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                 return execute_steps(context, &manifest, &vector_path).await;
             }
             "hsm" => {
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 let context = ONCE_VECTOR_HSM
                     .get_or_try_init(|| async {
-                        crate::start_default_test_kms_server_with_softhsm2_for_vectors().await
+                        crate::start_default_test_kms_server_with_hsm_for_vectors().await
                     })
                     .await?;
-                // Serialise PKCS#11 access: all HSM server types share the same slot.
-                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 // Purge stale `vec_*` objects from previous test runs exactly once,
                 // while the slot mutex is held (prevents deleting keys that an
                 // `hsm_kek` test just created on the shared slot).
@@ -1651,6 +1718,32 @@ async fn execute_steps(
 )]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_kem_packed_part() {
+        // 32-byte secret, then a 300-byte encapsulation with a two-byte LEB128 length (0xAC 0x02)
+        let mut packed = vec![32_u8];
+        packed.extend([0xAA; 32]);
+        packed.extend([0xAC, 0x02]);
+        packed.extend([0xBB; 300]);
+        let hex_data = hex::encode_upper(&packed);
+        assert_eq!(
+            kem_packed_part(&hex_data, "kem_shared_secret").unwrap(),
+            "AA".repeat(32)
+        );
+        assert_eq!(
+            kem_packed_part(&hex_data, "kem_encapsulation").unwrap(),
+            "BB".repeat(300)
+        );
+        assert_eq!(
+            kem_packed_part(&hex::encode(&packed), "kem_shared_secret").unwrap(),
+            "aa".repeat(32)
+        );
+        // unknown part, truncated and trailing data are refused
+        assert!(kem_packed_part(&hex_data, "other").is_none());
+        assert!(kem_packed_part(&hex_data[..hex_data.len() - 2], "kem_encapsulation").is_none());
+        assert!(kem_packed_part(&format!("{hex_data}00"), "kem_encapsulation").is_none());
+    }
 
     #[test]
     fn test_find_field_in_json() {
@@ -3853,6 +3946,12 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_neg_set_attribute_readonly_initial_date() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/readonly_initial_date").await
+    }
+
+    #[tokio::test]
     async fn test_neg_hsm_rotate_offset_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/set_attribute/hsm_rotate_offset_rejected").await
@@ -4650,6 +4749,7 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    #[cfg(feature = "non-fips")]
     async fn test_vec_hsm_resident_rsa2048_encrypt_oaep_sha1() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha1").await
@@ -4670,6 +4770,7 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    #[cfg(feature = "non-fips")]
     async fn test_vec_hsm_resident_rsa2048_sign_sha1() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha1").await
@@ -4703,21 +4804,29 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p256_rejected() -> Result<(), KmsClientError> {
+    async fn test_vec_hsm_resident_ec_p256_created() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p256_rejected").await
+        run_test_vector("test_data/vectors/hsm/resident_ec_p256_created").await
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_ec_p384_rejected() -> Result<(), KmsClientError> {
+    async fn test_vec_hsm_resident_ec_p384_created() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ec_p384_rejected").await
+        run_test_vector("test_data/vectors/hsm/resident_ec_p384_created").await
     }
 
     #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
     async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "non-fips")]
+    async fn test_vec_hsm_resident_ed25519_created() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ed25519_created").await
     }
 
     #[tokio::test]

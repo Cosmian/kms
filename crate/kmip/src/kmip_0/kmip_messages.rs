@@ -260,7 +260,10 @@ pub struct RequestMessageHeader {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_order_option: Option<bool>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::ttlv::date_time::serialize_option"
+    )]
     pub time_stamp: Option<OffsetDateTime>,
 
     /// This field contains the number of Batch Items in a message and is REQUIRED.
@@ -499,6 +502,7 @@ pub struct ResponseMessageHeader {
     pub protocol_version: ProtocolVersion,
 
     /// The time stamp when the response was created
+    #[serde(serialize_with = "crate::ttlv::date_time::serialize")]
     pub time_stamp: OffsetDateTime,
 
     /// The nonce provided by the server if the operation is asynchronous

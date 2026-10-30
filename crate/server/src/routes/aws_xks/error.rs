@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::fmt::{Display, Formatter};
 
 use actix_web::{
@@ -12,8 +11,12 @@ use actix_web::{
     // middleware::ErrorHandlerResponse,
     // dev::ServiceResponse, error::JsonPayloadError, http, middleware::ErrorHandlerResponse,
 };
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason;
 use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
+use tracing::info;
+
+use crate::error::KmsError;
 
 /// Error Name for AWS XKS Error replies
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -147,6 +150,49 @@ impl From<XksErrorReply> for HttpResponse {
 impl ResponseError for XksErrorReply {
     fn error_response(&self) -> HttpResponse {
         HttpResponse::from(self.clone())
+    }
+}
+
+/// Map a KMS error returned by an XKS encrypt/decrypt operation to its XKS error reply.
+///
+/// `operation` (e.g. `"Encrypt"`) only labels the log line emitted for internal errors.
+pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorReply {
+    let (error_name, msg) = match e {
+        KmsError::Unauthorized(msg)
+        | KmsError::Kmip21Error(ErrorReason::Permission_Denied, msg) => {
+            (XksErrorName::InvalidKeyUsageException, msg)
+        }
+        KmsError::ItemNotFound(msg) | KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg) => {
+            (XksErrorName::KeyNotFoundException, msg)
+        }
+        // Key state errors: key is deactivated, lifecycle boundary violated, or usage denied.
+        // Must be mapped to InvalidStateException (not left as HTTP 422 text/html) so that
+        // AWS KMS can distinguish key-state failures from internal errors.
+        KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, msg) => {
+            (XksErrorName::InvalidStateException, msg)
+        }
+        // Usage-limit and permission errors are merged into the InvalidKeyUsageException arm above
+        // Unsupported algorithm / operation
+        KmsError::NotSupported(msg)
+        | KmsError::UnsupportedAlgorithm(msg)
+        | KmsError::Kmip21Error(ErrorReason::Operation_Not_Supported, msg) => {
+            (XksErrorName::UnsupportedOperationException, msg)
+        }
+        // Validation / bad request errors (cryptographic errors, invalid requests, and all
+        // remaining KMIP 2.1 error reasons not explicitly handled above)
+        KmsError::CryptographicError(msg)
+        | KmsError::InvalidRequest(msg)
+        | KmsError::Kmip21Error(_, msg) => (XksErrorName::ValidationException, msg),
+        // Everything else is an internal server error — return proper XKS JSON so AWS KMS
+        // can distinguish it from InvalidStateException instead of receiving text/html.
+        e => {
+            info!("XKS {operation} internal error: {:?}", e);
+            (XksErrorName::InternalException, e.to_string())
+        }
+    };
+    XksErrorReply {
+        errorName: error_name,
+        errorMessage: Some(msg),
     }
 }
 

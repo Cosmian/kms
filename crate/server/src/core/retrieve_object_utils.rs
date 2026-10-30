@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -31,13 +33,18 @@ pub(crate) async fn retrieve_object_for_operation(
     operation_type: KmipOperation,
     kms: &KMS,
     user: &UserId,
-) -> KResult<ObjectWithMetadata> {
+) -> KResult<Arc<ObjectWithMetadata>> {
     trace!(
         "object_handle: {object_handle}, user: {user}, \
          operation_type: {operation_type:?}",
     );
 
-    for owm in kms.database.retrieve_objects(object_handle).await?.values() {
+    for mut owm in kms
+        .database
+        .retrieve_objects(object_handle)
+        .await?
+        .into_values()
+    {
         trace!("Checking key with ID: {}", owm.id());
         let state = owm.state();
         // Allow retrieval based on state and operation semantics.
@@ -85,12 +92,11 @@ pub(crate) async fn retrieve_object_for_operation(
             continue;
         }
 
-        if user_has_permission(user, Some(owm), &operation_type, kms).await? {
+        if user_has_permission(user, Some(owm.as_ref()), &operation_type, kms).await? {
             trace!(
                 "User {user} has permission for operation {operation_type:?} on object {}",
                 owm.id()
             );
-            let mut owm = owm.to_owned();
             // Compute effective state with lifecycle precedence:
             // - If the DB marks the object as Destroyed / Destroyed_Compromised / Compromised / Deactivated,
             //   NEVER override it with attribute-level values.
@@ -105,10 +111,18 @@ pub(crate) async fn retrieve_object_for_operation(
                 | State::Active => state, // never downgrade Active to PreActive
                 State::PreActive => attr_state.unwrap_or(State::PreActive),
             };
-            // Synchronize both external attributes and embedded object attributes to effective state
-            owm.attributes_mut().state = Some(effective_state);
-            if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
-                attributes.state = Some(effective_state);
+            // Synchronize both external attributes and embedded object attributes to effective state.
+            // Only copy-on-write when something actually differs (cached objects are shared).
+            let embedded_differs = owm
+                .object()
+                .attributes()
+                .is_ok_and(|attributes| attributes.state != Some(effective_state));
+            if owm.attributes().state != Some(effective_state) || embedded_differs {
+                let owm = Arc::make_mut(&mut owm);
+                owm.attributes_mut().state = Some(effective_state);
+                if let Ok(attributes) = owm.object_mut().attributes_mut() {
+                    attributes.state = Some(effective_state);
+                }
             }
 
             // KMIP 2.1 Auto-activation: PreActive → Active when ActivationDate has passed (§4.57 transition 4)
@@ -129,8 +143,9 @@ pub(crate) async fn retrieve_object_for_operation(
                             activation_date,
                             now
                         );
-                        owm.attributes_mut().state = Some(State::Active);
-                        if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                        let owm_mut = Arc::make_mut(&mut owm);
+                        owm_mut.attributes_mut().state = Some(State::Active);
+                        if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
                             attributes.state = Some(State::Active);
                         }
                         if let Err(e) = kms.database.update_state(owm.id(), State::Active).await {
@@ -155,8 +170,9 @@ pub(crate) async fn retrieve_object_for_operation(
                                     deactivation_date,
                                     now
                                 );
-                                owm.attributes_mut().state = Some(State::Deactivated);
-                                if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                                let owm_mut = Arc::make_mut(&mut owm);
+                                owm_mut.attributes_mut().state = Some(State::Deactivated);
+                                if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
                                     attributes.state = Some(State::Deactivated);
                                 }
                                 if let Err(e) = kms
@@ -194,8 +210,9 @@ pub(crate) async fn retrieve_object_for_operation(
                             deactivation_date,
                             now
                         );
-                        owm.attributes_mut().state = Some(State::Deactivated);
-                        if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                        let owm_mut = Arc::make_mut(&mut owm);
+                        owm_mut.attributes_mut().state = Some(State::Deactivated);
+                        if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
                             attributes.state = Some(State::Deactivated);
                         }
                         if let Err(e) = kms
@@ -237,7 +254,7 @@ pub(crate) async fn retrieve_object_for_operation(
                     {
                         let unwrapped_object =
                             Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
-                        owm.set_object(unwrapped_object);
+                        Arc::make_mut(&mut owm).set_object(unwrapped_object);
                     }
                 }
             }

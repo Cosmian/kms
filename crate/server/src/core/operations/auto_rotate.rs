@@ -97,7 +97,7 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
 
     // Retrieve the object to determine its type, algorithm, and rotation policy.
     // We capture `old_interval` here so the replacement can be re-armed after rotation.
-    let owm = match kms.database.retrieve_object(uid).await {
+    let owm = match kms.database.retrieve_object_arc(uid).await {
         Ok(Some(owm)) => owm,
         Ok(None) => {
             warn!("[auto-rotate] Key {uid} not found; skipping");
@@ -223,12 +223,12 @@ async fn rearm_rotation_policy(kms: &KMS, handle: ObjectHandle<'_>, interval: i6
         }
     };
 
-    let mut new_attrs = owm.attributes().clone();
+    let (_id, object, mut new_attrs) = owm.into_parts();
     new_attrs.rotate_automatic = Some(true);
     new_attrs.rotate_interval = Some(interval);
 
     kms.database
-        .update_object(new_uid, owm.object(), &new_attrs, None)
+        .update_object(new_uid, &object, &new_attrs, None)
         .await
         .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))
 }
@@ -268,7 +268,7 @@ pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<St
             continue;
         }
 
-        let Ok(Some(owm)) = kms.database.retrieve_object(uid).await else {
+        let Ok(Some(owm)) = kms.database.retrieve_object_arc(uid).await else {
             continue;
         };
 
@@ -338,49 +338,39 @@ fn days_until_next_rotation(
 #[cfg(test)]
 #[expect(clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::{collections::HashSet, sync::Arc};
+    use std::collections::HashSet;
 
-    use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_attributes::{Attribute, Attributes},
-            kmip_operations::SetAttribute,
-            kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
-            requests::create_symmetric_key_kmip_object,
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                kmip_attributes::{Attribute, Attributes},
+                kmip_operations::SetAttribute,
+                kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+                requests::create_symmetric_key_kmip_object,
+            },
         },
+        cosmian_kms_crypto::crypto::KmsRng,
     };
-    use openssl::rand::rand_bytes;
 
     use super::days_until_next_rotation;
     use crate::{
-        config::ServerParams,
-        core::{
-            KMS,
-            operations::{
-                auto_rotate::{dispatch_renewal_warnings, run_auto_rotation},
-                set_attribute,
-            },
+        core::operations::{
+            auto_rotate::{dispatch_renewal_warnings, run_auto_rotation},
+            set_attribute,
         },
         middlewares::UserId,
         result::KResult,
-        tests::test_utils::https_clap_config,
+        tests::test_utils::test_kms,
     };
 
     // ── Helper ────────────────────────────────────────────────────────────────
-
-    async fn test_kms() -> KResult<Arc<KMS>> {
-        crate::openssl_providers::init_openssl_providers_for_tests();
-        let cfg = https_clap_config();
-        Ok(Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(cfg)?)).await?,
-        ))
-    }
 
     fn make_aes256_key()
     -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object {
         let mut bytes = [0_u8; 32];
         #[expect(clippy::unwrap_used)]
-        rand_bytes(&mut bytes).unwrap();
+        KmsRng::new().fill_bytes(&mut bytes).unwrap();
         #[expect(clippy::unwrap_used)]
         create_symmetric_key_kmip_object(
             "x-vendor",
@@ -556,7 +546,7 @@ mod tests {
         // Original key must be Deactivated
         let owm = kms
             .database
-            .retrieve_object(&uid)
+            .retrieve_object_arc(&uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("original key must still exist after rotation");
@@ -624,7 +614,7 @@ mod tests {
 
             let owm = kms
                 .database
-                .retrieve_object(&hsm_uid)
+                .retrieve_object_arc(&hsm_uid)
                 .await
                 .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
                 .expect("HSM key must still exist");
@@ -690,20 +680,20 @@ mod tests {
 
         // Now simulate what a user would do: call SetAttribute RotateInterval.
         // The fix auto-sets rotate_automatic = true when rotate_automatic is absent.
-        set_attribute(
+        Box::pin(set_attribute(
             &kms,
             SetAttribute {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::RotateInterval(3600),
             },
             &owner,
-        )
+        ))
         .await?;
 
         // rotate_automatic must now be true in the stored attributes.
         let owm = kms
             .database
-            .retrieve_object(&uid)
+            .retrieve_object_arc(&uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("key must exist after SetAttribute");
@@ -728,7 +718,7 @@ mod tests {
         run_auto_rotation(&kms).await;
         let rotated = kms
             .database
-            .retrieve_object(&uid)
+            .retrieve_object_arc(&uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("key must still exist after rotation");
@@ -781,7 +771,7 @@ mod tests {
 
         let cert_owm = kms
             .database
-            .retrieve_object(&cert_id)
+            .retrieve_object_arc(&cert_id)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("certificate must exist after Certify");
@@ -793,14 +783,14 @@ mod tests {
 
         // Now enable auto-rotation via SetAttribute RotateInterval
         // (which also auto-sets rotate_automatic = true).
-        set_attribute(
+        Box::pin(set_attribute(
             &kms,
             SetAttribute {
                 unique_identifier: Some(UniqueIdentifier::TextString(cert_id.clone())),
                 new_attribute: Attribute::RotateInterval(3600),
             },
             &owner,
-        )
+        ))
         .await?;
 
         // The cert must appear in find_due_for_rotation at now + 2h
@@ -921,7 +911,7 @@ mod tests {
         // Activate call needed. The signing private key is ready for recertify().
         let cert_owm = kms
             .database
-            .retrieve_object(&cert_id)
+            .retrieve_object_arc(&cert_id)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("certificate must exist after Certify");
@@ -954,7 +944,7 @@ mod tests {
         // Step 5: The original certificate must be Deactivated.
         let updated_owm = kms
             .database
-            .retrieve_object(&cert_id)
+            .retrieve_object_arc(&cert_id)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("original certificate must still exist after rotation");
@@ -1019,7 +1009,7 @@ mod tests {
         // Retrieve the original key and follow ReplacementObjectLink to the new key.
         let old_owm = kms
             .database
-            .retrieve_object(&uid)
+            .retrieve_object_arc(&uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("original key must exist");
@@ -1045,7 +1035,7 @@ mod tests {
         // The replacement key MUST have the same rotation policy re-armed.
         let new_owm = kms
             .database
-            .retrieve_object(&new_uid)
+            .retrieve_object_arc(&new_uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("replacement key must exist");
@@ -1117,7 +1107,7 @@ mod tests {
         // Manually advance to within 1 day by updating initial_date.
         let owm = kms
             .database
-            .retrieve_object(&uid)
+            .retrieve_object_arc(&uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("key must exist");
@@ -1181,7 +1171,7 @@ mod tests {
         // Follow PrivateKeyLink to get the private key UID.
         let cert_owm = kms
             .database
-            .retrieve_object(&cert_id)
+            .retrieve_object_arc(&cert_id)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("certificate must exist after Certify");
@@ -1199,7 +1189,7 @@ mod tests {
         // the first rotation deadline without any manual override.
         let sk_owm = kms
             .database
-            .retrieve_object(&sk_uid)
+            .retrieve_object_arc(&sk_uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("private key must exist after Certify");
@@ -1212,14 +1202,14 @@ mod tests {
 
         // Set RotateInterval on the private key — this implicitly enables auto-rotation
         // (rotate_automatic = true) and sets rotate_name.
-        set_attribute(
+        Box::pin(set_attribute(
             &kms,
             SetAttribute {
                 unique_identifier: Some(UniqueIdentifier::TextString(sk_uid.clone())),
                 new_attribute: Attribute::RotateInterval(3600),
             },
             &owner,
-        )
+        ))
         .await?;
 
         // Confirm the key appears in find_due_for_rotation at now + 2 h
@@ -1241,7 +1231,7 @@ mod tests {
         // test_auto_rotation_rotates_due_certificate and similar tests.
         let sk_owm2 = kms
             .database
-            .retrieve_object(&sk_uid)
+            .retrieve_object_arc(&sk_uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("private key must still exist");
@@ -1259,7 +1249,7 @@ mod tests {
         // The original private key must be Deactivated after rotation.
         let updated_sk = kms
             .database
-            .retrieve_object(&sk_uid)
+            .retrieve_object_arc(&sk_uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("private key must still exist after auto-rotation");
@@ -1312,7 +1302,7 @@ mod tests {
         // Enroll the certificate in a keyset and make it immediately overdue.
         let owm = kms
             .database
-            .retrieve_object(&cert_id)
+            .retrieve_object_arc(&cert_id)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("certificate must exist after Certify");
@@ -1331,7 +1321,7 @@ mod tests {
 
         let gen0_owm = kms
             .database
-            .retrieve_object(&cert_id)
+            .retrieve_object_arc(&cert_id)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("gen-0 cert must still exist after rotation");
@@ -1359,7 +1349,7 @@ mod tests {
         // Verify gen-1 attributes.
         let gen1_owm = kms
             .database
-            .retrieve_object(&gen1_uid)
+            .retrieve_object_arc(&gen1_uid)
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
             .expect("gen-1 cert must exist");

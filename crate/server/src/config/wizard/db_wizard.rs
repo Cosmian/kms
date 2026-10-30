@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 
+use super::PromptResultExt;
 use crate::{
     config::{DatabaseType, MainDBConfig},
     error::KmsError,
@@ -25,7 +26,7 @@ pub fn configure_db() -> KResult<MainDBConfig> {
         .items(&db_variants.iter().map(|v| v.as_str()).collect::<Vec<_>>())
         .default(0)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let selected_db = db_variants
         .get(db_idx)
@@ -43,14 +44,14 @@ pub fn configure_db() -> KResult<MainDBConfig> {
             .with_prompt("Database URL")
             .with_initial_text(default)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         Some(url)
     } else if selected == "redis-findex" {
         let url: String = Input::with_theme(&theme)
             .with_prompt("Redis database URL")
             .with_initial_text("redis://localhost:6379")
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         Some(url)
     } else {
         None
@@ -61,7 +62,7 @@ pub fn configure_db() -> KResult<MainDBConfig> {
             .with_prompt("SQLite data directory")
             .default("./sqlite-data".to_owned())
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         let path = PathBuf::from(&p);
         // Create the directory tree so the server can initialise the database.
         std::fs::create_dir_all(&path).map_err(|e| {
@@ -80,7 +81,7 @@ pub fn configure_db() -> KResult<MainDBConfig> {
         let pwd: String = dialoguer::Password::with_theme(&theme)
             .with_prompt("Redis master password")
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         Some(pwd)
     } else {
         None
@@ -90,13 +91,13 @@ pub fn configure_db() -> KResult<MainDBConfig> {
         .with_prompt("⚠  Clear database on start? (DELETES ALL DATA)")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let max_connections_str: String = Input::with_theme(&theme)
         .with_prompt("Max database connections (leave blank for default)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let max_connections: Option<u32> = if max_connections_str.trim().is_empty() {
         None
     } else {
@@ -107,7 +108,7 @@ pub fn configure_db() -> KResult<MainDBConfig> {
         .with_prompt("Unwrapped key cache max age (minutes)")
         .default(15_u64)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     Ok(MainDBConfig {
         database_type,

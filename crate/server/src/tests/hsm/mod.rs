@@ -46,12 +46,22 @@ use crate::{
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
+#[cfg(feature = "non-fips")]
+mod eddsa_sign;
+mod export_key_bytes;
+mod fake_hsm_authz;
+#[cfg(feature = "non-fips")]
+mod hybrid_kem_dek;
 mod issues;
+mod jose_decrypt;
+mod kek_wrap_modes;
 mod multi_hsm;
+mod non_extractable_key_bytes;
 mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
+mod sub_ca;
 mod symmetric_dek;
 pub(crate) mod test_helpers;
 
@@ -64,11 +74,23 @@ async fn test_hsm_all() {
     info!("HSM: find");
     Box::pin(search::test_object_search()).await.unwrap();
 
+    info!("HSM: export_key_bytes");
+    Box::pin(export_key_bytes::test_hsm_export_key_bytes())
+        .await
+        .unwrap();
+    info!("HSM: non_extractable_key_bytes");
+    Box::pin(non_extractable_key_bytes::test_hsm_non_extractable_key_bytes())
+        .await
+        .unwrap();
     info!("HSM: wrapped_symmetric_dek");
     // Box::pin are needed to conform to clippy::large_futures lint
     Box::pin(symmetric_dek::test_wrapped_symmetric_dek())
         .await
         .unwrap();
+    info!("HSM: kek_wrap_modes");
+    Box::pin(kek_wrap_modes::test_hsm_kek_wrap_modes())
+        .await
+        .expect("HSM kek_wrap_modes suite failed");
     info!("HSM: wrapped_secret_data");
     Box::pin(secret_data_dek::test_wrapped_secret_data())
         .await
@@ -79,6 +101,22 @@ async fn test_hsm_all() {
     {
         info!("HSM: wrapped_ec_dek");
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
+        info!("HSM: eddsa_sign");
+        Box::pin(eddsa_sign::test_hsm_eddsa_sign()).await.unwrap();
+        info!("HSM: hybrid_kem_lifecycle");
+        Box::pin(hybrid_kem_dek::test_hybrid_kem_lifecycle())
+            .await
+            .unwrap();
+        info!("HSM: hybrid_kem_ttlv_wrapped_import");
+        Box::pin(hybrid_kem_dek::test_ttlv_wrapped_kem_import())
+            .await
+            .unwrap();
+        info!("HSM: hybrid_kem_client_wrapped_import");
+        Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
+            .await
+            .unwrap();
+        info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
     }
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
@@ -100,8 +138,35 @@ async fn test_hsm_all() {
         .await
         .unwrap();
 
+    info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
+    Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
+
+    info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
+    Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();
+
+    // SoftHSM2 2.6.1 rejects CKM_RSA_PKCS_OAEP with explicit mechanism parameters
+    // (CKR_ARGUMENTS_BAD), so the RSA-OAEP decrypt oracle cannot be exercised there.
+    if get_hsm_model().as_deref() == Some("softhsm2") {
+        info!("HSM: jose_decrypt skipped (SoftHSM2 does not support RSA-OAEP decrypt)");
+    } else {
+        info!("HSM: jose_decrypt");
+        Box::pin(jose_decrypt::test_jose_hsm_decryption())
+            .await
+            .unwrap();
+    }
+}
+
+/// JOSE flow A against the HSM (runs standalone via `mise run test:jose-hsm`).
+#[tokio::test]
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_jose() {
+    log_init(option_env!("RUST_LOG"));
+    Box::pin(jose_decrypt::test_jose_hsm_decryption())
+        .await
+        .unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
@@ -131,6 +196,12 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "proteccio".to_owned();
         } else if unwrapped_model == "crypt2pay" {
             clap_config.hsm.hsm_model = "crypt2pay".to_owned();
+        } else if unwrapped_model == "kryoptic" {
+            clap_config.hsm.hsm_model = "kryoptic".to_owned();
+        } else if unwrapped_model == "aws_cloudhsm" {
+            clap_config.hsm.hsm_model = "aws_cloudhsm".to_owned();
+        } else if unwrapped_model == "azure_cloud_hsm" {
+            clap_config.hsm.hsm_model = "azure_cloud_hsm".to_owned();
         } else if unwrapped_model == "other" {
             clap_config.hsm.hsm_model = "other".to_owned();
         } else {

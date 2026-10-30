@@ -27,13 +27,13 @@ use pkcs11_sys::{
     CK_ATTRIBUTE, CK_ATTRIBUTE_PTR, CK_ATTRIBUTE_TYPE, CK_BBOOL, CK_CERTIFICATE_CATEGORY,
     CK_CERTIFICATE_TYPE, CK_FALSE, CK_KEY_TYPE, CK_OBJECT_CLASS, CK_PROFILE_ID, CK_TRUE, CK_ULONG,
     CKA_ALWAYS_AUTHENTICATE, CKA_ALWAYS_SENSITIVE, CKA_APPLICATION, CKA_CERTIFICATE_CATEGORY,
-    CKA_CERTIFICATE_TYPE, CKA_CLASS, CKA_COEFFICIENT, CKA_DECRYPT, CKA_EC_PARAMS, CKA_EC_POINT,
-    CKA_ENCRYPT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_ISSUER, CKA_KEY_TYPE,
-    CKA_LABEL, CKA_MODIFIABLE, CKA_MODULUS, CKA_MODULUS_BITS, CKA_NEVER_EXTRACTABLE, CKA_PRIME_1,
-    CKA_PRIME_2, CKA_PRIVATE, CKA_PRIVATE_EXPONENT, CKA_PROFILE_ID, CKA_PUBLIC_EXPONENT,
-    CKA_SENSITIVE, CKA_SERIAL_NUMBER, CKA_SIGN, CKA_SIGN_RECOVER, CKA_SUBJECT, CKA_TOKEN,
-    CKA_TRUSTED, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY, CKA_VERIFY_RECOVER, CKA_WRAP,
-    CKC_X_509,
+    CKA_CERTIFICATE_TYPE, CKA_CLASS, CKA_COEFFICIENT, CKA_DECRYPT, CKA_DERIVE, CKA_EC_PARAMS,
+    CKA_EC_POINT, CKA_ENCRYPT, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_ISSUER,
+    CKA_KEY_TYPE, CKA_LABEL, CKA_MODIFIABLE, CKA_MODULUS, CKA_MODULUS_BITS, CKA_NEVER_EXTRACTABLE,
+    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE, CKA_PRIVATE_EXPONENT, CKA_PROFILE_ID,
+    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SERIAL_NUMBER, CKA_SIGN, CKA_SIGN_RECOVER, CKA_SUBJECT,
+    CKA_TOKEN, CKA_TRUSTED, CKA_UNIQUE_ID, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY,
+    CKA_VERIFY_RECOVER, CKA_WRAP, CKC_X_509,
 };
 use strum_macros::Display;
 
@@ -49,6 +49,12 @@ pub enum AttributeType {
     Class,
     Coefficient,
     Decrypt,
+    /// Whether the key supports `C_DeriveKey`. This module never implements
+    /// `C_DeriveKey` (see `pkcs11.rs::C_DeriveKey`), but `CKA_DERIVE` is a
+    /// standard PKCS#11 attribute that many clients (e.g. `pkcs11-tool
+    /// --keygen`) include in every key-generation template regardless — it
+    /// must be recognized and accepted, not rejected as an unknown attribute.
+    Derive,
     /// DER-encoding of an ANSI X9.62 Parameters value
     EcParams,
     EcPoint,
@@ -77,6 +83,7 @@ pub enum AttributeType {
     Subject,
     Token,
     Trusted,
+    UniqueId,
     Unwrap,
     Value,
     ValueLen,
@@ -98,6 +105,7 @@ impl TryFrom<CK_ATTRIBUTE_TYPE> for AttributeType {
             CKA_CLASS => Ok(Self::Class),
             CKA_COEFFICIENT => Ok(Self::Coefficient),
             CKA_DECRYPT => Ok(Self::Decrypt),
+            CKA_DERIVE => Ok(Self::Derive),
             CKA_EC_PARAMS => Ok(Self::EcParams),
             CKA_EC_POINT => Ok(Self::EcPoint),
             CKA_ENCRYPT => Ok(Self::Encrypt),
@@ -124,6 +132,7 @@ impl TryFrom<CK_ATTRIBUTE_TYPE> for AttributeType {
             CKA_SUBJECT => Ok(Self::Subject),
             CKA_TOKEN => Ok(Self::Token),
             CKA_TRUSTED => Ok(Self::Trusted),
+            CKA_UNIQUE_ID => Ok(Self::UniqueId),
             CKA_UNWRAP => Ok(Self::Unwrap),
             CKA_VALUE => Ok(Self::Value),
             CKA_VALUE_LEN => Ok(Self::ValueLen),
@@ -146,6 +155,8 @@ pub enum Attribute {
     Class(CK_OBJECT_CLASS),
     Coefficient(Vec<u8>),
     Decrypt(bool),
+    /// See `AttributeType::Derive`.
+    Derive(bool),
     /// DER-encoding of an ANSI X9.62 Parameters value
     EcParams(Vec<u8>),
     EcPoint(Vec<u8>),
@@ -174,6 +185,7 @@ pub enum Attribute {
     Subject(Vec<u8>),
     Token(bool),
     Trusted(bool),
+    UniqueId(Vec<u8>),
     Unwrap(bool),
     Value(Vec<u8>),
     ValueLen(CK_ULONG),
@@ -194,6 +206,7 @@ impl Attribute {
             Self::Class(_) => AttributeType::Class,
             Self::Coefficient(_) => AttributeType::Coefficient,
             Self::Decrypt(_) => AttributeType::Decrypt,
+            Self::Derive(_) => AttributeType::Derive,
             Self::EcParams(_) => AttributeType::EcParams,
             Self::EcPoint(_) => AttributeType::EcPoint,
             Self::Encrypt(_) => AttributeType::Encrypt,
@@ -221,6 +234,7 @@ impl Attribute {
             Self::Subject(_) => AttributeType::Subject,
             Self::Token(_) => AttributeType::Token,
             Self::Trusted(_) => AttributeType::Trusted,
+            Self::UniqueId(_) => AttributeType::UniqueId,
             Self::Unwrap(_) => AttributeType::Unwrap,
             Self::Value(_) => AttributeType::Value,
             Self::ValueLen(_) => AttributeType::ValueLen,
@@ -236,6 +250,7 @@ impl Attribute {
             Self::AlwaysAuthenticate(bool)
             | Self::AlwaysSensitive(bool)
             | Self::Decrypt(bool)
+            | Self::Derive(bool)
             | Self::Encrypt(bool)
             | Self::Extractable(bool)
             | Self::NeverExtractable(bool)
@@ -273,6 +288,7 @@ impl Attribute {
             | Self::SerialNumber(bytes)
             | Self::Subject(bytes)
             | Self::Id(bytes)
+            | Self::UniqueId(bytes)
             | Self::Value(bytes)
             | Self::Application(bytes) => bytes.clone(),
             Self::Label(string) => string.as_bytes().to_vec(),
@@ -317,6 +333,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
             }
             AttributeType::Coefficient => Ok(Self::Coefficient(val.to_vec())),
             AttributeType::Decrypt => Ok(Self::Decrypt(try_u8_into_bool(val)?)),
+            AttributeType::Derive => Ok(Self::Derive(try_u8_into_bool(val)?)),
             AttributeType::EcParams => Ok(Self::EcParams(val.to_vec())),
             AttributeType::EcPoint => Ok(Self::EcPoint(val.to_vec())),
             AttributeType::Encrypt => Ok(Self::Encrypt(try_u8_into_bool(val)?)),
@@ -350,6 +367,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
             AttributeType::SignRecover => Ok(Self::SignRecover(try_u8_into_bool(val)?)),
             AttributeType::Token => Ok(Self::Token(try_u8_into_bool(val)?)),
             AttributeType::Trusted => Ok(Self::Trusted(try_u8_into_bool(val)?)),
+            AttributeType::UniqueId => Ok(Self::UniqueId(val.to_vec())),
             AttributeType::Unwrap => Ok(Self::Unwrap(try_u8_into_bool(val)?)),
             AttributeType::Value => Ok(Self::Value(val.to_vec())),
             AttributeType::ValueLen => Ok(Self::ValueLen(CK_ULONG::from_ne_bytes(val.try_into()?))),
@@ -397,6 +415,8 @@ impl Attributes {
 
     get_attribute!(get_label, AttributeType::Label, Label, String);
 
+    get_attribute!(get_id, AttributeType::Id, Id, Vec<u8>);
+
     get_attribute!(get_value, AttributeType::Value, Value, Vec<u8>);
 
     get_attribute!(get_value_len, AttributeType::ValueLen, ValueLen, CK_ULONG);
@@ -443,8 +463,15 @@ impl TryFrom<(CK_ATTRIBUTE_PTR, CK_ULONG)> for Attributes {
     fn try_from(
         (attributes_ptr, attributes_len): (CK_ATTRIBUTE_PTR, CK_ULONG),
     ) -> ModuleResult<Self> {
-        not_null!(attributes_ptr, "Attributes::try_from: attributes_ptr");
         let attributes_usize_len = usize::try_from(attributes_len)?;
+        // A NULL pTemplate with ulCount == 0 is a spec-valid "no filtering
+        // criteria" template (e.g. C_FindObjectsInit(hSession, NULL, 0) means
+        // "match every object") — only require a non-null pointer once the
+        // caller actually claims to be passing attributes.
+        if attributes_usize_len == 0 {
+            return Ok(Self(Vec::new()));
+        }
+        not_null!(attributes_ptr, "Attributes::try_from: attributes_ptr");
         let mut attributes = Vec::with_capacity(attributes_usize_len);
         let slice = unsafe { slice::from_raw_parts(attributes_ptr, attributes_usize_len) };
         for attr in slice {

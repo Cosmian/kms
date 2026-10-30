@@ -9,16 +9,13 @@ use actix_web::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            kmip_operations::Encrypt,
-            kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-        },
+    cosmian_kmip::kmip_2_1::{
+        kmip_operations::Encrypt,
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_256_GCM_IV_LENGTH,
 };
-use openssl::{rand::rand_bytes, sha::Sha256};
+use openssl::sha::Sha256;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 use zeroize::Zeroizing;
@@ -31,7 +28,7 @@ use crate::{
     routes::aws_xks::{
         AWS_XKS_SERVICE_USER,
         encrypt_decrypt::{CdivAlgorithm, EncryptionAlgorithm, RequestMetadata},
-        error::{XksErrorName, XksErrorReply},
+        error::kms_error_to_xks_reply,
     },
 };
 
@@ -198,63 +195,14 @@ pub(crate) async fn encrypt(
         request.requestMetadata.kmsRequestId,
         request.requestMetadata.awsPrincipalArn
     );
-    debug!("encrypt request: {:?}", request.requestMetadata);
+    debug!("encrypt request: {}", request.requestMetadata);
     let kms = kms.into_inner();
     match encrypt_inner(req_http, request, key_id, &kms)
         .await
         .map(Json)
     {
         Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
-        Err(e) => match e {
-            KmsError::Unauthorized(msg)
-            | KmsError::Kmip21Error(ErrorReason::Permission_Denied, msg) => XksErrorReply {
-                errorName: XksErrorName::InvalidKeyUsageException,
-                errorMessage: Some(msg),
-            }
-            .into(),
-            KmsError::ItemNotFound(msg)
-            | KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg) => XksErrorReply {
-                errorName: XksErrorName::KeyNotFoundException,
-                errorMessage: Some(msg),
-            }
-            .into(),
-            // Key state errors: key is deactivated, lifecycle boundary violated, or usage denied.
-            // Must be mapped to InvalidStateException (not left as HTTP 422 text/html) so that
-            // AWS KMS can distinguish key-state failures from internal errors.
-            KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, msg) => XksErrorReply {
-                errorName: XksErrorName::InvalidStateException,
-                errorMessage: Some(msg),
-            }
-            .into(),
-            // Usage-limit and permission errors are merged into the InvalidKeyUsageException arm above
-            // Unsupported algorithm / operation
-            KmsError::NotSupported(msg)
-            | KmsError::UnsupportedAlgorithm(msg)
-            | KmsError::Kmip21Error(ErrorReason::Operation_Not_Supported, msg) => XksErrorReply {
-                errorName: XksErrorName::UnsupportedOperationException,
-                errorMessage: Some(msg),
-            }
-            .into(),
-            // Validation / bad request errors (cryptographic errors, invalid requests, and all
-            // remaining KMIP 2.1 error reasons not explicitly handled above)
-            KmsError::CryptographicError(msg)
-            | KmsError::InvalidRequest(msg)
-            | KmsError::Kmip21Error(_, msg) => XksErrorReply {
-                errorName: XksErrorName::ValidationException,
-                errorMessage: Some(msg),
-            }
-            .into(),
-            // Everything else is an internal server error — return proper XKS JSON so AWS KMS
-            // can distinguish it from InvalidStateException instead of receiving text/html.
-            e => {
-                info!("XKS Encrypt internal error: {:?}", e);
-                XksErrorReply {
-                    errorName: XksErrorName::InternalException,
-                    errorMessage: Some(e.to_string()),
-                }
-                .into()
-            }
-        },
+        Err(e) => kms_error_to_xks_reply(e, "Encrypt").into(),
     }
 }
 
@@ -280,12 +228,22 @@ pub(crate) async fn encrypt_inner(
     // Supplied Nonce or new one.
     let nonce: [u8; AES_256_GCM_IV_LENGTH] = {
         let mut iv = [0; AES_256_GCM_IV_LENGTH];
-        rand_bytes(&mut iv)?;
+        kms.rng.fill_public_bytes(&mut iv)?;
         iv
     };
     let aead = match request.additionalAuthenticatedData {
         None => None,
         Some(b64) => Some(STANDARD.decode(&b64)?),
+    };
+    let cdiv_aead_hasher = match request.ciphertextDataIntegrityValueAlgorithm {
+        Some(CdivAlgorithm::SHA_256) => {
+            let mut hasher = Sha256::new();
+            if let Some(a) = &aead {
+                hasher.update(a);
+            }
+            Some(hasher)
+        }
+        None => None,
     };
     let response = kms
         .encrypt(
@@ -297,7 +255,7 @@ pub(crate) async fn encrypt_inner(
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: aead.clone(),
+                authenticated_encryption_additional_data: aead,
             },
             &user,
         )
@@ -315,22 +273,15 @@ pub(crate) async fn encrypt_inner(
     let tag = response.authenticated_encryption_tag.ok_or_else(|| {
         KmsError::ServerError("Missing AES GCM authenticated encryption tag".to_owned())
     })?;
-    let integrity_hash = match request.ciphertextDataIntegrityValueAlgorithm {
-        None => None,
-        Some(CdivAlgorithm::SHA_256) => {
-            let mut hasher = Sha256::new();
-            if let Some(aead) = &aead {
-                hasher.update(aead);
-            }
-            if let Some(ciphertext_metadata) = &ciphertext_metadata {
-                hasher.update(ciphertext_metadata);
-            }
-            hasher.update(&nonce);
-            hasher.update(&ciphertext);
-            hasher.update(&tag);
-            Some(hasher.finish())
+    let integrity_hash = cdiv_aead_hasher.map(|mut hasher| {
+        if let Some(ciphertext_metadata) = &ciphertext_metadata {
+            hasher.update(ciphertext_metadata);
         }
-    };
+        hasher.update(&nonce);
+        hasher.update(&ciphertext);
+        hasher.update(&tag);
+        hasher.finish()
+    });
     Ok(EncryptResponse {
         ciphertext: STANDARD.encode(ciphertext),
         ciphertextMetadata: ciphertext_metadata.map(|b| STANDARD.encode(&b)),

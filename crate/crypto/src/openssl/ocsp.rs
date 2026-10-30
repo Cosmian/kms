@@ -20,20 +20,25 @@ use std::{
 use cosmian_logger::warn;
 use foreign_types::ForeignTypeRef;
 use openssl::{
+    nid::Nid,
     pkey::{PKeyRef, Private},
     x509::X509Ref,
 };
 use time::OffsetDateTime;
 
 pub use super::crl::CrlReasonCode;
-use super::ocsp_ffi::{
-    self, ASN1_GENERALIZEDTIME_free, ASN1_GENERALIZEDTIME_set, ASN1_INTEGER_to_BN,
-    ASN1_STRING_get0_data, ASN1_STRING_length, BN_bn2hex, BN_free, CRL_REASON_AA_COMPROMISE,
-    CRL_REASON_AFFILIATION_CHANGED, CRL_REASON_CA_COMPROMISE, CRL_REASON_CERTIFICATE_HOLD,
-    CRL_REASON_CESSATION_OF_OPERATION, CRL_REASON_KEY_COMPROMISE, CRL_REASON_PRIVILEGE_WITHDRAWN,
-    CRL_REASON_REMOVE_FROM_CRL, CRL_REASON_SUPERSEDED, CRL_REASON_UNSPECIFIED, OCSP_NONCE_MAX_LEN,
-    OCSP_NONCE_MIN_LEN, OID_OCSP_ARCHIVE_CUTOFF, OID_OCSP_NONCE, V_OCSP_CERTSTATUS_GOOD,
-    V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
+use super::{
+    ocsp_ffi::{
+        self, ASN1_GENERALIZEDTIME_free, ASN1_GENERALIZEDTIME_set, ASN1_INTEGER_to_BN,
+        ASN1_STRING_get0_data, ASN1_STRING_length, BN_bn2hex, BN_free, CRL_REASON_AA_COMPROMISE,
+        CRL_REASON_AFFILIATION_CHANGED, CRL_REASON_CA_COMPROMISE, CRL_REASON_CERTIFICATE_HOLD,
+        CRL_REASON_CESSATION_OF_OPERATION, CRL_REASON_KEY_COMPROMISE,
+        CRL_REASON_PRIVILEGE_WITHDRAWN, CRL_REASON_REMOVE_FROM_CRL, CRL_REASON_SUPERSEDED,
+        CRL_REASON_UNSPECIFIED, OCSP_NONCE_MAX_LEN, OCSP_NONCE_MIN_LEN, V_OCSP_CERTSTATUS_GOOD,
+        V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
+    },
+    oid::asn1_object,
+    x509_signing_digest,
 };
 use crate::error::CryptoError;
 
@@ -303,12 +308,11 @@ pub fn verify_issuer_hashes_match_ca(
             return Ok(false);
         }
 
-        // Build a reference OCSP_CERTID from the CA itself, using the same digest as
-        // the query. OCSP_cert_to_id(dgst, subject=ca_cert, issuer=ca_cert) gives us
-        // what we need because OpenSSL computes issuerNameHash from issuer.subject and
-        // issuerKeyHash from issuer.pubkey; the serial number is irrelevant here.
-        // SAFETY: ca_cert is valid; OCSP_cert_to_id returns null on error.
-        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ca_cert.as_ptr(), ca_cert.as_ptr()) };
+        // Build a reference OCSP_CERTID from the CA itself. With a null subject OpenSSL hashes
+        // the *issuer's own* subject name and public key; passing the CA as subject would hash
+        // the CA's issuer name instead, which differs for every non-self-signed (sub-)CA.
+        // SAFETY: ca_cert is valid; a null subject is allowed; null is returned on error.
+        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ptr::null(), ca_cert.as_ptr()) };
         if ref_cid.is_null() {
             return Ok(false);
         }
@@ -347,7 +351,7 @@ pub fn verify_issuer_hashes_match_ca(
 /// Returns [`CryptoError`] if the certificate DER cannot be parsed, or if the
 /// `id-kp-OCSPSigning` extended key usage is missing.
 pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Result<(), CryptoError> {
-    use x509_parser::{der_parser::oid, oid_registry::Oid, prelude::FromDer};
+    use x509_parser::{oid_registry::Oid, prelude::FromDer};
 
     let (_, cert) =
         x509_parser::certificate::X509Certificate::from_der(signer_cert_der).map_err(|e| {
@@ -370,10 +374,11 @@ pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Resul
         ));
     }
 
-    // `id-pkix-ocsp-nocheck` has no named constant in `oid-registry`; match by raw OID.
-    // Its absence is a warning, not a rejection — see the doc comment above for why
+    // `id-pkix-ocsp-nocheck` has no named constant in `oid-registry`; match the OID OpenSSL
+    // registers for it. Its absence is a warning, not a rejection — see the doc comment above for why
     // this is only one of three RFC 6960 §4.2.2.2.1-sanctioned strategies, not a MUST.
-    let ocsp_nocheck_oid: Oid<'_> = oid!(1.3.6.1.5.5.7.48.1.5);
+    let nocheck_obj = asn1_object(Nid::ID_PKIX_OCSP_NOCHECK)?;
+    let ocsp_nocheck_oid = Oid::new(std::borrow::Cow::Borrowed(nocheck_obj.as_slice()));
     let has_nocheck = cert
         .tbs_certificate
         .get_extension_unique(&ocsp_nocheck_oid)
@@ -506,7 +511,8 @@ pub fn build_ocsp_response(
     }
 
     // ── Sign the BasicResponse ───────────────────────────────────────────────────
-    let md = signing_md(signer_key);
+    // RSA: SHA-256; ECDSA: digest matching the curve (RFC 5480 §4); PQC/EdDSA: null digest
+    let md = x509_signing_digest(signer_key).as_ptr();
     let certs_stack: *mut openssl_sys::stack_st_X509 = if config.include_signer_cert {
         // Build a one-element stack with the signer cert so clients can verify the
         // delegated responder's authorization without a separate fetch.
@@ -686,9 +692,7 @@ fn add_single_response(
 /// as absent per §3's "SHOULD be silently ignored").
 #[expect(unsafe_code)]
 fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>> {
-    // SAFETY: OID_OCSP_NONCE is a valid NUL-terminated string.
-    let nonce_nid =
-        unsafe { ocsp_ffi::OBJ_txt2nid(OID_OCSP_NONCE.as_ptr().cast::<std::ffi::c_char>()) };
+    let nonce_nid = Nid::ID_PKIX_OCSP_NONCE.as_raw();
 
     // SAFETY: req is non-null.
     let ext_count = unsafe { ocsp_ffi::OCSP_REQUEST_get_ext_count(req) };
@@ -706,7 +710,7 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
         }
         // SAFETY: obj is non-null.
         let nid = unsafe { openssl_sys::OBJ_obj2nid(obj) };
-        if nid != nonce_nid && nid != ocsp_ffi::NID_OCSP_NONCE {
+        if nid != nonce_nid {
             continue;
         }
 
@@ -721,7 +725,7 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
             return None;
         }
         // SAFETY: octet is a valid ASN1_OCTET_STRING.
-        let octet = octet.cast_const().cast::<openssl_sys::ASN1_STRING>();
+        let octet = octet.cast::<openssl_sys::ASN1_STRING>();
         let Ok(len) = usize::try_from(unsafe { ASN1_STRING_length(octet) }) else {
             return None;
         };
@@ -831,15 +835,7 @@ fn add_archive_cutoff(
     }
     let _gt_guard = GeneralizedTimeGuard(cutoff_gt);
 
-    // Look up the NID for id-pkix-ocsp-archive-cutoff.
-    // SAFETY: OID_OCSP_ARCHIVE_CUTOFF is a valid NUL-terminated OID string.
-    let nid = unsafe {
-        ocsp_ffi::OBJ_txt2nid(OID_OCSP_ARCHIVE_CUTOFF.as_ptr().cast::<std::ffi::c_char>())
-    };
-    if nid <= 0 {
-        // Extension not registered — skip rather than fail.
-        return Ok(());
-    }
+    let nid = Nid::ID_PKIX_OCSP_ARCHIVECUTOFF.as_raw();
 
     // Add the extension using the pre-built GeneralizedTime value.
     // SAFETY: cutoff_gt is non-null and well-formed; X509V3_ADD_DEFAULT = 0.
@@ -1014,22 +1010,6 @@ fn decode_der_octet_string(bytes: &[u8]) -> Option<&[u8]> {
     }
 }
 
-/// Choose the digest algorithm for signing based on the key type.
-///
-/// Per RFC 6960 §4.3 (and NIST guidance):
-/// - RSA / EC → SHA-256
-/// - PQC (ML-DSA, SLH-DSA) → null digest (algorithm performs its own hashing)
-#[expect(unsafe_code)]
-fn signing_md(key: &PKeyRef<Private>) -> *const openssl_sys::EVP_MD {
-    // SAFETY: EVP_sha256/EVP_md_null return static pointers.
-    unsafe {
-        match key.id() {
-            openssl::pkey::Id::RSA | openssl::pkey::Id::EC => openssl_sys::EVP_sha256(),
-            _ => openssl_sys::EVP_md_null(),
-        }
-    }
-}
-
 /// Convert an `Option<CrlReasonCode>` to the `CRL_REASON_*` integer for FFI.
 const fn reason_to_crl_code(reason: Option<CrlReasonCode>) -> std::ffi::c_int {
     match reason {
@@ -1056,10 +1036,16 @@ mod tests {
     use openssl::{
         asn1::Asn1Integer,
         bn::BigNum,
+        ec::{EcGroup, EcKey},
         hash::MessageDigest,
-        ocsp::{OcspCertId, OcspRequest, OcspResponse},
+        nid::Nid,
+        ocsp::{OcspCertId, OcspFlag, OcspRequest, OcspResponse},
         pkey::PKey,
-        x509::{X509, X509Builder, X509NameBuilder, extension::BasicConstraints},
+        stack::Stack,
+        x509::{
+            X509, X509Builder, X509NameBuilder, extension::BasicConstraints,
+            store::X509StoreBuilder,
+        },
     };
     use time::OffsetDateTime;
 
@@ -1068,8 +1054,13 @@ mod tests {
     /// Generate a self-signed CA certificate + private key for testing.
     fn create_test_ca() -> (X509, openssl::pkey::PKey<openssl::pkey::Private>) {
         let rsa = openssl::rsa::Rsa::generate(2048).expect("RSA keygen");
-        let pkey = PKey::from_rsa(rsa).expect("PKey");
+        create_test_ca_with_key(PKey::from_rsa(rsa).expect("PKey"))
+    }
 
+    /// Self-signed CA certificate (signed with SHA-256) for `pkey`.
+    fn create_test_ca_with_key(
+        pkey: openssl::pkey::PKey<openssl::pkey::Private>,
+    ) -> (X509, openssl::pkey::PKey<openssl::pkey::Private>) {
         let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
         nb.append_entry_by_text("CN", "Test CA").expect("CN");
         let name = nb.build();
@@ -1139,6 +1130,58 @@ mod tests {
         // Parse the response with the openssl crate.
         let resp = OcspResponse::from_der(&resp_der).expect("OcspResponse::from_der");
         assert_eq!(resp.status(), openssl::ocsp::OcspResponseStatus::SUCCESSFUL);
+    }
+
+    /// RFC 5480 §4: an ECDSA-signed response uses the digest matching the signer curve.
+    #[test]
+    fn test_ec_response_digest_matches_curve() {
+        // DER `AlgorithmIdentifier` of ecdsa-with-SHA256/384/512 (1.2.840.10045.4.3.{2,3,4})
+        let algorithm_identifier = |last: u8| {
+            [
+                0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, last,
+            ]
+        };
+        for (curve, last) in [
+            (Nid::X9_62_PRIME256V1, 0x02),
+            (Nid::SECP384R1, 0x03),
+            (Nid::SECP521R1, 0x04),
+        ] {
+            let group = EcGroup::from_curve_name(curve).expect("EcGroup");
+            let key = PKey::from_ec_key(EcKey::generate(&group).expect("EC keygen")).expect("PKey");
+            let (ca, ca_key) = create_test_ca_with_key(key);
+            let req_der = build_test_request(&ca, "01", false);
+            let entries = vec![OcspStatusEntry {
+                serial_hex: "01".to_owned(),
+                status: OcspCertStatus::Good,
+            }];
+            let resp_der = build_ocsp_response(
+                &req_der,
+                &ca,
+                &ca,
+                &ca_key,
+                &entries,
+                &OcspBuildConfig::default(),
+            )
+            .expect("build");
+
+            let basic = OcspResponse::from_der(&resp_der)
+                .expect("parse")
+                .basic()
+                .expect("basic");
+            let mut trusted = X509StoreBuilder::new().expect("store");
+            trusted.add_cert(ca.clone()).expect("add_cert");
+            let mut certs = Stack::new().expect("stack");
+            certs.push(ca.clone()).expect("push");
+            basic
+                .verify(&certs, &trusted.build(), OcspFlag::empty())
+                .expect("verify");
+            // the CA certificate is signed with SHA-256: SHA-384/512 can only be the response's
+            let expected = algorithm_identifier(last);
+            assert!(
+                resp_der.windows(expected.len()).any(|w| w == expected),
+                "{curve:?}: response not signed with the curve's digest"
+            );
+        }
     }
 
     #[test]
@@ -1324,6 +1367,84 @@ mod tests {
         assert!(before <= after, "time must be monotone");
     }
 
+    /// DER content octets of the `id-pkix-ocsp-archive-cutoff` OID (1.3.6.1.5.5.7.48.1.6).
+    const ARCHIVE_CUTOFF_OID_DER: [u8; 9] = [0x2B, 0x06, 0x01, 0x05, 0x05, 0x07, 0x30, 0x01, 0x06];
+
+    /// With `archive_cutoff_secs` set, the response carries the archive-cutoff extension
+    /// (RFC 6960 §4.4.4) whose `GeneralizedTime` value is `now - archive_cutoff_secs`;
+    /// without it, the extension is absent.
+    #[test]
+    fn test_archive_cutoff_extension() {
+        const CUTOFF_SECS: u64 = 86_400;
+        let (ca, ca_key) = create_test_ca();
+        let req_der = build_test_request(&ca, "01", false);
+        let entries = vec![OcspStatusEntry {
+            serial_hex: "01".to_owned(),
+            status: OcspCertStatus::Good,
+        }];
+
+        let without = build_ocsp_response(
+            &req_der,
+            &ca,
+            &ca,
+            &ca_key,
+            &entries,
+            &OcspBuildConfig::default(),
+        )
+        .expect("build without archive cutoff");
+        assert!(
+            !without
+                .windows(ARCHIVE_CUTOFF_OID_DER.len())
+                .any(|w| w == ARCHIVE_CUTOFF_OID_DER),
+            "archive-cutoff extension must be absent by default"
+        );
+
+        let config = OcspBuildConfig {
+            archive_cutoff_secs: Some(CUTOFF_SECS),
+            ..Default::default()
+        };
+        let before = OffsetDateTime::now_utc().unix_timestamp();
+        let with = build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config)
+            .expect("build with archive cutoff");
+        let after = OffsetDateTime::now_utc().unix_timestamp();
+
+        let oid_pos = with
+            .windows(ARCHIVE_CUTOFF_OID_DER.len())
+            .position(|w| w == ARCHIVE_CUTOFF_OID_DER)
+            .expect("archive-cutoff extension must be present");
+        // After the OID: extnValue OCTET STRING (0x04, len) wrapping a GeneralizedTime
+        // (0x18, 0x0F, "YYYYMMDDHHMMSSZ").
+        let value = with
+            .get(
+                oid_pos + ARCHIVE_CUTOFF_OID_DER.len()..oid_pos + ARCHIVE_CUTOFF_OID_DER.len() + 19,
+            )
+            .expect("extension value must follow the OID");
+        assert_eq!(
+            value.get(..4),
+            Some(&[0x04, 0x11, 0x18, 0x0F][..]),
+            "unexpected encoding"
+        );
+        let cutoff_str = std::str::from_utf8(value.get(4..).expect("19 bytes"))
+            .expect("GeneralizedTime is ASCII");
+        let cutoff = openssl::asn1::Asn1Time::from_str(cutoff_str).expect("parse cutoff time");
+
+        // cutoff == now - CUTOFF_SECS for some `now` in [before, after] (second precision).
+        let lower_bound = openssl::asn1::Asn1Time::from_unix(
+            before - i64::try_from(CUTOFF_SECS).expect("fits in i64"),
+        )
+        .expect("lower bound");
+        let diff = lower_bound.diff(&cutoff).expect("diff");
+        let elapsed = i64::from(diff.days) * 86_400 + i64::from(diff.secs);
+        assert!(
+            (0..=after - before).contains(&elapsed),
+            "cutoff must equal now - {CUTOFF_SECS}s, offset from lower bound was {elapsed}s"
+        );
+
+        // The response is still a valid, successful OCSP response.
+        let resp = OcspResponse::from_der(&with).expect("OcspResponse::from_der");
+        assert_eq!(resp.status(), openssl::ocsp::OcspResponseStatus::SUCCESSFUL);
+    }
+
     #[test]
     fn test_parse_ocsp_request() {
         let (ca, _) = create_test_ca();
@@ -1360,6 +1481,44 @@ mod tests {
                 md.type_()
             );
         }
+    }
+
+    #[test]
+    fn test_verify_issuer_hashes_match_ca_accepts_sub_ca() {
+        // A sub-CA's issuer name differs from its subject name: the CertId of a certificate
+        // it issued hashes the sub-CA subject, which is what the check must compare with.
+        let (root, root_key) = create_test_ca();
+        let sub_key =
+            PKey::from_rsa(openssl::rsa::Rsa::generate(2048).expect("RSA keygen")).expect("PKey");
+        let cert = |subject: &str, key: &PKey<openssl::pkey::Private>, issuer: &X509| {
+            let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
+            nb.append_entry_by_text("CN", subject).expect("CN");
+            let name = nb.build();
+            let mut b = X509Builder::new().expect("X509Builder");
+            b.set_version(2).expect("v3");
+            b.set_subject_name(&name).expect("subject");
+            b.set_issuer_name(issuer.subject_name()).expect("issuer");
+            b.set_pubkey(key).expect("pubkey");
+            b.set_not_before(&openssl::asn1::Asn1Time::days_from_now(0).expect("nb"))
+                .expect("set_not_before");
+            b.set_not_after(&openssl::asn1::Asn1Time::days_from_now(30).expect("na"))
+                .expect("set_not_after");
+            b.set_serial_number(
+                &Asn1Integer::from_bn(BigNum::from_u32(2).expect("bn").as_ref()).expect("serial"),
+            )
+            .expect("set_serial");
+            b.sign(&root_key, MessageDigest::sha256()).expect("sign");
+            b.build()
+        };
+        let sub = cert("Sub CA", &sub_key, &root);
+        let leaf = cert("Leaf", &sub_key, &sub);
+
+        let mut req = OcspRequest::new().expect("OcspRequest::new");
+        req.add_id(OcspCertId::from_cert(MessageDigest::sha1(), &leaf, &sub).expect("cert id"))
+            .expect("add_id");
+        let queries = parse_ocsp_request(&req.to_der().expect("to_der")).expect("parse");
+        assert!(verify_issuer_hashes_match_ca(&queries, &sub).expect("verify"));
+        assert!(!verify_issuer_hashes_match_ca(&queries, &root).expect("verify"));
     }
 
     #[test]

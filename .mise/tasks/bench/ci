@@ -37,6 +37,7 @@ export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
   --mode "${usage_mode:-all}" \
   --protocol "${usage_protocol:-all}"
 
-bench_generate_report "${BENCH_PORT}"
+# Debug-build sanity data must never replace the published baseline in documentation/.
+BENCH_SANITY=true bench_generate_report "${BENCH_PORT}"
 
 print_success "CI benchmark completed"

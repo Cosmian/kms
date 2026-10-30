@@ -72,7 +72,27 @@ fn redact_url(original: &Url) -> Url {
 }
 
 /// Redact credentials from a raw connection string (supports multi-host URLs).
-fn redact_connection_string(s: &str) -> String {
+#[must_use]
+pub fn redact_connection_string(s: &str) -> String {
+    let (base, query) = s.split_once('?').map_or((s, None), |(b, q)| (b, Some(q)));
+    let mut out = redact_authority(base);
+    if let Some(query) = query {
+        let redacted = query
+            .split('&')
+            .map(|pair| match pair.split_once('=') {
+                Some((key @ ("user" | "password" | "sslpassword"), _)) => format!("{key}=****"),
+                _ => pair.to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join("&");
+        out.push('?');
+        out.push_str(&redacted);
+    }
+    out
+}
+
+/// Redact the `user[:password]@` part of the URL authority.
+fn redact_authority(s: &str) -> String {
     if let Some(scheme_end) = s.find("://") {
         let after_scheme = &s[scheme_end + 3..];
         if let Some(at_pos) = after_scheme.find('@') {
@@ -157,6 +177,20 @@ mod tests {
                 "postgresql://user:pass@host/db?target_session_attrs=read-write"
             ),
             "postgresql://****:****@host/db?target_session_attrs=read-write"
+        );
+    }
+
+    #[test]
+    fn test_redact_connection_string_query_credentials() {
+        assert_eq!(
+            redact_connection_string(
+                "postgresql:///db?user=kms&password=se@cret&sslpassword=k&sslmode=require"
+            ),
+            "postgresql:///db?user=****&password=****&sslpassword=****&sslmode=require"
+        );
+        assert_eq!(
+            redact_connection_string("postgresql://u:p@h/db?password=secret&sslmode=prefer"),
+            "postgresql://****:****@h/db?password=****&sslmode=prefer"
         );
     }
 

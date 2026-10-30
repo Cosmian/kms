@@ -261,12 +261,12 @@ fn test_enum_unit_variant() {
 
     // Try with direct deserialization
     let ttlv = TTLV {
-        tag: "Test".to_owned(),
+        tag: "Test".into(),
         value: TTLValue::Structure(vec![TTLV {
-            tag: "AnEnum".to_owned(),
+            tag: "AnEnum".into(),
             value: TTLValue::Enumeration(KmipEnumerationVariant {
                 value: 0x0A,
-                name: "Ten".to_owned(),
+                name: "Ten".into(),
             }),
         }]),
     };

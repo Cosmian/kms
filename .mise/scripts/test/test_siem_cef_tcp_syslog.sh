@@ -121,7 +121,7 @@ VENV_DIR="$(mktemp -d -t siem-venv-XXXXXX)"
 python3 -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
-pip install --quiet -r "${SCRIPT_DIR}/requirements-cef.txt"
+pip install --quiet --require-hashes -r "${SCRIPT_DIR}/requirements-cef.txt"
 echo "    Python venv OK ($(python3 --version), jc $(pip show jc | grep ^Version | awk '{print $2}'))"
 
 # ── Start KMS server with audit logging ───────────────────────────────────────

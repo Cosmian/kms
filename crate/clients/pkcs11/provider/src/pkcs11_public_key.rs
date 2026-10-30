@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_logger::error;
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
-    traits::{KeyAlgorithm, PublicKey, SignatureAlgorithm},
+    traits::{KeyAlgorithm, PublicKey, SignatureAlgorithm, backend},
 };
 use pkcs1::{RsaPublicKey, der::Decode};
 use sha3::Digest;
@@ -39,7 +39,7 @@ impl Pkcs11PublicKey {
         // For EC keys, the algorithm OID in SPKI is id-ecPublicKey (1.2.840.10045.2.1)
         // and the curve OID lives in the parameters.
         // For all other key types (RSA, EdDSA, X25519, …) the algorithm OID is the identity.
-        let algorithm = if spki.algorithm.oid.to_string() == "1.2.840.10045.2.1" {
+        let algorithm = if KeyAlgorithm::is_ec_public_key_oid(&spki.algorithm.oid) {
             let params = spki.algorithm.parameters.as_ref().ok_or_else(|| {
                 ModuleError::BadArguments("EC SPKI is missing curve OID in parameters".to_owned())
             })?;
@@ -104,12 +104,19 @@ impl PublicKey for Pkcs11PublicKey {
 
     fn verify(
         &self,
-        _algorithm: &SignatureAlgorithm,
-        _data: &[u8],
-        _signature: &[u8],
+        algorithm: &SignatureAlgorithm,
+        data: &[u8],
+        signature: &[u8],
     ) -> ModuleResult<()> {
-        error!("verify not implemented for Pkcs11PublicKey");
-        Err(ModuleError::FunctionNotSupported)
+        backend()?
+            .remote_verify(&self.remote_id, algorithm, data, signature, self.algorithm)
+            .map_err(|e| {
+                error!(
+                    "remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}",
+                    self.remote_id
+                );
+                e
+            })
     }
 
     fn delete(self: Arc<Self>) {}

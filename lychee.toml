@@ -87,6 +87,7 @@ exclude = [
   'kms\.different\.com',
   'pkce_auth_example\.md',
   'login\.microsoftonline\.com',
+  'compliance\.microsoft\.com',
   'googleapis\.com/oauth2',
   'test_data/blob/main/configs/client/jwt\.toml',
   # Non-routable IPs used in forward proxy tests
@@ -134,14 +135,22 @@ exclude = [
   'docs\.intersystems\.com',
   # Ubuntu manpages — frequent timeouts from automated requests
   'manpages\.ubuntu\.com',
+  # man7.org — TCP connection consistently times out from automated/CI network paths
+  'man7\.org',
 
   # ANSSI (cyber.gouv.fr) — publications periodically restructure their URLs
   'cyber\.gouv\.fr',
 
   # Fortinet documentation — returns 503 to automated crawlers
   'docs\.fortinet\.com',
+  # EnterpriseDB — returns 503 Service Unavailable to automated crawlers
+  'enterprisedb\.com',
+  # Eviden product page — returns 503 Service Unavailable to automated crawlers
+  'eviden\.com',
   # GNOME GitLab — returns 500 Internal Server Error to automated crawlers
   'gitlab\.gnome\.org',
+  # Eviden product page — returns 503 Service Unavailable to automated crawlers
+  'eviden\.com',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',

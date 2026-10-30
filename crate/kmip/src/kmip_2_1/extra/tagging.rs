@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, hash::BuildHasher};
 
 use crate::{
     error::KmipError,
@@ -25,8 +25,26 @@ pub const SYSTEM_TAG_CERTIFICATE: &str = "_cert";
 pub const SYSTEM_TAG_SECRET_DATA: &str = "_sd";
 /// System tag automatically added by the KMS server to opaque objects on Import
 pub const SYSTEM_TAG_OPAQUE_OBJECT: &str = "_oo";
+/// System tag automatically added by the KMS server to `OpenPGP` keys on Create/Import
+pub const SYSTEM_TAG_PGP_KEY: &str = "_pgp";
 /// System tag automatically added by the KMS server to `CoverCrypt` user decryption keys
 pub const SYSTEM_TAG_COVER_CRYPT_USER_KEY: &str = "_uk";
+/// Prefix of the system tag carrying an X.509 certificate serial number, as uppercase hex
+/// (same format as `openssl x509 -noout -serial`), e.g. `_serial=0A1B2C`.
+pub const SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX: &str = "_serial=";
+
+/// Replace any `_serial=` tag in `tags` with the one for `serial_hex` (computed from the
+/// certificate DER). Dropping first defeats client-planted or inherited (`ReCertify`) values.
+/// An empty `serial_hex` only removes.
+pub fn set_certificate_serial_tag<S: BuildHasher>(tags: &mut HashSet<String, S>, serial_hex: &str) {
+    tags.retain(|t| !t.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX));
+    if !serial_hex.is_empty() {
+        tags.insert(format!(
+            "{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{}",
+            serial_hex.to_ascii_uppercase()
+        ));
+    }
+}
 
 impl Attributes {
     /// Get the tags from the attributes
@@ -85,5 +103,26 @@ impl Attributes {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::set_certificate_serial_tag;
+
+    #[test]
+    fn serial_tag_replaces_existing_and_uppercases() {
+        let mut tags: HashSet<String> = ["x", "_serial=DEADBEEF"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        set_certificate_serial_tag(&mut tags, "0a");
+        let expected: HashSet<String> =
+            ["x", "_serial=0A"].into_iter().map(str::to_owned).collect();
+        assert_eq!(tags, expected);
+        set_certificate_serial_tag(&mut tags, "");
+        assert_eq!(tags.len(), 1);
     }
 }

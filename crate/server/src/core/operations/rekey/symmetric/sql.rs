@@ -92,40 +92,13 @@ impl RekeyOperation for SqlSymmetricRekeyer {
         Ok([RotationCandidate { owm, uid }])
     }
 
-    async fn generate_replacement(
+    fn generate_replacement(
         &self,
         kms: &KMS,
         candidates: &[RotationCandidate; 1],
-    ) -> KResult<[ReplacementObject; 1]> {
-        let [candidate] = candidates;
-
-        // Clean attributes for generation (removes identity, lifecycle dates, rotation metadata)
-        let gen_attrs = candidate
-            .owm
-            .attributes()
-            .clean_for_generation(kms.vendor_id());
-
-        let create_request = Create {
-            object_type: ObjectType::SymmetricKey,
-            attributes: gen_attrs,
-            protection_storage_masks: None,
-        };
-        let (_, new_object, new_tags) =
-            KMS::create_symmetric_key_and_tags(kms.vendor_id(), &create_request)?;
-
-        let new_uid = UniqueIdentifier::rotation_successor(
-            candidate.owm.attributes().rotate_name.as_deref(),
-            candidate.owm.attributes().rotate_generation,
-        );
-
-        Ok([ReplacementObject {
-            new_uid,
-            old_uid: candidate.uid.clone(),
-            object: new_object,
-            attributes: Attributes::default(), // filled in prepare_attributes
-            tags: new_tags,
-            rewrap_to: Some(candidate.uid.clone()), // placeholder, replaced in prepare_attributes
-        }])
+    ) -> impl Future<Output = KResult<[ReplacementObject; 1]>> {
+        // Key generation is synchronous CPU work: no suspension point is needed.
+        std::future::ready(Self::build_replacement(kms, candidates))
     }
 
     fn prepare_attributes(
@@ -172,5 +145,42 @@ impl RekeyOperation for SqlSymmetricRekeyer {
         ReKeyResponse {
             unique_identifier: UniqueIdentifier::TextString(replacement.new_uid.clone()),
         }
+    }
+}
+
+impl SqlSymmetricRekeyer {
+    /// Generates the replacement key (synchronous CPU work).
+    fn build_replacement(
+        kms: &KMS,
+        candidates: &[RotationCandidate; 1],
+    ) -> KResult<[ReplacementObject; 1]> {
+        let [candidate] = candidates;
+
+        // Clean attributes for generation (removes identity, lifecycle dates, rotation metadata)
+        let gen_attrs = candidate
+            .owm
+            .attributes()
+            .clean_for_generation(kms.vendor_id());
+
+        let create_request = Create {
+            object_type: ObjectType::SymmetricKey,
+            attributes: gen_attrs,
+            protection_storage_masks: None,
+        };
+        let (_, new_object, new_tags) = kms.create_symmetric_key_and_tags(&create_request)?;
+
+        let new_uid = UniqueIdentifier::rotation_successor(
+            candidate.owm.attributes().rotate_name.as_deref(),
+            candidate.owm.attributes().rotate_generation,
+        );
+
+        Ok([ReplacementObject {
+            new_uid,
+            old_uid: candidate.uid.clone(),
+            object: new_object,
+            attributes: Attributes::default(), // filled in prepare_attributes
+            tags: new_tags,
+            rewrap_to: Some(candidate.uid.clone()), // placeholder, replaced in prepare_attributes
+        }])
     }
 }

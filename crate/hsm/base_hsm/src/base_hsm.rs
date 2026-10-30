@@ -6,8 +6,12 @@ use std::{
 
 use cosmian_kms_interfaces::CryptoAlgorithm;
 use cosmian_logger::debug;
+#[cfg(feature = "non-fips")]
+use pkcs11_sys::CKM_SHA_1;
 use pkcs11_sys::{
-    CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA256,
+    CK_MECHANISM_TYPE, CKF_DECRYPT, CKF_ENCRYPT, CKF_UNWRAP, CKF_WRAP, CKM_AES_CBC, CKM_AES_GCM,
+    CKM_AES_KEY_WRAP, CKM_AES_KEY_WRAP_KWP, CKM_AES_KEY_WRAP_PAD, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
+    CKM_SHA256,
 };
 
 use crate::{
@@ -22,6 +26,117 @@ impl HsmProvider for DefaultCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
         HsmCapabilities::default()
     }
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn add_supported_oaep_algorithms(
+    supported_hashes: &[pkcs11_sys::CK_MECHANISM_TYPE],
+    algorithms: &mut Vec<CryptoAlgorithm>,
+) {
+    if supported_hashes.contains(&CKM_SHA256) {
+        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
+    }
+}
+
+#[cfg(feature = "non-fips")]
+fn add_supported_oaep_algorithms(
+    supported_hashes: &[pkcs11_sys::CK_MECHANISM_TYPE],
+    algorithms: &mut Vec<CryptoAlgorithm>,
+) {
+    if supported_hashes.contains(&CKM_SHA_1) {
+        algorithms.push(CryptoAlgorithm::RsaOaepSha1);
+    }
+    if supported_hashes.contains(&CKM_SHA256) {
+        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
+    }
+}
+
+/// Query a slot's supported cryptographic algorithms, computed once per slot and cached.
+pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgorithm>> {
+    if let Some(algorithms) = slot.supported_algorithms.get() {
+        return Ok(algorithms.clone());
+    }
+    let mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+    let supported_hashes = session.get_supported_oaep_hash()?;
+    let mut algorithms = Vec::new();
+    let kwp_pad_is_rfc5649 = slot.capabilities().aes.key_wrap_pad_is_rfc5649;
+
+    for &mechanism in &mechanisms {
+        match mechanism {
+            CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
+            CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
+            CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
+            CKM_RSA_PKCS_OAEP => {
+                add_supported_oaep_algorithms(&supported_hashes, &mut algorithms);
+            }
+            CKM_AES_KEY_WRAP => push_once(&mut algorithms, CryptoAlgorithm::AesKeyWrap),
+            CKM_AES_KEY_WRAP_KWP => push_once(&mut algorithms, CryptoAlgorithm::AesKeyWrapPad),
+            CKM_AES_KEY_WRAP_PAD if kwp_pad_is_rfc5649 => {
+                push_once(&mut algorithms, CryptoAlgorithm::AesKeyWrapPad);
+            }
+            _ => {}
+        }
+    }
+
+    // A concurrent first call may have filled the cache already: both results are identical.
+    Ok(slot.supported_algorithms.get_or_init(|| algorithms).clone())
+}
+
+fn push_once(algorithms: &mut Vec<CryptoAlgorithm>, algorithm: CryptoAlgorithm) {
+    if !algorithms.contains(&algorithm) {
+        algorithms.push(algorithm);
+    }
+}
+
+/// PKCS#11 mechanism and API used for AES-KW/AES-KWP on a slot.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AesKeyWrapMechanism {
+    pub(crate) mechanism: CK_MECHANISM_TYPE,
+    /// `true`: single-part `C_Encrypt`/`C_Decrypt`; `false`: `C_WrapKey`/`C_UnwrapKey` via an
+    /// ephemeral session object.
+    pub(crate) single_part: bool,
+}
+
+/// Pick the AES-KW/KWP mechanism for `algorithm` on `slot`, preferring single-part
+/// encrypt/decrypt and falling back to `C_WrapKey`/`C_UnwrapKey`.
+pub(crate) fn aes_key_wrap_mechanism(
+    slot: &SlotManager,
+    slot_id: usize,
+    algorithm: &CryptoAlgorithm,
+    unwrap: bool,
+) -> HResult<AesKeyWrapMechanism> {
+    let candidates: &[CK_MECHANISM_TYPE] = match algorithm {
+        CryptoAlgorithm::AesKeyWrap => &[CKM_AES_KEY_WRAP],
+        CryptoAlgorithm::AesKeyWrapPad if slot.capabilities().aes.key_wrap_pad_is_rfc5649 => {
+            &[CKM_AES_KEY_WRAP_KWP, CKM_AES_KEY_WRAP_PAD]
+        }
+        CryptoAlgorithm::AesKeyWrapPad => &[CKM_AES_KEY_WRAP_KWP],
+        _ => return Err(HError::Default("not an AES key-wrap algorithm".to_owned())),
+    };
+    let (op_flag, key_flag, op) = if unwrap {
+        (CKF_DECRYPT, CKF_UNWRAP, "decrypt/unwrap")
+    } else {
+        (CKF_ENCRYPT, CKF_WRAP, "encrypt/wrap")
+    };
+    for &mechanism in candidates {
+        let Ok(info) = slot.get_mechanism_info(mechanism) else {
+            continue;
+        };
+        let single_part = info.flags & op_flag != 0;
+        if !single_part && info.flags & key_flag == 0 {
+            return Err(HError::Default(format!(
+                "mechanism {mechanism:#x} supports neither single-part nor key {op} on this slot"
+            )));
+        }
+        return Ok(AesKeyWrapMechanism {
+            mechanism,
+            single_part,
+        });
+    }
+    Err(HError::Default(format!(
+        "{algorithm:?} is not offered by HSM slot {slot_id}"
+    )))
 }
 
 struct SlotState {
@@ -46,7 +161,11 @@ impl<P: HsmProvider> BaseHsm<P> {
         passwords: HashMap<usize, Option<String>>,
     ) -> HResult<Self> {
         debug!("Using PKCS#11 library with {:?}", P::capabilities());
-        let hsm_lib = Arc::new(HsmLib::instantiate(path)?);
+        let capabilities = P::capabilities();
+        let hsm_lib = Arc::new(HsmLib::instantiate_with_options(
+            path,
+            capabilities.skip_finalize_on_drop,
+        )?);
         let mut slots = HashMap::with_capacity(passwords.len());
         for (k, v) in passwords {
             slots.insert(
@@ -72,13 +191,11 @@ impl<P: HsmProvider> BaseHsm<P> {
             .slots
             .lock()
             .context("Failed to acquire lock on slots")?;
-        // check if we are supposed to use that slot
         if let Some(slot_state) = slots.get_mut(&slot_id) {
-            if let Some(s) = &slot_state.slot {
+            if let Some(slot) = &slot_state.slot {
                 debug!("Reusing slot {slot_id}");
-                Ok(s.clone())
+                Ok(slot.clone())
             } else {
-                // instantiate a new slot
                 let manager = Arc::new(SlotManager::instantiate(
                     self.hsm_lib.clone(),
                     slot_id,
@@ -156,28 +273,6 @@ impl<P: HsmProvider> BaseHsm<P> {
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
     pub fn get_algorithms(&self, slot_id: usize) -> HResult<Vec<CryptoAlgorithm>> {
         let slot = self.get_slot(slot_id)?;
-        let mechanisms = slot.get_supported_mechanisms()?;
-        let session = slot.open_session(true)?;
-        let supported_hashes = session.get_supported_oaep_hash()?;
-        let mut algorithms = Vec::new();
-
-        for &mechanism in &mechanisms {
-            match mechanism {
-                CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
-                CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
-                CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
-                CKM_RSA_PKCS_OAEP => {
-                    if supported_hashes.contains(&CKM_SHA_1) {
-                        algorithms.push(CryptoAlgorithm::RsaOaepSha1);
-                    }
-                    if supported_hashes.contains(&CKM_SHA256) {
-                        algorithms.push(CryptoAlgorithm::RsaOaepSha256);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        Ok(algorithms)
+        algorithms_for_slot(&slot)
     }
 }

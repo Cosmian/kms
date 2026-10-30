@@ -44,13 +44,12 @@ use super::{
     },
 };
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     middlewares::UserId,
     result::KResult,
     start_kms_server::migrate_aws_xks_key_access,
-    tests::test_utils::{https_clap_config, test_kms},
+    tests::test_utils::{https_clap_config, test_kms, test_kms_with_config},
 };
 
 fn http_req() -> HttpRequest {
@@ -237,7 +236,7 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
     // `CreateKey` on every deployment that configures `privileged_users`.
     let mut clap_config = https_clap_config();
     clap_config.privileged_users = Some(vec!["someone-else@acme.com".to_owned()]);
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     provision_xks_key(&kms, "xks-key-privileged", "arn:aws:iam::1:role/Creator").await?;
 
@@ -250,6 +249,29 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
     )
     .await?;
     assert!(!enc.ciphertext.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn encrypt_uses_a_fresh_random_iv_per_call() -> KResult<()> {
+    let kms = test_kms().await?;
+    let key_id = "xks-key-fresh-iv";
+    provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
+
+    let mut ivs = HashSet::new();
+    for _ in 0..8 {
+        let enc = encrypt_inner(
+            http_req(),
+            encrypt_request("arn:aws:iam::1:role/Alice", b"same plaintext"),
+            key_id.to_owned(),
+            &kms,
+        )
+        .await?;
+        assert!(
+            ivs.insert(enc.initializationVector),
+            "two encryptions with the same key reused an IV"
+        );
+    }
     Ok(())
 }
 
@@ -375,12 +397,12 @@ async fn reserved_xks_identity_cannot_be_used_as_the_monitoring_operator() -> KR
     // The Crypto Officer responsible for monitoring/managing XKS keys must never be the
     // reserved `AWS_XKS_SERVICE_USER` delegate: that identity is intentionally unreachable
     // through any real credential (TLS/OIDC/SPIRE/UI session — see
-    // `reject_reserved_aws_xks_identity` in `middlewares/mod.rs`), and even if it were
+    // `reject_reserved_service_identity` in `middlewares/mod.rs`), and even if it were
     // reachable, it only holds Encrypt/Decrypt/GetAttributes, never Revoke/Destroy/Get.
-    use crate::middlewares::reject_reserved_aws_xks_identity;
+    use crate::middlewares::reject_reserved_service_identity;
 
     assert!(
-        reject_reserved_aws_xks_identity(&UserId::from(AWS_XKS_SERVICE_USER)).is_err(),
+        reject_reserved_service_identity(&UserId::from(AWS_XKS_SERVICE_USER)).is_err(),
         "the reserved AWS XKS service identity must stay unreachable through any \
          externally-authenticated path, including for monitoring purposes"
     );

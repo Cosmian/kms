@@ -83,6 +83,7 @@ COSMIAN_PREFIXES = (
     'kmip-derive',
     'test_kms_server',
     'proteccio_pkcs11',
+    'kryoptic_pkcs11',
     'softhsm2_pkcs11',
     'utimaco_pkcs11',
     'smartcardhsm_pkcs11',

@@ -69,12 +69,8 @@ ignore = [
   # { id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
-  { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
-  # h2 0.3.x (used by actix-http 3.x) accepts unbounded empty DATA frames, potentially causing OOM or panic.
-  # The fix is in h2 >=0.4.16, but actix-http 3.x (and its master branch as of 2026-08) is hardcoded to h2 ^0.3
-  # and there is no actix-http 4.x / actix-web 5.x release yet. No upstream upgrade path exists.
-  # Severity: low. Re-evaluate when actix-web 5.x is published.
-  { id = "RUSTSEC-2026-0258", reason = "h2 0.3.x unbounded empty DATA frames (low severity): fixed in h2 0.4.16, but actix-http 3.x is hardcoded to h2 ^0.3 even on master; actix-web 5.x not yet released, no upgrade path available" },
+  { id = "RUSTSEC-2023-0071", reason = "Marvin Attack (rsa 0.9, no patched release): timing side channel in RSA private-key decryption. rsa is compiled via jsonwebtoken 10 (rust_crypto backend; aws-lc is not Windows compatible) and via the optional pgp 0.21 (non-fips OpenPGP). Both only run RSA public-key operations with it (JWT RS* verification; OpenPGP encrypt, verify and key parsing): every OpenPGP RSA private-key operation (PKESK decryption, signing, key generation) is done by OpenSSL in crate/crypto/src/crypto/openpgp" },
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 timing variability; no 0.5.x patch exists (fixed in >=0.7.6, which the workspace uses for 0.7.x). 0.5.5 remains via elliptic-curve 0.13 (p256/p384 0.13) from jsonwebtoken 10.4 (rust_crypto, JWT ES256/ES384 verification in server and CLI), from the direct p256 0.13 dependency of cosmian_pkcs11 and cosmian_pkcs11_module, and from the optional pgp 0.21.0 -> cx448 0.1.1 (non-fips). Upstream jsonwebtoken 11.1 and pgp 0.21 still require elliptic-curve 0.13. Remove when they move to 0.14" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use
@@ -99,14 +95,14 @@ allow = [
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
   "ISC",
-  "OpenSSL",
   "Zlib",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "Unicode-3.0",
   "CC0-1.0",
+  "BSL-1.0", # xxhash-rust (via redis 1.x); approved by maintainers
   "BUSL-1.1",
-  "CDLA-Permissive-2.0"
+  "CDLA-Permissive-2.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -161,7 +157,7 @@ registries = [
 # https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "warn"
+multiple-versions = "allow"
 # Lint level for when a crate version requirement is `*`
 wildcards = "allow"
 # The graph highlighting used when creating dotgraphs for crates

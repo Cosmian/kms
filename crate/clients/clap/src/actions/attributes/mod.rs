@@ -24,7 +24,6 @@ pub enum AttributesCommands {
 
 #[cfg(test)]
 pub use cosmian_kms_client::reexport::cosmian_kms_client_utils::attributes_utils::CLinkType;
-pub use set::CCryptographicAlgorithm;
 
 impl AttributesCommands {
     /// Process the Attributes commands action.

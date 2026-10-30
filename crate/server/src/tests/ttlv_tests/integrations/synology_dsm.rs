@@ -37,8 +37,6 @@
 //! Steps 8 and 9 only proceed if `ModifyAttributeResponse` correctly echoes
 //! the modified `Name` attribute (KMIP 1.2 spec §4.14, issue #820).
 
-use std::sync::Arc;
-
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
@@ -71,13 +69,11 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams,
-    core::KMS,
     middlewares::UserId,
     result::KResult,
     tests::{
         hsm::test_helpers::{get_hsm_password, get_hsm_slot_id},
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
         ttlv_tests::{get_client, socket_client::SocketClient},
     },
 };
@@ -628,7 +624,7 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
     clap_config.hsm.hsm_password = vec![user_password];
     clap_config.db.sqlite_path = sqlite_path;
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // Step 1: Create a sensitive AES-256 key in the HSM (non-extractable).
     let create_request = symmetric_key_create_request(

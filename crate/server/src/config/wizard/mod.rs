@@ -31,6 +31,24 @@ mod socket_wizard;
 mod tests;
 mod tls_wizard;
 
+/// Write `content` to `path`, readable by the owner only: the file can hold the EST bootstrap
+/// password, the SCEP challenge and other secrets.
+fn write_owner_only(path: &std::path::Path, content: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+        options.mode(0o600);
+        // `mode` only applies to a file that is created: tighten an existing one as well.
+        if path.exists() {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+    }
+    options.open(path)?.write_all(content)
+}
+
 use dialoguer::{Input, theme::ColorfulTheme};
 
 use crate::{
@@ -38,6 +56,18 @@ use crate::{
     error::KmsError,
     result::KResult,
 };
+
+/// Maps a failed `dialoguer` prompt to the wizard's `KmsError`.
+trait PromptResultExt<T> {
+    /// Converts the prompt error into `KmsError::ServerError("Prompt error: …")`.
+    fn prompt_err(self) -> KResult<T>;
+}
+
+impl<T> PromptResultExt<T> for Result<T, dialoguer::Error> {
+    fn prompt_err(self) -> KResult<T> {
+        self.map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))
+    }
+}
 
 /// Run the interactive configuration wizard and write the configuration file.
 ///
@@ -113,7 +143,7 @@ pub fn run_configure_wizard() -> KResult<()> {
             let ca: String = Input::with_theme(&ColorfulTheme::default())
                 .with_prompt("Clients CA certificate file path (--clients-ca-cert-file)")
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             tls.clients_ca_cert_file = Some(std::path::PathBuf::from(ca));
         }
     }
@@ -147,7 +177,7 @@ pub fn run_configure_wizard() -> KResult<()> {
     // ── [9/9] Advanced ────────────────────────────────────────────────────────
     println!("[9/9] Advanced / miscellaneous configuration");
     println!("─────────────────────────────────────────────");
-    let advanced = advanced_wizard::configure_advanced(ui_config)?;
+    let advanced = advanced_wizard::configure_advanced(ui_config, &tls)?;
     println!();
 
     // Prepend kms_public_url to CORS origins if it was set and is not already present.
@@ -176,6 +206,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         workspace: advanced.workspace,
         vendor_identification: advanced.vendor_identification,
         key_encryption_key: advanced.key_encryption_key,
+        key_encryption_key_wrapping_algorithm: advanced.key_encryption_key_wrapping_algorithm,
         default_unwrap_type: advanced.default_unwrap_type,
         roles: crate::config::RolesConfig {
             crypto_officer_users: advanced.crypto_officer_users,
@@ -188,6 +219,9 @@ pub fn run_configure_wizard() -> KResult<()> {
         google_cse_config: advanced.google_cse_config,
         azure_ekm_config: advanced.azure_ekm_config,
         aws_xks_config: advanced.aws_xks_config,
+        est: advanced.est,
+        scep: advanced.scep,
+        templates: advanced.templates,
         default_username: auth_result.default_username,
         force_default_username: auth_result.force_default_username,
         ..ClapConfig::default()
@@ -204,7 +238,7 @@ pub fn run_configure_wizard() -> KResult<()> {
             KmsError::ServerError(format!("Cannot create directory {}: {e}", parent.display()))
         })?;
     }
-    std::fs::write(output_file, &toml_content)
+    write_owner_only(output_file, toml_content.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Cannot write {output_path}: {e}")))?;
 
     println!("╔══════════════════════════════════════════════════════════════╗");
@@ -219,7 +253,13 @@ pub fn run_configure_wizard() -> KResult<()> {
             "  Self-signed client certificate: {}",
             client_cert.display()
         );
-        println!("  Distribute this certificate to clients that need to authenticate via mTLS.\n");
+        if let Some(client_key) = tls_result.generated_client_key {
+            println!("  Matching client private key:    {}", client_key.display());
+        }
+        println!(
+            "  Distribute this certificate (and its private key, securely) to clients that need \
+             to authenticate via mTLS.\n"
+        );
     }
 
     println!("Start the server with:");

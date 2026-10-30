@@ -123,8 +123,6 @@ Crate path: `crate/server`
 | `info` | `Starting the HTTPS KMS server...` | `src/start_kms_server.rs` | - | - |
 | `info` | `Windows service received Stop signal, shutting down...` | `src/windows_service.rs` | - | - |
 | `info` | `Windows service reporting Running to SCM` | `src/windows_service.rs` | - | - |
-| `info` | `XKS Decrypt internal error: {:?}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
-| `info` | `XKS Encrypt internal error: {:?}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
 | `info` | `{}` | `src/main.rs` | - | - |
 | `debug` | `<== encrypted {} ciphertexts` | `src/core/operations/encrypt.rs` | - | - |
 | `debug` | `==> encrypting {} clear texts` | `src/core/operations/encrypt.rs` | - | - |
@@ -155,7 +153,6 @@ Crate path: `crate/server`
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `decrypt request: {:?}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
 | `debug` | `decrypt_bulk: ==> decrypted {} plaintexts` | `src/core/operations/decrypt.rs` | - | - |
 | `debug` | `decrypt_bulk: ==> decrypting {} ciphertexts` | `src/core/operations/decrypt.rs` | - | - |
 | `debug` | `Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long` | `src/core/operations/decrypt.rs` | `prefix`: decryption oracle prefix bytes | - |
@@ -166,7 +163,6 @@ Crate path: `crate/server`
 | `debug` | `EKM Error: {:?}` | `src/routes/azure_ekm/error.rs` | - | - |
 | `debug` | `Enable Google CSE JWT Authorization: {enable_google_cse_authentication}` | `src/start_kms_server.rs` | `enable_google_cse_authentication`: whether Google CSE JWT auth is on | - |
 | `debug` | `encode base64 wrapped_dek` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `encrypt request: {:?}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
 | `debug` | `encrypting with RSA {algorithm:?} {padding:?} hashing_fn:{hashing_fn:?} mgf1:{mgf1_hash_fn:?} label_len:{}` | `src/core/operations/encrypt.rs` | `algorithm`: cryptographic algorithm<br>`padding`: asymmetric padding scheme<br>`hashing_fn`: hash function<br>`mgf1_hash_fn`: MGF1 hash function | - |
 | `debug` | `entering` | `src/routes/google_cse/jwt.rs` | - | - |
 | `debug` | `entering` | `src/routes/google_cse/operations.rs` | - | ×9 in this file |
@@ -176,20 +172,16 @@ Crate path: `crate/server`
 | `debug` | `exporting private key with format: {:?}` | `src/core/operations/export_get.rs` | - | - |
 | `debug` | `fetching {jwks_uri}` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`: JWKS endpoint URL | - |
 | `debug` | `from_rsa` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `Generated JWT for original KACLS: {jwt:?}` | `src/routes/google_cse/operations.rs` | `jwt`: JWT token (debug display) | - |
 | `debug` | `Get Attributes: available vendor attributes: [{}]` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: fallback vendor attribute match {}:{} from object attributes` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: no vendor attributes present on object` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: requested vendor attribute not found {}:{}` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get Attributes: returning vendor attribute match {}:{}` | `src/core/operations/attributes/get.rs` | - | - |
 | `debug` | `Get input certificates as bytes` | `src/core/operations/validate.rs` | - | - |
-| `debug` | `get metadata request: {:?}` | `src/routes/aws_xks/key_metadata.rs` | - | - |
 | `debug` | `get rsa public key on {current_kacls_url}` | `src/routes/google_cse/operations.rs` | `current_kacls_url`: current KACLS server URL | - |
 | `debug` | `get_crl_bytes: exiting in success with {} CRLs` | `src/core/operations/validate.rs` | - | - |
 | `debug` | `get_status` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Google CSE request authorized for user {authentication_email}` | `src/routes/google_cse/jwt.rs` | `authentication_email`: email from the authentication token | - |
-| `debug` | `Import: activation_date={:?} <= now, setting state to Active` | `src/core/operations/import.rs` | - | - |
-| `debug` | `Import: no activation_date or future date, setting state to PreActive` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
@@ -198,19 +190,15 @@ Crate path: `crate/server`
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |
 | `debug` | `Key wrapped successfully by key {}` | `src/core/wrapping/wrap.rs` | - | - |
-| `debug` | `ModifyAttribute: persisting attributes for {}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `debug` | `no token validation` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Number of certificates in chain: {certificates_number}` | `src/core/operations/validate.rs` | `certificates_number`: number of certificates in chain | - |
 | `debug` | `object is not wrapped, no need to unwrap` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Object type: {}, with unique identifier: {}, destroyed by user {}` | `src/core/operations/destroy.rs` | - | - |
-| `debug` | `Object with unique identifier: {} revoked` | `src/core/operations/revoke.rs` | - | - |
 | `debug` | `Object with unique identifier: {} revoked by user {}` | `src/core/operations/revoke.rs` | - | - |
 | `debug` | `OpenSSL Extensions: {}` | `src/core/operations/certify/build_certificate.rs` | - | - |
 | `debug` | `Parent CRL verification: revocation status: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `proxy_config: {config:#?}` | `src/config/params/proxy_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `re-wrapping key with current KMS` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `Register: activation_date={:?} <= now, setting state to Active` | `src/core/operations/register.rs` | - | - |
-| `debug` | `Register: no activation_date or future date, setting state to PreActive` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Registered object with uid: {}` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Request already authenticated, skipping Ensure Auth middleware` | `src/middlewares/ensure_auth.rs` | - | - |
 | `debug` | `request.encrypted_data_encryption_key: {}` | `src/routes/google_cse/operations.rs` | - | - |
@@ -273,7 +261,6 @@ Crate path: `crate/server`
 | `trace` | `Certificate attribute link: {}` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `Certificate attributes links: None` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `certificate parent id is:  {}` | `src/core/operations/export_get.rs` | — | — |
-| `trace` | `Certificate parent id is: {parent_id}` | `src/core/operations/export_get.rs` | `parent_id` — … | — |
 | `trace` | `Certify KeypairAndSubjectName:{unique_identifier} : keypair data: {keypair_data}` | `src/core/operations/certify/certify_op.rs` | `unique_identifier` — …<br>`keypair_data` — … | — |
 | `trace` | `Certify X509Req or Certificate:{unique_identifier}` | `src/core/operations/certify/certify_op.rs` | `unique_identifier` — … | — |
 | `trace` | `Checking key with ID: {}` | `src/core/retrieve_object_utils.rs` | — | — |
@@ -340,7 +327,6 @@ Crate path: `crate/server`
 | `trace` | `key_material key format: {:?}` | `src/core/operations/digest.rs` | — | — |
 | `trace` | `Leaf certificate extracted from PKCS12` | `src/core/operations/import.rs` | — | — |
 | `trace` | `Link: {}` | `src/core/operations/attributes/add.rs` | — | — |
-| `trace` | `Locate: filtering out HSM key {uid_str} — user {user} has no grants` | `src/core/operations/locate.rs` | `uid_str` — …<br>`user` — … | — |
 | `trace` | `Mac: algorithm: {algorithm:?}` | `src/core/operations/mac.rs` | `algorithm` — … | — |
 | `trace` | `Mac: data len: {}` | `src/core/operations/mac.rs` | — | — |
 | `trace` | `matching on key format type: {:?}` | `src/core/operations/encrypt.rs` | — | — |
@@ -357,11 +343,9 @@ Crate path: `crate/server`
 | `trace` | `No issuer private key id provided` | `src/core/operations/certify/resolve_issuer.rs` | — | — |
 | `trace` | `No UI folder containing index.html found at {}` | `src/start_kms_server.rs` | — | — |
 | `trace` | `Non revocable keys detected: won't be revoked {non_revocable_key_id:?}` | `src/core/operations/revoke.rs` | `non_revocable_key_id` — … | — |
-| `trace` | `Not using Client Certificate Authentication with OpenSSL` | `src/start_kms_server.rs` | — | — |
 | `trace` | `OpenSSL Private Key instantiated before signing` | `src/core/operations/sign.rs` | — | — |
 | `trace` | `OpenSSL Public Key instantiated before encryption` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `Operation processed successfully: {op}` | `src/core/operations/message.rs` | `op` — … | — |
-| `trace` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` — … | — |
 | `trace` | `params: {server_params:?}` | `src/core/kms/mod.rs` | `server_params` — … | — |
 | `trace` | `PKCS12 parsed successfully` | `src/core/operations/import.rs` | — | — |
 | `trace` | `plaintext length: {} bytes` | `src/core/operations/decrypt.rs` | — | — |
@@ -396,7 +380,6 @@ Crate path: `crate/server`
 | `trace` | `Retrieved certificate: {} for private key: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Retrieved object for: {}` | `src/core/operations/activate.rs` | — | — |
 | `trace` | `Retrieved object for: {}` | `src/core/operations/attributes/add.rs` | — | — |
-| `trace` | `Retrieved object for: {}` | `src/core/operations/attributes/delete.rs` | — | — |
 | `trace` | `Retrieving certificate for private key: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `RNGRetrieve: {}` | `src/core/operations/rng_retrieve.rs` | — | — |
@@ -416,7 +399,7 @@ Crate path: `crate/server`
 | `trace` | `Token authentication using this API token ID: {api_token_id}` | `src/middlewares/api_token/api_token_auth.rs` | `api_token_id` — … | — |
 | `trace` | `token decoded with {app_name} jwt config` | `src/routes/google_cse/jwt.rs` | `app_name` — … | — |
 | `trace` | `Try to validate token from issuer: {issuer_uri:?}` | `src/routes/google_cse/jwt.rs` | `issuer_uri` — … | — |
-| `trace` | `UID: {:?}, State: {:?}, Attributes: {}` | `src/core/operations/locate.rs` | — | ×2 in this file |
+| `trace` | `UID: {:?}, State: {:?}, Attributes: {}` | `src/core/operations/locate.rs` | — | - |
 | `trace` | `uid={:?}` | `src/core/operations/mac.rs` | — | — |
 | `trace` | `uid={:?}, data_len={}` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `uid={}` | `src/core/operations/mac.rs` | — | — |
@@ -425,8 +408,6 @@ Crate path: `crate/server`
 | `trace` | `updated_master_secret_key_bytes len: {}` | `src/core/cover_crypt/create_user_decryption_key.rs` | — | — |
 | `trace` | `User {user} does not have permission for operation {operation_type:?} on object {}` | `src/core/retrieve_object_utils.rs` | `user` — …<br>`operation_type` — … | — |
 | `trace` | `User {user} has permission for operation {operation_type:?} on object {}` | `src/core/retrieve_object_utils.rs` | `user` — …<br>`operation_type` — … | — |
-| `trace` | `Using Client Certificate Authentication with OpenSSL` | `src/start_kms_server.rs` | — | — |
-| `trace` | `valid_jwt headers: {:?}` | `src/routes/google_cse/jwt.rs` | — | — |
 | `trace` | `valid_jwt user claims: {:?}` | `src/routes/google_cse/jwt.rs` | — | — |
 | `trace` | `validate token: KACLS URL {google_cse_kacls_url}` | `src/routes/google_cse/jwt.rs` | `google_cse_kacls_url` — … | — |
 | `trace` | `Validate: {}` | `src/core/operations/validate.rs` | — | — |
@@ -451,13 +432,11 @@ Crate path: `crate/server`
 | `trace` | `{request}` | `src/core/operations/query.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/register.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/revoke.rs` | `request` — … | — |
-| `trace` | `{request}` | `src/core/operations/rng_seed.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/sign.rs` | `request` — … | — |
 | `trace` | `{request}` | `src/core/operations/signature_verify.rs` | `request` — … | — |
 | `trace` | `{}` | `src/core/operations/activate.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/attributes/delete.rs` | — | — |
-| `trace` | `{}` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/locate.rs` | — | — |
 | `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
 | `error` | `Failed to find KMIP version` | `src/routes/kmip/handlers.rs` | — | — |
@@ -523,9 +502,6 @@ Crate path: `crate/server`
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReCertify: {}` | `src/core/operations/recertify.rs` | - | - |
 | `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
-| `trace` | `SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{}' (rotation disabled)` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | Emitted at session-key derivation time when `ui_session_salt` is absent. The ephemeral key means all browser sessions are lost on restart. Set `ui_session_salt` (or env `KMS_UI_SESSION_SALT`) to a stable 32-byte+ secret for production. |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
@@ -575,7 +551,6 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Skipping HSM key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `debug` | `[auto-rotate] Skipping {uid}: object type {other:?} has no auto-rotation support` | `src/core/operations/auto_rotate.rs` | `uid`, `other` | - |
 | `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
-| `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | - | - |
 | `warn` | `Azure EKM JSON deserialization error: {err}` | `src/routes/azure_ekm/mod.rs` | `err` | - |
 | `warn` | `` JWKS endpoint enabled — all active public keys with the "jwks" tag will be publicly exposed (unauthenticated) at                  `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served.                  Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file. `` | `src/start_kms_server.rs` | `kms_public_url` | - |
 | `warn` | `JWKS response truncated: more than {} eligible public keys found` | `src/routes/jwks.rs` | - | - |
@@ -647,7 +622,6 @@ Crate path: `crate/server`
 | `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/spire/transit.rs` | `name`, `bits` | - |
 | `debug` | `vault transit: deleted key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
 | `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
-| `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | - |
 | `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
@@ -701,7 +675,6 @@ Crate path: `crate/server`
 | `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
 | `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
 | `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
-| `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
 | `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
 | `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
@@ -711,37 +684,30 @@ Crate path: `crate/server`
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
-| `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
-| `warn` | `Session: rejecting reserved AWS XKS service identity from stored                              session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
-| `warn` | `{log_prefix}: rejecting reserved AWS XKS service identity in SPIRE auth:                      {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
 | `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers              these operations on your behalf — configure a Crypto Officer identity backed by a              real credential (TLS certificate CN / OIDC subject matching `default_username`) so              XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
 | `error` | `AWS XKS: failed to spawn key access migration thread: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: pre-existing key access migration failed: {error}` | `src/start_kms_server.rs` | `error` | - |
-| `error` | `AuditFileStore: channel full, dropping audit event` | `src/core/audit/file_store.rs` | - | Channel at capacity; event dropped, accounted for by an eviction sentinel on next successful write |
-| `error` | `AuditFileStore: failed to write event id={}: {e} — event dropped` | `src/core/audit/file_store.rs` | `id`, `e` | `id`/`prev_hash` not advanced; next event reuses this slot to preserve chain continuity |
-| `error` | `AuditFileStore: final sync failed: {e}` | `src/core/audit/file_store.rs` | `e` | `fsync` failure during graceful shutdown |
-| `error` | `AuditFileStore: id counter overflow at i64::MAX —                      audit logging stopped. Rotate the log file and restart.` | `src/core/audit/file_store.rs` | - | id space exhausted; audit logging halts until the log file is rotated |
-| `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/file_store.rs` | - | Channel closed; `enqueue` silently drops the event |
-| `debug` | `AuditFileStore: resuming at id={next_id}, prev_hash={}` | `src/core/audit/file_store.rs` | `next_id`, `prev_hash` | `prev_hash` is truncated to its first 8 bytes (hex) |
-| `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/file_store.rs` | - | Graceful shutdown complete |
-| `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | Audit failure in reject mode: single event failed to queue (channel full or closed). HTTP response is 503 ServiceUnavailable. |
-| `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit.rs` | - | Audit failure in reject mode: batch request (one or more events) failed to queue. HTTP response is 503 ServiceUnavailable. |
-| `error` | `AuditFileStore: audit log lock {} held by another instance ({e}) —                          buffering events until it is released` | `src/core/audit/file_store.rs` | `e`: lock acquisition error | Normal in HA deployments: another KMS instance holds the audit log lock. Events buffered (up to channel capacity) and file open will retry periodically. |
-| `error` | `AuditFileStore: cannot open audit log {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e`: file I/O error | File not readable (permissions, missing, corrupted header). Events buffered; retrying periodically. |
-| `error` | `AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex},          size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) —          starting a fresh chain` | `src/core/audit/file_store.rs` | `sha256_hex`: SHA256 of sealed file<br>`size`: file size in bytes<br>`claimed_last_id`: last event ID if readable<br>`failure_offset`: byte offset where corruption detected | **Security:** Corrupted log sealed as forensic evidence with RFC3339 timestamp. New chain started at id=0 (`audit:reanchor` event). Offline verification: run `ckms audit verify` on the live log (or its containing directory) — it cross-checks the sealed file's SHA-256 through the live log's reanchor event; running it directly on the sealed file fails chain verification instead, since the sealed file is an intentionally broken chain. |
-| `error` | `AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}` | `src/core/audit/file_store.rs` | `bytes_discarded`: incomplete bytes dropped<br>`discard_offset`: offset in file<br>`next_id`: resuming event ID | Process killed mid-write (crash/SIGKILL). Incomplete event discarded; hash chain preserved. |
-| `debug` | `AuditFileStore: still waiting on audit log lock {} ({e})` | `src/core/audit/file_store.rs` | `e`: lock acquisition error | Debug: subsequent retry attempt (not the first). Implies a preceding "audit log lock held by another instance" error. |
-| `error` | `AuditFileStore: audit log {} reached its configured max_size_bytes cap              ({len} bytes >= {cap}) — audit writing is blocked until the log is safely              remediated and the KMS is restarted` | `src/core/audit/file_store.rs` | `len`: actual file length in bytes<br>`cap`: configured `max_size_bytes` | First transition into the capped state only (logged once). The event that crossed the cap is still persisted; every event after it is dropped (subject to `--audit-failure-mode`) until the log is remediated and the KMS restarted. Write-stop cap, not rotation or retention. |
-| `error` | `AuditFileStore: cannot stat audit log {} ({e})` | `src/core/audit/file_store.rs` | `e`: I/O error from `File::metadata()` | Only possible if `max_size_bytes` is configured; the cap check for this write is skipped (not treated as capped) and retried on the next write. |
-| `debug` | `AuditFileStore: audit log {} is at its max_size_bytes cap — event dropped` | `src/core/audit/file_store.rs` | - | Throttled to at most once every 500ms while blocked events keep arriving after the cap has been reached. |
-| `error` | `AuditFileStore: recovery task failed to run ({join_err}) — retrying` | `src/core/audit/file_store.rs` | `join_err`: task join error (tokio thread panic or cancellation) | Audit recovery background task crashed; will retry after backoff interval. Monitor frequency to detect systemic issues. |
-| `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_store.rs` | `e` | - |
+| `error` | `AuditFileStore: channel full, dropping audit event` | `src/core/audit/store.rs` | - | Channel at capacity; event dropped, accounted for by an eviction sentinel on next successful write |
+| `error` | `AuditFileStore: final sync failed: {e}` | `src/core/audit/writer.rs` | `e` | `fsync` failure during graceful shutdown |
+| `error` | `AuditFileStore: id counter overflow at i64::MAX —                      audit logging stopped. Rotate the log file and restart.` | `src/core/audit/writer.rs` | - | id space exhausted; audit logging halts until the log file is rotated |
+| `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/store.rs` | - | Channel closed; `enqueue` silently drops the event |
+| `debug` | `AuditFileStore: resuming at id={next_id}, prev_hash={}` | `src/core/audit/recovery.rs` | `next_id`, `prev_hash` | `prev_hash` is truncated to its first 8 bytes (hex) |
+| `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/writer.rs` | - | Graceful shutdown complete |
+| `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit/mod.rs` | - | Audit failure in reject mode: single event failed to queue (channel full or closed). HTTP response is 503 ServiceUnavailable. |
+| `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit/mod.rs` | - | Audit failure in reject mode: batch request (one or more events) failed to queue. HTTP response is 503 ServiceUnavailable. |
+| `error` | `AuditFileStore: audit log lock {} held by another instance ({e}) —                          buffering events until it is released` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error | Normal in HA deployments: another KMS instance holds the audit log lock. Events buffered (up to channel capacity) and file open will retry periodically. |
+| `error` | `AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex},          size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) —          starting a fresh chain` | `src/core/audit/recovery.rs` | `sha256_hex`: SHA256 of sealed file<br>`size`: file size in bytes<br>`claimed_last_id`: last event ID if readable<br>`failure_offset`: byte offset where corruption detected | **Security:** Corrupted log sealed as forensic evidence with RFC3339 timestamp. New chain started at id=0 (`audit:reanchor` event). Offline verification: run `ckms audit verify` on the live log (or its containing directory) — it cross-checks the sealed file's SHA-256 through the live log's reanchor event; running it directly on the sealed file fails chain verification instead, since the sealed file is an intentionally broken chain. |
+| `error` | `AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}` | `src/core/audit/recovery.rs` | `bytes_discarded`: incomplete bytes dropped<br>`discard_offset`: offset in file<br>`next_id`: resuming event ID | Process killed mid-write (crash/SIGKILL). Incomplete event discarded; hash chain preserved. |
+| `debug` | `AuditFileStore: still waiting on audit log lock {} ({e})` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error | Debug: subsequent retry attempt (not the first). Implies a preceding "audit log lock held by another instance" error. |
+| `error` | `AuditFileStore: audit log {} stopped at its configured max_size_bytes cap              ({len} bytes, cap {cap}) — audit writing is blocked until the log is safely              remediated and the KMS is restarted` | `src/core/audit/file_sink.rs` | `len`: actual file length in bytes<br>`cap`: configured `max_size_bytes` | First transition into the capped state only (logged once). A final `audit:size-cap-reached` event replaces the event that would reach the cap; later events are dropped according to `--audit-failure-mode` until the log is remediated and the KMS restarted. |
+| `error` | `AuditFileStore: recovery task failed to run ({join_err}) — retrying` | `src/core/audit/file_sink.rs` | `join_err`: task join error (tokio thread panic or cancellation) | Audit recovery background task crashed; will retry after backoff interval. Monitor frequency to detect systemic issues. |
+| `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error other than contention (EACCES, EROFS, directory-creation failure) | Deployment fault distinct from the benign "held by another instance" case; retried on the same interval. |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 | `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
@@ -755,6 +721,89 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
 | `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `import pgp_key: uid={}` | `src/core/operations/import.rs` | - | - |
+| `error` | `AuditFileStore: audit sink failed to resume ({e}) — audit logging is disabled for this process` | `src/core/audit/store.rs` | `e` | Only reachable if the recovered log file's metadata cannot be `stat`'d at all (lock acquisition and recovery/open faults retry indefinitely and never reach here). The writer task exits and audit logging stays off for the rest of the process lifetime — it is not retried. |
+| `error` | `AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped` | `src/core/audit/file_sink.rs` | `id`: sentinel event ID<br>`e`: I/O error | A torn-write-recovered or reanchor sentinel written during recovery (before the writer task exists) failed to persist; the chain does not advance past this `id` and the sentinel is dropped. |
+| `debug` | `AuditFileStore: sink '{}' is at capacity — event dropped` | `src/core/audit/writer.rs` | sink name (`AuditSink::name()`) | Throttled to at most once every 500ms while blocked events keep arriving after the sink reports `is_write_capacity_exceeded() == true`. |
+| `error` | `AuditFileStore: cannot open or stat audit log {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e` | - |
+| `error` | `AuditFileStore: recovery sentinel id counter overflow at i64::MAX` | `src/core/audit/file_sink.rs` | - | - |
+| `error` | `AuditFileStore: exhausted resync attempts at id={id} — event dropped` | `src/core/audit/writer.rs` | `id` | - |
+| `error` | `AuditFileStore: failed to write event id={id}: {e} — event dropped` | `src/core/audit/writer.rs` | `id`, `e` | - |
+| `error` | `AuditFileStore: sink rejected size-cap sentinel at id={id}` | `src/core/audit/writer.rs` | `id` | - |
+| `warn` | `Connected to the PostgreSQL audit backend; ignoring --audit-file-path ({}) since both were set` | `src/core/kms/mod.rs` | - | - |
+| `warn` | `PostgreSQL audit backend unavailable ({e}); --audit-file-path ({}) is set but is NOT used as a runtime fallback — startup aborts` | `src/core/kms/mod.rs` | `e` | - |
+| `warn` | `Logout: failed to revoke the Auth Verifier session: {e}` | `src/routes/ui_auth.rs` | `e`: network, TLS or HTTP status error returned while calling `DELETE /sessions` on the Auth Verifier | UI logout still succeeds and the `_ea_` cookie is expired, but the Auth Verifier session stays valid until it expires. Check that `auth_verifier_url` is reachable from the KMS. |
+| `debug` | `Auth Verifier session cookie rejected: {e}` | `src/routes/ui_auth.rs` | `e`: reason the `_ea_` cookie was rejected (invalid signature, expired, wrong realm, empty or reserved subject) | Expected after the SAML session expires. Repeated wrong-realm rejections indicate a cookie issued for another Auth Verifier realm. |
+| `error` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` | - |
+| `warn` | `EST simplereenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
+| `warn` | `SCEP request {} rejected (failInfo={}): {}` | `src/routes/scep/pki_operation.rs` | - | - |
+| `info` | `GET /.well-known/est/cacerts` | `src/routes/est/cacerts.rs` | - | - |
+| `info` | `GET /.well-known/est/csrattrs` | `src/routes/est/csrattrs.rs` | - | - |
+| `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
+| `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
+| `debug` | `decrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
+| `debug` | `encrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
+| `debug` | `get metadata request: {}` | `src/routes/aws_xks/key_metadata.rs` | - | - |
+| `debug` | `vault transit: 'exportable: true' requested for key '{name}' is ignored, transit keys are always created non-exportable` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `{log_prefix}: validated entity={} policies={:?}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), x5t: {:?}); the key is taken from the configured JWKS` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `trace` | `valid_jwt headers: typ={:?} alg={:?} kid={:?}` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `debug` | `ModifyAttribute: persisting attributes for {id}` | `src/core/operations/attributes/modify.rs` | `id` | - |
+| `debug` | `Object with unique identifier: {id} revoked` | `src/core/operations/revoke.rs` | `id` | - |
+| `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{id}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | `id` | - |
+| `trace` | `Certificate parent id is: {parent_id_str}` | `src/core/operations/export_get.rs` | `parent_id_str` | - |
+| `trace` | `Locate: filtering out HSM key {uid} — user {user} has no grants` | `src/core/operations/locate.rs` | `uid`, `user` | - |
+| `trace` | `Retrieved object for: {object}` | `src/core/operations/attributes/delete.rs` | `object` | - |
+| `trace` | `SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{id}' (rotation disabled)` | `src/core/operations/attributes/set.rs` | `id` | - |
+| `trace` | `SetAttribute: writing CKA_LABEL '{label}' on HSM key '{id}'` | `src/core/operations/attributes/set.rs` | `label`, `id` | - |
+| `trace` | `SetAttribute: writing CKA_START_DATE={today} CKA_END_DATE={end_date} on HSM key '{id}'` | `src/core/operations/attributes/set.rs` | `today`, `end_date`, `id` | - |
+| `warn` | `SECURITY: no authentication method is configured: every request is served as the default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: rate_limit_per_second is not set: request rate limiting is disabled.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
+| `debug` | `Generated JWT for original KACLS` | `src/routes/google_cse/operations.rs` | - | - |
+| `warn` | `Session: rejecting reserved service identity from stored session user_id: {error}` | `src/middlewares/session_auth.rs` | `error` | - |
+| `warn` | `{log_prefix}: rejecting reserved service identity in SPIRE auth: {error}` | `src/middlewares/spire_token.rs` | `log_prefix`, `error` | - |
+| `error` | `enrollment audit: {operation} event could not be queued` | `src/routes/enrollment.rs` | `operation` | Audit event lost; check the audit backend. |
+| `error` | `enrollment: deactivating non-conforming certificate {uid}: {e}` | `src/routes/enrollment.rs` | `uid`, `e` | Issued certificate failed the end-entity check and was deactivated; investigate the CA/template. |
+| `warn` | `` enrollment audit: {operation} refused for `{principal}` from {client}: {} `` | `src/routes/enrollment.rs` | `operation`, `principal`, `client` | - |
+| `warn` | `enrollment: CA certificate not found: {uid}` | `src/routes/enrollment.rs` | `uid` | - |
+| `warn` | `EST simpleenroll refused: {client} is locked out` | `src/routes/est/enroll.rs` | `client` | 10 failures lock the address out, 30 s doubling up to 1 h. |
+| `warn` | `EST simpleenroll rejected: the client certificate was enrolled elsewhere` | `src/routes/est/enroll.rs` | - | - |
+| `warn` | `EST simpleenroll rejected: {e}` | `src/routes/est/enroll.rs` | `e` | - |
+| `warn` | `SCEP PKIOperation refused: {client} is locked out` | `src/routes/scep/pki_operation.rs` | `client` | 10 failures lock the address out, 30 s doubling up to 1 h. |
+| `warn` | `SCEP: refusing a pkiMessage from {client} with an invalid transactionID ({})` | `src/routes/scep/pki_operation.rs` | `client` | - |
+| `warn` | `SCEP: unreadable pkiMessage from {client}: {e}` | `src/routes/scep/pki_operation.rs` | `client`, `e` | - |
+| `warn` | `SECURITY: EST/SCEP is enabled but rate_limit_per_second is not set. The enrollment endpoints are reachable before authentication; set rate_limit_per_second in the server configuration for production deployments (failed authentications are also locked out per client address).` | `src/config/params/server_params.rs` | - | Set `rate_limit_per_second` in production. |
+| `warn` | `SECURITY: SCEP is enabled without TLS. A network attacker can substitute the CA certificate returned by GetCACert and observe or replay requests. Enable TLS, or have devices verify the CA fingerprint out of band.` | `src/config/params/server_params.rs` | - | Enable TLS or have devices pin the CA fingerprint. |
+| `info` | `` enrollment audit: {operation} succeeded for `{principal}` from {client}: certificate {uid} `` | `src/routes/enrollment.rs` | `operation`, `principal`, `client`, `uid` | - |
+| `info` | `POST /.well-known/est/simpleenroll from {client}` | `src/routes/est/enroll.rs` | `client` | - |
+| `info` | `POST /.well-known/est/simplereenroll from {client}` | `src/routes/est/enroll.rs` | `client` | - |
+| `info` | `SCEP PKIOperation from {client}: messageType={} transactionID={}` | `src/routes/scep/pki_operation.rs` | `client` | - |
+| `debug` | `enrollment: issued certificate {uid} (serial {serial_hex}) from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `serial_hex`, `ca_uid` | - |
+| `trace` | `Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes` | `src/core/operations/certify/certify_op.rs` | - | - |
+| `trace` | `RNGSeed: {} bytes` | `src/core/operations/rng_seed.rs` | - | - |
+| `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped, and `create` when Crypto Officers are configured). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
+| `error` | `` SCEP: the enrollment CA `{ca_uid}` cannot be used: {e} `` | `src/routes/scep/pki_operation.rs` | `ca_uid`, `e` | Server-side detail only: the client gets a fixed HTTP 500 without CA identifiers. |
+| `warn` | `enrollment: CA certificate not found: {ca_uid}` | `src/routes/enrollment.rs` | `ca_uid` | - |
+| `warn` | `enrollment: the CA private key {} is not Active` | `src/routes/enrollment.rs` | key uid | Logged only; the enrollment error carries no UID. |
+| `warn` | `SCEP request {} from {client} rejected: {reason} (messageType={message_type})` | `src/routes/scep/pki_operation.rs` | `client`, `reason`, `message_type` | Counts toward the enrollment lockout. |
+| `warn` | `enrollment: refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
+| `warn` | `enrollment: the CA private key {} is refused by the KMIP algorithm policy: {e}` | `src/routes/enrollment.rs` | `e` | - |
+| `debug` | `RSA-OAEP HSM unwrap failed: {e}` | `src/routes/jose/decrypt.rs` | `e` | - |
+| `info` | `POST /certificates/csr` | `src/routes/csr.rs` | - | Request to generate a PKCS#10 CSR; the HSM signs it for non-extractable keys. |
+| `trace` | `found certificate {certificate_id} linked to HSM private key {}` | `src/core/certificate/find.rs` | `certificate_id` | - |
+| `warn` | `could not restore CKA_WRAP/CKA_UNWRAP on HSM key {kek}: {e4}` | `src/core/wrapping/wrap.rs` | `kek`, `e4` | - |
+| `warn` | `unwrap: declared {requested:?} failed for key wrapped by {unwrapping_key_uid} ({e}); retrying with the HSM default for objects wrapped before HSM wrapping honoured the requested mode` | `src/core/wrapping/unwrap.rs` | `requested`, `unwrapping_key_uid`, `e` | - |
+| `info` | `Enabled CKA_WRAP/CKA_UNWRAP on HSM key encryption key {kek} for {alg:?}` | `src/core/wrapping/wrap.rs` | `kek`, `alg` | - |
+| `warn` | `EST simpleenroll rejected: {reason}` | `src/routes/est/enroll.rs` | `reason` | - |
+| `warn` | `EST simplereenroll rejected: {reason}` | `src/routes/est/enroll.rs` | `reason` | - |
+| `debug` | `The unwrapping key {} is itself wrapped, unwrapping it first` | `src/core/wrapping/unwrap.rs` | - | - |
+| `info` | `XKS {operation} internal error: {:?}` | `src/routes/aws_xks/error.rs` | `operation`: XKS operation (`Encrypt` or `Decrypt`) | - |
+| `debug` | `{operation}: activation_date={:?} <= now, setting state to Active` | `src/core/operations/import.rs` | `operation`: KMIP operation (`Import` or `Register`) | - |
+| `debug` | `{operation}: no activation_date or future date, setting state to PreActive` | `src/core/operations/import.rs` | `operation`: KMIP operation (`Import` or `Register`) | - |
+| `trace` | `ignoring certificate '{uid}': not issued by the CA '{}'` | `src/core/certificate/find.rs` | `uid` | - |
+| `trace` | `skipping certificate '{uid}': cannot parse DER` | `src/core/certificate/find.rs` | `uid` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -799,6 +848,18 @@ Crate path: `crate/server_database`
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
 | `trace` | `find: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `trace` | `find_all: {:?}` | `src/stores/sql/mysql.rs` | - | - |
+| `error` | `audit: dedicated advisory-lock session ended unexpectedly: {e}` | `src/stores/audit/pgsql.rs` | `e` | - |
+| `error` | `audit: instance_id={} sealed generation {sealed_generation} (reason={}, first_failure_id={}, evidence={evidence}) — starting generation {new_generation}` | `src/stores/audit/pgsql.rs` | `sealed_generation`, `evidence`, `new_generation` | - |
+| `error` | `audit: advisory lock for instance_id={instance_id} held by another writer — waiting up to {timeout:?} (e.g. a rolling update's outgoing instance)` | `src/stores/audit/pgsql.rs` | `instance_id`, `timeout` | - |
+| `warn` | `RotateNameCache: predicate invalidation failed ({e}); clearing cache` | `src/core/rotate_name_cache.rs` | `e` | - |
+| `warn` | `audit: PostgreSQL server certificate is not verified; use sslmode=verify-full&sslrootcert=<ca.pem> in --audit-postgres-url` | `src/stores/audit/pgsql.rs` | - | - |
+| `error` | `atomic: objects {uids:?} were committed but the Findex index could not be updated after {INDEX_WRITE_ATTEMPTS} attempts (index needs repair): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `INDEX_WRITE_ATTEMPTS`, `e` | - |
+| `warn` | `atomic: active-key counter not updated for {uids:?} (reconcile will fix): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `e` | - |
+| `warn` | `atomic: live-object counter not updated for {uids:?} (reconcile will fix): {e}` | `src/stores/redis/redis_with_findex.rs` | `uids`, `e` | - |
+| `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/sqlite.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 
 ### `cosmian_kms_crypto`
 
@@ -832,7 +893,6 @@ Crate path: `crate/crypto`
 | `debug` | `wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}`                                                                                                                                                                        | `src/crypto/wrap/wrap_key.rs`                       | `hashing_fn`: hash function                                                       | -               |
 | `trace` | `Access Policy: {access_policy:?}`                                                                                                                                                                                                     | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
 | `trace` | `authenticated_encryption_additional_data: {ad:?}`                                                                                                                                                                                     | `src/crypto/cover_crypt/encryption.rs`              | `ad` — …                                                                          | —               |
-| `trace` | `bytes len: {:?}, bits: {}`                                                                                                                                                                                                            | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | ×2 in this file |
 | `trace` | `bytes len: {}, bits: {}`                                                                                                                                                                                                              | `src/crypto/rsa/operation.rs`                       | —                                                                                 | ×2 in this file |
 | `trace` | `ChaCha20 (pure) encryption: key_len={}, nonce_len={}, pt_len={}`                                                                                                                                                                      | `src/crypto/symmetric/symmetric_ciphers.rs`         | —                                                                                 | —               |
 | `trace` | `Created user decryption key with access policy: {access_policy:?}`                                                                                                                                                                    | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
@@ -867,6 +927,7 @@ Crate path: `crate/crypto`
 | `warn` | `` ignored `basicConstraints` extension's value: {value} `` | `src/openssl/x509_extensions.rs` | `value` | - |
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 | `warn` | `` Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck`              extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may              attempt to recursively check this certificate's own revocation status via CDP,              AIA, or local policy instead. `` | `src/openssl/ocsp.rs` | - | - |
+| `trace` | `bytes len: {}, bits: {}, curve_bits: {:?}` | `src/crypto/elliptic_curves/operation.rs` | - | ×2 in this file |
 
 ### `cosmian_kmip`
 
@@ -962,7 +1023,6 @@ Crate path: `crate/kmip`
 | `trace` | `deserialize_u8: state:  {:?}`                                                                                            | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `deserialize_unit: state:  {:?}`                                                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `deserialize_unit_struct with name: {name}, state:  {:?}`                                                                 | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …                                         | —               |
-| `trace` | `deserializing bytes string at tag: {}, of len: {}`                                                                       | `src/ttlv/kmip_ttlv_deserializer/byte_string_deserializer.rs`      | —                                                  | —               |
 | `trace` | `deserializing OffsetDateTime at tag: {}, value: {}, index: {}`                                                           | `src/ttlv/kmip_ttlv_deserializer/offset_date_time_deserializer.rs` | —                                                  | —               |
 | `trace` | `element:  {:?}`                                                                                                          | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | —                                                  | —               |
 | `trace` | `element: {:?}`                                                                                                           | `src/ttlv/kmip_ttlv_deserializer/structure_walker.rs`              | —                                                  | —               |
@@ -1023,7 +1083,6 @@ Crate path: `crate/interfaces`
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `error` | `Failed to decode object_id {}`                                                                                                                                         | `src/hsm/hsm_store.rs`        | -                                                              | Malformed object ID in PKCS#11 session. Key may have been created by a different client. |
 | `debug` | `Created HSM AES Key of length {key_length} with id {uid}`                                                                                                              | `src/hsm/hsm_store.rs`        | `key_length`: key length<br>`uid`: KMIP object UID             | -                                                                                        |
-| `debug` | `Creating RSA keypair with uid: {uid}`                                                                                                                                  | `src/hsm/hsm_store.rs`        | `uid`: KMIP object UID                                         | -                                                                                        |
 | `debug` | `HSM find: incompatible filter, skipping HSM search: {e}`                                                                                                               | `src/hsm/hsm_store.rs`        | `e`: caught error                                              | -                                                                                        |
 | `debug` | `Is {owner} an HSM admin? {}`                                                                                                                                           | `src/hsm/hsm_store.rs`        | `owner`: object owner identity                                 | -                                                                                        |
 | `debug` | `No researched_attributes provided. Defaulting to empty filter attributes`                                                                                              | `src/hsm/hsm_store.rs`        | -                                                              | -                                                                                        |
@@ -1041,6 +1100,10 @@ Crate path: `crate/interfaces`
 | `debug` | `encrypt: an RSA private key {uid} was specified. Trying to use                              public key {pk_uid} for encryption`                                        | `src/hsm/hsm_store.rs`        | `uid`, `pk_uid`                                                | —                                                                                        |
 | `debug` | `HSM count_non_destroyed_keys: slot {slot_id} query failed: {e}`                                                                                                        | `src/hsm/hsm_store.rs`        | `slot_id`, `e`                                                 | —                                                                                        |
 | `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
+| `debug` | `Creating {algorithm:?} keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: KMIP `CryptographicAlgorithm` requested for the keypair (RSA, ECDSA, Ed25519, ...); `uid`: HSM-resident unique identifier the keypair will be stored under | Logged before delegating `CreateKeyPair` to the HSM; generalized from an RSA-only message to cover the EC/Ed25519 keypair creation support added in this change |
+| `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
+| `debug` | `mac: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
+| `debug` | `mac_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 
 ### `cosmian_kms_access`
 
@@ -1072,6 +1135,10 @@ Crate path: `crate/hsm/base_hsm`
 | `trace` | `Doing round with {round_length} bytes. {processed_length} of {total_length} done` | `src/session/session_impl.rs` | `round_length` — …<br>`processed_length` — …<br>`total_length` — … | ×2 in this file |
 | `trace` | `Found {object_count} objects` | `src/session/session_impl.rs` | `object_count` — … | — |
 | `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
+| `debug` | `Could not terminate the decryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
+| `debug` | `Could not terminate the encryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
+| `warn` | `{} failed: {rv:#010x} ({}); context dropped` | `src/session/message_context.rs` | `rv` | - |
+| `debug` | `PKCS#11 message-based {0} unsupported for mechanism {mechanism_type:#x} ({1}); using C_{2}Init` | `src/session/message_context.rs` | `0`, `mechanism_type`, `1`, `2` | - |
 
 ---
 
@@ -1159,6 +1226,7 @@ Crate path: `crate/clients/client`
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
 | `debug` | `Connection error, retrying with backoff (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
+| `warn` | `Failed to load system CA bundle {bundle}: {e}` | `src/http_client/tls.rs` | `bundle`, `e` | - |
 
 ---
 
@@ -1182,7 +1250,6 @@ Crate path: `crate/clients/pkcs11/provider`
 
 | Level   | Message                                                                                                                                                                                                                                                                    | File                        | Variables                                                                                             | Notes                                                                                           |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `error` | `C_GetFunctionList: failed to instantiate base KMS client: {}`                                                                                                                                                                                                             | `src/lib.rs`                | -                                                                                                     | PKCS#11 module failed to create the KMS client on load. Check server URL and auth in ckms.toml. |
 | `error` | `Failed to parse EC P256 public key: {:?}`                                                                                                                                                                                                                                 | `src/pkcs11_public_key.rs`  | -                                                                                                     | HSM returned a malformed EC P256 key. Verify key generation parameters.                         |
 | `error` | `Failed to parse RSA private key: {:?}`                                                                                                                                                                                                                                    | `src/pkcs11_private_key.rs` | -                                                                                                     | -                                                                                               |
 | `error` | `Failed to parse RSA public key: {:?}`                                                                                                                                                                                                                                     | `src/pkcs11_public_key.rs`  | -                                                                                                     | -                                                                                               |
@@ -1192,12 +1259,10 @@ Crate path: `crate/clients/pkcs11/provider`
 | `error` | `remote_sign failed for Pkcs11PrivateKey with remote_id {}: {e}`                                                                                                                                                                                                           | `src/pkcs11_private_key.rs` | `e`: caught error                                                                                     | Remote signing via PKCS#11 failed. Check KMS connectivity and key permissions.                  |
 | `error` | `Unsupported cryptographic algorithm: {:?}`                                                                                                                                                                                                                                | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
 | `error` | `Unsupported key algorithm: {:?}`                                                                                                                                                                                                                                          | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
-| `error` | `verify not implemented for Pkcs11PublicKey`                                                                                                                                                                                                                               | `src/pkcs11_public_key.rs`  | -                                                                                                     | -                                                                                               |
 | `warn`  | `create_private_key_from_id: {id} has type {:?} (expected PrivateKey), skipping`                                                                                                                                                                                           | `src/backend.rs`            | `id`: object ID                                                                                       | -                                                                                               |
 | `warn`  | `create_symmetric_key_from_id: {id} has type {:?} (expected SymmetricKey), skipping`                                                                                                                                                                                       | `src/backend.rs`            | `id`: object ID                                                                                       | -                                                                                               |
 | `debug` | `decrypt: decrypt_ctx: {ctx:?}`                                                                                                                                                                                                                                            | `src/backend.rs`            | `ctx`: ctx                                                                                            | -                                                                                               |
 | `debug` | `encrypt: ctx: {ctx:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | `ctx`: ctx                                                                                            | -                                                                                               |
-| `debug` | `kms_encrypt_async: ciphertext: {}`                                                                                                                                                                                                                                        | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
 | `debug` | `kms_import_object_async: label: {label}, data (length): {}`                                                                                                                                                                                                               | `src/kms_object.rs`         | `label`: label                                                                                        | -                                                                                               |
 | `debug` | `Locate response: ids: {:?}`                                                                                                                                                                                                                                               | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
 | `debug` | `Located objects: tags: {tags:?}, type: {object_type:?} => {uniques_identifiers:?}`                                                                                                                                                                                        | `src/kms_object.rs`         | `tags`: KMIP tag set<br>`object_type`: KMIP object type<br>`uniques_identifiers`: uniques identifiers | -                                                                                               |
@@ -1224,23 +1289,28 @@ Crate path: `crate/clients/pkcs11/provider`
 | `trace` | `get_kms_objects_async: no objects found for tags: {:?}`                                                                                                                                                                                                                   | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_secret_data_objects_async: found {} SecretData objects`                                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}`                                                                                                                                                                                            | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
-| `error` | `C_GetFunctionList: failed to instantiate KMS client: {}.                      Check that ckms.toml exists alongside the DLL                      (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                      at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs`                | —                                                                                                     |                                                                                                 |
-| `error` | `C_GetFunctionList: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.`                     | `src/lib.rs`                | —                                                                                                     |                                                                                                 |
 | `warn`  | `create_object_from_attributes: unsupported object type: {other}, skipping                      {id}`                                                                                                                                                                      | `src/backend.rs`            | `other`, `id`                                                                                         | —                                                                                               |
 | `warn`  | `create_private_key_from_id: unsupported key/algorithm for PrivateKey {id}:                      {e}, skipping`                                                                                                                                                            | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `create_private_key_object: unsupported key/algorithm for PrivateKey {id}:                      {e}, skipping`                                                                                                                                                             | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `create_public_key_object: unsupported key/algorithm for PublicKey {id}: {e},                      skipping`                                                                                                                                                               | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `create_symmetric_key_from_id: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping`                                                                                                                                                        | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `create_symmetric_key_object: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping`                                                                                                                                                         | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
-| `warn`  | `find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e},                      skipping`                                                                                                                                                                       | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
-| `warn`  | `find_all_public_keys: failed to export public key {id}: {e},                              skipping`                                                                                                                                                                       | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
 | `warn`  | `find_all_data_objects: failed to build DataObject for disk-encryption                          key: {e}, skipping`                                                                                                                                                        | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
-| `warn`  | `find_all_data_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list`                                                                                                                                                          | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
 | `warn`  | `find_all_objects: failed to build DataObject for disk-encryption key:                          {e}, skipping`                                                                                                                                                             | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
-| `warn`  | `find_all_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list`                                                                                                                                                               | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
 | `trace` | `find_all_objects: total {} objects (including disk-encryption DataObjects)`                                                                                                                                                                                               | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects`                                                                                                                                                                                                | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag:              {disk_encryption_tag}`                                                                                                                                                    | `src/kms_object.rs`         | `disk_encryption_tag`                                                                                 | —                                                                                               |
+| `error` | `ensure_backend_registered: failed to instantiate base KMS client: {}` | `src/lib.rs` | `{}`: caught error building the low-level KMS HTTP client | Renamed from `C_GetFunctionList: failed to instantiate base KMS client: {}`. PKCS#11 provider failed to create the KMS client while (re)registering the backend. Check server URL and auth in ckms.toml. |
+| `error` | `ensure_backend_registered: failed to instantiate KMS client: {}.                      Check that ckms.toml exists alongside the DLL                      (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                      at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | `{}`: caught error building the KMS client | Renamed from `C_GetFunctionList: failed to instantiate KMS client: {}...`. Same failure mode, now also reported from `C_GetInterface`'s backend-registration path, not only `C_GetFunctionList`. |
+| `error` | `ensure_backend_registered: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | `{}`: caught error reading/parsing ckms.toml | Renamed from `C_GetFunctionList: failed to load ckms.toml: {}...`. Configuration file missing or invalid; verify the search paths listed in the message. |
+| `error` | `remote_verify failed for Pkcs11PublicKey with remote_id {}: {e}` | `src/pkcs11_public_key.rs` | `e` | - |
+| `debug` | `remote_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `warn` | `find_all_objects: failed to build Certificate object: {e}, skipping` | `src/backend.rs` | `e` | - |
+| `warn` | `find_all_objects: failed to fetch Certificate objects: {e}, skipping certificates` | `src/backend.rs` | `e` | - |
+| `warn` | `create_public_key_from_id: failed to build Pkcs11PublicKey for {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
+| `warn` | `create_public_key_from_id: failed to export public key {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
+| `debug` | `encrypt_message: ctx: {ctx:?}` | `src/backend.rs` | `ctx` | - |
+| `debug` | `kms_encrypt_async: ciphertext_len: {}` | `src/kms_object.rs` | - | - |
 
 ### `cosmian_pkcs11_module`
 
@@ -1262,7 +1332,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `Unsupported hashAlg: {}` | `src/core/mechanism.rs` | - | PKCS#11 hash algorithm not supported. Use SHA-256 or SHA-384. |
 | `error` | `Unsupported mgf: {}` | `src/core/mechanism.rs` | - | PKCS#11 MGF algorithm not supported. Use MGF1 with a supported hash. |
 | `error` | `{}: {}` | `src/pkcs11.rs` | - | Generic two-part error - inspect both values for the error type and detail. |
-| `warn` | `load_find_context: id {label} not found in store` | `src/sessions.rs` | `label`: label | - |
 | `info` | `C_CloseAllSessions: slot: {:?}` | `src/pkcs11.rs` | - | - |
 | `info` | `C_CloseSession: session: {:?}` | `src/pkcs11.rs` | - | - |
 | `info` | `C_FindObjects: session: {:?}, no more objects to return` | `src/pkcs11.rs` | - | - |
@@ -1270,7 +1339,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `info` | `C_GetAttributeValue: session: {:?}, object: {:?} [handle: {}], type: {:?}` | `src/pkcs11.rs` | - | - |
 | `info` | `C_OpenSession: slot={slotID:?} flags={flags:?} session handle written` | `src/pkcs11.rs` | `slotID`: slotID<br>`flags`: flags | - |
 | `debug` | `C_DestroyObject: session: {hSession:?}, hObject: {hObject}` | `src/pkcs11.rs` | `hSession`: hSession<br>`hObject`: hObject | - |
-| `debug` | `CKO_DATA match: remote_id={}, handle={}` | `src/sessions.rs` | - | - |
 | `debug` | `CKO_DATA search: label_filter={:?}, store has {} DataObjects` | `src/sessions.rs` | - | - |
 | `debug` | `create_object: attributes: {attributes:?}` | `src/sessions.rs` | `attributes`: KMIP attribute (debug display)s | - |
 | `debug` | `create_object: created object with handle: {handle}` | `src/sessions.rs` | `handle`: PKCS#11 object handle | - |
@@ -1278,8 +1346,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `generate_key: generated key with handle: {handle}` | `src/sessions.rs` | `handle`: PKCS#11 object handle | - |
 | `debug` | `generate_key: generating key with mechanism: {:?} and attributes: {:?}` | `src/sessions.rs` | - | - |
 | `debug` | `load_find_context: display current store: {find_ctx}` | `src/sessions.rs` | `find_ctx`: find ctx | - |
-| `debug` | `load_find_context: loading for label: {label:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label`: label<br>`attributes`: KMIP attribute (debug display)s | - |
-| `debug` | `load_find_context: search by id: {label} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label`: label | - |
 | `debug` | `load_find_context_by_class: added {} objects with handles: {:?}` | `src/sessions.rs` | - | - |
 | `debug` | `map_oracle_tde_security_to_mk: processing label: {label}` | `src/sessions.rs` | `label`: label | - |
 | `debug` | `Object: {}, attribute: {:?} => {:?}` | `src/core/object.rs` | - | - |
@@ -1298,15 +1364,12 @@ Crate path: `crate/clients/pkcs11/module`
 | `trace` | `C_GetSessionInfo: session: {:?}, slot: {:?}, state: {:?}, flags: {:?}` | `src/pkcs11.rs` | — | — |
 | `trace` | `create_object: class: {class:?}` | `src/sessions.rs` | `class` — … | — |
 | `trace` | `create_object: Object not supported: {o}` | `src/sessions.rs` | `o` — … | — |
-| `trace` | `Generated random: {}` | `src/pkcs11.rs` | — | — |
 | `trace` | `load_find_context succeeded` | `src/sessions.rs` | — | — |
 | `info` | `C_FindObjectsInit: session: {hSession:?}, load Objects Store context for                  attributes: {attributes:?}` | `src/pkcs11.rs` | `hSession`, `attributes` | — |
 | `debug` | `C_CreateObject: session: {hSession:?}, pTemplate: {pTemplate:?}, ulCount:              {ulCount:?}, phObject: {phObject:?}` | `src/pkcs11.rs` | `hSession`, `pTemplate`, `ulCount`, `phObject` | — |
 | `debug` | `C_Decrypt: pEncryptedData: {pEncryptedData:?}, ulEncryptedDataLen:              {ulEncryptedDataLen:?}, pData: {pData:?}, pulDataLen: {pulDataLen:?}` | `src/pkcs11.rs` | `pEncryptedData`, `ulEncryptedDataLen`, `pData`, `pulDataLen` | — |
-| `debug` | `C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?},                      ciphertext: {:?}` | `src/pkcs11.rs` | — | — |
 | `debug` | `C_DecryptInit: session: {hSession:?}, hKey: {hKey:?}, mechanism: {mechanism:?},                  object: {object:?}` | `src/pkcs11.rs` | `hSession`, `hKey`, `mechanism`, `object` | — |
 | `debug` | `C_Encrypt: pData: {pData:?}, ulDataLen: {ulDataLen:?}, pEncryptedData:              {pEncryptedData:?}, pulEncryptedDataLen: {pulEncryptedDataLen:?}` | `src/pkcs11.rs` | `pData`, `ulDataLen`, `pEncryptedData`, `pulEncryptedDataLen` | — |
-| `debug` | `C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?},                      cleartext: {:?}` | `src/pkcs11.rs` | — | — |
 | `debug` | `C_EncryptInit: session: {hSession:?}, hKey: {hKey:?}, mechanism: {mechanism:?},                  object: {object:?}` | `src/pkcs11.rs` | `hSession`, `hKey`, `mechanism`, `object` | — |
 | `debug` | `C_GenerateKey: session: {hSession:?}, pMechanism: {pMechanism:?}, pTemplate:              {pTemplate:?}, ulCount: {ulCount:?}, phKey: {phKey:?}` | `src/pkcs11.rs` | `hSession`, `pMechanism`, `pTemplate`, `ulCount`, `phKey` | — |
 | `debug` | `load_find_context_by_class: loading for class: {search_class:?} and options:              {search_options:?}, attributes: {attributes:?}` | `src/sessions.rs` | `search_class`, `search_options`, `attributes` | — |
@@ -1314,6 +1377,21 @@ Crate path: `crate/clients/pkcs11/module`
 | `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | ×2 in this file |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
 | `debug` | `load_find_context_by_class: backend fallback — search by id: {}                                  -> handle: {} -> object: {}:{}` | `src/sessions.rs` | - | - |
+| `error` | `CKM_AES_GCM pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | actual size in bytes, expected `CK_GCM_PARAMS` size in bytes | Caller passed a mechanism parameter buffer of the wrong size for `CKM_AES_GCM`; request is rejected before any unaligned/OOB read. |
+| `error` | `CKM_AES_GCM: unsupported ulTagBits {} (only {} is supported)` | `src/core/mechanism.rs` | requested tag length in bits, only supported tag length in bits (128) | The module only implements the standard 128-bit GCM authentication tag; any other `ulTagBits` value is rejected. |
+| `debug` | `parse_mechanism: CKM_AES_GCM iv_len: {}, aad_len: {}` | `src/core/mechanism.rs` | IV length in bytes, AAD length in bytes | Diagnostic trace emitted after successfully parsing a `CK_GCM_PARAMS` mechanism parameter (read via `read_unaligned` for C-caller safety). No sensitive key material is logged. |
+| `warn` | `CKO_DATA search: failed to refresh {remote_id} from KMS: {e}, keeping cached stub` | `src/sessions.rs` | `remote_id`, `e` | - |
+| `warn` | `CKO_DATA search: full fetch for {remote_id} returned no object, keeping cached stub` | `src/sessions.rs` | `remote_id` | - |
+| `warn` | `load_find_context_by_class: failed to refresh public key {} with full key material: {e}, using cached (metadata-only) object` | `src/sessions.rs` | `e` | - |
+| `debug` | `CKO_DATA match: remote_id={remote_id}, handle={handle}` | `src/sessions.rs` | `remote_id`, `handle` | - |
+| `error` | `CKM_RSA_PKCS_OAEP pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | - | - |
+| `error` | `CKM_RSA_PKCS_OAEP: unsupported hashAlg/mgf combination {hash_alg}/{mgf} (only SHA-256/MGF1-SHA256 is supported)` | `src/core/mechanism.rs` | `hash_alg`, `mgf` | - |
+| `warn` | `load_find_context: id {label_or_id} not found in store` | `src/sessions.rs` | `label_or_id` | - |
+| `debug` | `load_find_context: loading for label/id: {label_or_id:?} and attributes: {attributes:?}` | `src/sessions.rs` | `label_or_id`, `attributes` | - |
+| `debug` | `load_find_context: search by id: {label_or_id} -> handle: {} -> object: {}: {}` | `src/sessions.rs` | `label_or_id` | - |
+| `trace` | `Generated {len} random bytes` | `src/pkcs11.rs` | `len` | - |
+| `debug` | `C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?}` | `src/pkcs11.rs` | - | - |
+| `debug` | `C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?}` | `src/pkcs11.rs` | - | - |
 
 ---
 
@@ -1386,7 +1464,7 @@ Crate path: `ui/src/`
 | `error` | `Error creating FPE key:`                                | `actions/FPE/FpeKeysCreate.tsx`                   | —                                                             | —               |
 | `error` | `Error fetching create permission:`                      | `actions/Access/AccessObtained.tsx`               | —                                                             | —               |
 | `error` | `Error fetching CSE information:`                        | `actions/Keys/CseInfo.tsx`                        | —                                                             | —               |
-| `error` | `Error fetching Get for ${uid}:`                         | `components/common/Locate.tsx`                    | `uid`                                                         | ×4 in this file |
+| `error` | `Error fetching Get for ${uid}:`                         | `components/common/Locate.tsx`                    | `uid`                                                         | ×3 in this file |
 | `error` | `Error fetching HSM status:`                             | `actions/Objects/HsmStatus.tsx`                   | —                                                             | —               |
 | `error` | `Error fetching privileged access:`                      | `actions/Access/AccessGrant.tsx`                  | —                                                             | —               |
 | `error` | `Error fetching privileged access:`                      | `actions/Access/AccessRevoke.tsx`                 | —                                                             | —               |
@@ -1420,6 +1498,9 @@ Crate path: `ui/src/`
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
+| `error` | `Error loading OpenPGP algorithms from WASM:` | `actions/Pgp/PgpKeysCreate.tsx` | - | - |
+| `error` | `Error fetching Get for ${row.object_id}:` | `components/common/Locate.tsx` | `row.object_id`: UID whose attributes could not be retrieved | The Locate row remains un-enriched and shows unavailable attributes. Check the browser network request and KMS response for this UID. |
+| `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
 
 ---
 

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
+use super::PromptResultExt;
 use crate::{config::LoggingConfig, error::KmsError, result::KResult};
 
 pub fn configure_logging() -> KResult<LoggingConfig> {
@@ -18,32 +19,32 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
         )
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let otlp: String = Input::with_theme(&theme)
         .with_prompt("OpenTelemetry OTLP collector URL (leave blank to disable)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let quiet: bool = Confirm::with_theme(&theme)
         .with_prompt("Suppress stdout logs (quiet mode)?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     #[cfg(not(target_os = "windows"))]
     let log_to_syslog: bool = Confirm::with_theme(&theme)
         .with_prompt("Write logs to syslog?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let rolling_log: bool = Confirm::with_theme(&theme)
         .with_prompt("Enable rolling daily log files?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let (rolling_log_dir, rolling_log_name) = if rolling_log {
         #[cfg(target_os = "macos")]
@@ -61,7 +62,7 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
             .with_prompt("Rolling log directory path")
             .default(default_log_dir)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         // Create the directory tree so that the server can write logs immediately.
         let dir_path = std::path::Path::new(&dir);
@@ -76,7 +77,7 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
             .with_prompt("Rolling log file name prefix (default: 'kms')")
             .default("kms".to_owned())
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         (Some(PathBuf::from(dir)), Some(name))
     } else {
         (None, None)
@@ -86,19 +87,19 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
         .with_prompt("Enable telemetry metering (in addition to tracing)?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let environment: String = Input::with_theme(&theme)
         .with_prompt("Environment name (e.g. development, staging, production)")
         .default("development".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let ansi_colors: bool = Confirm::with_theme(&theme)
         .with_prompt("Enable ANSI colors in stdout logs?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let otlp_allow_insecure = if otlp.starts_with("http://") {
         Confirm::with_theme(&theme)
@@ -108,7 +109,7 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
             )
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?
+            .prompt_err()?
     } else {
         false
     };

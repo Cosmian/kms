@@ -7,7 +7,9 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS schema is small and consists of six tables:
+The KMS object-store schema is small and consists of six tables. The optional
+[PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and
+`kms_audit_control`, in its own, separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -133,6 +135,7 @@ Known parameters:
 | `db_state` | The database migration state: `ready` or `upgrading`. |
 | `db_version` | The version of the KMS software that last ran against this database. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
+| `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
 
 ## crypto_officer_activations
 
@@ -180,3 +183,59 @@ The Redis-with-Findex backend stores each CRL as a JSON value under the key
 - `parameters` and `crypto_officer_activations` are standalone and do not reference `objects`.
 
 These relationships are managed by the application layer (`crate/server_database/`) rather than database foreign-key constraints.
+
+## PostgreSQL audit database
+
+Used only by the [PostgreSQL audit backend](../audit-postgresql-backend.md)
+(`--audit-postgres-url`), in a database distinct from the object store. Its schema is defined in
+[`audit.sql`](https://github.com/Cosmian/kms/blob/5.29.0/crate/server_database/src/stores/audit/audit.sql).
+
+### `kms_audit_events`
+
+Append-only, hash-chained audit events. One row per event.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `instance_id` | `TEXT` | KMS instance owning the chain (1 to 255 characters). |
+| `chain_generation` | `BIGINT` | Chain generation (≥ 0); a new one starts after a seal-and-roll. |
+| `id` | `BIGINT` | Position of the event in its generation (≥ 0). |
+| `timestamp` | `TIMESTAMPTZ` | When the event was recorded (microsecond precision). |
+| `operation` | `TEXT` | KMIP operation or `audit:*` system event. |
+| `username` | `TEXT` | Authenticated user. |
+| `object_uid` | `TEXT` | UID of the object concerned, or `NULL`. |
+| `algorithm` | `TEXT` | Algorithm used, or `NULL`. |
+| `client_ip` | `TEXT` | Client IP address, or `NULL`. |
+| `result` | `TEXT` | Outcome of the operation. |
+| `duration_ms` | `BIGINT` | Duration of the operation in milliseconds (≥ 0). |
+| `request_id` | `UUID` | Request correlation ID, or `NULL`. |
+| `details` | `TEXT` | Event-specific JSON details, or `NULL`. |
+| `prev_hash` | `BYTEA` | SHA-256 `row_hash` of the previous event (32 bytes; zeros for the first event). |
+| `row_hash` | `BYTEA` | SHA-256 of this row's fields and `prev_hash` (32 bytes). |
+
+The primary key is (`instance_id`, `chain_generation`, `id`). A secondary index
+`idx_kms_audit_events_timestamp` on `timestamp` serves auditors' time-range queries; the KMS
+does not use it.
+
+These triggers keep the table append-only:
+
+| Trigger | Fires | Effect |
+| ------- | ----- | ------ |
+| `kms_audit_no_update` | `BEFORE UPDATE`, per row | Rejects the update (`kms_audit_reject_mutation()`). |
+| `kms_audit_no_delete` | `BEFORE DELETE`, per row | Rejects the delete (`kms_audit_reject_mutation()`). |
+| `kms_audit_no_truncate` | `BEFORE TRUNCATE`, per statement | Rejects the truncate (`kms_audit_reject_mutation()`). |
+| `kms_audit_no_insert_sealed` | `BEFORE INSERT`, per row | When the instance has a `kms_audit_control` row, rejects an insert into any generation other than its `active_generation` (`kms_audit_reject_sealed_insert()`). |
+
+`UPDATE`, `DELETE` and `TRUNCATE` are also revoked from `PUBLIC`.
+
+### `kms_audit_control`
+
+The generation currently accepting writes, per instance.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `instance_id` | `TEXT` | Primary key. KMS instance (1 to 255 characters). |
+| `active_generation` | `BIGINT` | Generation currently accepting writes (≥ 0). |
+| `updated_at` | `TIMESTAMPTZ` | When `active_generation` last changed (defaults to `now()`). |
+
+`kms_audit_events.instance_id` logically references `kms_audit_control.instance_id`; as for the
+object-store tables, there is no foreign-key constraint.

@@ -465,6 +465,43 @@ def _first_string_from_body(body: str) -> Optional[str]:
 
 
 _MACRO_RE = re.compile(r'\b(trace|debug|info|warn|error)!\s*\(')
+# `$level!(…)` calls inside a `macro_rules!` whose level is bound per invocation item
+# (`Type { … } => trace`), e.g. `impl_try_from_uid_response!` in `crate/kmip/src/kmip_1_4`.
+_LEVEL_VAR_CALL_RE = re.compile(r'\$\w+!\s*\(')
+_MACRO_RULES_NAME_RE = re.compile(r'macro_rules!\s+(\w+)')
+_LEVEL_ITEM_RE = re.compile(r'\s*(\w+)\b.*=>\s*(trace|debug|info|warn|error)\s*$', re.S)
+
+
+def _split_top_level(body: str) -> list[str]:
+    """Split a macro invocation body at commas outside (), {} and []."""
+    items, depth, start = [], 0, 0
+    for i, c in enumerate(body):
+        if c in '({[':
+            depth += 1
+        elif c in ')}]':
+            depth -= 1
+        elif c == ',' and depth == 0:
+            items.append(body[start:i])
+            start = i + 1
+    items.append(body[start:])
+    return items
+
+
+def _extract_level_var_logs(text: str) -> list[tuple[str, str]]:
+    """Return [(level, message)] for `$level!(…)` macro calls, one per `Type … => level` invocation item."""
+    results: list[tuple[str, str]] = []
+    for call in _LEVEL_VAR_CALL_RE.finditer(text):
+        msg = _first_string_from_body(_extract_body(text, call.end()))
+        names = _MACRO_RULES_NAME_RE.findall(text, 0, call.start())
+        if msg is None or not names:
+            continue
+        for inv in re.finditer(rf'\b{names[-1]}!\s*\(', text):
+            for item in _split_top_level(_extract_body(text, inv.end())):
+                m = _LEVEL_ITEM_RE.match(item)
+                if m:
+                    # shortcut: the first `{}` is taken to be `stringify!($t)`; parse the call arguments if a macro passes others.
+                    results.append((m.group(2), msg.replace('{}', m.group(1), 1)))
+    return results
 
 
 def extract_rust_logs(crate_path: str) -> list[tuple[str, str, str]]:
@@ -490,6 +527,9 @@ def extract_rust_logs(crate_path: str) -> list[tuple[str, str, str]]:
             if msg is not None:
                 msg = re.sub(r'\\\n\s*', '', msg)  # collapse line continuations
                 results.append((rel, level, msg))
+        results.extend(
+            (rel, level, msg) for level, msg in _extract_level_var_logs(text)
+        )
 
     return results
 
@@ -1064,12 +1104,23 @@ def _parse_args() -> argparse.Namespace:
             'Implies --non-interactive.'
         ),
     )
+    p.add_argument(
+        '--repo-root',
+        type=Path,
+        help='Repository root to scan and update instead of the script parent repository.',
+    )
     return p.parse_args()
 
 
 def main() -> None:
-    global _USE_COLOR
+    global _USE_COLOR, REPO_ROOT, CARGO_TOML, DOC_FILE
     args = _parse_args()
+    if args.repo_root is not None:
+        REPO_ROOT = args.repo_root.resolve()
+        CARGO_TOML = REPO_ROOT / 'Cargo.toml'
+        DOC_FILE = (
+            REPO_ROOT / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
+        )
     if args.no_color:
         _USE_COLOR = False
     check_only = args.check

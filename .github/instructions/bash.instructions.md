@@ -26,10 +26,9 @@ MISE task scripts must include the `#MISE description` and `#USAGE` annotations 
 ```bash
 #!/usr/bin/env bash
 #MISE description="One-line human-readable description"
-#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant (fips|non-fips)" default="fips" {
-#  "fips"
-#  "non-fips"
-#}
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
 set -euo pipefail
 ```
 
@@ -38,8 +37,7 @@ Use the shared library helpers from `.mise/lib/` rather than duplicating logic:
 ```bash
 # Source shared helpers
 # shellcheck source=.mise/lib/common.sh
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "${ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 ```
 
 ## Variable quoting and expansion
@@ -80,5 +78,22 @@ trap 'rm -f "${TMP}"' EXIT
 
 - Never hardcode secrets or tokens in scripts.
 - Use environment variables sourced from CI secrets or `.env` files (not committed).
+
+## Destructive commands
+
+- `rm -rf` on a variable is `rm -rf -- "${VAR:?}"`; `set -u` does not catch an empty value or `/`. Same inside `trap` strings.
+- Never `chmod 777` / `chmod -R 777`; use `0700`/`0755` and `chown`.
+
+## TLS verification
+
+- `curl -k` / `--insecure` is allowed only in test scripts under `.mise/**/test*` talking to a loopback server started by the script, with a comment saying so. Never in docs, workflows, packaging or deploy scripts: use `--cacert`.
+
+## Waiting and ports
+
+- Never `sleep N` to wait for a condition: use `wait_for_port` / `kms_wait_ready` (`.mise/lib/common.sh`). Never a literal port: `kms_pick_free_port` or `test_slots.sh`.
+
+## Credentials
+
+- Never commit a bearer token, JWT or API key, even for tests. Test-only passwords are obviously fake constants defined once at the top of the script.
 
 > For MISE-specific task conventions (flags, variants, lib usage), see `.github/instructions/mise.instructions.md`.

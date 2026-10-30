@@ -38,8 +38,7 @@ where
     T: DeserializeOwned,
 {
     let buffer = read_bytes_from_file(file)?;
-    serde_json::from_slice::<T>(&buffer)
-        .with_context(|| "failed parsing the object from the json file")
+    serde_json::from_slice::<T>(&buffer).context("failed parsing the object from the json file")
 }
 
 /// Read an object from KMIP JSON TTLV bytes slice
@@ -48,7 +47,7 @@ where
 pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, KmsClientError> {
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
-        .with_context(|| "failed parsing the object from the bytes")?;
+        .context("failed parsing the object from the bytes")?;
     // Deserialize the object
     let object: Object = from_ttlv(ttlv)?;
     Ok(object)
@@ -86,7 +85,7 @@ where
     T: Serialize,
 {
     let bytes = serde_json::to_vec::<T>(json_object)
-        .with_context(|| "failed writing the object from the json object")?;
+        .context("failed writing the object from the json object")?;
     write_bytes_to_file(&bytes, file)
 }
 
@@ -98,7 +97,7 @@ pub fn write_kmip_object_to_file(
     object_file: &impl AsRef<Path>,
 ) -> Result<(), KmsClientError> {
     let mut ttlv = to_ttlv(kmip_object)?;
-    ttlv.tag = tag_from_object(kmip_object);
+    ttlv.tag = tag_from_object(kmip_object).into();
     write_json_object_to_file(&ttlv, object_file)
 }
 
@@ -118,8 +117,7 @@ pub fn write_single_decrypted_data(
         std::clone::Clone::clone,
     );
 
-    write_bytes_to_file(plaintext, &output_file)
-        .with_context(|| "failed to write the decrypted file")?;
+    write_bytes_to_file(plaintext, &output_file).context("failed to write the decrypted file")?;
 
     info!("The decrypted file is available at {output_file:?}");
     Ok(())
@@ -143,7 +141,7 @@ pub fn write_single_encrypted_data(
     );
 
     write_bytes_to_file(encrypted_data, &output_file)
-        .with_context(|| "failed to write the encrypted file")?;
+        .context("failed to write the encrypted file")?;
 
     info!("The encrypted file is available at {output_file:?}");
     Ok(())

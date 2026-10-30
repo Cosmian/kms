@@ -20,13 +20,14 @@ use std::sync::{PoisonError, RwLockReadGuard, RwLockWriteGuard};
 // limitations under the License.
 use pkcs11_sys::{
     CK_ATTRIBUTE_TYPE, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID,
-    CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_TYPE_INVALID, CKR_ATTRIBUTE_VALUE_INVALID,
-    CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED,
-    CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED, CKR_GENERAL_ERROR,
-    CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG,
-    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
-    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN,
+    CKR_ACTION_PROHIBITED, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY, CKR_ATTRIBUTE_TYPE_INVALID,
+    CKR_ATTRIBUTE_VALUE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
+    CKR_GENERAL_ERROR, CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
+    CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID, CKR_SLOT_ID_INVALID,
+    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
 };
 use thiserror::Error;
 
@@ -51,6 +52,8 @@ pub enum ModuleError {
     BadArguments(String),
     #[error("{0} is not a valid attribute type")]
     AttributeTypeInvalid(CK_ATTRIBUTE_TYPE),
+    #[error("attribute is read-only")]
+    AttributeReadOnly,
     #[error("the value for attribute {0} is invalid")]
     AttributeValueInvalid(AttributeType),
     #[error("buffer too small")]
@@ -71,6 +74,8 @@ pub enum ModuleError {
     MechanismInvalid(CK_MECHANISM_TYPE),
     #[error("object {0} is invalid")]
     ObjectHandleInvalid(CK_OBJECT_HANDLE),
+    #[error("another signing operation is already active")]
+    OperationActive,
     #[error("operation has not been initialized, session: {0}")]
     OperationNotInitialized(CK_SESSION_HANDLE),
     #[error("no random number generator")]
@@ -87,6 +92,10 @@ pub enum ModuleError {
     PinRequired,
     #[error("user not logged in")]
     UserNotLoggedIn,
+    #[error("user type is invalid")]
+    UserTypeInvalid,
+    #[error("action prohibited on object {0}: self-declared profile objects are read-only")]
+    ActionProhibited(CK_OBJECT_HANDLE),
     // Other errors.
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
@@ -115,6 +124,8 @@ pub enum ModuleError {
     Todo(String),
     #[error("cryptographic error: {0}")]
     Cryptography(String),
+    #[error("the signature is invalid")]
+    SignatureInvalid,
 }
 
 impl From<const_oid::Error> for ModuleError {
@@ -129,6 +140,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::Context { source, .. } => (*source).into(),
             ModuleError::BadArguments(_) => CKR_ARGUMENTS_BAD,
             ModuleError::AttributeTypeInvalid(_) => CKR_ATTRIBUTE_TYPE_INVALID,
+            ModuleError::AttributeReadOnly => CKR_ATTRIBUTE_READ_ONLY,
             ModuleError::AttributeValueInvalid(_) => CKR_ATTRIBUTE_VALUE_INVALID,
             ModuleError::BufferTooSmall => CKR_BUFFER_TOO_SMALL,
             ModuleError::CryptokiAlreadyInitialized => CKR_CRYPTOKI_ALREADY_INITIALIZED,
@@ -139,6 +151,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::MechanismInvalid(_) => CKR_MECHANISM_INVALID,
             ModuleError::NeedToCreateThreads => CKR_NEED_TO_CREATE_THREADS,
             ModuleError::ObjectHandleInvalid(_) => CKR_OBJECT_HANDLE_INVALID,
+            ModuleError::OperationActive => CKR_OPERATION_ACTIVE,
             ModuleError::OperationNotInitialized(_) => CKR_OPERATION_NOT_INITIALIZED,
             ModuleError::RandomNoRng => CKR_RANDOM_NO_RNG,
             ModuleError::SessionHandleInvalid(_) => CKR_SESSION_HANDLE_INVALID,
@@ -147,6 +160,9 @@ impl From<ModuleError> for CK_RV {
             ModuleError::TokenWriteProtected => CKR_TOKEN_WRITE_PROTECTED,
             ModuleError::PinRequired => CKR_PIN_INCORRECT,
             ModuleError::UserNotLoggedIn => CKR_USER_NOT_LOGGED_IN,
+            ModuleError::ActionProhibited(_) => CKR_ACTION_PROHIBITED,
+            ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
+            ModuleError::SignatureInvalid => CKR_SIGNATURE_INVALID,
 
             ModuleError::Backend(_)
             | ModuleError::AlgorithmNotSupported(_)

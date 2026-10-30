@@ -31,12 +31,14 @@ async fn test_azure_byok_import_kek_then_export_byok() -> KmsCliResult<()> {
     fs::write(&kek_pem_path, &public_key_pem)?;
 
     let kid = "https://unit.test/keys/KEK/00000000000000000000000000000000".to_owned();
-    let imported_kek_id = ImportKekAction {
-        kek_file: kek_pem_path,
-        kid: kid.clone(),
-        key_id: None,
-    }
-    .run(kms_client.clone())
+    let imported_kek_id = Box::pin(
+        ImportKekAction {
+            kek_file: kek_pem_path,
+            kid: kid.clone(),
+            key_id: None,
+        }
+        .run(kms_client.clone()),
+    )
     .await?;
 
     // The import action writes to stdout and does not return the imported id; locate it via tag.

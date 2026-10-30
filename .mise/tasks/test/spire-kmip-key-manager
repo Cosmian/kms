@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="SPIRE kmip KeyManager plugin e2e — binary KMIP 2.1 TCP/TLS (non-FIPS only)"
+#MISE description="SPIRE kmip KeyManager plugin e2e — binary KMIP 1.4 TCP/TLS (non-FIPS only)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -8,7 +8,7 @@
 #USAGE }
 
 # End-to-end test for the SPIRE `kmip` built-in KeyManager plugin speaking
-# KMIP 2.1 binary TTLV over TCP/TLS (port 5696) to a locally-built KMS.
+# KMIP 1.4 binary TTLV over TCP/TLS (port 5696) to a locally-built KMS.
 #
 # What it does:
 #   1. Build KMS server + ckms CLI from source
@@ -72,7 +72,7 @@ for p in ${KMS_HTTPS_PORT} ${KMS_KMIP_PORT} ${SPIRE_BIND_PORT} ${SPIRE_HEALTH_PO
   spire_stop_port "${p}" "spire-kmip-km" 2>/dev/null || true
 done
 
-print_header "SPIRE kmip KeyManager Plugin E2E — Binary KMIP 2.1 TCP/TLS"
+print_header "SPIRE kmip KeyManager Plugin E2E — Binary KMIP 1.4 TCP/TLS"
 
 # ── Temp directory ────────────────────────────────────────────────────────────
 _TMP_DIR=$(mktemp -d /tmp/spire-kmip-km-e2e-XXXXXX)

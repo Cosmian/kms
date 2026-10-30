@@ -1,0 +1,191 @@
+//! Shared audit writer loop.
+//!
+//! The task owns the sink and chain head; backends provide persistence and recovery.
+
+use std::sync::{Arc, atomic::AtomicU64};
+
+use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
+use cosmian_kms_interfaces::{AuditSink, WriteOutcome};
+use cosmian_logger::{debug, error};
+use tokio::sync::mpsc;
+
+use super::{SIZE_CAP_SENTINEL_OPERATION, store::WriterMsg};
+
+/// Minimum interval between capacity warnings.
+const CAPPED_DEBUG_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Consumes queued events and returns the sink after shutdown synchronisation.
+pub(super) async fn writer_loop<S: AuditSink>(
+    mut sink: S,
+    mut next_id: i64,
+    mut prev_hash: [u8; 32],
+    mut rx: mpsc::Receiver<WriterMsg>,
+    dropped_count: Arc<AtomicU64>,
+) -> S {
+    let mut last_capped_log: Option<std::time::Instant> = None;
+
+    while let Some(msg) = rx.recv().await {
+        // `WriterMsg::Flush` only exists in test builds (see `store.rs`): in production
+        // `WriterMsg` has the single `Event` variant, so the irrefutable `let` below
+        // extracts exactly the draft that the test-build `match` arm does.
+        #[cfg(test)]
+        let draft = match msg {
+            WriterMsg::Event(draft) => *draft,
+            WriterMsg::Flush(ack) => {
+                // Every prior message has already been written above; simply
+                // acknowledge. Ignore a dropped receiver (caller stopped waiting).
+                let _ = ack.send(());
+                continue;
+            }
+        };
+        #[cfg(not(test))]
+        let WriterMsg::Event(draft) = msg;
+        #[cfg(not(test))]
+        let draft = *draft;
+
+        if sink.is_write_capacity_exceeded() {
+            let now = std::time::Instant::now();
+            let should_log = last_capped_log
+                .is_none_or(|logged_at| now.duration_since(logged_at) >= CAPPED_DEBUG_LOG_INTERVAL);
+            if should_log {
+                debug!(
+                    "AuditFileStore: sink '{}' is at capacity — event dropped",
+                    sink.name()
+                );
+                last_capped_log = Some(now);
+            }
+            continue;
+        }
+
+        // Emit a sentinel before the real event if any drops occurred since the last write.
+        let n_dropped = dropped_count.swap(0, std::sync::atomic::Ordering::Relaxed);
+        if n_dropped > 0 {
+            let sentinel = make_eviction_sentinel(n_dropped);
+            let written;
+            (next_id, written) =
+                write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash).await;
+            if !written {
+                // Nothing may be chained before the loss is: count this event too and retry later.
+                dropped_count.fetch_add(
+                    n_dropped.saturating_add(1),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                continue;
+            }
+        }
+        if !sink.is_write_capacity_exceeded() {
+            let written;
+            (next_id, written) =
+                write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash).await;
+            if !written {
+                dropped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    if let Err(e) = sink.final_sync().await {
+        error!("AuditFileStore: final sync failed: {e}");
+    }
+    debug!("AuditFileStore: writer loop exited (channel closed)");
+    sink
+}
+
+/// Writes one draft and advances the chain head only on success. If the sink reports
+/// that the requested slot was already durably occupied by a valid link in this same
+/// chain (see [`WriteOutcome::Resynced`] — e.g. a prior write whose acknowledgement was
+/// lost), the same draft is retried at the corrected position instead of being dropped
+/// or permanently wedging the chain on a slot nothing will ever fill again.
+///
+/// Returns the next chain id and whether the draft (or the size-cap sentinel replacing
+/// it) was persisted; `false` means the event is lost and the caller must account for it.
+pub(super) async fn write_draft_to_chain<S: AuditSink>(
+    sink: &mut S,
+    draft: AuditEventDraft,
+    next_id: i64,
+    prev_hash: &mut [u8; 32],
+) -> (i64, bool) {
+    // A resync can only ever move `id` forward, and the composite primary key means at
+    // most one is ever expected per draft; this bound only guarantees termination
+    // against a pathologically/adversarially pre-filled range of slots.
+    const MAX_RESYNC_ATTEMPTS: u32 = 8;
+
+    let mut draft = draft;
+    let mut writing_size_cap_sentinel = false;
+    let mut id = next_id;
+    let mut ph = *prev_hash;
+    for _attempt in 0..MAX_RESYNC_ATTEMPTS {
+        let event = draft.clone().finalize(id, ph);
+        match sink.write_event_atomic(&event).await {
+            Ok(WriteOutcome::Written) => {
+                *prev_hash = event.row_hash;
+                let next = id.checked_add(1).unwrap_or_else(|| {
+                    error!(
+                        "AuditFileStore: id counter overflow at i64::MAX — \
+                         audit logging stopped. Rotate the log file and restart."
+                    );
+                    id
+                });
+                return (next, true);
+            }
+            Ok(WriteOutcome::CapacityReached) if !writing_size_cap_sentinel => {
+                draft = make_size_cap_sentinel();
+                writing_size_cap_sentinel = true;
+            }
+            Ok(WriteOutcome::CapacityReached) => {
+                error!("AuditFileStore: sink rejected size-cap sentinel at id={id}");
+                return (id, false);
+            }
+            Ok(WriteOutcome::Resynced(head)) => {
+                id = head.next_id;
+                ph = head.prev_hash;
+                // Propagate immediately: if every remaining attempt then errors or is
+                // exhausted, the caller must still resume from the corrected hash, not
+                // the stale one it called us with.
+                *prev_hash = ph;
+            }
+            Err(e) => {
+                error!("AuditFileStore: failed to write event id={id}: {e} — event dropped");
+                // Reuse this chain position after a failed write.
+                return (id, false);
+            }
+        }
+    }
+    error!("AuditFileStore: exhausted resync attempts at id={id} — event dropped");
+    (id, false)
+}
+
+/// Builds a chained sentinel recording events dropped by channel saturation or failed writes.
+fn make_eviction_sentinel(n_dropped: u64) -> AuditEventDraft {
+    AuditEventDraft {
+        // Every other production draft uses `audit_now()`, truncated to the microsecond
+        // resolution PostgreSQL's TIMESTAMPTZ stores — a nanosecond timestamp here would
+        // re-hash differently after a PostgreSQL round trip and falsely report tampering.
+        timestamp: audit_now(),
+        operation: "audit:eviction".to_owned(),
+        user: "server".to_owned(),
+        object_uid: None,
+        algorithm: None,
+        client_ip: None,
+        result: AuditResult::Failure(format!(
+            "{n_dropped} events dropped (channel full or write failed)"
+        )),
+        duration_ms: 0,
+        request_id: None,
+        details: None,
+    }
+}
+
+fn make_size_cap_sentinel() -> AuditEventDraft {
+    AuditEventDraft {
+        timestamp: audit_now(),
+        operation: SIZE_CAP_SENTINEL_OPERATION.to_owned(),
+        user: "server".to_owned(),
+        object_uid: None,
+        algorithm: None,
+        client_ip: None,
+        result: AuditResult::Failure("audit file size limit reached".to_owned()),
+        duration_ms: 0,
+        request_id: None,
+        details: None,
+    }
+}

@@ -35,6 +35,12 @@ Never expose non-FIPS algorithms in the UI when running in FIPS mode.
 - Add `data-testid` on **every interactive element** (buttons, inputs, selects, links).
 - Format: `data-testid="feature-action"` (e.g., `data-testid="symmetric-create-key"`).
 
+## User-facing text and storage
+
+- Every user-facing string (labels, toasts, error messages shown to the user, `aria-label`, link text) comes from `useTranslation()`; never hardcoded English, including inside `throw new Error(..)` messages that reach the UI. Conventions and en/zh-CN/fr parity: `i18n.instructions.md`.
+- No `console.log` / `console.debug` in committed code (`console.warn` / `console.error` for real faults only). Never put tokens, keys or secrets in `localStorage`, `sessionStorage` or cookies (today only `darkMode` and `locale` are stored).
+- External links with `target="_blank"` carry `rel="noopener noreferrer"`.
+
 ## WASM integration
 
 - KMS client logic comes from `cosmian_kms_client_wasm` (compiled from `crate/clients/wasm/`).
@@ -42,11 +48,11 @@ Never expose non-FIPS algorithms in the UI when running in FIPS mode.
 
 ## Actions structure
 
-`ui/src/actions/` contains 14 feature modules mapping to KMIP operation groups:
+`ui/src/actions/` contains 16 feature modules mapping to KMIP operation groups:
 
 ```text
-Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/
-FPE/ Keys/ MAC/ Objects/ PQC/ RSA/ Symmetric/ Tokenize/
+Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/ FPE/ Keys/
+MAC/ Objects/ Pgp/ PQC/ RSA/ RotationPolicy/ Symmetric/ Tokenize/
 ```
 
 > For deeper guidance on patterns and component structure, run `/react-ant-patterns`.

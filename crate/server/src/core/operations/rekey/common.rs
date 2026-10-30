@@ -36,7 +36,7 @@ use crate::{
         KMS,
         operations::key_ops::ObjectLifecycleExt,
         uid_utils::ObjectHandle,
-        wrapping::{unwrap_object, wrap_and_cache, wrap_object},
+        wrapping::{unwrap_stored_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
     middlewares::UserId,
@@ -66,6 +66,7 @@ impl KMS {
             if owm.object().object_type() != object_type {
                 continue;
             }
+            let owm = std::sync::Arc::unwrap_or_clone(owm);
             let is_eligible = matches!(
                 owm.state(),
                 State::Active | State::Deactivated | State::Compromised
@@ -97,7 +98,12 @@ impl KMS {
             return Ok(true);
         };
         let current_gen = attrs.rotate_generation.unwrap_or(0);
-        let all = self.database.find_by_rotate_name(name, None, user).await?;
+        // Uncached: re-key eligibility must reflect the current keyset state, including
+        // rotations performed by other KMS nodes sharing this database.
+        let all = self
+            .database
+            .find_by_rotate_name_uncached(name, None, user)
+            .await?;
         Ok(!all.iter().any(|(other_uid, other_attrs)| {
             other_uid != uid && other_attrs.rotate_generation.unwrap_or(0) > current_gen
         }))
@@ -296,7 +302,7 @@ impl KMS {
             return Ok(None);
         };
 
-        if let Err(e) = Box::pin(unwrap_object(dep_object, self, owner)).await {
+        if let Err(e) = Box::pin(unwrap_stored_object(dep_object, self, owner)).await {
             warn!("failed to unwrap dependant {dep_uid}: {e}, skipping");
             return Ok(None);
         }
@@ -522,6 +528,8 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
             ))
         })
         .collect();
+    // `Database::atomic` invalidates the keyset-resolution cache for every created
+    // member's `rotate_name`, so the new generation is visible immediately.
     kms.database.atomic(user, &persist_ops).await?;
     op.finalize_dependants(kms, user, &candidates, &replacements)
         .await?;

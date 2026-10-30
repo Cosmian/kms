@@ -1,46 +1,47 @@
-use std::{os::raw::c_long, ptr};
+use std::ptr;
 
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
-    kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    },
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
 };
+use foreign_types::ForeignType;
+use openssl::pkey::PKey;
 
-use super::{create_pqc_key_pair, ml_kem_algorithm_name, pqc_keygen};
-use crate::{crypto::KeyPair, error::CryptoError};
+use super::{PqcKeyMaterial, PqcKeyPolicy, create_pqc_key_pair, ml_kem_algorithm_name, pqc_keygen};
+use crate::{
+    crypto::{KeyPair, KeyPairIdentity},
+    error::CryptoError,
+};
 
 /// Create an ML-KEM key pair.
 ///
 /// Supports `ML-KEM-512`, `ML-KEM-768`, `ML-KEM-1024` via OpenSSL 3.4+.
+///
+/// When `rng` is supplied, a 64-byte seed is drawn from `KmsRng` and passed to OpenSSL's
+/// key generation context (per FIPS 203 §7.1 and OpenSSL `ml_kem_kmgmt.c`), generating
+/// the key pair deterministically from that seed. When `None`, OpenSSL draws entropy
+/// directly from its own default DRBG.
 pub fn create_ml_kem_key_pair(
     algorithm: CryptographicAlgorithm,
-    vendor_id: &str,
-    private_key_uid: &str,
-    public_key_uid: &str,
-    common_attributes: Attributes,
-    private_key_attributes: Option<Attributes>,
-    public_key_attributes: Option<Attributes>,
+    identity: KeyPairIdentity<'_>,
+    rng: Option<&crate::crypto::KmsRng>,
 ) -> Result<KeyPair, CryptoError> {
     let _ = ml_kem_algorithm_name(algorithm)?; // validate
     let (private_key_der, public_key_der, num_bits) =
-        pqc_keygen(ml_kem_algorithm_name(algorithm)?)?;
-
+        pqc_keygen(ml_kem_algorithm_name(algorithm)?, rng, None)?;
     create_pqc_key_pair(
-        vendor_id,
-        &private_key_der,
-        &public_key_der,
-        i32::try_from(num_bits)?,
-        algorithm,
-        KeyFormatType::PKCS8,
-        private_key_uid,
-        public_key_uid,
-        common_attributes,
-        private_key_attributes,
-        public_key_attributes,
-        CryptographicUsageMask::Unrestricted,
-        CryptographicUsageMask::Unrestricted,
+        identity,
+        PqcKeyMaterial {
+            private_key_der: &private_key_der,
+            public_key_der: &public_key_der,
+            cryptographic_length: i32::try_from(num_bits)?,
+            key_format_type: KeyFormatType::PKCS8,
+        },
+        PqcKeyPolicy {
+            cryptographic_algorithm: algorithm,
+            private_key_usage_mask: CryptographicUsageMask::Unrestricted,
+            public_key_usage_mask: CryptographicUsageMask::Unrestricted,
+        },
     )
 }
 
@@ -49,32 +50,9 @@ pub fn create_ml_kem_key_pair(
 /// The `public_key_der` should be SPKI (`SubjectPublicKeyInfo`) DER bytes.
 #[expect(unsafe_code)]
 pub fn ml_kem_encapsulate(public_key_der: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
-    // Guard: an empty slice has a dangling .as_ptr(); passing it to d2i_PUBKEY
-    // is UB — return a clean error instead.
-    if public_key_der.is_empty() {
-        return Err(CryptoError::Default(
-            "ML-KEM encapsulate: empty public key DER".to_owned(),
-        ));
-    }
-    unsafe {
-        // Load the public key from DER
-        let mut der_ptr = public_key_der.as_ptr();
-        let raw = openssl_sys::d2i_PUBKEY(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            c_long::try_from(public_key_der.len())
-                .map_err(|e| CryptoError::Default(format!("DER length overflow: {e}")))?,
-        );
-        if raw.is_null() {
-            return Err(CryptoError::Default(
-                "ML-KEM encapsulate: failed to load public key from DER".to_owned(),
-            ));
-        }
-        // SAFETY: PKeyGuard takes ownership and calls EVP_PKEY_free on drop,
-        // so the key is freed even if `ml_kem_encapsulate_raw` panics.
-        let pkey = super::PKeyGuard(raw);
-        ml_kem_encapsulate_raw(pkey.as_ptr())
-    }
+    let pkey = PKey::public_key_from_der(public_key_der)?;
+    // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
+    unsafe { ml_kem_encapsulate_raw(pkey.as_ptr()) }
 }
 
 /// ML-KEM encapsulation using a raw `EVP_PKEY` pointer.
@@ -152,36 +130,14 @@ pub fn ml_kem_decapsulate(
     private_key_der: &[u8],
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    // Guard: empty slices yield dangling pointers; trap both before any FFI.
-    if private_key_der.is_empty() {
-        return Err(CryptoError::Default(
-            "ML-KEM decapsulate: empty private key DER".to_owned(),
-        ));
-    }
     if ciphertext.is_empty() {
         return Err(CryptoError::Default(
             "ML-KEM decapsulate: empty ciphertext".to_owned(),
         ));
     }
-    unsafe {
-        // Load the private key from PKCS#8 DER
-        let mut der_ptr = private_key_der.as_ptr();
-        let raw = openssl_sys::d2i_AutoPrivateKey(
-            ptr::null_mut(),
-            ptr::from_mut(&mut der_ptr),
-            c_long::try_from(private_key_der.len())
-                .map_err(|e| CryptoError::Default(format!("DER length overflow: {e}")))?,
-        );
-        if raw.is_null() {
-            return Err(CryptoError::Default(
-                "ML-KEM decapsulate: failed to load private key from DER".to_owned(),
-            ));
-        }
-        // SAFETY: PKeyGuard takes ownership and calls EVP_PKEY_free on drop,
-        // so the key is freed even if `ml_kem_decapsulate_raw` panics.
-        let pkey = super::PKeyGuard(raw);
-        ml_kem_decapsulate_raw(pkey.as_ptr(), ciphertext)
-    }
+    let pkey = PKey::private_key_from_der(private_key_der)?;
+    // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
+    unsafe { ml_kem_decapsulate_raw(pkey.as_ptr(), ciphertext) }
 }
 
 /// ML-KEM decapsulation using a raw `EVP_PKEY` pointer.
@@ -259,13 +215,14 @@ impl Drop for CtxGuard {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-    use cosmian_kmip::kmip_2_1::kmip_types::KeyFormatType;
+    use cosmian_kmip::kmip_2_1::{kmip_attributes::Attributes, kmip_types::KeyFormatType};
 
     use super::*;
 
     #[test]
     fn ml_kem_512_roundtrip() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-KEM-512").unwrap();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-512", None, None).unwrap();
 
         // Encapsulate with public key
         let (shared_secret1, ciphertext) = ml_kem_encapsulate(&pub_der).unwrap();
@@ -279,16 +236,29 @@ mod tests {
 
     #[test]
     fn ml_kem_768_roundtrip() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-KEM-768").unwrap();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-768", None, None).unwrap();
 
         let (ss1, ct) = ml_kem_encapsulate(&pub_der).unwrap();
         let ss2 = ml_kem_decapsulate(&priv_der, &ct).unwrap();
         assert_eq!(ss1, ss2);
     }
+    #[test]
+    fn ml_kem_768_roundtrip_with_kms_rng_seed() {
+        let rng = crate::crypto::KmsRng::new();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-768", Some(&rng), None).unwrap();
+
+        let (ss1, ct) = ml_kem_encapsulate(&pub_der).unwrap();
+        let ss2 = ml_kem_decapsulate(&priv_der, &ct).unwrap();
+        assert_eq!(ss1, ss2, "encapsulate/decapsulate on seeded key must match");
+        assert!(!ss1.is_empty());
+    }
 
     #[test]
     fn ml_kem_1024_roundtrip() {
-        let (priv_der, pub_der, _bits) = super::super::pqc_keygen("ML-KEM-1024").unwrap();
+        let (priv_der, pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-1024", None, None).unwrap();
 
         let (ss1, ct) = ml_kem_encapsulate(&pub_der).unwrap();
         let ss2 = ml_kem_decapsulate(&priv_der, &ct).unwrap();
@@ -299,11 +269,14 @@ mod tests {
     fn ml_kem_create_key_pair() {
         let key_pair = create_ml_kem_key_pair(
             CryptographicAlgorithm::MLKEM_768,
-            "cosmian",
-            "sk-uid",
-            "pk-uid",
-            Attributes::default(),
-            None,
+            KeyPairIdentity {
+                vendor_id: "cosmian",
+                private_key_uid: "sk-uid",
+                public_key_uid: "pk-uid",
+                common_attributes: Attributes::default(),
+                private_key_attributes: None,
+                public_key_attributes: None,
+            },
             None,
         )
         .unwrap();
@@ -368,7 +341,8 @@ mod tests {
 
     #[test]
     fn ml_kem_decapsulate_empty_ciphertext_returns_err() {
-        let (priv_der, _pub_der, _bits) = super::super::pqc_keygen("ML-KEM-512").unwrap();
+        let (priv_der, _pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-512", None, None).unwrap();
         let result = ml_kem_decapsulate(&priv_der, &[]);
         assert!(
             result.is_err(),
@@ -379,7 +353,8 @@ mod tests {
     #[test]
     fn ml_kem_decapsulate_truncated_ciphertext_returns_err() {
         // ML-KEM-512 ciphertext is 768 bytes; passing just 1 byte must fail.
-        let (priv_der, _pub_der, _bits) = super::super::pqc_keygen("ML-KEM-512").unwrap();
+        let (priv_der, _pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-512", None, None).unwrap();
         let result = ml_kem_decapsulate(&priv_der, &[0_u8; 1]);
         assert!(
             result.is_err(),
@@ -390,7 +365,8 @@ mod tests {
     #[test]
     fn ml_kem_decapsulate_wrong_size_ciphertext_returns_err() {
         // ML-KEM-768 ciphertext is 1088 bytes; pass a ML-KEM-512-sized one.
-        let (priv_der, _pub_der, _bits) = super::super::pqc_keygen("ML-KEM-768").unwrap();
+        let (priv_der, _pub_der, _bits) =
+            super::super::pqc_keygen("ML-KEM-768", None, None).unwrap();
         let result = ml_kem_decapsulate(&priv_der, &[0_u8; 768]);
         assert!(
             result.is_err(),
@@ -399,14 +375,12 @@ mod tests {
     }
 
     #[test]
-    fn ml_kem_pkey_guard_freed_on_encapsulate_bad_key() {
-        // Exercises the PKeyGuard drop path when `ml_kem_encapsulate_raw` returns Err
-        // immediately after a successful `d2i_PUBKEY`.  We use a valid-looking SPKI DER
-        // for a different key type (RSA-1024 stub — any non-ML-KEM key will do) so that
-        // `d2i_PUBKEY` succeeds but `EVP_PKEY_encapsulate_init` fails.
+    fn ml_kem_encapsulate_wrong_algorithm_returns_err() {
+        // Exercises the error path when `ml_kem_encapsulate` receives a valid
+        // SPKI DER for a non-ML-KEM key type.
         // We generate a real ML-DSA key and try to KEM-encapsulate it — reusing the
         // same well-formed SPKI but wrong algorithm.
-        let (_, pub_der, _) = super::super::pqc_keygen("ML-DSA-44").unwrap();
+        let (_, pub_der, _) = super::super::pqc_keygen("ML-DSA-44", None, None).unwrap();
         // This must fail (wrong key type for KEM) without panicking or leaking.
         let result = ml_kem_encapsulate(&pub_der);
         assert!(

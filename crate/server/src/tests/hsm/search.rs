@@ -1,4 +1,4 @@
-use std::{ops::Add, sync::Arc};
+use std::ops::Add;
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_1_4::kmip_attributes::{Attribute, CryptographicAlgorithm, ObjectType},
@@ -8,15 +8,13 @@ use cosmian_kms_interfaces::as_hsm_uid;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams,
-    core::KMS,
     result::KResult,
     tests::{
         hsm::{
             create_key_pair, create_sym_key, delete_all_keys, delete_key, hsm_clap_config,
             locate_keys,
         },
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -31,7 +29,7 @@ pub(super) async fn test_object_search() -> KResult<()> {
     clap_config.db.sqlite_path = sqlite_path.clone();
     let rsa_uid = as_hsm_uid!(clap_config.hsm.hsm_slot[0], rsa_uuid);
     let aes_uid = as_hsm_uid!(clap_config.hsm.hsm_slot[0], aes_uuid);
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     delete_all_keys(&owner, &kms).await?;
     create_sym_key(&aes_uid, &owner, &kms).await?;

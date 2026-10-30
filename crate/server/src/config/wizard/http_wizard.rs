@@ -4,7 +4,8 @@
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
-use crate::{config::HttpConfig, error::KmsError, result::KResult};
+use super::PromptResultExt;
+use crate::{config::HttpConfig, result::KResult};
 
 /// Build the default CORS allowed-origins list for `port` and `scheme`.
 ///
@@ -31,19 +32,19 @@ pub fn configure_http() -> KResult<HttpConfig> {
         .with_prompt("HTTP server port")
         .default(9998_u16)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let hostname: String = Input::with_theme(&theme)
         .with_prompt("HTTP server hostname")
         .default(default_hostname)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let rate_limit_str: String = Input::with_theme(&theme)
         .with_prompt("Rate limit (max requests/second per IP; leave blank to disable)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let rate_limit_per_second: Option<u32> = if rate_limit_str.trim().is_empty() {
         None
     } else {
@@ -55,8 +56,7 @@ pub fn configure_http() -> KResult<HttpConfig> {
             "Enable the public JWKS endpoint (GET /.well-known/jwks.json)? [WARNING: unauthenticated]",
         )
         .default(false)
-        .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .interact().prompt_err()?;
 
     // CORS origins are populated later in the wizard (after TLS and public-URL
     // are known). Pre-fill with an empty list so the field is present in the

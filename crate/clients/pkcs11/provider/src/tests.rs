@@ -14,7 +14,12 @@ use ckms::{
                 create_symmetric_key_kmip_object, import_object_request,
             },
         },
-        cosmian_kms_client::KmsClient,
+        cosmian_kms_client::{
+            KmsClient,
+            reexport::cosmian_kms_client_utils::certificate_utils::{
+                CertificationSource, CertifyRequestParams, build_certify_request,
+            },
+        },
     },
 };
 use cosmian_config_utils::ConfigUtils;
@@ -22,26 +27,35 @@ use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
-        C_Initialize, C_OpenSession, SLOT_ID,
+        C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
+        C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, SignatureAlgorithm},
+    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
 };
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_OBJECT_CLASS, CK_ULONG, CKA_CLASS,
-    CKA_LABEL, CKF_SERIAL_SESSION, CKO_DATA, CKR_OK,
+    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
+    CK_PROFILE_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CK_VERSION, CKA_CLASS, CKA_LABEL,
+    CKA_PRIVATE, CKA_PROFILE_ID, CKA_UNIQUE_ID, CKF_SERIAL_SESSION, CKO_DATA, CKO_PROFILE,
+    CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER, CKP_EXTENDED_PROVIDER,
+    CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY,
+    CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_USER_TYPE_INVALID,
+    CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    C_GetFunctionList,
-    backend::{COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend},
+    C_GetFunctionList, C_GetInterface, C_GetInterfaceList,
+    backend::{
+        COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, COSMIAN_PKCS11_GNUPG_KEY_TAG,
+        COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend,
+    },
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::get_kms_objects_async,
 };
 
-fn save_pkcs11_client_config() -> String {
+pub(crate) fn save_pkcs11_client_config() -> String {
     // Start or get the shared test KMS server context
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     let ctx = rt.block_on(async { start_default_test_kms_server().await });
@@ -66,7 +80,7 @@ fn save_pkcs11_client_config() -> String {
     owner_file_path
 }
 
-fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
+pub(crate) fn initialize_backend() -> Result<CliBackend, Pkcs11Error> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
     let owner_client_conf = rt.block_on(async {
@@ -210,6 +224,7 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
 }
 
 #[test]
+#[serial]
 fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
     log_init(None);
 
@@ -263,10 +278,35 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+#[test]
+#[serial]
 #[expect(unsafe_code)]
-fn test_init() {
+fn test_get_function_list_rejects_null_output() {
+    // SAFETY: passing null intentionally verifies the required argument validation.
+    assert_eq!(
+        unsafe { C_GetFunctionList(std::ptr::null_mut()) },
+        CKR_ARGUMENTS_BAD
+    );
+}
+
+/// Registers the PKCS#11 function list (and thereby the process-global backend).
+///
+/// Not a `#[test]`: `C_GetFunctionList` overwrites the global backend, so running it as an
+/// independent parallel test would redirect a concurrently running `#[serial]` test to the
+/// default `CKMS_CONF` server. It is only called from `#[serial]` tests.
+#[expect(unsafe_code)]
+pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
+
+    // `C_GetFunctionList` instantiates the backend and queries the KMS: point it at the test
+    // server, otherwise it blocks forever on a server that is not running.
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment (the lock is re-entrant for callers that are themselves `#[serial]`).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
 
     if !INITIALIZED.load(Ordering::SeqCst) {
         let func_list = &mut CK_FUNCTION_LIST::default();
@@ -276,6 +316,23 @@ fn test_init() {
             C_GetFunctionList(&mut std::ptr::from_mut(func_list));
         }
     }
+}
+
+#[test]
+#[serial]
+fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
+    let backend = initialize_backend()?;
+
+    // Larger than the KMS per-request `RNGRetrieve` limit (64 KiB) so the request is chunked.
+    let mut first = vec![0_u8; 70_000];
+    let mut second = vec![0_u8; 70_000];
+    backend.generate_random(&mut first)?;
+    backend.generate_random(&mut second)?;
+
+    assert_ne!(first, second, "two calls must not return the same bytes");
+    // The two chunks of one call (65_536 + 4_464 bytes) must not be a repeat of each other.
+    assert_ne!(first.get(..4_464), first.get(65_536..));
+    Ok(())
 }
 
 #[test]
@@ -434,7 +491,10 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
 
 // ── SSH integration tests ────────────────────────────────────────────────────
 
-async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (String, String) {
+pub(crate) async fn create_rsa_ssh_keypair(
+    kms_rest_client: &KmsClient,
+    bits: usize,
+) -> (String, String) {
     let req = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
         None,
@@ -454,7 +514,7 @@ async fn create_rsa_ssh_keypair(kms_rest_client: &KmsClient, bits: usize) -> (St
     )
 }
 
-async fn create_ec_ssh_keypair(
+pub(crate) async fn create_ec_ssh_keypair(
     kms_rest_client: &KmsClient,
     curve: RecommendedCurve,
 ) -> (String, String) {
@@ -477,29 +537,198 @@ async fn create_ec_ssh_keypair(
     )
 }
 
-/// Test that a remote RSA-PKCS1v15-SHA256 signature can be produced for an
-/// `ssh-auth`-tagged RSA-2048 private key stored in the KMS.
+pub(crate) async fn create_rsa_gnupg_keypair(
+    kms_rest_client: &KmsClient,
+    bits: usize,
+) -> (String, String) {
+    let req = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        [COSMIAN_PKCS11_GNUPG_KEY_TAG],
+        bits,
+        false,
+        None,
+    )
+    .expect("failed to build RSA key pair request");
+    let resp = kms_rest_client
+        .create_key_pair(req)
+        .await
+        .expect("failed to create RSA GnuPG key pair");
+    (
+        resp.private_key_unique_identifier.to_string(),
+        resp.public_key_unique_identifier.to_string(),
+    )
+}
+
+/// `gnupg-pkcs11-scd` (manpage CONSTRAINTS) requires, for every private key object, a
+/// certificate object with an *identical* `CKA_ID`. This test creates an RSA keypair tagged
+/// `gnupg-card`, self-certifies its public key, and asserts both the discovery methods used
+/// by `C_FindObjectsInit(CKA_CLASS=CKO_CERTIFICATE|CKO_PRIVATE_KEY)` surface the pair, and
+/// that `Certificate::private_key_id()` (the cert's `CKA_ID`) equals the private key's own
+/// `remote_id()` (its `CKA_ID`).
+#[test]
+#[serial]
+fn test_gnupg_card_key_discovery() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, rsa_sk_id, cert_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (rsa_sk_id, rsa_pk_id) = create_rsa_gnupg_keypair(&kms_rest_client, 2048).await;
+
+        let certify_request = build_certify_request(
+            VENDOR_ID_COSMIAN,
+            &CertifyRequestParams {
+                certificate_id: None,
+                source: CertificationSource::PublicKey {
+                    id: rsa_pk_id.clone(),
+                    subject_name: "CN=gnupg-smartcard-test,O=Cosmian".to_owned(),
+                },
+                // No issuer: the server self-signs using the PrivateKeyLink of the public key.
+                issuer_private_key_id: None,
+                issuer_certificate_id: None,
+                number_of_days: 365,
+                certificate_extensions: None,
+                tags: vec![COSMIAN_PKCS11_GNUPG_KEY_TAG.to_owned()],
+            },
+        )
+        .expect("failed to build certify request");
+        let cert_id = kms_rest_client
+            .certify(certify_request)
+            .await
+            .expect("failed to certify RSA public key")
+            .unique_identifier
+            .to_string();
+
+        (ctx.owner_client_config.clone(), rsa_sk_id, cert_id)
+    });
+
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+
+    let private_keys = backend.find_all_private_keys()?;
+    assert!(
+        private_keys.iter().any(|k| k.remote_id() == rsa_sk_id),
+        "GnuPG RSA private key {rsa_sk_id} not found in find_all_private_keys"
+    );
+
+    let certificates = backend.find_all_certificates()?;
+    let certificate = certificates
+        .iter()
+        .find(|c| c.remote_id() == cert_id)
+        .expect("GnuPG certificate not found in find_all_certificates");
+    assert_eq!(
+        certificate.private_key_id(),
+        rsa_sk_id,
+        "certificate CKA_ID must equal the private key's own CKA_ID — the exact invariant \
+         gnupg-pkcs11-scd requires"
+    );
+    Ok(())
+}
+
+/// `CKM_RSA_PKCS` (used by `gnupg-pkcs11-scd` and OpenSSH) receives a DER `DigestInfo` and must
+/// only apply PKCS#1 v1.5 block formatting. The resulting signature must therefore be a
+/// standard RSASSA-PKCS1-v1_5/SHA-256 signature of the original message, which the
+/// independent `CKM_SHA256_RSA_PKCS` verification path accepts.
+#[test]
+#[serial]
+fn test_rsa_pkcs_raw_signs_digest_info() -> Pkcs11Result<()> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let kms_rest_client = ctx.get_owner_client();
+        let (sk_id, pk_id) = create_rsa_gnupg_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
+    });
+    let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
+
+    let message = b"CKM_RSA_PKCS DigestInfo round trip";
+    let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), message)
+        .expect("failed to compute SHA-256 digest");
+    // DER DigestInfo prefix for SHA-256 (RFC 8017 §9.2 note 1)
+    let mut digest_info = vec![
+        0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+        0x05, 0x00, 0x04, 0x20,
+    ];
+    digest_info.extend_from_slice(&digest);
+
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Raw,
+        &digest_info,
+        KeyAlgorithm::Rsa,
+    )?;
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        message,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+    // The same DigestInfo must also verify through the CKM_RSA_PKCS path itself.
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Raw,
+        &digest_info,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+    Ok(())
+}
+
+/// Test remote RSA-PKCS1v15-SHA256 signing and verification for an `ssh-auth`-tagged
+/// RSA-2048 keypair stored in the KMS.
 #[test]
 #[serial]
 fn test_ssh_rsa_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
-    let (owner_client_conf, sk_id) = rt.block_on(async {
+    let (owner_client_conf, sk_id, pk_id) = rt.block_on(async {
         let ctx = start_default_test_kms_server().await;
         let kms_rest_client = ctx.get_owner_client();
-        let (sk_id, _pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
-        (ctx.owner_client_config.clone(), sk_id)
+        let (sk_id, pk_id) = create_rsa_ssh_keypair(&kms_rest_client, 2048).await;
+        (ctx.owner_client_config.clone(), sk_id, pk_id)
     });
 
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     let data = b"hello ssh world, this is a test message for RSA signing";
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::RsaPkcs1v15Sha256, data)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        KeyAlgorithm::Rsa,
+    )?;
     assert!(
         !signature.is_empty(),
         "RSA-2048 signature must not be empty"
     );
     // RSA-2048 produces a 256-byte signature
     assert_eq!(signature.len(), 256, "RSA-2048 signature must be 256 bytes");
+    backend.remote_verify(
+        &pk_id,
+        &SignatureAlgorithm::RsaPkcs1v15Sha256,
+        data,
+        &signature,
+        KeyAlgorithm::Rsa,
+    )?;
+
+    let mut tampered_signature = signature;
+    if let Some(first_byte) = tampered_signature.first_mut() {
+        *first_byte ^= 0xFF;
+    }
+    let error = backend
+        .remote_verify(
+            &pk_id,
+            &SignatureAlgorithm::RsaPkcs1v15Sha256,
+            data,
+            &tampered_signature,
+            KeyAlgorithm::Rsa,
+        )
+        .expect_err("tampered signature must be rejected");
+    assert!(matches!(
+        error,
+        cosmian_pkcs11_module::ModuleError::SignatureInvalid
+    ));
     Ok(())
 }
 
@@ -522,13 +751,33 @@ fn test_ssh_ecdsa_p256_sign() -> Pkcs11Result<()> {
     let backend = CliBackend::instantiate(KmsClient::new_with_config(owner_client_conf)?);
     // Pre-computed 32-byte SHA-256 digest (CKM_ECDSA convention)
     let prehash = [0x42_u8; 32];
-    let signature = backend.remote_sign(&sk_id, &SignatureAlgorithm::Ecdsa, &prehash)?;
+    let signature = backend.remote_sign(
+        &sk_id,
+        &SignatureAlgorithm::Ecdsa,
+        &prehash,
+        KeyAlgorithm::EccP256,
+    )?;
     assert!(
         !signature.is_empty(),
         "ECDSA P-256 signature must not be empty"
     );
     Ok(())
 }
+
+// ── HSM-KEK PKCS#11 mandatory conformance tests ─────────────────────────────
+//
+// The 3 tests below exercise real PKCS#11 signing requests
+// (`CliBackend::remote_sign`, the same code path used by `C_Sign`) against a
+// KMS server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK): every
+// created key is transparently AES-wrapped by an HSM-resident KEK before
+// being persisted, so these tests validate the full HSM-backed storage path,
+// not just in-memory/software-only signing.
+//
+// Unlike the SSH-focused tests above (which only assert the signature is
+// non-empty), each test here also calls the KMIP `SignatureVerify` operation
+// against the freshly created public key, so a wrong signature format,
+// wrong digest, or wrong curve handling would make the test fail loudly
+// instead of silently passing on a shape-only check.
 
 /// Test that SSH-tagged keypairs are returned by the backend's key-discovery
 /// methods. The test creates one RSA-2048 and one EC P-256 keypair under the
@@ -585,4 +834,527 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
         "EC SSH public key {ec_pk_id} not found in find_all_public_keys"
     );
     Ok(())
+}
+
+/// PKCS#11 v3.0 Interfaces API gap-fill (issue #1153 follow-up): `C_GetInterfaceList` must
+/// implement the standard two-call convention and return the sole "PKCS 11" v3.0 interface;
+/// `C_GetInterface` must resolve that same interface both when `pInterfaceName`/`pVersion` are
+/// null (any interface/version accepted) and when they exactly match.
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+    test_init();
+    let backend_before_discovery = registered_backend()?;
+
+    // First call: null buffer, learn the count.
+    let mut count: CK_ULONG = 0;
+    assert_eq!(
+        // SAFETY: `pul_count` is a valid stack out-parameter; `p_interfaces_list` is
+        // intentionally null (count-query call, per the two-call convention).
+        unsafe { C_GetInterfaceList(std::ptr::null_mut(), &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(
+        count, 2,
+        "this module exposes the same function table under two interface versions"
+    );
+
+    // Second call: too-small buffer must report CKR_BUFFER_TOO_SMALL and the required count.
+    let mut zero_count: CK_ULONG = 1;
+    let mut interfaces = [CK_INTERFACE {
+        pInterfaceName: std::ptr::null_mut(),
+        pFunctionList: std::ptr::null_mut(),
+        flags: 0,
+    }; 2];
+    assert_eq!(
+        // SAFETY: `interfaces` is a valid 2-element buffer; `zero_count` (1) under-reports its
+        // capacity on purpose to exercise the too-small path.
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut zero_count) },
+        CKR_BUFFER_TOO_SMALL
+    );
+    assert_eq!(zero_count, 2);
+
+    // Third call: correctly sized buffer must succeed and return the "PKCS 11" interface.
+    let mut full_count: CK_ULONG = 2;
+    assert_eq!(
+        // SAFETY: `interfaces` is a valid 2-element buffer, matching `full_count`.
+        unsafe { C_GetInterfaceList(interfaces.as_mut_ptr(), &raw mut full_count) },
+        CKR_OK
+    );
+    assert_eq!(full_count, 2);
+    for interface in &interfaces {
+        assert!(!interface.pInterfaceName.is_null());
+        // SAFETY: `pInterfaceName` was just populated by a successful `C_GetInterfaceList` call
+        // above, and is guaranteed NUL-terminated by `PKCS11_INTERFACE_NAME`.
+        let name = unsafe { std::ffi::CStr::from_ptr(interface.pInterfaceName.cast()) };
+        assert_eq!(name.to_bytes(), b"PKCS 11");
+    }
+    // `C_GetInterface` with null name/version must resolve to the same sole interface.
+    let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
+    assert_eq!(
+        // SAFETY: `pp_interface` is a valid stack out-parameter; name/version are
+        // intentionally null (accept-any-interface call).
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    assert!(!interface_ptr.is_null());
+
+    // `C_GetInterface` with a matching name and major version must also succeed.
+    let mut name_bytes = b"PKCS 11\0".to_vec();
+    let mut version = CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: CRYPTOKI_VERSION_MINOR,
+    };
+    assert_eq!(
+        // SAFETY: `name_bytes` is NUL-terminated and well within `MAX_INTERFACE_NAME_LEN`;
+        // `version` is a valid, properly-aligned `CK_VERSION` on the stack.
+        unsafe {
+            C_GetInterface(
+                name_bytes.as_mut_ptr().cast::<CK_UTF8CHAR>(),
+                &raw mut version,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    let backend_after_discovery = registered_backend()?;
+    assert!(
+        std::sync::Arc::ptr_eq(&backend_before_discovery, &backend_after_discovery),
+        "interface discovery must not replace an already authenticated backend"
+    );
+    Ok(())
+}
+
+/// `C_GetInterface` must reject an unknown interface name, an unsupported major version, and any
+/// non-zero `flags` request (this module's sole interface makes no special guarantees).
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    let mut interface_ptr: *mut CK_INTERFACE = std::ptr::null_mut();
+
+    // Unknown interface name.
+    let mut bad_name = b"NOT PKCS 11\0".to_vec();
+    assert_eq!(
+        // SAFETY: `bad_name` is NUL-terminated and within `MAX_INTERFACE_NAME_LEN`;
+        // `interface_ptr` is a valid stack out-parameter.
+        unsafe {
+            C_GetInterface(
+                bad_name.as_mut_ptr().cast::<CK_UTF8CHAR>(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // Unsupported major version.
+    let mut wrong_version = CK_VERSION { major: 1, minor: 0 };
+    assert_eq!(
+        // SAFETY: `wrong_version` is a valid, properly-aligned `CK_VERSION` on the stack;
+        // `interface_ptr` is a valid stack out-parameter.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut wrong_version,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // A minor version *below* the implemented one (e.g. a v3.0 request against this v3.1
+    // implementation) is backward-compatible and must be accepted, not rejected — a v3.1
+    // interface is a superset of v3.0. Only a minor version *above* the implemented one is
+    // truly unsupported.
+    let mut compatible_minor = CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: 0,
+    };
+    assert_eq!(
+        // SAFETY: `compatible_minor` and `interface_ptr` are valid stack values.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut compatible_minor,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_OK
+    );
+    assert!(!interface_ptr.is_null());
+
+    let mut unsupported_minor = CK_VERSION {
+        major: CRYPTOKI_VERSION_MAJOR,
+        minor: CRYPTOKI_VERSION_MINOR.saturating_add(1),
+    };
+    assert_eq!(
+        // SAFETY: `unsupported_minor` and `interface_ptr` are valid stack values.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                &raw mut unsupported_minor,
+                &raw mut interface_ptr,
+                0,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+
+    // Non-zero flags: no interface satisfies any special guarantee.
+    assert_eq!(
+        // SAFETY: `interface_ptr` is a valid stack out-parameter; name/version are null.
+        unsafe {
+            C_GetInterface(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &raw mut interface_ptr,
+                1,
+            )
+        },
+        CKR_ARGUMENTS_BAD
+    );
+    Ok(())
+}
+
+/// PKCS#11 v3.1 `C_LoginUser` (issue #1153 follow-up): this module exposes a single implicit
+/// backend identity per slot, so `C_LoginUser` must succeed regardless of the supplied
+/// `pUsername`, exactly like `C_Login`, when the deployment does not use PIN-as-access-token
+/// mode (the default in tests).
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_c_login_user() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    assert_eq!(
+        // SAFETY: all optional byte buffers are null with zero lengths; `handle` is valid.
+        unsafe {
+            C_LoginUser(
+                handle,
+                CKU_CONTEXT_SPECIFIC,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                0,
+            )
+        },
+        CKR_OPERATION_NOT_INITIALIZED
+    );
+    assert_eq!(
+        // SAFETY: all optional byte buffers are null with zero lengths; `handle` is valid.
+        unsafe {
+            C_LoginUser(
+                handle,
+                CK_USER_TYPE::MAX,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                0,
+            )
+        },
+        CKR_USER_TYPE_INVALID
+    );
+    assert_eq!(
+        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        unsafe { C_Login(handle, CKU_CONTEXT_SPECIFIC, std::ptr::null_mut(), 0) },
+        CKR_OPERATION_NOT_INITIALIZED
+    );
+    assert_eq!(
+        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        unsafe { C_Login(handle, CK_USER_TYPE::MAX, std::ptr::null_mut(), 0) },
+        CKR_USER_TYPE_INVALID
+    );
+    assert_eq!(
+        // SAFETY: the PIN buffer is optional outside PIN-as-access-token mode.
+        // This module exposes a single implicit identity per slot (no separate Security
+        // Officer role), so the standard `CKU_SO` user type is accepted like `CKU_USER`
+        // rather than rejected -- real-world clients such as `pkcs11-tool --login-type so`
+        // rely on this.
+        unsafe { C_Login(handle, CKU_SO, std::ptr::null_mut(), 0) },
+        CKR_OK
+    );
+
+    let mut username = b"alice".to_vec();
+    let user_type: CK_USER_TYPE = CKU_USER;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session; `username` is a well-formed UTF-8 buffer
+        // whose length is passed accurately; no PIN is required outside PIN-as-access-token mode.
+        unsafe {
+            C_LoginUser(
+                handle,
+                user_type,
+                std::ptr::null_mut(),
+                0,
+                username.as_mut_ptr(),
+                username.len().try_into()?,
+            )
+        },
+        CKR_OK
+    );
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+/// PKCS#11 Profiles v3.1 gap-fill (issue #1153 follow-up): the module must self-declare its
+/// OASIS conformance profiles via `CKO_PROFILE` objects, discoverable through `C_FindObjects`
+/// with `CKA_CLASS = CKO_PROFILE` — including on a session that has not called `C_Login`
+/// (`CKA_PRIVATE` must be `CK_FALSE`).
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: see other tests in this file for the `#[serial]` + `set_var` justification.
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    // Search for CKO_PROFILE objects (no login performed on this session).
+    let mut class: CK_OBJECT_CLASS = CKO_PROFILE;
+    #[allow(clippy::cast_ptr_alignment)]
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_CLASS,
+        pValue: (&raw mut class).cast::<std::ffi::c_void>(),
+        ulValueLen: std::mem::size_of::<CK_OBJECT_CLASS>().try_into()?,
+    }];
+    let template_len: CK_ULONG = template.len().try_into()?;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session; `template` is a correctly-sized,
+        // properly-aligned `CK_ATTRIBUTE` array with `template_len` elements, all alive
+        // for the duration of the call.
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut obj_handles = [CK_INVALID_HANDLE; 8];
+    let mut count: CK_ULONG = 0;
+    let max_count: CK_ULONG = obj_handles.len().try_into()?;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session after a successful C_FindObjectsInit;
+        // `obj_handles` is a buffer of `max_count` elements; `count` is a valid stack
+        // out-parameter.
+        unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(handle), CKR_OK);
+
+    let count_usize = usize::try_from(count)?;
+    assert!(
+        count_usize >= 3,
+        "expected at least Baseline/Authentication Token/Public Certificates Token profiles, \
+         got {count_usize}"
+    );
+
+    // Verify each returned object really is a public (non-private), CKO_PROFILE object whose
+    // CKA_PROFILE_ID is one of the profiles this module declares support for.
+    let known_profiles: [CK_PROFILE_ID; 4] = [
+        CKP_BASELINE_PROVIDER,
+        CKP_EXTENDED_PROVIDER,
+        CKP_AUTHENTICATION_TOKEN,
+        CKP_PUBLIC_CERTIFICATES_TOKEN,
+    ];
+    let mut seen_profiles = Vec::new();
+    let mut seen_unique_ids = std::collections::HashSet::new();
+    for &obj_handle in obj_handles.iter().take(count_usize) {
+        let mut sentinel = 0xA5_u8;
+        let mut undersized = [CK_ATTRIBUTE {
+            type_: CKA_UNIQUE_ID,
+            pValue: (&raw mut sentinel).cast::<std::ffi::c_void>(),
+            ulValueLen: 1,
+        }];
+        assert_eq!(
+            // SAFETY: the one-byte output is valid; the call must report the required
+            // size without writing beyond or modifying this undersized buffer.
+            unsafe { C_GetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
+            CKR_BUFFER_TOO_SMALL
+        );
+        assert!(undersized[0].ulValueLen > 1);
+        assert_eq!(sentinel, 0xA5);
+        assert_eq!(
+            // SAFETY: the template contains one valid attribute and `obj_handle` is live.
+            unsafe { C_SetAttributeValue(handle, obj_handle, undersized.as_mut_ptr(), 1) },
+            CKR_ATTRIBUTE_READ_ONLY
+        );
+
+        let mut class_value: CK_OBJECT_CLASS = 0;
+        let mut private_value: pkcs11_sys::CK_BBOOL = 0;
+        let mut profile_id_value: CK_PROFILE_ID = 0;
+        let mut unique_id_value = [0_u8; 64];
+        #[allow(clippy::cast_ptr_alignment)]
+        let mut attr_template = [
+            CK_ATTRIBUTE {
+                type_: CKA_CLASS,
+                pValue: (&raw mut class_value).cast::<std::ffi::c_void>(),
+                ulValueLen: std::mem::size_of::<CK_OBJECT_CLASS>().try_into()?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PRIVATE,
+                pValue: (&raw mut private_value).cast::<std::ffi::c_void>(),
+                ulValueLen: std::mem::size_of::<pkcs11_sys::CK_BBOOL>().try_into()?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_PROFILE_ID,
+                pValue: (&raw mut profile_id_value).cast::<std::ffi::c_void>(),
+                ulValueLen: std::mem::size_of::<CK_PROFILE_ID>().try_into()?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_UNIQUE_ID,
+                pValue: unique_id_value.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: unique_id_value.len().try_into()?,
+            },
+        ];
+        let attr_template_len: CK_ULONG = attr_template.len().try_into()?;
+        assert_eq!(
+            // SAFETY: `handle` is a valid open session; `obj_handle` was just returned by
+            // `C_FindObjects` above; `attr_template` entries all point to valid, correctly-sized,
+            // properly-aligned stack buffers.
+            unsafe {
+                C_GetAttributeValue(
+                    handle,
+                    obj_handle,
+                    attr_template.as_mut_ptr(),
+                    attr_template_len,
+                )
+            },
+            CKR_OK
+        );
+        assert_eq!(class_value, CKO_PROFILE);
+        assert_eq!(
+            private_value, 0,
+            "profile objects must be public (CKA_PRIVATE = CK_FALSE) to be discoverable \
+             pre-login"
+        );
+        assert!(
+            known_profiles.contains(&profile_id_value),
+            "unexpected CKA_PROFILE_ID: {profile_id_value}"
+        );
+        let unique_id_len = usize::try_from(attr_template[3].ulValueLen)?;
+        let unique_id_bytes = unique_id_value.get(..unique_id_len).ok_or_else(|| {
+            Pkcs11Error::Conversion(format!(
+                "CKA_UNIQUE_ID length {unique_id_len} exceeds the test buffer"
+            ))
+        })?;
+        let unique_id = std::str::from_utf8(unique_id_bytes)
+            .map_err(|e| Pkcs11Error::Default(e.to_string()))?;
+        assert!(unique_id.starts_with("pkcs11-profile:"));
+        assert!(seen_unique_ids.insert(unique_id.to_owned()));
+        seen_profiles.push(profile_id_value);
+    }
+    assert!(seen_profiles.contains(&CKP_BASELINE_PROVIDER));
+    assert!(seen_profiles.contains(&CKP_AUTHENTICATION_TOKEN));
+    assert!(seen_profiles.contains(&CKP_PUBLIC_CERTIFICATES_TOKEN));
+
+    assert_eq!(
+        find_profile_count(handle, CKP_BASELINE_PROVIDER)?,
+        1,
+        "CKA_PROFILE_ID must select exactly one declared profile"
+    );
+    assert_eq!(
+        find_profile_count(handle, CK_PROFILE_ID::MAX)?,
+        0,
+        "an unknown CKA_PROFILE_ID must select no profiles"
+    );
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+#[expect(unsafe_code)]
+fn find_profile_count(
+    session: pkcs11_sys::CK_SESSION_HANDLE,
+    requested_profile: CK_PROFILE_ID,
+) -> Pkcs11Result<CK_ULONG> {
+    let mut profile = requested_profile;
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_PROFILE_ID,
+        pValue: (&raw mut profile).cast::<std::ffi::c_void>(),
+        ulValueLen: std::mem::size_of::<CK_PROFILE_ID>().try_into()?,
+    }];
+    let template_len = template.len().try_into()?;
+    // SAFETY: `session` is open and the template references valid stack values.
+    assert_eq!(
+        unsafe { C_FindObjectsInit(session, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut handles = [CK_INVALID_HANDLE; 4];
+    let mut count = 0;
+    let max_count = handles.len().try_into()?;
+    // SAFETY: output buffers are valid for the supplied lengths.
+    assert_eq!(
+        unsafe { C_FindObjects(session, handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(session), CKR_OK);
+    Ok(count)
 }

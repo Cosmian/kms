@@ -29,7 +29,7 @@ use crate::{
         AuditFailureMode, ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams,
         SocketServerConfig, TlsConfig,
     },
-    core::{KMS, audit::AuditFileStore},
+    core::{KMS, audit::AuditStore},
     kms_bail,
     middlewares::{AuditMiddleware, ensure_auth_middleware},
     result::KResult,
@@ -41,12 +41,17 @@ pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
-/// Create a test KMS instance from the default HTTPS config.
-pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
-    let clap_config = https_clap_config();
+/// Create an in-process test KMS from `clap_config` (start from `https_clap_config()` and patch fields).
+pub(crate) async fn test_kms_with_config(clap_config: ClapConfig) -> KResult<Arc<KMS>> {
+    crate::openssl_providers::init_openssl_providers_for_tests();
     Ok(Arc::new(
         KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
     ))
+}
+
+/// Create a test KMS instance from the default HTTPS config.
+pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
+    test_kms_with_config(https_clap_config()).await
 }
 
 /// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`
@@ -302,6 +307,33 @@ pub(crate) async fn test_app(
 pub(crate) async fn test_app_with_clap_config(
     clap_config: ClapConfig,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let google_cse_config = google_cse_auth(None)
+        .await
+        .expect("cannot setup Google CSE auth");
+    Box::pin(test_app_with_google_cse(
+        clap_config,
+        Some(google_cse_config),
+    ))
+    .await
+}
+
+/// Creates a test application instance using an explicit `ClapConfig` and an explicit
+/// Google CSE token-validation configuration.
+///
+/// Combined with `google_cse_disable_tokens_validation = false`, a locally built
+/// `GoogleCseConfig` lets the tests exercise the real validation code without any
+/// access to Google.
+pub(crate) async fn test_app_with_google_cse(
+    clap_config: ClapConfig,
+    google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let kms_server = Box::pin(test_kms_with_google_cse(clap_config)).await;
+    test_app_with_kms(kms_server, google_cse_config).await
+}
+
+/// Instantiate a KMS from `clap_config`, creating the Google CSE migration key pair when
+/// Google CSE is enabled.
+pub(crate) async fn test_kms_with_google_cse(clap_config: ClapConfig) -> Arc<KMS> {
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
 
@@ -316,7 +348,14 @@ pub(crate) async fn test_app_with_clap_config(
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
     }
+    kms_server
+}
 
+/// The in-process test application served by an already instantiated KMS.
+pub(crate) async fn test_app_with_kms(
+    kms_server: Arc<KMS>,
+    google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
@@ -333,12 +372,8 @@ pub(crate) async fn test_app_with_clap_config(
         .service(routes::access::get_create_access)
         .service(routes::access::get_privileged_access);
 
-    let google_cse_jwt_config = google_cse_auth(None)
-        .await
-        .expect("cannot setup Google CSE auth");
-
     let google_cse_scope = web::scope("/google_cse")
-        .app_data(Data::new(Some(google_cse_jwt_config)))
+        .app_data(Data::new(google_cse_config))
         .service(routes::google_cse::get_status)
         .service(routes::google_cse::wrap)
         .service(routes::google_cse::unwrap)
@@ -371,10 +406,35 @@ pub(crate) async fn test_app_with_clap_config(
     test::init_service(app).await
 }
 
+/// Serve the `privilegedunwrap` endpoint of `kms` on a real loopback HTTP socket and return
+/// its KACLS URL (`http://127.0.0.1:<port>/google_cse`). `privilegedunwrap` is the only call
+/// an original KACLS receives during a migration. Must run inside an actix runtime
+/// (`#[actix_web::test]`).
+pub(crate) fn spawn_google_cse_http_server(
+    kms: Arc<KMS>,
+    google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+) -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("cannot bind loopback port");
+    let port = listener.local_addr().expect("no local address").port();
+    let server = actix_web::HttpServer::new(move || {
+        App::new().app_data(Data::new(kms.clone())).service(
+            web::scope("/google_cse")
+                .app_data(Data::new(google_cse_config.clone()))
+                .service(routes::google_cse::privileged_unwrap),
+        )
+    })
+    .workers(1)
+    .listen(listener)
+    .expect("cannot listen on loopback port")
+    .run();
+    actix_web::rt::spawn(server);
+    format!("http://127.0.0.1:{port}/google_cse")
+}
+
 /// Creates a test application that records every KMIP request to an audit file.
 ///
-/// Pass `AuditFileStore::start(path, 128)` for normal operation or
-/// `AuditFileStore::new_disconnected()` to exercise failure paths without a
+/// Pass `AuditStore::start(path, 128)` for normal operation or
+/// `AuditStore::new_disconnected()` to exercise failure paths without a
 /// file on disk. `failure_mode` controls the middleware's response when
 /// `enqueue` fails; existing tests pass `Default::default()` for `Continue`.
 ///
@@ -382,7 +442,7 @@ pub(crate) async fn test_app_with_clap_config(
 /// state directly (bypassing HTTP), e.g. to confirm an operation's side
 /// effect landed even when the middleware replaced the response with a 503.
 pub(crate) async fn test_app_with_audit(
-    store: AuditFileStore,
+    store: AuditStore,
     failure_mode: AuditFailureMode,
 ) -> (
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
@@ -469,7 +529,7 @@ pub(crate) async fn test_app_with_audit_and_auth(
     audit_path: &std::path::Path,
 ) -> (
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
-    AuditFileStore,
+    AuditStore,
 ) {
     let clap_config = https_clap_config();
     let server_params =
@@ -481,7 +541,7 @@ pub(crate) async fn test_app_with_audit_and_auth(
             .expect("cannot instantiate KMS server"),
     );
 
-    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+    let store = AuditStore::start(audit_path, 128).expect("cannot start audit store");
 
     let app = App::new()
         .app_data(Data::new(kms_server.clone()))
@@ -634,4 +694,46 @@ where
     }
     let body = read_body(res).await;
     Ok(serde_json::from_slice(&body)?)
+}
+
+/// Post `body` as JSON to `uri` and return the HTTP status together with the parsed JSON
+/// reply (`Value::Null` if the reply is empty or not JSON), whatever the status.
+pub(crate) async fn post_json_raw<B, O, S>(
+    app: &S,
+    body: O,
+    uri: &str,
+) -> (StatusCode, serde_json::Value)
+where
+    O: Serialize,
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri(uri)
+        .set_json(&body)
+        .to_request();
+    let res = call_service(app, req).await;
+    let status = res.status();
+    let body = read_body(res).await;
+    (
+        status,
+        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+/// GET `uri` and return the HTTP status together with the parsed JSON reply
+/// (`Value::Null` if the reply is empty or not JSON), whatever the status.
+pub(crate) async fn get_json_raw<B, S>(app: &S, uri: &str) -> (StatusCode, serde_json::Value)
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get().uri(uri).to_request();
+    let res = call_service(app, req).await;
+    let status = res.status();
+    let body = read_body(res).await;
+    (
+        status,
+        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+    )
 }

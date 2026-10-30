@@ -400,17 +400,13 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ensure_no_proxy_for_localhost();
     disable_proxies_for_tests();
-    Box::pin(ONCE.get_or_try_init(|| async move {
-        let config_path = root_dir().join("../../test_data/configs/server/auth/plain.toml");
-        let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-        apply_test_db_override(&mut config);
-        start_server_from_config(config, &config_path, listeners).await
-    }))
+    start_singleton_from_toml(
+        &ONCE,
+        test_config_path("auth/plain.toml"),
+        |_| {},
+        "default",
+    )
     .await
-    .unwrap_or_else(|e| {
-        error!("failed to start default test server: {e}");
-        std::process::abort();
-    })
 }
 
 /// TLS + certificate authentication.
@@ -419,18 +415,13 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
     trace!("Starting test server with cert auth");
-    ONCE_SERVER_WITH_AUTH
-        .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/auth/cert.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with cert auth: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_AUTH,
+        test_config_path("auth/cert.toml"),
+        |_| {},
+        "cert auth",
+    )
+    .await
 }
 
 /// Plain-HTTP server with JWT authentication enabled (Auth0 `IdP`).
@@ -439,18 +430,13 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
 pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
     trace!("Starting test server with JWT auth");
-    ONCE_SERVER_WITH_JWT_AUTH
-        .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/auth/plain_jwt.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with JWT auth: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_JWT_AUTH,
+        test_config_path("auth/plain_jwt.toml"),
+        |_| {},
+        "JWT auth",
+    )
+    .await
 }
 
 /// Non-revocable key IDs.
@@ -461,37 +447,25 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     non_revocable_key_id: Option<Vec<String>>,
 ) -> &'static TestsContext {
     trace!("Starting test server with non-revocable key ids");
-    ONCE_SERVER_WITH_NON_REVOCABLE_KEY
-        .get_or_try_init(|| async move {
-            let config_path =
-                root_dir().join("../../test_data/configs/server/test/non_revocable.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            config.non_revocable_key_id = non_revocable_key_id;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with non-revocable key ids: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_NON_REVOCABLE_KEY,
+        test_config_path("test/non_revocable.toml"),
+        |config| config.non_revocable_key_id = non_revocable_key_id,
+        "non-revocable key ids",
+    )
+    .await
 }
 
 /// With Utimaco HSM
 pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
     trace!("Starting test server with Utimaco HSM");
-    ONCE_SERVER_WITH_HSM
-        .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/hsm/hsm_test.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with utimaco hsm: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_HSM,
+        hsm_config_path("hsm_test.toml"),
+        |_| {},
+        "Utimaco HSM",
+    )
+    .await
 }
 
 // Create a KEK in the HSM before running server with `key_encryption_key` arg
@@ -593,34 +567,42 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
 }
 
 // ---------------------------------------------------------------------------
-// SoftHSM2 + KEK
+// HSM + KEK
 // ---------------------------------------------------------------------------
 
-pub(crate) static ONCE_SERVER_WITH_SOFTHSM2_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 
-/// Read the `SoftHSM2` slot id from the `HSM_SLOT_ID` environment variable.
+/// Read the HSM slot id from the `HSM_SLOT_ID` environment variable.
 ///
 /// # Panics
 /// Panics if the variable is missing or not a valid `usize`.
 #[allow(clippy::expect_used, clippy::panic)]
-fn get_softhsm2_slot_id() -> usize {
-    let raw = env::var("HSM_SLOT_ID").expect(
-        "HSM_SLOT_ID environment variable must be set (by test_hsm_softhsm2.sh) to run \
-         SoftHSM2+KEK tests",
-    );
+fn get_hsm_slot_id() -> usize {
+    let raw = env::var("HSM_SLOT_ID")
+        .expect("HSM_SLOT_ID environment variable must be set to run HSM+KEK tests");
     raw.parse::<usize>().unwrap_or_else(|_| {
         panic!("HSM_SLOT_ID '{raw}' is not a valid usize");
     })
 }
 
-/// Bootstrap a KEK inside `SoftHSM2`.
+fn get_hsm_model() -> String {
+    env::var("HSM_MODEL").unwrap_or_else(|_| "softhsm2".to_owned())
+}
+
+fn get_hsm_password() -> String {
+    env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned())
+}
+
+/// Bootstrap a KEK inside the HSM.
 ///
-/// Mirrors [`create_kek_in_db`] but uses the `SoftHSM2`-specific TOML and reads
+/// Mirrors [`create_kek_in_db`] but uses generic HSM configuration and reads
 /// the slot from `HSM_SLOT_ID`.
-async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
-    let slot = get_softhsm2_slot_id();
+async fn create_hsm_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_kek_{}_{}_{}",
+        "kms_test_hsm_kek_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -632,9 +614,11 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
 
     let workspace_clone = workspace_dir.clone();
     let ctx = start_test_server_with_patch(
-        &hsm_config_path("hsm_softhsm2_jwt.toml"),
+        &hsm_config_path("hsm_jwt.toml"),
         move |config| {
+            config.hsm.hsm_model = model;
             config.hsm.hsm_slot = vec![slot];
+            config.hsm.hsm_password = vec![password];
             config.db.sqlite_path = workspace_clone.join("sqlite-data");
             config.workspace.root_data_path = workspace_clone.join("workspace");
             config.workspace.tmp_path = workspace_clone.join("tmp");
@@ -648,7 +632,6 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
         },
     )
     .await?;
-
     // Create the KEK in the HSM (idempotent: ignore "already exists").
     let create_request = Create {
         object_type: ObjectType::SymmetricKey,
@@ -680,52 +663,54 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
     Ok((workspace_dir, kek_id))
 }
 
-/// With `SoftHSM2` HSM + KEK
+/// With HSM + KEK
 ///
 /// # Panics
 /// - if `HSM_SLOT_ID` is not set
 /// - if the `workspace_dir` does not exist
 /// - if the `kek_id` is empty
 #[allow(clippy::unwrap_used)]
-pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static TestsContext {
-    trace!("Starting test server with SoftHSM2 HSM and KEK");
-    let slot = get_softhsm2_slot_id();
-    Box::pin(
-        ONCE_SERVER_WITH_SOFTHSM2_KEK.get_or_try_init(|| async move {
-            let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
-            trace!(
-                "SoftHSM2 key encryption key created: {kek_id} in workspace {}",
-                workspace_dir.display()
-            );
-            assert!(
-                workspace_dir.exists() && !kek_id.is_empty(),
-                "workspace_dir must exist and kek_id must be non-empty"
-            );
+pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsContext {
+    trace!("Starting test server with HSM and KEK");
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
+    Box::pin(ONCE_SERVER_WITH_HSM_KEK.get_or_try_init(|| async move {
+        let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
+        trace!(
+            "HSM key encryption key created: {kek_id} in workspace {}",
+            workspace_dir.display()
+        );
+        assert!(
+            workspace_dir.exists() && !kek_id.is_empty(),
+            "workspace_dir must exist and kek_id must be non-empty"
+        );
 
-            let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            config.hsm.hsm_slot = vec![slot];
-            config.db.sqlite_path = workspace_dir.join("sqlite-data");
-            config.db.clear_database = false;
-            config.workspace.root_data_path = workspace_dir.join("workspace");
-            config.workspace.tmp_path = workspace_dir.join("tmp");
-            config.key_encryption_key = Some(kek_id);
-            // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
-            // `clear_database = false` above ensures the KEK persists for non-SQLite.
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        }),
-    )
+        let config_path = hsm_config_path("hsm_kek.toml");
+        let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
+        config.hsm.hsm_model = model;
+        config.hsm.hsm_slot = vec![slot];
+        config.hsm.hsm_password = vec![password];
+        config.db.sqlite_path = workspace_dir.join("sqlite-data");
+        config.db.clear_database = false;
+        config.workspace.root_data_path = workspace_dir.join("workspace");
+        config.workspace.tmp_path = workspace_dir.join("tmp");
+        config.key_encryption_key = Some(kek_id);
+        // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
+        // `clear_database = false` above ensures the KEK persists for non-SQLite.
+        apply_test_db_override(&mut config);
+        start_server_from_config(config, &config_path, http_listener).await
+    }))
     .await
     .unwrap_or_else(|e| {
-        error!("failed to start test server with softhsm2 hsm: {e}");
+        error!("failed to start test server with hsm: {e}");
         std::process::abort();
     })
 }
 
-/// Start a `SoftHSM2` + KEK test server for use by the vector runner.
+/// Start an HSM + KEK test server for use by the vector runner.
 ///
-/// Unlike [`start_default_test_kms_server_with_softhsm2_and_kek`], this function
+/// Unlike [`start_default_test_kms_server_with_hsm_and_kek`], this function
 /// returns a `Result` and does not use a global `OnceCell` — the vector runner
 /// manages its own singleton cell (`ONCE_VECTOR_HSM_KEK`).
 ///
@@ -735,12 +720,14 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
 /// # Panics
 /// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`, if `workspace_dir`
 /// does not exist, or if `kek_id` is empty after bootstrap.
-pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
+pub async fn start_default_test_kms_server_with_hsm_and_kek_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_softhsm2_slot_id();
-    let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
+    let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
     trace!(
-        "SoftHSM2 KEK (vectors): {kek_id} in workspace {}",
+        "HSM KEK (vectors): {kek_id} in workspace {}",
         workspace_dir.display()
     );
     assert!(
@@ -748,9 +735,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
         "workspace_dir must exist and kek_id must be non-empty"
     );
 
-    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let config_path = hsm_config_path("hsm_kek.toml");
     let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_model = model;
     config.hsm.hsm_slot = vec![slot];
+    config.hsm.hsm_password = vec![password];
     config.db.sqlite_path = workspace_dir.join("sqlite-data");
     config.db.clear_database = false;
     config.workspace.root_data_path = workspace_dir.join("workspace");
@@ -760,7 +749,6 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     apply_test_db_override(&mut config);
     start_server_from_config(config, &config_path, listeners).await
 }
-
 /// Remove all test-vector objects (`vec_…` keys) from the active HSM slot
 /// before test steps execute.
 ///
@@ -822,12 +810,12 @@ pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
     }
 }
 
-/// Start a `SoftHSM2` test server **without** a Key Encryption Key.
+/// Start an HSM test server **without** a Key Encryption Key.
 ///
 /// Used for test vectors that exercise HSM-resident key operations (keyset
 /// addressing, re-key guards, chain-walk semantics) without any KEK wrapping
 /// layer. The server otherwise has identical TLS and auth configuration to
-/// [`start_default_test_kms_server_with_softhsm2_and_kek_for_vectors`].
+/// [`start_default_test_kms_server_with_hsm_and_kek_for_vectors`].
 ///
 /// The vector runner owns the singleton; this function returns a fresh
 /// `TestsContext` each call.
@@ -837,9 +825,11 @@ pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
 ///
 /// # Panics
 /// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
-pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
+pub async fn start_default_test_kms_server_with_hsm_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_softhsm2_slot_id();
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
     // Use a unique directory for workspace/tmp (certs, temp files) but a
     // **stable** path for the SQLite database.  A stable DB path means that
     // records for keys created by a previous (possibly failed) test run are
@@ -848,7 +838,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
     // still-resident HSM object — fixing the "A secret key with this id already
     // exists" error that arises when the HSM outlives the ephemeral DB.
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_no_kek_{}_{}_{}",
+        "kms_test_hsm_no_kek_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -859,9 +849,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
     // Stable across runs — cleaned up by `cleanup_hsm_slot_objects` at startup.
     let stable_db_path = std::env::temp_dir().join("kms_test_hsm_vec_no_kek_sqlite");
 
-    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let config_path = hsm_config_path("hsm_kek.toml");
     let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_model = model;
     config.hsm.hsm_slot = vec![slot];
+    config.hsm.hsm_password = vec![password];
     config.db.sqlite_path = stable_db_path;
     config.db.clear_database = false;
     config.workspace.root_data_path = workspace_dir.join("workspace");
@@ -872,7 +864,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
     Ok(ctx)
 }
 
-/// Start a `SoftHSM2` + KEK test server where the KEK has **not** been pre-created.
+/// Start an HSM + KEK test server where the KEK has **not** been pre-created.
 ///
 /// This server type is used to reproduce the self-wrap regression (PR #968):
 /// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
@@ -887,11 +879,13 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
 ///
 /// # Panics
 /// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
-pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
 -> Result<TestsContext, KmsClientError> {
-    let slot = get_softhsm2_slot_id();
+    let slot = get_hsm_slot_id();
+    let model = get_hsm_model();
+    let password = get_hsm_password();
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_kek_bootstrap_{}_{}_{}",
+        "kms_test_hsm_kek_bootstrap_{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -904,9 +898,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vecto
     // Called once inside OnceCell initialisation before any vector steps run.
     crate::test_env::set("HSM_BOOTSTRAP_KEK_ID", &kek_id);
 
-    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let config_path = hsm_config_path("hsm_kek.toml");
     let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_model = model;
     config.hsm.hsm_slot = vec![slot];
+    config.hsm.hsm_password = vec![password];
     config.db.sqlite_path = workspace_dir.join("sqlite-data");
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
@@ -936,8 +932,10 @@ pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vecto
 #[expect(clippy::expect_used, clippy::indexing_slicing)]
 pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static TestsContext {
     trace!("Starting test server with three SoftHSM2 instances");
-    ONCE_SERVER_WITH_THREE_SOFTHSM2
-        .get_or_try_init(|| async move {
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_THREE_SOFTHSM2,
+        hsm_config_path("three_softhsm2.toml"),
+        |config| {
             let slot1: usize = env::var("HSM_SLOT_ID_1")
                 .expect("HSM_SLOT_ID_1 must be set")
                 .parse()
@@ -953,9 +951,6 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
 
             let password = env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned());
 
-            let config_path = hsm_config_path("three_softhsm2.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-
             // Patch legacy single-HSM with slot 1
             config.hsm.hsm_slot = vec![slot1];
             config.hsm.hsm_password = vec![password.clone()];
@@ -967,15 +962,10 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
                 config.hsm_instances[1].hsm_slot = vec![slot3];
                 config.hsm_instances[1].hsm_password = vec![password];
             }
-
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with three softhsm2: {e}");
-            std::process::abort();
-        })
+        },
+        "three SoftHSM2",
+    )
+    .await
 }
 
 /// Privileged users — two distinct identities in the list.
@@ -989,23 +979,18 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
 pub async fn start_default_test_kms_server_with_multi_crypto_officer_users() -> &'static TestsContext
 {
     trace!("Starting test server with multi privileged users");
-    ONCE_SERVER_WITH_MULTI_CRYPTO_OFFICER_USERS
-        .get_or_try_init(|| async move {
-            let config_path =
-                root_dir().join("../../test_data/configs/server/rbac/crypto_officer_users.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_MULTI_CRYPTO_OFFICER_USERS,
+        test_config_path("rbac/crypto_officer_users.toml"),
+        |config| {
             config.roles.crypto_officer_users = Some(vec![
                 "owner.client@acme.com".to_owned(),
                 "user.privileged@acme.com".to_owned(),
             ]);
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with multi softhsm2: {e}");
-            std::process::abort();
-        })
+        },
+        "multi crypto officer users",
+    )
+    .await
 }
 
 /// Privileged users.
@@ -1016,20 +1001,13 @@ pub async fn start_default_test_kms_server_with_crypto_officer_users(
     crypto_officer_users: Vec<String>,
 ) -> &'static TestsContext {
     trace!("Starting test server with privileged users");
-    ONCE_SERVER_WITH_CRYPTO_OFFICER_USERS
-        .get_or_try_init(|| async move {
-            let config_path =
-                root_dir().join("../../test_data/configs/server/rbac/crypto_officer_users.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            config.roles.crypto_officer_users = Some(crypto_officer_users);
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with three softhsm2: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_SERVER_WITH_CRYPTO_OFFICER_USERS,
+        test_config_path("rbac/crypto_officer_users.toml"),
+        |config| config.roles.crypto_officer_users = Some(crypto_officer_users),
+        "crypto officer users",
+    )
+    .await
 }
 
 /// Ceremony-mode test server.
@@ -1041,19 +1019,13 @@ pub async fn start_default_test_kms_server_with_crypto_officer_users(
 /// Use this server for split-key ceremony CLI integration tests.
 pub async fn start_ceremony_test_kms_server() -> &'static TestsContext {
     trace!("Starting ceremony-mode test KMS server");
-    ONCE_SERVER_CEREMONY
-        .get_or_try_init(|| async move {
-            let config_path =
-                root_dir().join("../../test_data/configs/server/rbac/crypto_officers.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start ceremony test server: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_SERVER_CEREMONY,
+        test_config_path("rbac/crypto_officers.toml"),
+        |_| {},
+        "ceremony",
+    )
+    .await
 }
 
 /// PQC TLS server — uses an ML-DSA-44 certificate for its HTTPS endpoint.
@@ -1069,18 +1041,13 @@ pub async fn start_ceremony_test_kms_server() -> &'static TestsContext {
 pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
     trace!("Starting test server with PQC (ML-DSA-44) TLS certificate");
-    ONCE_PQC_TLS
-        .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/tls/pqc_tls.toml");
-            let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path, listeners).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with PQC TLS cert: {e}");
-            std::process::abort();
-        })
+    start_singleton_from_toml(
+        &ONCE_PQC_TLS,
+        test_config_path("tls/pqc_tls.toml"),
+        |_| {},
+        "PQC TLS",
+    )
+    .await
 }
 
 #[derive(Debug)]
@@ -1430,6 +1397,26 @@ fn start_server_from_config(
         })?;
 
         start_from_server_params(server_params, listeners).await
+    })
+}
+
+/// Start (once per `cell`) a test server from a TOML fixture after applying `patch`.
+async fn start_singleton_from_toml(
+    cell: &'static OnceCell<TestsContext>,
+    config_path: PathBuf,
+    patch: impl FnOnce(&mut ClapConfig) + Send,
+    label: &str,
+) -> &'static TestsContext {
+    Box::pin(cell.get_or_try_init(|| async move {
+        let (mut config, listeners) = load_test_config_from_toml(&config_path)?;
+        patch(&mut config);
+        apply_test_db_override(&mut config);
+        start_server_from_config(config, &config_path, listeners).await
+    }))
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start {label} test server: {e}");
+        std::process::abort();
     })
 }
 

@@ -31,8 +31,6 @@ pub struct ExportObjectParams<'a> {
     pub encode_to_ttlv: bool,
     /// `cryptographic_parameters` - The cryptographic parameters for wrapping
     pub wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    /// `authenticated_encryption_additional_data` - Wrapping using GCM mode, additional data used for encryption
-    pub authenticated_encryption_additional_data: Option<String>,
 }
 
 impl ExportObjectParams<'_> {
@@ -45,7 +43,6 @@ impl ExportObjectParams<'_> {
             key_format_type: None,
             encode_to_ttlv: false,
             wrapping_cryptographic_parameters: None,
-            authenticated_encryption_additional_data: None,
         }
     }
 }
@@ -79,10 +76,9 @@ pub async fn export_object(
                 params.key_format_type,
                 params.encode_to_ttlv,
                 params.wrapping_cryptographic_parameters,
-                params.authenticated_encryption_additional_data,
             ))
             .await
-            .with_context(|| "Export")?;
+            .context("Export")?;
         (
             export_response.unique_identifier,
             export_response.object,
@@ -99,10 +95,9 @@ pub async fn export_object(
                 params.key_format_type,
                 params.encode_to_ttlv,
                 params.wrapping_cryptographic_parameters,
-                params.authenticated_encryption_additional_data,
             ))
             .await
-            .with_context(|| "Get")?;
+            .context("Get")?;
         (
             get_response.unique_identifier,
             get_response.object,
@@ -157,7 +152,6 @@ async fn batch_get(
                     params.key_format_type,
                     params.encode_to_ttlv,
                     params.wrapping_cryptographic_parameters.clone(),
-                    params.authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
@@ -220,7 +214,6 @@ async fn batch_export(
                     params.key_format_type,
                     params.encode_to_ttlv,
                     params.wrapping_cryptographic_parameters.clone(),
-                    params.authenticated_encryption_additional_data.clone(),
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),

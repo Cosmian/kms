@@ -2,7 +2,14 @@ use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, tim
 
 use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams,
+    reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        },
+    },
 };
 use cosmian_logger::{debug, warn};
 use ipnet::IpNet;
@@ -10,17 +17,21 @@ use ipnet::IpNet;
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig,
-        IdpConfig, JwksEndpointConfig, OidcConfig,
+        AuditConfig, AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig,
+        GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig, WorkspaceConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
         },
     },
+    core::operations::certify::template::CertTemplate,
     error::KmsError,
     result::{KResult, KResultHelper},
     routes::aws_xks::AwsXksParams,
 };
+
+/// Shortest accepted EST bootstrap password / SCEP challenge, in characters.
+const MIN_ENROLLMENT_SECRET_LEN: usize = 8;
 
 /// Resolved parameters for a single HSM instance, derived from either
 /// the CLI `--hsm-*` flags (single instance) or a TOML `[[hsm]]` entry.
@@ -141,6 +152,9 @@ pub struct ServerParams {
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
 
+    /// Wrapping parameters for `key_wrapping_key`; `None` = per-KEK default
+    pub key_wrapping_algorithm: Option<CryptographicParameters>,
+
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved
     ///
     /// Each entry must be a KMIP `ObjectType`, for example:
@@ -260,20 +274,14 @@ pub struct ServerParams {
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
 
-    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
-    /// are appended to the file at this path.  `None` means audit logging is
-    /// disabled (the default).
-    pub audit_file_path: Option<std::path::PathBuf>,
+    /// Resolved audit storage backend selection. `None` means audit logging is disabled
+    /// (the default, `--audit-enable=false`).
+    pub audit_backend: Option<AuditBackendParams>,
 
     /// Capacity of the bounded in-memory channel between request threads and the
     /// audit writer task.  Propagated from `--audit-channel-capacity` /
     /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
     pub audit_channel_capacity: usize,
-
-    /// When `Some`, the audit writer stops writing once the file reaches this many
-    /// bytes (see `AuditFileConfig::audit_file_max_size_bytes`). `None` (the default)
-    /// is unlimited. Must be > 0 when set.
-    pub audit_file_max_size_bytes: Option<u64>,
 
     /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
     /// the direct TCP peer address falls within one of these ranges.
@@ -325,10 +333,198 @@ pub struct ServerParams {
 
     /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
     pub ocsp_archive_cutoff_secs: u64,
+
+    // ── EST (RFC 7030) ────────────────────────────────────────────────────────────
+    /// Enable the EST endpoints under `/.well-known/est/`.
+    pub est_enabled: bool,
+
+    /// UID of the CA certificate that signs EST-enrolled certificates.
+    pub est_ca_uid: Option<String>,
+
+    /// Require TLS client-certificate authentication for `/simpleenroll`.
+    pub est_require_client_cert: bool,
+
+    /// HTTP Basic bootstrap username for `/simpleenroll`.
+    pub est_bootstrap_username: Option<String>,
+
+    /// HTTP Basic bootstrap password for `/simpleenroll`.
+    pub est_bootstrap_password: Option<String>,
+
+    /// Validated certificate template applied to EST enrollments.
+    pub est_template: Option<CertTemplate>,
+
+    // ── SCEP (RFC 8894) ───────────────────────────────────────────────────────────
+    /// Enable the SCEP endpoint at `/scep`.
+    pub scep_enabled: bool,
+
+    /// UID of the CA certificate that signs SCEP-enrolled certificates.
+    pub scep_ca_uid: Option<String>,
+
+    /// Shared challenge password for initial SCEP enrollments.
+    pub scep_challenge_password: Option<String>,
+
+    /// Accept `RenewalReq` without the challenge password.
+    pub scep_allow_renewal_without_challenge: bool,
+
+    /// Validated certificate template applied to SCEP enrollments.
+    pub scep_template: Option<CertTemplate>,
+}
+
+/// Resolved audit storage backend — one variant per backend, all values already
+/// validated by [`ServerParams::try_from`], so nothing downstream re-checks the config.
+#[derive(Clone)]
+pub enum AuditBackendParams {
+    File {
+        path: PathBuf,
+        /// `None` (the default) is unlimited. Always `> 0` when `Some` — validated at
+        /// resolution time regardless of whether audit logging ends up enabled.
+        max_size_bytes: Option<u64>,
+    },
+    Postgres {
+        url: String,
+        instance_id: String,
+        /// `Some(path)` when `--audit-file-path` was also explicitly set — purely so
+        /// `create_audit_store` can warn that it's unused (`PostgreSQL` takes precedence;
+        /// it is NOT a runtime fallback — a connectivity failure still aborts startup).
+        ignored_file_path: Option<PathBuf>,
+    },
+}
+
+impl fmt::Debug for AuditBackendParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File {
+                path,
+                max_size_bytes,
+            } => write!(
+                f,
+                "file: {}, max_size_bytes: {max_size_bytes:?}",
+                path.display()
+            ),
+            Self::Postgres {
+                url, instance_id, ..
+            } => write!(
+                f,
+                "postgres: {}, instance_id: {instance_id}",
+                cosmian_kms_server_database::redact_connection_string(url)
+            ),
+        }
+    }
+}
+
+/// Extracts `host:port,.../dbname` (ignoring credentials and query params) so two
+/// `PostgreSQL` URLs pointing at the same database can be compared even when one carries
+/// different credentials or extra `?sslmode=...` parameters.
+///
+/// This is a best-effort operator-mistake guard, not a security boundary: it does not
+/// resolve DNS, normalize case, or default an omitted port — an operator who genuinely
+/// wants to point both databases at the same server, using different-looking but
+/// equivalent connection strings, can still do so.
+fn normalized_pg_authority(url: &str) -> String {
+    let without_scheme = url.split("://").nth(1).unwrap_or(url);
+    let without_query = without_scheme.split('?').next().unwrap_or(without_scheme);
+    without_query
+        .rsplit_once('@')
+        .map_or(without_query, |(_, rest)| rest)
+        .to_owned()
 }
 
 /// Represents the server parameters.
 impl ServerParams {
+    /// Resolves the audit backend selection from the raw config.
+    ///
+    /// Backend selection is config-time only: `--audit-postgres-url` set → `PostgreSQL`;
+    /// otherwise → the JSONL file (path defaulting to `<root-data-path>/audit.jsonl`).
+    /// There is no runtime fallback between the two: a `PostgreSQL` connectivity failure
+    /// still aborts startup (see `AuditStore::start_postgres`). If `--audit-file-path` is
+    /// also set, `create_audit_store` only uses it to log a warning that it's ignored —
+    /// see `AuditBackendParams::Postgres::ignored_file_path`.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - `audit_file_max_size_bytes` is `Some(0)` — validated even when audit logging is
+    ///   disabled, so a nonsensical value fails config validation immediately rather than
+    ///   silently doing nothing until the operator later sets `--audit-enable`.
+    /// - `--audit-postgres-url` is set but does not start with `postgresql://` or
+    ///   `postgres://`.
+    /// - the resolved audit `PostgreSQL` URL targets the same host/port/database as the
+    ///   main object-storage database, when that database is also `PostgreSQL`.
+    /// - `--audit-postgres-url` is set without `--audit-instance-id`: unlike the file
+    ///   backend, the `PostgreSQL` backend has no safe default here — a wrong guess (e.g.
+    ///   from an ephemeral container hostname) risks two instances silently sharing a
+    ///   chain, so it must be set explicitly.
+    /// - the resolved `--audit-instance-id` is empty or exceeds 255 characters.
+    fn resolve_audit_backend(
+        audit: &AuditConfig,
+        workspace: &WorkspaceConfig,
+        main_db_params: Option<&MainDbParams>,
+    ) -> KResult<Option<AuditBackendParams>> {
+        if audit.file.audit_file_max_size_bytes == Some(0) {
+            return Err(KmsError::NotSupported(
+                "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
+            ));
+        }
+
+        if !audit.audit_enable {
+            return Ok(None);
+        }
+
+        let file_path = audit
+            .file
+            .audit_file_path
+            .clone()
+            .unwrap_or_else(|| workspace.root_data_path.join("audit.jsonl"));
+
+        if let Some(url) = audit.postgres.audit_postgres_url.as_deref() {
+            if !url.starts_with("postgresql://") && !url.starts_with("postgres://") {
+                return Err(KmsError::InvalidRequest(
+                    "--audit-postgres-url must be a URI-style DSN starting with \
+                     'postgresql://' or 'postgres://'; keyword/value DSN syntax \
+                     (e.g. 'host=... user=...') is not supported here."
+                        .to_owned(),
+                ));
+            }
+            if let Some(MainDbParams::Postgres(main_url, _)) = main_db_params {
+                if normalized_pg_authority(url) == normalized_pg_authority(main_url) {
+                    return Err(KmsError::InvalidRequest(
+                        "The audit database (--audit-postgres-url) must be a different \
+                         database than the main object-storage database (--database-url)."
+                            .to_owned(),
+                    ));
+                }
+            }
+
+            let instance_id = audit.postgres.audit_instance_id.clone().ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "--audit-instance-id is required when using the PostgreSQL audit \
+                     backend (--audit-postgres-url) — it must be stable across restarts \
+                     and unique per KMS instance sharing the audit database. There is no \
+                     hostname-based default: an incorrect guess here risks two instances \
+                     silently sharing a chain."
+                        .to_owned(),
+                )
+            })?;
+            if instance_id.is_empty() || instance_id.chars().count() > 255 {
+                return Err(KmsError::InvalidRequest(format!(
+                    "--audit-instance-id must be non-empty and at most 255 characters, \
+                     got {} characters",
+                    instance_id.chars().count()
+                )));
+            }
+
+            Ok(Some(AuditBackendParams::Postgres {
+                url: url.to_owned(),
+                instance_id,
+                ignored_file_path: audit.file.audit_file_path.clone(),
+            }))
+        } else {
+            Ok(Some(AuditBackendParams::File {
+                path: file_path,
+                max_size_bytes: audit.file.audit_file_max_size_bytes,
+            }))
+        }
+    }
+
     /// Tries to create a `ServerParams` instance from `ClapConfig`.
     ///
     /// # Arguments
@@ -423,17 +619,135 @@ impl ServerParams {
         let co_from_deprecated_path =
             conf.roles.crypto_officer_users.is_none() && conf.privileged_users.is_some();
 
+        // Hoisted so `resolve_audit_backend`'s "must differ from the main DB" guard can
+        // read it by reference before it moves into the struct literal below.
+        let main_db_params = Some(
+            conf.db
+                .init(&conf.workspace.init().context("failed to init workspace")?)
+                .context("failed to init DB")?,
+        );
+        let audit_backend =
+            Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
+
+        // EST / SCEP enrollment: resolve and validate the referenced certificate templates.
+        let resolve_template =
+            |cfg_key: &str, name: Option<&str>| -> KResult<Option<CertTemplate>> {
+                let Some(name) = name else {
+                    return Ok(None);
+                };
+                let mut template = conf.templates.get(name).cloned().ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "{cfg_key} = \"{name}\" does not match any [templates.{name}] section"
+                    ))
+                })?;
+                name.clone_into(&mut template.name);
+                template
+                    .validate()
+                    .map_err(|e| KmsError::ServerError(format!("[templates.{name}]: {e}")))?;
+                Ok(Some(template))
+            };
+        let est_template = resolve_template("est_template", conf.est.est_template.as_deref())?;
+        let scep_template = resolve_template("scep_template", conf.scep.scep_template.as_deref())?;
+        // A shared enrollment secret is an online-guessable credential: refuse empty or very
+        // short ones (lockout and the optional rate limiter slow guessing down, they do not
+        // make a weak secret safe).
+        let is_weak = |secret: &Option<String>| {
+            secret
+                .as_deref()
+                .is_none_or(|s| s.trim().chars().count() < MIN_ENROLLMENT_SECRET_LEN)
+        };
+        let is_blank =
+            |secret: &Option<String>| secret.as_deref().is_none_or(|s| s.trim().is_empty());
+        if (conf.est.est_enabled || conf.scep.scep_enabled)
+            && conf.http.rate_limit_per_second.is_none()
+        {
+            warn!(
+                "SECURITY: EST/SCEP is enabled but rate_limit_per_second is not set. The \
+                 enrollment endpoints are reachable before authentication; set \
+                 rate_limit_per_second in the server configuration for production deployments \
+                 (failed authentications are also locked out per client address)."
+            );
+        }
+        if conf.est.est_enabled {
+            if conf.est.est_ca_uid.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_enabled = true requires est_ca_uid".to_owned(),
+                ));
+            }
+            if est_template.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_enabled = true requires est_template: a [templates.<name>] section that \
+                     sets subject_cn_regex (or allow_any_identity = true)"
+                        .to_owned(),
+                ));
+            }
+            if !conf.est.est_require_client_cert {
+                if is_blank(&conf.est.est_bootstrap_username)
+                    || is_weak(&conf.est.est_bootstrap_password)
+                {
+                    return Err(KmsError::ServerError(format!(
+                        "est_require_client_cert = false requires a non-empty \
+                         est_bootstrap_username and an est_bootstrap_password of at least \
+                         {MIN_ENROLLMENT_SECRET_LEN} characters"
+                    )));
+                }
+                if conf
+                    .est
+                    .est_bootstrap_username
+                    .as_deref()
+                    .is_some_and(|u| u.contains(':'))
+                {
+                    return Err(KmsError::ServerError(
+                        "est_bootstrap_username must not contain ':' (HTTP Basic)".to_owned(),
+                    ));
+                }
+                if !conf.tls.is_tls_enabled() {
+                    return Err(KmsError::ServerError(
+                        "est_require_client_cert = false (HTTP Basic bootstrap) requires TLS: the \
+                         credentials would travel in clear text (RFC 7030 §3.3)"
+                            .to_owned(),
+                    ));
+                }
+            } else if !conf.tls.is_tls_enabled() || conf.tls.clients_ca_cert_file.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_require_client_cert = true requires TLS and clients_ca_cert_file"
+                        .to_owned(),
+                ));
+            }
+        }
+        if conf.scep.scep_enabled {
+            if conf.scep.scep_ca_uid.is_none() || is_weak(&conf.scep.scep_challenge_password) {
+                return Err(KmsError::ServerError(format!(
+                    "scep_enabled = true requires scep_ca_uid and a scep_challenge_password of \
+                     at least {MIN_ENROLLMENT_SECRET_LEN} characters"
+                )));
+            }
+            if scep_template.is_none() {
+                return Err(KmsError::ServerError(
+                    "scep_enabled = true requires scep_template: a [templates.<name>] section \
+                     that sets subject_cn_regex (or allow_any_identity = true)"
+                        .to_owned(),
+                ));
+            }
+            if !conf.tls.is_tls_enabled() {
+                // RFC 8894 does not require TLS (the CMS envelope protects the request) but
+                // GetCACert is then served without integrity protection, so a network attacker
+                // can substitute the CA, and the envelope is only AES-CBC without a MAC.
+                warn!(
+                    "SECURITY: SCEP is enabled without TLS. A network attacker can substitute \
+                     the CA certificate returned by GetCACert and observe or replay requests. \
+                     Enable TLS, or have devices verify the CA fingerprint out of band."
+                );
+            }
+        }
+
         let res = Self {
             identity_provider_configurations,
             jwt_svid_auth_enabled,
             ui_index_html_folder,
             ui_enable: conf.ui_config.enable,
             ui_oidc_auth: conf.ui_config.ui_oidc_auth,
-            main_db_params: Some(
-                conf.db
-                    .init(&conf.workspace.init().context("failed to init workspace")?)
-                    .context("failed to init DB")?,
-            ),
+            main_db_params,
             clear_db_on_start: conf.db.clear_database,
             unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
                 return Err(KmsError::NotSupported(
@@ -482,6 +796,10 @@ impl ServerParams {
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_instances,
+            key_wrapping_algorithm: parse_kek_wrapping_algorithm(
+                conf.key_encryption_key_wrapping_algorithm.as_deref(),
+                conf.key_encryption_key.is_some(),
+            )?,
             key_wrapping_key: conf.key_encryption_key,
             default_unwrap_types: parse_default_unwrap_types(conf.default_unwrap_type)?,
             otel_params: if conf.logging.otlp.is_some()
@@ -666,25 +984,8 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
-            audit_file_path: if conf.audit.audit_enable {
-                let path = conf
-                    .audit
-                    .file
-                    .audit_file_path
-                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
-                Some(path)
-            } else {
-                None
-            },
+            audit_backend,
             audit_channel_capacity: conf.audit.audit_channel_capacity,
-            audit_file_max_size_bytes: match conf.audit.file.audit_file_max_size_bytes {
-                Some(0) => {
-                    return Err(KmsError::NotSupported(
-                        "audit_file_max_size_bytes must be greater than 0 when set".to_owned(),
-                    ));
-                }
-                other => other,
-            },
             audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
             audit_failure_mode: conf.audit.audit_failure_mode,
             crl_default_validity_days: conf.crl.crl_default_validity_days,
@@ -697,6 +998,17 @@ impl ServerParams {
             ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
             ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
             ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
+            est_enabled: conf.est.est_enabled,
+            est_ca_uid: conf.est.est_ca_uid,
+            est_require_client_cert: conf.est.est_require_client_cert,
+            est_bootstrap_username: conf.est.est_bootstrap_username,
+            est_bootstrap_password: conf.est.est_bootstrap_password,
+            est_template,
+            scep_enabled: conf.scep.scep_enabled,
+            scep_ca_uid: conf.scep.scep_ca_uid,
+            scep_challenge_password: conf.scep.scep_challenge_password,
+            scep_allow_renewal_without_challenge: conf.scep.scep_allow_renewal_without_challenge,
+            scep_template,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -723,6 +1035,22 @@ impl ServerParams {
                      Disable `force_default_username` or remove `crypto_officer_users`."
                         .to_owned(),
                 ));
+            }
+        }
+
+        // EST/SCEP issue certificates as the reserved enrollment service identity: no
+        // configured principal may share its name.
+        if res.est_enabled || res.scep_enabled {
+            let reserved = crate::routes::enrollment::ENROLLMENT_SERVICE_USER;
+            let is_reserved =
+                |name: &str| crate::middlewares::names_reserved_identity(name, reserved);
+            if is_reserved(&res.default_username)
+                || res.crypto_officer.users.iter().any(|u| is_reserved(u))
+            {
+                return Err(KmsError::ServerError(format!(
+                    "EST/SCEP is enabled: `default_username` and `crypto_officer_users` must not \
+                     use the reserved enrollment service identity `{reserved}`"
+                )));
             }
         }
 
@@ -837,6 +1165,42 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
             }
         })
         .transpose()
+}
+
+/// Parse `key_encryption_key_wrapping_algorithm` (TOML values bypass clap's `value_parser`).
+fn parse_kek_wrapping_algorithm(
+    value: Option<&str>,
+    has_kek: bool,
+) -> KResult<Option<CryptographicParameters>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if !has_kek {
+        return Err(KmsError::ServerError(
+            "key_encryption_key_wrapping_algorithm requires key_encryption_key".to_owned(),
+        ));
+    }
+    let aes = |mode| CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(mode),
+        ..Default::default()
+    };
+    Ok(Some(match value {
+        "aes-gcm" => aes(BlockCipherMode::GCM),
+        "aes-key-wrap" => aes(BlockCipherMode::NISTKeyWrap),
+        "aes-key-wrap-padding" => aes(BlockCipherMode::AESKeyWrapPadding),
+        "rsa-oaep" => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        other => {
+            return Err(KmsError::ServerError(format!(
+                "invalid key_encryption_key_wrapping_algorithm: {other}"
+            )));
+        }
+    }))
 }
 
 /// `--jwt-svid-auth` is global: it makes EVERY `--jwt-auth-provider` issuer accept SPIFFE
@@ -1038,6 +1402,9 @@ impl fmt::Debug for ServerParams {
         if self.key_wrapping_key.is_some() {
             debug_struct.field("key_wrapping_key", &"[configured]");
         }
+        if let Some(a) = &self.key_wrapping_algorithm {
+            debug_struct.field("key_wrapping_algorithm", a);
+        }
 
         if let Some(ref proxy) = self.proxy_params {
             debug_struct.field("proxy_params", proxy);
@@ -1110,9 +1477,8 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
-        debug_struct.field("audit_file_path", &self.audit_file_path);
+        debug_struct.field("audit_backend", &self.audit_backend);
         debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
-        debug_struct.field("audit_file_max_size_bytes", &self.audit_file_max_size_bytes);
         debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
         debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
@@ -1165,7 +1531,10 @@ impl fmt::Debug for ServerParams {
 mod tests {
     use tempfile::TempDir;
 
-    use super::{ServerParams, ensure_svid_providers_have_audience};
+    use super::{
+        AuditBackendParams, BlockCipherMode, CryptographicAlgorithm, PaddingMethod, ServerParams,
+        ensure_svid_providers_have_audience, normalized_pg_authority, parse_kek_wrapping_algorithm,
+    };
     use crate::{
         config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
         tests::test_utils::https_clap_config,
@@ -1296,7 +1665,8 @@ mod tests {
 
     /// `max_size_bytes = 0` is a configuration mistake (it would mean either
     /// "unlimited" or "block everything", ambiguously), so it must be rejected
-    /// at config/parameter construction time rather than silently accepted.
+    /// at config/parameter construction time rather than silently accepted —
+    /// even when audit logging itself is disabled.
     #[test]
     fn audit_file_max_size_bytes_zero_is_rejected() {
         let mut conf = https_clap_config();
@@ -1310,17 +1680,146 @@ mod tests {
         );
     }
 
-    /// `None` (unset) and any positive value must both build successfully.
+    /// `None` (unset) and any positive value must both build successfully and resolve to
+    /// the file backend when audit logging is enabled with no `--audit-postgres-url`.
     #[test]
     fn audit_file_max_size_bytes_none_or_positive_is_accepted() {
         let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
         conf.audit.file.audit_file_max_size_bytes = None;
         let params = ServerParams::try_from(conf).expect("None must be accepted");
-        assert_eq!(params.audit_file_max_size_bytes, None);
+        assert!(matches!(
+            params.audit_backend,
+            Some(AuditBackendParams::File {
+                max_size_bytes: None,
+                ..
+            })
+        ));
 
         let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
         conf.audit.file.audit_file_max_size_bytes = Some(1_073_741_824);
         let params = ServerParams::try_from(conf).expect("a positive value must be accepted");
-        assert_eq!(params.audit_file_max_size_bytes, Some(1_073_741_824));
+        assert!(matches!(
+            params.audit_backend,
+            Some(AuditBackendParams::File {
+                max_size_bytes: Some(1_073_741_824),
+                ..
+            })
+        ));
+    }
+
+    /// `--audit-postgres-url` selects the `PostgreSQL` backend and requires an explicit
+    /// `--audit-instance-id` — there is no hostname-based default.
+    #[test]
+    fn audit_postgres_requires_instance_id() {
+        let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://user:pass@localhost/audit_db".to_owned());
+
+        let err = ServerParams::try_from(conf).expect_err("missing instance_id must be rejected");
+        assert!(
+            err.to_string().contains("--audit-instance-id is required"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    /// A valid `--audit-postgres-url` + `--audit-instance-id` resolves to the `PostgreSQL`
+    /// backend, distinct from the main `SQLite` test database (no collision guard fires).
+    #[test]
+    fn audit_postgres_resolves_with_instance_id() {
+        let mut conf = https_clap_config();
+        conf.audit.audit_enable = true;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://user:pass@localhost/audit_db".to_owned());
+        conf.audit.postgres.audit_instance_id = Some("kms-test-1".to_owned());
+
+        let params = ServerParams::try_from(conf).expect("must resolve successfully");
+        assert!(matches!(
+            params.audit_backend,
+            Some(AuditBackendParams::Postgres { instance_id, .. }) if instance_id == "kms-test-1"
+        ));
+    }
+
+    /// The audit `PostgreSQL` URL must not target the same database as the main
+    /// object-storage database — sharing one would let the KMS's own object-store role
+    /// bypass the audit database's append-only grants.
+    #[test]
+    fn audit_postgres_rejects_same_database_as_main_db() {
+        let mut conf = https_clap_config();
+        conf.db.database_type = Some("postgresql".to_owned());
+        conf.db.database_url = Some("postgresql://user:pass@localhost:5432/main_db".to_owned());
+        conf.audit.audit_enable = true;
+        conf.audit.postgres.audit_postgres_url =
+            Some("postgresql://other:creds@localhost:5432/main_db?sslmode=require".to_owned());
+        conf.audit.postgres.audit_instance_id = Some("kms-test-1".to_owned());
+
+        let err =
+            ServerParams::try_from(conf).expect_err("same-database audit URL must be rejected");
+        assert!(
+            err.to_string()
+                .contains("must be a different database than the main object-storage database"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn normalized_authority_ignores_credentials() {
+        assert_eq!(
+            normalized_pg_authority("postgresql://u:p@host:5432/db"),
+            normalized_pg_authority("postgresql://other:pw@host:5432/db")
+        );
+    }
+
+    #[test]
+    fn normalized_authority_ignores_query_params() {
+        assert_eq!(
+            normalized_pg_authority("postgresql://u:p@host:5432/db?sslmode=require"),
+            normalized_pg_authority("postgresql://u:p@host:5432/db")
+        );
+    }
+
+    #[test]
+    fn normalized_authority_differs_on_database_name() {
+        assert_ne!(
+            normalized_pg_authority("postgresql://u:p@host:5432/db_audit"),
+            normalized_pg_authority("postgresql://u:p@host:5432/db_objects")
+        );
+    }
+
+    #[test]
+    fn parse_kek_wrapping_algorithm_values() {
+        for (value, mode) in [
+            ("aes-gcm", BlockCipherMode::GCM),
+            ("aes-key-wrap", BlockCipherMode::NISTKeyWrap),
+            ("aes-key-wrap-padding", BlockCipherMode::AESKeyWrapPadding),
+        ] {
+            let p = parse_kek_wrapping_algorithm(Some(value), true)
+                .expect("a supported algorithm parses")
+                .expect("a configured algorithm yields parameters");
+            assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::AES));
+            assert_eq!(p.block_cipher_mode, Some(mode), "{value}");
+        }
+        let p = parse_kek_wrapping_algorithm(Some("rsa-oaep"), true)
+            .expect("rsa-oaep parses")
+            .expect("rsa-oaep yields parameters");
+        assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::RSA));
+        assert_eq!(p.padding_method, Some(PaddingMethod::OAEP));
+        assert!(
+            parse_kek_wrapping_algorithm(None, false)
+                .expect("an unset algorithm is valid")
+                .is_none()
+        );
+
+        let err = parse_kek_wrapping_algorithm(Some("aes-ctr"), true)
+            .expect_err("an unknown algorithm is rejected");
+        assert!(
+            err.to_string()
+                .contains("invalid key_encryption_key_wrapping_algorithm: aes-ctr")
+        );
+        let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false)
+            .expect_err("an algorithm without a KEK is rejected");
+        assert!(err.to_string().contains("requires key_encryption_key"));
     }
 }

@@ -16,10 +16,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_logger::log_init;
 use zeroize::Zeroizing;
 
-use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
-};
+use crate::{core::KMS, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 const TEST_DATA: &[u8] = b"Hello, world! This is a test message for signing.";
 const TEST_DATA_DIGESTED: &[u8] =
@@ -172,8 +169,7 @@ async fn test_streaming_signature_verification(
 async fn test_sign_rsa() -> KResult<()> {
     log_init(None);
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user_rsa_sign");
 
     // Create RSA key pair
@@ -210,8 +206,7 @@ async fn test_sign_rsa() -> KResult<()> {
 async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult<()> {
     log_init(None);
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from(format!("test_user_{test_name}_sign"));
 
     // Create EC key pair with specified curve

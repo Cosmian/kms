@@ -1,0 +1,124 @@
+---
+title: "ADR-2026-10-10: Keep KmsRng OpenSSL-Backed and Route All Secret-Material Randomness Through It (Issue #1266)"
+status: "Accepted"
+date: "2026-10-10"
+authors: "cryptographic engineers, security auditors, KMS contributors"
+tags: ["architecture", "decision", "crypto", "rng", "openssl", "fips"]
+supersedes: ""
+superseded_by: ""
+---
+
+# ADR-2026-10-10: Keep KmsRng OpenSSL-Backed and Route All Secret-Material Randomness Through It (Issue #1266)
+
+## Status
+
+Proposed | **Accepted** | Rejected | Superseded | Deprecated
+
+## Context
+
+`KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) is a zero-sized, stateless, `Send + Sync` wrapper around
+OpenSSL's DRBG hierarchy (AES-256 CTR-DRBG, SP 800-90A r1). It calls `RAND_priv_bytes_ex` (secret values) and
+`RAND_bytes_ex` (values that leave the server in clear: nonces, IVs, serials, `RNGRetrieve`) and requests 256
+bits of security strength on every call, so that OpenSSL fails closed when the serving DRBG is weaker (NIST
+SP 800-133r2 §4).
+
+Before this decision, many production call sites generated key material, nonces/IVs or secret tokens without
+going through `KmsRng`:
+
+- `openssl::rand::rand_bytes`, which requests strength 0 and never fails closed (symmetric keys and nonces,
+  RSA-AES key wrap KEK, JOSE CEK/IV, AWS XKS IV, UI login PKCE/CSRF/nonce tokens, OpenPGP seed);
+- `cosmian_crypto_core::CsRng` (ChaCha12 seeded through `getrandom`, not an SP 800-90A DRBG): Redis object
+  nonces, ceremony-record nonces (compiled in FIPS builds too), ECIES SalsaSealBox, PKCS#11 provider key bytes;
+- `rand::rng()` / `ThreadRng` for PKCS#11 `C_GenerateRandom` output;
+- an ephemeral `Key::generate()` for the UI session cookie key.
+
+Because `KmsRng` is zero-sized, any module can construct `KmsRng::new()` at no cost; no shared instance or
+dependency injection is architecturally required. Where a `KMS` is already in scope the shared `kms.rng` is
+used for consistency.
+
+## Decision
+
+1. **`KmsRng` stays OpenSSL-backed.** It is not re-implemented on top of `CsRng` and does not implement the
+   infallible `rand_core::RngCore`: doing so would force an infallible `fill_bytes` onto a generator whose
+   defining property is that it fails closed.
+2. **Every production path that produces key material, a nonce/IV, or a secret token draws from `KmsRng`.**
+   Primitive signatures take an explicit `rng: &KmsRng` (`random_nonce`, `random_key`, `ckm_rsa_aes_key_wrap`,
+   `wrap_object_with_key`, `xor_split`, `ecies_encrypt`, `generate_openpgp_secret_key`, `openpgp_encrypt`,
+   `openpgp_sign_detached`) so that a non-approved generator cannot be passed by construction.
+3. **Seeded PRGs (`CsRng`, `StdRng`, `ChaCha*Rng`) are acceptable only when seeded from `KmsRng`**, through
+   `KmsRng::seeded_csrng` or `from_seed` with bytes from `KmsRng::fill_bytes`. Typical uses: a *seed-stretching
+   PRG* when a third-party API demands an infallible `CryptoRngCore` and exposes no way to inject entropy
+   (OpenPGP via the `pgp` crate, ECIES SalsaSealBox via `cosmian_crypto_core`), anonymization noise, and test
+   fixtures. A PRG seeded from the OS or from a thread-local RNG is banned. A PRG whose output becomes key
+   material must be `KmsRng::seeded_csrng`, whose `ChaCha12` state (equal to the seed) is overwritten when dropped.
+4. **Documented exceptions**: RSA/EC/EdDSA key generation, SLH-DSA and hybrid-KEM
+   composite keygen (OpenSSL generates these atomically from its own DRBG); the SCEP CMS envelope content key
+   and IV (`CmsContentInfo::encrypt` lets OpenSSL draw them with `RAND_priv_bytes_ex` / `RAND_bytes_ex` at
+   requested strength 0, so they do not fail closed on a weaker DRBG); Covercrypt
+   (`Covercrypt::setup()` locks an internal `rng` field and has no constructor parameter or setter that accepts
+   an external RNG). These have no injection point and are served by the same OpenSSL DRBG hierarchy but not
+   through `KmsRng`. `uuid::Uuid::new_v4` identifiers (not secrets) draw from the OS through `getrandom`,
+   and the `oauth2` PKCE/CSRF helpers of `cosmian_kms_client` use their own generator.
+5. **Enforcement is mechanical.** The root `clippy.toml` (the only one) bans every ambient entropy source that
+   workspace code calls directly (not the draws dependencies make internally, i.e. the exceptions above):
+   `openssl::rand::{rand_bytes, rand_priv_bytes}`, OpenSSL `BigNum` random generation and raw `RAND_*` /
+   `BN_*rand*`, `rand::{rng, thread_rng, random*, fill, make_rng}`, `ThreadRng`, `OsRng`, `SysRng`,
+   `SeedableRng::{from_entropy, from_os_rng, try_from_os_rng, seed_from_u64}`, `getrandom`,
+   `cookie::Key::generate` and non-cryptographic PRGs. The lints are never suppressed (tests included): review
+   rejects any `#[allow]` / `#[expect]` of them, any lint-level override and any other `clippy.toml`.
+6. **PKCS#11.** `C_GenerateRandom` is dispatched to a new `Backend::generate_random`. The default implementation
+   uses `KmsRng`; the KMS-attached `CliBackend` overrides it with KMIP `RNGRetrieve` (public DRBG, in chunks of
+   at most 64 KiB, the server limit). Keys generated by the provider before being imported are drawn from the
+   private DRBG locally (`KmsRng::fill_bytes`), because public-DRBG output (`RNGRetrieve`) is reserved for values
+   handed to clients.
+7. **KMIP metadata is truthful where no vector pins it.** `Query` -> `QueryRNGs` reports DRBG / CTR / AES / 256
+   without prediction resistance. The `RandomNumberGenerator` attribute returned by `GetAttributes` stays a
+   protocol-compliance literal (ANSI X9.31 / AES / 256) because the vendored OASIS vector `AKLC-M-1-21` asserts
+   exactly those values; it is not a description of the real generator.
+
+## Consequences
+
+### Positive
+
+- **POS-001**: One auditable randomness path for secret material; every draw requests 256-bit strength and fails
+  closed.
+- **POS-002**: The FIPS-mode gap in `ceremony_keys.rs` (ChaCha12 nonces in an unconditionally compiled module)
+  is closed.
+- **POS-003**: Regressions are caught by `cargo clippy-all` instead of by review.
+
+### Negative
+
+- **NEG-001**: Signature churn: callers of the primitives listed above must now pass a `&KmsRng`.
+- **NEG-002**: Tests that relied on a seeded deterministic generator (`split_key`) lose determinism; none
+  asserted golden output.
+- **NEG-003**: OpenPGP and ECIES SalsaSealBox still run a ChaCha12 stream after the `KmsRng` seed; the 256-bit
+  seed bounds the entropy of the whole operation, which is acceptable only because no injection point exists.
+
+## Alternatives Considered
+
+### Implement `rand_core::RngCore` / `CryptoRng` for `KmsRng`
+
+- **ALT-001 Description**: Make `KmsRng` usable wherever a `CryptoRngCore` is expected.
+- **ALT-002 Rejection Reason**: `RngCore::fill_bytes` is infallible; a DRBG failure would have to panic or
+  return silent weak output, which contradicts the fail-closed design.
+
+### Replace `KmsRng` by `CsRng`
+
+- **ALT-003 Description**: Use `cosmian_crypto_core::CsRng` everywhere, which is infallible and already
+  implements the `rand_core` traits.
+- **ALT-004 Rejection Reason**: ChaCha12 seeded through `getrandom` is not an SP 800-90A DRBG and bypasses
+  OpenSSL (and therefore the FIPS provider), so output is not "from an approved RBG" per SP 800-133r2 §4.
+
+### Add a lint-only guard without changing signatures
+
+- **ALT-005 Description**: Keep `random_nonce(cipher)` and friends and rely on clippy to catch bad generators.
+- **ALT-006 Rejection Reason**: The primitives themselves would still hide the generator choice from callers;
+  an explicit `&KmsRng` parameter documents the requirement in the type system.
+
+## References
+
+- **REF-001**: GitHub Issue #1266
+- **REF-002**: NIST SP 800-133r2 §4; NIST SP 800-90A r1 §9.3.1
+- **REF-003**: `crate/crypto/src/crypto/rng/mod.rs`
+- **REF-004**: `documentation/docs/certifications_and_compliance/cryptographic_algorithms/random_number_generation.md`
+- **REF-005**: `documentation/adr/2026-10-09-pqc-kmsrng-seeding-and-safe-openssl-migration.md`

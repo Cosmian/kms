@@ -29,9 +29,9 @@ pub struct AuditFileConfig {
 
     /// Stops all further writes once the audit file reaches this many bytes.
     ///
-    /// The event that pushes the file to or past this size is still persisted; every event
-    /// after that is dropped (subject to `--audit-failure-mode`) until the log is remediated
-    /// and the KMS is restarted.
+    /// The event that would reach this size is replaced by a final
+    /// `audit:size-cap-reached` event. Later events are dropped according to
+    /// `--audit-failure-mode` until the log is remediated and the KMS is restarted.
     ///
     /// Omitted (the default) means unlimited. Must be > 0 when set.
     #[clap(
@@ -41,6 +41,64 @@ pub struct AuditFileConfig {
     )]
     #[serde(rename = "max_size_bytes")]
     pub audit_file_max_size_bytes: Option<u64>,
+}
+
+/// Configuration for the `PostgreSQL` audit log sub-section.
+#[derive(Default, Args, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct AuditPostgresConfig {
+    /// `PostgreSQL` connection URL for the audit database.
+    ///
+    /// When set, audit events are written to this `PostgreSQL` database instead of the
+    /// JSONL file — backend selection is config-time only, based solely on whether this
+    /// is set; there is no runtime fallback between the two: a connectivity failure at
+    /// startup still aborts the server. If `--audit-file-path` is also set, it is only
+    /// used to log a warning that it's ignored (or, on connection failure, that it is
+    /// NOT used as a fallback). This database MUST be a different database than the
+    /// main object-storage database (`--database-url`) when that database is also
+    /// `PostgreSQL` — the server refuses to start otherwise, since sharing one database
+    /// would let the KMS's own object-store role bypass the audit database's
+    /// append-only grants.
+    #[clap(
+        long = "audit-postgres-url",
+        env = "KMS_AUDIT_POSTGRES_URL",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "url")]
+    pub audit_postgres_url: Option<String>,
+
+    /// Identifies this KMS instance's audit hash chain when using the `PostgreSQL`
+    /// backend.
+    ///
+    /// Must be STABLE across restarts and UNIQUE per KMS instance sharing the same audit
+    /// database — a second instance reusing an `instance_id` is rejected at startup by an
+    /// advisory-lock check, before any event is written. Required (no default) when
+    /// `--audit-postgres-url` is set. Kubernetes deployments should set this from the
+    /// `StatefulSet` ordinal or the downward API, not an ephemeral pod hostname.
+    #[clap(
+        long = "audit-instance-id",
+        env = "KMS_AUDIT_INSTANCE_ID",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "instance_id")]
+    pub audit_instance_id: Option<String>,
+}
+
+// Manual impl so `audit_postgres_url` is never printed in plaintext: keep this in sync
+// with `AuditBackendParams`'s own redacted `Debug` impl.
+impl std::fmt::Debug for AuditPostgresConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuditPostgresConfig")
+            .field(
+                "audit_postgres_url",
+                &self
+                    .audit_postgres_url
+                    .as_deref()
+                    .map(cosmian_kms_server_database::redact_connection_string),
+            )
+            .field("audit_instance_id", &self.audit_instance_id)
+            .finish()
+    }
 }
 
 /// Configuration for the structured audit event pipeline.
@@ -74,6 +132,10 @@ pub struct AuditConfig {
     #[serde(rename = "file")]
     pub file: AuditFileConfig,
 
+    #[clap(flatten)]
+    #[serde(rename = "postgres")]
+    pub postgres: AuditPostgresConfig,
+
     /// Capacity of the bounded in-memory channel between request threads and the
     /// audit writer task.
     ///
@@ -94,11 +156,11 @@ pub struct AuditConfig {
 
     /// Only set this if the KMS sits behind a reverse proxy or load balancer.
     ///
-    /// When set, the audit middleware trusts the `X-Forwarded-For` header only if
-    /// the direct TCP peer is one of the proxy addresses listed here, and records
-    /// the header's value as `client_ip` instead. This must be scoped to your
-    /// proxy's own address(es) — trusting it from any peer lets a remote attacker
-    /// forge `client_ip` in the audit trail.
+    /// When set, `X-Forwarded-For` is trusted only if the direct TCP peer is one of the
+    /// proxy addresses listed here; the client address is then the rightmost entry that is
+    /// not itself a listed proxy. It is recorded as the audit `client_ip` and keys the EST/SCEP
+    /// failed-authentication lockout. This must be scoped to your proxy's own address(es) —
+    /// trusting it from any peer lets a remote attacker forge `client_ip` in the audit trail.
     ///
     /// Format: comma-separated IP addresses or CIDR blocks, e.g.
     /// `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)

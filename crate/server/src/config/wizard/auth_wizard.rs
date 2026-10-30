@@ -7,9 +7,9 @@
 
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
+use super::PromptResultExt;
 use crate::{
     config::{AuthVerifierConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
-    error::KmsError,
     result::KResult,
 };
 
@@ -54,14 +54,14 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         )
         .items(auth_choices)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     // API key
     let api_token_id: Option<String> = if selected.contains(&0) {
         let token: String = Input::with_theme(&theme)
             .with_prompt("API token value (will be stored in config; keep it secret)")
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         Some(token)
     } else {
         None
@@ -82,7 +82,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 .with_prompt("Provider config string (leave blank to stop)")
                 .allow_empty(true)
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             if provider.trim().is_empty() {
                 break;
             }
@@ -91,7 +91,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 .with_prompt("Add another JWT/OIDC provider?")
                 .default(false)
                 .interact()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             if !add_more {
                 break;
             }
@@ -105,7 +105,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             )
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         // The server refuses to start with `jwt_svid_auth` unless every provider has an
         // audience: ask for the missing ones rather than writing a config that cannot start.
@@ -119,7 +119,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                         "Audience required for SPIFFE JWT-SVIDs, provider `{provider}`"
                     ))
                     .interact_text()
-                    .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                    .prompt_err()?;
                 *provider = with_audience(provider, audience.trim());
             }
         }
@@ -129,26 +129,26 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             .with_prompt("Configure OIDC for the web UI?")
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         if configure_ui_oidc {
             let client_id: String = Input::with_theme(&theme)
                 .with_prompt("UI OIDC client ID")
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             let client_secret: String = dialoguer::Password::with_theme(&theme)
                 .with_prompt("UI OIDC client secret")
                 .interact()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             let issuer_url: String = Input::with_theme(&theme)
                 .with_prompt("UI OIDC issuer URL")
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             let logout_url: String = Input::with_theme(&theme)
                 .with_prompt("UI OIDC logout URL (optional, leave blank to skip)")
                 .allow_empty(true)
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
 
             ui_oidc = OidcConfig {
                 ui_oidc_client_id: Some(client_id),
@@ -175,29 +175,46 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 }
             })
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         let server_url = server_url.trim().to_owned();
         let jwks_uri: String = Input::with_theme(&theme)
             .with_prompt("JWKS URI (leave blank to use <server_url>/.well-known/jwks.json)")
             .allow_empty(true)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         let accept_invalid_certs: bool = Confirm::with_theme(&theme)
             .with_prompt("Accept invalid TLS certificates when fetching the JWKS? (dev/test only)")
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         let enable_ui_login: bool = Confirm::with_theme(&theme)
             .with_prompt("Enable the Web UI login form for the Auth Verifier server?")
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         let realm: Option<String> = if enable_ui_login {
             let realm: String = Input::with_theme(&theme)
                 .with_prompt("Realm to authenticate the Web UI against")
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
             Some(realm)
+        } else {
+            None
+        };
+        let enable_saml_login: bool = Confirm::with_theme(&theme)
+            .with_prompt(
+                "Enable Web UI SAML single sign-on through the Auth Verifier server? \
+                 (its /saml/ routes must be reverse-proxied on the KMS public HTTPS origin)",
+            )
+            .default(false)
+            .interact()
+            .prompt_err()?;
+        let saml_realm: Option<String> = if enable_saml_login {
+            let saml_realm: String = Input::with_theme(&theme)
+                .with_prompt("Auth Verifier realm configured for SAML")
+                .interact_text()
+                .prompt_err()?;
+            Some(saml_realm)
         } else {
             None
         };
@@ -209,6 +226,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 Some(jwks_uri)
             },
             auth_verifier_realm: realm,
+            auth_verifier_saml_realm: saml_realm,
             auth_verifier_accept_invalid_certs: accept_invalid_certs,
         };
     }
@@ -225,13 +243,13 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         .with_prompt("Default username (used when no auth method resolves a user)")
         .default("admin".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let force_default_username: bool = Confirm::with_theme(&theme)
         .with_prompt("Force the default username even when an authentication method is provided?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     ui.ui_oidc_auth = ui_oidc;
 

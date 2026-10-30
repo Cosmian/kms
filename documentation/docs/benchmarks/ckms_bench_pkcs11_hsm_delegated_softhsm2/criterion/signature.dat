@@ -1,0 +1,13 @@
+# idx  pkcs11/5.28.0  label
+0  104.16  "ecdsa-p256/sign"
+1  205.82  "ecdsa-p256/verify"
+2  517.63  "ecdsa-p384/sign"
+3  561.66  "ecdsa-p384/verify"
+4  402.56  "ecdsa-secp256k1/sign"
+5  352.64  "ecdsa-secp256k1/verify"
+6  216.31  "eddsa-ed25519/sign"
+7  122.50  "eddsa-ed25519/verify"
+8  762.96  "rsa-pkcs-sha256/sign"
+9  119.15  "rsa-pkcs-sha256/verify"
+10  754.51  "rsa-pss-sha256/sign"
+11  125.73  "rsa-pss-sha256/verify"

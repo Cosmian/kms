@@ -54,6 +54,20 @@ helm template cosmian-kms "${CHART_DIR}" \
   --set networkPolicy.enabled=true |
   grep -c "^---" >/dev/null
 
+# 7. `command` overrides the image entrypoint (e.g. Proteccio with the FIPS image) and must
+# render right before the chart-built `args`; it must not render with default values.
+echo "Running helm template (command override)..."
+# Render once: `helm | grep -q` under pipefail can SIGPIPE helm and invert the check.
+default_out=$(helm template cosmian-kms "${CHART_DIR}" -s templates/deployment.yaml)
+command_out=$(helm template cosmian-kms "${CHART_DIR}" -s templates/deployment.yaml \
+  --set 'command={env,-u,OPENSSL_CONF,cosmian_kms}')
+if grep -q '^ *command:' <<<"$default_out"; then
+  print_error "Deployment renders 'command:' with default values"
+fi
+grep -A6 '^ *command:' <<<"$command_out" | tr -d ' ' | tr '\n' ' ' |
+  grep -q -- '^command: -env --u -OPENSSL_CONF -cosmian_kms args:' ||
+  print_error "'command' is not rendered as [env, -u, OPENSSL_CONF, cosmian_kms] followed by args"
+
 print_success "Helm chart static validation completed"
 
 # ── Phase 2: E2E deployment on a live cluster (only when --e2e is passed) ────

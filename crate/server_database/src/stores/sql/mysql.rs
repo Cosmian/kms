@@ -28,13 +28,19 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         MYSQL_QUERIES,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         sql::{
+            crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
             locate_query::{
-                LocateParam, LocateQuery, MySqlPlaceholder, find_by_rotate_name_query,
-                find_due_for_rotation_query, query_all_from_attributes, query_from_attributes,
+                LocateParam, LocateQuery, MySqlPlaceholder, filter_due_for_rotation,
+                find_by_rotate_name_query, find_due_for_rotation_query, query_all_from_attributes,
+                query_from_attributes,
             },
+            merge_granted_operations,
         },
     },
 };
@@ -259,6 +265,7 @@ impl MySqlPool {
                 "clean-table-objects",
                 "clean-table-read_access",
                 "clean-table-tags",
+                "clean-table-crls",
             ] {
                 if let Some(sql) = MYSQL_QUERIES.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
@@ -390,6 +397,51 @@ impl MySqlPool {
                 .map_err(DbError::from)?;
         }
 
+        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
+        // existed, gated by a completion marker (same shape as above).
+        let serial_marker: Option<String> = conn
+            .exec_first(select_param, (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,))
+            .await
+            .map_err(DbError::from)?;
+        if serial_marker.as_deref() != Some("true") {
+            let select_sql = MYSQL_QUERIES
+                .get("select-certificates-missing-serial-tag")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: select-certificates-missing-serial-tag".to_owned(),
+                    )
+                })?;
+            let insert_sql = MYSQL_QUERIES.get("insert-tags-if-absent").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: insert-tags-if-absent".to_owned())
+            })?;
+            let missing_rows: Vec<(String, String)> =
+                conn.query(select_sql).await.map_err(DbError::from)?;
+            for (id, object_json) in &missing_rows {
+                match serde_json::from_str::<Object>(object_json) {
+                    Ok(obj) => {
+                        if let Some(tag) = certificate_serial_tag(&obj) {
+                            conn.exec_drop(insert_sql, (id, &tag))
+                                .await
+                                .map_err(DbError::from)?;
+                        }
+                    }
+                    Err(e) => warn!(
+                        "serial tag backfill: skipping object {id} that failed to \
+                         deserialize: {e}"
+                    ),
+                }
+            }
+            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
+            })?;
+            conn.exec_drop(
+                upsert_param,
+                (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true"),
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+
         let this = Self { pool };
 
         // On clear or first boot, update metadata (non-fips only)
@@ -429,10 +481,6 @@ impl MySqlPool {
 impl SqlDatabase for MySqlPool {
     fn get_loader(&self) -> &Loader {
         &MYSQL_QUERIES
-    }
-
-    fn binder(&self, _param_number: usize) -> String {
-        "?".to_owned()
     }
 }
 
@@ -807,7 +855,7 @@ impl ObjectsStore for MySqlPool {
             .exec(sql, (user_s, user_s, user_s, wrapping_key_uid))
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut out = Vec::new();
+        let mut out = Vec::with_capacity(rows.len());
         for (uid, state_str, attrs_val) in rows {
             let state = State::try_from(state_str.as_str())
                 .map_err(|e| InterfaceError::Db(format!("invalid state: {e}")))?;
@@ -832,14 +880,16 @@ impl ObjectsStore for MySqlPool {
             .exec(&sql, ())
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut due = Vec::new();
-        for (uid, owner, attrs_val) in rows {
-            let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
-            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                due.push((uid, owner));
-            }
-        }
-        Ok(due)
+        Ok(filter_due_for_rotation(
+            rows.into_iter().map(|(uid, owner, attrs_val)| {
+                (
+                    uid,
+                    owner,
+                    serde_json::from_value(attrs_val).unwrap_or_default(),
+                )
+            }),
+            now,
+        ))
     }
 
     async fn find_by_rotate_name(
@@ -868,7 +918,7 @@ impl ObjectsStore for MySqlPool {
             .exec(locate.sql, params)
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(rows.len());
         for (uid, attrs_val) in rows {
             let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
             results.push((uid, attrs));
@@ -931,19 +981,6 @@ impl ObjectsStore for MySqlPool {
 
 #[async_trait(?Send)]
 impl Migrate for MySqlPool {
-    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
-        let mut conn = self.get_configured_conn().await?;
-        let sql = get_mysql_query!("select-parameter");
-        let res: Option<String> = conn
-            .exec_first(sql, ("db_state",))
-            .await
-            .map_err(DbError::from)?;
-        match res {
-            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
-            None => Ok(None),
-        }
-    }
-
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
         let mut conn = self.get_configured_conn().await?;
         let sql = get_mysql_query!("upsert-parameter");
@@ -952,16 +989,6 @@ impl Migrate for MySqlPool {
             .await
             .map_err(DbError::from)?;
         Ok(())
-    }
-
-    async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let mut conn = self.get_configured_conn().await?;
-        let sql = get_mysql_query!("select-parameter");
-        let res: Option<String> = conn
-            .exec_first(sql, ("db_version",))
-            .await
-            .map_err(DbError::from)?;
-        Ok(res)
     }
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
@@ -1105,7 +1132,7 @@ impl PermissionsStore for MySqlPool {
     ) -> InterfaceResult<()> {
         let sql = get_mysql_query!("upsert-crl");
 
-        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let crl_number_i = crl_number_to_sql(crl_number);
         let mut conn = self
             .pool
             .get_conn()
@@ -1173,10 +1200,10 @@ impl PermissionsStore for MySqlPool {
         // `take::<Option<i64>>` handles NULL gracefully: row.take returns
         // Some(None) for NULL, Some(Some(v)) for an actual value, and None
         // when the column index is out of bounds.
-        let max: Option<i64> = row_opt
+        Ok(row_opt
             .and_then(|mut row| row.take::<Option<i64>, _>(0))
-            .flatten();
-        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+            .flatten()
+            .map(crl_number_from_sql))
     }
 }
 
@@ -1188,10 +1215,10 @@ pub(super) async fn create_(
     tags: &HashSet<String>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<String> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+    let object_json = serde_json::to_string(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -1247,11 +1274,11 @@ pub(super) async fn update_object_(
     tags: Option<&HashSet<String>>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+    let object_json = serde_json::to_string(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
 
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
 
@@ -1323,10 +1350,10 @@ pub(super) async fn upsert_(
     state: State,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
-    let object_json = serde_json::to_string_pretty(object).map_err(|e| {
+    let object_json = serde_json::to_string(object).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the object to JSON: {e}").into())
     })?;
-    let attributes_json = serde_json::to_value(attributes).map_err(|e| {
+    let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
     let wrapping_key_id = object.wrapping_key_uid();
@@ -1472,12 +1499,7 @@ pub(super) async fn list_user_granted_access_rights_(
         let ops: HashSet<KmipOperation> = serde_json::from_value(ops_val).map_err(|e| {
             DbError::ConversionError(format!("failed deserializing the operations: {e}").into())
         })?;
-        // The same object may be returned twice: once for the direct grant and
-        // once for the wildcard `*` grant. Union the permission sets instead of
-        // overwriting the entry.
-        ids.entry(uid)
-            .and_modify(|(_, _, existing_ops)| existing_ops.extend(ops.iter().copied()))
-            .or_insert((owner, state, ops));
+        merge_granted_operations(&mut ids, uid, owner, state, ops);
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
@@ -1529,7 +1551,7 @@ pub(super) async fn insert_access_(
         return Ok(());
     }
     perms.extend(operation_types.iter().copied());
-    let json = serde_json::to_value(&perms).map_err(|e| {
+    let json = serde_json::to_string(&perms).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
     })?;
     let mut conn = pool.get_conn().await.map_err(DbError::from)?;
@@ -1561,7 +1583,7 @@ pub(super) async fn remove_access_(
             .map_err(DbError::from)?;
         return Ok(());
     }
-    let json = serde_json::to_value(&perms).map_err(|e| {
+    let json = serde_json::to_string(&perms).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the permissions to JSON: {e}").into())
     })?;
     conn.exec_drop(

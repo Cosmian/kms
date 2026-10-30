@@ -19,6 +19,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_kms_crypto::crypto::{
+    KmsRng,
     symmetric::symmetric_ciphers::{Mode, encrypt, random_nonce},
     wrap::wrap_object_with_key,
 };
@@ -121,6 +122,20 @@ pub struct EncryptAction {
     pub(crate) authentication_data: Option<String>,
 }
 
+/// Parameters for client-side (KEM/DEM) file encryption.
+struct ClientSideEncryptParams<'a> {
+    /// Identifier of the key-encryption key used to wrap the ephemeral key.
+    kek_id: &'a str,
+    /// Algorithm used to wrap the ephemeral key.
+    key_encryption_algorithm: KeyEncryptionAlgorithm,
+    /// Algorithm used to encrypt the file data.
+    data_encryption_algorithm: DataEncryptionAlgorithm,
+    /// Optional nonce; randomly generated when absent.
+    nonce: Option<Vec<u8>>,
+    /// Optional additional authenticated data.
+    aad: Option<Vec<u8>>,
+}
+
 impl EncryptAction {
     pub(crate) async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         // Recover the unique identifier or set of tags
@@ -150,13 +165,15 @@ impl EncryptAction {
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
             self.client_side_encrypt_with_file(
                 kms_rest_client,
-                &id,
-                key_encryption_algorithm,
-                self.data_encryption_algorithm,
-                nonce,
+                ClientSideEncryptParams {
+                    kek_id: &id,
+                    key_encryption_algorithm,
+                    data_encryption_algorithm: self.data_encryption_algorithm,
+                    nonce,
+                    aad: authentication_data,
+                },
                 &self.input_file,
                 &mut output_file,
-                authentication_data,
             )
             .await?;
         } else {
@@ -247,18 +264,20 @@ impl EncryptAction {
 
     /// Encrypt a file using a symmetric stream cipher
     /// and return the ephemeral key
-    #[expect(clippy::too_many_arguments)]
     async fn client_side_encrypt_with_file(
         &self,
         kms_rest_client: KmsClient,
-        kek_id: &str,
-        key_encryption_algorithm: KeyEncryptionAlgorithm,
-        data_encryption_algorithm: DataEncryptionAlgorithm,
-        nonce: Option<Vec<u8>>,
+        params: ClientSideEncryptParams<'_>,
         input_file_name: &Path,
         output_file: &mut File,
-        aad: Option<Vec<u8>>,
     ) -> KmsCliResult<Zeroizing<Vec<u8>>> {
+        let ClientSideEncryptParams {
+            kek_id,
+            key_encryption_algorithm,
+            data_encryption_algorithm,
+            nonce,
+            aad,
+        } = params;
         // Additional authenticated data (AAD) for AEAD ciphers
         let aad = resolve_aad(data_encryption_algorithm, aad);
 
@@ -283,7 +302,7 @@ impl EncryptAction {
         // we need a nonce (or tweak)
         let nonce = match nonce {
             Some(n) => n,
-            None => random_nonce(cipher)?,
+            None => random_nonce(&KmsRng::new(), cipher)?,
         };
         output_file.write_all(&nonce)?;
 
@@ -324,7 +343,7 @@ impl EncryptAction {
         data_encryption_algorithm: DataEncryptionAlgorithm,
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         // Generate the ephemeral key (DEK)
-        let dek = generate_dek(data_encryption_algorithm)?;
+        let dek = generate_dek(&KmsRng::new(), data_encryption_algorithm)?;
 
         // Wrap the DEK with the KEK
         let (kem_nonce, kem_ciphertext, kem_tag) = self
@@ -363,7 +382,8 @@ impl EncryptAction {
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         trace!("data_encryption_algorithm: {data_encryption_algorithm}");
         // Generate the ephemeral key (DEK)
-        let dek = generate_dek(data_encryption_algorithm)?;
+        let rng = KmsRng::new();
+        let dek = generate_dek(&rng, data_encryption_algorithm)?;
         trace!("dek (len={}): {dek:?}", dek.len());
 
         // First export the KEK locally
@@ -395,6 +415,7 @@ impl EncryptAction {
                 encoding_option: Some(EncodingOption::NoEncoding),
                 ..Default::default()
             },
+            &rng,
         )?;
 
         let encapsulation = dek_object.key_block()?.wrapped_key_bytes()?;
@@ -435,7 +456,7 @@ impl EncryptAction {
         // we need a nonce (or tweak)
         let nonce = match nonce {
             Some(n) => n,
-            None => random_nonce(sym_cipher)?,
+            None => random_nonce(&KmsRng::new(), sym_cipher)?,
         };
         output_buffer.write_all(&nonce)?;
 

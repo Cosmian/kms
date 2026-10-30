@@ -63,9 +63,9 @@ repos:
       - id: remove-crlf
       - id: forbid-crlf
       - id: remove-tabs
-        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca|(^|/)go\.mod$
       - id: forbid-tabs
-        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca
+        exclude: ^.git/|crate/server/src/tests/certificates/chain/root/ca|(^|/)go\.mod$
 
   # ── Text hygiene ──────────────────────────────────────────────────────
   - repo: https://github.com/sirosen/texthooks
@@ -130,7 +130,6 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
     hooks:
-      - id: cargo-format
       - id: nightly-cargo-format
 
   # ═══════════════════════════════════════════════════════════════════════
@@ -162,7 +161,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs
+        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs|crate/crypto/src/crypto/openpgp/mod.rs|crate/clients/client_utils/src/openpgp_format.rs|crate/test_kms_server/src/pgp_tests.rs|crate/clients/ckms/src/tests/pgp/|crate/crypto/src/crypto/elliptic_curves/sign.rs
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
         exclude: documentation/docs/cli/main_commands.md|documentation/docs
@@ -172,7 +171,10 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: name-tests-test
+        args: [--pytest-test-first]
       - id: requirements-txt-fixer
+        # `.txt` files are pip-compile --generate-hashes lockfiles: never reorder them.
+        exclude: ^\.mise/scripts/(test|docs)/requirements.*\.txt$
       - id: sort-simple-yaml
       - id: trailing-whitespace
         exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
@@ -196,12 +198,74 @@ repos:
       - id: clippy-all-targets
         stages: [manual]
         types: [rust]
-      - id: cargo-format
+      - id: nightly-cargo-format
         name: cargo-format (post-clippy)
         types: [rust]
         stages: [pre-push]
       - id: cargo-machete
         types: [rust]
+
+  # ── Supply-chain protection ───────────────────────────────────────────
+  # See CONTRIBUTING.md "Supply-chain / dependency policy".
+  - repo: local
+    hooks:
+      - id: cargo-vet
+        name: cargo vet check (new/bumped crates need an exemption or audit)
+        entry: cargo vet check --locked
+        language: system
+        pass_filenames: false
+        files: ^(Cargo\.(lock|toml)|crate/.*/Cargo\.toml|supply-chain/.*)$
+
+      - id: github-actions-sha-pin
+        name: GitHub Actions must be pinned to a full commit SHA
+        description: 'Fails on any "uses: owner/repo@ref" whose ref is not a 40-hex commit SHA.'
+        language: pygrep
+        entry: 'uses:\s+(?!\./)[^\s@#]+@(?![0-9a-f]{40}(\s|$))\S+'
+        files: ^\.github/(workflows|actions)/.*\.ya?ml$
+
+      - id: docker-base-image-digest-pin
+        name: Docker base images must be pinned by digest
+        description: 'Fails on a "FROM image:tag" without "@sha256:<digest>" (scratch excepted).'
+        language: pygrep
+        entry: '(?i)^\s*FROM\s+(?:--\S+\s+)*(?!--)(?!scratch\b)(?![^\s@]*@sha256:[0-9a-f]{64})\S+'
+        files: ^\.mise/scripts/(docker|edb_tde)/.*Dockerfile[^/]*$
+        # TODO(#1265): Dockerfile.edb is still on a tag. Resolving its digest needs an
+        # EDB_SUBSCRIPTION_TOKEN (registry returns 401 anonymously). Remove this exclude
+        # once `FROM ...edb-postgres-advanced:17@sha256:<digest>` is committed.
+        exclude: ^\.mise/scripts/edb_tde/Dockerfile\.edb$
+
+      - id: no-curl-pipe-shell
+        name: No unverified `curl | sh` bootstrap
+        description: Download the script, verify its SHA-256, then run it.
+        language: pygrep
+        # --multiline (re.MULTILINE|re.DOTALL, so no `.`): also catch a pipe split across lines
+        # (`curl ... | \` then `sh` on the next line).
+        entry: '^(?![ \t]*#)[^\n]*\b(curl|wget)\b(?:[^\n|]|\\\n)*\|\s*(?:\\\n\s*)?(sudo\s+)?(ba|z)?sh\b'
+        args: [--multiline]
+        files: ^(\.github/(workflows|actions)/.*\.ya?ml|\.mise/.*|scripts/.*)$
+
+      - id: no-direct-kms-instantiate
+        name: Tests reuse in-process KMS helpers
+        description: 'Use crate::tests::test_utils::{test_kms, test_kms_with_config}; see rust.instructions.md § Test KMS servers.'
+        language: pygrep
+        entry: '\bKMS::instantiate\('
+        files: ^crate/server/src/.*\.rs$
+        exclude: ^crate/server/src/(start_kms_server|core/kms/mod|tests/test_utils|tests/google_cse/server_setup)\.rs$
+
+      - id: pip-audit-lockfiles
+        name: pip-audit on hash-pinned Python requirements
+        entry: bash -c 'for f in "$@"; do pip-audit -r "$f" || exit 1; done' --
+        language: system
+        files: ^\.mise/scripts/(test|docs)/requirements.*\.txt$
+        stages: [pre-push]
+
+      - id: govulncheck
+        name: govulncheck (kmip-go test module)
+        entry: bash -c 'cd .mise/scripts/kmip-go && govulncheck -test ./...'
+        language: system
+        pass_filenames: false
+        files: ^\.mise/scripts/kmip-go/(go\.(mod|sum)|.*\.go)$
+        stages: [pre-push]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 4. Testing (slow, conditional on changed crate)
@@ -335,9 +399,14 @@ repos:
         require_serial: true
 
       # ── Client crates ─────────────────────────────────────────────────
+      # Same ulimit bump as test-workspace-non-fips (see comment there): the
+      # ckms crate itself is the fd-heavy PQC/TLS test suite responsible for
+      # that flakiness, so it needs the same headroom when run standalone.
       - id: test-ckms
         name: cargo test ckms
-        entry: cargo test -p ckms --lib --features non-fips --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test -p ckms --lib --features non-fips --quiet'
         language: system
         files: ^crate/clients/ckms/
         pass_filenames: false
@@ -474,19 +543,39 @@ repos:
         pass_filenames: false
         require_serial: true
 
+      - id: test-aws_cloudhsm_pkcs11_loader
+        name: cargo test aws_cloudhsm_pkcs11_loader
+        entry: cargo test -p aws_cloudhsm_pkcs11_loader --lib --quiet
+        language: system
+        files: ^crate/hsm/aws_cloudhsm/
+        pass_filenames: false
+        require_serial: true
+
       # ── Workspace-wide fallback (Cargo.lock or root Cargo.toml changed) ─
+      # ulimit bump: the ckms integration test suite spins up many concurrent
+      # TLS-enabled actix-web test servers (PQC certificate tests, access-control
+      # tests, ...); under a low default `ulimit -n` (commonly 1024) this exhausts
+      # available file descriptors partway through the run ("Too many open files",
+      # os error 24), cascading into dozens of unrelated test failures. Raise it
+      # for this hook's process only; fall back to the hard limit if 65536 exceeds
+      # it, and never fail the hook just because ulimit itself could not be raised.
       - id: test-workspace-non-fips
         name: cargo test workspace (Cargo.lock / Cargo.toml changed)
-        entry: cargo test --lib --workspace --features non-fips --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test --lib --workspace --features non-fips --quiet'
         language: system
         files: ^Cargo\.(lock|toml)$
         pass_filenames: false
         require_serial: true
 
       # ── FIPS (manual) ─────────────────────────────────────────────────
+      # Same ulimit bump as test-workspace-non-fips — see comment there.
       - id: cargo-test-fips
         name: cargo test workspace (fips, manual)
-        entry: cargo test --lib --workspace --quiet
+        entry: >-
+          bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
+          cargo test --lib --workspace --quiet'
         language: system
         types: [rust]
         pass_filenames: false
@@ -521,6 +610,14 @@ repos:
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
+      - id: ui-e2e-changed
+        name: UI end-to-end (specs touched by the change, dev server)
+        entry: bash .mise/scripts/pre-commit/ui-e2e-changed.sh
+        language: system
+        pass_filenames: false
+        types_or: [javascript, jsx, ts, tsx]
+        stages: [pre-push]
+
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
         entry: mise run test:wasm
@@ -545,13 +642,19 @@ repos:
       - id: sync-instructions
         name: Sync instruction files ↔ pre-commit hooks
         description: |
-          Validates that every instruction file's applyTo pattern has a
-          corresponding pre-commit hook, and vice versa. Run with --report
-          to see the full coverage map.
+          Validates that every pre-commit hook gated by files/types maps to an
+          instruction file. Run with --report to see the full coverage map.
         entry: bash .mise/scripts/pre-commit/sync-instructions.sh
         language: system
         pass_filenames: false
         files: ^\.github/instructions/.*\.instructions\.md$
+      - id: check-ai-docs
+        name: Check AI instruction files consistency (auto-fix tables)
+        entry: python3 .mise/scripts/docs/check_ai_docs.py --fix
+        language: system
+        pass_filenames: false
+        # Deleting a skill must re-check stale references; pre-commit never matches deleted files.
+        always_run: true
       - id: update-log-index
         name: Update log call-site index (smart — only on log macro changes)
         description: |
@@ -580,7 +683,7 @@ repos:
           Syncs crate/test_kms_server/README.md with vector_runner.rs and
           test_data/vectors manifests. Exits 1 when the README is updated so
           the developer must re-stage the file before committing.
-        entry: mise docs:vector-readme
+        entry: mise docs:sync-vectors
         language: system
         pass_filenames: false
         files: crate/test_kms_server/src/vector_runner\.rs|\.mise/scripts/docs/gen_vector_readme\.py|\.mise/tasks/docs/vector-readme
@@ -591,6 +694,7 @@ repos:
       - id: lychee
         args: [--config, lychee.toml, 'documentation/docs/**/*.md']
         pass_filenames: false
+        stages: [manual]
 
   # ═══════════════════════════════════════════════════════════════════════
   # 7. Nightly / manual cleanup (Rust)
@@ -634,15 +738,7 @@ repos:
 
       - id: release-update-readme-kmip
         name: Release - update README KMIP table
-        entry: bash -c "pip install --quiet -r .mise/scripts/docs/requirements.txt && python3 .mise/scripts/docs/update_readme_kmip.py"
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [manual]
-
-      - id: release-git-cliff
-        name: Release - update CHANGELOG with git cliff
-        entry: mise run release:changelog
+        entry: bash -c "pip install --quiet --require-hashes -r .mise/scripts/docs/requirements.txt && python3 .mise/scripts/docs/update_readme_kmip.py"
         language: system
         pass_filenames: false
         always_run: true

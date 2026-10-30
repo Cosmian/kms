@@ -9,9 +9,7 @@
  *       - set
  *       - set → get (value readable, not hex bytes in VendorExtension)
  *       - set → modify → delete (full lifecycle)
- *   • cryptographic_length: set → get (value present) → verify modify is rejected (read-only per spec)
  *   • key_usage: set → delete
- *   • cryptographic_algorithm: set
  *   • multiple link attributes set in one key
  *   • error handling: non-existent object ID returns a response (no UI crash)
  */
@@ -198,46 +196,6 @@ test.describe("Object attributes", () => {
         expect(getAfterDelete).not.toContain(nameValue);
     });
 
-    // ── Cryptographic Length ──────────────────────────────────────────────────
-
-    /**
-     * KMIP 2.1 §4.15 / KMIP 1.4 §3.5 — CryptographicLength Attribute Rules:
-     *   "Modifiable by client: No"
-     *   "Deletable by client: No"
-     *
-     * SetAttribute for metadata purposes is allowed (the value may be
-     * overridden by the client when the server has not locked it).
-     * ModifyAttribute MUST be rejected with Attribute_Read_Only.
-     */
-    test("set a cryptographic_length attribute and verify modification is rejected", async ({ page }) => {
-        const keyId = await createSymKey(page);
-
-        // SetAttribute: override the server-set value ─────────────────────────
-        await gotoAndWait(page, "/ui/attributes/set");
-        await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectOption(page, "attribute-name-select", "Cryptographic Length");
-        await page.locator('input[type="number"]').fill("128");
-        const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute has been set for/i);
-
-        // Get: verify value is 128 ─────────────────────────────────────────────
-        await gotoAndWait(page, "/ui/attributes/get");
-        await page.fill('input[placeholder="Enter object ID"]', keyId);
-        const getAfterSet = await submitAndWaitForResponse(page);
-        expect(getAfterSet).toContain("128");
-
-        // ModifyAttribute MUST be rejected — CryptographicLength is read-only ──
-        // KMIP spec: "Modifiable by client: No" (KMIP 2.1 §4.15 Table 58).
-        await gotoAndWait(page, "/ui/attributes/modify");
-        await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectOption(page, "attribute-name-select", "Cryptographic Length");
-        await page.locator('input[type="number"]').fill("256");
-        const modifyText = await submitAndWaitForResponse(page);
-        // The server MUST reject this with Attribute_Read_Only.
-        expect(modifyText).not.toMatch(/Attribute has been modified for/i);
-        expect(modifyText.length).toBeGreaterThan(0);
-    });
-
     // ── Key Usage ─────────────────────────────────────────────────────────────
 
     test("set and delete a key_usage attribute", async ({ page }) => {
@@ -275,44 +233,6 @@ test.describe("Object attributes", () => {
         await page.fill('input[placeholder="Enter object ID"]', keyId);
         await selectOption(page, "attribute-name-select", "Key Usage");
         await selectOptionById(page, "#attribute_value", "Decrypt");
-        const modifyText = await submitAndWaitForResponse(page);
-        expect(modifyText).toMatch(/Attribute has been modified for/i);
-    });
-
-    // ── Cryptographic Algorithm ───────────────────────────────────────────────
-
-    test("set a cryptographic_algorithm attribute", async ({ page }) => {
-        const keyId = await createSymKey(page);
-
-        await gotoAndWait(page, "/ui/attributes/set");
-        await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectOption(page, "attribute-name-select", "Cryptographic Algorithm");
-
-        // Wait for the algorithm select to appear and be populated by WASM
-        await expect(page.locator("#attribute_value")).toBeVisible({ timeout: UI_READY_TIMEOUT });
-        await selectOptionById(page, "#attribute_value", "AES");
-        const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute has been set for/i);
-    });
-
-    test("modify cryptographic_algorithm attribute", async ({ page }) => {
-        const keyId = await createSymKey(page);
-
-        // Set to AES ───────────────────────────────────────────────────────────
-        await gotoAndWait(page, "/ui/attributes/set");
-        await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectOption(page, "attribute-name-select", "Cryptographic Algorithm");
-        await expect(page.locator("#attribute_value")).toBeVisible({ timeout: UI_READY_TIMEOUT });
-        await selectOptionById(page, "#attribute_value", "AES");
-        const setText = await submitAndWaitForResponse(page);
-        expect(setText).toMatch(/Attribute has been set for/i);
-
-        // Modify (re-set to AES to verify the modify API works) ───────────────
-        await gotoAndWait(page, "/ui/attributes/modify");
-        await page.fill('input[placeholder="Enter object ID"]', keyId);
-        await selectOption(page, "attribute-name-select", "Cryptographic Algorithm");
-        await expect(page.locator("#attribute_value")).toBeVisible({ timeout: UI_READY_TIMEOUT });
-        await selectOptionById(page, "#attribute_value", "AES");
         const modifyText = await submitAndWaitForResponse(page);
         expect(modifyText).toMatch(/Attribute has been modified for/i);
     });

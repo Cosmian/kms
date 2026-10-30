@@ -57,6 +57,12 @@ fn validate_key_name(key_name: &str) -> Result<(), AzureEkmErrorReply> {
     Ok(())
 }
 
+/// Validate the API version, then the key name, of a per-key EKM request.
+fn validate_key_request(api_version: &str, key_name: &str) -> Result<(), AzureEkmErrorReply> {
+    validate_api_version(api_version)?;
+    validate_key_name(key_name)
+}
+
 #[derive(Debug, Deserialize)]
 struct AzureEkmQueryParams {
     #[serde(rename = "api-version")]
@@ -132,10 +138,7 @@ pub(crate) async fn get_key_metadata(
     );
     trace!("Request: {:?}", body.0);
 
-    if let Err(e) = validate_api_version(&query.api_version) {
-        return e.into();
-    }
-    if let Err(e) = validate_key_name(&key_name) {
+    if let Err(e) = validate_key_request(&query.api_version, &key_name) {
         return e.into();
     }
 
@@ -162,11 +165,7 @@ pub(crate) async fn wrap_key(
     );
     trace!("Request: {:?}", body.0);
 
-    // Validate API version
-    if let Err(e) = validate_api_version(&query.api_version) {
-        return e.into();
-    }
-    if let Err(e) = validate_key_name(&key_name) {
+    if let Err(e) = validate_key_request(&query.api_version, &key_name) {
         return e.into();
     }
 
@@ -193,11 +192,7 @@ pub(crate) async fn unwrap_key(
     );
     trace!("Request: {:?}", body.0);
 
-    // Validate API version
-    if let Err(e) = validate_api_version(&query.api_version) {
-        return e.into();
-    }
-    if let Err(e) = validate_key_name(&key_name) {
+    if let Err(e) = validate_key_request(&query.api_version, &key_name) {
         return e.into();
     }
 

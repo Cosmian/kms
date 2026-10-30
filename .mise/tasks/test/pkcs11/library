@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Check that an external PKCS#11 library loads and exposes C_GetFunctionList"
+#USAGE flag "-m --module <module>" env="PKCS11_LIB" help="Path to the PKCS#11 shared library"
+set -euo pipefail
+
+# shellcheck disable=SC1091
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+require_cmd python3
+
+MODULE_PATH="${usage_module:-${PKCS11_LIB:-}}"
+: "${MODULE_PATH:?Set PKCS11_LIB or pass --module <path>}"
+
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_library_check.py" \
+  --module "${MODULE_PATH}"
+
+print_success "PKCS#11 library ABI check completed"

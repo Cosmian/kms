@@ -95,6 +95,17 @@ sequenceDiagram
     KMS-->>Client: Key created (returns UID)
 ```
 
+### Concurrent writes
+
+Every object write (create, update, state change, delete, and multi-object batches) runs as a single Lua script on Redis.
+The script checks that each object still has the value the KMS read, then applies all the writes, or none.
+If another writer changed an object in between, the KMS re-reads and retries the whole batch (up to 64 attempts), so concurrent updates never overwrite each other.
+The Findex index is updated after the object write is committed; searches discard index hits whose stored object no longer matches.
+
+!!! warning "Single-node Redis only"
+    The script touches several keys in one call, which Redis Cluster rejects when the keys live in different hash slots (`CROSSSLOT`).
+    Use a standalone Redis, not Redis Cluster.
+
 ## Data layout in Redis
 
 Redis-with-Findex does not use relational tables (see [Database tables](./tables.md) for the SQL schema).

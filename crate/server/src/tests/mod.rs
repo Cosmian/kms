@@ -2,11 +2,14 @@ mod audit_middleware;
 mod azure_ekm;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(feature = "non-fips")]
+mod configurable_kem_tests;
+#[cfg(feature = "non-fips")]
 mod cover_crypt_tests;
 mod crl_tests;
 #[cfg(feature = "non-fips")]
 mod curve_25519_tests;
 mod derive_key_tests;
+mod enrollment_tests;
 pub(crate) mod google_cse;
 mod health_endpoint;
 mod hsm;
@@ -25,9 +28,13 @@ mod locate;
 mod migrate;
 mod ms_dke;
 mod mtls_db;
+#[cfg(feature = "non-fips")]
+mod pqc_import_tests;
+mod revocation_authority_tests;
 mod revoke_tests;
 mod secret_data_tests;
 mod security_regression;
+mod sub_ca_tests;
 mod test_always_sensitive;
 mod test_modify_attribute;
 pub(crate) mod test_set_attribute;

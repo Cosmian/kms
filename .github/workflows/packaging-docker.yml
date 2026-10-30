@@ -57,7 +57,7 @@ jobs:
             echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -66,18 +66,16 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
+        uses: ./.github/actions/docker-login-ghcr
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Extract base Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: |
             ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
@@ -143,7 +141,16 @@ jobs:
           for tag in ${TAGS}; do
             images+="${tag}@${DIGEST} "
           done
-          cosign sign --yes ${images}
+          # Keyless signing logs to the public Rekor instance, which occasionally times out after
+          # storing the entry, so the client's own retry gets "409 an equivalent entry already
+          # exists". Each new `cosign sign` run uses a fresh ephemeral key, so retrying the whole
+          # command succeeds.
+          for attempt in 1 2 3; do
+            cosign sign --yes ${images} && exit 0
+            echo "::warning::cosign sign failed (attempt ${attempt}/3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Select test tag
         id: pick_test_tag
@@ -222,21 +229,21 @@ jobs:
       REGISTRY_IMAGE: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
     steps:
       - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Compute tags
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: |
             ${{ env.REGISTRY_IMAGE }}
@@ -274,7 +281,13 @@ jobs:
           for tag in ${TAGS}; do
             images+="${tag} "
           done
-          cosign sign --yes ${images}
+          # See "Sign Docker images with Cosign": retry on transient Rekor errors.
+          for attempt in 1 2 3; do
+            cosign sign --yes ${images} && exit 0
+            echo "::warning::cosign sign failed (attempt ${attempt}/3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
   # ── Kubernetes pod smoke-test for the KMS server image ───────────────────
   # Runs on both amd64 and arm64.  Tests both fips and non-fips variants.
@@ -297,7 +310,7 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -314,15 +327,13 @@ jobs:
           fi
 
       - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
+        uses: ./.github/actions/docker-login-ghcr
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Compute image tag
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: |
             ${{ matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms' }}
@@ -343,10 +354,10 @@ jobs:
           echo "DOCKER_IMAGE_NAME=kms-test:current" >> "$GITHUB_ENV"
 
       - name: Install Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.21
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
@@ -403,7 +414,7 @@ jobs:
             echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -412,15 +423,13 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
+        uses: ./.github/actions/docker-login-ghcr
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/cosmian/kms-operator
           tags: |
@@ -433,10 +442,10 @@ jobs:
         run: mise run build:k8s-operator-image --load
 
       - name: Install Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.21
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
@@ -491,7 +500,7 @@ jobs:
             echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -500,15 +509,13 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
+        uses: ./.github/actions/docker-login-ghcr
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/cosmian/kms-csi-provider
           tags: |
@@ -521,10 +528,10 @@ jobs:
         run: mise run build:k8s-csi-provider-image --load
 
       - name: Install Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.21
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0

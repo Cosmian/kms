@@ -50,7 +50,7 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -64,7 +64,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Set up GPG
-        uses: crazy-max/ghaction-import-gpg@v7
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: matrix.runner == 'ubuntu-24.04'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sbom_${{ matrix.features }}_${{ matrix.link }}
           path: sbom/
@@ -103,7 +103,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
           path: result-*-${{ matrix.features }}-${{ matrix.link }}/*
@@ -113,6 +113,15 @@ jobs:
   kubernetes:
     uses: ./.github/workflows/packaging-kubernetes.yml
     secrets: inherit
+
+  # Alpine apk pipeline. No `needs:`: it runs in parallel with the glibc
+  # packages (musl vendor hashes are independent of nix-update-hashes.yml).
+  # Called here so that every packaging.yml run also runs packaging-apk.yml.
+  apk:
+    uses: ./.github/workflows/packaging-apk.yml
+    secrets: inherit
+    with:
+      toolchain: 1.97.0
 
   publish-release:
     if: |
@@ -159,12 +168,12 @@ jobs:
         run: rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
       - name: Checkout repository (for public key file)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
 
       - name: Download packaged artifact for this matrix
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
@@ -236,7 +245,7 @@ jobs:
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type != 'pkcs11-zip'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
             result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
@@ -245,7 +254,7 @@ jobs:
 
       - name: Publish GitHub Release assets (pkcs11-zip)
         if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type == 'pkcs11-zip'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
             result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
@@ -277,12 +286,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
 
       - name: Download SBOM artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: sbom_${{ matrix.features }}_${{ matrix.link }}
           path: sbom
@@ -313,10 +322,10 @@ jobs:
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
       || startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
 
@@ -324,7 +333,7 @@ jobs:
         run: zip -r cosmian-kms-monitoring.zip monitoring/
 
       - name: Upload monitoring archive artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cosmian-kms-monitoring
           path: cosmian-kms-monitoring.zip
@@ -346,7 +355,7 @@ jobs:
 
     steps:
       - name: Download monitoring archive artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cosmian-kms-monitoring
 
@@ -367,12 +376,13 @@ jobs:
 
       - name: Publish GitHub Release asset
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: cosmian-kms-monitoring.zip
 
   tests:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
+    secrets: inherit
     with:
       toolchain: 1.97.0

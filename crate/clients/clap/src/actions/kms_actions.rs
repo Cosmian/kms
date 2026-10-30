@@ -10,6 +10,8 @@ use super::cover_crypt::CovercryptCommands;
 #[cfg(feature = "non-fips")]
 use super::fpe::FpeCommands;
 #[cfg(feature = "non-fips")]
+use super::pgp::PgpCommands;
+#[cfg(feature = "non-fips")]
 use super::pqc::PqcCommands;
 #[cfg(feature = "non-fips")]
 use super::tokenize::TokenizeCommands;
@@ -112,6 +114,9 @@ pub enum KmsActions {
     Pqc(PqcCommands),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
+    Pgp(PgpCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
     Tokenize(TokenizeCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
@@ -180,12 +185,14 @@ impl KmsActions {
             #[cfg(feature = "non-fips")]
             Self::Pqc(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
+            Self::Pgp(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
             Self::Tokenize(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
             Self::Cng(action) => Box::pin(action.process(kms_rest_client)).await?,
-            Self::Pkcs11(action) => action.process()?,
+            Self::Pkcs11(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::DeriveKey(action) => {
                 Box::pin(action.run(&kms_rest_client)).await?;
             }

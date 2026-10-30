@@ -20,13 +20,15 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::CryptoOracle,
 };
 use cosmian_logger::{debug, trace};
-use openssl::rand::rand_bytes;
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
-    core::{KMS, wrapping::unwrap_object},
+    core::{
+        KMS,
+        wrapping::{authorize_stored_unwrap, unwrap_stored_object},
+    },
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -71,6 +73,8 @@ impl KMS {
             if let Some(ref metrics) = self.metrics {
                 metrics.record_cache_operation("get", "hit");
             }
+            // the cache is shared by all users: authorize this user exactly as on a miss
+            Box::pin(authorize_stored_unwrap(object, self, user)).await?;
             return Ok(u);
         }
 
@@ -81,7 +85,7 @@ impl KMS {
         }
         let unwrapped_object = {
             let mut unwrapped_object = object.clone();
-            Box::pin(unwrap_object(&mut unwrapped_object, self, user)).await?;
+            Box::pin(unwrap_stored_object(&mut unwrapped_object, self, user)).await?;
             unwrapped_object
         };
 
@@ -102,9 +106,10 @@ impl KMS {
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
-        vendor_id: &str,
+        &self,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
+        let vendor_id = self.vendor_id();
         let attributes = &request.attributes;
 
         // check that the cryptographic algorithm is specified
@@ -201,7 +206,9 @@ impl KMS {
                         };
 
                         let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
-                        rand_bytes(&mut symmetric_key)?;
+                        self.rng
+                            .fill_bytes(&mut symmetric_key)
+                            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
                         let object = create_symmetric_key_kmip_object(
                             vendor_id,
                             &symmetric_key,
@@ -475,14 +482,17 @@ impl KMS {
     ///  - "_sd"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_secret_data_and_tags(
-        vendor_id: &str,
+        &self,
         request: &Create,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
+        let vendor_id = self.vendor_id();
         let attributes = &request.attributes;
         let mut tags = attributes.get_tags(vendor_id);
         tags.insert(SYSTEM_TAG_SECRET_DATA.to_owned());
         let mut secret_data = Zeroizing::from(vec![0; 32]);
-        rand_bytes(&mut secret_data)?;
+        self.rng
+            .fill_bytes(&mut secret_data)
+            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
         let object = Object::SecretData(SecretData {
             secret_data_type: SecretDataType::Seed,
             key_block: KeyBlock {

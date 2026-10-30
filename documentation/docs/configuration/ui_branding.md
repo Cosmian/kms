@@ -42,8 +42,7 @@ Restart the service (or clear browser cache) to see changes.
 
 ## Start from the blank theme
 
-The `blank` theme is a minimal starter template with placeholder assets — copy
-it as your starting point for a new white-label deployment:
+The `blank` theme is a minimal starter template with placeholder assets — copy it as your starting point for a new white-label deployment:
 
 ```bash
 # Copy the blank theme to the installed UI dist directory
@@ -59,13 +58,13 @@ cp /usr/local/cosmian/ui/dist/themes/acme/branding.json /usr/local/cosmian/ui/di
 
 The blank theme ships the following placeholder files:
 
-| File            | Purpose                                      |
-|-----------------|----------------------------------------------|
-| `branding.json` | Full example with every supported field      |
-| `logo-light.svg`| Logo for light-mode header (dark text)      |
-| `logo-dark.svg` | Logo for dark-mode header (white text)      |
-| `favicon.svg`   | Browser tab icon                            |
-| `login-bg.svg`  | Login page background (dark blue gradient)  |
+| File             | Purpose                                    |
+| ---------------- | ------------------------------------------ |
+| `branding.json`  | Full example with every supported field    |
+| `logo-light.svg` | Logo for light-mode header (dark text)     |
+| `logo-dark.svg`  | Logo for dark-mode header (white text)     |
+| `favicon.svg`    | Browser tab icon                           |
+| `login-bg.svg`   | Login page background (dark blue gradient) |
 
 ## `branding.json` schema
 
@@ -114,8 +113,7 @@ Example:
 
 ## About `branding.ts`
 
-The UI branding loader/helpers live in `ui/src/branding.ts`.
-It is a plain TypeScript module (no JSX), so it uses the `.ts` extension rather than `.tsx`.
+The UI branding loader/helpers live in `ui/src/branding.ts`. It is a plain TypeScript module (no JSX), so it uses the `.ts` extension rather than `.tsx`.
 
 ## Upgrade behavior
 

@@ -27,8 +27,11 @@ that file are mandatory for this skill. Do not proceed to Step 1 until you have 
 
 ### Step 1 — Scope Resolution
 
-If a path was provided (e.g. `/security-review crate/server/src/core/`), scan only that scope.
-If no path given, scan the **entire project** starting from the root.
+If a path was provided (e.g. `/security-review crate/server/src/core/`), scan only that scope. If no path is given, scan the entire project starting from the root.
+
+For an explicitly incremental review, inspect the actual diff and affected callers. Never skip because KMS Caveman or another mechanical scan found no red flags.
+Skip only for verified documentation/format-only changes or static UI with no dynamic data, authentication/session, API, or sensitive-data behavior.
+If any security-relevant flow may have changed, run the review.
 
 Identify the primary language(s): Rust (main), TypeScript (UI), Bash (scripts).
 

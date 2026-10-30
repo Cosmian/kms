@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
+use super::pgp_ops;
 use crate::{
     core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
@@ -54,17 +55,21 @@ impl CryptoOpSpec for SignOp {
         if let Object::PrivateKey { .. } = owm.object() {
             return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
         }
+        if let Object::PGPKey { .. } = owm.object() {
+            return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
+        }
         false
     }
 
-    async fn execute_local(
-        _kms: &KMS,
+    fn execute_local(
+        kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
         _user: &UserId,
     ) -> KResult<Self::Response> {
         match owm.object() {
             Object::PrivateKey { .. } => sign_with_private_key(request, owm),
+            Object::PGPKey { .. } => pgp_ops::pgp_sign(owm, request, &kms.rng),
             other => Err(KmsError::NotSupported(format!(
                 "signing with keys of type: {} is not supported",
                 other.object_type()
@@ -82,18 +87,28 @@ impl CryptoOpSpec for SignOp {
         let crypto_oracle = lock.get(prefix).ok_or_else(|| {
             KmsError::InvalidRequest(format!("Sign: unknown crypto oracle prefix: {prefix}"))
         })?;
-        let data: &[u8] = request
-            .data
-            .as_ref()
-            .map(|d| d.as_slice())
-            .or(request.digested_data.as_deref())
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
+        let (data, input_is_digest): (&[u8], bool) = match (&request.data, &request.digested_data) {
+            (Some(data), None) => (data.as_slice(), false),
+            (None, Some(digested_data)) => (digested_data.as_slice(), true),
+            (Some(_), Some(_)) => {
+                return Err(KmsError::InvalidRequest(
+                    "Sign request must not set both 'data' and 'digested_data' simultaneously"
+                        .to_owned(),
+                ));
+            }
+            (None, None) => {
+                return Err(KmsError::InvalidRequest(
                     "Sign: no data or digested data provided for oracle signing".to_owned(),
-                )
-            })?;
+                ));
+            }
+        };
         let signature = crypto_oracle
-            .sign(uid, data, request.cryptographic_parameters.as_ref())
+            .sign(
+                uid,
+                data,
+                request.cryptographic_parameters.as_ref(),
+                input_is_digest,
+            )
             .await
             .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
         debug!("user signed data via crypto oracle using: {uid}");
@@ -191,8 +206,15 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             }
 
             // One-shot signing
-            let mut req_for_sign = request.clone();
-            req_for_sign.cryptographic_parameters = Some(effective_cp);
+            let req_for_sign = Sign {
+                unique_identifier: request.unique_identifier.clone(),
+                cryptographic_parameters: Some(effective_cp),
+                data: request.data.clone(),
+                digested_data: request.digested_data.clone(),
+                correlation_value: request.correlation_value.clone(),
+                init_indicator: request.init_indicator,
+                final_indicator: request.final_indicator,
+            };
             let signature = sign_with_pkey(&req_for_sign, &private_key)?;
             Ok(SignResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

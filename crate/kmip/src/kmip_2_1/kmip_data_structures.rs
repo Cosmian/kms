@@ -318,6 +318,11 @@ impl KeyBlock {
     /// Return the key material of a symmetric key, raw or transparent.
     /// The PKCS#1 of an RSA Key, etc.
     pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
+        self.key_bytes_ref().map(|b| Zeroizing::new(b.to_vec()))
+    }
+
+    /// Borrow the key material of a symmetric key, raw or transparent (no copy).
+    pub fn key_bytes_ref(&self) -> Result<&[u8], KmipError> {
         let key_value = self.key_value.as_ref().ok_or_else(|| {
             KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
@@ -331,8 +336,8 @@ impl KeyBlock {
                 "Key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => match key_material {
-                KeyMaterial::ByteString(v) => Ok(v.clone()),
-                KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
+                KeyMaterial::ByteString(v) => Ok(v.as_slice()),
+                KeyMaterial::TransparentSymmetricKey { key } => Ok(key.as_slice()),
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
                     "Key bytes can only be recovered from RSA and symmetric keys".to_owned(),
@@ -845,7 +850,7 @@ impl KeyValue {
     ) -> Result<Self, KmipError> {
         let ttlv = TTLV::from_bytes(bytes, KmipFlavor::Kmip2)?;
         KeyValueDeserializer { key_format_type }
-            .deserialize(&mut TtlvDeserializer::from_ttlv(ttlv))
+            .deserialize(&mut TtlvDeserializer::from_ttlv(&ttlv))
             .map_err(Into::into)
     }
 }
@@ -1199,7 +1204,9 @@ impl Serialize for KeyMaterialSerializer {
                 | KeyFormatType::ConfigurableKEMSecretKey
                 | KeyFormatType::ConfigurableKEMPublicKey
                 | KeyFormatType::CoverCryptSecretKey
-                | KeyFormatType::CoverCryptPublicKey => serializer.serialize_bytes(bytes),
+                | KeyFormatType::CoverCryptPublicKey
+                | KeyFormatType::OpenPgpSecretKey
+                | KeyFormatType::OpenPgpPublicKey => serializer.serialize_bytes(bytes),
                 #[cfg(feature = "non-fips")]
                 KeyFormatType::Pkcs12Legacy => serializer.serialize_bytes(bytes),
                 x => Err(serde::ser::Error::custom(format!(
@@ -1386,7 +1393,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::ConfigurableKEMSecretKey
                     | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
-                    | KeyFormatType::CoverCryptSecretKey => {
+                    | KeyFormatType::CoverCryptSecretKey
+                    | KeyFormatType::OpenPgpSecretKey
+                    | KeyFormatType::OpenPgpPublicKey => {
                         Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
                     }
                     #[cfg(feature = "non-fips")]
@@ -1652,8 +1661,12 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             | KeyFormatType::PKCS7
             | KeyFormatType::PKCS8
             | KeyFormatType::X509
+            | KeyFormatType::ConfigurableKEMSecretKey
+            | KeyFormatType::ConfigurableKEMPublicKey
             | KeyFormatType::CoverCryptPublicKey
-            | KeyFormatType::CoverCryptSecretKey => {
+            | KeyFormatType::CoverCryptSecretKey
+            | KeyFormatType::OpenPgpSecretKey
+            | KeyFormatType::OpenPgpPublicKey => {
                 trace!(
                     "===> KeyMaterial: Deserializing Bytes String for key format type: {:?} ",
                     self.key_format_type

@@ -12,9 +12,8 @@ use cosmian_kmip::{
         requests::create_symmetric_key_kmip_object,
     },
 };
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-    CsRng,
-    reexport::rand_core::{RngCore, SeedableRng},
+use cosmian_kms_crypto::{
+    crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{ObjectsStore, UserId};
 use uuid::Uuid;
@@ -24,7 +23,7 @@ use crate::{db_error, error::DbResult};
 pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     cosmian_logger::log_init(None);
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let mut symmetric_key_bytes = vec![0; 32];

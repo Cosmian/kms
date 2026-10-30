@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**652 vectors** across 16 categories (including KAT):
+**655 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -220,6 +220,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
 | KMIP Operations | `rekey_with_offset_state` | Verifies that ReKey with Offset=0 produces an Active key, and ReKey with Offset=86400 (24h future) produces a PreActive key. | 13 |
 | KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Creates a wrapping key and a wrapped dependent key, verifies wrapping, revokes the dependent, then verifies that ReKey on the deactivated wrapped key succeeds per KMIP §6.1.46. | 12 |
+| KMIP Operations | `rekey_wrapped_fails` | Verifies that ReKey on a wrapped key fails with an appropriate error. The server cannot safely rekey a wrapped object. | 6 |
 | KMIP Operations | `rekey_wrapped_key` | Creates a wrapping key and a wrapped dependent key, then re-keys the wrapped key. Verifies the new key has fresh material, is still wrapped, and works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key` | Creates a wrapping key, creates a dependent key wrapped by it, then re-keys the wrapping key and verifies the dependent key was automatically re-wrapped and still works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key_double_chain` | Creates a wrapping key K0 with two wrapped dependants. Rotates K0 → K1, then K1 → K2. Verifies the full link chain (K0 → K1 → K2) and that both dependants are re-wrapped each time and still work for encryption. | 24 |
@@ -281,9 +282,10 @@ replays the steps sequentially.
 | HSM / Resident Encrypt | `hsm/resident_aes256_create_encrypt` | Creates an AES-256 key directly on the HSM (key material lives in the HSM token). | 5 |
 | HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Creates an AES-256 key on the HSM, then encrypts and decrypts with AES-CBC mode. | 5 |
 | HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Creates an AES-256 key on the HSM, then attempts to encrypt with ECB mode. | 4 |
-| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | Attempts to create an EC P-256 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | Attempts to create an EC P-384 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Create | `hsm/resident_ec_p256_created` | Creates an EC P-256 keypair with an HSM-resident UID. | 5 |
+| HSM / Resident Create | `hsm/resident_ec_p384_created` | Creates an EC P-384 keypair with an HSM-resident UID. | 5 |
+| HSM / Resident Create | `hsm/resident_ed25519_created` | Creates an Ed25519 keypair with an HSM-resident UID. | 5 |
+| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID in a FIPS | 1 |
 | HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Tests HSM keyset traversal across a 3-generation chain: | 12 |
 | HSM / Resident Keyset | `hsm/resident_keyset_full_lifecycle` | Full HSM keyset lifecycle test covering all three decrypt-addressing variants: | 12 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_addressing` | Creates an HSM-resident key, assigns a keyset name (rotate_name = "ks-addr"), | 15 |
@@ -302,7 +304,7 @@ replays the steps sequentially.
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
 | HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | Attempts to create an RSA-1024 keypair with an HSM-resident UID. | 1 |
-| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-OAEP-SHA1 | 7 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA1. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA256. | 6 |
 | HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-PKCS#1v1.5 | 7 |
 | HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | Creates an RSA-2048 keypair on the HSM then attempts to sign using DSAWithSHA256. | 6 |
@@ -467,8 +469,9 @@ replays the steps sequentially.
 | Negative / SetAttribute | `negative/set_attribute/hsm_rotate_offset_rejected` | Tests that SetAttribute rotate_offset on an HSM-resident key is rejected | 4 |
 | Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_initial_date` | Checks that InitialDate is read-only and remains unchanged after a rejected SetAttribute request. | 6 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
 | Negative / Sign | `negative/sign/invalid_message` | Tests that Sign returns Invalid_Message error as per KMIP spec | 1 |
 | Negative / Sign | `negative/sign/item_not_found` | Tests that Sign returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
@@ -641,6 +644,8 @@ assert_success = true                   # HTTP 200 + ResultStatus check
 
 [steps.capture]
 key_id = "UniqueIdentifier"             # capture tag value for use in later steps
+# ciphertext = "Data:kem_encapsulation"  # one part of a packed KEM Encrypt `Data`
+# shared_secret = "Data:kem_shared_secret"
 
 [[steps]]
 operation = "Get"

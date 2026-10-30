@@ -106,36 +106,40 @@ run_step "secret_cosmian_kms" bash "${TASK_DIR}/secret_cosmian_kms" --variant "$
 run_step "gcp-cmek" bash "${TASK_DIR}/gcp-cmek" --variant "${VARIANT}" --link "${LINK}"
 
 # ── Groups requiring a nix-shell (pinned dev shell) ─────────────────────────────
-gate_run "jose" "$(first_reason "$(reason_needs_nix)")" \
+gate_run "jose" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/jose" --variant "${VARIANT}" --link "${LINK}"
 gate_run "kmip-go" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_cmd go)")" \
   bash "${TASK_DIR}/kmip-go" --variant "${VARIANT}" --link "${LINK}"
-gate_run "luks" "$(first_reason "$(reason_needs_nix)")" \
+gate_run "luks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/luks" --variant "${VARIANT}" --link "${LINK}"
 gate_run "veracrypt" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_cmd veracrypt)")" \
   bash "${TASK_DIR}/veracrypt" --variant "${VARIANT}" --link "${LINK}"
-gate_run "load-balancer" "$(first_reason "$(reason_needs_nix)")" \
+gate_run "load-balancer" "$(first_reason "$(reason_needs_nix)" "$(reason_needs_docker)" "$(reason_needs_env DOCKER_IMAGE_NAME)")" \
   bash "${TASK_DIR}/load-balancer" --variant "${VARIANT}" --link "${LINK}"
 
 # ── non-FIPS-only groups ────────────────────────────────────────────────────────
 gate_run "openssh" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/openssh" --variant "${VARIANT}" --link "${LINK}"
+gate_run "gnupg" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_cmd gpg)" "$(reason_needs_nix)")" \
+  bash "${TASK_DIR}/gnupg" --variant "${VARIANT}" --link "${LINK}"
 gate_run "pykmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/pykmip" --variant "${VARIANT}" --link "${LINK}"
 gate_run "azure-ekm" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/azure-ekm" --variant "${VARIANT}" --link "${LINK}"
 gate_run "xks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/xks" --variant "${VARIANT}" --link "${LINK}"
-# NOTE: "ui" already runs test_ui_auth.sh and test_ui_oidc.sh internally
-# (standard + auth + OIDC E2E suites), so "ui-auth"/"ui-oidc" are intentionally
-# NOT listed separately here — that would re-run the same suites twice. They
-# remain available standalone via "mise test:ui-auth" / "mise test:ui-oidc".
+# NOTE: "ui" already runs test_ui_auth.sh, test_ui_oidc.sh and test_ui_saml.sh internally
+# (standard + auth + OIDC + SAML E2E suites), so "ui-auth"/"ui-oidc"/"ui-saml" are
+# intentionally NOT listed separately here — that would re-run the same suites twice. They
+# remain available standalone via "mise test:ui-auth" / "mise test:ui-oidc" / "mise test:ui-saml".
 gate_run "ui" "$(first_reason "$(reason_non_fips_only)")" \
   bash "${TASK_DIR}/ui" --variant "${VARIANT}" --link "${LINK}"
 
-# ── Groups requiring cloud/service credentials ──────────────────────────────────
-gate_run "google-cse" "$(first_reason "$(reason_needs_env TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)")" \
+# ── Google CSE: offline suites always run; the real-Google test self-skips without OAuth secrets ──
+gate_run "google-cse" "" \
   bash "${TASK_DIR}/google-cse" --variant "${VARIANT}" --link "${LINK}"
+
+# ── Groups requiring cloud/service credentials ──────────────────────────────────
 gate_run "secret_aws" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_env AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION)")" \
   bash "${TASK_DIR}/secret_aws" --variant "${VARIANT}" --link "${LINK}"
 gate_run "secret_azure" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_env AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME)")" \
@@ -152,7 +156,7 @@ gate_run "otel" "$(first_reason "$(reason_needs_port 127.0.0.1 "${KMS_SLOT_OTEL_
   bash "${TASK_DIR}/otel" --variant "${VARIANT}" --link "${LINK}"
 
 # ── Groups requiring Docker ──────────────────────────────────────────────────────
-gate_run "docker" "$(first_reason "$(reason_needs_docker)")" \
+gate_run "docker" "$(first_reason "$(reason_needs_docker)" "$(reason_needs_env DOCKER_IMAGE_NAME)")" \
   bash "${TASK_DIR}/docker" --variant "${VARIANT}" --link "${LINK}"
 gate_run "iris" "$(first_reason "$(reason_needs_docker)")" \
   bash "${TASK_DIR}/iris" --variant "${VARIANT}" --link "${LINK}"
@@ -165,9 +169,8 @@ gate_run "secret_vault" "$(first_reason "$(reason_non_fips_only)" "$(reason_need
 # test_sds.sh as "spire-sds" (step 17) using the containers it started, so
 # those two are intentionally NOT listed separately — that would re-run the
 # same suites twice. They remain available standalone via "mise test:spire-pki"
-# / "mise test:spire-sds". Likewise "spire-kmip" already runs both
-# "spire-kmip-key-manager" and "spire-kmip-upstream-authority" sequentially, so
-# those two are also omitted here.
+# / "mise test:spire-sds". Likewise "spire-kmip" only delegates to
+# "spire-kmip-key-manager", so that one is also omitted here.
 gate_run "spire" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_auth_submodule)")" \
   bash "${TASK_DIR}/spire" --variant "${VARIANT}" --link "${LINK}"
 gate_run "spire-kmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_cmd go)")" \

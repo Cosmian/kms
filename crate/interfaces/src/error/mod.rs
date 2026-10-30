@@ -9,6 +9,15 @@ pub enum InterfaceError {
     #[error("{0}")]
     Default(String),
 
+    /// Wraps a `std::io::Error` with context, keeping `.kind()` inspectable — unlike
+    /// `Default`, which only keeps the rendered message.
+    #[error("{context}: {source}")]
+    Io {
+        context: String,
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
 

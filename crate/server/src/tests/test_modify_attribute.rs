@@ -25,19 +25,15 @@ use cosmian_kms_server_database::reexport::{
             requests::create_symmetric_key_kmip_object,
         },
     },
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::log_init;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
-};
+use crate::{core::KMS, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
 
@@ -45,7 +41,7 @@ const USER: &str = "eyJhbGciOiJSUzI1Ni";
 
 /// Create and store a fresh 256-bit AES symmetric key in the given `state`.
 async fn create_key_with_state(kms: &Arc<KMS>, state: State) -> KResult<String> {
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let mut key_bytes = vec![0_u8; 32];
     rng.fill_bytes(&mut key_bytes);
 
@@ -106,8 +102,7 @@ async fn modify_attribute(
 pub(crate) async fn test_modify_attribute_server() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
 
     modify_name_on_pre_active_key(&kms).await?;
     modify_activation_date_past_transitions_to_active(&kms).await?;

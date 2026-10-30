@@ -71,10 +71,12 @@ The most common flags (accepted by most tasks):
 | `test:hsm:utimaco` | fips | Utimaco simulator (Linux only) |
 | `test:hsm:proteccio` | fips | Proteccio (Linux only) |
 | `test:hsm:crypt2pay` | fips | Crypt2Pay (Linux only) |
+| `test:hsm:luna` | fips | Thales Luna (Linux only; `LUNA_PASSWORD`, `LUNA_SLOT`) |
 | `test:hsm-softhsm2` | fips | Same as `test:hsm:softhsm2` (flat alias) |
 | `test:hsm-utimaco` | fips | Same as `test:hsm:utimaco` |
 | `test:hsm-proteccio` | fips | Same as `test:hsm:proteccio` |
 | `test:hsm-crypt2pay` | fips | Same as `test:hsm:crypt2pay` |
+| `test:hsm-luna` | fips | Same as `test:hsm:luna` |
 
 ### Kubernetes
 
@@ -225,7 +227,7 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 |------|-------------|
 | `bench:ci` | CI sanity benchmark |
 | `bench:load` | Load-test benchmark (optionally with Criterion micro-benchmarks) |
-| `bench:load-hsm` | Load-test benchmark with SoftHSM2-backed key encryption key |
+| `bench:hsm` | Load-test benchmark with SoftHSM2-backed key encryption key |
 | `bench:flamegraph` | CPU-scaling flamegraph (requires Linux `perf`) |
 
 ---
@@ -236,7 +238,6 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 |------|-------------|
 | `release:version` | Print workspace version from `Cargo.toml` |
 | `release:bump` | Bump version across all `Cargo.toml` and config files |
-| `release:changelog` | Regenerate `CHANGELOG.md` via `git-cliff` |
 | `release:extract-changelog` | Extract a version's changelog entry into a file |
 | `release:nix-update-hashes` | Build all Nix derivations and update vendor hashes |
 | `release:update-hashes` | Fetch correct vendor hashes from a CI run |

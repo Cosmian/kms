@@ -22,30 +22,33 @@
 //! - `test_set_attribute_server`: The main test function that initializes the server and runs all attribute tests.
 //! - `set_activation_date_and_remove_it`: Tests setting and removing the activation date attribute.
 //! - `set_link_attribute_and_remove_it`: Tests setting and removing link attributes.
-//! - `set_cryptographic_algorithm_and_remove_it`: Tests setting and removing the cryptographic algorithm attribute.
-//! - `set_cryptographic_length_and_remove_it`: Tests setting and removing the cryptographic length attribute.
+//! - `set_cryptographic_algorithm_is_rejected_as_read_only`: Tests that setting or deleting the cryptographic algorithm is refused.
+//! - `set_cryptographic_length_is_rejected_as_read_only`: Tests that setting or deleting the cryptographic length is refused.
+//! - `server_managed_attributes_are_rejected`: Tests that Add/Set/Modify/DeleteAttribute refuse every read-only attribute with the KMIP result reason of each operation and leave the object unchanged.
 
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
+        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
         kmip_2_1::{
             extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::{Attribute, Attributes},
+            kmip_objects::ObjectType,
             kmip_operations::{
-                DeleteAttribute, GetAttributes, GetAttributesResponse, SetAttribute,
+                AddAttribute, DeleteAttribute, GetAttributes, GetAttributesResponse,
+                ModifyAttribute, SetAttribute,
             },
             kmip_types::{
-                AttributeReference, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-                Tag, UniqueIdentifier,
+                AttributeReference, CryptographicAlgorithm, CryptographicDomainParameters, Digest,
+                DigitalSignatureAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+                RecommendedCurve, Tag, UniqueIdentifier,
             },
             requests::create_symmetric_key_kmip_object,
         },
     },
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::log_init;
@@ -53,8 +56,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
+    core::KMS, error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
 };
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
@@ -92,10 +94,9 @@ async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KR
 pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
 
     // Create key
     let mut symmetric_key = vec![0; 32];
@@ -119,6 +120,26 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
             &HashSet::new(),
         )
         .await?;
+
+    let initial_date = get_attributes(&kms, &uid, Tag::InitialDate).await?;
+    let error = set_attribute(
+        &kms,
+        &uid,
+        Attribute::InitialDate(OffsetDateTime::UNIX_EPOCH),
+    )
+    .await
+    .expect_err("setting InitialDate must fail as read-only");
+    assert!(matches!(
+        error,
+        KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
+    ));
+    assert_eq!(
+        get_attributes(&kms, &uid, Tag::InitialDate)
+            .await?
+            .attributes
+            .initial_date,
+        initial_date.attributes.initial_date
+    );
 
     // Start tests
     //
@@ -144,8 +165,9 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
         },
     )
     .await?;
-    set_cryptographic_algorithm_and_remove_it(&kms, &uid).await?;
-    set_cryptographic_length_and_remove_it(&kms, &uid).await?;
+    set_cryptographic_algorithm_is_rejected_as_read_only(&kms, &uid).await?;
+    set_cryptographic_length_is_rejected_as_read_only(&kms, &uid).await?;
+    server_managed_attributes_are_rejected(&kms, &uid).await?;
     set_link_attribute_and_remove_it(&kms, &uid, Tag::LinkType, LinkType::CertificateLink).await?;
     set_link_attribute_and_remove_it(&kms, &uid, Tag::LinkType, LinkType::PKCS12CertificateLink)
         .await?;
@@ -219,30 +241,31 @@ async fn set_link_attribute_and_remove_it(
     Ok(())
 }
 
-async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
-    // Check no cryptographic algorithm is set
+/// KMIP 2.1 §4.13: Cryptographic Algorithm is read-only; changing or stripping it would let
+/// a key escape the algorithm policy.
+async fn set_cryptographic_algorithm_is_rejected_as_read_only(
+    kms: &Arc<KMS>,
+    uid: &str,
+) -> KResult<()> {
     let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
-
     assert_eq!(
         get_response.attributes.cryptographic_algorithm,
         Some(CryptographicAlgorithm::AES)
     );
 
-    set_attribute(
+    let error = set_attribute(
         kms,
         uid,
-        Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+        Attribute::CryptographicAlgorithm(CryptographicAlgorithm::ChaCha20),
     )
-    .await?;
+    .await
+    .expect_err("setting CryptographicAlgorithm must fail as read-only");
+    assert!(matches!(
+        error,
+        KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
+    ));
 
-    let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
-    assert_eq!(
-        get_response.attributes.cryptographic_algorithm,
-        Some(CryptographicAlgorithm::AES)
-    );
-
-    delete_attribute(
-        kms,
+    for delete_request in [
         DeleteAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             current_attribute: Some(Attribute::CryptographicAlgorithm(
@@ -250,21 +273,46 @@ async fn set_cryptographic_algorithm_and_remove_it(kms: &Arc<KMS>, uid: &str) ->
             )),
             attribute_references: None,
         },
-    )
-    .await?;
+        DeleteAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            current_attribute: None,
+            attribute_references: Some(vec![AttributeReference::Standard(
+                Tag::CryptographicAlgorithm,
+            )]),
+        },
+    ] {
+        let error = delete_attribute(kms, delete_request)
+            .await
+            .expect_err("deleting CryptographicAlgorithm must fail as read-only");
+        assert!(matches!(
+            error,
+            KmsError::Kmip21Error(ErrorReason::Attribute_Read_Only, _)
+        ));
+    }
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicAlgorithm).await?;
-    assert!(get_response.attributes.cryptographic_algorithm.is_none());
-
+    assert_eq!(
+        get_response.attributes.cryptographic_algorithm,
+        Some(CryptographicAlgorithm::AES)
+    );
     Ok(())
 }
 
-async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
-    // Check no cryptographic length is set
+async fn set_cryptographic_length_is_rejected_as_read_only(
+    kms: &Arc<KMS>,
+    uid: &str,
+) -> KResult<()> {
+    // The creation request carries a 256-bit length
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));
 
-    set_attribute(kms, uid, Attribute::CryptographicLength(256)).await?;
+    let error = set_attribute(kms, uid, Attribute::CryptographicLength(64))
+        .await
+        .expect_err("setting CryptographicLength must fail as read-only");
+    assert!(matches!(
+        error,
+        KmsError::Kmip21Error(ErrorReason::Read_Only_Attribute, _)
+    ));
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));
@@ -286,5 +334,101 @@ async fn set_cryptographic_length_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KR
 
     let get_response = get_attributes(kms, uid, Tag::CryptographicLength).await?;
     assert_eq!(get_response.attributes.cryptographic_length, Some(256));
+    Ok(())
+}
+
+/// Every read-only attribute is refused by all four attribute edits, whether or not the object
+/// already holds a value: Add/Set with `Read_Only_Attribute` (KMIP 2.1 §6.1.2.1, §6.1.51.1),
+/// Modify/Delete with `Attribute_Read_Only` (§6.1.34.1, §6.1.13.1).
+async fn server_managed_attributes_are_rejected(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
+    let request = GetAttributes {
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+        attribute_reference: None,
+    };
+    let before = kms
+        .get_attributes(request.clone(), &UserId::from(USER))
+        .await?
+        .attributes;
+    let user = UserId::from(USER);
+    let object = UniqueIdentifier::TextString(uid.to_owned());
+    for attribute in [
+        Attribute::UniqueIdentifier(UniqueIdentifier::TextString("forged".to_owned())),
+        Attribute::ObjectType(ObjectType::Certificate),
+        Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+        Attribute::CryptographicDomainParameters(CryptographicDomainParameters {
+            qlength: None,
+            recommended_curve: Some(RecommendedCurve::P256),
+        }),
+        Attribute::CryptographicLength(64),
+        Attribute::CertificateLength(64),
+        Attribute::KeyFormatType(KeyFormatType::Raw),
+        Attribute::DigitalSignatureAlgorithm(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+        Attribute::Digest(Digest {
+            hashing_algorithm: HashingAlgorithm::SHA256,
+            digest_value: Some(vec![0; 32]),
+            key_format_type: None,
+        }),
+        Attribute::DestroyDate(OffsetDateTime::UNIX_EPOCH),
+        Attribute::X509CertificateSubject("CN=forged".to_owned()),
+        Attribute::InitialDate(OffsetDateTime::UNIX_EPOCH),
+        Attribute::LastChangeDate(OffsetDateTime::UNIX_EPOCH),
+        Attribute::OriginalCreationDate(OffsetDateTime::UNIX_EPOCH),
+        Attribute::Fresh(true),
+    ] {
+        let results = [
+            (
+                kms.add_attribute(
+                    AddAttribute {
+                        unique_identifier: object.clone(),
+                        new_attribute: attribute.clone(),
+                    },
+                    &user,
+                )
+                .await
+                .err(),
+                ErrorReason::Read_Only_Attribute,
+            ),
+            (
+                set_attribute(kms, uid, attribute.clone()).await.err(),
+                ErrorReason::Read_Only_Attribute,
+            ),
+            (
+                kms.modify_attribute(
+                    ModifyAttribute {
+                        unique_identifier: Some(object.clone()),
+                        new_attribute: attribute.clone(),
+                    },
+                    &user,
+                )
+                .await
+                .err(),
+                ErrorReason::Attribute_Read_Only,
+            ),
+            (
+                delete_attribute(
+                    kms,
+                    DeleteAttribute {
+                        unique_identifier: Some(object.clone()),
+                        current_attribute: Some(attribute.clone()),
+                        attribute_references: None,
+                    },
+                )
+                .await
+                .err(),
+                ErrorReason::Attribute_Read_Only,
+            ),
+        ];
+        for (error, expected) in results {
+            assert!(
+                matches!(&error, Some(KmsError::Kmip21Error(reason, _)) if *reason == expected),
+                "{attribute}: {error:?}"
+            );
+        }
+    }
+    let after = kms
+        .get_attributes(request, &UserId::from(USER))
+        .await?
+        .attributes;
+    assert_eq!(after, before);
     Ok(())
 }

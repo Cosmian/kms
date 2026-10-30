@@ -8,6 +8,22 @@ This operation requests the server to delete an attribute associated with a Mana
 
 This operation can be applied to all [supported objects](../objects.md). One or more attributes can be set at once.
 
+### Read-only attributes
+
+The following attributes are **read-only** for `DeleteAttribute` (KMIP 2.1 §6.1.13). Any attempt returns an
+`Attribute_Read_Only` error before the object is touched:
+
+- `UniqueIdentifier`, `ObjectType`, `ShortUniqueIdentifier`, `KeyFormatType`, `KeyValuePresent`, `OpaqueDataType`
+- `CryptographicAlgorithm`, `CryptographicDomainParameters`, `CryptographicLength`, `DigitalSignatureAlgorithm`,
+  `NISTKeyType`, `Digest`, `RandomNumberGenerator`, `ProtectionStorageMasks`
+- `CertificateType`, `CertificateLength`, `CertificateAttributes`, `X509CertificateIdentifier`,
+  `X509CertificateSubject`, `X509CertificateIssuer`
+- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `ArchiveDate`, `DestroyDate`, `CompromiseDate`,
+  `CompromiseOccurrenceDate`, `Fresh`
+- `State`
+- `Sensitive`, `Extractable`, `AlwaysSensitive`, `NeverExtractable`
+- `RotateAutomatic`, `RotateGeneration`, `RotateDate`, `RotateLatest`
+
 ## Example - Delete links on Certificate
 
 First, for the demo purpose create a certificate:

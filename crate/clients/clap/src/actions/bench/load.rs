@@ -5,23 +5,32 @@ use std::{
 
 use cosmian_kms_client::{
     KmsClient,
+    http_client::Bytes,
     jose::{JoseEncReq, JoseSignReq, b64url},
     kmip_2_1::{
         extra::BulkData,
         kmip_operations::{Encrypt, Operation, Sign},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-            RecommendedCurve,
+            RecommendedCurve, UniqueIdentifier,
         },
-        requests::{encrypt_request, symmetric_key_create_request},
+        requests::{create_rsa_key_pair_request, encrypt_request, symmetric_key_create_request},
     },
 };
 use serde::Serialize;
+use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use super::jose::jose_try_create_okp_kp;
 use super::{
-    helpers::{aes_gcm_params, create_sym_key, try_create_ec_kp},
+    helpers::{
+        HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key,
+        hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_oaep_params,
+        rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp, try_create_hsm_rsa_kp,
+        try_create_hsm_sym_key,
+    },
     jose::{jose_create_sym_key, jose_try_create_ec_kp},
     output::criterion_home,
     transport::{make_wire_request, to_wire_bytes, wire_response_ok},
@@ -34,7 +43,7 @@ use crate::error::{KmsCliError, result::KmsCliResult};
 
 /// Throughput and latency percentiles for one operation at one concurrency level.
 #[derive(Debug, Serialize)]
-pub(super) struct LoadResult {
+pub(crate) struct LoadResult {
     /// Operation name (mirrors criterion group IDs where applicable).
     pub operation: String,
     /// Number of concurrent tasks that were sending requests simultaneously.
@@ -49,6 +58,8 @@ pub(super) struct LoadResult {
     pub p99_ms: f64,
     /// Total requests completed during the measurement window.
     pub samples: usize,
+    /// Number of failed operations during the measurement window.
+    pub errors: usize,
 }
 
 /// A pre-built KMIP request ready for the load test hot loop.
@@ -67,18 +78,33 @@ enum PreparedLoadOp {
     PreSerialized {
         name: &'static str,
         url: String,
-        body: Vec<u8>,
+        body: Bytes,
     },
     /// Pre-serialized binary TTLV (wire format).
     /// Sent with `application/octet-stream` content-type to POST /kmip.
     PreSerializedBinary {
         name: &'static str,
         url: String,
-        body: Vec<u8>,
+        body: Bytes,
     },
     /// AES-256 symmetric key creation.  Cannot be pre-serialized because each
     /// invocation must allocate a distinct key object on the server.
     AesSymCreate { name: &'static str, vid: String },
+    /// HSM-resident AES-256 symmetric key creation. Each invocation needs a
+    /// *fresh* `hsm::`-prefixed unique identifier (the HSM has no
+    /// auto-generated ID, unlike `AesSymCreate`'s server-assigned UUID).
+    HsmAesSymCreate {
+        name: &'static str,
+        vid: String,
+        hsm_prefix: String,
+    },
+    /// HSM-resident RSA key-pair creation. Same rationale as
+    /// `HsmAesSymCreate`.
+    HsmRsaKpCreate {
+        name: &'static str,
+        vid: String,
+        hsm_prefix: String,
+    },
 }
 
 impl PreparedLoadOp {
@@ -86,7 +112,27 @@ impl PreparedLoadOp {
         match self {
             Self::PreSerialized { name, .. }
             | Self::PreSerializedBinary { name, .. }
-            | Self::AesSymCreate { name, .. } => name,
+            | Self::AesSymCreate { name, .. }
+            | Self::HsmAesSymCreate { name, .. }
+            | Self::HsmRsaKpCreate { name, .. } => name,
+        }
+    }
+
+    /// Cap on concurrency for this operation, if any.
+    ///
+    /// HSM-resident key *creation* (`HsmAesSymCreate`/`HsmRsaKpCreate`) can
+    /// safely handle high concurrency on modern HSMs like Proteccio. The cap is
+    /// set to 64 to exercise parallel key generation on hardware-accelerated
+    /// tokens. This allows `--mode all --hsm --load` to perform comprehensive
+    /// benchmarking at target concurrency levels for all operations, including
+    /// HSM key creation, while maintaining reliable token stability across
+    /// concurrent PKCS#11 operations.
+    const fn max_concurrency(&self) -> Option<usize> {
+        match self {
+            Self::HsmAesSymCreate { .. } | Self::HsmRsaKpCreate { .. } => Some(64),
+            Self::PreSerialized { .. }
+            | Self::PreSerializedBinary { .. }
+            | Self::AesSymCreate { .. } => None,
         }
     }
 
@@ -126,6 +172,39 @@ impl PreparedLoadOp {
                 };
                 client.create(req).await.is_ok()
             }
+            Self::HsmAesSymCreate {
+                vid, hsm_prefix, ..
+            } => {
+                let uid = hsm_uid(hsm_prefix, "load-sym");
+                let Ok(req) = symmetric_key_create_request(
+                    vid,
+                    Some(UniqueIdentifier::TextString(uid)),
+                    256,
+                    CryptographicAlgorithm::AES,
+                    ["load"],
+                    true, // sensitive: HSMs (e.g. Luna) may refuse extractable keys
+                    None,
+                ) else {
+                    return false;
+                };
+                client.create(req).await.is_ok()
+            }
+            Self::HsmRsaKpCreate {
+                vid, hsm_prefix, ..
+            } => {
+                let uid = hsm_uid(hsm_prefix, "load-rsa");
+                let Ok(req) = create_rsa_key_pair_request(
+                    vid,
+                    Some(UniqueIdentifier::TextString(uid)),
+                    ["load"],
+                    2048,
+                    true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
+                    None,
+                ) else {
+                    return false;
+                };
+                client.create_key_pair(req).await.is_ok()
+            }
         }
     }
 }
@@ -140,7 +219,9 @@ fn preserialized_op(name: &'static str, client: &KmsClient, op: Operation) -> Pr
     use cosmian_kms_client::cosmian_kmip::ttlv::to_ttlv;
     let req = make_wire_request(op);
     let ttlv = to_ttlv(&req).expect("TTLV serialization");
-    let body = serde_json::to_vec(&ttlv).expect("JSON serialization");
+    let body = serde_json::to_vec(&ttlv)
+        .expect("JSON serialization")
+        .into();
     let url = format!("{}/kmip/2_1", client.client.server_url);
     PreparedLoadOp::PreSerialized { name, url, body }
 }
@@ -148,7 +229,7 @@ fn preserialized_op(name: &'static str, client: &KmsClient, op: Operation) -> Pr
 /// Serialize a KMIP operation to binary TTLV wire bytes (one-time cost at preparation).
 /// Wraps the operation in a `RequestMessage` as required by the binary wire endpoint.
 fn preserialized_wire_op(name: &'static str, client: &KmsClient, op: Operation) -> PreparedLoadOp {
-    let body = to_wire_bytes(&make_wire_request(op));
+    let body = to_wire_bytes(&make_wire_request(op)).into();
     let url = format!("{}/kmip", client.client.server_url);
     PreparedLoadOp::PreSerializedBinary { name, url, body }
 }
@@ -173,14 +254,37 @@ pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
         .collect()
 }
 
+/// Selection of what to benchmark: mode, protocol, payload size and name filter.
+#[derive(Clone, Copy)]
+struct LoadOpSpec<'a> {
+    /// Benchmark mode (operation categories to prepare).
+    mode: BenchMode,
+    /// Wire protocol(s) to exercise.
+    protocol: &'a BenchProtocol,
+    /// Plaintext size in bytes for encrypt operations.
+    plaintext_size: usize,
+    /// Optional operation-name filter.
+    filter: Option<&'a super::types::BenchFilter>,
+}
+
 /// Prepare one representative operation per applicable mode category.
 fn prepare_load_ops(
     rt: &Runtime,
     client: &KmsClient,
-    mode: &BenchMode,
-    protocol: &BenchProtocol,
-    plaintext_size: usize,
+    hsm_prefix: Option<&str>,
+    spec: &LoadOpSpec<'_>,
+    ledger: &HsmKeyLedger,
 ) -> Vec<PreparedLoadOp> {
+    if let Some(hsm_prefix) = hsm_prefix {
+        return prepare_hsm_load_ops(rt, client, hsm_prefix, spec, ledger);
+    }
+    let LoadOpSpec {
+        mode,
+        protocol,
+        plaintext_size,
+        filter,
+    } = *spec;
+
     let mut ops = Vec::new();
     let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
     let needs_key_create = matches!(mode, BenchMode::KeyCreation | BenchMode::All);
@@ -193,7 +297,13 @@ fn prepare_load_ops(
 
     // ── TTLV JSON load ops ───────────────────────────────────────────────
     if run_json && needs_encrypt {
-        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            "load-json-encrypt-aes-128",
+            128,
+            CryptographicAlgorithm::AES,
+        );
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -215,7 +325,12 @@ fn prepare_load_ops(
     }
 
     if run_json && needs_sign {
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::P256) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-json-sign-ecdsa-p256",
+            RecommendedCurve::P256,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -233,10 +348,18 @@ fn prepare_load_ops(
         } else {
             eprintln!("[load] ECDSA P-256 key creation failed, skipping sign load test");
         }
+
+        push_non_fips_json_sign_ops(rt, client, &mut ops);
     }
 
     if run_json && needs_batch {
-        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            "load-json-batch-aes-128",
+            128,
+            CryptographicAlgorithm::AES,
+        );
         let key_str = key_id.to_string();
         let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; plaintext_size]); 10])
             .serialize()
@@ -259,7 +382,13 @@ fn prepare_load_ops(
 
     // ── TTLV Bytes load ops ───────────────────────────────────────────────
     if run_wire && needs_encrypt {
-        let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
+        let key_id = create_sym_key(
+            rt,
+            client,
+            "load-bytes-encrypt-aes-128",
+            128,
+            CryptographicAlgorithm::AES,
+        );
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -274,7 +403,12 @@ fn prepare_load_ops(
     }
 
     if run_wire && needs_sign {
-        if let Some((_, priv_id)) = try_create_ec_kp(rt, client, RecommendedCurve::P256) {
+        if let Some((_, priv_id)) = try_create_ec_kp(
+            rt,
+            client,
+            "load-bytes-sign-ecdsa-p256",
+            RecommendedCurve::P256,
+        ) {
             let req = Sign {
                 unique_identifier: Some(priv_id),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -290,6 +424,8 @@ fn prepare_load_ops(
                 Operation::Sign(req),
             ));
         }
+
+        push_non_fips_wire_sign_ops(rt, client, &mut ops);
     }
 
     // ── JOSE load ops ────────────────────────────────────────────────────
@@ -305,9 +441,9 @@ fn prepare_load_ops(
             let body = serde_json::to_vec(&jose_enc_req).expect("JOSE encrypt JSON serialization");
             let url = format!("{}/v1/crypto/encrypt", client.client.server_url);
             ops.push(PreparedLoadOp::PreSerialized {
-                name: "jose/encrypt/a256gcm",
+                name: "jose/encrypt/aes-gcm",
                 url,
-                body,
+                body: body.into(),
             });
         } else {
             eprintln!("[load] JOSE A256GCM key creation failed, skipping JOSE encrypt load test");
@@ -326,14 +462,495 @@ fn prepare_load_ops(
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/sign-verify/ecdsa-p256",
                 url,
-                body,
+                body: body.into(),
             });
         } else {
             eprintln!("[load] JOSE ES256 key creation failed, skipping JOSE sign load test");
         }
+
+        push_jose_eddsa_sign_op(rt, client, &mut ops);
     }
 
+    if let Some(filter) = filter {
+        ops.retain(|op| filter.matches(op.name(), None));
+    }
     ops
+}
+
+/// TTLV-JSON sign load ops on the non-FIPS curves (Ed25519, secp256k1).
+#[cfg(feature = "non-fips")]
+fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-json-sign-eddsa-ed25519",
+        RecommendedCurve::CURVEED25519,
+    ) {
+        // No `digital_signature_algorithm` needed: the server dispatches to
+        // EdDSA based on the key's own cryptographic algorithm (Ed25519).
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_op(
+            "ttlv-json/sign-verify/eddsa-ed25519",
+            client,
+            Operation::Sign(req),
+        ));
+    } else {
+        eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
+    }
+
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-json-sign-ecdsa-secp256k1",
+        RecommendedCurve::SECP256K1,
+    ) {
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            }),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_op(
+            "ttlv-json/sign-verify/ecdsa-secp256k1",
+            client,
+            Operation::Sign(req),
+        ));
+    } else {
+        eprintln!("[load] secp256k1 key creation failed, skipping sign load test");
+    }
+}
+
+/// FIPS build: Ed25519 and secp256k1 are not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_non_fips_json_sign_ops(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
+}
+
+/// TTLV-bytes sign load ops on the non-FIPS curves (Ed25519, secp256k1).
+#[cfg(feature = "non-fips")]
+fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-bytes-sign-eddsa-ed25519",
+        RecommendedCurve::CURVEED25519,
+    ) {
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_wire_op(
+            "ttlv-bytes/sign-verify/eddsa-ed25519",
+            client,
+            Operation::Sign(req),
+        ));
+    }
+
+    if let Some((_, priv_id)) = try_create_ec_kp(
+        rt,
+        client,
+        "load-bytes-sign-ecdsa-secp256k1",
+        RecommendedCurve::SECP256K1,
+    ) {
+        let req = Sign {
+            unique_identifier: Some(priv_id),
+            cryptographic_parameters: Some(CryptographicParameters {
+                digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                ..Default::default()
+            }),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            ..Default::default()
+        };
+        ops.push(preserialized_wire_op(
+            "ttlv-bytes/sign-verify/ecdsa-secp256k1",
+            client,
+            Operation::Sign(req),
+        ));
+    }
+}
+
+/// FIPS build: Ed25519 and secp256k1 are not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_non_fips_wire_sign_ops(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
+}
+
+/// JOSE `EdDSA` (Ed25519) sign load op.
+#[cfg(feature = "non-fips")]
+fn push_jose_eddsa_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    if let Some((priv_kid, _pub_kid)) = jose_try_create_okp_kp(rt, client) {
+        let jose_sign_req = JoseSignReq {
+            kid: priv_kid,
+            alg: "EdDSA",
+            data: b64url(&[0x42_u8; 32]),
+        };
+        let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
+        let url = format!("{}/v1/crypto/sign", client.client.server_url);
+        ops.push(PreparedLoadOp::PreSerialized {
+            name: "jose/sign-verify/eddsa-ed25519",
+            url,
+            body: body.into(),
+        });
+    } else {
+        eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");
+    }
+}
+
+/// FIPS build: Ed25519 is not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_jose_eddsa_sign_op(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
+}
+
+/// Prepare load-test operations for `--hsm`: keys are created with an
+/// `hsm::`-prefixed unique identifier so both key generation and Encrypt/Sign
+/// execute directly on the HSM (PKCS#11) instead of in KMS software. See the
+/// module docs in `kmip.rs`'s "HSM-RESIDENT BENCHMARKS" section for the exact
+/// algorithm scope (now covering every `CryptoAlgorithm`/`SigningAlgorithm`
+/// oracle variant reachable via ordinary requests) and the reasons
+/// Verify/P-521 are excluded.
+///
+/// JOSE is not supported here: the `POST /v1/crypto/keys` endpoint has no way
+/// to request a caller-chosen `kid`, so an `hsm::`-prefixed key cannot be
+/// created through it.
+// `prepare_load_ops` delegates to this function when `--hsm` is active.
+fn prepare_hsm_load_ops(
+    rt: &Runtime,
+    client: &KmsClient,
+    hsm_prefix: &str,
+    spec: &LoadOpSpec<'_>,
+    ledger: &HsmKeyLedger,
+) -> Vec<PreparedLoadOp> {
+    let LoadOpSpec {
+        mode,
+        protocol,
+        plaintext_size,
+        filter,
+    } = *spec;
+    let mut ops = Vec::new();
+    let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
+    let needs_key_create = matches!(mode, BenchMode::KeyCreation | BenchMode::All);
+    let needs_sign = matches!(mode, BenchMode::SignVerify | BenchMode::All);
+
+    let run_json = matches!(protocol, BenchProtocol::All | BenchProtocol::TtlvJson);
+    if matches!(protocol, BenchProtocol::All | BenchProtocol::TtlvBytes) {
+        eprintln!(
+            "[load] --hsm only benchmarks the ttlv-json protocol for delegated crypto \
+             operations: a ttlv-bytes run against the same HSM-resident key/token would be \
+             measured strictly after the ttlv-json sweep, and cumulative SoftHSM2 token load \
+             from that sweep would contaminate the ttlv-bytes numbers (see the 'Why ttlv-json \
+             only' section in the generated report), skipping ttlv-bytes"
+        );
+    }
+    if matches!(protocol, BenchProtocol::All | BenchProtocol::Jose) {
+        eprintln!(
+            "[load] --hsm does not support the jose protocol (no way to request a caller-chosen \
+             kid via POST /v1/crypto/keys), skipping"
+        );
+    }
+
+    if needs_key_create {
+        let vid = client.config.vendor_id.clone();
+        if run_json {
+            ops.push(PreparedLoadOp::HsmAesSymCreate {
+                name: "ttlv-json/hsm/key-creation/aes-256",
+                vid: vid.clone(),
+                hsm_prefix: hsm_prefix.to_owned(),
+            });
+            ops.push(PreparedLoadOp::HsmRsaKpCreate {
+                name: "ttlv-json/hsm/key-creation/rsa-2048",
+                vid,
+                hsm_prefix: hsm_prefix.to_owned(),
+            });
+        }
+        // Key creation always goes through the JSON `Create`/`CreateKeyPair`
+        // client calls above (not pre-serialized bytes), so there is no
+        // separate binary-wire variant — mirrors software `AesSymCreate`,
+        // which is likewise ttlv-json-only.
+    }
+
+    if needs_encrypt {
+        if let Some(key_id) = try_create_hsm_sym_key(
+            rt,
+            client,
+            hsm_prefix,
+            "load-encrypt-aes-gcm-256",
+            256,
+            CryptographicAlgorithm::AES,
+            ledger,
+        ) {
+            let req = Encrypt {
+                unique_identifier: Some(key_id),
+                cryptographic_parameters: Some(aes_gcm_params()),
+                data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+                ..Default::default()
+            };
+            if run_json {
+                ops.push(preserialized_op(
+                    "ttlv-json/hsm/encrypt/aes-gcm",
+                    client,
+                    Operation::Encrypt(Box::new(req)),
+                ));
+            }
+        } else {
+            eprintln!("[load] HSM AES-GCM not available, skipping HSM encrypt load test");
+        }
+
+        if let Some((pub_id, _priv_id)) = try_create_hsm_rsa_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-encrypt-rsa-2048",
+            2048,
+            ledger,
+        ) {
+            for (label, params) in [
+                ("rsa-oaep", rsa_oaep_params()),
+                ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
+                ("rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
+            ] {
+                let req = Encrypt {
+                    unique_identifier: Some(pub_id.clone()),
+                    cryptographic_parameters: Some(params),
+                    data: Some(Zeroizing::new(vec![1_u8; plaintext_size.min(190)])),
+                    ..Default::default()
+                };
+                if run_json {
+                    ops.push(preserialized_op(
+                        Box::leak(format!("ttlv-json/hsm/encrypt/{label}").into_boxed_str()),
+                        client,
+                        Operation::Encrypt(Box::new(req)),
+                    ));
+                }
+            }
+        } else {
+            eprintln!("[load] HSM RSA encrypt not available, skipping HSM encrypt load test");
+        }
+
+        // AES-CBC
+        if let Some(key_id) = try_create_hsm_sym_key(
+            rt,
+            client,
+            hsm_prefix,
+            "load-encrypt-aes-cbc-256",
+            256,
+            CryptographicAlgorithm::AES,
+            ledger,
+        ) {
+            let req = Encrypt {
+                unique_identifier: Some(key_id),
+                cryptographic_parameters: Some(aes_cbc_params()),
+                data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+                i_v_counter_nonce: Some(vec![0_u8; 16]),
+                ..Default::default()
+            };
+            if run_json {
+                ops.push(preserialized_op(
+                    "ttlv-json/hsm/encrypt/aes-cbc",
+                    client,
+                    Operation::Encrypt(Box::new(req)),
+                ));
+            }
+        } else {
+            eprintln!("[load] HSM AES-CBC not available, skipping HSM encrypt load test");
+        }
+    }
+
+    if needs_sign {
+        // RSA-PSS
+        if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-sign-rsa-pss-2048",
+            2048,
+            ledger,
+        ) {
+            let req = Sign {
+                unique_identifier: Some(priv_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                ..Default::default()
+            };
+            if run_json {
+                ops.push(preserialized_op(
+                    "ttlv-json/hsm/sign-verify/rsa-pss",
+                    client,
+                    Operation::Sign(req),
+                ));
+            }
+        } else {
+            eprintln!("[load] HSM RSA-PSS not available, skipping HSM sign load test");
+        }
+
+        // RSA PKCS#1 v1.5 hash-and-sign (SHA1/256/384/512). One RSA-2048 key
+        // pair is reused for all four hash variants.
+        if let Some((_pub_id, priv_id)) = try_create_hsm_rsa_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-sign-rsa-pkcs1v15-2048",
+            2048,
+            ledger,
+        ) {
+            for (label, dsa) in [
+                (
+                    "rsa-pkcs1v15-sha1",
+                    DigitalSignatureAlgorithm::SHA1WithRSAEncryption,
+                ),
+                (
+                    "rsa-pkcs1v15-sha256",
+                    DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+                ),
+                (
+                    "rsa-pkcs1v15-sha384",
+                    DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+                ),
+                (
+                    "rsa-pkcs1v15-sha512",
+                    DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+                ),
+            ] {
+                let req = Sign {
+                    unique_identifier: Some(priv_id.clone()),
+                    cryptographic_parameters: Some(hsm_rsa_pkcs1v15_sign_params(dsa)),
+                    data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                    ..Default::default()
+                };
+                if run_json {
+                    ops.push(preserialized_op(
+                        Box::leak(format!("ttlv-json/hsm/sign-verify/{label}").into_boxed_str()),
+                        client,
+                        Operation::Sign(req),
+                    ));
+                }
+            }
+        } else {
+            eprintln!("[load] HSM RSA PKCS1v15 sign not available, skipping HSM sign load test");
+        }
+
+        // ECDSA P-256 — prehashed only (SoftHSM2 lacks combined CKM_ECDSA_SHA*).
+        if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+            rt,
+            client,
+            hsm_prefix,
+            "load-sign-ecdsa-p256",
+            RecommendedCurve::P256,
+            ledger,
+        ) {
+            let digest = Sha256::digest([0x42_u8; 32]).to_vec();
+            let req = Sign {
+                unique_identifier: Some(priv_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                    ..Default::default()
+                }),
+                digested_data: Some(digest),
+                ..Default::default()
+            };
+            if run_json {
+                ops.push(preserialized_op(
+                    "ttlv-json/hsm/sign-verify/ecdsa-p256",
+                    client,
+                    Operation::Sign(req),
+                ));
+            }
+        } else {
+            eprintln!("[load] HSM ECDSA P-256 not available, skipping HSM sign load test");
+        }
+
+        push_hsm_eddsa_sign_ops(rt, client, hsm_prefix, ledger, run_json, &mut ops);
+    }
+
+    if let Some(filter) = filter {
+        ops.retain(|op| filter.matches(op.name(), None));
+    }
+    ops
+}
+
+/// HSM `EdDSA` (Ed25519/Ed448) sign load ops — pure, un-hashed `CKM_EDDSA`. See
+/// module docs in `kmip.rs`'s "HSM-RESIDENT BENCHMARKS" section for why
+/// `cryptographic_algorithm` must be set explicitly (mirrors `ckms ec sign`'s
+/// own request construction).
+#[cfg(feature = "non-fips")]
+fn push_hsm_eddsa_sign_ops(
+    rt: &Runtime,
+    client: &KmsClient,
+    hsm_prefix: &str,
+    ledger: &HsmKeyLedger,
+    run_json: bool,
+    ops: &mut Vec<PreparedLoadOp>,
+) {
+    for (label, op_name, curve, algorithm) in [
+        (
+            "eddsa-ed25519",
+            "ttlv-json/hsm/sign-verify/eddsa-ed25519",
+            RecommendedCurve::CURVEED25519,
+            CryptographicAlgorithm::Ed25519,
+        ),
+        (
+            "eddsa-ed448",
+            "ttlv-json/hsm/sign-verify/eddsa-ed448",
+            RecommendedCurve::CURVEED448,
+            CryptographicAlgorithm::Ed448,
+        ),
+    ] {
+        if let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
+            rt,
+            client,
+            hsm_prefix,
+            &format!("load-sign-{label}"),
+            curve,
+            ledger,
+        ) {
+            let req = Sign {
+                unique_identifier: Some(priv_id),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(algorithm),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                ..Default::default()
+            };
+            if run_json {
+                ops.push(preserialized_op(op_name, client, Operation::Sign(req)));
+            }
+        } else {
+            eprintln!("[load] HSM {label} not available, skipping HSM sign load test");
+        }
+    }
+}
+
+/// FIPS build: `EdDSA` is not FIPS-approved, nothing to add.
+#[cfg(not(feature = "non-fips"))]
+const fn push_hsm_eddsa_sign_ops(
+    _rt: &Runtime,
+    _client: &KmsClient,
+    _hsm_prefix: &str,
+    _ledger: &HsmKeyLedger,
+    _run_json: bool,
+    _ops: &mut Vec<PreparedLoadOp>,
+) {
 }
 
 /// Spawn `concurrency` OS threads, each with a dedicated single-threaded tokio
@@ -369,6 +986,7 @@ fn run_load_level(
             p95_ms: 0.0,
             p99_ms: 0.0,
             samples: 0,
+            errors: 0,
         };
     }
 
@@ -411,25 +1029,33 @@ fn run_load_level(
                 // minimising clock-skew between workers.
                 barrier.wait();
 
-                // Measurement loop
+                // Measurement loop: count successes and failures separately
                 let mut timings = Vec::new();
+                let mut error_count = 0_usize;
                 let task_start = Instant::now();
                 while task_start.elapsed() < duration {
                     let t0 = Instant::now();
-                    rt.block_on(async {
-                        let _ = op.execute(&task_client).await;
-                    });
-                    timings.push(t0.elapsed().as_secs_f64() * 1_000.0); // ms
+                    let success = rt.block_on(async { op.execute(&task_client).await });
+                    let elapsed_ms = t0.elapsed().as_secs_f64() * 1_000.0;
+                    if success {
+                        timings.push(elapsed_ms);
+                    } else {
+                        error_count += 1;
+                    }
                 }
-                timings
+                (timings, error_count)
             })
         })
         .collect();
 
     let mut all_timings: Vec<f64> = Vec::new();
+    let mut total_errors: usize = 0;
     for handle in handles {
         match handle.join() {
-            Ok(timings) => all_timings.extend(timings),
+            Ok((timings, error_count)) => {
+                all_timings.extend(timings);
+                total_errors += error_count;
+            }
             Err(_) => {
                 eprintln!(
                     "[load] Warning: a worker thread panicked; benchmark results may be incomplete"
@@ -456,6 +1082,7 @@ fn run_load_level(
         p95_ms: load_percentile(&all_timings, 0.95),
         p99_ms: load_percentile(&all_timings, 0.99),
         samples,
+        errors: total_errors,
     }
 }
 
@@ -464,29 +1091,66 @@ fn run_load_level(
 pub(super) fn bench_load(
     rt: &Runtime,
     client: &KmsClient,
-    mode: &BenchMode,
+    mode: BenchMode,
     protocol: &BenchProtocol,
     concurrency_levels: &[usize],
     warmup: Duration,
     duration: Duration,
     cooldown: Duration,
     plaintext_size: usize,
+    hsm_prefix: Option<&str>,
+    filter: Option<&super::types::BenchFilter>,
 ) -> Vec<LoadResult> {
-    let ops = prepare_load_ops(rt, client, mode, protocol, plaintext_size);
+    let ledger = HsmKeyLedger::new();
+    let ops = prepare_load_ops(
+        rt,
+        client,
+        hsm_prefix,
+        &LoadOpSpec {
+            mode,
+            protocol,
+            plaintext_size,
+            filter,
+        },
+        &ledger,
+    );
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
-        return Vec::new();
     }
 
     let mut results = Vec::new();
     for op in ops {
+        // Apply this op's concurrency cap (if any), always keeping at least
+        // the lowest requested level so the sweep never becomes empty.
+        let effective_levels: Vec<usize> = op.max_concurrency().map_or_else(
+            || concurrency_levels.to_vec(),
+            |cap| {
+                let mut levels: Vec<usize> = concurrency_levels
+                    .iter()
+                    .copied()
+                    .filter(|&c| c <= cap)
+                    .collect();
+                if levels.is_empty() {
+                    levels.push(concurrency_levels.iter().copied().min().unwrap_or(1));
+                }
+                levels
+            },
+        );
+        if effective_levels != concurrency_levels {
+            eprintln!(
+                "[load] '{}' — concurrency capped to {:?} (requested {:?}; see PreparedLoadOp::max_concurrency)",
+                op.name(),
+                effective_levels,
+                concurrency_levels
+            );
+        }
         eprintln!(
             "[load] '{}' — sweep {:?} × {:.0}s",
             op.name(),
-            concurrency_levels,
+            effective_levels,
             duration.as_secs_f64()
         );
-        for &concurrency in concurrency_levels {
+        for concurrency in effective_levels {
             eprint!(
                 "[load]   concurrency={concurrency:>3} (warmup {:.0}s + cooldown {:.0}s) … ",
                 warmup.as_secs_f64(),
@@ -500,6 +1164,12 @@ pub(super) fn bench_load(
             results.push(result);
         }
     }
+
+    // Clean up all created HSM keys
+    if let Err(e) = rt.block_on(ledger.destroy_all(client)) {
+        eprintln!("[load] Cleanup warning: {e}");
+    }
+
     results
 }
 
@@ -538,7 +1208,7 @@ pub(super) fn print_load_results(results: &[LoadResult]) {
 ///
 /// The `operation` field strips the protocol prefix so it is protocol-neutral
 /// (e.g. `"ttlv-json/encrypt/aes-gcm"` → `"encrypt/aes-gcm"`).
-pub(super) fn generate_load_json_output(
+pub(crate) fn generate_load_json_output(
     results: &[LoadResult],
     protocol_slug: &str,
 ) -> KmsCliResult<()> {

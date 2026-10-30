@@ -34,16 +34,16 @@ use crate::{
 /// Destroy a KMIP Object
 pub(crate) async fn destroy_operation(
     kms: &KMS,
-    request: Destroy,
+    mut request: Destroy,
     user: &UserId,
 ) -> KResult<DestroyResponse> {
     trace!("{request}");
     // there must be an identifier
     let unique_identifier = request
         .unique_identifier
-        .as_ref()
+        .take()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let object_handle = ObjectHandle::try_from(unique_identifier)?;
+    let object_handle = ObjectHandle::try_from(&unique_identifier)?;
 
     // Issue #763: for HSM keys, validate the key type via a PKCS#11 roundtrip
     // before committing to destroy. This prevents accidentally destroying an AES
@@ -58,7 +58,7 @@ pub(crate) async fn destroy_operation(
     }
 
     recursively_destroy_object(
-        unique_identifier,
+        &unique_identifier,
         request.remove,
         request.cascade,
         kms,
@@ -67,9 +67,7 @@ pub(crate) async fn destroy_operation(
     )
     .await?;
 
-    Ok(DestroyResponse {
-        unique_identifier: unique_identifier.clone(),
-    })
+    Ok(DestroyResponse { unique_identifier })
 }
 
 /// This function is called recursively to destroy all the objects
@@ -158,6 +156,7 @@ pub(crate) async fn recursively_destroy_object(
             || effective_state == State::Destroyed_Compromised
             || (object_type != ObjectType::PrivateKey
                 && object_type != ObjectType::SymmetricKey
+                && object_type != ObjectType::PGPKey
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey
@@ -224,6 +223,7 @@ pub(crate) async fn recursively_destroy_object(
 
         match object_type {
             ObjectType::SymmetricKey
+            | ObjectType::PGPKey
             | ObjectType::Certificate
             | ObjectType::SecretData
             | ObjectType::OpaqueObject
@@ -360,7 +360,7 @@ pub(crate) async fn recursively_destroy_object(
                 )
                 .await?;
             }
-            x => kms_bail!(KmsError::NotSupported(format!(
+            x @ ObjectType::CertificateRequest => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {x:?}"
             ))),
         }
@@ -522,8 +522,8 @@ async fn guard_hsm_key_type(
         Ok(Some(actual_key_type)) => {
             let actual_object_type = match actual_key_type {
                 KeyType::AesKey => ObjectType::SymmetricKey,
-                KeyType::RsaPrivateKey => ObjectType::PrivateKey,
-                KeyType::RsaPublicKey => ObjectType::PublicKey,
+                KeyType::RsaPrivateKey | KeyType::EcPrivateKey => ObjectType::PrivateKey,
+                KeyType::RsaPublicKey | KeyType::EcPublicKey => ObjectType::PublicKey,
             };
             if actual_object_type != *expected_type {
                 return Err(KmsError::Kmip21Error(

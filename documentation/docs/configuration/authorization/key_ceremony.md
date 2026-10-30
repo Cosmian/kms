@@ -49,7 +49,9 @@ graph TB
 | Role              | Config key                 | Allowed KMIP operations                                                                                                                                                       | Can access other users' objects? |
 | ----------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------: |
 | **Operator**      | _(default, no config key)_ | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, GetAttributes, Locate, Validate                                                                                           |                No                |
-| **CryptoOfficer** | `crypto_officer_users`     | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute, CreateSplitKey, JoinSplitKey |    **Yes, ownership bypass**     |
+| **CryptoOfficer** | `crypto_officer_users`     | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute, CreateSplitKey, JoinSplitKey, RNGSeed |    **Yes, ownership bypass**     |
+
+`RNGSeed` (additional input to the server DRBG) is restricted to Crypto Officers once roles are configured; `RNGRetrieve` stays available to every authenticated user.
 
 !!! note "Fail-secure default"
     When `crypto_officer_users` is configured but a user is not in the list, the server
@@ -262,7 +264,7 @@ crypto_officer_require_ceremony = true
 # Generate with: openssl rand -hex 32
 ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-# (ADP-26, planned) UID of a KMS symmetric key to use as the ceremony sealing key.
+# (planned) UID of a KMS symmetric key to use as the ceremony sealing key.
 # When set, takes precedence over ceremony_secret. Enables key rotation and HSM backing.
 # The key must be created before enabling require_ceremony (use config-only mode first).
 # ceremony_key_id = "ceremony-seal-2026"

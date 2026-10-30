@@ -1,3 +1,8 @@
+---
+name: ckms-subcommand-test
+description: 'Generate and run integration tests for a new or modified ckms subcommand: test file, helpers, happy-path + error-case + CO-gating coverage, module registration, cargo test -p ckms. Use after adding a ckms subcommand or flag, or when CI/review flags missing CLI test coverage.'
+---
+
 # ckms Subcommand Integration Tests
 
 Write and run integration tests for a new or modified `ckms` subcommand, following the
@@ -109,7 +114,10 @@ async fn test_<operation>_default() -> CosmianResult<()> {
     // Exercise the subcommand.
     let result = my_operation(&conf, &key_id, &[])?;
     // Assert invariants.
-    assert!(!result.is_empty(), "expected non-empty result");
+    assert!(
+        crate::tests::utils::extract_uids::extract_uid(&result, "Unique identifier").is_some(),
+        "expected a unique identifier in the output: {result}"
+    );
     Ok(())
 }
 ```
@@ -125,10 +133,16 @@ async fn test_<operation>_with_flags() -> CosmianResult<()> {
     let conf = owner_config(ctx);
     let key_id = crate::tests::symmetric::create_key::create_symmetric_key(&conf, &[])?;
     // Exercise specific flag.
-    my_operation(&conf, &key_id, &["--some-flag", "value"])?;
+    let out = my_operation(&conf, &key_id, &["--some-flag", "value"])?;
+    assert!(
+        out.contains("<fragment produced only when --some-flag is set>"),
+        "flag had no visible effect: {out}"
+    );
     Ok(())
 }
 ```
+
+Every flag test asserts an effect specific to that flag; a call whose result is discarded proves nothing.
 
 ### 2e. Error path test(s)
 
@@ -233,6 +247,7 @@ Verify before closing the task:
 | `owner_config(ctx)` | `tests/utils/mod.rs` | Path to `owner.client.acme.com.toml` config |
 | `load_client_config(name, ctx)` | `tests/utils/mod.rs` | Path to any test-cert config file |
 | `extract_uid(stdout, label)` | `tests/utils/extract_uids.rs` | Parse a UID from a line like `Unique identifier: <uid>` |
-| `start_default_test_kms_server()` | `test_kms_server` crate | Start an in-process KMS with SQLite + cert auth |
+| `start_default_test_kms_server()` | `test_kms_server` crate | Shared singleton KMS: SQLite, plain HTTP, no auth (`auth/plain.toml`) |
 | `start_default_test_kms_server_with_crypto_officer_users(users)` | `test_kms_server` crate | Start KMS with CO role enabled |
 | `start_default_test_kms_server_with_multi_crypto_officer_users()` | `test_kms_server` crate | Two-CO pre-configured setup |
+| other server variants | `test_kms_server` crate | See `.github/instructions/rust.instructions.md` § Test KMS servers |

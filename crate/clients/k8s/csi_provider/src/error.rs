@@ -19,6 +19,17 @@ pub enum CsiProviderError {
     #[error("cannot extract bytes from KMS object '{uid}': {cause}")]
     UnextractableObject { uid: String, cause: String },
 
+    /// The object's current version differs from the `objectVersion` pinned in the
+    /// `SecretProviderClass`.
+    #[error(
+        "object '{uid}' has version {actual} but the SecretProviderClass pins objectVersion {expected}"
+    )]
+    VersionMismatch {
+        uid: String,
+        expected: String,
+        actual: String,
+    },
+
     /// I/O error (e.g. writing to tmpfs).
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -37,7 +48,9 @@ impl From<CsiProviderError> for tonic::Status {
             CsiProviderError::InvalidAttributes(_) | CsiProviderError::NoObjects => {
                 Self::invalid_argument(err.to_string())
             }
-            CsiProviderError::Config(_) => Self::failed_precondition(err.to_string()),
+            CsiProviderError::Config(_) | CsiProviderError::VersionMismatch { .. } => {
+                Self::failed_precondition(err.to_string())
+            }
         }
     }
 }

@@ -7,29 +7,29 @@ use crate::ttlv::{TTLV, TtlvError};
 
 // The `ArrayDeserializer` is used to deserialize an array from struct elements
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_seq`
-pub(super) struct ArrayDeserializer<'a> {
-    de: &'a mut TtlvDeserializer,
+pub(super) struct ArrayDeserializer<'a, 't> {
+    de: &'a mut TtlvDeserializer<'t>,
     // The tag of the array
-    tag: String,
+    tag: &'t str,
     // all the elements of the containing struct
-    struct_elements: &'a [TTLV],
+    struct_elements: &'t [TTLV],
 }
 
-impl<'a> ArrayDeserializer<'a> {
-    pub(super) fn new(
-        de: &'a mut TtlvDeserializer,
-        tag: &str,
-        struct_elements: &'a [TTLV],
+impl<'a, 't> ArrayDeserializer<'a, 't> {
+    pub(super) const fn new(
+        de: &'a mut TtlvDeserializer<'t>,
+        tag: &'t str,
+        struct_elements: &'t [TTLV],
     ) -> Self {
         ArrayDeserializer {
             de,
-            tag: tag.to_owned(),
+            tag,
             struct_elements,
         }
     }
 }
 
-impl<'a, 'de: 'a> SeqAccess<'de> for ArrayDeserializer<'a> {
+impl<'de> SeqAccess<'de> for ArrayDeserializer<'_, '_> {
     type Error = TtlvError;
 
     #[instrument(level = "trace", skip(self, seed))]
@@ -59,7 +59,7 @@ impl<'a, 'de: 'a> SeqAccess<'de> for ArrayDeserializer<'a> {
         }
 
         // deserialize the current element
-        let mut deserializer = TtlvDeserializer::from_ttlv(current_element.clone());
+        let mut deserializer = TtlvDeserializer::from_ttlv(current_element);
         // increment the current index
         self.de.child_index += 1;
         // deserialize the element

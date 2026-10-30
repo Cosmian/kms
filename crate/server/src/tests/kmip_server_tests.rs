@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
@@ -32,19 +30,15 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams,
-    core::KMS,
     error::KmsError,
     middlewares::UserId,
     result::{KResult, KResultHelper},
-    tests::test_utils::https_clap_config,
+    tests::test_utils::test_kms,
 };
 
 #[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // request key pair creation
@@ -210,9 +204,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let wrapped_symmetric_key = [0_u8; 32];
@@ -263,9 +255,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let request = symmetric_key_create_request(
@@ -320,9 +310,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 async fn test_database_user_tenant() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     // request key pair creation
@@ -397,9 +385,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 async fn test_register_operation() -> KResult<()> {
     cosmian_logger::log_init(None);
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let sym_key = create_symmetric_key_kmip_object(

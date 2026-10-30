@@ -1,19 +1,19 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
-        kmip_2_1::{
-            KmipOperation,
-            kmip_attributes::Attribute,
-            kmip_objects::ObjectType,
-            kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use std::sync::Arc;
+
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, State},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_objects::ObjectType,
+        kmip_operations::{ModifyAttribute, ModifyAttributeResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    time_normalize,
 };
 use cosmian_logger::{debug, trace};
 
+use super::policy::{check_grant, check_read_only, check_rotate_name, read_only_error};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -44,63 +44,17 @@ pub(crate) async fn modify_attribute(
     let object_handle = from_request(request.unique_identifier.as_ref(), "ModifyAttribute")?;
 
     // Read-only guard — must be checked before the DB round-trip.
-    //
-    // Every attribute below is marked "Modifiable by client: No" in its KMIP
-    // Attribute Rules table. Letting a client modify them would allow rewriting
-    // server-managed provenance — for example back-dating `Initial Date` to
-    // defeat an audit trail, or lowering `Cryptographic Length` so the metadata
-    // understates the real key strength.
-    match &request.new_attribute {
-        // KMIP 1.4 §3.1  / KMIP 2.1 §4.61 — Unique Identifier
-        Attribute::UniqueIdentifier(_)
-        // KMIP 1.4 §3.3  / KMIP 2.1 §4.36 — Object Type
-        | Attribute::ObjectType(_)
-        // KMIP 1.4 §3.5  / KMIP 2.1 §4.16 — Cryptographic Length
-        | Attribute::CryptographicLength(_)
-        // KMIP 1.4 §3.9  — Certificate Length
-        | Attribute::CertificateLength(_)
-        // KMIP 1.4 §3.17 / KMIP 2.1 §4.20 — Digest
-        | Attribute::Digest(_)
-        // KMIP 1.4 §3.22 / KMIP 2.1 §4.60 — State
-        | Attribute::State(_)
-        // KMIP 1.4 §3.23 / KMIP 2.1 §4.27 — Initial Date
-        | Attribute::InitialDate(_)
-        // KMIP 1.4 §3.34 / KMIP 2.1 §4.24 — Fresh
-        | Attribute::Fresh(_)
-        // KMIP 1.4 §3.38 / KMIP 2.1 §4.30 — Last Change Date
-        | Attribute::LastChangeDate(_)
-        // KMIP 1.4 §3.43 / KMIP 2.1 §4.38 — Original Creation Date
-        | Attribute::OriginalCreationDate(_)
-        // KMIP 1.4 §3.49 / KMIP 2.1 §4.3  — Always Sensitive
-        | Attribute::AlwaysSensitive(_)
-        // KMIP 1.4 §3.51 / KMIP 2.1 §4.33 — Never Extractable
-        | Attribute::NeverExtractable(_)
-        // Cosmian keyset rotation metadata is server-managed.
-        | Attribute::RotateGeneration(_)
-        | Attribute::RotateDate(_)
-        | Attribute::RotateLatest(_) => {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Attribute_Read_Only,
-                "DENIED: this attribute is server-managed and cannot be modified by the user"
-                    .to_owned(),
-            ));
-        }
-        Attribute::RotateName(name) if name.contains('@') => {
-            return Err(KmsError::InvalidRequest(
-                "ModifyAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
-                    .to_owned(),
-            ));
-        }
-        _ => {}
-    }
+    check_read_only(request.new_attribute.tag(), KmipOperation::ModifyAttribute)?;
+    check_rotate_name(&request.new_attribute, "ModifyAttribute")?;
 
-    let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
         KmipOperation::ModifyAttribute,
         kms,
         user,
     ))
     .await?;
+    let current_state = owm.state();
     trace!("ModifyAttribute: retrieved target object {}", owm.id());
 
     // For ActivationDate, KMIP spec §3.22 requires the object to be in Pre-Active state.
@@ -108,7 +62,6 @@ pub(crate) async fn modify_attribute(
     // in the past or equals the current time.
     let mut activate = false;
     if let Attribute::ActivationDate(_) = &request.new_attribute {
-        let current_state = owm.state();
         if current_state != State::PreActive {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
@@ -120,106 +73,35 @@ pub(crate) async fn modify_attribute(
         }
     }
 
-    let mut attributes = owm.attributes_mut().clone();
+    check_grant(
+        kms,
+        &owm,
+        user,
+        KmipOperation::ModifyAttribute,
+        &request.new_attribute,
+    )
+    .await?;
 
-    match_set_attribute! {
-        "ModifyAttribute", request.new_attribute, attributes,
+    let (id, mut object, mut attributes) = Arc::unwrap_or_clone(owm).into_parts();
+    with_common_simple_attributes! {
+        match_set_attribute! { "ModifyAttribute", request.new_attribute, attributes, }
         simple {
-            CryptographicAlgorithm => cryptographic_algorithm,
             CryptographicLength => cryptographic_length,
-            CryptographicParameters => cryptographic_parameters,
-            CryptographicDomainParameters => cryptographic_domain_parameters,
-            CryptographicUsageMask => cryptographic_usage_mask,
-            Digest => digest,
-            DeactivationDate => deactivation_date,
-            ObjectGroup => object_group,
-            ContactInformation => contact_information,
-            ObjectType => object_type,
-            UniqueIdentifier => unique_identifier,
-            X509CertificateSubject => x_509_certificate_subject,
-            X509CertificateIssuer => x_509_certificate_issuer,
-            AlternativeName => alternative_name,
-            ApplicationSpecificInformation => application_specific_information,
-            ArchiveDate => archive_date,
-            AttributeIndex => attribute_index,
-            CertificateAttributes => certificate_attributes,
-            CertificateType => certificate_type,
-            CertificateLength => certificate_length,
-            Comment => comment,
-            CompromiseDate => compromise_date,
-            CompromiseOccurrenceDate => compromise_occurrence_date,
-            Critical => critical,
             Description => description,
-            DestroyDate => destroy_date,
-            DigitalSignatureAlgorithm => digital_signature_algorithm,
-            Fresh => fresh,
-            InitialDate => initial_date,
-            KeyFormatType => key_format_type,
-            KeyValueLocation => key_value_location,
-            KeyValuePresent => key_value_present,
-            LastChangeDate => last_change_date,
-            LeaseTime => lease_time,
             NeverExtractable => never_extractable,
-            NistKeyType => nist_key_type,
-            ObjectGroupMember => object_group_member,
-            OpaqueDataType => opaque_data_type,
-            OriginalCreationDate => original_creation_date,
-            Pkcs12FriendlyName => pkcs_12_friendly_name,
-            ProcessStartDate => process_start_date,
-            ProtectStopDate => protect_stop_date,
-            ProtectionLevel => protection_level,
-            ProtectionPeriod => protection_period,
-            ProtectionStorageMasks => protection_storage_masks,
-            QuantumSafe => quantum_safe,
-            RandomNumberGenerator => random_number_generator,
-            RevocationReason => revocation_reason,
-            RotateAutomatic => rotate_automatic,
-            RotateDate => rotate_date,
-            RotateGeneration => rotate_generation,
-            RotateInterval => rotate_interval,
-            RotateLatest => rotate_latest,
-            RotateName => rotate_name,
-            RotateOffset => rotate_offset,
-            ShortUniqueIdentifier => short_unique_identifier,
-            UsageLimits => usage_limits,
-            X509CertificateIdentifier => x_509_certificate_identifier,
         }
         custom {
-            Attribute::AlwaysSensitive(_) => {
-                // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "DENIED: AlwaysSensitive is server-managed and cannot be modified by the user"
-                        .to_owned(),
-                ));
+            Attribute::AlwaysSensitive(_) | Attribute::State(_) => {
+                // Defensive: already refused by `check_read_only`.
+                return Err(read_only_error(KmipOperation::ModifyAttribute));
             }
             Attribute::Sensitive(sensitive) => {
-                if !kms
-                    .user_can_perform_operation(&owm, user, &KmipOperation::ModifyAttribute)
-                    .await?
-                {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED: modifying Sensitive attribute requires ownership or explicit ModifyAttribute grant"
-                            .to_owned(),
-                    ));
-                }
                 // Setting Sensitive also (re)computes the server-managed
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
                 trace!("ModifyAttribute: Sensitive: {:?}", sensitive);
                 attributes.apply_sensitive(sensitive);
             }
             Attribute::Extractable(extractable) => {
-                if !kms
-                    .user_can_perform_operation(&owm, user, &KmipOperation::ModifyAttribute)
-                    .await?
-                {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED: modifying Extractable attribute requires ownership or explicit ModifyAttribute grant"
-                            .to_owned(),
-                    ));
-                }
                 // Setting Extractable also (re)computes the server-managed
                 // NeverExtractable attribute (KMIP 2.1 §4.33).
                 trace!("ModifyAttribute: Extractable: {:?}", extractable);
@@ -263,49 +145,39 @@ pub(crate) async fn modify_attribute(
                     }
                 }
             }
-            Attribute::State(_state) => {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Attribute_Read_Only,
-                    "ModifyAttribute: State is a server-managed attribute and cannot be \
-                     modified directly. Use Revoke and Destroy to change the object state."
-                        .to_owned(),
-                ));
-            }
         }
     }
-
-    let tags = kms.database.retrieve_tags(owm.id()).await?;
+    let tags = kms.database.retrieve_tags(&id).await?;
 
     // Write modified attributes back into the embedded key-block attributes for key objects.
     // For objects whose key value is a raw ByteString (e.g. opaque SecretData), the key
     // block has no Structure variant and cannot store embedded attributes.  In that case we
     // skip the embedding — the attributes are persisted independently via update_object below.
-    match owm.object().object_type() {
+    match object.object_type() {
         ObjectType::PublicKey
         | ObjectType::PrivateKey
         | ObjectType::SplitKey
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
-                *object_attributes = attributes.clone();
+            if let Ok(object_attributes) = object.attributes_mut() {
+                object_attributes.clone_from(&attributes);
             }
         }
         _ => {}
     }
 
-    debug!("ModifyAttribute: persisting attributes for {}", owm.id());
+    debug!("ModifyAttribute: persisting attributes for {id}");
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
+        .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
-
     // Persist the state transition separately (dedicated DB column).
     if activate {
-        kms.database.update_state(owm.id(), State::Active).await?;
+        kms.database.update_state(&id, State::Active).await?;
     }
 
     Ok(ModifyAttributeResponse {
-        unique_identifier: Some(UniqueIdentifier::TextString(owm.id().to_owned())),
+        unique_identifier: Some(UniqueIdentifier::TextString(id)),
         echoed_attribute: None,
     })
 }

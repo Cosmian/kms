@@ -30,7 +30,7 @@ pub fn sign_rsa_digest_with_algorithm(
     raw_private_key: &[u8],
     algorithm: &str,
     digest_b64: &str,
-    _rsa_pss_salt_length: Option<i32>,
+    rsa_pss_salt_length: Option<i32>,
 ) -> CryptoResult<Vec<u8>> {
     // Validate the DER is a loadable private key (accept PKCS#8). If it fails, try PKCS#1.
     let private_key = match PKey::private_key_from_der(raw_private_key) {
@@ -60,8 +60,18 @@ pub fn sign_rsa_digest_with_algorithm(
             ));
         }
     };
-    ctx.set_rsa_padding(padding)?;
+    // Set the digest before the padding: selecting PSS first makes the FIPS provider
+    // initialise it with the (refused) SHA-1 default.
     ctx.set_signature_md(md)?;
+    ctx.set_rsa_padding(padding)?;
+    if padding == Padding::PKCS1_PSS {
+        // Google verifies RSASSA-PSS with MGF1 digest == message digest; the FIPS provider
+        // rejects the SHA-1 MGF1 it otherwise defaults to.
+        ctx.set_rsa_mgf1_md(md)?;
+        ctx.set_rsa_pss_saltlen(
+            rsa_pss_salt_length.map_or(RsaPssSaltlen::DIGEST_LENGTH, RsaPssSaltlen::custom),
+        )?;
+    }
 
     let digest = general_purpose::STANDARD
         .decode(digest_b64)
@@ -91,6 +101,11 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             h
         } else {
             match digital_signature_algorithm {
+                // Only rejected in FIPS builds (checked below, once
+                // `effective_hash` is known); non-FIPS builds support
+                // SHA-1 RSA-PKCS1v1.5 signing, matching
+                // `sign_rsa_digest_with_algorithm`'s "SHA1withRSA" support.
+                DigitalSignatureAlgorithm::SHA1WithRSAEncryption => KmipHash::SHA1,
                 DigitalSignatureAlgorithm::RSASSAPSS
                 | DigitalSignatureAlgorithm::SHA256WithRSAEncryption => KmipHash::SHA256,
                 DigitalSignatureAlgorithm::SHA384WithRSAEncryption => KmipHash::SHA384,

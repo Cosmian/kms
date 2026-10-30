@@ -12,7 +12,11 @@ on:
 jobs:
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      # The `secrets` context is unavailable in step-level `if:`; expose via env instead.
+      # Empty on fork pull requests (secrets withheld) -> login is skipped, pulls stay anonymous.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +35,7 @@ jobs:
           - ui
           - gcp-cmek
           - openssh
+          - gnupg
           - luks
           - veracrypt
           - jose
@@ -43,11 +48,18 @@ jobs:
           - cef
           - monitoring
           - ocsp
+          - scep-interop
+          - est-interop
           - pki-revocation
           - siem
           - audit
+          # Azure Cloud HSM loader compilation does not require a live HSM.
+          - azure-cloud-hsm-build
         features: [fips, non-fips]
         exclude:
+          # kryoptic-conformance only needs to be validated once (fips)
+          - type: hsm-kryoptic-conformance
+            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
             features: fips
@@ -62,6 +74,9 @@ jobs:
             features: fips
           # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
           - type: openssh
+            features: fips
+          # gnupg OpenPGP tests force non-fips
+          - type: gnupg
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
@@ -115,10 +130,11 @@ jobs:
           # use docker run internally and do not need a pre-started compose service.
           - type: siem
             docker: elasticsearch
-          # audit test has no external Docker dependencies (uses KMS binary directly).
+          # audit test has no external Docker dependencies from the matrix: the task starts its
+          # own `postgres-audit` container (docker-compose.yml) for the PostgreSQL backend tests.
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -127,6 +143,13 @@ jobs:
       - uses: ./.github/actions/setup-nix
 
       - uses: ./.github/actions/install-mise
+
+      - name: Docker login (Docker Hub)
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Run docker containers
         if: matrix.docker
@@ -200,12 +223,22 @@ jobs:
           set -ex
           mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
+      # PKCS#11 support report: exhaustive ckms pkcs11 capabilities smoke test
+      # (442 mechanisms / 92 functions against a live sqlite KMS server). Runs
+      # once (non-fips only, since cosmian_pkcs11 needs --features non-fips),
+      # piggybacking on the `ase` matrix combination to avoid a separate,
+      # colon-containing matrix value (which the yamlfmt pre-commit hook mangles).
+      - name: 'Test (PKCS#11 support report: ckms pkcs11 capabilities)'
+        if: matrix.type == 'ase' && matrix.features == 'non-fips'
+        run: |
+          mise run test:pkcs11:support --variant non-fips
+
   # Test types that depend on upstream-only secrets / external services. Kept out of
   # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
   # job is skipped on forks, where those secrets do not exist.
   test-nix-upstream:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
@@ -229,7 +262,7 @@ jobs:
             features: fips
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -267,9 +300,9 @@ jobs:
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
-    # Hardware HSMs (proteccio, crypt2pay, aws-cloudhsm) run in the `hsm-upstream` job.
+    # Hardware HSMs (proteccio, crypt2pay, azure-cloud-hsm, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
     concurrency:
       group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
       queue: max
@@ -279,36 +312,46 @@ jobs:
       matrix:
         hsm-type:
           - utimaco
+          - crypt2pay-simulator
           - softhsm2
+          - kryoptic
         features: [fips, non-fips]
+        exclude:
+          # Kryoptic HSM backend always built in non-fips
+          - hsm-type: kryoptic
+            features: fips
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
-
       - uses: ./.github/actions/cleanup-runner
-
       - uses: ./.github/actions/setup-nix
-
       - uses: ./.github/actions/install-mise
-
       - name: Test
-        env:
-          # Google variables
-          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      - name: Bench (PKCS#11 load, HSM-delegated)
+        run: |
+          mise run bench:pkcs11 --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
+
+      - name: Bench (HSM-delegated)
+        run: |
+          mise run bench:hsm --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
+
+      # The comprehensive provider suite and pkcs11-check require non-FIPS.
+      - name: Test (PKCS#11 v3 conformance via pkcs11-tool and pkcs11-check)
+        if: matrix.features == 'non-fips'
+        run: |
+          mise run test:hsm-pkcs11-tool --variant non-fips --marker smoke
+
   # Hardware HSMs reachable only with upstream-only secrets and infrastructure (Proteccio
-  # network HSM, Crypt2Pay over OpenVPN, the AWS CloudHSM CI cluster). They live in their
+  # network HSM, Crypt2Pay over OpenVPN, the Azure Cloud HSM CI cluster). They live in their
   # own job (a job-level `if` cannot read the `matrix` context) and are skipped on forks.
   hsm-upstream:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
@@ -325,22 +368,30 @@ jobs:
         hsm-type:
           - proteccio
           - crypt2pay
+          # aws-cloudhsm, gcp-cloud-hsm and azure-cloud-hsm clusters are torn down after
+          # validation to limit cloud costs; re-enable once a cluster is provisioned again.
           # - aws-cloudhsm
+          # - gcp-cloud-hsm
+          # - azure-cloud-hsm
+          # Thales Luna: no network HSM partition or proprietary Luna Client is reachable from
+          # CI; validated manually against a Luna appliance (`mise run test:hsm-luna`).
+          # Re-enable once a CI partition and LUNA_* secrets are provisioned.
+          # - luna
         # non-fips only: parallel connections on proteccio are not supported, non-fips is
-        # sufficient for crypt2pay, and aws-cloudhsm FIPS-mode compatibility is not yet
-        # confirmed against the cluster's supported mechanism list.
+        # sufficient for crypt2pay, and aws-cloudhsm/azure-cloud-hsm/gcp-cloud-hsm FIPS-mode compatibility
+        # is not yet confirmed against the clusters' supported mechanism lists.
         features: [non-fips]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
-
       - uses: ./.github/actions/cleanup-runner
-
       - uses: ./.github/actions/setup-nix
-
       - uses: ./.github/actions/install-mise
+
+      - name: Install OpenVPN
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openvpn
 
       - name: Test
         env:
@@ -366,27 +417,68 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+          # Azure Cloud HSM: prepare_azure_cloudhsm.sh installs the client SDK and
+          # starts azcloudhsm_client (see crate/hsm/azure_cloud_hsm/README.md).
+          AZURE_CLOUD_HSM_PO_CERT: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_PO_CERT }}
+          AZURE_CLOUD_HSM_HOSTNAME: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HOSTNAME }}
+          # GitHub-hosted runners cannot resolve *.privatelink.cloudhsm.azure.net or
+          # route to the HSM's private VNet IP; prepare_azure_cloudhsm.sh maps the
+          # hostname and starts a VPN tunnel only if the HSM is not already reachable.
+          AZURE_CLOUD_HSM_HSM_IP: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IP }}
+          # Space-separated private IPs of every cluster node (not just the primary
+          # above): azcloudhsm_client dials siblings directly by IP once logged in,
+          # bypassing azcloudhsm_resource.cfg/hostname mapping, so the VPN route must
+          # reach all of them or key generation fails quorum ("Required number of
+          # servers(3) not available"). Optional: skipped (return 0) if unset.
+          AZURE_CLOUD_HSM_HSM_IPS: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_HSM_IPS }}
+          AZURE_CLOUD_HSM_OVPN_CONF: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_OVPN_CONF }}
+          AZURE_CLOUD_HSM_USER_PASSWORD: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_USER_PASSWORD }}
+          AZURE_CLOUD_HSM_SLOT_ID: ${{ secrets.KMS_CI_AZURE_CLOUD_HSM_SLOT_ID }}
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # Same HSM, same concurrency group: deploys the KMS with the documented Helm values
+      # (docs/hsm_support/<model>.md) on minikube, with the FIPS and non-FIPS images.
+      - name: Install Helm
+        if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Start Minikube
+        if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Test Kubernetes deployment (FIPS and non-FIPS images)
+        if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
+        env:
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+        run: |
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant fips
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant non-fips
+
   helm:
     name: Helm chart E2E (minikube)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
       - uses: ./.github/actions/install-mise
 
       - name: Install Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.21
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.30.0
@@ -401,7 +493,7 @@ jobs:
 
   xks-remote:
     name: AWS XKS — remote server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
       group: xks-remote
@@ -416,11 +508,11 @@ jobs:
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     steps:
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: 1.97.0
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
@@ -458,6 +550,43 @@ jobs:
           AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
         run: bash .mise/scripts/test/test_xks_aws_e2e.sh
 
+  # EST / SCEP interoperability against third-party clients (micromdm scepclient, globalsign
+  # estclient) on macOS; Linux runs them in the `test-nix` matrix.
+  interop-macos:
+    name: Interop (macOS) - ${{ matrix.type }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [scep-interop, est-interop]
+
+    steps:
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ inputs.toolchain || '1.97.0' }}
+          components: rustfmt, clippy
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      # estclient / scepclient are Go programs built by the interop scripts
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      - name: Interop test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -ex
+          mise run test:${{ matrix.type }} --variant fips
+
   windows-2022:
     # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
     if: >-
@@ -469,18 +598,12 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
 
-  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.). The publication will be done on tags only.
-  cargo-publish:
-    needs:
-      - test-nix
-      - test-nix-upstream
-      - hsm
-      - hsm-upstream
-      - helm
-    # The upstream-only jobs are skipped on forks: a skipped dependency must not skip the
-    # publish dry-run, but any failed or cancelled dependency still blocks it.
+  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.).
+  # cargo-publish.yml does a dry run off-tag and a real publish on tags, so it is called twice:
+  # the (long) dry run starts immediately, the real publish only once every test job passed.
+  cargo-publish-dry-run:
     if: >-
-      !failure() && !cancelled() &&
+      !startsWith(github.ref, 'refs/tags/') &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/cargo-publish.yml
@@ -489,12 +612,37 @@ jobs:
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
+  cargo-publish:
+    needs:
+      - test-nix
+      - test-nix-upstream
+      - hsm
+      - hsm-upstream
+      - helm
+    # Real publish, tags only: a skipped dependency (upstream-only jobs on forks) must not skip
+    # it, but any failed or cancelled dependency blocks it.
+    if: >-
+      startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
+    uses: ./.github/workflows/cargo-publish.yml
+    with:
+      toolchain: 1.97.0
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
+
   cleanup:
     needs:
+      - cargo-publish-dry-run
       - cargo-publish
+      - test-nix
+      - test-nix-upstream
+      - hsm
+      - hsm-upstream
+      - helm
+      - windows-2022
+      - interop-macos
     if: >-
       always() &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
-    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
     secrets: inherit

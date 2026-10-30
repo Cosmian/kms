@@ -2,7 +2,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operatio
     RNGRetrieve, RNGRetrieveResponse,
 };
 use cosmian_logger::trace;
-use openssl::rand::rand_bytes;
 
 use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
@@ -14,7 +13,7 @@ const MAX_RNG_RETRIEVE: usize = 64 * 1024; // 64 KiB
 /// Generates cryptographically secure random bytes. If RNG Parameters are
 /// provided they are currently accepted but not used to alter generation.
 pub(crate) async fn rng_retrieve(
-    _kms: &KMS,
+    kms: &KMS,
     request: RNGRetrieve,
     _user: &UserId,
 ) -> KResult<RNGRetrieveResponse> {
@@ -33,33 +32,29 @@ pub(crate) async fn rng_retrieve(
         return Ok(RNGRetrieveResponse { data: Vec::new() });
     }
 
-    // Always fill with OpenSSL RAND_bytes directly (simplest behavior)
+    // RNGRetrieve output is handed to clients: use the public DRBG, never the private one
+    // that generates keys.
     let mut data = vec![0_u8; req_len];
-    rand_bytes(&mut data)
-        .map_err(|e| KmsError::InvalidRequest(format!("RAND_bytes failed: {e}")))?;
+    kms.rng
+        .fill_public_bytes(&mut data)
+        .map_err(|e| KmsError::ServerError(format!("KmsRng failed: {e}")))?;
     Ok(RNGRetrieveResponse { data })
 }
 
 #[cfg(test)]
 #[allow(clippy::panic)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::RNGRetrieve;
 
     use crate::{
-        config::ServerParams,
-        core::{KMS, operations::rng_retrieve},
-        error::KmsError,
-        middlewares::UserId,
-        result::KResult,
-        tests::test_utils::https_clap_config,
+        core::operations::rng_retrieve, error::KmsError, middlewares::UserId, result::KResult,
+        tests::test_utils::test_kms,
     };
 
     #[tokio::test]
     async fn rng_retrieve_openssl_only_returns_length() -> KResult<()> {
-        let clap_config = https_clap_config();
-        let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+        let kms = test_kms().await?;
         // Intentionally no owner reference needed in this unit test.
 
         let resp0 =

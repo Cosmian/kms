@@ -1,19 +1,22 @@
 use std::{
     num::NonZeroUsize,
     ptr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use cosmian_logger::{debug, warn};
 use lru::LruCache;
 use pkcs11_sys::{
     CK_FLAGS, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
-    CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_OK, CKR_USER_ALREADY_LOGGED_IN,
-    CKU_USER,
+    CK_SLOT_ID, CK_ULONG, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKR_ARGUMENTS_BAD, CKR_OK,
+    CKR_USER_ALREADY_LOGGED_IN, CKU_USER,
 };
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use zeroize::Zeroizing;
 
 use crate::{
     HError, HResult, Session, hsm_call, hsm_capabilities::HsmCapabilities, hsm_lib::HsmLib,
+    session::message_context::MessageMechanismSupport,
 };
 
 /// A cache structure that maps byte vectors to `CK_OBJECT_HANDLE` values using an LRU (Least Recently Used) strategy.
@@ -24,7 +27,10 @@ use crate::{
 ///
 /// The LRU cache automatically removes the least recently accessed entries when it reaches its capacity,
 /// helping to manage memory usage while maintaining quick access to frequently used handles.
-pub struct ObjectHandlesCache(Mutex<LruCache<Vec<u8>, CK_OBJECT_HANDLE>>);
+pub struct ObjectHandlesCache {
+    handles: Mutex<LruCache<Vec<u8>, CK_OBJECT_HANDLE>>,
+    metadata: Mutex<LruCache<CK_OBJECT_HANDLE, cosmian_kms_interfaces::SigningKeyMetadata>>,
+}
 
 impl Default for ObjectHandlesCache {
     fn default() -> Self {
@@ -37,13 +43,16 @@ impl ObjectHandlesCache {
     pub fn new() -> Self {
         #[expect(unsafe_code)]
         let max = unsafe { NonZeroUsize::new_unchecked(100) };
-        Self(Mutex::new(LruCache::new(max)))
+        Self {
+            handles: Mutex::new(LruCache::new(max)),
+            metadata: Mutex::new(LruCache::new(max)),
+        }
     }
 
     /// Get the object handle for the specified key.
     pub fn get(&self, key: &[u8]) -> HResult<Option<CK_OBJECT_HANDLE>> {
         Ok(self
-            .0
+            .handles
             .lock()
             .map_err(|e| {
                 HError::Default(format!(
@@ -54,9 +63,43 @@ impl ObjectHandlesCache {
             .copied())
     }
 
+    /// Get cached signing key metadata for the specified handle.
+    pub fn get_metadata(
+        &self,
+        handle: CK_OBJECT_HANDLE,
+    ) -> HResult<Option<cosmian_kms_interfaces::SigningKeyMetadata>> {
+        Ok(self
+            .metadata
+            .lock()
+            .map_err(|e| {
+                HError::Default(format!(
+                    "Failed to acquire lock on object metadata cache: {e}"
+                ))
+            })?
+            .get(&handle)
+            .cloned())
+    }
+
+    /// Insert cached signing key metadata for the specified handle.
+    pub fn insert_metadata(
+        &self,
+        handle: CK_OBJECT_HANDLE,
+        meta: cosmian_kms_interfaces::SigningKeyMetadata,
+    ) -> HResult<()> {
+        self.metadata
+            .lock()
+            .map_err(|e| {
+                HError::Default(format!(
+                    "Failed to acquire lock on object metadata cache: {e}"
+                ))
+            })?
+            .put(handle, meta);
+        Ok(())
+    }
+
     /// Insert a new object handle into the cache.
     pub fn insert(&self, key: Vec<u8>, value: CK_OBJECT_HANDLE) -> HResult<()> {
-        self.0
+        self.handles
             .lock()
             .map_err(|e| {
                 HError::Default(format!(
@@ -69,29 +112,75 @@ impl ObjectHandlesCache {
 
     /// Remove an object handle from the cache.
     pub fn remove(&self, key: &[u8]) -> HResult<()> {
-        self.0
-            .lock()
-            .map_err(|e| {
-                HError::Default(format!(
-                    "Failed to acquire lock on object handle cache: {e}"
-                ))
-            })?
-            .pop(key);
+        if let Ok(mut lock) = self.handles.lock() {
+            if let Some(handle) = lock.pop(key) {
+                if let Ok(mut meta_lock) = self.metadata.lock() {
+                    meta_lock.pop(&handle);
+                }
+            }
+        }
         Ok(())
     }
 
     /// Remove all object handles from the cache.
     pub fn clear(&self) -> HResult<()> {
-        self.0
-            .lock()
-            .map_err(|e| {
-                HError::Default(format!(
-                    "Failed to acquire lock on object handle cache: {e}"
-                ))
-            })?
-            .clear();
+        if let Ok(mut lock) = self.handles.lock() {
+            lock.clear();
+        }
+        if let Ok(mut meta_lock) = self.metadata.lock() {
+            meta_lock.clear();
+        }
         Ok(())
     }
+}
+
+/// A checked-out HSM session that is returned to its slot pool only after a
+/// successful operation.
+///
+/// Dropping the guard without calling [`Self::checkin`] drops the underlying
+/// session, which closes it instead of returning a potentially failed session
+/// to the pool.
+pub(crate) struct SessionGuard<'a> {
+    slot: &'a SlotManager,
+    session: Option<Session>,
+    _permit: OwnedSemaphorePermit,
+}
+
+impl<'a> SessionGuard<'a> {
+    /// Wrap a session checked out from `slot`, together with its concurrency permit.
+    ///
+    /// The permit is released exactly when this guard is dropped, either after `checkin`
+    /// or when an operation fails and the checked-out session is closed.
+    pub(crate) const fn new(
+        slot: &'a SlotManager,
+        session: Session,
+        permit: OwnedSemaphorePermit,
+    ) -> Self {
+        Self {
+            slot,
+            session: Some(session),
+            _permit: permit,
+        }
+    }
+
+    /// Borrow the checked-out session while it remains owned by this guard.
+    pub(crate) fn session(&self) -> HResult<&Session> {
+        self.session
+            .as_ref()
+            .ok_or_else(|| HError::Default("HSM session guard is empty".to_owned()))
+    }
+
+    /// Return a successfully used session to its slot pool.
+    pub(crate) fn checkin(mut self) {
+        if let Some(session) = self.session.take() {
+            self.slot.checkin_session(session);
+        }
+    }
+}
+
+struct LoginSessionState {
+    password: Option<Zeroizing<String>>,
+    session: Option<Session>,
 }
 
 /// A manager for a specific PKCS#11 slot in a Hardware Security Module (HSM).
@@ -105,7 +194,8 @@ impl ObjectHandlesCache {
 /// * `slot_id` - The unique identifier for this HSM slot
 /// * `object_handles_cache` - A thread-safe cache of object handles for this slot
 /// * `supported_oaep_hash_cache` - A thread-safe cache of supported hashing algorithms for rsa oaep
-/// * `_login_session` - An optional authenticated session with the HSM slot
+/// * `message_mechanism_support` - Mechanisms the token rejected for the message-signature API
+/// * `login_state` - the optional password and lazily opened authenticated session
 ///
 /// The `SlotManager` is responsible for coordinating operations on a specific HSM slot,
 /// including session management and object handle caching.
@@ -114,13 +204,21 @@ pub struct SlotManager {
     slot_id: usize,
     object_handles_cache: Arc<ObjectHandlesCache>,
     supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-    _login_session: Option<Session>,
+    message_mechanism_support: Arc<Mutex<MessageMechanismSupport>>,
+    login_state: Mutex<LoginSessionState>,
+    session_pool: Arc<Mutex<Vec<Session>>>,
     hsm_capabilities: HsmCapabilities,
+    /// Bounds the number of PKCS#11 sessions concurrently checked out for this slot.
+    /// Acquired (async) before every pooled session checkout; see `acquire_session_permit`.
+    session_semaphore: Arc<Semaphore>,
+    /// Supported algorithms, computed once: the mechanism list does not change while the
+    /// slot is open, and querying it costs a session open/close plus PKCS#11 round-trips.
+    pub(crate) supported_algorithms: OnceLock<Vec<cosmian_kms_interfaces::CryptoAlgorithm>>,
 }
 
 impl SlotManager {
     /// Create a new `SlotManager` instance for the specified slot.
-    /// If a login password is provided, the HSM will authenticate the slot.
+    /// If a login password is provided, the slot authenticates when its first session is opened.
     ///
     /// # Arguments
     /// * `hsm_lib` - A thread-safe reference to the HSM library interface.
@@ -131,13 +229,10 @@ impl SlotManager {
     /// * `PResult<SlotManager>` - A result containing the `SlotManager` instance.
     ///
     /// # Errors
-    /// * An error is returned if the slot cannot be opened or authenticated.
-    /// * An error is returned if the HSM library does not support the necessary functions.
-    /// * If the HSM returns an error during session creation or login, an error is returned.
+    /// * An error is returned if the configured password cannot authenticate the first session.
     ///
-    /// # Safety
-    /// This function calls unsafe FFI functions from the HSM library to open a session and authenticate the slot.
-    /// The function is safe to call, but care must be taken when using the resulting `SlotManager` instance.
+    /// PKCS#11 session creation and login are deferred until `open_session`, so callers can
+    /// initialize a slot without performing FFI on an async executor.
     pub fn instantiate(
         hsm_lib: Arc<HsmLib>,
         slot_id: usize,
@@ -146,34 +241,30 @@ impl SlotManager {
     ) -> HResult<Self> {
         let object_handles_cache = Arc::new(ObjectHandlesCache::new());
         let supported_oaep_hash_cache = Arc::new(Mutex::new(None));
-        if let Some(password) = login_password {
-            let login_session = Self::open_session_(
-                &hsm_lib,
-                slot_id,
-                false,
-                object_handles_cache.clone(),
-                supported_oaep_hash_cache.clone(),
-                Some(&password),
-                hsm_capabilities.clone(),
-            )?;
-            Ok(Self {
-                hsm_lib,
-                slot_id,
-                object_handles_cache,
-                supported_oaep_hash_cache,
-                _login_session: Some(login_session),
-                hsm_capabilities,
-            })
-        } else {
-            Ok(Self {
-                hsm_lib,
-                slot_id,
-                object_handles_cache,
-                supported_oaep_hash_cache,
-                _login_session: None,
-                hsm_capabilities,
-            })
-        }
+        let message_mechanism_support = Arc::new(Mutex::new(MessageMechanismSupport::default()));
+        let session_pool = Arc::new(Mutex::new(Vec::new()));
+        let session_semaphore = Arc::new(Semaphore::new(hsm_capabilities.max_concurrent_sessions));
+        Ok(Self {
+            hsm_lib,
+            slot_id,
+            object_handles_cache,
+            supported_oaep_hash_cache,
+            message_mechanism_support,
+            login_state: Mutex::new(LoginSessionState {
+                password: login_password.map(Zeroizing::new),
+                session: None,
+            }),
+            session_pool,
+            hsm_capabilities,
+            session_semaphore,
+            supported_algorithms: OnceLock::new(),
+        })
+    }
+
+    /// Get the HSM capabilities configured for this slot manager.
+    #[must_use]
+    pub const fn capabilities(&self) -> &HsmCapabilities {
+        &self.hsm_capabilities
     }
 
     /// Retrieve the list of supported cryptographic mechanisms for this HSM slot.
@@ -256,6 +347,25 @@ impl SlotManager {
         Ok(info)
     }
 
+    fn ensure_login_session(&self) -> HResult<()> {
+        let mut login_state = self
+            .login_state
+            .lock()
+            .map_err(|e| HError::Default(format!("Failed to lock HSM login state: {e}")))?;
+        if login_state.session.is_none() {
+            if let Some(password) = login_state.password.take() {
+                match self.open_session_(false, Some(password.as_str())) {
+                    Ok(session) => login_state.session = Some(session),
+                    Err(error) => {
+                        login_state.password = Some(password);
+                        return Err(error);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Open a new session with the HSM slot.
     /// The session can be read-only or read-write, depending on the `read_write` parameter.
     /// # Arguments
@@ -274,27 +384,68 @@ impl SlotManager {
     /// The function is safe to call, but care must be taken when using the resulting Session instance.
     /// The session is automatically closed when the Session instance is dropped.
     pub fn open_session(&self, read_write: bool) -> HResult<Session> {
-        Self::open_session_(
-            &self.hsm_lib,
-            self.slot_id,
-            read_write,
-            self.object_handles_cache.clone(),
-            self.supported_oaep_hash_cache.clone(),
-            None, // Do Not Log In
-            self.hsm_capabilities.clone(),
-        )
+        self.ensure_login_session()?;
+        self.open_session_(read_write, None)
     }
 
-    fn open_session_(
-        hsm_lib: &Arc<HsmLib>,
-        slot_id: usize,
-        read_write: bool,
-        object_handles_cache: Arc<ObjectHandlesCache>,
-        supported_oaep_hash_cache: Arc<Mutex<Option<Vec<CK_MECHANISM_TYPE>>>>,
-        login_password: Option<&String>,
-        hsm_capabilities: HsmCapabilities,
-    ) -> HResult<Session> {
-        let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(slot_id)?;
+    /// Acquire a bounded concurrency permit for this slot before checking out a session.
+    ///
+    /// Every pooled session checkout (`checkout_session`) must be preceded by acquiring this
+    /// permit from the calling async context, keeping the number of concurrently in-flight
+    /// PKCS#11 operations for this slot bounded by `HsmCapabilities::max_concurrent_sessions`
+    /// instead of growing unboundedly under load. The returned permit must be held for the
+    /// entire lifetime of the checked-out session (see `SessionGuard`) and released only when
+    /// the session is returned or dropped.
+    ///
+    /// # Errors
+    /// Returns an error only if the semaphore has been closed, which never happens in this
+    /// codebase (nothing calls `Semaphore::close`).
+    pub(crate) async fn acquire_session_permit(&self) -> HResult<OwnedSemaphorePermit> {
+        self.session_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| HError::Default(format!("HSM session semaphore closed unexpectedly: {e}")))
+    }
+
+    /// Checkout for `sign`/`verify`: keeps any message context left open on the pooled
+    /// session so consecutive signatures with the same key reuse it.
+    ///
+    /// The pool only ever holds read-write sessions, so callers can never receive a
+    /// session with different access rights than the ones it was opened with.
+    pub fn checkout_session_for_signature(&self) -> HResult<Session> {
+        let pooled = {
+            let mut pool = self
+                .session_pool
+                .lock()
+                .map_err(|e| HError::Default(format!("Failed to lock session pool: {e}")))?;
+            pool.pop()
+        };
+        pooled.map_or_else(|| self.open_session(true), Ok)
+    }
+
+    /// Checkout for every other operation: closes message contexts first, because a token
+    /// may refuse other operations while one is active (`CKR_OPERATION_ACTIVE`).
+    pub fn checkout_session(&self) -> HResult<Session> {
+        let session = self.checkout_session_for_signature()?;
+        // shortcut: mixed sign/other workloads re-init message contexts after each non-sign checkout; add a dedicated signing pool if that churn shows up in benchmarks.
+        session.end_message_operations();
+        Ok(session)
+    }
+
+    /// Return a healthy session to the pool for reuse.
+    pub fn checkin_session(&self, session: Session) {
+        if let Ok(mut pool) = self.session_pool.lock() {
+            if pool.len() < self.hsm_capabilities.max_concurrent_sessions {
+                pool.push(session);
+            }
+            // Otherwise session drops and closes
+        }
+    }
+
+    fn open_session_(&self, read_write: bool, login_password: Option<&str>) -> HResult<Session> {
+        let hsm_lib = &self.hsm_lib;
+        let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(self.slot_id)?;
         let flags: CK_FLAGS = if read_write {
             CKF_RW_SESSION | CKF_SERIAL_SESSION
         } else {
@@ -320,10 +471,12 @@ impl SlotManager {
 
         if let Some(login_password) = login_password {
             debug!("Logging in session {session_handle} with password");
-            let mut pwd_bytes = login_password.as_bytes().to_vec();
+            let mut pwd_bytes = Zeroizing::new(login_password.as_bytes().to_vec());
 
             #[expect(unsafe_code)]
-            let rv = unsafe {
+            // SAFETY: `pwd_bytes` is a live owned buffer of exactly `pwd_bytes.len()` bytes (null when
+            // empty), outliving the call; `session_handle` was just returned by `C_OpenSession`.
+            let mut rv = unsafe {
                 hsm_lib
                     .C_Login
                     .ok_or_else(|| HError::Default("C_Login not available on library".to_owned()))?(
@@ -337,6 +490,37 @@ impl SlotManager {
                     CK_ULONG::try_from(pwd_bytes.len())?,
                 )
             };
+            if rv == CKR_ARGUMENTS_BAD {
+                if let (Some(login_user), Some((username, password))) =
+                    (hsm_lib.C_LoginUser, login_password.split_once(':'))
+                {
+                    let mut username_bytes = Zeroizing::new(username.as_bytes().to_vec());
+                    let mut password_bytes = Zeroizing::new(password.as_bytes().to_vec());
+                    #[expect(unsafe_code)]
+                    {
+                        // SAFETY: both buffers are live owned vectors passed with their exact
+                        // lengths (null when empty) and outlive the `C_LoginUser` call.
+                        rv = unsafe {
+                            login_user(
+                                session_handle,
+                                CKU_USER,
+                                if password_bytes.is_empty() {
+                                    ptr::null_mut()
+                                } else {
+                                    password_bytes.as_mut_ptr()
+                                },
+                                CK_ULONG::try_from(password_bytes.len())?,
+                                if username_bytes.is_empty() {
+                                    ptr::null_mut()
+                                } else {
+                                    username_bytes.as_mut_ptr()
+                                },
+                                CK_ULONG::try_from(username_bytes.len())?,
+                            )
+                        };
+                    }
+                }
+            }
             if rv == CKR_USER_ALREADY_LOGGED_IN {
                 warn!("user already logged in, ignoring logging");
             } else if rv != CKR_OK {
@@ -349,10 +533,11 @@ impl SlotManager {
         Ok(Session::new(
             hsm_lib.clone(),
             session_handle,
-            object_handles_cache,
-            supported_oaep_hash_cache,
+            self.object_handles_cache.clone(),
+            self.supported_oaep_hash_cache.clone(),
+            self.message_mechanism_support.clone(),
             login_password.is_some(),
-            hsm_capabilities,
+            self.hsm_capabilities.clone(),
         ))
     }
 }

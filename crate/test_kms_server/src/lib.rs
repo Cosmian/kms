@@ -9,13 +9,13 @@ pub use test_server::{
     TestClientOptions, TestsContext, hsm_config_path, start_ceremony_test_kms_server,
     start_default_test_kms_server, start_default_test_kms_server_with_cert_auth,
     start_default_test_kms_server_with_crypto_officer_users,
+    start_default_test_kms_server_with_hsm_and_kek,
+    start_default_test_kms_server_with_hsm_and_kek_for_vectors,
+    start_default_test_kms_server_with_hsm_for_vectors,
+    start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors,
     start_default_test_kms_server_with_jwt_auth,
     start_default_test_kms_server_with_multi_crypto_officer_users,
     start_default_test_kms_server_with_non_revocable_key_ids,
-    start_default_test_kms_server_with_softhsm2_and_kek,
-    start_default_test_kms_server_with_softhsm2_and_kek_for_vectors,
-    start_default_test_kms_server_with_softhsm2_for_vectors,
-    start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors,
     start_default_test_kms_server_with_three_softhsm2,
     start_default_test_kms_server_with_utimaco_and_kek,
     start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
@@ -28,6 +28,8 @@ mod test_server;
 mod test_jwt;
 
 pub mod test_env;
+
+pub mod mock_gmail;
 
 pub mod vector_runner;
 
@@ -64,6 +66,14 @@ mod auth_verifier_tests;
 
 #[cfg(test)]
 mod openapi_validation;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pgp_gnupg_tests;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pgp_tests;
 
 #[cfg(test)]
 #[cfg(feature = "non-fips")]

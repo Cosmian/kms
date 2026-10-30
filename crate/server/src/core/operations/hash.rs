@@ -56,33 +56,33 @@ pub(crate) async fn hash_operation(
 
     let hash = compute_hash(&data, algorithm, request.correlation_value)?;
 
+    let (data, correlation_value) = if request.init_indicator.unwrap_or(false) {
+        (None, Some(hash))
+    } else {
+        (Some(hash), None)
+    };
+
     Ok(HashResponse {
-        data: (!request.init_indicator.unwrap_or(false)).then_some(hash.clone()),
-        correlation_value: request.init_indicator.unwrap_or(false).then_some(hash),
+        data,
+        correlation_value,
     })
 }
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{kmip_operations::Hash, kmip_types::CryptographicParameters},
     };
 
-    use crate::{
-        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-        tests::test_utils::https_clap_config,
-    };
+    use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
 
         let expected_hash = vec![
             253, 23, 128, 166, 252, 158, 224, 218, 178, 108, 235, 75, 57, 65, 171, 3, 230, 108,
@@ -117,9 +117,7 @@ mod tests {
     #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation_with_correlation() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
 
         // Test with correlation value and init indicator
         let request = Hash {

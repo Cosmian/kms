@@ -8,6 +8,27 @@ This operation requests the server to either add or modify an attribute. The req
 
 This operation can be applied to all [supported objects](../objects.md). One or more attributes can be set at once. The operation is idempotent, meaning that if the attribute is already set, the operation will not fail.
 
+### Read-only attributes
+
+The following attributes are **read-only** for `SetAttribute` (KMIP 2.1 §6.1.51). Any attempt returns a
+`Read_Only_Attribute` error before the object is touched:
+
+- `UniqueIdentifier`, `ObjectType`, `ShortUniqueIdentifier`, `KeyFormatType`, `KeyValuePresent`, `OpaqueDataType`
+- `CryptographicAlgorithm`, `CryptographicDomainParameters`, `CryptographicLength`, `DigitalSignatureAlgorithm`,
+  `NISTKeyType`, `Digest`, `RandomNumberGenerator`, `ProtectionStorageMasks`
+- `CertificateType`, `CertificateLength`, `CertificateAttributes`, `X509CertificateIdentifier`,
+  `X509CertificateSubject`, `X509CertificateIssuer`
+- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `ArchiveDate`, `DestroyDate`, `CompromiseDate`,
+  `CompromiseOccurrenceDate`, `Fresh`
+- `State` (use Revoke and Destroy to change it)
+- `AlwaysSensitive`, `NeverExtractable`
+- `RotateGeneration`, `RotateDate`, `RotateLatest`
+
+`AddAttribute` refuses the same attributes, plus `RotateAutomatic`, with the same `Read_Only_Attribute` error.
+
+`Sensitive` and `Extractable` can be set only by the object owner or by a user holding an explicit `SetAttribute`
+grant.
+
 ## Example - A symmetric key
 
 Set an attribute of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.

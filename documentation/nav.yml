@@ -9,16 +9,30 @@ nav:
   - PKI Support:
       - Introduction: use_cases/pki.md
       - Revocation & CRL Distribution: use_cases/pki-revocation.md
+      - Delegated sub-CA with an HSM key: use_cases/pki-sub-ca-csr.md
       - OCSP Responder: use_cases/pki-ocsp.md
+      - Device enrollment:
+          - Overview: use_cases/pki-enrollment.md
+          - EST (RFC 7030): use_cases/pki-enrollment-est.md
+          - SCEP (RFC 8894): use_cases/pki-enrollment-scep.md
   - HSM Support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
+      - HSM key labeling & tagging: hsm_support/tagging.md
       - Multi-HSM support: hsm_support/multi_hsm.md
+      - Algorithm support by model: hsm_support/algorithm_support.md
+      - Thales Luna:
+          - Overview: hsm_support/luna.md
+          - Quick reference: hsm_support/luna_quick_reference.md
       - Trustway Crypt2pay: hsm_support/crypt2pay.md
       - Trustway Proteccio: hsm_support/proteccio.md
       - Utimaco General Purpose: hsm_support/utimaco.md
       - Smart card HSM / Nitrokey HSM 2: hsm_support/sc_hsm.md
+      - AWS CloudHSM: hsm_support/aws_cloudhsm.md
+      - GCP Cloud HSM: hsm_support/gcp_cloud_hsm.md
+      - Azure Cloud HSM: hsm_support/azure_cloud_hsm.md
       - SoftHSMv2: hsm_support/softhsm2.md
+      - Kryoptic: hsm_support/kryoptic.md
       - Other HSMs: hsm_support/other_hsms.md
   - KMIP Support:
       - Introduction: kmip_support/introduction/index.md
@@ -58,9 +72,10 @@ nav:
           - Revoke: kmip_support/_revoke.md
           - Sign: kmip_support/_signature.md
   - Integrations:
-      - API overview:
+      - API Overview & Security:
           - API Endpoints: integrations/api.md
           - OpenAPI Specification and Swagger UI: integrations/openapi.md
+      - PKCS#11 provider module: integrations/pkcs11_provider.md
       - JOSE (JWS, JWE, JWKS):
           - JOSE API: integrations/jose/jose_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
@@ -86,6 +101,7 @@ nav:
               - Generating Gmail keys: integrations/cloud_providers/google_workspace_client_side_encryption_cse/configuring_gmail_cse.md
               - Migrating existing Drive CSE elements: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_drive.md
               - Migrating existing email to Gmail CSE: integrations/cloud_providers/google_workspace_client_side_encryption_cse/migrating_gmail.md
+              - Test coverage: integrations/cloud_providers/google_workspace_client_side_encryption_cse/test_coverage.md
       - Databases:
           - MongoDB: integrations/databases/mongodb.md
           - MySQL Enterprise Edition: integrations/databases/mysql.md
@@ -117,19 +133,21 @@ nav:
       - Other:
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
+          - GnuPG:
+              - OpenPGP keys: integrations/gnupg/openpgp.md
+              - Smartcard (gnupg-pkcs11-scd): integrations/gnupg/smartcard.md
           - PyKMIP: integrations/pykmip.md
           - KMIP compliance tests (ovh/kmip-go): integrations/kmip_go.md
           - S/MIME Email encryption: integrations/smime.md
           - Terraform / OpenTofu Provider: integrations/terraform.md
       - Zero Trust M2M (SPIRE / SPIFFE):
           - Vault-compatible integration: integrations/spire_spiffe.md
-          - Native KMIP 2.1 plugins: integrations/spire_spiffe_kmip_plugin.md
+          - Native KMIP 1.4 KeyManager plugin: integrations/spire_spiffe_kmip_plugin.md
           - Web UI gateway SPIFFE authentication: integrations/spire_webui.md
           - CLI (ckms) SPIFFE authentication: integrations/spire_ckms.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
-      - Kubernetes (Helm): installation/kubernetes_helm.md
       - High-availability: installation/high_availability_mode.md
   - Configuration:
       - Configuration file: configuration/server_configuration_file.md
@@ -139,7 +157,7 @@ nav:
           - Configuration: configuration/database/configuration.md
           - Tables: configuration/database/tables.md
           - Redis with Findex: configuration/database/redis.md
-      - Object & Unwrapped Caches: configuration/object-cache.md
+      - Cache mechanisms: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorizing users with access rights:
@@ -154,6 +172,9 @@ nav:
           - Monitoring stack (Grafana): configuration/monitoring-setup.md
       - Audit & SIEM:
           - Audit logs: configuration/audit-logs.md
+          - File backend: configuration/audit-file-backend.md
+          - PostgreSQL backend: configuration/audit-postgresql-backend.md
+          - Audit events reference: configuration/audit-events.md
           - CEF export format: configuration/cef-export.md
           - SIEM integration: configuration/siems.md
       - User interface: configuration/ui.md
@@ -164,6 +185,7 @@ nav:
       - FIPS 140-3: certifications_and_compliance/fips.md
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
+          - Random Number Generation and PQC Entropy: certifications_and_compliance/cryptographic_algorithms/random_number_generation.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:
@@ -172,8 +194,21 @@ nav:
           - Security Audit (OWASP): certifications_and_compliance/audit/owasp_security_audit.md
           - Multi-Framework Security Audit: certifications_and_compliance/audit/multi_framework_security_audit.md
   - Benchmarks:
-      - Reports: benchmarks/ckms_bench/report.md
+      - Software (no HSM):
+          - Software Baseline: benchmarks/ckms_bench/report.md
+          - PKCS#11 (Software Crypto): benchmarks/ckms_bench_pkcs11/report.md
+      - SoftHSM2:
+          - HSM-Backed KEK: benchmarks/ckms_bench_hsm_kek_softhsm2/report.md
+          - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md
+          - PKCS#11 with HSM-Delegated Crypto: benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md
+      - Trustway Proteccio HSM:
+          - Overview: benchmarks/proteccio_hsms.md
+          - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_proteccio/report.md
+          - HSM-Delegated Crypto (Proteccio HR): benchmarks/ckms_bench_hsm_delegated_proteccio_hr/report.md
+          - PKCS#11 with HSM-Delegated Crypto: benchmarks/ckms_bench_pkcs11_hsm_delegated_proteccio/report.md
+          - PKCS#11 with HSM-Delegated Crypto (Proteccio HR): benchmarks/ckms_bench_pkcs11_hsm_delegated_proteccio_hr/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md
+      - p11perftest Commands: benchmarks/p11perftest.md
   - KMS Clients:
       - Getting started: kms_clients/index.md
       - Installation: kms_clients/installation.md
