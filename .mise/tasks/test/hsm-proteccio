@@ -39,4 +39,53 @@ env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_proteccio_all --ignored --exact
 
+# Proteccio's embedded OpenSSL rejects the Nix FIPS config from OPENSSL_CONF. Run the KMS
+# startup test in the official FIPS image so it uses the image's built-in config path.
+if [ "${VARIANT}" = "fips" ]; then
+  require_cmd docker
+  require_cmd jq
+  # shellcheck source=.mise/lib/kms_build.sh
+  source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
+
+  build_log="$(mktemp)"
+  trap 'rm -f -- "${build_log:?}"' EXIT
+  if ! cargo test -p test_kms_server \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib --no-run --message-format=json >"${build_log}"; then
+    cat "${build_log}" >&2
+    exit 1
+  fi
+
+  test_binary="$(jq -er 'select(.reason == "compiler-artifact" and .target.name == "test_kms_server" and .profile.test == true and .executable != null) | .executable' "${build_log}")"
+  package_id="$(cargo pkgid -p cosmian_kms_server)"
+  image_version="${package_id##*@}"
+  target_dir="$(cd "$(get_cargo_target_dir)" && pwd)"
+
+  docker run --rm --network host \
+    --volume /nix/store:/nix/store:ro \
+    --volume "${MISE_CONFIG_ROOT}:${MISE_CONFIG_ROOT}:ro" \
+    --volume "${target_dir}:${target_dir}:ro" \
+    --volume /etc/proteccio:/etc/proteccio:ro \
+    --volume /lib/libnethsm.so:/lib/libnethsm.so:ro \
+    --env PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
+    --env HSM_MODEL=proteccio \
+    --env HSM_USER_PASSWORD="${PROTECCIO_PASSWORD:?PROTECCIO_PASSWORD must be set}" \
+    --env HSM_SLOT_ID="${PROTECCIO_SLOT:?PROTECCIO_SLOT must be set}" \
+    --entrypoint env \
+    "ghcr.io/cosmian/kms-fips:${image_version}" \
+    -u OPENSSL_CONF -u LD_PRELOAD -u LD_LIBRARY_PATH \
+    "${test_binary}" --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_proteccio
+else
+  env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+    PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
+    HSM_MODEL=proteccio \
+    HSM_USER_PASSWORD="${PROTECCIO_PASSWORD:?PROTECCIO_PASSWORD must be set}" \
+    HSM_SLOT_ID="${PROTECCIO_SLOT:?PROTECCIO_SLOT must be set}" \
+    cargo test \
+    -p test_kms_server \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_proteccio
+fi
+
 print_success "Proteccio HSM tests completed"

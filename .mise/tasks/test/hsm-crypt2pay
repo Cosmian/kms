@@ -67,4 +67,17 @@ LD_PRELOAD="${C2P_SHIM_DIR}/c2p_no_inotify.so${LD_PRELOAD:+:${LD_PRELOAD}}" \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture test_hsm_crypt2pay --ignored --test-threads=1
 
+# Start the KMS server with the configured Crypt2Pay HSM KEK.
+LD_PRELOAD="${C2P_SHIM_DIR}/c2p_no_inotify.so${LD_PRELOAD:+:${LD_PRELOAD}}" \
+  CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
+  C2P_CONF=/etc/c2p/c2p.xml \
+  HSM_MODEL=crypt2pay \
+  HSM_USER_PASSWORD="${CRYPT2PAY_PASSWORD:?CRYPT2PAY_PASSWORD must be set}" \
+  HSM_SLOT_ID="${CRYPT2PAY_SLOT_ID:-1}" \
+  cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_crypt2pay
+
 print_success "Crypt2Pay HSM tests completed"

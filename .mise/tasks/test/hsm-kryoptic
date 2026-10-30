@@ -89,4 +89,24 @@ env \
   --lib \
   -- test_vec_hsm
 
+# ── 4. Run KMS startup with an HSM-backed KEK ────────────────────────────────
+print_header "Running Kryoptic KMS startup with HSM KEK"
+env \
+  PATH="$PATH" \
+  KRYOPTIC_CONF="$KRYOPTIC_CONF" \
+  KRYOPTIC_PKCS11_LIB="$KRYOPTIC_PKCS11_LIB" \
+  HSM_MODEL="kryoptic" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$HSM_SLOT_ID" \
+  KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+  ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+  ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+  ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+  ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+  cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_kryoptic
+print_status "Kryoptic KMS startup with HSM KEK completed"
 print_success "Kryoptic tests completed"

@@ -158,10 +158,18 @@ impl Session {
                 ciphertext.as_mut_ptr(),
                 &raw mut ciphertext_len,
             );
-            // Deliberately not retried with a larger buffer: a second `C_EncryptMessage`
-            // would re-present the same IV, which is precisely what the single-call flow
-            // above exists to avoid. Report it instead, with enough detail to diagnose a
-            // token that disagrees with the detached-tag length invariant.
+            let end = self
+                .hsm()
+                .C_MessageEncryptFinal
+                .ok_or_else(|| HError::Default("C_MessageEncryptFinal unavailable".to_owned()))?;
+            let final_rv = end(self.session_handle());
+            if final_rv != CKR_OK {
+                return Err(HError::Default(format!(
+                    "Failed to finalize message-based encryption after message call returned {rv}. \
+                     Final return code: {final_rv}"
+                )));
+            }
+            // Finalize the initialized operation before returning an error or retrying via v2.
             if rv == CKR_BUFFER_TOO_SMALL {
                 return Err(HError::Default(format!(
                     "Message-based encryption rejected a {} byte ciphertext buffer for a {} \
@@ -180,17 +188,6 @@ impl Session {
                 )));
             }
             ciphertext.truncate(usize::try_from(ciphertext_len)?);
-
-            let end = self
-                .hsm()
-                .C_MessageEncryptFinal
-                .ok_or_else(|| HError::Default("C_MessageEncryptFinal unavailable".to_owned()))?;
-            let rv = end(self.session_handle());
-            if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to finalize message-based encryption. Return code: {rv}"
-                )));
-            }
 
             Ok(EncryptedContent {
                 iv: Some(nonce.to_vec()),

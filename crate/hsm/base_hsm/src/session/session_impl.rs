@@ -972,7 +972,31 @@ impl Session {
                 if self.hsm_capabilities().aes.gcm.supports_message
                     && self.hsm().supports_message_encrypt()
                 {
-                    self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
+                    match self.encrypt_message_aes_gcm(key_handle, &[], plaintext) {
+                        Ok(content) => content,
+                        Err(message_error) => {
+                            debug!(
+                                "PKCS#11 v3 message AES-GCM failed; trying classic AES-GCM: {message_error}"
+                            );
+                            if caller_gcm_iv_allowed(&self.hsm_capabilities().aes.gcm) {
+                                self.encrypt_aes_gcm_classic(key_handle, plaintext)?
+                            } else {
+                                self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
+                                    .map_err(|e| {
+                                        if e.to_string() == NO_GENERATED_GCM_IV {
+                                            HError::Default(format!(
+                                                "AES-GCM encryption needs an IV generated inside the HSM \
+                                                 (FIPS 140-3 IG C.H), and this HSM provided none ({e}). Use \
+                                                 AES key wrap instead: key_encryption_key_wrapping_algorithm \
+                                                 = \"aes-key-wrap-padding\" (NIST SP 800-38F)"
+                                            ))
+                                        } else {
+                                            e
+                                        }
+                                    })?
+                            }
+                        }
+                    }
                 } else if caller_gcm_iv_allowed(&self.hsm_capabilities().aes.gcm) {
                     self.encrypt_aes_gcm_classic(key_handle, plaintext)?
                 } else {
@@ -4110,10 +4134,10 @@ mod tests {
         assert_eq!(split(&[ct.as_slice(), &tag, &[3_u8; 16]].concat()), None);
     }
 
-    /// Drives `Session::encrypt` against `tests/fixtures/fips_gcm_hsm.c`, an HSM in FIPS mode
-    /// that rejects any caller-chosen GCM nonce and returns the IV it generated through `pIv`.
+    /// Drives `Session::encrypt` against the FIPS GCM fixture.
     fn fips_hsm_gcm_encrypt(
         supports_caller_iv: bool,
+        supports_message: bool,
         fixture_args: &[&str],
     ) -> HResult<EncryptedContent> {
         let hsm_lib = crate::hsm_lib::HsmLib::instantiate(&crate::test_fixtures::compile_fixture(
@@ -4123,7 +4147,7 @@ mod tests {
         let mut capabilities = crate::hsm_capabilities::HsmCapabilities::default();
         capabilities.aes.gcm.supports_caller_iv = supports_caller_iv;
         capabilities.aes.gcm.allows_caller_iv_in_fips = false;
-        capabilities.aes.gcm.supports_message = false;
+        capabilities.aes.gcm.supports_message = supports_message;
         crate::test_fixtures::fixture_session(hsm_lib, capabilities).encrypt(
             1,
             HsmEncryptionAlgorithm::AesGcm,
@@ -4136,7 +4160,7 @@ mod tests {
     /// build against a FIPS-mode HSM and uses the IV it returns.
     #[test]
     fn gcm_encrypt_uses_the_iv_generated_by_a_fips_mode_hsm() {
-        let content = fips_hsm_gcm_encrypt(false, &[]).ok();
+        let content = fips_hsm_gcm_encrypt(false, false, &[]).ok();
         assert_eq!(
             content
                 .as_ref()
@@ -4150,13 +4174,33 @@ mod tests {
         assert_eq!(iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
         assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
     }
+    #[test]
+    fn message_aes_gcm_failure_finalizes_before_classic_fallback() {
+        let content = fips_hsm_gcm_encrypt(false, true, &["-DREQUIRE_V3_MESSAGE"]).ok();
+        assert_eq!(
+            content
+                .as_ref()
+                .map(|c| (c.ciphertext.as_slice(), c.tag.as_deref())),
+            Some((
+                b"hello".map(|b| b ^ 0x42).as_slice(),
+                Some([0x7E_u8; 16].as_slice())
+            ))
+        );
+        assert!(
+            content
+                .and_then(|c| c.iv)
+                .is_some_and(|iv| iv.iter().any(|&byte| byte != 0))
+        );
+    }
 
     /// FIPS build + a profile that accepts caller IVs outside FIPS (every production HSM and
     /// `hsm_model = "other"`): the nonce is left to the FIPS-mode HSM, which accepts it.
     #[cfg(not(feature = "non-fips"))]
     #[test]
     fn fips_build_lets_a_fips_mode_hsm_generate_the_gcm_iv() {
-        let iv = fips_hsm_gcm_encrypt(true, &[]).ok().and_then(|c| c.iv);
+        let iv = fips_hsm_gcm_encrypt(true, false, &[])
+            .ok()
+            .and_then(|c| c.iv);
         assert_eq!(iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
         assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
     }
@@ -4167,7 +4211,7 @@ mod tests {
     #[test]
     fn non_fips_build_sends_a_caller_gcm_iv_that_a_fips_mode_hsm_refuses() {
         assert!(matches!(
-            fips_hsm_gcm_encrypt(true, &[]),
+            fips_hsm_gcm_encrypt(true, false, &[]),
             Err(e) if e.to_string().contains("Failed to allocate encrypted data length")
         ));
     }
@@ -4177,7 +4221,7 @@ mod tests {
     #[test]
     fn gcm_encrypt_fails_closed_when_the_hsm_generates_no_iv() {
         assert!(matches!(
-            fips_hsm_gcm_encrypt(false, &["-DIGNORE_IV_BUFFER"]),
+            fips_hsm_gcm_encrypt(false, false, &["-DIGNORE_IV_BUFFER"]),
             Err(e) if e.to_string().contains("needs an IV generated inside the HSM")
         ));
     }

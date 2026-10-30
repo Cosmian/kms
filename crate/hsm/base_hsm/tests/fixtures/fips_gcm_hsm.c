@@ -46,11 +46,49 @@ static CK_RV stub_ok(void) { return CKR_OK; }
 
 static CkAesGcmParams *g_params;
 static CK_ULONG g_generated_ivs;
+static int g_message_active;
+static CK_ULONG g_message_final_calls;
+
+static CK_RV message_encrypt_init(CK_SESSION_HANDLE hSession, CkMechanism *pMechanism,
+                                 CK_OBJECT_HANDLE hKey) {
+  (void)hSession;
+  (void)pMechanism;
+  (void)hKey;
+  g_message_active = 1;
+  return CKR_OK;
+}
+
+static CK_RV encrypt_message(CK_SESSION_HANDLE hSession, void *pParameter, CK_ULONG ulParameterLen,
+                             CK_BYTE *pAssociatedData, CK_ULONG ulAssociatedDataLen,
+                             CK_BYTE *pPlaintext, CK_ULONG ulPlaintextLen,
+                             CK_BYTE *pCiphertext, CK_ULONG_PTR pulCiphertextLen) {
+  (void)hSession;
+  (void)pParameter;
+  (void)ulParameterLen;
+  (void)pAssociatedData;
+  (void)ulAssociatedDataLen;
+  (void)pPlaintext;
+  (void)ulPlaintextLen;
+  (void)pCiphertext;
+  (void)pulCiphertextLen;
+  return 5UL;
+}
+
+static CK_RV message_encrypt_final(CK_SESSION_HANDLE hSession) {
+  (void)hSession;
+  g_message_active = 0;
+  g_message_final_calls++;
+  return CKR_OK;
+}
 
 static CK_RV encrypt_init(CK_SESSION_HANDLE hSession, CkMechanism *pMechanism,
                           CK_OBJECT_HANDLE hKey) {
   (void)hSession;
   (void)hKey;
+#ifdef REQUIRE_V3_MESSAGE
+  if (g_message_final_calls == 0) { return 144UL; }
+#endif
+  if (g_message_active) { return 144UL; }
   if (pMechanism == 0 || pMechanism->mechanism != CKM_AES_GCM) {
     return CKR_MECHANISM_INVALID;
   }
@@ -110,6 +148,14 @@ static CK_RV get_interface_list(CkInterface *pInterfaceList, CK_ULONG_PTR pulCou
   return CKR_OK;
 }
 
+static CK_RV message_encrypt_init(CK_SESSION_HANDLE hSession, CkMechanism *pMechanism,
+                                 CK_OBJECT_HANDLE hKey);
+static CK_RV encrypt_message(CK_SESSION_HANDLE hSession, void *pParameter, CK_ULONG ulParameterLen,
+                             CK_BYTE *pAssociatedData, CK_ULONG ulAssociatedDataLen,
+                             CK_BYTE *pPlaintext, CK_ULONG ulPlaintextLen,
+                             CK_BYTE *pCiphertext, CK_ULONG_PTR pulCiphertextLen);
+static CK_RV message_encrypt_final(CK_SESSION_HANDLE hSession);
+
 static CkFunctionList30 g_function_list = {
   .C_SignInit = (CkGenericFn)stub_ok,
   .C_Sign = (CkGenericFn)stub_ok,
@@ -123,6 +169,11 @@ static CkFunctionList30 g_function_list = {
   .C_CloseSession = (CkGenericFn)stub_ok,
   .C_EncryptInit = (CkGenericFn)encrypt_init,
   .C_Encrypt = (CkGenericFn)encrypt,
+  .C_MessageEncryptInit = (CkGenericFn)message_encrypt_init,
+  .C_EncryptMessage = (CkGenericFn)encrypt_message,
+  .C_MessageEncryptFinal = (CkGenericFn)message_encrypt_final,
+  .C_EncryptMessageBegin = (CkGenericFn)stub_ok,
+  .C_EncryptMessageNext = (CkGenericFn)stub_ok,
   .C_GetInterfaceList = (CkGenericFn)get_interface_list,
 };
 
