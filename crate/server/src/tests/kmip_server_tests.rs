@@ -638,3 +638,58 @@ async fn test_create_key_pair_per_key_curve() -> KResult<()> {
     );
     Ok(())
 }
+
+/// An Opaque Object has no Activate operation, so it stays Pre-Active after Register and
+/// must still be revocable (deployed KMIP clients revoke it without activating it).
+#[tokio::test]
+async fn test_revoke_pre_active_opaque_object() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_2_1::{
+            kmip_objects::OpaqueObject, kmip_operations::Revoke, kmip_types::OpaqueDataType,
+        },
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("opaque_owner");
+    let uid = kms
+        .register(
+            Register {
+                object_type: ObjectType::OpaqueObject,
+                attributes: Attributes {
+                    object_type: Some(ObjectType::OpaqueObject),
+                    ..Attributes::default()
+                },
+                object: Object::OpaqueObject(OpaqueObject {
+                    opaque_data_type: OpaqueDataType::Unknown,
+                    opaque_data_value: vec![1, 2, 3],
+                }),
+                protection_storage_masks: None,
+            },
+            &owner,
+        )
+        .await?
+        .unique_identifier;
+
+    kms.revoke(
+        Revoke {
+            unique_identifier: Some(uid.clone()),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                revocation_message: None,
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        },
+        &owner,
+    )
+    .await?;
+
+    let state = kms
+        .get_attributes(GetAttributes::from(uid.to_string()), &owner)
+        .await?
+        .attributes
+        .state;
+    assert_eq!(state, Some(State::Deactivated));
+    Ok(())
+}
