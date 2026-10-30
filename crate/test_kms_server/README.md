@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**715 vectors** across 16 categories (including KAT):
+**716 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -220,6 +220,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
 | KMIP Operations | `rekey_with_offset_state` | Verifies that ReKey with Offset=0 produces an Active key, and ReKey with Offset=86400 (24h future) produces a PreActive key. | 13 |
 | KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Creates a wrapping key and a wrapped dependent key, verifies wrapping, revokes the dependent, then verifies that ReKey on the deactivated wrapped key succeeds per KMIP §6.1.46. | 10 |
+| KMIP Operations | `rekey_wrapped_fails` | Verifies that ReKey on a wrapped key fails with an appropriate error. The server cannot safely rekey a wrapped object. | 6 |
 | KMIP Operations | `rekey_wrapped_key` | Creates a wrapping key and a wrapped dependent key, then re-keys the wrapped key. Verifies the new key has fresh material, is still wrapped, and works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key` | Creates a wrapping key, creates a dependent key wrapped by it, then re-keys the wrapping key and verifies the dependent key was automatically re-wrapped and still works for encryption. | 13 |
 | KMIP Operations | `rekey_wrapping_key_double_chain` | Creates a wrapping key K0 with two wrapped dependants. Rotates K0 → K1, then K1 → K2. Verifies the full link chain (K0 → K1 → K2) and that both dependants are re-wrapped each time and still work for encryption. | 24 |
@@ -526,8 +527,8 @@ replays the steps sequentially.
 | Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute expects Object_Not_Found | 1 |
 | Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute expects Read_Only_Attribute | 2 |
 | Negative / SetAttribute | `negative/set_attribute/readonly_initial_date` | Checks that InitialDate is read-only and remains unchanged after a rejected SetAttribute request. | 6 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
-| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Read_Only_Attribute. | 4 |
 | Negative / Sign | `negative/sign/invalid_message` | Tests that Sign expects Invalid_Message | 1 |
 | Negative / Sign | `negative/sign/item_not_found` | Tests that Sign expects Item_Not_Found | 1 |
 | Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign expects Wrong_Key_Lifecycle_State | 2 |
