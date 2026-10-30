@@ -4,7 +4,6 @@
 //! - created by the server (True iff the object was created `Sensitive`);
 //! - read-only to clients (cannot be added, set, modified or deleted);
 //! - permanently set to False once `Sensitive` has ever been set to False.
-#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
 use std::sync::Arc;
 

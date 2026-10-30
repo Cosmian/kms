@@ -1,23 +1,3 @@
-#![allow(
-    unsafe_code,
-    dead_code,
-    unreachable_pub,
-    clippy::module_name_repetitions,
-    clippy::similar_names,
-    clippy::cargo_common_metadata,
-    clippy::multiple_crate_versions,
-    clippy::redundant_pub_crate,
-    // Windows HRESULT constants use `u32 as i32` casts by convention
-    clippy::as_conversions,
-    clippy::cast_possible_wrap,
-    // CNG blob parsing requires direct slice indexing
-    clippy::indexing_slicing,
-    clippy::missing_asserts_for_indexing,
-    // Windows API names (NCrypt, BCRYPT_, …) in doc comments
-    clippy::doc_markdown,
-    // Many small helpers could technically be const fn
-    clippy::missing_const_for_fn,
-)]
 //! # Cosmian KMS CNG Key Storage Provider (KSP)
 //!
 //! A Windows CNG Key Storage Provider DLL that stores private keys inside
@@ -43,13 +23,26 @@
 //! ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
 //! ```
 
-use std::path::PathBuf;
 #[cfg(windows)]
-use std::ptr::addr_of_mut;
+use std::{path::PathBuf, ptr::addr_of_mut};
 
 pub mod backend;
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows-only `provider` module uses every item"
+    )
+)]
 mod blob;
 pub mod error;
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows-only `provider` module uses every item"
+    )
+)]
 mod key;
 #[cfg(windows)]
 mod provider;
@@ -79,7 +72,7 @@ pub fn unregister_ksp() -> Result<(), String> {
 
 #[cfg(not(windows))]
 #[must_use]
-pub fn is_ksp_registered() -> bool {
+pub const fn is_ksp_registered() -> bool {
     false
 }
 
@@ -92,6 +85,7 @@ pub fn is_ksp_registered() -> bool {
 ///
 /// Returns `None` if every approach fails.
 #[cfg(windows)]
+#[expect(unsafe_code, reason = "Win32 module-handle FFI")]
 pub(crate) fn dll_directory() -> Option<PathBuf> {
     use std::{ffi::OsString, os::windows::ffi::OsStringExt};
 
@@ -135,13 +129,9 @@ pub(crate) fn dll_directory() -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(windows))]
-pub(crate) fn dll_directory() -> Option<PathBuf> {
-    None
-}
-
 // ─── Logging initialisation ───────────────────────────────────────────────────
 
+#[cfg(windows)]
 fn initialize_logging(log_home: Option<String>) {
     use cosmian_logger::reexport::tracing_subscriber::{EnvFilter, fmt};
 
@@ -191,6 +181,7 @@ fn initialize_logging(log_home: Option<String>) {
 /// the happy path.  The function is marked `unsafe` because it accepts raw
 /// pointers and is callable from uncontrolled C code.
 #[cfg(windows)]
+#[expect(unsafe_code, reason = "CNG-mandated unsafe C ABI DLL export")]
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn GetKeyStorageInterface(
     _psz_provider_name: *const u16,
@@ -215,12 +206,17 @@ pub unsafe extern "system" fn GetKeyStorageInterface(
 
 /// Stub for non-Windows builds so the crate compiles cross-platform in CI.
 #[cfg(not(windows))]
+#[expect(unsafe_code, reason = "CNG-mandated unsafe C ABI DLL export")]
 #[unsafe(no_mangle)]
 /// # Safety
 /// This is a C ABI entry point called by Windows CNG.
-pub unsafe extern "C" fn GetKeyStorageInterface() -> i32 {
+pub const unsafe extern "C" fn GetKeyStorageInterface() -> i32 {
     crate::error::NTE_NOT_SUPPORTED
 }
 
-#[cfg(all(test, feature = "non-fips"))]
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
 mod tests;
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

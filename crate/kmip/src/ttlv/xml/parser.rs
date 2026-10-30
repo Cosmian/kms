@@ -28,12 +28,18 @@ use crate::{
 };
 
 /// Static regex: matches `$NOW-<digits>` placeholders.
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "regex literal is valid; exercised by XML parser tests"
+)]
 static RE_NOW_DELTA: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$NOW-\d+").expect("static regex RE_NOW_DELTA"));
 
 /// Static regex: matches `$UNIQUE_IDENTIFIER_<digits>` placeholders.
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "regex literal is valid; exercised by XML parser tests"
+)]
 static RE_UID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)").expect("static regex RE_UID"));
 
@@ -282,7 +288,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
 mod tests {
     use super::*;
 

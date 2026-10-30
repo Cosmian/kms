@@ -32,6 +32,8 @@ pub struct ObjectHandlesCache {
     metadata: Mutex<LruCache<CK_OBJECT_HANDLE, cosmian_kms_interfaces::SigningKeyMetadata>>,
 }
 
+const OBJECT_HANDLES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+
 impl Default for ObjectHandlesCache {
     fn default() -> Self {
         Self::new()
@@ -41,8 +43,7 @@ impl Default for ObjectHandlesCache {
 impl ObjectHandlesCache {
     #[must_use]
     pub fn new() -> Self {
-        #[expect(unsafe_code)]
-        let max = unsafe { NonZeroUsize::new_unchecked(100) };
+        let max = OBJECT_HANDLES_CACHE_SIZE;
         Self {
             handles: Mutex::new(LruCache::new(max)),
             metadata: Mutex::new(LruCache::new(max)),
@@ -334,8 +335,7 @@ impl SlotManager {
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
     pub fn get_mechanism_info(&self, mech: CK_MECHANISM_TYPE) -> HResult<CK_MECHANISM_INFO> {
         let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(self.slot_id)?;
-        #[expect(unsafe_code)]
-        let mut info: CK_MECHANISM_INFO = unsafe { std::mem::zeroed() };
+        let mut info = CK_MECHANISM_INFO::default();
         hsm_call!(
             self.hsm_lib,
             format!("Failed to get mechanism info for {}", mech),

@@ -123,7 +123,10 @@ impl Default for HttpClientConfig {
 }
 
 /// used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde `skip_serializing_if` passes a reference"
+)]
 const fn not(b: &bool) -> bool {
     !*b
 }
@@ -645,7 +648,6 @@ impl HttpClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod default_header_tests {
     use super::{HttpClient, HttpClientConfig};
 
@@ -764,3 +766,7 @@ mod error_chain_tests {
         assert_eq!(error_chain(&top), "client error: connect: tls failure");
     }
 }
+
+#[cfg(test)]
+#[path = "client_characterization_tests.rs"]
+mod characterization_tests;

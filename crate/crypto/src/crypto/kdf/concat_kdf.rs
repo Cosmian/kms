@@ -92,7 +92,6 @@ pub fn concat_kdf(
     Ok(output)
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::concat_kdf;

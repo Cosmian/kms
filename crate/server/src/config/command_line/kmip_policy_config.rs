@@ -135,7 +135,6 @@ impl AesKeySize {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
-#[allow(clippy::derivable_impls)]
 pub struct KmipAllowlistsConfig {
     /// Allowed KMIP `CryptographicAlgorithm` values (e.g. "AES", "RSA").
     ///

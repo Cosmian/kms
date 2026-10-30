@@ -337,7 +337,10 @@ fn days_until_next_rotation(
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use std::collections::HashSet;
 
@@ -370,9 +373,7 @@ mod tests {
     fn make_aes256_key()
     -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object {
         let mut bytes = [0_u8; 32];
-        #[expect(clippy::unwrap_used)]
         KmsRng::new().fill_bytes(&mut bytes).unwrap();
-        #[expect(clippy::unwrap_used)]
         create_symmetric_key_kmip_object(
             "x-vendor",
             &bytes,

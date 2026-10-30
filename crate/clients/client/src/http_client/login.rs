@@ -223,7 +223,6 @@ impl LoginState {
     ///
     /// The port must match the one embedded in the redirect URL that was sent
     /// to the Identity Provider during the authorization request.
-    #[allow(clippy::unwrap_used)]
     fn receive_authorization_parameters(
         port: u16,
     ) -> HttpClientResult<(HashMap<String, String>, ServerHandle)> {
@@ -250,10 +249,14 @@ impl LoginState {
                     auth_params: web::Query<HashMap<String, String>>,
                     auth_params_tx: Data<Sender<HashMap<String, String>>>,
                 ) -> HttpResponse {
-                    auth_params_tx
+                    if auth_params_tx
                         .into_inner()
                         .send(auth_params.into_inner())
-                        .unwrap();
+                        .is_err()
+                    {
+                        return HttpResponse::InternalServerError()
+                            .body("OAuth2 login is no longer waiting for the callback.");
+                    }
                     HttpResponse::Ok().body("You can now close this window.")
                 }
 
@@ -671,3 +674,7 @@ mod oauth_response_tests {
         assert!(response.is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "login_characterization_tests.rs"]
+mod characterization_tests;

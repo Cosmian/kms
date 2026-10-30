@@ -1,5 +1,9 @@
-#![allow(unreachable_pub)]
-#![allow(clippy::as_conversions)]
+#![expect(
+    unsafe_code,
+    non_snake_case,
+    unreachable_pub,
+    reason = "tests call the PKCS#11 C ABI directly and define a `C_GetFunctionList` entry point via `cryptoki_fn!`"
+)]
 
 use std::{
     ptr::{self, addr_of, addr_of_mut},
@@ -8,17 +12,17 @@ use std::{
 
 use cosmian_logger::log_init;
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_C_INITIALIZE_ARGS_PTR, CK_FALSE, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_PTR_PTR, CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE,
-    CK_MECHANISM, CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE,
-    CK_SESSION_HANDLE, CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG,
-    CK_UNAVAILABLE_INFORMATION, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
-    CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKG_GENERATE_RANDOM, CKG_NO_GENERATE,
-    CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA,
-    CKM_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
-    CKR_FUNCTION_NOT_SUPPORTED, CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
+    CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR,
+    CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
+    CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_UNAVAILABLE_INFORMATION, CKA_CLASS,
+    CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION,
+    CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN,
+    CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
+    CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
+    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
@@ -44,6 +48,7 @@ use crate::{
         KeyAlgorithm, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
         SignatureAlgorithm, SymmetricKey, Version, register_backend,
     },
+    utils::{ck_len, ck_ptr},
 };
 
 #[test]
@@ -296,6 +301,11 @@ cryptoki_fn!(
     }
 );
 
+/// Converts a `CK_ULONG` length received from the C API to `usize`.
+fn ck_to_usize(len: CK_ULONG) -> usize {
+    usize::try_from(len).unwrap()
+}
+
 pub(crate) fn test_init() {
     log_init(None);
     if !INITIALIZED.load(Ordering::SeqCst) {
@@ -320,14 +330,14 @@ fn get_initialize() {
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
     let mut args = CK_C_INITIALIZE_ARGS::default();
     assert_eq!(
-        { C_Initialize((&mut args as CK_C_INITIALIZE_ARGS_PTR).cast::<std::ffi::c_void>()) },
+        { C_Initialize((&raw mut args).cast::<std::ffi::c_void>()) },
         CKR_OK
     );
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
     // Expect CKR_ARGUMENTS_BAD if pReserved is not null.
     args.pReserved = std::ptr::dangling_mut::<u32>().cast::<std::ffi::c_void>();
     assert_eq!(
-        { C_Initialize((&mut args as CK_C_INITIALIZE_ARGS_PTR).cast::<std::ffi::c_void>()) },
+        { C_Initialize((&raw mut args).cast::<std::ffi::c_void>()) },
         CKR_ARGUMENTS_BAD
     );
 }
@@ -648,7 +658,7 @@ fn get_attribute_value() {
                 session_h,
                 CK_INVALID_HANDLE,
                 template.as_mut_ptr(),
-                template.len() as CK_ULONG,
+                ck_len(template.len()),
             )
         },
         CKR_OBJECT_HANDLE_INVALID
@@ -681,17 +691,17 @@ fn find_objects_init() {
     );
     let mut template = vec![CK_ATTRIBUTE {
         type_: CKA_CLASS,
-        pValue: std::ptr::from_ref::<CK_ULONG>(&CKO_PRIVATE_KEY) as CK_VOID_PTR,
-        ulValueLen: std::mem::size_of_val(&CKO_PRIVATE_KEY) as CK_ULONG,
+        pValue: ck_ptr(&CKO_PRIVATE_KEY),
+        ulValueLen: ck_len(std::mem::size_of_val(&CKO_PRIVATE_KEY)),
     }];
     assert_eq!(
-        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template.len() as CK_ULONG) },
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), ck_len(template.len())) },
         CKR_OK
     );
     assert_eq!(C_CloseSession(handle), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
     assert_eq!(
-        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template.len() as CK_ULONG) },
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), ck_len(template.len())) },
         CKR_CRYPTOKI_NOT_INITIALIZED
     );
 }
@@ -716,11 +726,11 @@ fn find_objects() {
     );
     let mut template = vec![CK_ATTRIBUTE {
         type_: CKA_CLASS,
-        pValue: std::ptr::from_ref::<CK_ULONG>(&CKO_PRIVATE_KEY) as CK_VOID_PTR,
-        ulValueLen: std::mem::size_of_val(&CKO_PRIVATE_KEY) as CK_ULONG,
+        pValue: ck_ptr(&CKO_PRIVATE_KEY),
+        ulValueLen: ck_len(std::mem::size_of_val(&CKO_PRIVATE_KEY)),
     }];
     assert_eq!(
-        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template.len() as CK_ULONG) },
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), ck_len(template.len())) },
         CKR_OK
     );
     let mut objects = vec![CK_OBJECT_HANDLE::default()];
@@ -758,11 +768,11 @@ fn find_objects_final() {
     );
     let mut template = vec![CK_ATTRIBUTE {
         type_: CKA_CLASS,
-        pValue: std::ptr::from_ref::<CK_ULONG>(&CKO_PRIVATE_KEY) as CK_VOID_PTR,
-        ulValueLen: std::mem::size_of_val(&CKO_PRIVATE_KEY) as CK_ULONG,
+        pValue: ck_ptr(&CKO_PRIVATE_KEY),
+        ulValueLen: ck_len(std::mem::size_of_val(&CKO_PRIVATE_KEY)),
     }];
     assert_eq!(
-        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template.len() as CK_ULONG) },
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), ck_len(template.len())) },
         CKR_OK
     );
     assert_eq!(C_FindObjectsFinal(handle), CKR_OK);
@@ -890,34 +900,34 @@ fn message_encrypt_returns_kms_generated_artifacts() {
     let mut tag = [0_u8; 16];
     let mut params = CK_GCM_MESSAGE_PARAMS {
         pIv: iv.as_mut_ptr(),
-        ulIvLen: iv.len() as CK_ULONG,
+        ulIvLen: ck_len(iv.len()),
         ulIvFixedBits: 0,
         ivGenerator: CKG_GENERATE_RANDOM,
         pTag: tag.as_mut_ptr(),
-        ulTagBits: (tag.len() * 8) as CK_ULONG,
+        ulTagBits: ck_len(tag.len() * 8),
     };
     let mut plaintext = b"plaintext".to_vec();
     let mut aad = b"aad".to_vec();
     let mut ciphertext = vec![0_u8; plaintext.len()];
-    let mut ciphertext_len = ciphertext.len() as CK_ULONG;
+    let mut ciphertext_len = ck_len(ciphertext.len());
     // SAFETY: every pointer addresses a writable or readable buffer matching its declared length.
     assert_eq!(
         unsafe {
             C_EncryptMessage(
                 session,
                 (&raw mut params).cast::<std::ffi::c_void>(),
-                std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                ck_len(std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>()),
                 aad.as_mut_ptr(),
-                aad.len() as CK_ULONG,
+                ck_len(aad.len()),
                 plaintext.as_mut_ptr(),
-                plaintext.len() as CK_ULONG,
+                ck_len(plaintext.len()),
                 ciphertext.as_mut_ptr(),
                 &raw mut ciphertext_len,
             )
         },
         CKR_OK
     );
-    assert_eq!(ciphertext_len, plaintext.len() as CK_ULONG);
+    assert_eq!(ciphertext_len, ck_len(plaintext.len()));
     assert_eq!(ciphertext, plaintext);
     assert_eq!(iv, [0xA1; 12]);
     assert_eq!(tag, [0xB2; 16]);
@@ -930,32 +940,32 @@ fn message_encrypt_returns_kms_generated_artifacts() {
     );
     let mut decrypt_params = CK_GCM_MESSAGE_PARAMS {
         pIv: iv.as_mut_ptr(),
-        ulIvLen: iv.len() as CK_ULONG,
+        ulIvLen: ck_len(iv.len()),
         ulIvFixedBits: 0,
         ivGenerator: CKG_NO_GENERATE,
         pTag: tag.as_mut_ptr(),
-        ulTagBits: (tag.len() * 8) as CK_ULONG,
+        ulTagBits: ck_len(tag.len() * 8),
     };
     let mut decrypted = vec![0_u8; ciphertext.len()];
-    let mut decrypted_len = decrypted.len() as CK_ULONG;
+    let mut decrypted_len = ck_len(decrypted.len());
     // SAFETY: every pointer addresses a writable or readable buffer matching its declared length.
     assert_eq!(
         unsafe {
             C_DecryptMessage(
                 session,
                 (&raw mut decrypt_params).cast::<std::ffi::c_void>(),
-                std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>() as CK_ULONG,
+                ck_len(std::mem::size_of::<CK_GCM_MESSAGE_PARAMS>()),
                 aad.as_mut_ptr(),
-                aad.len() as CK_ULONG,
+                ck_len(aad.len()),
                 ciphertext.as_mut_ptr(),
-                ciphertext.len() as CK_ULONG,
+                ck_len(ciphertext.len()),
                 decrypted.as_mut_ptr(),
                 &raw mut decrypted_len,
             )
         },
         CKR_OK
     );
-    decrypted.truncate(decrypted_len as usize);
+    decrypted.truncate(ck_to_usize(decrypted_len));
     assert_eq!(decrypted, plaintext);
     assert_eq!(C_MessageDecryptFinal(session), CKR_OK);
 
@@ -999,7 +1009,7 @@ fn get_attribute_value_buffer_too_small_does_not_overflow() {
                 session_h,
                 key_handle,
                 template.as_mut_ptr(),
-                template.len() as CK_ULONG,
+                ck_len(template.len()),
             )
         },
         CKR_BUFFER_TOO_SMALL
@@ -1054,7 +1064,7 @@ fn encrypt_buffer_too_small_does_not_overflow() {
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
         pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+        ulParameterLen: ck_len(AES_IV_SIZE),
     };
     assert_eq!(
         unsafe { C_EncryptInit(session_h, &raw mut mechanism, key_handle) },
@@ -1069,7 +1079,7 @@ fn encrypt_buffer_too_small_does_not_overflow() {
             C_Encrypt(
                 session_h,
                 plaintext.as_mut_ptr(),
-                plaintext.len() as CK_ULONG,
+                ck_len(plaintext.len()),
                 output.as_mut_ptr(),
                 &raw mut output_len,
             )
@@ -1113,7 +1123,7 @@ fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
         pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+        ulParameterLen: ck_len(AES_IV_SIZE),
     };
     assert_eq!(
         unsafe { C_DecryptInit(session_h, &raw mut mechanism, key_handle) },
@@ -1128,7 +1138,7 @@ fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
             C_Decrypt(
                 session_h,
                 ciphertext.as_mut_ptr(),
-                ciphertext.len() as CK_ULONG,
+                ck_len(ciphertext.len()),
                 output.as_mut_ptr(),
                 &raw mut output_len,
             )
@@ -1147,7 +1157,7 @@ fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
             C_Decrypt(
                 session_h,
                 ciphertext.as_mut_ptr(),
-                ciphertext.len() as CK_ULONG,
+                ck_len(ciphertext.len()),
                 output.as_mut_ptr(),
                 &raw mut output_len,
             )
@@ -1191,8 +1201,8 @@ fn generate_key_null_handle_pointer_is_rejected() {
     let mut template = vec![
         CK_ATTRIBUTE {
             type_: CKA_KEY_TYPE,
-            pValue: std::ptr::from_ref(&CKK_AES) as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_KEY_TYPE>() as CK_ULONG,
+            pValue: ck_ptr(&CKK_AES),
+            ulValueLen: ck_len(size_of::<CK_KEY_TYPE>()),
         },
         CK_ATTRIBUTE {
             type_: CKA_LABEL,
@@ -1201,8 +1211,8 @@ fn generate_key_null_handle_pointer_is_rejected() {
         },
         CK_ATTRIBUTE {
             type_: CKA_VALUE_LEN,
-            pValue: std::ptr::from_ref(&value_len) as CK_VOID_PTR,
-            ulValueLen: size_of::<CK_ULONG>() as CK_ULONG,
+            pValue: ck_ptr(&value_len),
+            ulValueLen: ck_len(size_of::<CK_ULONG>()),
         },
     ];
     assert_eq!(
@@ -1211,7 +1221,7 @@ fn generate_key_null_handle_pointer_is_rejected() {
                 session_h,
                 &raw mut mechanism,
                 template.as_mut_ptr(),
-                template.len() as CK_ULONG,
+                ck_len(template.len()),
                 ptr::null_mut(),
             )
         },
@@ -1341,17 +1351,17 @@ fn find_by_class_and_id(
     let mut template = [
         CK_ATTRIBUTE {
             type_: CKA_CLASS,
-            pValue: std::ptr::from_ref::<CK_OBJECT_CLASS>(&class) as CK_VOID_PTR,
-            ulValueLen: std::mem::size_of_val(&class) as CK_ULONG,
+            pValue: ck_ptr(&class),
+            ulValueLen: ck_len(std::mem::size_of_val(&class)),
         },
         CK_ATTRIBUTE {
             type_: CKA_ID,
             pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
-            ulValueLen: id.len() as CK_ULONG,
+            ulValueLen: ck_len(id.len()),
         },
     ];
     assert_eq!(
-        unsafe { C_FindObjectsInit(session, template.as_mut_ptr(), template.len() as CK_ULONG) },
+        unsafe { C_FindObjectsInit(session, template.as_mut_ptr(), ck_len(template.len())) },
         CKR_OK
     );
     let mut objects = [CK_OBJECT_HANDLE::default(); 8];
@@ -1361,14 +1371,14 @@ fn find_by_class_and_id(
             C_FindObjects(
                 session,
                 objects.as_mut_ptr(),
-                objects.len() as CK_ULONG,
+                ck_len(objects.len()),
                 &raw mut count,
             )
         },
         CKR_OK
     );
     assert_eq!(C_FindObjectsFinal(session), CKR_OK);
-    objects[..count as usize].to_vec()
+    objects[..ck_to_usize(count)].to_vec()
 }
 
 /// Assert that `handle` refers to a private key in the store.

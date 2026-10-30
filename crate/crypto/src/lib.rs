@@ -1,4 +1,3 @@
-#![allow(let_underscore_drop)]
 pub use error::{CryptoError, result::CryptoResultHelper};
 
 pub mod crypto;
@@ -14,7 +13,7 @@ pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
 // Initialize OpenSSL environment from values provided by build.rs (tests only).
 // Keep ctor usage limited to dev/test builds as requested.
 #[cfg(test)]
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
 #[ctor::ctor]
 fn initialize_openssl_env_from_build() {
     let conf_is_set = std::env::var_os("OPENSSL_CONF").is_some();
@@ -32,7 +31,6 @@ fn initialize_openssl_env_from_build() {
     }
 
     // Diagnostics to help understand which OpenSSL is loaded under Nix.
-    #[allow(unused)]
     {
         let ver_num = ::openssl::version::number();
         let ver_str = ::openssl::version::version();
@@ -73,7 +71,7 @@ mod tests {
 
     /// Ensure OpenSSL environment variables are set for tests (both FIPS and non-FIPS).
     /// Called automatically before any test runs.
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
     fn ensure_openssl_env() {
         let conf_is_set = env::var_os("OPENSSL_CONF").is_some();
         let modules_is_set = env::var_os("OPENSSL_MODULES").is_some();
@@ -205,3 +203,5 @@ mod tests {
         ::openssl::init();
     }
 }
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

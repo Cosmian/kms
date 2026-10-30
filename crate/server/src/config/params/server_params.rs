@@ -52,7 +52,10 @@ pub struct HsmInstanceParams {
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 #[derive(Default)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each bool mirrors a server configuration flag"
+)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
@@ -1527,7 +1530,6 @@ impl fmt::Debug for ServerParams {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use tempfile::TempDir;
 

@@ -1,18 +1,19 @@
-/// Windows CNG Key Storage Provider registration using the official BCrypt APIs.
-///
-/// A CNG KSP must be registered via `BCryptRegisterProvider` which creates the
-/// proper registry structure under
-/// `HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\<name>\UM`.
-///
-/// After registration, `BCryptAddContextFunction` and
-/// `BCryptAddContextFunctionProvider` are called to make the provider
-/// discoverable by `NCryptOpenStorageProvider` and `certutil -csplist`.
-///
-/// The DLL is copied to `%SystemRoot%\System32` because CNG resolves provider
-/// images from that directory (only the filename is stored in the registry).
-///
-/// These helpers are called by the CLI `ckms cng register/unregister` commands
-/// and by the NSIS installer.
+#![expect(unsafe_code, reason = "Win32 BCrypt FFI for provider registration")]
+//! Windows CNG Key Storage Provider registration using the official `BCrypt` APIs.
+//!
+//! A CNG KSP must be registered via `BCryptRegisterProvider` which creates the
+//! proper registry structure under
+//! `HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\<name>\UM`.
+//!
+//! After registration, `BCryptAddContextFunction` and
+//! `BCryptAddContextFunctionProvider` are called to make the provider
+//! discoverable by `NCryptOpenStorageProvider` and `certutil -csplist`.
+//!
+//! The DLL is copied to `%SystemRoot%\System32` because CNG resolves provider
+//! images from that directory (only the filename is stored in the registry).
+//!
+//! These helpers are called by the CLI `ckms cng register/unregister` commands
+//! and by the NSIS installer.
 use std::path::Path;
 
 use cosmian_logger::{debug, info};
@@ -23,41 +24,29 @@ use crate::provider::KSP_PROVIDER_NAME;
 // These are not exposed in windows-sys 0.59 but are stable Win32 APIs
 // available in bcrypt.dll since Windows Vista.
 
-#[allow(clippy::upper_case_acronyms)]
-type NTSTATUS = i32;
-#[allow(clippy::upper_case_acronyms)]
-type PCWSTR = *const u16;
-#[allow(clippy::upper_case_acronyms)]
-type PWSTR = *mut u16;
+type NtStatus = i32;
+type Pcwstr = *const u16;
+type Pwstr = *mut u16;
 
-const STATUS_SUCCESS: NTSTATUS = 0;
-/// `BCryptRegisterProvider` returns this NTSTATUS when the provider is already
+const STATUS_SUCCESS: NtStatus = 0;
+/// `BCryptRegisterProvider` returns this `NTSTATUS` when the provider is already
 /// registered.  We treat it as success so that `ckms cng register` is idempotent.
 // SAFETY: 0xC000_0035 fits in an i32 when reinterpreted as two's-complement.
-const STATUS_OBJECT_NAME_COLLISION: NTSTATUS = -1_073_741_771_i32; // 0xC000_0035u32 as NTSTATUS
+const STATUS_OBJECT_NAME_COLLISION: NtStatus = -1_073_741_771_i32; // 0xC000_0035
 
-/// BCRYPT_TABLE / CRYPT_LOCAL — operate on the local machine configuration.
+/// `BCRYPT_TABLE` / `CRYPT_LOCAL` — operate on the local machine configuration.
 const CRYPT_LOCAL: u32 = 1;
 
 /// Lowest priority position.
 const CRYPT_PRIORITY_BOTTOM: u32 = 0xFFFF_FFFF;
 
-/// NCRYPT_KEY_STORAGE_INTERFACE = 0x00010001
+/// `NCRYPT_KEY_STORAGE_INTERFACE` = 0x00010001
 const NCRYPT_KEY_STORAGE_INTERFACE: u32 = 0x0001_0001;
 
 /// The algorithm name for key storage providers.
 const NCRYPT_KEY_STORAGE_ALGORITHM: &[u16] = &[
-    b'K' as u16,
-    b'E' as u16,
-    b'Y' as u16,
-    b'_' as u16,
-    b'S' as u16,
-    b'T' as u16,
-    b'O' as u16,
-    b'R' as u16,
-    b'A' as u16,
-    b'G' as u16,
-    b'E' as u16,
+    0x4B, 0x45, 0x59, 0x5F, // "KEY_"
+    0x53, 0x54, 0x4F, 0x52, 0x41, 0x47, 0x45, // "STORAGE"
     0,
 ];
 
@@ -69,12 +58,12 @@ struct CryptInterfaceReg {
     dw_interface: u32,
     dw_flags: u32,
     c_functions: u32,
-    rgpsz_functions: *mut PWSTR,
+    rgpsz_functions: *mut Pwstr,
 }
 
 #[repr(C)]
 struct CryptImageReg {
-    psz_image: PWSTR,
+    psz_image: Pwstr,
     c_interfaces: u32,
     rgp_interfaces: *mut *mut CryptInterfaceReg,
 }
@@ -82,7 +71,7 @@ struct CryptImageReg {
 #[repr(C)]
 struct CryptProviderReg {
     c_aliases: u32,
-    rgpsz_aliases: *mut PWSTR,
+    rgpsz_aliases: *mut Pwstr,
     p_um: *mut CryptImageReg,
     p_km: *mut CryptImageReg,
 }
@@ -90,51 +79,51 @@ struct CryptProviderReg {
 #[link(name = "bcrypt")]
 unsafe extern "system" {
     fn BCryptRegisterProvider(
-        pszProvider: PCWSTR,
+        pszProvider: Pcwstr,
         dwFlags: u32,
         pReg: *const CryptProviderReg,
-    ) -> NTSTATUS;
+    ) -> NtStatus;
 
-    fn BCryptUnregisterProvider(pszProvider: PCWSTR) -> NTSTATUS;
+    fn BCryptUnregisterProvider(pszProvider: Pcwstr) -> NtStatus;
 
     fn BCryptAddContextFunction(
         dwTable: u32,
-        pszContext: PCWSTR,
+        pszContext: Pcwstr,
         dwInterface: u32,
-        pszFunction: PCWSTR,
+        pszFunction: Pcwstr,
         dwPosition: u32,
-    ) -> NTSTATUS;
+    ) -> NtStatus;
 
     fn BCryptAddContextFunctionProvider(
         dwTable: u32,
-        pszContext: PCWSTR,
+        pszContext: Pcwstr,
         dwInterface: u32,
-        pszFunction: PCWSTR,
-        pszProvider: PCWSTR,
+        pszFunction: Pcwstr,
+        pszProvider: Pcwstr,
         dwPosition: u32,
-    ) -> NTSTATUS;
+    ) -> NtStatus;
 
     fn BCryptRemoveContextFunctionProvider(
         dwTable: u32,
-        pszContext: PCWSTR,
+        pszContext: Pcwstr,
         dwInterface: u32,
-        pszFunction: PCWSTR,
-        pszProvider: PCWSTR,
-    ) -> NTSTATUS;
+        pszFunction: Pcwstr,
+        pszProvider: Pcwstr,
+    ) -> NtStatus;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-/// Register the Cosmian KMS KSP DLL via the official BCrypt registration APIs.
+/// Register the Cosmian KMS KSP DLL via the official `BCrypt` registration APIs.
 ///
 /// This performs the full registration sequence:
 /// 1. Copies the DLL to `%SystemRoot%\System32` (CNG resolves images from there)
 /// 2. `BCryptRegisterProvider` — creates the UM image + interface registry entries
-/// 3. `BCryptAddContextFunction` — adds KEY_STORAGE to the local context
-/// 4. `BCryptAddContextFunctionProvider` — links our provider to KEY_STORAGE
+/// 3. `BCryptAddContextFunction` — adds `KEY_STORAGE` to the local context
+/// 4. `BCryptAddContextFunctionProvider` — links our provider to `KEY_STORAGE`
 ///
 /// # Errors
-/// Returns an error string if the copy or any BCrypt API call fails.
+/// Returns an error string if the copy or any `BCrypt` API call fails.
 pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
     let dll_abs = dll_path.canonicalize().map_err(|e| {
         format!(
@@ -151,12 +140,7 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
     let mut dll_filename_w = to_wide(CNG_DLL_FILENAME);
 
     // Build the interface registration for NCRYPT_KEY_STORAGE_INTERFACE
-    #[allow(
-        clippy::as_ptr_cast_mut,
-        clippy::as_conversions,
-        clippy::ptr_cast_constness
-    )]
-    let mut key_storage_algo: *mut u16 = NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr() as *mut u16;
+    let mut key_storage_algo: *mut u16 = NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr().cast_mut();
 
     let mut interface_reg = CryptInterfaceReg {
         dw_interface: NCRYPT_KEY_STORAGE_INTERFACE,
@@ -228,10 +212,10 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Unregister the Cosmian KMS KSP via the official BCrypt APIs.
+/// Unregister the Cosmian KMS KSP via the official `BCrypt` APIs.
 ///
 /// Reverses the registration by:
-/// 1. `BCryptRemoveContextFunctionProvider` — unlinks from KEY_STORAGE
+/// 1. `BCryptRemoveContextFunctionProvider` — unlinks from `KEY_STORAGE`
 /// 2. `BCryptUnregisterProvider` — removes the provider registry entries
 /// 3. Deletes the DLL from System32
 pub fn unregister_ksp() -> Result<(), String> {

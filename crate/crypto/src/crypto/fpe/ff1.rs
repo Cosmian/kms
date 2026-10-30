@@ -12,28 +12,26 @@ const KEY_LEN: usize = 32;
 
 /// Encrypt a single 128-bit block with AES-256-ECB via OpenSSL (no padding).
 ///
-/// The key and block lengths are invariants enforced by the call sites; an
-/// OpenSSL error here would indicate a programming error, so we propagate it
-/// as a string rather than exposing the full `ErrorStack` type to callers.
-#[allow(clippy::expect_used, clippy::indexing_slicing)]
-fn aes256_ecb_block(key: &[u8; KEY_LEN], block: &[u8; BLOCK_LEN]) -> [u8; BLOCK_LEN] {
+/// The key and block lengths are invariants enforced by the call sites; an OpenSSL error here
+/// would indicate a programming error and is reported as [`NumeralStringError::Internal`].
+fn aes256_ecb_block(
+    key: &[u8; KEY_LEN],
+    block: &[u8; BLOCK_LEN],
+) -> Result<[u8; BLOCK_LEN], NumeralStringError> {
+    const FAILED: NumeralStringError = NumeralStringError::Internal("AES-256-ECB block encryption");
     // OpenSSL's Crypter::update writes at most input_len + block_len bytes.
-    let mut out = [0_u8; 2 * BLOCK_LEN];
-    let mut cr = Crypter::new(Cipher::aes_256_ecb(), Mode::Encrypt, key, None)
-        // Invariant: key is KEY_LEN bytes and AES-256-ECB is always available.
-        .expect("AES-256-ECB init");
+    let mut out = Zeroizing::new([0_u8; 2 * BLOCK_LEN]);
+    let mut cr =
+        Crypter::new(Cipher::aes_256_ecb(), Mode::Encrypt, key, None).map_err(|_e| FAILED)?;
     cr.pad(false); // exact-block input — no PKCS#7 padding
-    let n1 = cr.update(block, &mut out).expect("AES-256-ECB update");
-    let n2 = cr.finalize(&mut out[n1..]).expect("AES-256-ECB finalize");
-    debug_assert_eq!(
-        n1 + n2,
-        BLOCK_LEN,
-        "AES-256-ECB must output exactly one block"
-    );
-    let mut result = [0_u8; BLOCK_LEN];
-    result.copy_from_slice(&out[..BLOCK_LEN]);
-    out.zeroize();
-    result
+    let n1 = cr.update(block, &mut *out).map_err(|_e| FAILED)?;
+    let n2 = cr
+        .finalize(out.get_mut(n1..).ok_or(FAILED)?)
+        .map_err(|_e| FAILED)?;
+    if n1 + n2 != BLOCK_LEN {
+        return Err(FAILED);
+    }
+    <[u8; BLOCK_LEN]>::try_from(out.get(..BLOCK_LEN).ok_or(FAILED)?).map_err(|_e| FAILED)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,9 +78,17 @@ impl std::error::Error for FF1Error {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NumeralStringError {
     InvalidForRadix(u32),
-    TooLong { ns_len: usize, max_len: usize },
-    TooShort { ns_len: usize, min_len: usize },
+    TooLong {
+        ns_len: usize,
+        max_len: usize,
+    },
+    TooShort {
+        ns_len: usize,
+        min_len: usize,
+    },
     TweakTooLong,
+    /// An internal invariant was violated (names the failing operation).
+    Internal(&'static str),
 }
 
 impl fmt::Display for NumeralStringError {
@@ -102,6 +108,7 @@ impl fmt::Display for NumeralStringError {
             Self::TweakTooLong => {
                 write!(f, "The tweak is longer than u32::MAX bytes")
             }
+            Self::Internal(operation) => write!(f, "FF1 internal error: {operation} failed"),
         }
     }
 }
@@ -194,11 +201,12 @@ impl Radix {
             Self::Any { radix, .. } => {
                 // NIST SP 800-38G §6.1 step 6: b = ⌈⌈v × log₂(radix)⌉ / 8⌉
                 // Use exact floating-point log2 to match the spec precisely.
-                #[allow(
+                #[expect(
                     clippy::cast_precision_loss,
                     clippy::cast_sign_loss,
                     clippy::cast_possible_truncation,
-                    clippy::as_conversions
+                    clippy::as_conversions,
+                    reason = "float arithmetic on bounded values; no lossless std conversion"
                 )]
                 let bit_count = (v as f64 * f64::from(radix).log2()).ceil() as usize;
                 bit_count.div_ceil(8)
@@ -268,24 +276,25 @@ impl Prf {
         }
     }
 
-    #[allow(clippy::indexing_slicing)]
-    fn update(&mut self, mut data: &[u8]) {
-        while !data.is_empty() {
-            let to_read = cmp::min(BLOCK_LEN - self.offset, data.len());
-            self.buf[self.offset..self.offset + to_read].copy_from_slice(&data[..to_read]);
-            self.offset += to_read;
-            data = &data[to_read..];
+    fn update(&mut self, data: &[u8]) -> Result<(), NumeralStringError> {
+        for &byte in data {
+            *self
+                .buf
+                .get_mut(self.offset)
+                .ok_or(NumeralStringError::Internal("CBC-MAC buffer offset"))? = byte;
+            self.offset += 1;
 
             if self.offset == BLOCK_LEN {
                 // CBC: XOR plaintext block with previous ciphertext block, then ECB-encrypt.
                 for (b, s) in self.buf.iter_mut().zip(self.state.iter()) {
                     *b ^= s;
                 }
-                self.state = aes256_ecb_block(&self.key, &self.buf);
+                self.state = aes256_ecb_block(&self.key, &self.buf)?;
                 self.buf = [0_u8; BLOCK_LEN];
                 self.offset = 0;
             }
         }
+        Ok(())
     }
 
     fn output(&self) -> &[u8; BLOCK_LEN] {
@@ -299,7 +308,11 @@ impl Prf {
 /// S = R || `CIPH_K`(R XOR \[1\]_16) || `CIPH_K`(R XOR \[2\]_16) || ...
 /// truncated to `d` bytes, where each `[j]_16` is j big-endian–encoded into
 /// 16 bytes XOR'd element-wise with R.
-fn generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
+fn generate_s(
+    key: &[u8; KEY_LEN],
+    r: &[u8; BLOCK_LEN],
+    d: usize,
+) -> Result<Vec<u8>, NumeralStringError> {
     let mut s = Vec::with_capacity(d);
     s.extend_from_slice(r);
     let num_extra = d.div_ceil(BLOCK_LEN).saturating_sub(1);
@@ -308,12 +321,12 @@ fn generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
         for (b, j_byte) in block.iter_mut().zip(j.to_be_bytes().iter()) {
             *b ^= j_byte;
         }
-        let encrypted = aes256_ecb_block(key, &block);
+        let encrypted = aes256_ecb_block(key, &block)?;
         block.zeroize();
         s.extend_from_slice(&encrypted);
     }
     s.truncate(d);
-    s
+    Ok(s)
 }
 
 pub(crate) type FF1h = FF1fr<18>;
@@ -354,7 +367,11 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
 impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
     // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
     // to allow line-by-line verification against the specification.
-    #[allow(clippy::many_single_char_names)]
+    #[expect(
+        clippy::many_single_char_names,
+        clippy::min_ident_chars,
+        reason = "names follow NIST SP 800-38G §6"
+    )]
     pub(crate) fn encrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
@@ -392,19 +409,19 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         ];
 
         let mut prf = Prf::new(&self.key);
-        prf.update(&p);
-        prf.update(tweak);
+        prf.update(&p)?;
+        prf.update(tweak)?;
         let padding = (16 - (t + b + 1) % 16) % 16;
         for _ in 0..padding {
-            prf.update(&[0]);
+            prf.update(&[0])?;
         }
         for i in 0..FEISTEL_ROUNDS {
             let mut prf = prf.clone();
-            prf.update(&[i]);
-            prf.update(x_b.num_radix(self.radix.to_u32()).to_bytes(b).as_ref());
+            prf.update(&[i])?;
+            prf.update(x_b.num_radix(self.radix.to_u32()).to_bytes(b).as_ref())?;
             let r = *prf.output();
 
-            let s = generate_s(&self.key, &r, d);
+            let s = generate_s(&self.key, &r, d)?;
             let y = NS::Num::from_bytes(s.into_iter());
             let m = if i.is_multiple_of(2) { u } else { v };
 
@@ -423,7 +440,11 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
 
     // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
     // to allow line-by-line verification against the specification.
-    #[allow(clippy::many_single_char_names)]
+    #[expect(
+        clippy::many_single_char_names,
+        clippy::min_ident_chars,
+        reason = "names follow NIST SP 800-38G §6"
+    )]
     pub(crate) fn decrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
@@ -461,20 +482,20 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         ];
 
         let mut prf = Prf::new(&self.key);
-        prf.update(&p);
-        prf.update(tweak);
+        prf.update(&p)?;
+        prf.update(tweak)?;
         let padding = (16 - (t + b + 1) % 16) % 16;
         for _ in 0..padding {
-            prf.update(&[0]);
+            prf.update(&[0])?;
         }
         for i in 0..FEISTEL_ROUNDS {
             let i = FEISTEL_ROUNDS - 1 - i;
             let mut prf = prf.clone();
-            prf.update(&[i]);
-            prf.update(x_a.num_radix(self.radix.to_u32()).to_bytes(b).as_ref());
+            prf.update(&[i])?;
+            prf.update(x_a.num_radix(self.radix.to_u32()).to_bytes(b).as_ref())?;
             let r = *prf.output();
 
-            let s = generate_s(&self.key, &r, d);
+            let s = generate_s(&self.key, &r, d)?;
             let y = NS::Num::from_bytes(s.into_iter());
             let m = if i.is_multiple_of(2) { u } else { v };
 
@@ -599,3 +620,6 @@ impl NumeralString for FlexibleNumeralString {
         Self(res)
     }
 }
+#[cfg(test)]
+#[path = "ff1_characterization_tests.rs"]
+mod ff1_characterization_tests;

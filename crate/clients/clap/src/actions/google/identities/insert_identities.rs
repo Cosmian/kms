@@ -6,10 +6,10 @@ use super::IDENTITIES_ENDPOINT;
 use crate::{actions::google::gmail_client::GmailClient, error::result::KmsCliResult};
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct IdentityInfo {
-    primaryKeyPairId: String,
-    emailAddress: String,
+    primary_key_pair_id: String,
+    email_address: String,
 }
 
 /// Creates and configures a client-side encryption identity that's authorized to send mail from the
@@ -35,8 +35,8 @@ impl InsertIdentitiesAction {
 
         // Construct identity_info
         let identity_info = IdentityInfo {
-            primaryKeyPairId: self.key_pairs_id.clone(),
-            emailAddress: self.user_id.clone(),
+            primary_key_pair_id: self.key_pairs_id.clone(),
+            email_address: self.user_id.clone(),
         };
         let response = gmail_client
             .await?
@@ -45,3 +45,7 @@ impl InsertIdentitiesAction {
         GmailClient::handle_response(response).await
     }
 }
+
+#[cfg(test)]
+#[path = "insert_identities_characterization_tests.rs"]
+mod characterization_tests;

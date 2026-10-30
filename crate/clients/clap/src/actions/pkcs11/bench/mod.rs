@@ -302,3 +302,7 @@ mod tests {
         assert_eq!(action.hsm_slot, 42);
     }
 }
+
+#[cfg(test)]
+#[path = "mod_characterization_tests.rs"]
+mod characterization_tests;

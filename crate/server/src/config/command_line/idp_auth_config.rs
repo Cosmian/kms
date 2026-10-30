@@ -136,7 +136,6 @@ mod tests {
     use crate::config::IdpAuthConfig;
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn test_idp_extraction() {
         log_init(None);
         let idp_list = IdpAuthConfig {
@@ -162,7 +161,6 @@ mod tests {
     /// `jwt_svid_auth` is a server-wide opt-in flag; it must not influence how
     /// `--jwt-auth-provider` entries are parsed/deduplicated (non-regression).
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn jwt_svid_auth_does_not_affect_provider_extraction() {
         let idp_list = IdpAuthConfig {
             jwt_auth_provider: Some(vec![

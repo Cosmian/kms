@@ -1122,7 +1122,10 @@ impl Display for Attributes {
 /// Structure used in various operations to provide the New Attribute value in the request.
 /// Each variant corresponds to a field in the Attributes struct.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames, Display, Debug)]
-#[expect(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
+)]
 pub enum Attribute {
     /// The Activation Date attribute contains the date and time when the
     /// Managed Object MAY begin to be used. This time corresponds to state

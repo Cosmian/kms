@@ -63,9 +63,9 @@ fn test_pems(
 ) -> CosmianResult<()> {
     // import the  key
     let key_uid = import_key(ImportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
-        sub_command: "ec".to_string(),
-        key_file: key_file_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
+        sub_command: "ec".to_owned(),
+        key_file: key_file_path.to_owned(),
         key_format: Some(ImportKeyFormat::Pem),
         replace_existing: true,
         ..Default::default()
@@ -85,10 +85,10 @@ fn test_pems(
     let export_key_file = tempfile::NamedTempFile::new()?;
 
     export_key(ExportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
         sub_command: "ec".to_owned(),
         key_id: key_uid.clone(),
-        key_file: export_key_file.path().to_str().unwrap().to_string(),
+        key_file: export_key_file.path().to_str().unwrap().to_owned(),
         key_format: Some(export_format.clone()),
         allow_revoked: true,
         ..Default::default()
@@ -107,10 +107,10 @@ fn test_pems(
     // Get the key
     let get_key_file = tempfile::NamedTempFile::new()?;
     export_key(ExportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
         sub_command: "ec".to_owned(),
         key_id: key_uid,
-        key_file: get_key_file.path().to_str().unwrap().to_string(),
+        key_file: get_key_file.path().to_str().unwrap().to_owned(),
         key_format: Some(export_format),
         ..Default::default()
     })?;

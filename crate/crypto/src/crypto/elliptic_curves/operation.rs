@@ -764,7 +764,6 @@ fn create_ec_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 
@@ -991,7 +990,6 @@ mod tests {
         decoded.unwrap_or_else(|_| Vec::new())
     }
 
-    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x25519_conversions() {
@@ -1141,7 +1139,6 @@ mod tests {
         keypair_generation(RecommendedCurve::P521);
     }
 
-    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x448_conversions() {

@@ -238,7 +238,6 @@ pub fn eddsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm as KmipHash,
         kmip_2_1::kmip_types::CryptographicParameters,
@@ -328,20 +327,24 @@ mod tests {
     #[test]
     fn ecdsa_sign_supported_recommended_curves() {
         // List of supported curves for signature in server sign path
-        #[allow(unused_mut)]
-        let mut curves = vec![
+        let non_fips_curves: &[openssl::nid::Nid] = if cfg!(feature = "non-fips") {
+            &[
+                openssl::nid::Nid::X9_62_PRIME192V1, // P192
+                openssl::nid::Nid::SECP256K1,        // SECP256K1
+                openssl::nid::Nid::SECP224K1,        // SECP224K1
+            ]
+        } else {
+            &[]
+        };
+        let curves = [
             openssl::nid::Nid::SECP224R1,        // P224
             openssl::nid::Nid::X9_62_PRIME256V1, // P256
             openssl::nid::Nid::SECP384R1,        // P384
             openssl::nid::Nid::SECP521R1,        // P521
-        ];
-        #[cfg(feature = "non-fips")]
-        {
-            // Additional non-FIPS curves
-            curves.push(openssl::nid::Nid::X9_62_PRIME192V1); // P192
-            curves.push(openssl::nid::Nid::SECP256K1); // SECP256K1
-            curves.push(openssl::nid::Nid::SECP224K1); // SECP224K1
-        }
+        ]
+        .iter()
+        .chain(non_fips_curves)
+        .copied();
 
         for nid in curves {
             let group = openssl::ec::EcGroup::from_curve_name(nid)

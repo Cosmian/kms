@@ -1,5 +1,4 @@
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod pkcs12_tests {
     use cosmian_logger::log_init;
 
@@ -342,8 +341,6 @@ mod tls_version_tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::expect_used)]
 mod login_tests {
     use crate::http_client::login::{LoginState, Oauth2LoginConfig};
 
@@ -697,7 +694,6 @@ mod custom_headers_tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod approle_login_tests {
     use std::{
         io::{Read, Write},

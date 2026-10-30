@@ -20,8 +20,10 @@ use crate::error::KmsError;
 
 /// Error Name for AWS XKS Error replies
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[allow(non_camel_case_types)]
-#[allow(clippy::enum_variant_names)] // variant names mirror the AWS XKS error protocol's `*Exception` naming exactly
+#[expect(
+    clippy::enum_variant_names,
+    reason = "variant names mirror the AWS XKS error protocol's `*Exception` naming exactly"
+)]
 pub enum XksErrorName {
     /// The request was rejected because one
     /// or more input parameters is invalid.
@@ -113,7 +115,7 @@ pub enum XksErrorName {
 /// }
 /// ```
 #[derive(Serialize, Debug, Clone)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub struct XksErrorReply {
     pub errorName: XksErrorName,
     pub errorMessage: Option<String>,
@@ -202,7 +204,10 @@ pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorRe
 }
 
 // Custom error handler for JSON deserialization errors
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "signature imposed by actix-web JsonConfig::error_handler"
+)]
 pub(crate) fn xks_json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> Error {
     let error_message = match &err {
         JsonPayloadError::Deserialize(e) => format!("JSON deserialize error: {e}"),

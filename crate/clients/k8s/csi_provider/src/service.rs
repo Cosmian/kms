@@ -70,10 +70,8 @@ pub struct CsiProviderService {
 
 impl CsiProviderService {
     /// Create a new service backed by `client`.
-    // KmsClient wraps a reqwest::Client which is not const-constructible.
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn new(client: KmsClient) -> Self {
+    pub const fn new(client: KmsClient) -> Self {
         Self { client }
     }
 }
@@ -249,7 +247,6 @@ fn content_version(bytes: &[u8]) -> String {
 // ── Unit tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -359,3 +356,7 @@ mod tests {
         assert_ne!(v1, v3);
     }
 }
+
+#[cfg(test)]
+#[path = "service_characterization_tests.rs"]
+mod characterization_tests;

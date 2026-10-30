@@ -843,3 +843,7 @@ mod tests {
         assert!(matches!(result, Err(InterfaceError::NotSupported(_))));
     }
 }
+
+#[cfg(test)]
+#[path = "interface_characterization_tests.rs"]
+mod characterization_tests;

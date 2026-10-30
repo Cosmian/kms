@@ -107,7 +107,6 @@ pub struct KmsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(clippy::struct_field_names)]
 pub struct WebhookConfig {
     /// TCP port for the webhook HTTPS server.
     #[serde(default = "default_webhook_port")]
@@ -169,3 +168,7 @@ impl OperatorConfig {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "config_characterization_tests.rs"]
+mod characterization_tests;

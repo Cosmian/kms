@@ -197,7 +197,7 @@ pub fn kmip_enum(_attr: TokenStream, item: TokenStream) -> TokenStream {
             strum::FromRepr
         )]
         #[repr(u32)]
-        #[allow(non_camel_case_types)]
+        #[allow(non_camel_case_types, reason = "KMIP enum variant names mirror the spec")]
         #input
     };
 

@@ -814,7 +814,6 @@ async fn post_process_active_private_key(
     Ok(())
 }
 
-#[expect(clippy::ref_option)]
 async fn process_public_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -1096,7 +1095,6 @@ async fn unwrap_if_requested(
     Ok(())
 }
 
-#[expect(clippy::ref_option)]
 async fn process_covercrypt_key(
     covercrypt_key: &mut Object,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
@@ -1202,7 +1200,6 @@ pub(super) fn openssl_public_key_to_kmip_default_format(
     Ok(object)
 }
 
-#[expect(clippy::ref_option)]
 async fn process_symmetric_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
@@ -1633,7 +1630,6 @@ async fn post_process_pkcs7(
     Ok(cert_owm)
 }
 
-#[expect(clippy::ref_option)]
 async fn process_secret_data(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,

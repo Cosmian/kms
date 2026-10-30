@@ -6,13 +6,6 @@
 //! - [`cert_gen`] — self-signed PKI generation (CA + server + client certs)
 //! - TOML round-trip for the assembled [`crate::config::ClapConfig`]
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::print_stdout,
-    unreachable_pub
-)]
-
 use std::path::{Path, PathBuf};
 
 use openssl::{nid::Nid, pkey::PKey, x509::X509};

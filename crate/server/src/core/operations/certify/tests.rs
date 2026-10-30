@@ -4,11 +4,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 
 #[test]
-#[allow(
-    clippy::expect_used,
-    clippy::missing_asserts_for_indexing,
-    clippy::indexing_slicing
-)]
 fn test_serial_number_without_fix_creates_21_bytes() {
     // This test verifies the BUG: without clearing the high bit,
     // ASN.1 DER encoding adds a leading 0x00 byte to indicate positive numbers,
@@ -64,14 +59,8 @@ fn test_serial_number_without_fix_creates_21_bytes() {
 
     // Look for the INTEGER tag (0x02) which should contain our serial number
     // The serial number appears early in the certificate
-    let mut found_21_byte_serial = false;
-    for window in cert_der.windows(3) {
-        // Look for INTEGER tag (0x02) with length 0x15 (21 bytes)
-        if window[0] == 0x02 && window[1] == 0x15 && window[2] == 0x00 {
-            found_21_byte_serial = true;
-            break;
-        }
-    }
+    // INTEGER tag (0x02) with length 0x15 (21 bytes) and a leading 0x00 byte
+    let found_21_byte_serial = cert_der.windows(3).any(|w| w == [0x02, 0x15, 0x00]);
 
     assert!(
         found_21_byte_serial,
@@ -81,7 +70,6 @@ fn test_serial_number_without_fix_creates_21_bytes() {
 }
 
 #[test]
-#[allow(clippy::expect_used)]
 fn test_serial_number_length() {
     // Test that serial numbers are always 20 bytes or less
     // This verifies the fix for the issue where some certificates

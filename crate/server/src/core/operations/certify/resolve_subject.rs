@@ -247,7 +247,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
                     return Ok(Subject::Certificate(
                         certificate_id,
                         kmip_certificate_to_openssl(owm.object())?,
-                        owm.attributes().to_owned(),
+                        Box::new(owm.attributes().to_owned()),
                     ));
                 }
                 // If the user passed a public key, it is a new certificate signing this public key
@@ -302,7 +302,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         authorize_destination_uid(kms, &certificate_id, user).await?;
         return Ok(Subject::PublicKeyAndSubjectName(
             certificate_id,
-            public_key,
+            Box::new(public_key),
             subject_name,
         ));
     }
@@ -362,7 +362,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
 
     Ok(Subject::KeypairAndSubjectName(
         certificate_id,
-        KeyPairData {
+        Box::new(KeyPairData {
             private_key_id: sk_uid,
             private_key_object: key_pair.private_key().to_owned(),
             private_key_tags: key_pair
@@ -375,7 +375,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
                 .public_key()
                 .attributes()?
                 .get_tags(kms.vendor_id()),
-        },
+        }),
         subject_name,
     ))
 }

@@ -180,7 +180,6 @@ pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>,
 /// Each chunk of plaintext data is written to its own file.
 /// # Errors
 /// If decryption fails
-#[expect(clippy::indexing_slicing)]
 pub fn write_bulk_decrypted_data(
     plaintext: &[u8],
     input_files: &[PathBuf],
@@ -203,7 +202,9 @@ pub fn write_bulk_decrypted_data(
 
         // Write plaintext data to its own file
         // Reuse input file names if there are multiple inputs (and ignore `output_file`)
-        let input_file = &input_files[idx];
+        let input_file = input_files.get(idx).ok_or_else(|| {
+            KmsClientError::Conversion(format!("missing input file for chunk {idx}"))
+        })?;
         let output_file = match output_file {
             Some(output_file) if nb_chunks > 1 => {
                 let file_name = input_file.file_name().ok_or_else(|| {
@@ -239,7 +240,6 @@ pub fn write_bulk_decrypted_data(
 /// If encryption fails
 /// # Errors
 /// If encryption fails
-#[expect(clippy::indexing_slicing)]
 pub fn write_bulk_encrypted_data(
     plaintext: &[u8],
     input_files: &[PathBuf],
@@ -262,7 +262,9 @@ pub fn write_bulk_encrypted_data(
 
         // Write encrypted data to its own file
         // Reuse input file names if there are multiple inputs (and ignore `output_file`)
-        let input_file = &input_files[idx];
+        let input_file = input_files.get(idx).ok_or_else(|| {
+            KmsClientError::Conversion(format!("missing input file for chunk {idx}"))
+        })?;
         let output_file = match output_file {
             Some(output_file) if nb_chunks > 1 => {
                 let file_name = input_file.file_name().ok_or_else(|| {
@@ -285,3 +287,7 @@ pub fn write_bulk_encrypted_data(
         Ok(())
     })
 }
+
+#[cfg(test)]
+#[path = "file_utils_characterization_tests.rs"]
+mod characterization_tests;

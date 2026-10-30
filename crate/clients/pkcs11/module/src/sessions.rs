@@ -17,10 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::as_conversions)]
-#![allow(clippy::significant_drop_in_scrutinee)]
-#![allow(clippy::branches_sharing_code)]
-
 use std::{
     collections::HashMap,
     sync::{self, Arc, atomic::Ordering},
@@ -156,6 +152,7 @@ pub(crate) struct Session {
 /// # Safety
 /// `pul_len` must be non-null and writable; when non-null, `p_out` must point to at
 /// least `*pul_len` writable bytes.
+#[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
 unsafe fn copy_to_output_buffer(
     data: &[u8],
     p_out: CK_BYTE_PTR,
@@ -242,7 +239,8 @@ impl Session {
             // Populate the find context with every object instead of
             // rejecting the call.
             self.clear_find_objects_ctx();
-            for object in backend()?.find_all_objects()? {
+            let all_objects = backend()?.find_all_objects()?;
+            for object in all_objects {
                 self.update_find_objects_context(object)?;
             }
             return Ok(());
@@ -290,7 +288,8 @@ impl Session {
             }
         }
         // Find all objects
-        for object in backend()?.find_all_objects()? {
+        let all_objects = backend()?.find_all_objects()?;
+        for object in all_objects {
             self.update_find_objects_context(object)?;
         }
 
@@ -334,7 +333,6 @@ impl Session {
         Ok(())
     }
 
-    #[expect(clippy::too_many_lines)]
     pub(crate) fn load_find_context_by_class(
         &mut self,
         attributes: &Attributes,
@@ -426,8 +424,9 @@ impl Session {
                             // stub at the same handle (upsert semantics). The read lock above
                             // is dropped before this call to avoid deadlocking on the write
                             // lock taken by `update_find_objects_context`.
-                            match backend()?.find_data_object(SearchOptions::Id(remote_id.clone()))
-                            {
+                            let full_data =
+                                backend()?.find_data_object(SearchOptions::Id(remote_id.clone()));
+                            match full_data {
                                 Ok(Some(full_data)) => {
                                     self.update_find_objects_context(Arc::new(
                                         Object::DataObject(full_data),
@@ -530,8 +529,9 @@ impl Session {
                         // the store with a fully-fetched object here, replacing the
                         // stub at the same handle.
                         let handle = if search_class == pkcs11_sys::CKO_PUBLIC_KEY {
-                            match backend()?.find_public_key(SearchOptions::Id(object.remote_id()))
-                            {
+                            let full_pk =
+                                backend()?.find_public_key(SearchOptions::Id(object.remote_id()));
+                            match full_pk {
                                 Ok(full_pk) => self.update_find_objects_context(Arc::new(
                                     Object::PublicKey(full_pk),
                                 ))?,
@@ -558,7 +558,8 @@ impl Session {
                         // combined tags (e.g. `["ssh-auth", "_sk"]`), retrying the
                         // store lookup afterwards.
                         drop(find_ctx);
-                        if let Ok(private_keys) = backend()?.find_all_private_keys() {
+                        let private_keys = backend()?.find_all_private_keys();
+                        if let Ok(private_keys) = private_keys {
                             for pk in private_keys {
                                 self.update_find_objects_context(Arc::new(Object::PrivateKey(pk)))?;
                             }
@@ -667,11 +668,17 @@ impl Session {
     }
 
     /// Sign the provided data, or stored payload if data is not provided.
+    ///
+    /// # Safety
+    ///
+    /// `p_signature_len` must be a valid pointer; `p_signature`, when non-null, must point to
+    /// a writable buffer of `*p_signature_len` bytes.
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) unsafe fn sign(
         &mut self,
         data: Option<&[u8]>,
-        pSignature: CK_BYTE_PTR,
-        pulSignatureLen: CK_ULONG_PTR,
+        p_signature: CK_BYTE_PTR,
+        p_signature_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
         let Some(sign_ctx) = self.sign_ctx.as_mut() else {
             return Err(ModuleError::OperationNotInitialized(0));
@@ -680,23 +687,23 @@ impl Session {
             return Err(ModuleError::OperationNotInitialized(0));
         }
         if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
-            if pSignature.is_null() {
+            if p_signature.is_null() {
                 // A PKCS#11 length query must leave the operation initialized for
                 // the subsequent buffer-filling call. EdDSA and RSA signature sizes
                 // are fixed by the key, so no remote KMS Sign is needed to answer it.
-                // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
+                // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
                 unsafe {
-                    *pulSignatureLen = signature_len.try_into()?;
+                    *p_signature_len = signature_len.try_into()?;
                 }
                 return Ok(());
             }
-            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
-            if unsafe { usize::try_from(*pulSignatureLen)? } < signature_len {
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
+            if unsafe { usize::try_from(*p_signature_len)? } < signature_len {
                 // The required size is known without signing; report it and keep the
                 // operation initialized so the caller can retry with a larger buffer.
-                // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
+                // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
                 unsafe {
-                    *pulSignatureLen = signature_len.try_into()?;
+                    *p_signature_len = signature_len.try_into()?;
                 }
                 return Err(ModuleError::BufferTooSmall);
             }
@@ -744,11 +751,11 @@ impl Session {
             });
             signature
         };
-        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`) and, when
-        // non-null, a `pSignature` buffer of `*pulSignatureLen` writable bytes.
+        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`) and, when
+        // non-null, a `p_signature` buffer of `*p_signature_len` writable bytes.
         // On CKR_BUFFER_TOO_SMALL the operation (and cached signature) stays initialized so
         // the caller can retry with a larger buffer using the SAME signature.
-        if unsafe { copy_to_output_buffer(&signature, pSignature, pulSignatureLen) }? {
+        if unsafe { copy_to_output_buffer(&signature, p_signature, p_signature_len) }? {
             self.sign_ctx = None;
         }
         Ok(())
@@ -756,6 +763,12 @@ impl Session {
 
     /// Signs one complete PKCS#11 v3 message while keeping the message-sign
     /// operation initialized for subsequent independent messages.
+    ///
+    /// # Safety
+    ///
+    /// `p_signature_len` must be a valid pointer; `p_signature`, when non-null, must point to
+    /// a writable buffer of `*p_signature_len` bytes.
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) unsafe fn sign_message(
         &mut self,
         data: &[u8],
@@ -829,39 +842,42 @@ impl Session {
             .verify(&verify_ctx.algorithm, data, signature)
     }
 
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) fn decrypt(
         &mut self,
         ciphertext: Vec<u8>,
-        pData: CK_BYTE_PTR,
-        pulDataLen: CK_ULONG_PTR,
+        p_data: CK_BYTE_PTR,
+        pul_data_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
         let decrypt_ctx = self
             .decrypt_ctx
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let cleartext = backend()?.decrypt(decrypt_ctx, ciphertext)?;
-        // SAFETY: pulDataLen is non-null (checked by C_Decrypt); pData, when non-null, is a
-        // caller buffer of *pulDataLen bytes. Length query / too-small keep the operation active.
-        if unsafe { copy_to_output_buffer(&cleartext, pData, pulDataLen) }? {
+        // SAFETY: pul_data_len is non-null (checked by C_Decrypt); p_data, when non-null, is a
+        // caller buffer of *pul_data_len bytes. Length query / too-small keep the operation active.
+        if unsafe { copy_to_output_buffer(&cleartext, p_data, pul_data_len) }? {
             self.decrypt_ctx = None;
         }
         Ok(())
     }
 
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) fn encrypt(
         &mut self,
         cleartext: Vec<u8>,
-        pEncryptedData: CK_BYTE_PTR,
-        pulEncryptedDataLen: CK_ULONG_PTR,
+        p_encrypted_data: CK_BYTE_PTR,
+        pul_encrypted_data_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
         let encrypt_ctx = self
             .encrypt_ctx
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
-        // SAFETY: pulEncryptedDataLen is non-null (checked by C_Encrypt); pEncryptedData,
-        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes.
-        if unsafe { copy_to_output_buffer(&ciphertext, pEncryptedData, pulEncryptedDataLen) }? {
+        // SAFETY: pul_encrypted_data_len is non-null (checked by C_Encrypt); p_encrypted_data,
+        // when non-null, is a caller buffer of *pul_encrypted_data_len bytes.
+        if unsafe { copy_to_output_buffer(&ciphertext, p_encrypted_data, pul_encrypted_data_len) }?
+        {
             self.encrypt_ctx = None;
         }
         Ok(())
@@ -996,7 +1012,8 @@ impl Session {
                 }
                 // A Pre-Active object cannot be revoked but can be destroyed directly
                 // (KMIP 2.1 §4.57): a failed Revoke is left for Destroy to report.
-                if let Err(e) = backend()?.revoke_object(&object.remote_id()) {
+                let revoked = backend()?.revoke_object(&object.remote_id());
+                if let Err(e) = revoked {
                     debug!("destroy_object: revoke skipped: {e}");
                 }
                 backend()?.destroy_object(&object.remote_id())?;
@@ -1018,35 +1035,28 @@ fn ignore_sessions() -> bool {
         == "true"
 }
 
-#[expect(clippy::expect_used)]
-pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
+pub(crate) fn create(flags: CK_FLAGS) -> ModuleResult<CK_SESSION_HANDLE> {
+    let new_session = || {
+        Arc::new(sync::Mutex::new(Session {
+            flags,
+            ..Default::default()
+        }))
+    };
     if ignore_sessions() {
-        {
-            let mut session_map = SESSIONS.write().expect("failed locking the sessions map");
-            if session_map.is_empty() {
-                session_map.insert(
-                    0,
-                    Arc::new(sync::Mutex::new(Session {
-                        flags,
-                        ..Default::default()
-                    })),
-                );
-            }
+        let mut session_map = SESSIONS
+            .write()
+            .context("failed locking the sessions map")?;
+        if session_map.is_empty() {
+            session_map.insert(0, new_session());
         }
-        0
+        Ok(0)
     } else {
         let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
         SESSIONS
             .write()
-            .expect("failed locking the sessions map")
-            .insert(
-                handle,
-                Arc::new(sync::Mutex::new(Session {
-                    flags,
-                    ..Default::default()
-                })),
-            );
-        handle
+            .context("failed locking the sessions map")?
+            .insert(handle, new_session());
+        Ok(handle)
     }
 }
 
@@ -1119,8 +1129,11 @@ pub(crate) fn close_all() -> ModuleResult<()> {
     Ok(())
 }
 
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
+#[expect(
+    unsafe_code,
+    reason = "tests drive the unsafe C-ABI session helpers with in-scope buffers"
+)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -1458,3 +1471,6 @@ mod tests {
         Session::map_oracle_tde_security_to_mk(input).unwrap_err();
     }
 }
+#[cfg(test)]
+#[path = "sessions_characterization_tests.rs"]
+mod characterization_tests;

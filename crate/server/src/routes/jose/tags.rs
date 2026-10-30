@@ -182,7 +182,10 @@ fn tags_response(kid: String, all_tags: HashSet<String>) -> TagsResponse {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
 
     use cosmian_kms_access::access::Access;

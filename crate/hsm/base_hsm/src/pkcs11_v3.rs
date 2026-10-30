@@ -49,7 +49,10 @@ pub(crate) type CkCGetInterfaceList = CK_C_GetInterfaceList;
 /// `library` must be a validly loaded PKCS#11 shared library. This function performs
 /// FFI calls into it and dereferences the pointers it returns, trusting it to behave
 /// according to the OASIS Cryptoki v3.0 specification for `C_GetInterface`.
-#[expect(unsafe_code)]
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+)]
 pub(crate) unsafe fn get_v3_function_list(library: &Library) -> Option<CK_FUNCTION_LIST_3_0> {
     // SAFETY: `library` is a validly loaded shared library (guaranteed by the caller,
     // `HsmLib::instantiate`). `library.get` only performs symbol lookup, which is safe
@@ -124,7 +127,10 @@ pub(crate) unsafe fn get_v3_function_list(library: &Library) -> Option<CK_FUNCTI
 ///
 /// `library` must be a validly loaded PKCS#11 shared library, as for
 /// `get_v3_function_list`.
-#[expect(unsafe_code)]
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+)]
 pub(crate) unsafe fn get_v2_function_list(library: &Library) -> Option<CK_FUNCTION_LIST> {
     // SAFETY: see `get_v3_function_list` — symbol lookup alone is safe.
     let get_function_list: CK_C_GetFunctionList =
@@ -174,7 +180,10 @@ pub(crate) fn parse_interfaces(raw: &[CkInterface]) -> Vec<InterfaceDescriptor> 
             } else {
                 // SAFETY: `pInterfaceName` is guaranteed by the PKCS#11 v3.0 spec to
                 // point to a NUL-terminated string for the duration of this call.
-                #[expect(unsafe_code)]
+                #[expect(
+                    unsafe_code,
+                    reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+                )]
                 unsafe {
                     CStr::from_ptr(entry.pInterfaceName.cast::<c_char>())
                         .to_string_lossy()

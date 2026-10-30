@@ -2,8 +2,6 @@
 //!
 //! Optionally generates a self-signed PKI or accepts manual PEM paths.
 
-#![allow(unreachable_pub, clippy::print_stdout)]
-
 use std::path::PathBuf;
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
@@ -14,21 +12,25 @@ use super::{
 };
 use crate::{config::TlsConfig, result::KResult};
 
-pub struct TlsWizardResult {
-    pub tls: TlsConfig,
+pub(crate) struct TlsWizardResult {
+    pub(crate) tls: TlsConfig,
     /// CA certificate path when a self-signed PKI was generated.
     /// Available regardless of whether mTLS was enabled, so that the socket
     /// server step can enable `clients_ca_cert_file` automatically.
-    pub generated_ca_cert: Option<PathBuf>,
+    pub(crate) generated_ca_cert: Option<PathBuf>,
     /// Populated when self-signed certs were generated; clients need the CA
     /// cert to authenticate the server.
-    pub generated_client_cert: Option<PathBuf>,
+    pub(crate) generated_client_cert: Option<PathBuf>,
     /// Private key matching `generated_client_cert`; the client needs both to
     /// authenticate via mTLS. Populated together with `generated_client_cert`.
-    pub generated_client_key: Option<PathBuf>,
+    pub(crate) generated_client_key: Option<PathBuf>,
 }
 
-pub fn configure_tls() -> KResult<TlsWizardResult> {
+#[expect(
+    clippy::print_stdout,
+    reason = "the configuration wizard prompts the user on stdout"
+)]
+pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
     let theme = ColorfulTheme::default();
 
     let enable_tls: bool = Confirm::with_theme(&theme)

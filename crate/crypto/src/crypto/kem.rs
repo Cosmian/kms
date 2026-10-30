@@ -53,7 +53,6 @@ fn recommended_curve_to_pre_quantum_kem_tag(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn kem_keygen(
     vendor_id: &str,
     dk_uid: String,
@@ -290,7 +289,6 @@ fn create_ek_object(
     }))
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use zeroize::Zeroizing;

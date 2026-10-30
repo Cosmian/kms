@@ -3,7 +3,7 @@
 //! ```
 //! HSM_USER_PASSWORD=12345678 cargo test --target x86_64-unknown-linux-gnu --features softhsm2 -- tests::test_hsm_softhsm2_all
 //! ```
-use std::{collections::HashMap, ptr};
+use std::collections::HashMap;
 
 use cosmian_kms_base_hsm::{
     HResult,
@@ -11,8 +11,6 @@ use cosmian_kms_base_hsm::{
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
-use libloading::Library;
-use pkcs11_sys::{CK_C_INITIALIZE_ARGS, CK_RV, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKR_OK};
 
 use crate::{SOFTHSM2_PKCS11_LIB, SofthsmCapabilityProvider};
 
@@ -89,22 +87,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_low_level_test() -> HResult<()> {
-    let cfg = cfg()?;
-    let library = unsafe { Library::new(&cfg.lib_path) }?;
-    let init = unsafe { library.get::<fn(p_init_args: CK_VOID_PTR) -> CK_RV>(b"C_Initialize") }?;
-
-    let mut p_init_args = CK_C_INITIALIZE_ARGS {
-        CreateMutex: None,
-        DestroyMutex: None,
-        LockMutex: None,
-        UnlockMutex: None,
-        flags: CKF_OS_LOCKING_OK,
-        pReserved: ptr::null_mut(),
-    };
-    let rv = init(&raw mut p_init_args as CK_VOID_PTR);
-    assert_eq!(rv, CKR_OK);
-
-    Ok(())
+    shared::low_level_init_test(&cfg()?)
 }
 
 /// Additive PKCS#11 v3 capability probe (issue #1153).

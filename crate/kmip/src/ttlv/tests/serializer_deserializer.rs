@@ -575,7 +575,9 @@ fn test_large_byte_string_data_tag() {
     log_init(option_env!("RUST_LOG"));
 
     // 1 MB of data (simulates a file upload)
-    let payload: Vec<u8> = (0..1_000_000_u32).map(|i| (i % 256) as u8).collect();
+    let payload: Vec<u8> = (0..1_000_000_u32)
+        .map(|i| u8::try_from(i % 256).unwrap())
+        .collect();
     let test = EncryptLike {
         data: payload.clone(),
     };

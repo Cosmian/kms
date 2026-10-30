@@ -1971,11 +1971,6 @@ async fn execute_steps(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use super::*;
 
@@ -2014,8 +2009,8 @@ mod tests {
         };
         let body = raw_http_body(&[segment(Some("ab"), None, 2), segment(None, Some("00ff"), 1)]);
         assert_eq!(body.unwrap(), b"abab\x00\xff");
-        assert!(raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).is_err());
-        assert!(raw_http_body(&[segment(None, Some("zz"), 1)]).is_err());
+        raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).unwrap_err();
+        raw_http_body(&[segment(None, Some("zz"), 1)]).unwrap_err();
     }
 
     #[test]
@@ -2101,7 +2096,7 @@ mod tests {
                 ]
             }]
         });
-        assert!(assert_success(&response, "test_op").is_ok());
+        assert_success(&response, "test_op").unwrap();
     }
 
     #[test]
