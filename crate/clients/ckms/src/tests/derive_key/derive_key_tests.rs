@@ -11,7 +11,7 @@ use cosmian_kms_cli_actions::{
             extra::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
-            kmip_operations::Create,
+            kmip_operations::{Activate, Create},
             kmip_types::{CryptographicAlgorithm, KeyFormatType},
         },
         reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
@@ -144,6 +144,14 @@ pub(crate) async fn create_derivable_symmetric_key_with_client(
         .create(request)
         .await
         .map_err(|e| CosmianError::Default(format!("Failed to create symmetric key: {e}")))?;
+
+    // Only an Active key can be used as a derivation base (KMIP 2.1 Table 207).
+    kms_client
+        .activate(Activate {
+            unique_identifier: response.unique_identifier.clone(),
+        })
+        .await
+        .map_err(|e| CosmianError::Default(format!("Failed to activate symmetric key: {e}")))?;
 
     Ok(response.unique_identifier.to_string())
 }

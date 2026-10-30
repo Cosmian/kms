@@ -627,7 +627,7 @@ fn start_socket_server(
     let socket_server_handle = socket_server.start_threaded(
         kms_server,
         move |username, request, kms_server| {
-            trace!("request: {username} {}", hex::encode(request));
+            trace!("request: {username} ({} bytes)", request.len());
             // Handle the TTLV bytes received from the socket server
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {

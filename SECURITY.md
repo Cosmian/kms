@@ -5,7 +5,14 @@
       - [Severity Rating](#severity-rating)
       - [Known Vulnerabilities](#known-vulnerabilities)
             - [2026](#2026)
-                  - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
+                  - [COSMIAN-2026-055 — Get Attributes without a Unique Identifier selected another user's newest object](#cosmian-2026-055--get-attributes-without-a-unique-identifier-selected-another-users-newest-object)
+                  - [COSMIAN-2026-054 — Batch Undo could restore objects of another user](#cosmian-2026-054--batch-undo-could-restore-objects-of-another-user)
+                  - [COSMIAN-2026-053 — ReCertify authorized the issuer key as the certificate owner](#cosmian-2026-053--recertify-authorized-the-issuer-key-as-the-certificate-owner)
+                  - [COSMIAN-2026-052 — ReKeyKeyPair retired another user's linked public key](#cosmian-2026-052--rekeykeypair-retired-another-users-linked-public-key)
+                  - [COSMIAN-2026-051 — KMIP certificate chains and unbounded HSM Locate permit excessive server work](#cosmian-2026-051--kmip-certificate-chains-and-unbounded-hsm-locate-permit-excessive-server-work)
+                  - [COSMIAN-2026-050 — KMIP payloads written to debug logs](#cosmian-2026-050--kmip-payloads-written-to-debug-logs)
+                  - [COSMIAN-2026-049 — Configured Operator role permitted PKCS#11 administration](#cosmian-2026-049--configured-operator-role-permitted-pkcs11-administration)
+                  - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
                   - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
                   - [COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`](#cosmian-2026-046--server-key-encryption-key-usable-as-a-decryption-oracle-through-pre-wrapped-import)
                   - [COSMIAN-2026-045 — Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent](#cosmian-2026-045--sensitive-opaque-objects-and-split-keys-exported-in-plaintext-when-a-wrapping-specification-is-sent)
@@ -108,6 +115,139 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-055 — Get Attributes without a Unique Identifier selected another user's newest object
+
+| Field      | Value                                                      |
+| ---------- | ---------------------------------------------------------- |
+| Severity   | Moderate                                                   |
+| Published  | Pending                                                    |
+| Affected   | before 5.29.0                                              |
+| Fixed in   | 5.29.0                                                     |
+| Found by   | Security review, 20 October 2026                           |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+
+**Summary:** A Get Attributes request without a Unique Identifier and without an ID Placeholder made the server scan every stored object and pick the most recently changed one, preferring the caller's own objects but falling back to any user's. The permission check ran only after that choice, and its "object not found" error named the selected identifier.
+
+**Impact:** A caller who owned no object learned the Unique Identifier of the newest object in the database, whoever owned it. Any authenticated user could also make each such request read the whole object table.
+
+**Mitigation:** Upgrade to 5.29.0. An omitted Unique Identifier now means the ID Placeholder only (KMIP 2.1 §6.1.20); with no placeholder the request fails without selecting or naming any object. Regression test: `test_get_attributes_without_identifier_selects_nothing`.
+
+---
+
+#### COSMIAN-2026-054 — Batch Undo could restore objects of another user
+
+| Field      | Value                                                                 |
+| ---------- | --------------------------------------------------------------------- |
+| Severity   | Moderate                                                              |
+| Published  | Pending                                                               |
+| Affected   | unreleased development code only (introduced and fixed before 5.29.0) |
+| Fixed in   | 5.29.0                                                                |
+| Found by   | Security review, 20 October 2026                                      |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md)            |
+
+**Summary:** The KMIP Undo batch error option, implemented during the 5.29.0 development cycle, snapshotted each item's target and every object the target linked to, without checking the caller's permissions, and wrote the snapshots back unconditionally after a failure. Links are client-editable, so a user could link one of their own objects to another user's object. Tag, keyset and name handles, re-keys of wrapping keys, Covercrypt cascades and Crypto Officer key splits were reported as undone although their effects remained, and a ceremony split lost its key.
+
+**Impact:** A user could make an Undo batch overwrite another user's object with an earlier state: for example, revert a revocation or bring back key material destroyed concurrently. No released version is affected.
+
+**Mitigation:** Fixed before release. Undo snapshots the target only after the operation's own authorization, and linked objects only when the caller may change them. Each item is reverted in one transaction, and only if every object it touched is still as the item left it. Items the server cannot revert keep `Success`. Each revert is logged, and Undo batches are limited to 1,000 items and 4,000 snapshots. Regression tests: `undo_never_restores_another_users_linked_object`, `undo_leaves_an_object_changed_after_the_item`, `undo_refuses_what_it_cannot_revert`, `undo_batch_size_is_bounded` and `test_undo_keeps_ceremony_split_key_shares`.
+
+---
+
+#### COSMIAN-2026-053 — ReCertify authorized the issuer key as the certificate owner
+
+| Field      | Value                                                      |
+| ---------- | ---------------------------------------------------------- |
+| Severity   | High                                                       |
+| Published  | Pending                                                    |
+| Affected   | before 5.29.0                                              |
+| Fixed in   | 5.29.0                                                     |
+| Found by   | Security review, 20 October 2026                           |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+
+**Summary:** `ReCertify` checked the caller's `Certify` (or `Get`) grant on the certificate, then resolved the subject and the issuer CA key and certificate as the certificate's owner. The issuer links, Certificate Request and Certificate Request Unique Identifier come from the request.
+
+**Impact:** A user with only a read or `Certify` grant on a leaf certificate, plus the right to create objects, could have the owner's CA key sign a certificate for a request the user chose. The user owned the issued certificate. The CA key itself was not exposed.
+
+**Mitigation:** Upgrade to 5.29.0. The subject and issuer are now resolved and authorized as the requesting user, and keys linked to the old certificate are relinked only when the user may certify with them. Regression test: `test_recertify_authorizes_issuer_as_requester`.
+
+---
+
+#### COSMIAN-2026-052 — ReKeyKeyPair retired another user's linked public key
+
+| Field      | Value                                                      |
+| ---------- | ---------------------------------------------------------- |
+| Severity   | High                                                       |
+| Published  | Pending                                                    |
+| Affected   | before 5.29.0                                              |
+| Fixed in   | 5.29.0                                                     |
+| Found by   | Security review, 20 October 2026                           |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+
+**Summary:** `ReKeyKeyPair` checked the caller's permission on the private key only. It then loaded the public key named by the private key's Public Key Link without any permission check. The owner of a private key can set that link to any identifier.
+
+**Impact:** A user could point their own private key at another user's public key and re-key it. The victim's public key was then deactivated and given a Replacement Object Link to the attacker's new key, and its attributes were copied into a key the attacker owned. This is the same class as COSMIAN-2026-017.
+
+**Mitigation:** Upgrade to 5.29.0. The linked public key now requires the `Rekey` permission and is otherwise reported as `Object_Not_Found`. Editing a Link also requires ownership or an explicit grant of the edit operation. Regression test: `test_rekey_keypair_does_not_retire_another_users_linked_public_key`.
+
+---
+
+#### COSMIAN-2026-051 — KMIP certificate chains and unbounded HSM Locate permit excessive server work
+
+| Field      | Value                                                      |
+| ---------- | ---------------------------------------------------------- |
+| Severity   | Moderate                                                   |
+| Published  | Pending                                                    |
+| Affected   | before 5.29.0                                              |
+| Fixed in   | 5.29.0                                                     |
+| Found by   | Security review, 19 October 2026                           |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+
+**Summary:** PKCS#12 and PKCS#7 export followed a certificate's `CertificateLink` chain without cycle detection or a depth limit. When HSMs were configured, a `Locate` by a user who is not an HSM administrator ran without any store limit and enumerated every HSM key and its metadata before discarding the keys not granted to that user.
+
+**Impact:** An authenticated caller able to create or link managed certificates could make an export loop indefinitely. On a server with HSMs, any authenticated user could make each Locate read the metadata of every key on the HSMs.
+
+**Mitigation:** Upgrade to 5.29.0. Certificate chains reject cycles and chains above 100 certificates. Locate does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
+
+---
+
+#### COSMIAN-2026-050 — KMIP payloads written to debug logs
+
+| Field      | Value                                                      |
+| ---------- | ---------------------------------------------------------- |
+| Severity   | High                                                       |
+| Published  | Pending                                                    |
+| Affected   | before 5.29.0                                              |
+| Fixed in   | 5.29.0                                                     |
+| Found by   | Security review, 19 October 2026                           |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+
+**Summary:** The binary KMIP handler and message processor logged complete request and response TTLV values, including raw request and response bytes.
+
+**Impact:** Debug logs could contain plaintext key material, wrapped keys, decrypted data, signatures, and client correlation values. Anyone who could read those logs could recover the recorded data.
+
+**Mitigation:** Upgrade to 5.29.0. KMIP logs retain only request metadata and operation names; they no longer emit payloads or encoded bytes. Rotate or restrict access to logs written by earlier versions.
+
+---
+
+#### COSMIAN-2026-049 — Configured Operator role permitted PKCS#11 administration
+
+| Field      | Value                                                      |
+| ---------- | ---------------------------------------------------------- |
+| Severity   | High                                                       |
+| Published  | Pending                                                    |
+| Affected   | before 5.29.0                                              |
+| Fixed in   | 5.29.0                                                     |
+| Found by   | Security review, 19 October 2026                           |
+| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+
+**Summary:** When Crypto Officer roles were configured, the `PKCS11` management operation bypassed the role policy.
+
+**Impact:** An Operator could access PKCS#11 administration, including functions acting on the HSM library shared by all users.
+
+**Mitigation:** Upgrade to 5.29.0. `PKCS11` requires a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and the new `SetConstraints` once roles are configured; regression test `operator_cannot_invoke_administrative_operations` covers the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions. Where roles are not configured, `SetConstraints` remains available to every authenticated user.
+
+---
 
 #### COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA
 
@@ -428,7 +568,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Without credentials, opening idle TCP connections exhausted threads and file descriptors. A client holding a valid certificate could also make the server allocate gigabytes per message and get it killed by the OOM killer. Only deployments with `start_socket_server` enabled are affected.
 
-**Mitigation:** Upgrade to 5.29.0. The socket server now accepts at most 1,024 concurrent connections, aborts TLS handshakes not completed within 10 s in total, however slowly the client sends, closes authenticated connections idle or stalled for 120 s, and rejects messages above 64 MiB (the HTTP limit) before allocating. Regression test: `trickling_handshake_is_cut_at_deadline` in `crate/server/src/socket_server.rs`. Until then, keep the socket server disabled or reachable only from trusted networks.
+**Mitigation:** Upgrade to 5.29.0. The socket server now accepts at most 1,024 concurrent connections, aborts TLS handshakes not completed within 10 s in total, however slowly the client sends, closes authenticated connections idle or stalled for 120 s, requires each request body to arrive within about 120 s in total (the deadline is checked between reads, so a stalled read can extend it by one more timeout), and rejects messages above 64 MiB (the HTTP limit) before allocating. Raw request bytes in flight share a process-wide 256 MiB budget, reserved before each body is allocated and released before the response is written; the budget bounds the receive buffers only, not decoded request structures. A request that does not fit is refused and its connection closed (regression test `inflight_request_bytes_are_bounded_and_released`). Other regression test: `trickling_handshake_is_cut_at_deadline` in `crate/server/src/socket_server.rs`. Until then, keep the socket server disabled or reachable only from trusted networks.
 
 ---
 
@@ -1300,6 +1440,13 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-055    | Moderate | before 5.29.0           | 5.29.0   | Get Attributes without a Unique Identifier selected another user's newest object                    |
+| COSMIAN-2026-054    | Moderate | unreleased              | 5.29.0   | Batch Undo could restore objects of another user                                                    |
+| COSMIAN-2026-053    | High     | before 5.29.0           | 5.29.0   | ReCertify authorized the issuer key as the certificate owner                                        |
+| COSMIAN-2026-052    | High     | before 5.29.0           | 5.29.0   | ReKeyKeyPair retired another user's linked public key                                               |
+| COSMIAN-2026-051    | Moderate | before 5.29.0           | 5.29.0   | KMIP certificate chains and unbounded HSM Locate permit excessive server work                             |
+| COSMIAN-2026-050    | High     | before 5.29.0           | 5.29.0   | KMIP payloads written to debug logs                                                                 |
+| COSMIAN-2026-049    | High     | before 5.29.0           | 5.29.0   | Configured Operator role permitted PKCS#11 administration                            |
 | COSMIAN-2026-048    | High     | 5.27.0 – 5.28.0         | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |
 | COSMIAN-2026-047    | Moderate | 5.16.0 – 5.28.0         | 5.29.0   | Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check               |
 | COSMIAN-2026-046    | High     | 5.13.0 – 5.28.0         | 5.29.0   | Server key encryption key usable as a decryption oracle through pre-wrapped `Import`                |

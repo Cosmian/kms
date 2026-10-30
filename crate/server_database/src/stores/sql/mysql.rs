@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
@@ -1659,6 +1659,13 @@ pub(super) async fn atomic_(
                 if let Err(e) =
                     create_(Some(uid.clone()), owner, object, attributes, tags, tx).await
                 {
+                    // Keep the typed reason so callers still see `ObjectAlreadyExists`.
+                    if matches!(
+                        e,
+                        DbError::Kmip21Error(ErrorReason::Object_Already_Exists, _)
+                    ) {
+                        return Err(e);
+                    }
                     db_bail!("creation of object {uid} failed: {e}");
                 }
                 uids.push(uid.clone());

@@ -85,8 +85,8 @@ pub enum KmsError {
     #[error("Access denied: {0}")]
     Unauthorized(String),
 
-    // When a user requests with place holder id arg.
-    #[error("This KMIP server does not yet support place holder id")]
+    // When an operation requires an identifier but neither one nor an ID Placeholder is available.
+    #[error("Unique Identifier is required when no ID Placeholder is available")]
     UnsupportedPlaceholder,
 
     // When a user requests with protection masks arg.
@@ -257,6 +257,9 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
 impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {
         match value {
+            InterfaceError::ObjectAlreadyExists(msg) => {
+                Self::Kmip21Error(ErrorReason::Object_Already_Exists, msg)
+            }
             InterfaceError::NotSupported(msg) => Self::NotSupported(msg),
             // Preserve the InvalidRequest variant (used by ObjectHandle::hsm_parts / TryFrom and
             // the object stores) instead of collapsing it into `Default`, which would drop the
@@ -275,6 +278,8 @@ impl From<DbError> for KmsError {
             DbError::Kmip14Error(reason, msg) => Self::Kmip14Error(reason, msg),
             // Preserve unauthorized errors (e.g. HSM access control)
             DbError::Unauthorized(s) => Self::Unauthorized(s),
+            // Preserve client-input errors (e.g. unsupported HSM key types)
+            DbError::InvalidRequest(s) => Self::InvalidRequest(s),
             // Wrap all other database errors
             other => Self::Database(other),
         }
@@ -286,7 +291,7 @@ impl From<CryptoError> for KmsError {
         // Map low-level crypto layer errors to precise KMIP 2.1 ErrorReasons so that
         // KMIP test vectors expecting CryptographicFailure (e.g. invalid GCM tag, wrong IV,
         // manipulated ciphertext) receive the correct ResultReason instead of the generic
-        // Operation_Not_Supported fallback applied later in message.rs.
+        // General_Failure fallback applied later in message.rs.
         match value {
             // Explicit cryptographic verification failures
             CryptoError::InvalidTag(e)
@@ -296,9 +301,10 @@ impl From<CryptoError> for KmsError {
                 ErrorReason::Cryptographic_Failure,
                 format!("CRYPTO: error: {e}"),
             ),
-            // Unsupported algorithm / mode / padding etc → Operation_Not_Supported
+            // Unsupported algorithm / mode / padding / key size: the parameters are valid KMIP
+            // but unsupported by this server (KMIP 2.1 §11.17 "Unsupported Cryptographic Parameters").
             CryptoError::NotSupported(s) => {
-                Self::Kmip21Error(ErrorReason::Operation_Not_Supported, s)
+                Self::Kmip21Error(ErrorReason::Unsupported_Cryptographic_Parameters, s)
             }
             // Object lookup failures
             CryptoError::ObjectNotFound(s) => Self::Kmip21Error(ErrorReason::Item_Not_Found, s),

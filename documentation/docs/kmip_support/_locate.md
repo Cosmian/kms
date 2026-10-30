@@ -81,6 +81,14 @@ Locate allows finding objects:
 - for certificates:
     - by subject common name
     - by certificate spki
+- `Object Group Member` filtering is rejected with `Feature_Not_Supported`.
+- by storage status: online by default, or destroyed when `Destroyed Storage` is requested. Eviden KMS has no archival tier, so `Archival Storage` matches no objects.
+
+When `Maximum Items`, `Offset Items`, or the server result cap limits a response, Eviden KMS omits `Located Items` rather than report a partial count.
+
+Results are returned newest first: descending Initial Date, ties broken by ascending Unique Identifier, merged across
+the database and HSMs. A request returns at most 1000 identifiers. A negative `Offset Items` returns
+`Invalid_Field`. `Maximum Items` set to 0 returns an empty response.
 
 ## Example - Symmetric Keys using the `_kk` tag
 
@@ -182,3 +190,6 @@ serialized to hex.
       ]
     }
     ```
+
+!!! note "Example abridged"
+    The identifiers in this response are not shown in newest-first order.

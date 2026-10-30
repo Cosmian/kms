@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cosmian_kmip::{
     kmip_0::kmip_messages::ResponseMessageBatchItemVersioned,
@@ -41,22 +41,77 @@ fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usiz
 
 /// Consolidated expected response preparation: applies all placeholder substitutions
 /// needed to make KMIP test vector expected responses match actual server responses.
+///
+/// `locate_uid_map` is the placeholder map as it was before `actual` was captured: a Locate
+/// expectation must name objects known beforehand, not the ones this Locate returned.
 pub(crate) fn prepare_expected_response(
     test_name: &str,
     expected: &mut ResponseMessage,
     actual: &ResponseMessage,
     uid_placeholder_map: &HashMap<usize, String>,
+    locate_uid_map: &HashMap<usize, String>,
 ) {
     // For Create/Register responses, adopt the actual UniqueIdentifier first to avoid
     // placeholder index collisions when prior Locate responses populated the map.
     substitute_create_register_uids_from_actual(expected, actual);
-    substitute_placeholders_in_expected_response(test_name, expected, uid_placeholder_map);
+    substitute_placeholders_in_expected_response(
+        test_name,
+        expected,
+        uid_placeholder_map,
+        locate_uid_map,
+    );
     substitute_encrypt_response_data_iv_from_actual(expected, actual);
     substitute_key_material_from_actual(expected, actual);
     substitute_pkcs11_correlation_from_actual(expected, actual);
     substitute_short_unique_identifier_from_actual(expected, actual);
+    substitute_reference_server_rng(expected);
     substitute_sign_response_signature_from_actual(expected, actual);
     substitute_locate_response_from_actual(expected, actual);
+}
+
+/// Record the UIDs of objects whose key material the server generated (`Create`,
+/// `CreateKeyPair`, `ReKey`, `ReKeyKeyPair`, `CreateSplitKey` shares); vector literals for
+/// these cannot match (see `Ctx::object_generated`).
+pub(crate) fn capture_generated_uids(resp: &ResponseMessage, generated: &mut HashSet<String>) {
+    use cosmian_kmip::kmip_1_4::kmip_operations::Operation as Op14;
+    for bi in &resp.batch_item {
+        let uids: Vec<String> = match bi {
+            ResponseMessageBatchItemVersioned::V21(inner) => match &inner.response_payload {
+                Some(Operation::CreateResponse(r)) => vec![r.unique_identifier.to_string()],
+                Some(Operation::ReKeyResponse(r)) => vec![r.unique_identifier.to_string()],
+                Some(Operation::CreateKeyPairResponse(r)) => vec![
+                    r.private_key_unique_identifier.to_string(),
+                    r.public_key_unique_identifier.to_string(),
+                ],
+                Some(Operation::ReKeyKeyPairResponse(r)) => vec![
+                    r.private_key_unique_identifier.to_string(),
+                    r.public_key_unique_identifier.to_string(),
+                ],
+                // Split Key shares are random server material (XOR: all but one share random).
+                Some(Operation::CreateSplitKeyResponse(r)) => r
+                    .unique_identifier
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                _ => vec![],
+            },
+            ResponseMessageBatchItemVersioned::V14(inner) => match &inner.response_payload {
+                Some(Op14::CreateResponse(r)) => vec![r.unique_identifier.clone()],
+                Some(Op14::ReKeyResponse(r)) => vec![r.unique_identifier.clone()],
+                Some(Op14::CreateKeyPairResponse(r)) => vec![
+                    r.private_key_unique_identifier.clone(),
+                    r.public_key_unique_identifier.clone(),
+                ],
+                Some(Op14::ReKeyKeyPairResponse(r)) => vec![
+                    r.private_key_unique_identifier.clone(),
+                    r.public_key_unique_identifier.clone(),
+                ],
+                Some(Op14::CreateSplitKeyResponse(r)) => r.unique_identifier.clone(),
+                _ => vec![],
+            },
+        };
+        generated.extend(uids);
+    }
 }
 
 /// Capture real UIDs from responses and store them in the placeholder map for future use
@@ -74,6 +129,20 @@ pub(crate) fn capture_real_uids_from_response(
                             log_insert(test_name, uid_map, &cr.unique_identifier);
                         }
                         Operation::RegisterResponse(rr) => {
+                            log_insert(test_name, uid_map, &rr.unique_identifier);
+                        }
+                        Operation::DeriveKeyResponse(dr) => {
+                            log_insert(test_name, uid_map, &dr.unique_identifier);
+                        }
+                        Operation::CreateSplitKeyResponse(cr) => {
+                            for uid in &cr.unique_identifier {
+                                log_insert(test_name, uid_map, uid);
+                            }
+                        }
+                        Operation::JoinSplitKeyResponse(jr) => {
+                            log_insert(test_name, uid_map, &jr.unique_identifier);
+                        }
+                        Operation::ReKeyResponse(rr) => {
                             log_insert(test_name, uid_map, &rr.unique_identifier);
                         }
                         Operation::ActivateResponse(ar) => {
@@ -113,6 +182,20 @@ pub(crate) fn capture_real_uids_from_response(
                             log_insert_text(test_name, uid_map, &cr.unique_identifier);
                         }
                         Op14::RegisterResponse(rr) => {
+                            log_insert_text(test_name, uid_map, &rr.unique_identifier);
+                        }
+                        Op14::DeriveKeyResponse(dr) => {
+                            log_insert_text(test_name, uid_map, &dr.unique_identifier);
+                        }
+                        Op14::CreateSplitKeyResponse(cr) => {
+                            for uid in &cr.unique_identifier {
+                                log_insert_text(test_name, uid_map, uid);
+                            }
+                        }
+                        Op14::JoinSplitKeyResponse(jr) => {
+                            log_insert_text(test_name, uid_map, &jr.unique_identifier);
+                        }
+                        Op14::ReKeyResponse(rr) => {
                             log_insert_text(test_name, uid_map, &rr.unique_identifier);
                         }
                         Op14::ActivateResponse(ar) => {
@@ -160,6 +243,7 @@ fn substitute_placeholders_in_expected_response(
     test_name: &str,
     expected: &mut ResponseMessage,
     uid_map: &HashMap<usize, String>,
+    locate_uid_map: &HashMap<usize, String>,
 ) {
     // Helper to substitute UIDs within KeyWrappingData
     fn substitute_kwd_uids(
@@ -302,7 +386,7 @@ fn substitute_placeholders_in_expected_response(
                         Operation::LocateResponse(lr) => {
                             if let Some(list) = &mut lr.unique_identifier {
                                 for uid in list {
-                                    substitute_uid(test_name, uid, uid_map);
+                                    substitute_uid(test_name, uid, locate_uid_map);
                                 }
                             }
                         }
@@ -330,6 +414,19 @@ fn substitute_placeholders_in_expected_response(
                                 }
                             }
                         }
+                        Operation::ExportResponse(er) => {
+                            substitute_uid(test_name, &mut er.unique_identifier, uid_map);
+                            if let Some(inner_uid) = &mut er.attributes.unique_identifier {
+                                substitute_uid(test_name, inner_uid, uid_map);
+                            }
+                            for link in er.attributes.link.iter_mut().flatten() {
+                                substitute_linked_uid(
+                                    test_name,
+                                    &mut link.linked_object_identifier,
+                                    uid_map,
+                                );
+                            }
+                        }
                         Operation::GetAttributeListResponse(resp) => {
                             substitute_uid(test_name, &mut resp.unique_identifier, uid_map);
                         }
@@ -354,6 +451,12 @@ fn substitute_placeholders_in_expected_response(
                         Operation::RevokeResponse(rr) => {
                             substitute_uid(test_name, &mut rr.unique_identifier, uid_map);
                         }
+                        Operation::SetAttributeResponse(sr) => {
+                            substitute_uid(test_name, &mut sr.unique_identifier, uid_map);
+                        }
+                        Operation::ReKeyResponse(rr) => {
+                            substitute_uid(test_name, &mut rr.unique_identifier, uid_map);
+                        }
                         Operation::DeleteAttributeResponse(dr) => {
                             substitute_uid(test_name, &mut dr.unique_identifier, uid_map);
                         }
@@ -363,7 +466,11 @@ fn substitute_placeholders_in_expected_response(
             }
             ResponseMessageBatchItemVersioned::V14(inner) => {
                 use cosmian_kmip::kmip_1_4::{
-                    kmip_attributes::Attribute as Attr14, kmip_operations::Operation as Op14,
+                    kmip_attributes::Attribute as Attr14,
+                    kmip_operations::{
+                        AddAttributeResponse as Op14AddAttributeResponse,
+                        ModifyAttributeResponse as Op14ModifyAttributeResponse, Operation as Op14,
+                    },
                 };
                 if let Some(op) = &mut inner.response_payload {
                     match op {
@@ -401,7 +508,7 @@ fn substitute_placeholders_in_expected_response(
                         Op14::LocateResponse(lr) => {
                             if let Some(list) = &mut lr.unique_identifier {
                                 for uid in list {
-                                    substitute_uid_text(test_name, uid, uid_map);
+                                    substitute_uid_text(test_name, uid, locate_uid_map);
                                 }
                             }
                         }
@@ -451,14 +558,34 @@ fn substitute_placeholders_in_expected_response(
                         Op14::RevokeResponse(rr) => {
                             substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map);
                         }
+                        Op14::ReKeyResponse(rr) => {
+                            substitute_uid_text(test_name, &mut rr.unique_identifier, uid_map);
+                        }
                         Op14::DeleteAttributeResponse(dr) => {
                             substitute_uid_text(test_name, &mut dr.unique_identifier, uid_map);
                         }
-                        Op14::AddAttributeResponse(ar) => {
-                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map);
-                        }
-                        Op14::ModifyAttributeResponse(ar) => {
-                            substitute_uid_text(test_name, &mut ar.unique_identifier, uid_map);
+                        Op14::AddAttributeResponse(Op14AddAttributeResponse {
+                            unique_identifier,
+                            attribute,
+                        })
+                        | Op14::ModifyAttributeResponse(Op14ModifyAttributeResponse {
+                            unique_identifier,
+                            attribute,
+                        }) => {
+                            substitute_uid_text(test_name, unique_identifier, uid_map);
+                            match attribute {
+                                Attr14::UniqueIdentifier(s) => {
+                                    substitute_uid_text(test_name, s, uid_map);
+                                }
+                                Attr14::Link(link) => {
+                                    substitute_uid_text(
+                                        test_name,
+                                        &mut link.linked_object_identifier,
+                                        uid_map,
+                                    );
+                                }
+                                _ => {}
+                            }
                         }
                         _ => {}
                     }
@@ -515,13 +642,12 @@ fn substitute_encrypt_response_data_iv_from_actual(
                         exp_er.i_v_counter_nonce = act_er.i_v_counter_nonce.clone();
                     }
 
-                    // AEAD tag: substitute if empty/missing or contains placeholder
-                    let needs_tag = match &exp_er.authenticated_encryption_tag {
-                        None => true,
-                        Some(v) if v.is_empty() => true,
-                        Some(v) if is_tag_placeholder(v) => true,
-                        _ => false,
-                    };
+                    // AEAD tag: substitute only an explicit placeholder (or empty value); an
+                    // absent tag means none is expected (e.g. non-final multi-part responses).
+                    let needs_tag = exp_er
+                        .authenticated_encryption_tag
+                        .as_ref()
+                        .is_some_and(|v| v.is_empty() || is_tag_placeholder(v));
                     if needs_tag {
                         exp_er.authenticated_encryption_tag =
                             act_er.authenticated_encryption_tag.clone();
@@ -560,12 +686,10 @@ fn substitute_encrypt_response_data_iv_from_actual(
                     }
 
                     // AEAD tag: substitute if empty/missing or contains placeholder
-                    let needs_tag = match &exp_er.authenticated_encryption_tag {
-                        None => true,
-                        Some(v) if v.is_empty() => true,
-                        Some(v) if is_tag_placeholder(v) => true,
-                        _ => false,
-                    };
+                    let needs_tag = exp_er
+                        .authenticated_encryption_tag
+                        .as_ref()
+                        .is_some_and(|v| v.is_empty() || is_tag_placeholder(v));
                     if needs_tag {
                         exp_er.authenticated_encryption_tag =
                             act_er.authenticated_encryption_tag.clone();
@@ -579,13 +703,17 @@ fn substitute_encrypt_response_data_iv_from_actual(
     }
 }
 
-/// For `SignResponse` payloads in the expected response, substitute placeholder fields
-/// like $`SIGNATURE_DATA` by copying the actual response value when the expected field
-/// is absent or empty.
+/// For `SignResponse` payloads in the expected response, substitute the `$SIGNATURE_DATA`
+/// placeholder (decoded as an empty `ByteString`) by the actual signature; a literal
+/// expected signature is kept and compared.
 fn substitute_sign_response_signature_from_actual(
     expected: &mut ResponseMessage,
     actual: &ResponseMessage,
 ) {
+    let is_placeholder = |v: &Option<Vec<u8>>| {
+        v.as_ref()
+            .is_none_or(|v| v.is_empty() || v.starts_with(b"$SIGNATURE"))
+    };
     for (exp_bi, act_bi) in expected.batch_item.iter_mut().zip(actual.batch_item.iter()) {
         match (exp_bi, act_bi) {
             (
@@ -597,7 +725,9 @@ fn substitute_sign_response_signature_from_actual(
                     Some(Operation::SignResponse(act_sr)),
                 ) = (&mut exp_inner.response_payload, &act_inner.response_payload)
                 {
-                    exp_sr.signature_data = act_sr.signature_data.clone();
+                    if is_placeholder(&exp_sr.signature_data) {
+                        exp_sr.signature_data.clone_from(&act_sr.signature_data);
+                    }
                 }
             }
             (
@@ -608,7 +738,9 @@ fn substitute_sign_response_signature_from_actual(
                 if let (Some(Op14::SignResponse(exp_sr)), Some(Op14::SignResponse(act_sr))) =
                     (&mut exp_inner.response_payload, &act_inner.response_payload)
                 {
-                    exp_sr.signature_data = act_sr.signature_data.clone();
+                    if is_placeholder(&exp_sr.signature_data) {
+                        exp_sr.signature_data.clone_from(&act_sr.signature_data);
+                    }
                 }
             }
             _ => {}
@@ -702,29 +834,100 @@ fn substitute_pkcs11_correlation_from_actual(
 ) {
     let placeholder = b"$CORRELATION_VALUE";
     for (exp_bi, act_bi) in expected.batch_item.iter_mut().zip(actual.batch_item.iter()) {
-        let (
-            ResponseMessageBatchItemVersioned::V21(exp_inner),
-            ResponseMessageBatchItemVersioned::V21(act_inner),
-        ) = (exp_bi, act_bi)
-        else {
-            continue;
+        // Multi-part crypto responses: only the explicit placeholder adopts the server value,
+        // so a missing or unexpected Correlation Value is still reported by the comparison.
+        let pair = match (exp_bi, act_bi) {
+            (
+                ResponseMessageBatchItemVersioned::V21(exp_inner),
+                ResponseMessageBatchItemVersioned::V21(act_inner),
+            ) => {
+                if let (
+                    Some(Operation::PKCS11Response(exp_pk)),
+                    Some(Operation::PKCS11Response(act_pk)),
+                ) = (&mut exp_inner.response_payload, &act_inner.response_payload)
+                {
+                    let needs = exp_pk
+                        .correlation_value
+                        .as_ref()
+                        .is_none_or(|v| v.is_empty() || v.as_slice() == placeholder);
+                    if needs {
+                        exp_pk.correlation_value = act_pk.correlation_value.clone();
+                    }
+                }
+                match (&mut exp_inner.response_payload, &act_inner.response_payload) {
+                    (Some(Operation::EncryptResponse(e)), Some(Operation::EncryptResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Operation::DecryptResponse(e)), Some(Operation::DecryptResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Operation::MACResponse(e)), Some(Operation::MACResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (
+                        Some(Operation::MACVerifyResponse(e)),
+                        Some(Operation::MACVerifyResponse(a)),
+                    ) => Some((&mut e.correlation_value, &a.correlation_value)),
+                    (Some(Operation::HashResponse(e)), Some(Operation::HashResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Operation::SignResponse(e)), Some(Operation::SignResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (
+                        Some(Operation::SignatureVerifyResponse(e)),
+                        Some(Operation::SignatureVerifyResponse(a)),
+                    ) => Some((&mut e.correlation_value, &a.correlation_value)),
+                    _ => None,
+                }
+            }
+            (
+                ResponseMessageBatchItemVersioned::V14(exp_inner),
+                ResponseMessageBatchItemVersioned::V14(act_inner),
+            ) => {
+                use cosmian_kmip::kmip_1_4::kmip_operations::Operation as Op14;
+                match (&mut exp_inner.response_payload, &act_inner.response_payload) {
+                    (Some(Op14::EncryptResponse(e)), Some(Op14::EncryptResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Op14::DecryptResponse(e)), Some(Op14::DecryptResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Op14::MACResponse(e)), Some(Op14::MACResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Op14::MACVerifyResponse(e)), Some(Op14::MACVerifyResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Op14::HashResponse(e)), Some(Op14::HashResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (Some(Op14::SignResponse(e)), Some(Op14::SignResponse(a))) => {
+                        Some((&mut e.correlation_value, &a.correlation_value))
+                    }
+                    (
+                        Some(Op14::SignatureVerifyResponse(e)),
+                        Some(Op14::SignatureVerifyResponse(a)),
+                    ) => Some((&mut e.correlation_value, &a.correlation_value)),
+                    _ => None,
+                }
+            }
+            _ => None,
         };
-        if let (Some(Operation::PKCS11Response(exp_pk)), Some(Operation::PKCS11Response(act_pk))) =
-            (&mut exp_inner.response_payload, &act_inner.response_payload)
-        {
-            let needs = exp_pk
-                .correlation_value
-                .as_ref()
-                .is_none_or(|v| v.is_empty() || v.as_slice() == placeholder);
-            if needs {
-                exp_pk.correlation_value = act_pk.correlation_value.clone();
+        if let Some((exp_cv, act_cv)) = pair {
+            // The XML decoder turns the non-hex "$CORRELATION_VALUE" into an empty ByteString.
+            if exp_cv
+                .as_deref()
+                .is_some_and(|v| v.is_empty() || v == placeholder.as_slice())
+            {
+                exp_cv.clone_from(act_cv);
             }
         }
     }
 }
 
 /// Substitute `$SHORT_UNIQUE_IDENTIFIER_N` placeholders in expected `GetAttributesResponse`
-/// by copying the actual `ShortUniqueIdentifier` from the server response.
+/// and `ExportResponse` attributes by copying the actual `ShortUniqueIdentifier`.
 fn substitute_short_unique_identifier_from_actual(
     expected: &mut ResponseMessage,
     actual: &ResponseMessage,
@@ -737,15 +940,69 @@ fn substitute_short_unique_identifier_from_actual(
         else {
             continue;
         };
-        if let (
-            Some(Operation::GetAttributesResponse(exp_ga)),
-            Some(Operation::GetAttributesResponse(act_ga)),
-        ) = (&mut exp_inner.response_payload, &act_inner.response_payload)
-        {
-            if let Some(exp_short) = &mut exp_ga.attributes.short_unique_identifier {
-                if exp_short.starts_with("$SHORT_UNIQUE_IDENTIFIER_") {
-                    if let Some(act_short) = &act_ga.attributes.short_unique_identifier {
-                        *exp_short = act_short.clone();
+        let pair = match (&mut exp_inner.response_payload, &act_inner.response_payload) {
+            (
+                Some(Operation::GetAttributesResponse(exp_ga)),
+                Some(Operation::GetAttributesResponse(act_ga)),
+            ) => (&mut exp_ga.attributes, &act_ga.attributes),
+            (Some(Operation::ExportResponse(exp_er)), Some(Operation::ExportResponse(act_er))) => {
+                (&mut exp_er.attributes, &act_er.attributes)
+            }
+            _ => continue,
+        };
+        let (exp_attributes, act_attributes) = pair;
+        if let Some(exp_short) = &mut exp_attributes.short_unique_identifier {
+            // The XML decoder turns the non-hex ByteString placeholder into an empty value.
+            if exp_short.is_empty() || exp_short.starts_with("$SHORT_UNIQUE_IDENTIFIER_") {
+                if let Some(act_short) = &act_attributes.short_unique_identifier {
+                    *exp_short = act_short.clone();
+                }
+            }
+        }
+    }
+}
+
+/// The OASIS vectors were recorded on a server whose generator is ANSI X9.31 (AES-256).
+/// KMIP 2.1 §4.46 requires the attribute to describe the generator actually used, so that
+/// recorded value is replaced by this server's one (AES-256 CTR-DRBG, as advertised by
+/// `Query` `QueryRNGs`); the comparison stays exact.
+fn substitute_reference_server_rng(expected: &mut ResponseMessage) {
+    use cosmian_kmip::{
+        kmip_0::kmip_types::{DRBGAlgorithm, RNGAlgorithm},
+        kmip_1_4::{
+            kmip_attributes::Attribute as Attr14, kmip_operations::Operation as Op14,
+            kmip_types::CryptographicAlgorithm as Alg14,
+        },
+        kmip_2_1::kmip_types::CryptographicAlgorithm,
+    };
+    macro_rules! adopt_server_rng {
+        ($rng:expr, $aes:expr) => {
+            if $rng.rng_algorithm == RNGAlgorithm::ANSI_X931
+                && $rng.cryptographic_algorithm == Some($aes)
+                && $rng.cryptographic_length == Some(256)
+                && $rng.drbg_algorithm.is_none()
+            {
+                $rng.rng_algorithm = RNGAlgorithm::DRBG;
+                $rng.drbg_algorithm = Some(DRBGAlgorithm::CTR);
+                $rng.prediction_resistance = Some(false);
+            }
+        };
+    }
+    for bi in &mut expected.batch_item {
+        match bi {
+            ResponseMessageBatchItemVersioned::V21(inner) => {
+                if let Some(Operation::GetAttributesResponse(ga)) = &mut inner.response_payload {
+                    if let Some(rng) = &mut ga.attributes.random_number_generator {
+                        adopt_server_rng!(rng, CryptographicAlgorithm::AES);
+                    }
+                }
+            }
+            ResponseMessageBatchItemVersioned::V14(inner) => {
+                if let Some(Op14::GetAttributesResponse(ga)) = &mut inner.response_payload {
+                    for attr in ga.attribute.iter_mut().flatten() {
+                        if let Attr14::RandomNumberGenerator(rng) = attr {
+                            adopt_server_rng!(rng, Alg14::AES);
+                        }
                     }
                 }
             }
@@ -778,6 +1035,27 @@ fn substitute_create_register_uids_from_actual(
                     ) => {
                         exp_rr.unique_identifier = act_rr.unique_identifier.clone();
                     }
+                    (
+                        Some(Op21::DeriveKeyResponse(exp_dr)),
+                        Some(Op21::DeriveKeyResponse(act_dr)),
+                    ) => {
+                        exp_dr.unique_identifier = act_dr.unique_identifier.clone();
+                    }
+                    // A share count mismatch is left for the comparison.
+                    (
+                        Some(Op21::CreateSplitKeyResponse(exp_sr)),
+                        Some(Op21::CreateSplitKeyResponse(act_sr)),
+                    ) if exp_sr.unique_identifier.len() == act_sr.unique_identifier.len() => {
+                        exp_sr
+                            .unique_identifier
+                            .clone_from(&act_sr.unique_identifier);
+                    }
+                    (
+                        Some(Op21::JoinSplitKeyResponse(exp_jr)),
+                        Some(Op21::JoinSplitKeyResponse(act_jr)),
+                    ) => {
+                        exp_jr.unique_identifier = act_jr.unique_identifier.clone();
+                    }
                     _ => {}
                 }
             }
@@ -796,6 +1074,28 @@ fn substitute_create_register_uids_from_actual(
                     ) => {
                         exp_rr.unique_identifier = act_rr.unique_identifier.clone();
                     }
+                    (
+                        Some(Op14::DeriveKeyResponse(exp_dr)),
+                        Some(Op14::DeriveKeyResponse(act_dr)),
+                    ) => {
+                        exp_dr.unique_identifier = act_dr.unique_identifier.clone();
+                    }
+                    (
+                        Some(Op14::CreateSplitKeyResponse(exp_sr)),
+                        Some(Op14::CreateSplitKeyResponse(act_sr)),
+                    ) if exp_sr.unique_identifier.len() == act_sr.unique_identifier.len() => {
+                        exp_sr
+                            .unique_identifier
+                            .clone_from(&act_sr.unique_identifier);
+                    }
+                    (
+                        Some(Op14::JoinSplitKeyResponse(exp_jr)),
+                        Some(Op14::JoinSplitKeyResponse(act_jr)),
+                    ) => {
+                        exp_jr
+                            .unique_identifier
+                            .clone_from(&act_jr.unique_identifier);
+                    }
                     _ => {}
                 }
             }
@@ -804,16 +1104,23 @@ fn substitute_create_register_uids_from_actual(
     }
 }
 
-// Adjust LocateResponse when the shared server returns more objects than the original
-// vector anticipated (expected usually lists only one). To keep the semantics (the
-// expected UID must be among the located ones) we copy the full list & count from
-// the actual response if the expected list is shorter.
+// Adjust LocateResponse when the shared server returns more objects than the vector
+// anticipated: the actual list (and count) is adopted only when it is longer and contains
+// every expected UID, so the expected objects must still be found. Any other difference
+// (fewer objects, a missing expected UID, a different count) is left for the comparison.
 fn substitute_locate_response_from_actual(
     expected: &mut ResponseMessage,
     actual: &ResponseMessage,
 ) {
     use cosmian_kmip::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned;
     use cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_operations::Operation;
+
+    fn adopt<T: PartialEq>(exp: Option<&Vec<T>>, act: Option<&Vec<T>>) -> bool {
+        let (Some(exp), Some(act)) = (exp, act) else {
+            return false;
+        };
+        !exp.is_empty() && act.len() > exp.len() && exp.iter().all(|uid| act.contains(uid))
+    }
 
     for (exp_bi, act_bi) in expected.batch_item.iter_mut().zip(actual.batch_item.iter()) {
         match (exp_bi, act_bi) {
@@ -826,25 +1133,14 @@ fn substitute_locate_response_from_actual(
                     Some(Operation::LocateResponse(act_lr)),
                 ) = (&mut exp_inner.response_payload, &act_inner.response_payload)
                 {
-                    let exp_count = exp_lr.located_items;
-                    let act_count = act_lr.located_items;
-                    let exp_list_len = exp_lr
-                        .unique_identifier
-                        .as_ref()
-                        .map_or(0, std::vec::Vec::len);
-                    let act_list_len = act_lr
-                        .unique_identifier
-                        .as_ref()
-                        .map_or(0, std::vec::Vec::len);
-
-                    // If the number of returned UIDs differs in any way, adopt the actual
-                    // list and the corresponding count to keep the expected response consistent.
-                    if act_list_len != exp_list_len {
-                        exp_lr.unique_identifier = act_lr.unique_identifier.clone();
-                        exp_lr.located_items = act_count;
-                    } else if exp_count != act_count {
-                        // counts differ but list lengths are the same (rare); adopt actual count
-                        exp_lr.located_items = act_count;
+                    if adopt(
+                        exp_lr.unique_identifier.as_ref(),
+                        act_lr.unique_identifier.as_ref(),
+                    ) {
+                        exp_lr
+                            .unique_identifier
+                            .clone_from(&act_lr.unique_identifier);
+                        exp_lr.located_items = act_lr.located_items;
                     }
                 }
             }
@@ -856,18 +1152,13 @@ fn substitute_locate_response_from_actual(
                 if let (Some(Op14::LocateResponse(exp_lr)), Some(Op14::LocateResponse(act_lr))) =
                     (&mut exp_inner.response_payload, &act_inner.response_payload)
                 {
-                    let exp_len = exp_lr
-                        .unique_identifier
-                        .as_ref()
-                        .map_or(0, std::vec::Vec::len);
-                    let act_len = act_lr
-                        .unique_identifier
-                        .as_ref()
-                        .map_or(0, std::vec::Vec::len);
-
-                    // If expected omits the list or the lengths differ, adopt actual list
-                    if act_len != exp_len {
-                        exp_lr.unique_identifier = act_lr.unique_identifier.clone();
+                    if adopt(
+                        exp_lr.unique_identifier.as_ref(),
+                        act_lr.unique_identifier.as_ref(),
+                    ) {
+                        exp_lr
+                            .unique_identifier
+                            .clone_from(&act_lr.unique_identifier);
                     }
                 }
             }

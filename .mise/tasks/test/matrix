@@ -52,10 +52,10 @@ fi
 
 # ── Determine available HSM models ───────────────────────────────────────────
 # softhsm2 runs on all platforms and supports both FIPS and non-FIPS.
-# Hardware HSMs (utimaco, proteccio, crypt2pay) are Linux-only.
+# Hardware HSMs and the Crypt2Pay simulator are Linux-only.
 HSMS=("softhsm2")
 if [ "$(uname)" = "Linux" ]; then
-  HSMS+=("utimaco" "proteccio" "crypt2pay")
+  HSMS+=("utimaco" "proteccio" "crypt2pay" "crypt2pay-simulator")
 fi
 
 # ── Probe which DB backends are reachable ────────────────────────────────────

@@ -51,7 +51,9 @@ graph TB
 | **Operator**      | _(default, no config key)_ | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, GetAttributes, Locate, Validate                                                                                           |                No                |
 | **CryptoOfficer** | `crypto_officer_users`     | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute, CreateSplitKey, JoinSplitKey, RNGSeed |    **Yes, ownership bypass**     |
 
-`RNGSeed` (additional input to the server DRBG) is restricted to Crypto Officers once roles are configured; `RNGRetrieve` stays available to every authenticated user.
+`RNGSeed` (additional input to the server DRBG), `SetConstraints` and `PKCS11` are restricted to Crypto Officers once roles are configured (`PKCS11` requires a configured Crypto Officer); `RNGRetrieve` stays available to every authenticated user.
+
+An Operator can also call `Get` and `Export` on an object it owns or on which a Crypto Officer (or the owner) has granted the `get` or `export` right. Without such a grant the request is refused with `Permission_Denied`.
 
 !!! note "Fail-secure default"
     When `crypto_officer_users` is configured but a user is not in the list, the server

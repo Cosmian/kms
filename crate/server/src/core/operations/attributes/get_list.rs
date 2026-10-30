@@ -1,18 +1,14 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ProtocolVersion,
     kmip_2_1::{
-        KmipOperation,
-        kmip_operations::{GetAttributeList, GetAttributeListResponse},
-        kmip_types::{AttributeReference, Tag, UniqueIdentifier, VendorAttributeReference},
+        kmip_attributes::Attribute,
+        kmip_operations::{GetAttributeList, GetAttributeListResponse, GetAttributes},
+        kmip_types::{AttributeReference, Tag, VendorAttributeReference},
     },
 };
 use cosmian_logger::trace;
 
-use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
-    middlewares::UserId,
-    result::KResult,
-};
+use crate::{core::KMS, middlewares::UserId, result::KResult};
 
 /// Standard attribute tags advertised by `GetAttributeList` for the TL profile, in the
 /// exact order expected by the XML profile test vectors, paired with the minimum KMIP 1.x
@@ -49,6 +45,21 @@ const TL_PROFILE_ATTRIBUTES: [(Tag, i32); 20] = [
     (Tag::State, 0),
 ];
 
+/// Attributes KMIP 1.x does not define; never listed to 1.x clients.
+const KMIP2_ONLY: [Tag; 11] = [
+    Tag::QuantumSafe,
+    Tag::RotateAutomatic,
+    Tag::RotateDate,
+    Tag::RotateGeneration,
+    Tag::RotateInterval,
+    Tag::RotateLatest,
+    Tag::RotateName,
+    Tag::RotateOffset,
+    Tag::NISTKeyType,
+    Tag::PKCS12FriendlyName,
+    Tag::ShortUniqueIdentifier,
+];
+
 /// Returns the names of all attributes currently set on the object.
 pub(crate) async fn get_attribute_list(
     kms: &KMS,
@@ -72,48 +83,53 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
         .filter(|pv| pv.protocol_version_major == 1)
         .map_or(i32::MAX, |pv| pv.protocol_version_minor);
 
-    let uid = from_request(request.unique_identifier.as_ref(), "GetAttributeList")?;
-
-    // Permission / existence check (reuses GetAttributes gating). We ignore the
-    // actual attributes for the minimal implementation but still verify access.
-    let owm = Box::pin(retrieve_object_for_operation(
-        uid,
-        KmipOperation::GetAttributes,
+    // The object's real attribute set, exactly as Get Attributes returns it
+    // (this also performs the permission / existence check and resolves the object UID).
+    let response = super::get::get_attributes(
         kms,
+        GetAttributes {
+            unique_identifier: request.unique_identifier,
+            attribute_reference: None,
+        },
         user,
-    ))
+    )
     .await?;
+    let attrs = response.attributes;
 
-    // Build attribute references in a stable, spec-like order expected by the XML
-    // profile tests. For these profiles, the AttributeReference list is fixed per
-    // vector family (TL vs SKFF), regardless of whether individual attributes are
-    // currently set on the object. We therefore include the full ordered list of
-    // standard attribute tags for the selected profile.
-    let attrs = owm.attributes();
     let mut refs: Vec<AttributeReference> = Vec::new();
-
-    // 1) Vendor Attribute references first: include only vendor "x" attributes, sorted by name.
-    //    This avoids hardcoding a fixed list while keeping deterministic order for tests.
     if let Some(vendor_attrs) = &attrs.vendor_attributes {
-        let mut x_vendor_names: Vec<&str> = vendor_attrs
-            .iter()
-            .filter(|va| va.vendor_identification == "x")
-            .map(|va| va.attribute_name.as_str())
-            .collect();
-        x_vendor_names.sort_unstable();
-        refs.extend(x_vendor_names.into_iter().map(|name| {
+        refs.extend(vendor_attrs.iter().map(|va| {
             AttributeReference::Vendor(VendorAttributeReference {
-                vendor_identification: "x".to_owned(),
-                attribute_name: name.to_owned(),
+                vendor_identification: va.vendor_identification.clone(),
+                attribute_name: va.attribute_name.clone(),
             })
         }));
     }
 
-    // 2) Standard Attribute tag references for the TL profile, in the exact expected
-    //    order, filtered by the minimum KMIP 1.x minor version that defines each of them
-    //    (see `TL_PROFILE_ATTRIBUTES`).
-    for (tag, introduced_in_kmip1_minor) in TL_PROFILE_ATTRIBUTES {
-        if kmip1_minor >= introduced_in_kmip1_minor {
+    // Standard attributes: TL-profile order first (XML profile vectors), then the rest.
+    let mut tags: Vec<Tag> = Vec::new();
+    for attribute in Vec::<Attribute>::from(attrs) {
+        if let Some(tag) = attribute.tag() {
+            if !tags.contains(&tag) {
+                tags.push(tag);
+            }
+        }
+    }
+    tags.sort_by_key(|tag| {
+        TL_PROFILE_ATTRIBUTES
+            .iter()
+            .position(|(t, _)| t == tag)
+            .unwrap_or(usize::MAX)
+    });
+    for tag in tags {
+        let introduced = TL_PROFILE_ATTRIBUTES
+            .iter()
+            .find(|(t, _)| *t == tag)
+            .map_or_else(
+                || i32::from(KMIP2_ONLY.contains(&tag)) * i32::MAX,
+                |(_, m)| *m,
+            );
+        if kmip1_minor >= introduced {
             refs.push(AttributeReference::Standard(tag));
         }
     }
@@ -123,7 +139,8 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     if let Some(refs) = &attribute_references {
         trace!(
             target: "kmip",
-            "get_attribute_list uid={uid} refs=[{}]",
+            "get_attribute_list uid={} refs=[{}]",
+            response.unique_identifier,
             refs
                 .iter()
                 .map(|r| match r {
@@ -136,7 +153,7 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     }
 
     Ok(GetAttributeListResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.as_str().to_owned()),
+        unique_identifier: response.unique_identifier,
         attribute_references,
     })
 }

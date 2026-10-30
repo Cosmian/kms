@@ -1,3 +1,8 @@
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{kmip_operations::Certify, kmip_types::CertificateRequestType},
+};
+
 #[test]
 #[allow(
     clippy::expect_used,
@@ -135,4 +140,59 @@ fn test_serial_number_length() {
             "Test case {idx}: High bit should not be set in first byte",
         );
     }
+}
+
+#[tokio::test]
+async fn invalid_csr_returns_invalid_csr() -> crate::result::KResult<()> {
+    let kms = crate::tests::test_utils::test_kms().await?;
+    let Err(err) = super::get_subject(
+        &kms,
+        &Certify {
+            certificate_request_type: Some(CertificateRequestType::PEM),
+            certificate_request_value: Some(b"not a certificate request".to_vec()),
+            ..Certify::default()
+        },
+        &crate::middlewares::UserId::from("invalid-csr@example.com"),
+    )
+    .await
+    else {
+        return Err(crate::error::KmsError::Default(
+            "a malformed CSR must fail".to_owned(),
+        ));
+    };
+    if !matches!(
+        &err,
+        crate::error::KmsError::Kmip21Error(ErrorReason::Invalid_CSR, _)
+    ) {
+        return Err(crate::error::KmsError::Default(format!(
+            "malformed CSR returned unexpected error: {err:?}"
+        )));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn unsupported_crmf_returns_feature_not_supported() -> crate::result::KResult<()> {
+    let kms = crate::tests::test_utils::test_kms().await?;
+    let Err(err) = super::get_subject(
+        &kms,
+        &Certify {
+            certificate_request_type: Some(CertificateRequestType::CRMF),
+            certificate_request_value: Some(Vec::new()),
+            ..Certify::default()
+        },
+        &crate::middlewares::UserId::from("unsupported-crmf@example.com"),
+    )
+    .await
+    else {
+        return Err(crate::error::KmsError::Default(
+            "CRMF certificate requests must fail".to_owned(),
+        ));
+    };
+    if !matches!(&err, crate::error::KmsError::NotSupported(_)) {
+        return Err(crate::error::KmsError::Default(format!(
+            "unsupported CRMF returned unexpected error: {err:?}"
+        )));
+    }
+    Ok(())
 }

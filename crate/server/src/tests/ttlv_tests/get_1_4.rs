@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_messages::RequestMessageBatchItem,
         kmip_objects::Object,
         kmip_operations::{Get, Operation},
-        kmip_types::{KeyFormatType, ObjectType, OperationEnumeration},
+        kmip_types::{KeyFormatType, ObjectType, OperationEnumeration, ResultReason},
     },
     ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
 };
@@ -33,6 +33,51 @@ fn test_get_1_4() {
 
     // Get the symmetric key
     get_symmetric_key(&client, &key_id);
+}
+
+#[test]
+fn test_get_missing_1_4_maps_to_item_not_found() {
+    let client = get_client();
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(
+            KmipFlavor::Kmip1,
+            &RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 1,
+                        protocol_version_minor: 4,
+                    },
+                    batch_count: 1,
+                    ..Default::default()
+                },
+                batch_item: vec![RequestMessageBatchItemVersioned::V14(
+                    RequestMessageBatchItem {
+                        operation: OperationEnumeration::Get,
+                        ephemeral: None,
+                        unique_batch_item_id: None,
+                        request_payload: Operation::Get(Get {
+                            unique_identifier: Some("missing-key".to_owned()),
+                            key_format_type: None,
+                            key_wrap_type: None,
+                            key_compression_type: None,
+                            key_wrapping_specification: None,
+                        }),
+                        message_extension: None,
+                    },
+                )],
+            },
+        )
+        .expect("Failed to send request");
+
+    let [ResponseMessageBatchItemVersioned::V14(batch_item)] = response.batch_item.as_slice()
+    else {
+        panic!("Expected one KMIP 1.4 response batch item");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    assert_eq!(batch_item.result_reason, Some(ResultReason::ItemNotFound));
 }
 
 pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
@@ -61,6 +106,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
                 request_payload: Operation::Get(Get {
                     unique_identifier: Some(key_id.to_owned()),
                     key_format_type: None,
+                    key_wrap_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
                 }),

@@ -11,12 +11,29 @@ the need for a `RequestMessage` wrapper.
 This is particularly useful for operations like `Encrypt` and `Decrypt`.
 
 Multiple operations can be included in a single `RequestMessage` query.
-The server processes these operations sequentially, though they appear to execute simultaneously.
-Each batch item contains an independent request.
+Items run in order.
 
 For every request message sent, the server returns a response message containing the result status of the requested
 operation,
 along with any relevant result data or error messages.
+
+## Batch semantics
+
+- A `BatchCount` that differs from the number of items, or a message with zero items, returns `Invalid_Message`.
+- More than 10,000 items returns `Invalid_Message`.
+- An omitted Batch Error Continuation Option means `Stop`.
+- On `Stop` and `Undo`, processing ends at the first failure and later items are not returned.
+- The response `BatchCount` is the number of returned items.
+- `Undo` reverts earlier items (limit 1,000 items, else `Server_Limit_Exceeded`). Only items really reverted report
+  `Operation Undone`; the others keep `Success`.
+- A critical Message Extension fails every item with `Unknown_Message_Extension`.
+- A Hashed Password credential returns `Feature_Not_Supported`.
+- Maximum Response Size is applied to Query only: a Query response that would exceed it becomes `Response_Too_Large`.
+  A negative value returns `Invalid_Field`.
+- An unimplemented operation fails only its own item with `Operation_Not_Supported`.
+- A message-level error fails every item with that reason.
+- The ID Placeholder lives for one message. A failed Check empties it.
+- The Client Correlation Value is echoed in the response header.
 
 ## Request and response example
 
@@ -90,6 +107,7 @@ Below are canonical KMIP 2.1 message examples, following the mandatory XML schem
                         { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
                     ] },
                     { "tag": "TimeStamp", "type": "DateTime", "value": "$NOW" },
+                    { "tag": "ClientCorrelationValue", "type": "TextString", "value": "AKLC-M-1-21 step=0" },
                     { "tag": "BatchCount", "type": "Integer", "value": 1 }
                 ]
             },
@@ -173,6 +191,7 @@ Below are canonical KMIP 2.1 message examples, following the mandatory XML schem
                         { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
                     ] },
                     { "tag": "TimeStamp", "type": "DateTime", "value": "$NOW" },
+                    { "tag": "ClientCorrelationValue", "type": "TextString", "value": "AKLC-M-1-21 step=1" },
                     { "tag": "BatchCount", "type": "Integer", "value": 1 }
                 ]
             },
@@ -200,9 +219,11 @@ Below are canonical KMIP 2.1 message examples, following the mandatory XML schem
                             { "tag": "LastChangeDate", "type": "DateTime", "value": "$NOW" },
                             { "tag": "OriginalCreationDate", "type": "DateTime", "value": "$NOW" },
                             { "tag": "RandomNumberGenerator", "type": "Structure", "value": [
-                                { "tag": "RNGAlgorithm", "type": "Enumeration", "value": "ANSIX9_31" },
+                                { "tag": "RNGAlgorithm", "type": "Enumeration", "value": "DRBG" },
                                 { "tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "AES" },
-                                { "tag": "CryptographicLength", "type": "Integer", "value": 256 }
+                                { "tag": "CryptographicLength", "type": "Integer", "value": 256 },
+                                { "tag": "DRBGAlgorithm", "type": "Enumeration", "value": "CTR" },
+                                { "tag": "PredictionResistance", "type": "Boolean", "value": false }
                             ] },
                             { "tag": "KeyFormatType", "type": "Enumeration", "value": "PKCS_1" }
                         ] }
@@ -264,6 +285,7 @@ Below are canonical KMIP 2.1 message examples, following the mandatory XML schem
                         { "tag": "ProtocolVersionMinor", "type": "Integer", "value": 1 }
                     ] },
                     { "tag": "TimeStamp", "type": "DateTime", "value": "$NOW" },
+                    { "tag": "ClientCorrelationValue", "type": "TextString", "value": "AKLC-M-1-21 step=3" },
                     { "tag": "BatchCount", "type": "Integer", "value": 1 }
                 ]
             },

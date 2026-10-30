@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
@@ -12,10 +12,14 @@ use cosmian_kms_server_database::reexport::{
         },
         kmip_2_1::{
             KmipOperation,
+            kmip_attributes::Attributes,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
             kmip_objects::{Certificate, Object, ObjectType, PrivateKey},
             kmip_operations::{Export, ExportResponse},
-            kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, UniqueIdentifier},
+            kmip_types::{
+                CryptographicAlgorithm, KeyCompressionType, KeyFormatType, LinkType,
+                UniqueIdentifier,
+            },
         },
     },
     cosmian_kms_crypto::openssl::{
@@ -35,7 +39,7 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-use super::pgp_ops;
+use super::{attributes::collect_attributes, pgp_ops};
 use crate::{
     core::{
         KMS,
@@ -127,7 +131,15 @@ pub(crate) async fn export_get(
     user: &UserId,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
-    trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
+    if request
+        .key_compression_type
+        .is_some_and(|compression| compression != KeyCompressionType::ECPublicKeyTypeUncompressed)
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Key_Compression_Type_Not_Supported,
+            "Key Compression Type is not supported".to_owned(),
+        ));
+    }
 
     let object_handle = from_request(request.unique_identifier.as_ref(), "Export")?;
     let owm = Box::pin(retrieve_object_for_operation(
@@ -139,7 +151,6 @@ pub(crate) async fn export_get(
     .await?;
     let mut owm = Arc::unwrap_or_clone(owm);
 
-    trace!(target: "kmip", "enter export_get op={:?} req={}", operation_type, request);
     // Log basic object metadata before any processing
     trace!(target: "kmip", "retrieved object uid={} type={:?} state={:?} key_fmt={:?}",
         owm.id(), owm.object().object_type(), owm.state(), owm.object().key_block().ok().map(|kb| kb.key_format_type));
@@ -151,7 +162,7 @@ pub(crate) async fn export_get(
     // object is explicitly requested. Enforce denial only for Get so that Export path continues
     if operation_type == KmipOperation::Get && matches!(owm.state(), State::Deactivated) {
         return Err(KmsError::Kmip21Error(
-            ErrorReason::Wrong_Key_Lifecycle_State,
+            ErrorReason::Permission_Denied,
             "DENIED".to_owned(),
         ));
     }
@@ -159,13 +170,56 @@ pub(crate) async fn export_get(
     let object_type = owm.object().object_type();
     let export = operation_type == KmipOperation::Export;
 
-    // Lifecycle enforcement adjustments: If object is Destroyed, KMIP Get / Export MUST fail with ObjectDestroyed
-    // (BL-M-8-21 expects ResultReason=ObjectDestroyed, message DENIED). We surface the specific KMIP error here.
-    if matches!(owm.state(), State::Destroyed | State::Destroyed_Compromised) {
+    // KMIP 2.1 §6.1.18: Export of a Destroyed object succeeds but returns no key material (handled
+    // per object type below). Get of a Destroyed object fails with Object_Destroyed
+    // (BL-M-8-21 expects ResultReason=ObjectDestroyed, message DENIED).
+    if !export && matches!(owm.state(), State::Destroyed | State::Destroyed_Compromised) {
         return Err(KmsError::Kmip21Error(
             ErrorReason::Object_Destroyed,
             "DENIED".to_owned(),
         ));
+    }
+
+    // KMIP 2.1 §6.1.18: the Export response carries "All of the object's Attributes": the set
+    // Get Attributes reports (derived Digest, Short Unique Identifier, Sensitive/Extractable
+    // defaults, ...), as it stood before this request served the object (Fresh).
+    let export_attributes = if export {
+        let mut collected = Box::pin(collect_attributes(kms, &owm, Vec::new())).await?;
+        // Get Attributes leaves the tags out unless asked for; Export has always carried them
+        // (the client's `--allow-revoked` export and TTLV export/import round-trip rely on it).
+        let tags = kms.database.retrieve_tags(owm.id()).await?;
+        collected.set_tags(kms.vendor_id(), tags)?;
+        Some((owm.id().to_owned(), collected))
+    } else {
+        None
+    };
+    // The collected set describes the requested object; a PKCS#12 export of a certificate
+    // returns its private key instead, with that key's attributes.
+    let response_attributes = |uid: &str, attributes: Attributes| match export_attributes {
+        Some((id, collected)) if id == uid => collected,
+        _ => attributes,
+    };
+
+    // KMIP 2.1 §4.27-§4.28: an object registered without its Key Value (Key Value Present
+    // false) is returned as registered; there is no key material to convert or wrap.
+    if owm
+        .object()
+        .key_block()
+        .is_ok_and(|key_block| key_block.key_value.is_none())
+    {
+        if request.key_format_type.is_some() || request.key_wrapping_specification.is_some() {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Key_Value_Not_Present,
+                "the object was registered without its Key Value".to_owned(),
+            ));
+        }
+        let (uid, object, attributes) = owm.into_parts();
+        return Ok(ExportResponse {
+            object_type: object.object_type(),
+            attributes: response_attributes(&uid, attributes),
+            unique_identifier: UniqueIdentifier::TextString(uid),
+            object,
+        });
     }
 
     // Snapshot the original DB-form object before any response-oriented processing.
@@ -335,10 +389,12 @@ pub(crate) async fn export_get(
                         }
                     };
                 if is_wrong_format {
-                    kms_bail!(
-                        "export: unsupported Key Format Type for a certificate: {:?}",
-                        key_format_type
-                    )
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Key_Format_Type_Not_Supported,
+                        format!(
+                            "export: unsupported Key Format Type for a certificate: {key_format_type:?}"
+                        ),
+                    ));
                 }
             }
         }
@@ -388,8 +444,8 @@ pub(crate) async fn export_get(
     let (uid, object, attributes) = owm.into_parts();
     Ok(ExportResponse {
         object_type: object.object_type(),
+        attributes: response_attributes(&uid, attributes),
         unique_identifier: UniqueIdentifier::TextString(uid),
-        attributes,
         object,
     })
 }
@@ -661,17 +717,17 @@ async fn post_process_active_private_key(
             .context("export: RSA private key validation failed - key is mathematically invalid")?;
     }
 
-    // Wrapping is only available, for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
-        if key_format_type.is_some() {
-            kms_bail!(
-                "export: unable to wrap a key with a specified Key Format Type. It must be the \
-                 default"
-            )
-        }
-        // generate a KMIP PrivateKey in the default format
-        let mut object = openssl_private_key_to_kmip_default_format(
+        // The Key Format Type designates the format of the key before it is wrapped
+        // (KMIP 2.1 §6.1.19: wrapped keys may be returned in any supported format)
+        // An RSA key wrapped without a requested format is wrapped as PKCS#8 / SPKI, which is
+        // what deployed clients (e.g. the AWS and Azure BYOK imports) expect.
+        let wrapped_format = key_format_type.or_else(|| {
+            (openssl_key.id() == openssl::pkey::Id::RSA).then_some(KeyFormatType::PKCS8)
+        });
+        let mut object = private_key_object(
             &openssl_key,
+            wrapped_format,
             attributes.cryptographic_usage_mask,
         )?;
 
@@ -720,49 +776,11 @@ async fn post_process_active_private_key(
     }
 
     // No wrapping requested: export the private key to the requested format
-    if let Some(key_format_type) = key_format_type {
-        debug!("exporting private key with format: {:?}", key_format_type);
-        #[cfg(feature = "non-fips")]
-        let supported_formats = [
-            KeyFormatType::PKCS1,
-            KeyFormatType::PKCS8,
-            KeyFormatType::TransparentECPrivateKey,
-            KeyFormatType::TransparentRSAPrivateKey,
-            KeyFormatType::ECPrivateKey,
-            KeyFormatType::PKCS12,
-            #[cfg(feature = "non-fips")]
-            KeyFormatType::Pkcs12Legacy,
-        ];
-
-        #[cfg(not(feature = "non-fips"))]
-        let supported_formats = [
-            KeyFormatType::PKCS1,
-            KeyFormatType::PKCS8,
-            KeyFormatType::TransparentECPrivateKey,
-            KeyFormatType::TransparentRSAPrivateKey,
-            KeyFormatType::ECPrivateKey,
-            KeyFormatType::PKCS12,
-        ];
-        if !supported_formats.contains(key_format_type) {
-            kms_bail!(
-                "export: unsupported Key Format Type: {:?} for a private key",
-                key_format_type
-            )
-        }
-        let object = openssl_private_key_to_kmip(
-            &openssl_key,
-            *key_format_type,
-            attributes.cryptographic_usage_mask,
-        )?;
-        object_with_metadata.set_object(object);
-    } else {
-        // No format type requested: export the private key to the default format
-        let object = openssl_private_key_to_kmip_default_format(
-            &openssl_key,
-            attributes.cryptographic_usage_mask,
-        )?;
-        object_with_metadata.set_object(object);
-    }
+    object_with_metadata.set_object(private_key_object(
+        &openssl_key,
+        *key_format_type,
+        attributes.cryptographic_usage_mask,
+    )?);
     // Get the key block
     let key_block = object_with_metadata.object_mut().key_block_mut()?;
 
@@ -905,17 +923,16 @@ async fn process_public_key(
     let openssl_key = kmip_public_key_to_openssl(object_with_metadata.object())
         .context("export: unable to parse the private key to openssl")?;
 
-    // Wrapping is only available when the KeyFormatType is the default (i.e., None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
-        if key_format_type.is_some() {
-            kms_bail!(
-                "export: unable to wrap a key with a specified Key Format Type. It must be the \
-                 default"
-            )
-        }
-        // generate a KMIP Public in the default format
-        let mut object = openssl_public_key_to_kmip_default_format(
+        // The Key Format Type designates the format of the key before it is wrapped
+        // An RSA key wrapped without a requested format is wrapped as PKCS#8 / SPKI, which is
+        // what deployed clients (e.g. the AWS and Azure BYOK imports) expect.
+        let wrapped_format = key_format_type.or_else(|| {
+            (openssl_key.id() == openssl::pkey::Id::RSA).then_some(KeyFormatType::PKCS8)
+        });
+        let mut object = public_key_object(
             &openssl_key,
+            wrapped_format,
             attributes.cryptographic_usage_mask,
         )?;
         // add the attributes back
@@ -941,30 +958,12 @@ async fn process_public_key(
         return Ok(());
     }
 
-    // No wrapping requested: export the private key to the requested format
-    if let Some(key_format_type) = key_format_type {
-        match key_format_type {
-            KeyFormatType::PKCS1
-            | KeyFormatType::PKCS8
-            | KeyFormatType::TransparentECPublicKey
-            | KeyFormatType::TransparentRSAPublicKey => {
-                let object = openssl_public_key_to_kmip(
-                    &openssl_key,
-                    *key_format_type,
-                    attributes.cryptographic_usage_mask,
-                )?;
-                *object_with_metadata.object_mut() = object;
-            }
-            _ => kms_bail!("export: unsupported Key Format Type: {:?}", key_format_type),
-        }
-    } else {
-        // No format type requested: export the private key to the default format
-        let object = openssl_public_key_to_kmip_default_format(
-            &openssl_key,
-            attributes.cryptographic_usage_mask,
-        )?;
-        object_with_metadata.set_object(object);
-    }
+    // No wrapping requested: export the public key to the requested format
+    object_with_metadata.set_object(public_key_object(
+        &openssl_key,
+        *key_format_type,
+        attributes.cryptographic_usage_mask,
+    )?);
 
     // Merge the correct cryptographic attributes in the attributes
     if let Ok(key_block_attributes) = object_with_metadata.object().attributes() {
@@ -981,6 +980,78 @@ async fn process_public_key(
     }
 
     Ok(())
+}
+
+/// Whether the format is the non-standard legacy PKCS#12 (non-FIPS builds only).
+#[cfg(feature = "non-fips")]
+const fn is_legacy_pkcs12(key_format_type: KeyFormatType) -> bool {
+    matches!(key_format_type, KeyFormatType::Pkcs12Legacy)
+}
+
+/// The legacy PKCS#12 format does not exist in FIPS builds.
+#[cfg(not(feature = "non-fips"))]
+const fn is_legacy_pkcs12(_key_format_type: KeyFormatType) -> bool {
+    false
+}
+
+/// The private key in the requested Key Format Type, the default format when none is requested.
+fn private_key_object(
+    openssl_key: &PKey<Private>,
+    key_format_type: Option<KeyFormatType>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Object> {
+    let Some(key_format_type) = key_format_type else {
+        return openssl_private_key_to_kmip_default_format(openssl_key, cryptographic_usage_mask);
+    };
+    debug!("exporting private key with format: {:?}", key_format_type);
+    let supported = matches!(
+        key_format_type,
+        KeyFormatType::PKCS1
+            | KeyFormatType::PKCS8
+            | KeyFormatType::TransparentECPrivateKey
+            | KeyFormatType::TransparentRSAPrivateKey
+            | KeyFormatType::ECPrivateKey
+            | KeyFormatType::PKCS12
+    ) || is_legacy_pkcs12(key_format_type);
+    if !supported {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Key_Format_Type_Not_Supported,
+            format!("export: unsupported Key Format Type: {key_format_type:?} for a private key"),
+        ));
+    }
+    Ok(openssl_private_key_to_kmip(
+        openssl_key,
+        key_format_type,
+        cryptographic_usage_mask,
+    )?)
+}
+
+/// The public key in the requested Key Format Type, the default format when none is requested.
+fn public_key_object(
+    openssl_key: &PKey<Public>,
+    key_format_type: Option<KeyFormatType>,
+    cryptographic_usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Object> {
+    let Some(key_format_type) = key_format_type else {
+        return openssl_public_key_to_kmip_default_format(openssl_key, cryptographic_usage_mask);
+    };
+    if !matches!(
+        key_format_type,
+        KeyFormatType::PKCS1
+            | KeyFormatType::PKCS8
+            | KeyFormatType::TransparentECPublicKey
+            | KeyFormatType::TransparentRSAPublicKey
+    ) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Key_Format_Type_Not_Supported,
+            format!("export: unsupported Key Format Type: {key_format_type:?}"),
+        ));
+    }
+    Ok(openssl_public_key_to_kmip(
+        openssl_key,
+        key_format_type,
+        cryptographic_usage_mask,
+    )?)
 }
 
 async fn unwrap_if_requested(
@@ -1140,11 +1211,6 @@ async fn process_symmetric_key(
     kms: &KMS,
     user: &UserId,
 ) -> KResult<()> {
-    trace!(
-        "process_symmetric_key: object_with_metadata: {}",
-        object_with_metadata
-    );
-
     trace!(target: "kmip", "process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}",
         object_with_metadata.id(), key_format_type, key_wrap_type);
 
@@ -1207,11 +1273,11 @@ async fn process_symmetric_key(
                 // key bytes).
                 object_with_metadata.set_object(unwrapped);
             } else {
-                // any other requested format remains unsupported for wrapped objects
-                kms_bail!(
-                    "export: unable to export a wrapped symmetric key with a requested Key Format \
-                     Type. It must be the default or Raw"
-                )
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Key_Format_Type_Not_Supported,
+                    "export: a wrapped symmetric key requires the default or Raw Key Format Type"
+                        .to_owned(),
+                ));
             }
         } else {
             // No specific KeyFormatType requested — export the wrapped object as registered
@@ -1247,10 +1313,10 @@ async fn process_symmetric_key(
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
-            kms_bail!(
-                "export: unable to wrap a symmetric key with a specified Key Format Type. It must \
-                 be the default"
-            )
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Key_Format_Type_Not_Supported,
+                "export: a wrapped symmetric key requires the default Key Format Type".to_owned(),
+            ));
         }
         // generate a key block in the default format, which is Raw
         key_block.key_value = Some(KeyValue::Structure {
@@ -1287,10 +1353,14 @@ async fn process_symmetric_key(
             }
             trace!(target: "kmip", "process_symmetric_key set Raw uid={}", obj_id);
         }
-        _ => kms_bail!(
-            "export: unsupported requested Key Format Type for a symmetric key: {:?}",
-            key_format_type
-        ),
+        _ => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Key_Format_Type_Not_Supported,
+                format!(
+                    "export: unsupported requested Key Format Type for a symmetric key: {key_format_type:?}"
+                ),
+            ));
+        }
     }
 
     trace!(target: "kmip", "process_symmetric_key exit uid={} final_format={:?}", obj_id, key_block.key_format_type);
@@ -1318,35 +1388,26 @@ async fn build_pkcs12_for_private_key(
 
     trace!("building chain from leaf certificate:  {}", cert_owm.id());
 
-    // retrieve the certificate chain
     let mut chain: Stack<X509> = Stack::new()?;
-    while let Some(parent_id) = cert_owm.attributes().get_link(LinkType::CertificateLink) {
-        let parent_id_str = linked_id_str(&parent_id);
-        // if the parent_id is identical to the current certificate => self-signed cert, we must stop
-        if parent_id_str.as_ref() == cert_owm.id() {
-            break;
-        }
-        trace!("certificate parent id is:  {}", parent_id_str);
-        // retrieve the parent certificate
-        let parent_owm = Box::pin(retrieve_object_for_operation(
-            ObjectHandle::from(&*parent_id_str),
-            operation_type,
-            kms,
-            user,
-        ))
-        .await?;
-        cert_owm = Arc::unwrap_or_clone(parent_owm);
-        let certificate = kmip_certificate_to_openssl(cert_owm.object())?;
-        chain.push(certificate)?;
-    }
+    append_certificate_chain(&mut cert_owm, &mut chain, operation_type, kms, user).await?;
 
-    // recover the password
-    let password = request
+    // recover the password: the Key Wrapping Specification designates it, else the
+    // PKCS#12 Password Link of the private key (KMIP 2.1 §6.1.19)
+    let password_id = request
         .key_wrapping_specification
         .as_ref()
         .and_then(|kws| kws.encryption_key_information.as_ref())
         .map(|eki| eki.unique_identifier.to_string())
-        .unwrap_or_default();
+        .or_else(|| {
+            private_key_owm
+                .attributes()
+                .get_link(LinkType::PKCS12PasswordLink)
+                .map(|link| link.to_string())
+        });
+    let password = match password_id {
+        Some(id) => resolve_pkcs12_password(kms, user, &id).await?,
+        None => Zeroizing::new(String::new()),
+    };
     // convert the Private Key to openssl
     trace!(
         "converting the private key {} to openssl pkey",
@@ -1393,6 +1454,109 @@ async fn build_pkcs12_for_private_key(
             key_wrapping_data: None,
         },
     }));
+    Ok(())
+}
+
+/// The password of a PKCS#12 container designated by `identifier`.
+///
+/// KMIP 2.1 §6.1.19: the container is protected by the Secret Data object designated by the
+/// PKCS#12 Password Link; `Bad Password` (Table 'Result Reason') when that object is not an
+/// Active Secret Data. An identifier that designates no accessible object is taken as the
+/// literal password, the historical Cosmian convention.
+pub(crate) async fn resolve_pkcs12_password(
+    kms: &KMS,
+    user: &UserId,
+    identifier: &str,
+) -> KResult<Zeroizing<String>> {
+    let bad_password = |reason: &str| {
+        KmsError::Kmip21Error(
+            ErrorReason::Bad_Password,
+            format!("PKCS#12 password object {identifier}: {reason}"),
+        )
+    };
+    // `Uid`: a password is never a tag query nor an HSM identifier
+    let owm = match retrieve_object_for_operation(
+        ObjectHandle::Uid(identifier),
+        KmipOperation::Get,
+        kms,
+        user,
+    )
+    .await
+    {
+        Ok(owm) => owm,
+        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)) => {
+            return Ok(Zeroizing::new(identifier.to_owned()));
+        }
+        Err(e) => return Err(e),
+    };
+    let Object::SecretData(secret_data) = owm.object() else {
+        return Err(bad_password("not a Secret Data object"));
+    };
+    if owm.effective_state() != State::Active {
+        return Err(bad_password("not Active"));
+    }
+    let bytes = secret_data.key_block.key_bytes()?;
+    String::from_utf8(bytes.to_vec())
+        .map(Zeroizing::new)
+        .map_err(|_e| bad_password("not a UTF-8 password"))
+}
+
+/// Upper bound for a certificate chain, including its leaf certificate.
+const MAX_CERTIFICATE_CHAIN_CERTIFICATES: usize = 100;
+
+/// Record the next certificate chain link and reject cyclic or oversized chains.
+fn register_certificate_chain_parent(
+    certificate_ids: &mut HashSet<String>,
+    certificate_id: &str,
+    parent_id: &str,
+) -> KResult<bool> {
+    if parent_id == certificate_id {
+        return Ok(false);
+    }
+    if !certificate_ids.insert(parent_id.to_owned()) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            "certificate chain contains a cycle".to_owned(),
+        ));
+    }
+    if certificate_ids.len() > MAX_CERTIFICATE_CHAIN_CERTIFICATES {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!("certificate chain exceeds {MAX_CERTIFICATE_CHAIN_CERTIFICATES} certificates"),
+        ));
+    }
+    Ok(true)
+}
+
+/// Retrieve each parent certificate once, rejecting cyclic and oversized chains.
+async fn append_certificate_chain(
+    certificate: &mut ObjectWithMetadata,
+    chain: &mut Stack<X509>,
+    operation_type: KmipOperation,
+    kms: &KMS,
+    user: &UserId,
+) -> KResult<()> {
+    let mut certificate_ids = HashSet::from([certificate.id().to_owned()]);
+    while let Some(parent_id) = certificate.attributes().get_link(LinkType::CertificateLink) {
+        let parent_id = linked_id_str(&parent_id);
+        if !register_certificate_chain_parent(
+            &mut certificate_ids,
+            certificate.id(),
+            parent_id.as_ref(),
+        )? {
+            break;
+        }
+        trace!("certificate parent id is: {parent_id}");
+        let parent_certificate = Box::pin(retrieve_object_for_operation(
+            ObjectHandle::from(&*parent_id),
+            operation_type,
+            kms,
+            user,
+        ))
+        .await?;
+        *certificate = Arc::unwrap_or_clone(parent_certificate);
+        chain.push(kmip_certificate_to_openssl(certificate.object())?)?;
+    }
     Ok(())
 }
 
@@ -1448,26 +1612,7 @@ async fn post_process_pkcs7(
         // Create the PKCS7 structure
         let mut chain: Stack<X509> = Stack::new()?;
 
-        // Retrieve the certificate chain
-        while let Some(parent_id) = cert_owm.attributes().get_link(LinkType::CertificateLink) {
-            let parent_id_str = linked_id_str(&parent_id);
-            trace!("Certificate parent id is: {parent_id_str}");
-            if parent_id_str.as_ref() == cert_owm.id() {
-                break;
-            }
-            // Retrieve the parent certificate
-            let parent_owm = Box::pin(retrieve_object_for_operation(
-                ObjectHandle::from(&*parent_id_str),
-                operation_type,
-                kms,
-                user,
-            ))
-            .await?;
-            cert_owm = Arc::unwrap_or_clone(parent_owm);
-            let certificate = kmip_certificate_to_openssl(cert_owm.object())
-                .context("export: unable to parse the certificate to openssl")?;
-            chain.push(certificate)?;
-        }
+        append_certificate_chain(&mut cert_owm, &mut chain, operation_type, kms, user).await?;
 
         // Build PKCS7
         let pkcs7 = Pkcs7::sign(
@@ -1497,11 +1642,6 @@ async fn process_secret_data(
     kms: &KMS,
     user: &UserId,
 ) -> KResult<()> {
-    trace!(
-        "process_secret_data: object_with_metadata: {}",
-        object_with_metadata
-    );
-
     // First check is any unwrapping needs to be done
     Box::pin(unwrap_if_requested(
         object_with_metadata,
@@ -1518,10 +1658,10 @@ async fn process_secret_data(
     // If the key is still wrapped the export KeyFormatType must be the default (none)
     if key_block.key_wrapping_data.is_some() {
         if key_format_type.is_some() {
-            kms_bail!(
-                "export: unable to export a wrapped secret data with a requested Key Format Type. \
-                 It must be the default"
-            )
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Key_Format_Type_Not_Supported,
+                "export: a wrapped secret data requires the default Key Format Type".to_owned(),
+            ));
         }
         // The key is wrapped and as expected the requested Key Format Type is the default (none)
         // => The key is exported as such
@@ -1546,13 +1686,12 @@ async fn process_secret_data(
         }
     };
 
-    // Wrapping is only available for KeyFormatType being the default (i.e. None)
     if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
-            kms_bail!(
-                "export: unable to wrap a secret data with a specified Key Format Type. It must \
-                 be the default"
-            )
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Key_Format_Type_Not_Supported,
+                "export: a wrapped secret data requires the default Key Format Type".to_owned(),
+            ));
         }
         // generate a key block in the default format, which is Raw
         key_block.key_value = Some(KeyValue::Structure {
@@ -1604,10 +1743,14 @@ async fn process_secret_data(
                 inner.key_format_type = Some(KeyFormatType::Opaque);
             }
         }
-        _ => kms_bail!(
-            "export: unsupported requested Key Format Type for a secret data: {:?}",
-            key_format_type
-        ),
+        _ => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Key_Format_Type_Not_Supported,
+                format!(
+                    "export: unsupported requested Key Format Type for a secret data: {key_format_type:?}"
+                ),
+            ));
+        }
     }
     Ok(())
 }
@@ -1665,9 +1808,270 @@ async fn persist_fresh_false(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            kmip_operations::Get,
+            kmip_types::{KeyCompressionType, UniqueIdentifier},
+        },
+    };
+
+    use super::register_certificate_chain_parent;
+    use crate::{
+        error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
+    };
+
+    #[tokio::test]
+    async fn rejects_requested_key_compression() -> KResult<()> {
+        let kms = test_kms().await?;
+        let Err(error) = kms
+            .get(
+                Get {
+                    unique_identifier: Some(UniqueIdentifier::TextString("unused".to_owned())),
+                    key_compression_type: Some(
+                        KeyCompressionType::ECPublicKeyTypeX962CompressedPrime,
+                    ),
+                    ..Get::default()
+                },
+                &UserId::from("compression@example.com"),
+            )
+            .await
+        else {
+            return Err(KmsError::Default(
+                "key compression request unexpectedly succeeded".to_owned(),
+            ));
+        };
+
+        if !matches!(
+            error,
+            KmsError::Kmip21Error(ErrorReason::Key_Compression_Type_Not_Supported, _)
+        ) {
+            return Err(KmsError::Default(
+                "key compression request returned the wrong KMIP error reason".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn accepts_uncompressed_key_compression() -> KResult<()> {
+        let kms = test_kms().await?;
+        let result = kms
+            .get(
+                Get {
+                    unique_identifier: Some(UniqueIdentifier::TextString("unused".to_owned())),
+                    key_compression_type: Some(KeyCompressionType::ECPublicKeyTypeUncompressed),
+                    ..Get::default()
+                },
+                &UserId::from("compression@example.com"),
+            )
+            .await;
+        if !matches!(
+            result,
+            Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        ) {
+            return Err(KmsError::Default(
+                "uncompressed Key Compression Type was rejected before object lookup".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn certificate_chain_cycle_is_rejected() -> KResult<()> {
+        let mut certificate_ids = HashSet::from(["leaf".to_owned()]);
+        if !register_certificate_chain_parent(&mut certificate_ids, "leaf", "issuer")? {
+            return Err(KmsError::Default(
+                "issuer link unexpectedly ended the certificate chain".to_owned(),
+            ));
+        }
+        let cycle = register_certificate_chain_parent(&mut certificate_ids, "issuer", "leaf");
+        if !matches!(
+            cycle,
+            Err(KmsError::Kmip21Error(ErrorReason::Invalid_Field, _))
+        ) {
+            return Err(KmsError::Default(
+                "certificate chain cycle was not rejected".to_owned(),
+            ));
+        }
+        if register_certificate_chain_parent(&mut certificate_ids, "issuer", "issuer")? {
+            return Err(KmsError::Default(
+                "self-signed certificate link did not end the chain".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// KMIP 2.1 §6.1.19: the PKCS#12 password is the Active Secret Data designated by the link;
+    /// an identifier that designates nothing is the literal password (historical convention).
+    #[tokio::test]
+    async fn pkcs12_password_is_the_linked_active_secret_data() -> KResult<()> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::{
+            kmip_0::kmip_types::SecretDataType,
+            kmip_2_1::{
+                kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, ObjectType, SecretData},
+                kmip_operations::{Activate, Register},
+                kmip_types::KeyFormatType,
+            },
+        };
+        use zeroize::Zeroizing;
+
+        use super::resolve_pkcs12_password;
+
+        let kms = test_kms().await?;
+        let user = UserId::from("pkcs12-password@example.com");
+        if resolve_pkcs12_password(&kms, &user, "[literal")
+            .await?
+            .as_str()
+            != "[literal"
+        {
+            return Err(KmsError::Default("literal password was altered".to_owned()));
+        }
+
+        let uid = kms
+            .register(
+                Register {
+                    object_type: ObjectType::SecretData,
+                    attributes: Attributes::default(),
+                    object: Object::SecretData(SecretData {
+                        secret_data_type: SecretDataType::Password,
+                        key_block: KeyBlock {
+                            key_format_type: KeyFormatType::Raw,
+                            key_compression_type: None,
+                            key_value: Some(KeyValue::Structure {
+                                key_material: KeyMaterial::ByteString(Zeroizing::from(
+                                    b"s3cret".to_vec(),
+                                )),
+                                attributes: None,
+                            }),
+                            cryptographic_algorithm: None,
+                            cryptographic_length: None,
+                            key_wrapping_data: None,
+                        },
+                    }),
+                    protection_storage_masks: None,
+                },
+                &user,
+            )
+            .await?
+            .unique_identifier
+            .to_string();
+
+        let pre_active = resolve_pkcs12_password(&kms, &user, &uid).await;
+        if !matches!(
+            pre_active,
+            Err(KmsError::Kmip21Error(ErrorReason::Bad_Password, _))
+        ) {
+            return Err(KmsError::Default(
+                "a Pre-Active Secret Data was accepted as PKCS#12 password".to_owned(),
+            ));
+        }
+
+        kms.activate(
+            Activate {
+                unique_identifier: UniqueIdentifier::TextString(uid.clone()),
+            },
+            &user,
+        )
+        .await?;
+        if resolve_pkcs12_password(&kms, &user, &uid).await?.as_str() != "s3cret" {
+            return Err(KmsError::Default(
+                "linked Secret Data was not used as the password".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// KMIP 2.1 §6.1.19: a key registered in a format is returned in it, possibly wrapped: the
+    /// Key Format Type is the format of the key before wrapping.
+    #[tokio::test]
+    async fn export_wraps_keys_in_the_requested_key_format() -> KResult<()> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_data_structures::KeyWrappingSpecification,
+            kmip_operations::Export,
+            kmip_types::{
+                CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyFormatType,
+                RecommendedCurve, WrappingMethod,
+            },
+            requests::{create_ec_key_pair_request, symmetric_key_create_request},
+        };
+
+        let kms = test_kms().await?;
+        let user = UserId::from("wrap-format@example.com");
+        let wrapping_key = kms
+            .create(
+                symmetric_key_create_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    256,
+                    CryptographicAlgorithm::AES,
+                    EMPTY_TAGS,
+                    false,
+                    None,
+                )?,
+                &user,
+            )
+            .await?
+            .unique_identifier;
+        let pair = kms
+            .create_key_pair(
+                create_ec_key_pair_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    EMPTY_TAGS,
+                    RecommendedCurve::P256,
+                    false,
+                    None,
+                )?,
+                &user,
+            )
+            .await?;
+        for uid in [
+            pair.private_key_unique_identifier,
+            pair.public_key_unique_identifier,
+        ] {
+            let exported = kms
+                .export(
+                    Export::new(
+                        uid,
+                        false,
+                        Some(KeyWrappingSpecification {
+                            wrapping_method: WrappingMethod::Encrypt,
+                            encryption_key_information: Some(EncryptionKeyInformation {
+                                unique_identifier: wrapping_key.clone(),
+                                cryptographic_parameters: None,
+                            }),
+                            encoding_option: Some(EncodingOption::TTLVEncoding),
+                            ..KeyWrappingSpecification::default()
+                        }),
+                        Some(KeyFormatType::PKCS8),
+                    ),
+                    &user,
+                )
+                .await?;
+            let key_block = exported.object.key_block()?;
+            if !exported.object.is_wrapped() || key_block.key_format_type != KeyFormatType::PKCS8 {
+                return Err(KmsError::Default(format!(
+                    "expected a wrapped PKCS#8 key, got {:?} wrapped={}",
+                    key_block.key_format_type,
+                    exported.object.is_wrapped()
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(all(test, feature = "non-fips"))]
 #[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
-mod tests {
+mod pgp_export_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::ErrorReason,
         kmip_2_1::{

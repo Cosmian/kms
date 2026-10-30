@@ -1,11 +1,25 @@
-use std::io::Read;
+use std::{borrow::Cow, io::Read};
 
 use time::OffsetDateTime;
 
 use crate::ttlv::{
-    KmipEnumerationVariant, TTLV, TTLValue, TtlvType, error::TtlvError, kmip_big_int::KmipBigInt,
+    KmipEnumerationVariant, TTLV, TTLValue, TtlvType,
+    error::{TtlvError, UNKNOWN_TAG},
+    kmip_big_int::KmipBigInt,
     wire::kmip_tag::KmipTag,
 };
+
+/// Rejects a declared length that differs from the fixed length of the item type
+/// (KMIP 2.1 Table 427).
+fn check_fixed_length(item_type: &str, length: usize, expected: usize) -> Result<(), TtlvError> {
+    if length == expected {
+        Ok(())
+    } else {
+        Err(TtlvError::from(format!(
+            "TTLV {item_type} length must be {expected}, got {length}"
+        )))
+    }
+}
 
 /// Maximum nesting depth for TTLV structures.
 ///
@@ -25,6 +39,12 @@ pub(crate) const MAX_TTLV_DEPTH: u32 = 64;
 /// field can ever exceed this value.
 pub(crate) const MAX_TTLV_FIELD_BYTES: usize = 64 * 1024 * 1024;
 
+/// Maximum number of TTLV items in one decoded tree.
+///
+/// This permits a full 10,000-item KMIP batch with its nested fields while bounding the
+/// allocations and work required to reject a syntactically valid but excessively wide request.
+pub(crate) const MAX_TTLV_ITEMS: usize = 100_000;
+
 pub struct TTLVBytesDeserializer<R> {
     reader: R,
 }
@@ -41,10 +61,21 @@ where
     ///
     /// Delegates to the depth-tracking inner implementation starting at depth 0.
     pub fn read_ttlv<TAG: KmipTag>(&mut self) -> Result<(TTLV, usize), TtlvError> {
-        self.read_ttlv_inner::<TAG>(0)
+        let mut item_count = 0;
+        self.read_ttlv_inner::<TAG>(0, &mut item_count)
     }
 
-    fn read_ttlv_inner<TAG: KmipTag>(&mut self, depth: u32) -> Result<(TTLV, usize), TtlvError> {
+    fn read_ttlv_inner<TAG: KmipTag>(
+        &mut self,
+        depth: u32,
+        item_count: &mut usize,
+    ) -> Result<(TTLV, usize), TtlvError> {
+        if *item_count == MAX_TTLV_ITEMS {
+            return Err(TtlvError::from(format!(
+                "TTLV item count exceeds maximum allowed ({MAX_TTLV_ITEMS})"
+            )));
+        }
+        *item_count += 1;
         if depth > MAX_TTLV_DEPTH {
             return Err(TtlvError::from(format!(
                 "TTLV structure depth exceeds maximum allowed depth ({MAX_TTLV_DEPTH})"
@@ -58,12 +89,14 @@ where
         let mut full_tag_bytes = [0_u8; 4];
         full_tag_bytes[1..].copy_from_slice(&tag_bytes);
         let tag_value = u32::from_be_bytes(full_tag_bytes);
-        let tag = TAG::from_u32(tag_value).map_err(|_e| {
-            TtlvError::from(format!(
-                "Invalid tag number: Ox{}",
-                hex::encode_upper(&tag_value.to_be_bytes()[1..])
-            ))
-        })?;
+        let tag: Cow<'static, str> = match TAG::from_u32(tag_value) {
+            Ok(tag) => Cow::Borrowed(tag.into()),
+            // Extension tags are vendor-defined; keep them under the KMIP JSON hex form.
+            Err(_) if tag_value >> 16 == 0x54 => Cow::Owned(format!("0x{tag_value:06X}")),
+            Err(_) => {
+                return Err(TtlvError::from(format!("{UNKNOWN_TAG}: 0x{tag_value:06X}")));
+            }
+        };
 
         // Read Type (1 byte)
         let mut type_byte = [0_u8; 1];
@@ -80,6 +113,11 @@ where
         // Read Value based on type
         let (value, value_len) = match item_type {
             TtlvType::Structure => {
+                if length % 8 != 0 {
+                    return Err(TtlvError::from(format!(
+                        "TTLV Structure length {length} is not a multiple of 8"
+                    )));
+                }
                 // Small initial reservation: `length / 16` counts a large child
                 // value (e.g. a 4 KiB ciphertext) as hundreds of slots of
                 // `size_of::<TTLV>()` bytes each. Most structures have few
@@ -87,7 +125,7 @@ where
                 let mut items = Vec::with_capacity((length / 16).min(4));
                 let mut remaining = length;
                 while remaining > 0 {
-                    let (item, item_length) = self.read_ttlv_inner::<TAG>(depth + 1)?;
+                    let (item, item_length) = self.read_ttlv_inner::<TAG>(depth + 1, item_count)?;
                     if item_length > remaining {
                         return Err(TtlvError::from(format!(
                             "TTLV Structure child length ({item_length}) exceeds remaining \
@@ -100,6 +138,7 @@ where
                 (TTLValue::Structure(items), length)
             }
             TtlvType::Integer => {
+                check_fixed_length("Integer", length, 4)?;
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
                 let value = TTLValue::Integer(i32::from_be_bytes(buf4));
@@ -108,15 +147,16 @@ where
                 (value, 8)
             }
             TtlvType::LongInteger => {
+                check_fixed_length("LongInteger", length, 8)?;
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
                 (TTLValue::LongInteger(i64::from_be_bytes(buf8)), 8)
             }
             TtlvType::BigInteger => {
-                if length > MAX_TTLV_FIELD_BYTES {
+                if length > MAX_TTLV_FIELD_BYTES || length % 8 != 0 {
                     return Err(TtlvError::from(format!(
-                        "TTLV BigInteger field length {length} exceeds maximum allowed \
-                         ({MAX_TTLV_FIELD_BYTES} bytes)"
+                        "TTLV BigInteger field length {length} must be a multiple of 8 and \
+                         not exceed {MAX_TTLV_FIELD_BYTES} bytes"
                     )));
                 }
                 let mut buf = vec![0_u8; length];
@@ -127,6 +167,7 @@ where
                 )
             }
             TtlvType::Enumeration => {
+                check_fixed_length("Enumeration", length, 4)?;
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
                 let value = TTLValue::Enumeration(KmipEnumerationVariant {
@@ -138,9 +179,19 @@ where
                 (value, 8)
             }
             TtlvType::Boolean => {
+                check_fixed_length("Boolean", length, 8)?;
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
-                (TTLValue::Boolean(buf8[7] != 0), 8)
+                let value = match u64::from_be_bytes(buf8) {
+                    0 => false,
+                    1 => true,
+                    other => {
+                        return Err(TtlvError::from(format!(
+                            "TTLV Boolean value must be 0 or 1, got {other:#x}"
+                        )));
+                    }
+                };
+                (TTLValue::Boolean(value), 8)
             }
             TtlvType::TextString => {
                 if length > MAX_TTLV_FIELD_BYTES {
@@ -177,6 +228,7 @@ where
                 (value, length + padding)
             }
             TtlvType::DateTime => {
+                check_fixed_length("DateTime", length, 8)?;
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
                 let timestamp = i64::from_be_bytes(buf8);
@@ -184,6 +236,7 @@ where
                 (TTLValue::DateTime(t), 8)
             }
             TtlvType::Interval => {
+                check_fixed_length("Interval", length, 4)?;
                 let mut buf4 = [0_u8; 4];
                 self.reader.read_exact(&mut buf4)?;
                 let value = TTLValue::Interval(u32::from_be_bytes(buf4));
@@ -192,6 +245,7 @@ where
                 (value, 8)
             }
             TtlvType::DateTimeExtended => {
+                check_fixed_length("DateTimeExtended", length, 8)?;
                 let mut buf8 = [0_u8; 8];
                 self.reader.read_exact(&mut buf8)?;
                 let micros = i64::from_be_bytes(buf8);
@@ -199,14 +253,7 @@ where
             }
         };
 
-        let tag_str: &'static str = tag.into();
-        Ok((
-            TTLV {
-                tag: tag_str.into(),
-                value,
-            },
-            value_len + 8,
-        ))
+        Ok((TTLV { tag, value }, value_len + 8))
     }
 }
 
@@ -405,5 +452,31 @@ mod tests {
             err_msg.contains("depth"),
             "error message should mention 'depth', got: {err_msg}"
         );
+    }
+
+    #[test]
+    fn test_item_limit_is_enforced() {
+        let too_wide = TTLV {
+            tag: kmip_1_4::kmip_types::Tag::Link.to_string().into(),
+            value: TTLValue::Structure(
+                (0..MAX_TTLV_ITEMS)
+                    .map(|_| TTLV {
+                        tag: kmip_1_4::kmip_types::Tag::LinkType.to_string().into(),
+                        value: TTLValue::Integer(0),
+                    })
+                    .collect(),
+            ),
+        };
+        let mut buffer = Vec::new();
+        let mut serializer = TTLVBytesSerializer::new(&mut buffer);
+        serializer
+            .write_ttlv::<kmip_1_4::kmip_types::Tag>(&too_wide)
+            .unwrap();
+
+        let mut deserializer = TTLVBytesDeserializer::new(buffer.as_slice());
+        let err = deserializer
+            .read_ttlv::<kmip_1_4::kmip_types::Tag>()
+            .unwrap_err();
+        assert!(err.to_string().contains("item count"));
     }
 }

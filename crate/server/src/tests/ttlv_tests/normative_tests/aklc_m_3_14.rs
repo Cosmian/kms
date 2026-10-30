@@ -6,8 +6,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
         kmip_types::{
-            CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
-            RevocationReason, RevocationReasonCode,
+            CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration, RevocationReason,
+            RevocationReasonCode,
         },
     },
     kmip_1_4::{
@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_data_structures::TemplateAttribute,
         kmip_messages::RequestMessageBatchItem,
         kmip_operations::{Activate, CreateKeyPair, Destroy, GetAttributes, Operation, Revoke},
-        kmip_types::{NameType, OperationEnumeration},
+        kmip_types::{NameType, OperationEnumeration, ResultReason},
     },
     ttlv::KmipFlavor,
 };
@@ -334,7 +334,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Activate(Activate {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
@@ -481,7 +481,7 @@ fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
     );
     assert_eq!(
         batch_item.result_reason,
-        Some(ErrorReason::Permission_Denied)
+        Some(ResultReason::PermissionDenied)
     );
 
     info!("Successfully verified ModifyAttribute failure as expected");
@@ -670,7 +670,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Destroy(Destroy {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },

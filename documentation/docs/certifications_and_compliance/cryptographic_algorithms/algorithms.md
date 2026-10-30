@@ -381,14 +381,16 @@ The `Sign` operation is used to perform digital signature operations on provided
 ## Key derivation (KMIP DeriveKey)
 
 The KMS exposes the KMIP `DeriveKey` operation, which derives a new symmetric key or secret data
-from an existing key material. Two methods are supported:
+from an existing key material. Four symmetric methods are supported:
 
-| Method | Hash algorithms         | FIPS mode | Notes                                                            |
-| ------ | ----------------------- | --------- | ---------------------------------------------------------------- |
-| PBKDF2 | SHA-{1,224,256,384,512} | Yes       | Default: SHA-256, 600 000 iterations (OWASP). Salt is mandatory. |
-| HKDF   | SHA-{1,224,256,384,512} | Yes       | Default: SHA-256. Salt is optional; info (context) is optional.  |
+| Method | Hash algorithms                | FIPS mode | Notes                                                                                  |
+| ------ | ------------------------------ | --------- | -------------------------------------------------------------------------------------- |
+| PBKDF2 | SHA-{1,224,256,384,512}        | Yes       | Default: SHA-256, 600 000 iterations (OWASP). Salt is mandatory.                       |
+| HKDF   | SHA-{1,224,256,384,512}        | Yes       | Default: SHA-256. Salt is optional; info (context) is optional.                        |
+| HASH   | SHA-{1,224,256,384,512}        | Yes       | Hash of the base key, truncated. Hashing Algorithm mandatory; Derivation Data refused. |
+| HMAC   | SHA-{1,224,256,384,512}, SHA-3 | Yes       | HMAC of the mandatory Derivation Data under the base key, truncated. Default: SHA-256. |
 
-Both derivation methods are implemented via OpenSSL.
+All derivation methods are implemented via OpenSSL.
 
 ## Password-based key derivation
 

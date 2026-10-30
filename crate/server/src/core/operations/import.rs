@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        self,
+        self, creation_time,
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
             extra::tagging::{
@@ -33,12 +33,13 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use super::pgp_ops;
 use crate::{
     core::{
         KMS,
-        operations::validate::verify_crls,
+        operations::{export_get::resolve_pkcs12_password, validate::verify_crls},
         uid_utils::ObjectHandle,
         wrapping::{unwrap_object, wrap_and_cache},
     },
@@ -78,7 +79,10 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
         ObjectHandle::from(request.unique_identifier.as_str().unwrap_or_default()),
         ObjectHandle::Tags(_)
     ) {
-        kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
+        kms_bail!(KmsError::InvalidRequest(
+            "Importing objects with unique identifiers starting with `[` is not supported"
+                .to_owned()
+        ));
     }
 
     // To import an object, ensure the user has the `Create` access right.
@@ -101,43 +105,58 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
     }
 
     let mut request = request;
-    let mut desired_state = initial_state(&request.attributes, "Import")?;
+    if request.object_type != request.object.object_type() {
+        kms_bail!(KmsError::InconsistentOperation(
+            "Specified object type does not match the type of object to import.".to_owned()
+        ))
+    }
 
-    // For Active certificates, check CRL revocation status.
-    // If revoked, transition directly to Compromised instead of Active.
-    if desired_state == State::Active && request.object.object_type() == ObjectType::Certificate {
-        if let Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
-            certificate_value,
-            ..
-        }) = &request.object
+    // KMIP 2.1 §6.1.25: "all attributes MUST be set to the supplied values rather than any
+    // server generated values", so a client-supplied State is kept. Otherwise derive it as
+    // Register does (see `initial_state`).
+    let desired_state = if let Some(state) = request.attributes.state {
+        state
+    } else {
+        let mut desired_state = initial_state(&request.attributes, "Import")?;
+
+        // For Active certificates, check CRL revocation status.
+        // If revoked, transition directly to Compromised instead of Active.
+        if desired_state == State::Active && request.object.object_type() == ObjectType::Certificate
         {
-            if let Ok(cert) = X509::from_der(certificate_value) {
-                match verify_crls(
-                    vec![cert],
-                    kms.params.proxy_params.as_ref(),
-                    kms.params.kms_public_url.as_deref(),
-                )
-                .await
-                {
-                    Err(KmsError::Certificate(_)) => {
-                        debug!(
-                            "Import: certificate is revoked per CRL check, \
-                             setting state to Compromised"
-                        );
-                        desired_state = State::Compromised;
+            if let Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+                certificate_value,
+                ..
+            }) = &request.object
+            {
+                if let Ok(cert) = X509::from_der(certificate_value) {
+                    match verify_crls(
+                        vec![cert],
+                        kms.params.proxy_params.as_ref(),
+                        kms.params.kms_public_url.as_deref(),
+                    )
+                    .await
+                    {
+                        Err(KmsError::Certificate(_)) => {
+                            debug!(
+                                "Import: certificate is revoked per CRL check, \
+                                 setting state to Compromised"
+                            );
+                            desired_state = State::Compromised;
+                        }
+                        Err(e) => {
+                            // Network or other transient errors: log and proceed with Active
+                            warn!(
+                                "Import: CRL check could not be completed ({e}), \
+                                 proceeding with {desired_state:?} state"
+                            );
+                        }
+                        Ok(_) => {}
                     }
-                    Err(e) => {
-                        // Network or other transient errors: log and proceed with Active
-                        warn!(
-                            "Import: CRL check could not be completed ({e}), \
-                             proceeding with {desired_state:?} state"
-                        );
-                    }
-                    Ok(_) => {}
                 }
             }
         }
-    }
+        desired_state
+    };
 
     request.attributes.state = Some(desired_state);
     if let Ok(object_attributes) = request.object.attributes_mut() {
@@ -154,11 +173,12 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
         ObjectType::PGPKey => Box::pin(process_pgp_key(kms, request, user)).await?,
         ObjectType::OpaqueObject => process_opaque_object(kms.vendor_id(), request, user)?,
         x => {
-            return Err(KmsError::InvalidRequest(format!(
+            return Err(KmsError::NotSupported(format!(
                 "Import is not yet supported for objects of type : {x}"
             )));
         }
     };
+    kms.constraints.check_new_objects(&operations)?;
     // execute the operations
     kms.database.atomic(user, &operations).await?;
     // return the uid
@@ -259,7 +279,7 @@ pub(super) async fn process_symmetric_key(
 
     // Ensure InitialDate is always set when importing a symmetric key
     if attributes.initial_date.is_none() {
-        attributes.initial_date = Some(time_normalize()?);
+        attributes.initial_date = Some(creation_time()?);
     }
 
     // force the usage mask to unrestricted if not in FIPS mode
@@ -351,6 +371,11 @@ pub(super) fn process_certificate(
     attributes.certificate_attributes = Some(cert_attrs);
     // Set Certificate Length as the DER length, per KMIP guidance
     attributes.certificate_length = cert_len;
+    // KMIP 2.1 §4.21: the server SHALL set the Digest (SHA-256 of the Certificate Value) when
+    // the object is registered; an imported object keeps the digests it carries.
+    if attributes.digest.is_none() {
+        attributes.digest = super::digest::digest(&object)?.map(|d| vec![d]);
+    }
     // set the tags in the attributes
     attributes.set_tags(vendor_id, &tags)?;
     // Merge the object attributes with the request attributes without overwriting
@@ -361,7 +386,7 @@ pub(super) fn process_certificate(
 
     // Ensure InitialDate is set for imported certificates
     if attributes.initial_date.is_none() {
-        attributes.initial_date = Some(time_normalize()?);
+        attributes.initial_date = Some(creation_time()?);
     }
 
     // if not in FIPS mode, set the CryptographicUsageMask to Unrestricted
@@ -475,7 +500,7 @@ pub(super) async fn process_public_key(
 
     // Ensure InitialDate is set for imported public keys
     if attributes.initial_date.is_none() {
-        attributes.initial_date = Some(time_normalize()?);
+        attributes.initial_date = Some(creation_time()?);
     }
 
     // Replace updated attributes in the object structure.
@@ -622,7 +647,7 @@ pub(super) async fn process_private_key(
 
     // Ensure InitialDate is set for imported private keys
     if attributes.initial_date.is_none() {
-        attributes.initial_date = Some(time_normalize()?);
+        attributes.initial_date = Some(creation_time()?);
     }
 
     // On registration, the server SHALL create the AlwaysSensitive attribute
@@ -708,11 +733,11 @@ async fn process_pkcs12(
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
 
-    // recover the password from the attributes
-    let password = request_attributes
-        .get_link(LinkType::PKCS12PasswordLink)
-        .map(|l| l.to_string())
-        .unwrap_or_default();
+    // recover the password from the attributes: the PKCS#12 Password Link designates a Secret Data
+    let password = match request_attributes.get_link(LinkType::PKCS12PasswordLink) {
+        Some(link) => resolve_pkcs12_password(kms, user, &link.to_string()).await?,
+        None => Zeroizing::new(String::new()),
+    };
     // remove the password from the attributes
     let mut request_attributes = request_attributes;
     request_attributes.remove_link(LinkType::PKCS12PasswordLink);
@@ -759,7 +784,7 @@ async fn process_pkcs12(
         attributes.set_tags(kms.vendor_id(), private_key_tags.clone())?;
         // Ensure InitialDate is set for PKCS#12-derived private key
         if attributes.initial_date.is_none() {
-            attributes.initial_date = Some(time_normalize()?);
+            attributes.initial_date = Some(creation_time()?);
         }
         // set the updated attributes on the key
         if let Some(KeyValue::Structure {
@@ -826,7 +851,7 @@ async fn process_pkcs12(
         {
             // Ensure InitialDate is set for PKCS#12-derived public key
             if attributes.initial_date.is_none() {
-                attributes.initial_date = Some(time_normalize()?);
+                attributes.initial_date = Some(creation_time()?);
             }
             *attrs = Some(attributes);
         }
@@ -934,7 +959,7 @@ async fn process_pkcs12(
     );
     // Ensure InitialDate is set for PKCS#12-derived leaf certificate
     if leaf_attributes.initial_date.is_none() {
-        leaf_attributes.initial_date = Some(time_normalize()?);
+        leaf_attributes.initial_date = Some(creation_time()?);
     }
     // certificate tags
     let mut leaf_tags = user_tags.clone();
@@ -1003,7 +1028,7 @@ async fn process_pkcs12(
         );
         // Ensure InitialDate is set for PKCS#12-derived chain certificate
         if chain_attributes.initial_date.is_none() {
-            chain_attributes.initial_date = Some(time_normalize()?);
+            chain_attributes.initial_date = Some(creation_time()?);
         }
         // certificate tags
         let mut chain_tags = user_tags.clone();
@@ -1076,7 +1101,7 @@ pub(super) async fn process_secret_data(
 
     // Ensure InitialDate is set for imported secret data
     if attributes.initial_date.is_none() {
-        attributes.initial_date = Some(time_normalize()?);
+        attributes.initial_date = Some(creation_time()?);
     }
 
     // On registration, the server SHALL create the AlwaysSensitive attribute
@@ -1161,7 +1186,7 @@ pub(super) async fn process_pgp_key(
     }
 
     if attributes.initial_date.is_none() {
-        attributes.initial_date = Some(time_normalize()?);
+        attributes.initial_date = Some(creation_time()?);
     }
 
     if attributes.always_sensitive.is_none() {

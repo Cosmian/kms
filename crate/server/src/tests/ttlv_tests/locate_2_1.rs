@@ -32,6 +32,9 @@ fn test_locate_2_1() {
     // Create two symmetric keys
     let key_id_1 = create_symmetric_key(&client, "key_1");
     info!("Key ID: {key_id_1}");
+    // Initial Date has a one-second resolution: create the second key in a later second so
+    // the creation order checked below is observable.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
     let key_id_2 = create_symmetric_key(&client, "key_2");
     info!("Key ID: {key_id_2}");
 
@@ -120,6 +123,21 @@ pub(super) fn locate_symmetric_keys(
             "Key ID {key} not found in response"
         );
     }
+    // KMIP 2.1 §6.1.28: results are in descending order of creation. `expected_key_uids`
+    // lists the keys oldest first, so they must appear in the reverse order.
+    let positions: Vec<usize> = expected_key_uids
+        .iter()
+        .filter_map(|&key| {
+            uids.iter()
+                .position(|uid| *uid == UniqueIdentifier::TextString(key.to_owned()))
+        })
+        .collect();
+    assert!(
+        positions
+            .windows(2)
+            .all(|pair| matches!(pair, [a, b] if a > b)),
+        "Locate results are not in descending creation order: {positions:?}"
+    );
     for &key in unexpected_key_uids {
         assert!(
             !uids.contains(&UniqueIdentifier::TextString(key.to_owned())),

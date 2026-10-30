@@ -125,6 +125,7 @@ async fn certify(
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
         key_format_type: None,
+        activation_date: Some(time::OffsetDateTime::now_utc()),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(&subject_name)?),
         link: if links.is_empty() { None } else { Some(links) },
         vendor_attributes: Some(vec![VendorAttribute {
@@ -1470,6 +1471,7 @@ async fn test_certify_rejects_reserved_uid_star() -> KResult<()> {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
         key_format_type: None,
+        activation_date: Some(time::OffsetDateTime::now_utc()),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(subject_name)?),
         ..Attributes::default()
     };
@@ -1537,6 +1539,7 @@ async fn test_certify_cannot_overwrite_victim_object() -> KResult<()> {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
         key_format_type: None,
+        activation_date: Some(time::OffsetDateTime::now_utc()),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(subject_name)?),
         link: Some(links),
         ..Attributes::default()
@@ -1645,6 +1648,7 @@ async fn test_recertify_issues_new_serial_not_listed_in_crl() -> KResult<()> {
         .recertify(
             ReCertify {
                 unique_identifier: Some(UniqueIdentifier::TextString(leaf_id.clone())),
+                certificate_request_unique_identifier: None,
                 certificate_request_type: None,
                 certificate_request_value: None,
                 offset: None,
@@ -1664,6 +1668,65 @@ async fn test_recertify_issues_new_serial_not_listed_in_crl() -> KResult<()> {
         !serials.contains(&new_serial),
         "the renewed certificate must not appear revoked"
     );
+    Ok(())
+}
+
+/// A user holding only a `Certify` grant on a leaf certificate cannot make `ReCertify`
+/// sign with the owner's CA key: the issuer and subject are authorized as the requester,
+/// not as the certificate owner.
+///
+/// Guards: COSMIAN-2026-053 (`ReCertify` issuer authorization)
+#[tokio::test]
+async fn test_recertify_authorizes_issuer_as_requester() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        KmipOperation, kmip_operations::ReCertify,
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::new("crl_owner");
+    let grantee = UserId::new("recertify_grantee");
+    let (ca_id, ca_sk_id) = certify(&kms, &owner, "Guarded CA", None, None, CA_EXT).await?;
+    let (leaf_id, _) = certify(
+        &kms,
+        &owner,
+        "Shared Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    kms.database
+        .grant_operations(
+            &leaf_id,
+            &grantee,
+            std::collections::HashSet::from([KmipOperation::Get, KmipOperation::Certify]),
+        )
+        .await?;
+
+    let recertify = || {
+        let mut issuer_links = Attributes::default();
+        issuer_links.set_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(ca_id.clone()),
+        );
+        issuer_links.set_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(ca_sk_id.clone()),
+        );
+        ReCertify {
+            unique_identifier: Some(UniqueIdentifier::TextString(leaf_id.clone())),
+            certificate_request_unique_identifier: None,
+            certificate_request_type: None,
+            certificate_request_value: None,
+            offset: None,
+            attributes: Some(issuer_links),
+            protection_storage_masks: None,
+        }
+    };
+    kms.recertify(recertify(), &grantee)
+        .await
+        .expect_err("the grantee must not sign with the owner's CA key");
+    kms.recertify(recertify(), &owner).await?;
     Ok(())
 }
 

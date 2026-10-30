@@ -1,6 +1,7 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
+        kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::{Create, CreateResponse},
         kmip_types::UniqueIdentifier,
@@ -18,10 +19,34 @@ use crate::{
     result::KResult,
 };
 
+/// KMIP 2.1 §4.14: Cryptographic Domain Parameters applies to Public/Private Keys only;
+/// setting it on a Symmetric Key or Secret Data is an `Invalid_Attribute`.
+pub(super) fn reject_inapplicable_attributes(
+    operation: &str,
+    object_type: ObjectType,
+    attributes: &Attributes,
+) -> KResult<()> {
+    if matches!(
+        object_type,
+        ObjectType::SymmetricKey | ObjectType::SecretData
+    ) && attributes.cryptographic_domain_parameters.is_some()
+    {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Attribute,
+            format!(
+                "{operation}: attribute Cryptographic Domain Parameters does not apply to \
+                 object type {object_type}"
+            )
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResult<CreateResponse> {
-    trace!("{request}");
+    trace!("Create request");
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
     kms.enforce_create_permission(owner).await?;
+    reject_inapplicable_attributes("Create", request.object_type, &request.attributes)?;
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => kms.create_symmetric_key_and_tags(&request)?,
@@ -41,10 +66,13 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
             .map_err(|e| KmsError::Default(format!("OpenPGP key generation task failed: {e}")))??
         }
         _ => {
-            kms_bail!(KmsError::NotSupported(format!(
-                "This server does not yet support creation of: {}",
-                request.object_type
-            )))
+            kms_bail!(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Object_Type,
+                format!(
+                    "Create is not valid for object type: {}",
+                    request.object_type
+                )
+            ))
         }
     };
 
@@ -118,6 +146,7 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
     // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
     object.copy_wrapping_key_link_to(&mut attributes);
 
+    kms.constraints.check(object_type, &attributes)?;
     // create the object in the database
     let uid = kms
         .database

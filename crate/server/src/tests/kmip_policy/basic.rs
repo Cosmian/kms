@@ -7,7 +7,17 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::{
     AlternativeNameType, CryptographicUsageMask,
 };
 #[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::{
+    kmip_messages::{
+        RequestMessage, RequestMessageBatchItemVersioned, RequestMessageHeader,
+        ResponseMessageBatchItemVersioned,
+    },
+    kmip_types::{ErrorReason, ProtocolVersion, ResultStatusEnumeration},
+};
+#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
     CreateKeyPairResponse, CreateResponse, EncryptResponse,
@@ -39,7 +49,7 @@ use super::helpers::{
     assert_policy_denied, enforce, params_with_allowlists, params_with_default_policy,
 };
 #[cfg(feature = "non-fips")]
-use crate::tests::test_utils::{post_2_1, test_app_with_clap_config};
+use crate::tests::test_utils::{post_2_1, post_kmip_json, test_app_with_clap_config};
 
 #[test]
 fn default_policy_allows_aes_gcm_encrypt_params() {
@@ -289,6 +299,50 @@ async fn e2e_default_policy_denies_disallowed_block_cipher_mode_ecb() {
         .await
         .unwrap_err();
     assert_constraint_violation(err);
+}
+
+#[cfg(feature = "non-fips")]
+#[actix_web::test]
+async fn e2e_message_policy_denies_disallowed_block_cipher_mode_ecb() {
+    let mut conf = https_clap_config_opts(None);
+    conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
+    conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
+
+    let key_uid = create_aes_key_with_size(&app, "e2e-message-aes-ecb", 256)
+        .await
+        .expect("create AES key should succeed");
+    let request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            RequestMessageBatchItem::new(Operation::Encrypt(Box::new(Encrypt {
+                unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    block_cipher_mode: Some(BlockCipherMode::ECB),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(b"hello".to_vec())),
+                ..Default::default()
+            }))),
+        )],
+    };
+
+    let response = post_kmip_json(&app, &request)
+        .await
+        .expect("message request should produce a KMIP response");
+    let Some(ResponseMessageBatchItemVersioned::V21(item)) = response.batch_item.first() else {
+        panic!("expected a KMIP 2.1 batch response");
+    };
+    assert_eq!(item.result_status, ResultStatusEnumeration::OperationFailed);
+    assert_eq!(item.result_reason, Some(ErrorReason::Constraint_Violation));
 }
 
 #[test]

@@ -137,6 +137,7 @@ impl CreateSplitKeyAction {
             split_key_parts: self.total_parts,
             split_key_threshold: self.total_parts, /* XOR n-of-n: threshold always equals total parts */
             split_key_method: SplitKeyMethod::from(&self.method),
+            prime_field_size: None,
             attributes: None,
             protection_storage_masks: None,
         };

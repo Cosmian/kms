@@ -124,6 +124,8 @@ gate_run "gnupg" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_cmd g
   bash "${TASK_DIR}/gnupg" --variant "${VARIANT}" --link "${LINK}"
 gate_run "pykmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/pykmip" --variant "${VARIANT}" --link "${LINK}"
+gate_run "kmipkit" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)")" \
+  bash "${TASK_DIR}/kmipkit" --variant "${VARIANT}" --link "${LINK}"
 gate_run "azure-ekm" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \
   bash "${TASK_DIR}/azure-ekm" --variant "${VARIANT}" --link "${LINK}"
 gate_run "xks" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_nix)")" \

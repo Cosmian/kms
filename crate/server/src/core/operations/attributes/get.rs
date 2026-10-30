@@ -1,24 +1,26 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, RNGAlgorithm, State},
-    kmip_2_1::{
-        KmipOperation,
-        extra::tagging::VENDOR_ATTR_TAG,
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey},
-        kmip_operations::{GetAttributes, GetAttributesResponse},
-        kmip_types::{
-            AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType,
-            RandomNumberGenerator, Tag, UniqueIdentifier, VendorAttribute,
-            VendorAttributeReference,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation,
+            extra::tagging::VENDOR_ATTR_TAG,
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyMaterial, KeyValue},
+            kmip_objects::{
+                Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
+            },
+            kmip_operations::{GetAttributes, GetAttributesResponse},
+            kmip_types::{
+                AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType, Tag,
+                UniqueIdentifier, VendorAttribute, VendorAttributeReference,
+            },
         },
     },
-    ttlv::Interval,
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace};
 use openssl::sha;
 use strum::IntoEnumIterator;
-use time::OffsetDateTime;
 
 use crate::{
     core::{
@@ -36,76 +38,19 @@ pub(crate) async fn get_attributes(
     request: GetAttributes,
     user: &UserId,
 ) -> KResult<GetAttributesResponse> {
-    trace!("{request}");
+    trace!("GetAttributes request");
 
-    // There must be an identifier unless operating in a vector scenario where the
-    // test omits UniqueIdentifier immediately after creation (AX-M-1-21 pattern).
-    // In that case, fallback to the most recently created accessible object for the user.
-    let mut implicit_uid_buf: Option<String> = None; // preferred owned by user
-    let implicit_uid_any_buf: Option<String> = None; // fallback if ownership not matched
-    let object_handle: ObjectHandle<'_> = if let Some(uid) = request.unique_identifier.as_ref() {
-        from_request(Some(uid), "Get Attributes")?
-    } else {
-        // Fallback: retrieve objects and deterministically pick the most recently touched object
-        // (prefer owned by user). This aligns with vector semantics when UIDs are omitted.
-        let mut best_user: Option<(String, Option<OffsetDateTime>)> = None;
-        let mut best_any: Option<(String, Option<OffsetDateTime>)> = None;
-        for (id, owm) in kms
-            .database
-            .retrieve_objects(ObjectHandle::from("*"))
-            .await?
-        {
-            let attrs = owm.attributes();
-            let ts = attrs
-                .last_change_date
-                .or(attrs.initial_date)
-                .or(attrs.original_creation_date);
-            if owm.owner() == user {
-                match &best_user {
-                    None => best_user = Some((id.clone(), ts)),
-                    Some((best_id, best_ts)) => {
-                        let replace = match (ts, *best_ts) {
-                            (Some(a), Some(b)) => a > b || (a == b && id > *best_id),
-                            (Some(_), None) => true,
-                            (None, None) => id > *best_id,
-                            (None, Some(_)) => false,
-                        };
-                        if replace {
-                            best_user = Some((id.clone(), ts));
-                        }
-                    }
-                }
-            }
-            match &best_any {
-                None => best_any = Some((id, ts)),
-                Some((best_id, best_ts)) => {
-                    let replace = match (ts, *best_ts) {
-                        (Some(a), Some(b)) => a > b || (a == b && id > *best_id),
-                        (Some(_), None) => true,
-                        (None, None) => id > *best_id,
-                        (None, Some(_)) => false,
-                    };
-                    if replace {
-                        best_any = Some((id, ts));
-                    }
-                }
-            }
-        }
-        let chosen = best_user.or(best_any).map(|(id, _)| id);
-        if let Some(id) = chosen {
-            implicit_uid_buf = Some(id);
-        }
-        let s = implicit_uid_buf
-            .as_deref()
-            .or(implicit_uid_any_buf.as_deref())
-            .ok_or_else(|| {
-                KmsError::Kmip21Error(
-                    ErrorReason::Item_Not_Found,
-                    "Get Attributes: no objects available for implicit selection".to_owned(),
-                )
-            })?;
-        ObjectHandle::from(s)
-    };
+    // KMIP 2.1 §6.1.20: an omitted Unique Identifier means the ID Placeholder, which the
+    // message layer has already substituted; if it is still absent there is no placeholder.
+    let object_handle: ObjectHandle<'_> = from_request(
+        Some(
+            request
+                .unique_identifier
+                .as_ref()
+                .ok_or(KmsError::UnsupportedPlaceholder)?,
+        ),
+        "Get Attributes",
+    )?;
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -114,11 +59,34 @@ pub(crate) async fn get_attributes(
         user,
     ))
     .await?;
-    trace!(
-        "Get Attributes: Retrieved object for get attributes: {}",
-        owm.object()
-    );
+    trace!("Retrieved object for GetAttributes");
+    let req_attributes = request.attribute_reference.unwrap_or_default();
+    // KMIP 2.1 §6.1.20: the same Attribute Reference SHALL NOT be repeated.
+    for (i, reference) in req_attributes.iter().enumerate() {
+        if req_attributes.iter().take(i).any(|r| r == reference) {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                "Get Attributes: duplicate Attribute Reference".to_owned(),
+            ));
+        }
+    }
+    let attributes = Box::pin(collect_attributes(kms, &owm, req_attributes)).await?;
+    trace!("Returning object attributes");
+    Ok(GetAttributesResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        attributes,
+    })
+}
 
+/// The attributes of `owm` named by `req_attributes` (all of them when empty), as Get
+/// Attributes reports them: stored values plus the server-derived ones (Digest of a symmetric
+/// key, Short Unique Identifier, Sensitive/Extractable defaults, ...). Export returns the same
+/// set (KMIP 2.1 §6.1.18: "All of the object's Attributes").
+pub(crate) async fn collect_attributes(
+    kms: &KMS,
+    owm: &ObjectWithMetadata,
+    mut req_attributes: Vec<AttributeReference>,
+) -> KResult<Attributes> {
     let attributes = match owm.object() {
         Object::Certificate { .. } | Object::OpaqueObject { .. } => {
             // KMIP Attributes retrieved from the dedicated column `Attributes`
@@ -194,15 +162,14 @@ pub(crate) async fn get_attributes(
         }
         Object::CertificateRequest { .. } => {
             return Err(KmsError::InvalidRequest(format!(
-                "get: unsupported object type for {object_handle}"
+                "get: unsupported object type for {}",
+                owm.id()
             )));
         }
     };
 
-    trace!("Get Attributes: Attributes: {}", attributes);
-
-    let mut req_attributes = request.attribute_reference.unwrap_or_default();
-    trace!("Get Attributes: Requested attributes: {req_attributes:?}");
+    trace!("Retrieved object attributes");
+    trace!("Processing requested attribute references");
 
     // Pre-compute effective cryptographic length for this object when possible.
     // Prefer the attribute if set; otherwise derive from KeyBlock length for symmetric keys.
@@ -361,19 +328,9 @@ pub(crate) async fn get_attributes(
                     res.cryptographic_length = effective_cryptographic_length;
                 }
                 Tag::CryptographicParameters => {
-                    // Do not return CryptographicParameters for RSA keys to align with
-                    // AKLC vector expectations. Only include when the effective
-                    // cryptographic algorithm is not RSA or is unspecified.
-                    match attributes.cryptographic_algorithm {
-                        Some(CryptographicAlgorithm::RSA) => {
-                            // Suppress for RSA
-                            res.cryptographic_parameters = None;
-                        }
-                        _ => {
-                            res.cryptographic_parameters
-                                .clone_from(&attributes.cryptographic_parameters);
-                        }
-                    }
+                    attributes
+                        .cryptographic_parameters
+                        .clone_into(&mut res.cryptographic_parameters);
                 }
                 Tag::CryptographicUsageMask => {
                     res.cryptographic_usage_mask = attributes.cryptographic_usage_mask;
@@ -386,16 +343,7 @@ pub(crate) async fn get_attributes(
                     res.deactivation_date = attributes.deactivation_date;
                 }
                 Tag::DestroyDate => {
-                    // If DestroyDate is not set but the object is in a Destroyed state,
-                    // return UNIX_EPOCH to align with vector expectations.
-                    res.destroy_date = attributes.destroy_date.or_else(|| {
-                        let st = owm.state();
-                        if st == State::Destroyed || st == State::Destroyed_Compromised {
-                            Some(time::OffsetDateTime::UNIX_EPOCH)
-                        } else {
-                            None
-                        }
-                    });
+                    res.destroy_date = attributes.destroy_date;
                 }
                 Tag::Digest => {
                     // Prefer any stored Digest attribute; if absent, compute for symmetric keys.
@@ -424,11 +372,11 @@ pub(crate) async fn get_attributes(
                             _ => None,
                         };
                         if let Some(dv) = computed {
-                            res.digest = Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::Digest {
+                            res.digest = Some(vec![cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::Digest {
                                 hashing_algorithm: HashingAlgorithm::SHA256,
                                 digest_value: Some(dv),
                                 key_format_type: Some(KeyFormatType::Raw),
-                            });
+                            }]);
                         }
                     }
                 }
@@ -440,26 +388,37 @@ pub(crate) async fn get_attributes(
                     res.initial_date = attributes.initial_date;
                 }
                 Tag::KeyFormatType => {
-                    // Normalize returned KeyFormatType for profile expectations
-                    // - Transparent RSA formats -> PKCS1
-                    // - TransparentSymmetricKey -> Raw (default for symmetric keys)
-                    // - SymmetricKey with None -> default to Raw
-                    // - PrivateKey/PublicKey with None -> default to PKCS1
-                    res.key_format_type = match attributes.key_format_type {
-                        Some(
-                            KeyFormatType::TransparentRSAPrivateKey
-                            | KeyFormatType::TransparentRSAPublicKey,
-                        ) => Some(KeyFormatType::PKCS1),
-                        Some(KeyFormatType::TransparentSymmetricKey) => Some(KeyFormatType::Raw),
-                        None => match owm.object() {
-                            Object::SymmetricKey(_) => Some(KeyFormatType::Raw),
-                            Object::PrivateKey(_) | Object::PublicKey(_) => {
-                                Some(KeyFormatType::PKCS1)
+                    // Stored attribute, else the key block format; transparent RSA, RSA PKCS#8
+                    // (the unwrapped storage form) and transparent symmetric formats are
+                    // reported as the default format a Get produces (KMIP 2.1 §4.26 Table 81:
+                    // PKCS#1 for RSA keys, Raw for symmetric keys).
+                    let unwrapped_rsa_key = match owm.object() {
+                        Object::PrivateKey(PrivateKey { key_block })
+                        | Object::PublicKey(PublicKey { key_block }) => {
+                            key_block.key_wrapping_data.is_none()
+                                && key_block.cryptographic_algorithm
+                                    == Some(CryptographicAlgorithm::RSA)
+                        }
+                        _ => false,
+                    };
+                    res.key_format_type = attributes
+                        .key_format_type
+                        .or_else(|| match owm.object() {
+                            Object::SymmetricKey(SymmetricKey { key_block })
+                            | Object::PrivateKey(PrivateKey { key_block })
+                            | Object::PublicKey(PublicKey { key_block })
+                            | Object::SecretData(SecretData { key_block, .. }) => {
+                                Some(key_block.key_format_type)
                             }
                             _ => None,
-                        },
-                        other => other,
-                    };
+                        })
+                        .map(|kft| match kft {
+                            KeyFormatType::TransparentRSAPrivateKey
+                            | KeyFormatType::TransparentRSAPublicKey => KeyFormatType::PKCS1,
+                            KeyFormatType::PKCS8 if unwrapped_rsa_key => KeyFormatType::PKCS1,
+                            KeyFormatType::TransparentSymmetricKey => KeyFormatType::Raw,
+                            other => other,
+                        });
                 }
                 Tag::LastChangeDate => {
                     res.last_change_date = attributes.last_change_date;
@@ -485,9 +444,7 @@ pub(crate) async fn get_attributes(
                     attributes.name.clone_into(&mut res.name);
                 }
                 Tag::LeaseTime => {
-                    // Default LeaseTime to 3600 seconds when not set.
-                    // KMIP types Lease Time as Interval (KMIP 1.4 §3.20 / 2.1 §4.29).
-                    res.lease_time = attributes.lease_time.or(Some(Interval(3600)));
+                    res.lease_time = attributes.lease_time;
                 }
                 Tag::NeverExtractable => {
                     // Default to false when unspecified for vector compatibility
@@ -510,24 +467,16 @@ pub(crate) async fn get_attributes(
                 Tag::ProtectStopDate => {
                     res.protect_stop_date = attributes.protect_stop_date;
                 }
+                Tag::ProtectionStorageMask => {
+                    res.protection_storage_masks = attributes.protection_storage_masks.clone();
+                }
                 Tag::QuantumSafe => {
                     res.quantum_safe = attributes.quantum_safe;
                 }
                 Tag::RandomNumberGenerator => {
-                    // Protocol-compliance literal: pinned to the values asserted by the vendored
-                    // OASIS vector AKLC-M-1-21 (ANSI X9.31 / AES / 256). It is NOT derived from
-                    // and does not describe the real generator, which is `KmsRng` (OpenSSL
-                    // AES-256 CTR-DRBG, see `Query` -> `QueryRNGs` for the truthful description).
-                    res.random_number_generator = Some(RandomNumberGenerator {
-                        rng_algorithm: RNGAlgorithm::ANSI_X931,
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                        cryptographic_length: Some(256),
-                        hashing_algorithm: None,
-                        drbg_algorithm: None,
-                        recommended_curve: None,
-                        fips186_variation: None,
-                        prediction_resistance: None,
-                    });
+                    attributes
+                        .random_number_generator
+                        .clone_into(&mut res.random_number_generator);
                 }
                 Tag::RevocationReason => {
                     attributes
@@ -561,11 +510,16 @@ pub(crate) async fn get_attributes(
                     res.unique_identifier = Some(UniqueIdentifier::TextString(owm.id().to_owned()));
                 }
                 Tag::ShortUniqueIdentifier => {
-                    // Ensure presence: if absent, return an empty string
-                    res.short_unique_identifier = attributes
-                        .short_unique_identifier
-                        .clone()
-                        .or_else(|| Some(String::new()));
+                    // KMIP 2.1 §4.56: always has a value, SHOULD be the SHA-256 of the Unique
+                    // Identifier; derived when not stored (hex: the Rust type is a String).
+                    res.short_unique_identifier = Some(
+                        attributes
+                            .short_unique_identifier
+                            .clone()
+                            .unwrap_or_else(|| {
+                                hex::encode(openssl::sha::sha256(owm.id().as_bytes()))
+                            }),
+                    );
                 }
                 Tag::VendorExtension => {
                     if let Some(vendor_attributes) = attributes.vendor_attributes.clone() {
@@ -584,6 +538,61 @@ pub(crate) async fn get_attributes(
                         }
                     }
                 }
+                Tag::CertificateType => res
+                    .certificate_type
+                    .clone_from(&attributes.certificate_type),
+                Tag::DigitalSignatureAlgorithm => {
+                    res.digital_signature_algorithm
+                        .clone_from(&attributes.digital_signature_algorithm);
+                }
+                Tag::KeyValueLocation => {
+                    res.key_value_location
+                        .clone_from(&attributes.key_value_location);
+                }
+                Tag::KeyValuePresent => res
+                    .key_value_present
+                    .clone_from(&attributes.key_value_present),
+                Tag::NISTKeyType => res.nist_key_type.clone_from(&attributes.nist_key_type),
+                Tag::ObjectGroupMember => {
+                    res.object_group_member
+                        .clone_from(&attributes.object_group_member);
+                }
+                Tag::OpaqueDataType => res
+                    .opaque_data_type
+                    .clone_from(&attributes.opaque_data_type),
+                Tag::PKCS12FriendlyName => {
+                    attributes
+                        .pkcs_12_friendly_name
+                        .clone_into(&mut res.pkcs_12_friendly_name);
+                }
+                Tag::ProtectionLevel => res
+                    .protection_level
+                    .clone_from(&attributes.protection_level),
+                Tag::ProtectionPeriod => res
+                    .protection_period
+                    .clone_from(&attributes.protection_period),
+                Tag::UsageLimits => res.usage_limits.clone_from(&attributes.usage_limits),
+                Tag::X509CertificateIdentifier => {
+                    res.x_509_certificate_identifier
+                        .clone_from(&attributes.x_509_certificate_identifier);
+                }
+                Tag::X509CertificateIssuer => {
+                    attributes
+                        .x_509_certificate_issuer
+                        .clone_into(&mut res.x_509_certificate_issuer);
+                }
+                Tag::X509CertificateSubject => {
+                    attributes
+                        .x_509_certificate_subject
+                        .clone_into(&mut res.x_509_certificate_subject);
+                }
+                Tag::RotateAutomatic => res.rotate_automatic = attributes.rotate_automatic,
+                Tag::RotateDate => res.rotate_date = attributes.rotate_date,
+                Tag::RotateGeneration => res.rotate_generation = attributes.rotate_generation,
+                Tag::RotateInterval => res.rotate_interval = attributes.rotate_interval,
+                Tag::RotateLatest => res.rotate_latest = attributes.rotate_latest,
+                Tag::RotateName => res.rotate_name.clone_from(&attributes.rotate_name),
+                Tag::RotateOffset => res.rotate_offset = attributes.rotate_offset,
                 Tag::Tag => {
                     if !tags_already_set {
                         let tags = kms.database.retrieve_tags(owm.id()).await?;
@@ -605,20 +614,5 @@ pub(crate) async fn get_attributes(
         res.get_tags(kms.vendor_id())
     );
 
-    // Rotation attributes are not represented by Tag enum variants, so they are
-    // not included by the tag-based filtering loop above. Always propagate them
-    // from the source attributes when present.
-    res.rotate_automatic = attributes.rotate_automatic;
-    res.rotate_date = attributes.rotate_date;
-    res.rotate_generation = attributes.rotate_generation;
-    res.rotate_interval = attributes.rotate_interval;
-    res.rotate_latest = attributes.rotate_latest;
-    res.rotate_name.clone_from(&attributes.rotate_name);
-    res.rotate_offset = attributes.rotate_offset;
-
-    trace!("Get Attributes: Response: {}", res);
-    Ok(GetAttributesResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        attributes: res,
-    })
+    Ok(res)
 }

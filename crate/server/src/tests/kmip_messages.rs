@@ -7,14 +7,14 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ResponseMessageBatchItemVersioned,
         },
         kmip_types::{
-            BlockCipherMode, ErrorReason, HashingAlgorithm, ProtocolVersion,
-            ResultStatusEnumeration,
+            BatchErrorContinuationOption, BlockCipherMode, ErrorReason, HashingAlgorithm,
+            MessageExtension, ProtocolVersion, ResultStatusEnumeration,
         },
     },
     kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Decrypt, Encrypt, MAC, Operation},
+        kmip_operations::{Check, Decrypt, Encrypt, MAC, Operation, RNGRetrieve},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, OperationEnumeration,
             RecommendedCurve, UniqueIdentifier,
@@ -25,7 +25,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::{debug, log_init};
 
-use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
+use crate::{error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 #[tokio::test]
 async fn test_kmip_mac_messages() -> KResult<()> {
@@ -39,7 +39,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
         VENDOR_ID_COSMIAN,
         None,
         256,
-        CryptographicAlgorithm::AES,
+        CryptographicAlgorithm::HMACSHA3512,
         EMPTY_TAGS,
         false,
         None,
@@ -75,9 +75,9 @@ async fn test_kmip_mac_messages() -> KResult<()> {
                 protocol_version_major: 2,
                 protocol_version_minor: 1,
             },
-            maximum_response_size: Some(9999),
             // wrong number of items but it is only checked
             // when TTLV-serialization is done
+            maximum_response_size: None,
             batch_count: items_number,
             ..Default::default()
         },
@@ -104,6 +104,181 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     );
 
     log_init(option_env!("RUST_LOG"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_batch_error_continuation() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("batch-error-continuation@example.com");
+    let create_request = || {
+        symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )
+    };
+    let failed_check = || {
+        Operation::Check(Check {
+            unique_identifier: Some(UniqueIdentifier::TextString("missing-key".to_owned())),
+            usage_limits_count: None,
+            cryptographic_usage_mask: None,
+            lease_time: None,
+        })
+    };
+
+    let stop_response = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    client_correlation_value: Some("default-stop".to_owned()),
+                    batch_count: 2,
+                    ..Default::default()
+                },
+                batch_item: vec![
+                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                        failed_check(),
+                    )),
+                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                        Operation::Create(create_request()?),
+                    )),
+                ],
+            },
+            &owner,
+        )
+        .await?;
+    assert_eq!(stop_response.batch_item.len(), 1);
+    assert_eq!(
+        stop_response
+            .response_header
+            .client_correlation_value
+            .as_deref(),
+        Some("default-stop")
+    );
+
+    let continue_response = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    batch_error_continuation_option: Some(BatchErrorContinuationOption::Continue),
+                    batch_count: 2,
+                    ..Default::default()
+                },
+                batch_item: vec![
+                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                        failed_check(),
+                    )),
+                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                        Operation::Create(create_request()?),
+                    )),
+                ],
+            },
+            &owner,
+        )
+        .await?;
+    assert_eq!(continue_response.batch_item.len(), 2);
+    let ResponseMessageBatchItemVersioned::V21(item) = &continue_response.batch_item[1] else {
+        panic!("not a V21 response");
+    };
+    assert_eq!(item.result_status, ResultStatusEnumeration::Success);
+    Ok(())
+}
+
+#[tokio::test]
+async fn message_rejects_mismatched_batch_count() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("invalid-batch-count@example.com");
+    let result = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    batch_count: 2,
+                    ..Default::default()
+                },
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                    RequestMessageBatchItem::new(Operation::Check(Check {
+                        unique_identifier: None,
+                        usage_limits_count: None,
+                        cryptographic_usage_mask: None,
+                        lease_time: None,
+                    })),
+                )],
+            },
+            &owner,
+        )
+        .await;
+    if !matches!(
+        result,
+        Err(KmsError::Kmip21Error(ErrorReason::Invalid_Message, _))
+    ) {
+        return Err(KmsError::Default(
+            "mismatched BatchCount was accepted".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn message_rejects_unsupported_critical_extension() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("critical-extension@example.com");
+    let mut item = RequestMessageBatchItem::new(Operation::Check(Check {
+        unique_identifier: None,
+        usage_limits_count: None,
+        cryptographic_usage_mask: None,
+        lease_time: None,
+    }));
+    item.message_extension = Some(vec![MessageExtension {
+        vendor_identification: "test.vendor".to_owned(),
+        criticality_indicator: true,
+        vendor_extension: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::VendorExtension {},
+    }]);
+    let response = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    batch_count: 1,
+                    ..Default::default()
+                },
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(item)],
+            },
+            &owner,
+        )
+        .await?;
+    let [ResponseMessageBatchItemVersioned::V21(item)] = response.batch_item.as_slice() else {
+        return Err(KmsError::Default(
+            "critical extension response did not contain one KMIP 2.1 batch item".to_owned(),
+        ));
+    };
+    if item.result_status != ResultStatusEnumeration::OperationFailed
+        || item.result_reason != Some(ErrorReason::Unknown_Message_Extension)
+        || item.result_message.as_deref()
+            != Some("critical message extension from vendor 'test.vendor' is not supported")
+    {
+        return Err(KmsError::Default(
+            "critical MessageExtension did not reject the full message".to_owned(),
+        ));
+    }
     Ok(())
 }
 
@@ -159,7 +334,6 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
                 protocol_version_major: 2,
                 protocol_version_minor: 1,
             },
-            maximum_response_size: Some(9999),
             batch_count: items_number,
             ..Default::default()
         },
@@ -190,6 +364,187 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn ephemeral_encrypt_omits_ciphertext() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("ephemeral-encrypt@example.com");
+    let created = kms
+        .create(
+            symmetric_key_create_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                256,
+                CryptographicAlgorithm::AES,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?,
+            &owner,
+        )
+        .await?;
+    let mut batch_item = RequestMessageBatchItem::new(Operation::Encrypt(Box::new(Encrypt {
+        unique_identifier: Some(created.unique_identifier),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        }),
+        data: Some(vec![0_u8; 16].into()),
+        ..Default::default()
+    })));
+    batch_item.ephemeral = Some(true);
+    let response = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    batch_count: 1,
+                    ..Default::default()
+                },
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(batch_item)],
+            },
+            &owner,
+        )
+        .await?;
+    let [ResponseMessageBatchItemVersioned::V21(batch_item)] = response.batch_item.as_slice()
+    else {
+        return Err(KmsError::Default(
+            "ephemeral Encrypt did not return one KMIP 2.1 batch item".to_owned(),
+        ));
+    };
+    if !matches!(batch_item.response_payload, Some(Operation::EncryptResponse(ref response)) if response.data.is_none())
+    {
+        return Err(KmsError::Default(
+            "ephemeral Encrypt returned ciphertext".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn maximum_response_size_is_ignored_outside_query() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("response-size@example.com");
+    let response = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    protocol_version: ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 1,
+                    },
+                    maximum_response_size: Some(1),
+                    batch_count: 1,
+                    ..Default::default()
+                },
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                    RequestMessageBatchItem::new(Operation::RNGRetrieve(RNGRetrieve {
+                        data_length: 32,
+                    })),
+                )],
+            },
+            &owner,
+        )
+        .await?;
+    let [ResponseMessageBatchItemVersioned::V21(batch_item)] = response.batch_item.as_slice()
+    else {
+        return Err(KmsError::Default(
+            "response-size test did not return one KMIP 2.1 batch item".to_owned(),
+        ));
+    };
+    // Deployed clients send a fixed Maximum Response Size on every operation: only Query applies it.
+    if batch_item.result_status != ResultStatusEnumeration::Success
+        || batch_item.response_payload.is_none()
+    {
+        return Err(KmsError::Default(format!(
+            "Maximum Response Size result: status={:?}, reason={:?}, payload={}",
+            batch_item.result_status,
+            batch_item.result_reason,
+            batch_item.response_payload.is_some(),
+        )));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn negative_maximum_response_size_is_rejected() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("negative-response-size@example.com");
+    let err = kms
+        .message(
+            RequestMessage {
+                request_header: RequestMessageHeader {
+                    maximum_response_size: Some(-1),
+                    batch_count: 1,
+                    ..Default::default()
+                },
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                    RequestMessageBatchItem::new(Operation::Check(Check {
+                        unique_identifier: None,
+                        usage_limits_count: None,
+                        cryptographic_usage_mask: None,
+                        lease_time: None,
+                    })),
+                )],
+            },
+            &owner,
+        )
+        .await
+        .expect_err("a negative MaximumResponseSize must be rejected");
+    assert!(matches!(
+        err,
+        KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_create_reports_object_already_exists() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("duplicate-create@example.com");
+    let key_id = UniqueIdentifier::TextString("duplicate-create-key".to_owned());
+    let request = || {
+        symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            Some(key_id.clone()),
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )
+    };
+    let first = kms.create(request()?, &owner);
+    let second = kms.create(request()?, &owner);
+    let ((Ok(_), Err(err)) | (Err(err), Ok(_))) = tokio::join!(first, second) else {
+        return Err(KmsError::Default(
+            "concurrent Creates with the same identifier must have one success and one failure"
+                .to_owned(),
+        ));
+    };
+    if !matches!(
+        err,
+        KmsError::Kmip21Error(ErrorReason::Object_Already_Exists, _)
+    ) {
+        return Err(KmsError::Default(format!(
+            "duplicate Create returned unexpected error: {err:?}"
+        )));
+    }
+
+    if kms
+        .database
+        .retrieve_object("duplicate-create-key")
+        .await?
+        .is_none()
+    {
+        return Err(KmsError::Default(
+            "the successful concurrent Create did not retain its object".to_owned(),
+        ));
+    }
+    Ok(())
+}
 #[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));

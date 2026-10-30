@@ -21,6 +21,12 @@ Identifier of the Private Key.
 
 Please see the [supported objects](./objects.md) for the list of key pairs that can be created with this operation.
 
+The Cryptographic Algorithm, Cryptographic Length, Cryptographic Domain Parameters (curve) and Cryptographic
+Parameters may be set in the Common, Private Key or Public Key Attributes. A per-key value overrides the common one.
+Both keys must end up with identical values, otherwise the server returns `Invalid_Attribute`.
+An invalid RSA length returns `Invalid_Attribute_Value`.
+A request that breaches the server constraints returns `Constraint_Violation`.
+
 ## Example - X25519 Key Pair
 
 Creating an X25519 key pair with the tag `MyECKeyPair`.
@@ -140,7 +146,7 @@ ckms ec keys create
         {
           "tag": "PublicKeyUniqueIdentifier",
           "type": "TextString",
-          "value": "52573030-0fed-4c67-b311-ceac944b2afc"
+          "value": "1ac18648-ab17-4755-97a3-7a24b8198b97_pk"
         }
       ]
     }
@@ -348,7 +354,7 @@ ckms cc keys create-master-key-pair -s access_structure_specifications.json
         {
           "tag": "PublicKeyUniqueIdentifier",
           "type": "TextString",
-          "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
+          "value": "b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9_pk"
         }
       ]
     }

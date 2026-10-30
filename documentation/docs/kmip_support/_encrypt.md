@@ -26,6 +26,30 @@ response header.
 
 Encryption is supported for symmetric keys, public keys, certificates, and OpenPGP keys (`PGPKey`, non-FIPS mode). To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
+Symmetric encryption can be split into parts (`Init Indicator`, `Correlation Value`, `Final Indicator`); see
+[multi-part decryption](./_decrypt.md#multi-part-decryption) for the rules and limits. Each part returns its own
+ciphertext; a server-generated IV comes with the first part and the authentication tag with the final part. Only
+symmetric keys can be used for multi-part encryption (`Feature Not Supported` otherwise). Bulk encryption of several
+items always uses a fresh random IV per item: a request that supplies an IV for several items is rejected with
+`Invalid Field`.
+
+IV and tag rules:
+
+- `IV Length` sizes a server-generated IV and is ignored when the request carries an IV. It is in bits: a multiple of 8,
+  at most 1024, and equal to the cipher's nonce size except for GCM; otherwise the request fails with
+  `Bad Cryptographic Parameters`. A length in bytes equal to the nonce size (for example `12`) is also accepted. A
+  server-generated GCM IV is at least 96 bits long.
+- `Random IV` set to false with no IV in the request fails with `Missing Initialization Vector`.
+- `Fixed Field Length`, `Invocation Field Length`, `Counter Length` and `Initial Counter Value` fail with
+  `Unsupported Cryptographic Parameters`.
+- For GCM and ChaCha20-Poly1305, `Tag Length` must be 12 to 16 bytes (`Bad Cryptographic Parameters` otherwise);
+  a `Tag Length` on a non-AEAD mode fails with `Unsupported Cryptographic Parameters`.
+- Unsupported block cipher modes and padding methods fail with `Unsupported Cryptographic Parameters`.
+
+A key in the wrong state fails with `Wrong Key Lifecycle State`, a usable object of the wrong type with
+`Invalid Object Type`, and a key whose Cryptographic Usage Mask lacks `Encrypt` with
+`Incompatible Cryptographic Usage Mask`.
+
 ## Example - AES GCM encryption
 
 Encrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md)

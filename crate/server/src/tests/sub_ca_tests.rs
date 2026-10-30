@@ -18,7 +18,9 @@ use cosmian_kms_server_database::reexport::{
             },
             kmip_attributes::{Attribute, Attributes},
             kmip_objects::{Certificate, Object, ObjectType},
-            kmip_operations::{Certify, Get, GetAttributes, Import, ModifyAttribute, Revoke},
+            kmip_operations::{
+                Certify, Get, GetAttributes, Import, ModifyAttribute, Revoke, SetAttribute,
+            },
             kmip_types::{
                 CertificateRequestType, CryptographicAlgorithm, Link, LinkType,
                 LinkedObjectIdentifier, UniqueIdentifier, UsageLimits, UsageLimitsUnit,
@@ -72,6 +74,7 @@ async fn make_root(kms: &KMS, owner: &UserId) -> KResult<(String, String)> {
     let attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
+        activation_date: Some(OffsetDateTime::now_utc() - time::Duration::seconds(1)),
         certificate_attributes: Some(
             cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CertificateAttributes::parse_subject_line(
                 "C=FR, O=KMS Test, CN=Offline Root",
@@ -316,6 +319,7 @@ async fn csr_generation_ignores_the_public_key_link_of_the_private_key() -> KRes
     let (bob_sk, _) = make_key_pair(&kms, &bob).await?;
     kms.modify_attribute(
         ModifyAttribute {
+            current_attribute: None,
             unique_identifier: Some(UniqueIdentifier::TextString(alice_sk.clone())),
             new_attribute: Attribute::Link(Link {
                 link_type: LinkType::PublicKeyLink,
@@ -338,6 +342,7 @@ async fn csr_generation_refuses_a_key_that_cannot_sign() -> KResult<()> {
     let (sk_id, _) = make_key_pair(&kms, &owner).await?;
     kms.modify_attribute(
         ModifyAttribute {
+            current_attribute: None,
             unique_identifier: Some(UniqueIdentifier::TextString(sk_id.clone())),
             new_attribute: Attribute::CryptographicUsageMask(
                 CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
@@ -359,8 +364,8 @@ async fn csr_generation_refuses_a_key_past_its_protect_stop_date() -> KResult<()
     let kms = make_kms().await?;
     let owner = user("pki-admin@example.com");
     let (sk_id, _) = make_key_pair(&kms, &owner).await?;
-    kms.modify_attribute(
-        ModifyAttribute {
+    kms.set_attribute(
+        SetAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(sk_id.clone())),
             new_attribute: Attribute::ProtectStopDate(
                 OffsetDateTime::now_utc() - time::Duration::hours(1),
@@ -382,8 +387,8 @@ async fn csr_generation_refuses_an_exhausted_usage_limit() -> KResult<()> {
     let kms = make_kms().await?;
     let owner = user("pki-admin@example.com");
     let (sk_id, _) = make_key_pair(&kms, &owner).await?;
-    kms.modify_attribute(
-        ModifyAttribute {
+    kms.set_attribute(
+        SetAttribute {
             unique_identifier: Some(UniqueIdentifier::TextString(sk_id.clone())),
             new_attribute: Attribute::UsageLimits(UsageLimits {
                 usage_limits_unit: UsageLimitsUnit::Object,
@@ -472,6 +477,7 @@ async fn make_leaf(kms: &KMS, owner: &UserId, root_id: &str, root_sk_id: &str) -
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
+        activation_date: Some(OffsetDateTime::now_utc() - time::Duration::seconds(1)),
         certificate_attributes: Some(
             cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CertificateAttributes::parse_subject_line(
                 "C=FR, O=KMS Test, CN=Leaf",
@@ -526,6 +532,7 @@ async fn import_certificate_copy(
 ) -> KResult<String> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::Certificate),
+        activation_date: Some(OffsetDateTime::now_utc() - time::Duration::seconds(1)),
         ..Attributes::default()
     };
     for (link_type, id) in links {

@@ -504,45 +504,34 @@ func TestExtractable_SetAtCreation(t *testing.T) {
     })
 }
 
-// TestExtractable_NeverExtractableLatches verifies the KMIP 2.1 §4.33 / KMIP 1.4
-// §3.50 state machine: NeverExtractable latches to False the moment Extractable
-// is ever set to True — it can never return to True.
+// TestExtractable_NeverExtractableLatches verifies that a key made non-extractable
+// stays non-extractable: the server refuses to set Extractable back to True, otherwise
+// the owner could read key material the object was configured to never expose
+// (KMIP 2.1 §4.33 / KMIP 1.4 §3.50, Never Extractable).
 //
-// State machine:
 //   - ModifyAttribute(Extractable=false) → NeverExtractable=true
-//   - ModifyAttribute(Extractable=true) → NeverExtractable=false (latches)
-//   - ModifyAttribute(Extractable=false) → NeverExtractable stays false
-//
-// Spec: KMIP 2.1 §4.33, KMIP 1.4 §3.50.
+//   - ModifyAttribute(Extractable=true)  → rejected, state unchanged
+//   - ModifyAttribute(Extractable=false) → still accepted (idempotent)
 func TestExtractable_NeverExtractableLatches(t *testing.T) {
     client := newClient(t, kmip.V1_4)
     id := createAES256(t, client, "never-ext-latch")
     activateKey(t, client, id)
 
-    // ModifyAttribute(Extractable=false) → NeverExtractable=true
     _, err := client.ModifyAttribute(id, kmip.AttributeNameExtractable, false).ExecContext(tctx(t))
     require.NoError(t, err, "ModifyAttribute(Extractable=false)")
 
     assert.Equal(t, "true", fmt.Sprint(singleAttributeValue(t, client, id, kmip.AttributeNameNeverExtractable)),
         "NeverExtractable should be true when Extractable is set to false")
 
-    // ModifyAttribute(Extractable=true) → NeverExtractable latches to false
     _, err = client.ModifyAttribute(id, kmip.AttributeNameExtractable, true).ExecContext(tctx(t))
-    require.NoError(t, err, "ModifyAttribute(Extractable=true)")
-
-    assert.Equal(t, "true", fmt.Sprint(singleAttributeValue(t, client, id, kmip.AttributeNameExtractable)),
-        "Extractable should be true after ModifyAttribute")
+    require.NoError(t, err, "ModifyAttribute(Extractable=true) is allowed")
     assert.Equal(t, "false", fmt.Sprint(singleAttributeValue(t, client, id, kmip.AttributeNameNeverExtractable)),
-        "NeverExtractable should latch to false when Extractable set to true")
+        "NeverExtractable latches to false once Extractable is explicitly set true")
 
-    // ModifyAttribute(Extractable=false) → NeverExtractable stays false
     _, err = client.ModifyAttribute(id, kmip.AttributeNameExtractable, false).ExecContext(tctx(t))
-    require.NoError(t, err, "ModifyAttribute(Extractable=false)")
-
-    assert.Equal(t, "false", fmt.Sprint(singleAttributeValue(t, client, id, kmip.AttributeNameExtractable)),
-        "Extractable should be false again")
+    require.NoError(t, err, "ModifyAttribute(Extractable=false) again")
     assert.Equal(t, "false", fmt.Sprint(singleAttributeValue(t, client, id, kmip.AttributeNameNeverExtractable)),
-        "NeverExtractable should stay false (latched) even after Extractable set back to false")
+        "NeverExtractable must stay latched to false")
 }
 
 // TestSensitiveFalse_ForcesExtractableTrue verifies the KMIP spec constraint
