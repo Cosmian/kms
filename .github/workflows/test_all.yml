@@ -438,7 +438,7 @@ jobs:
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
       # Same HSM, same concurrency group: deploys the KMS with the documented Helm values
-      # (docs/hsm_support/<model>.md) on minikube, with the FIPS and non-FIPS images.
+      # (docs/hsm_support/<model>.md) on minikube, building both image variants from this checkout.
       - name: Install Helm
         if: contains(fromJSON('["proteccio", "crypt2pay"]'), matrix.hsm-type)
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -458,8 +458,8 @@ jobs:
           CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
           OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
-          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant fips
-          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant non-fips
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant fips --build-image
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant non-fips --build-image
 
   helm:
     name: Helm chart E2E (minikube)
