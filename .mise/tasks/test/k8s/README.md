@@ -271,8 +271,7 @@ stop working.
    requires), and installs the chart with the documented values.
 2. By default, `--variant fips` uses `ghcr.io/cosmian/kms-fips` (with the documented `command` override for Proteccio) and asserts `/version` reports a FIPS OpenSSL; `--variant non-fips` uses `ghcr.io/cosmian/kms` and drops the `command:` line. `--image-tag` (or `KMS_IMAGE_TAG`) selects a published tag; the default is the chart's `appVersion`.
    With `--build-image`, the task instead builds the selected variant from the current checkout using `build:docker`, loads its tarball into Minikube, and sets `image.pullPolicy=Never`. This requires a Linux Nix builder and cannot be combined with `--image-tag` or `KMS_IMAGE_TAG`.
-3. Creates an `hsm::<slot>::…` AES key, encrypts and decrypts with AES-GCM through `ckms` in the
-   KMS pod, and destroys the key (also on failure).
+3. Creates an `hsm::<slot>::…` AES key and verifies encryption and decryption through `ckms` in the KMS pod: AES-GCM for non-FIPS, AES-CBC for FIPS. The FIPS test also verifies that AES-GCM is rejected because these vendor clients supply no HSM-generated IV. AES-CBC is only a deployment round-trip check, not a recommendation for unauthenticated application encryption. The key is destroyed, including on failure.
 4. Crypt2pay only: deletes the pod and decrypts again with the same HSM key (objects directory on
    the PVC).
 

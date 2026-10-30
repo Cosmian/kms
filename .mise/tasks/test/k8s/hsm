@@ -105,7 +105,7 @@ _ckms() {
 }
 
 _decrypt_and_check() {
-  _ckms sym decrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+  _ckms sym decrypt --key-id "$KEY_ID" --data-encryption-algorithm "$ALGORITHM" \
     -o "${WS}/dec.txt" "${WS}/enc.bin" >/dev/null
   [ "$(_pod_sh "cat ${WS}/dec.txt")" = "$PLAINTEXT" ] ||
     print_error "Decrypted data differs from the plaintext"
@@ -246,10 +246,21 @@ KEY_ID="hsm::${SLOT}::k8s_e2e_$(date +%s)"
 PLAINTEXT="Kubernetes HSM E2E ${MODEL} ${VARIANT} $(date -u +%FT%TZ)"
 _ckms sym keys create --algorithm aes --number-of-bits 256 "$KEY_ID" >/dev/null
 _pod_sh "printf '%s' '${PLAINTEXT}' > ${WS}/plain.txt"
-_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+ALGORITHM="aes-gcm"
+if [ "$VARIANT" = "fips" ]; then
+  # These vendor clients do not return an HSM-generated GCM IV; keep the FIPS gate closed.
+  if gcm_error=$(_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+    -o "${WS}/enc.bin" "${WS}/plain.txt" 2>&1); then
+    print_error "FIPS AES-GCM unexpectedly succeeded; revalidate this vendor client's IV capabilities"
+  fi
+  [[ "$gcm_error" == *"AES-GCM encryption needs an IV generated inside the HSM"* ]] ||
+    print_error "FIPS AES-GCM failed for an unexpected reason: ${gcm_error}"
+  ALGORITHM="aes-cbc"
+fi
+_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm "$ALGORITHM" \
   -o "${WS}/enc.bin" "${WS}/plain.txt" >/dev/null
 _decrypt_and_check
-print_success "${KEY_ID}: AES-GCM encryption and decryption through the KMS pod"
+print_success "${KEY_ID}: ${ALGORITHM} encryption and decryption through the KMS pod"
 
 # ── 5. Crypt2pay: the HSM key survives a pod restart (objects directory on the PVC) ─
 if [ "$MODEL" = "crypt2pay" ]; then
