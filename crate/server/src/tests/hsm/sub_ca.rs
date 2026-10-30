@@ -34,6 +34,7 @@ use openssl::{
     stack::Stack,
     x509::{X509, X509Crl, store::X509StoreBuilder},
 };
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -70,6 +71,9 @@ fn certify_request(subject: Option<&str>, links: &[(LinkType, &str)]) -> KResult
             attribute_name: VENDOR_ATTR_X509_EXTENSION.to_owned(),
             attribute_value: VendorAttributeValue::ByteString(CA_EXT.to_vec()),
         }]),
+        // Certificates are Pre-Active without an activation date, and ReCertify renews only
+        // Active or Deactivated ones.
+        activation_date: Some(OffsetDateTime::now_utc() - time::Duration::seconds(1)),
         ..Attributes::default()
     };
     if subject.is_some() {
