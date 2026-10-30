@@ -35,16 +35,6 @@
 //! from the underlying database operations or from the functions defined in the submodules.
 //! The specific error types and conditions are documented in the respective functions.
 
-// Test fixtures draw throw-away data from non-`KmsRng` generators; production code stays under
-// the `clippy.toml` bans (see ADR 2026-10-10).
-#![cfg_attr(
-    test,
-    expect(
-        clippy::disallowed_types,
-        reason = "test fixtures only; production code must use KmsRng"
-    )
-)]
-
 mod core;
 pub use core::{
     AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,

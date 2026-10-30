@@ -192,7 +192,7 @@ fn check_set_delete_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResu
             Some("my-object-name"),
             Some(("cosmian", "my_new_attribute", "AABBCCDDEEFF")),
         );
-        let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
         set_attribute(cli_conf_path, key_id, &args_ref)?;
 
         // Get and verify attributes are present

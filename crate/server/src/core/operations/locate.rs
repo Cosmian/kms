@@ -260,7 +260,6 @@ mod tests {
     use super::locate;
     use crate::{
         config::{HsmInstanceParams, ServerParams},
-        core::KMS,
         error::KmsError,
         middlewares::UserId,
         result::KResult,
@@ -404,8 +403,8 @@ mod tests {
     /// query is bounded by `offset + maximum` without under-filling the page.
     #[tokio::test]
     async fn non_hsm_admin_locate_pages_only_granted_hsm_keys() -> KResult<()> {
-        let mut kms =
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?;
+        let mut kms = Arc::into_inner(test_kms().await?)
+            .ok_or_else(|| KmsError::Default("test KMS is shared".to_owned()))?;
         let mut params = ServerParams::try_from(https_clap_config())?;
         params.hsm_instances.push(HsmInstanceParams {
             model: "fake".to_owned(),

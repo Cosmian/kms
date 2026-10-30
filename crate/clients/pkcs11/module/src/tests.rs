@@ -1123,7 +1123,7 @@ fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
     let mut mechanism = CK_MECHANISM {
         mechanism: CKM_AES_CBC_PAD,
         pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-        ulParameterLen: AES_IV_SIZE as CK_ULONG,
+        ulParameterLen: ck_len(AES_IV_SIZE),
     };
     assert_eq!(
         unsafe { C_DecryptInit(session_h, &raw mut mechanism, key_handle) },
@@ -1138,7 +1138,7 @@ fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
             C_Decrypt(
                 session_h,
                 ciphertext.as_mut_ptr(),
-                ciphertext.len() as CK_ULONG,
+                ck_len(ciphertext.len()),
                 output.as_mut_ptr(),
                 &raw mut output_len,
             )
@@ -1157,7 +1157,7 @@ fn decrypt_buffer_too_small_reports_length_and_retry_succeeds() {
             C_Decrypt(
                 session_h,
                 ciphertext.as_mut_ptr(),
-                ciphertext.len() as CK_ULONG,
+                ck_len(ciphertext.len()),
                 output.as_mut_ptr(),
                 &raw mut output_len,
             )

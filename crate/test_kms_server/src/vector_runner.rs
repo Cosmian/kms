@@ -2009,8 +2009,8 @@ mod tests {
         };
         let body = raw_http_body(&[segment(Some("ab"), None, 2), segment(None, Some("00ff"), 1)]);
         assert_eq!(body.unwrap(), b"abab\x00\xff");
-        assert!(raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).is_err());
-        assert!(raw_http_body(&[segment(None, Some("zz"), 1)]).is_err());
+        raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).unwrap_err();
+        raw_http_body(&[segment(None, Some("zz"), 1)]).unwrap_err();
     }
 
     #[test]

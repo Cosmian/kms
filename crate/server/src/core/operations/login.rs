@@ -240,7 +240,6 @@ pub(crate) fn redeem_ticket_credentials(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test setup")]
 mod tests {
     use super::*;
 

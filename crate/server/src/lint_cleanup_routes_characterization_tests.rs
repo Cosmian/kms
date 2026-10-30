@@ -5,16 +5,11 @@
 //! `routes/aws_xks/mod.rs`, `routes/jose/error.rs`); this file pins what is reachable from the
 //! crate root: the configuration, its redaction, and REST response shapes.
 
-use std::sync::Arc;
-
 use actix_web::{App, test as actix_test, web::Data};
 
 #[cfg(not(windows))]
 use crate::config::ClapConfig;
-use crate::{
-    config::ServerParams, core::KMS, openssl_providers::init_openssl_providers_for_tests,
-    routes::access::get_crypto_officer_status, tests::test_utils::https_clap_config,
-};
+use crate::{config::ServerParams, routes::access::get_crypto_officer_status};
 
 #[cfg(not(windows))]
 const PRINT_DEFAULT: &str = "--print-default-config";
@@ -133,6 +128,14 @@ ocsp_cache_ttl_secs = 86400
 ocsp_nonce_policy = "optional"
 ocsp_include_cert_chain = true
 ocsp_archive_cutoff_secs = 0
+
+[est]
+est_enabled = false
+est_require_client_cert = true
+
+[scep]
+scep_enabled = false
+scep_allow_renewal_without_challenge = true
 "#;
 
 #[cfg(not(windows))]
@@ -210,14 +213,7 @@ fn characterization_clap_config_flags_and_redaction() {
 
 #[tokio::test]
 async fn characterization_get_crypto_officer_status_without_role() {
-    init_openssl_providers_for_tests();
-    let kms = Arc::new(
-        KMS::instantiate(Arc::new(
-            ServerParams::try_from(https_clap_config()).unwrap(),
-        ))
-        .await
-        .unwrap(),
-    );
+    let kms = crate::tests::test_utils::test_kms().await.unwrap();
     let app = actix_test::init_service(
         App::new()
             .app_data(Data::new(kms))

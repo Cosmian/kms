@@ -684,7 +684,6 @@ fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, A
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,

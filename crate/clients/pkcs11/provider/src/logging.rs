@@ -33,10 +33,6 @@ fn init(
 }
 
 #[cfg(target_os = "linux")]
-#[expect(
-    clippy::print_stdout,
-    reason = "tells the PKCS#11 host where the module logs"
-)]
 /// For Linux, log to `$COSMIAN_PKCS11_LOGGING_FOLDER` if set,
 /// otherwise fall back to `~/.cosmian/` (user-writable, no root required).
 #[expect(
