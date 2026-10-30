@@ -83,7 +83,6 @@ pub(crate) async fn revoke_operation(
 }
 
 /// Recursively revoke keys
-#[allow(clippy::too_many_arguments)]
 #[async_recursion(?Send)]
 pub(crate) async fn recursively_revoke_key(
     unique_identifier: &UniqueIdentifier,
