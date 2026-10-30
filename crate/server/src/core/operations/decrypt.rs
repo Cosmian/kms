@@ -919,10 +919,8 @@ fn decrypt_with_rsa(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[expect(clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
-
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::{BlockCipherMode, ErrorReason},
         kmip_2_1::{
@@ -938,8 +936,7 @@ mod tests {
     use zeroize::Zeroizing;
 
     use crate::{
-        config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
-        tests::test_utils::https_clap_config,
+        error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
     };
 
     fn reason<T: std::fmt::Debug>(r: KResult<T>) -> Option<ErrorReason> {
@@ -978,9 +975,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_aead_tag_and_iv_hardening() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::from(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
         let user = UserId::from("user");
         let create = symmetric_key_create_request(
             VENDOR_ID_COSMIAN,

@@ -3,24 +3,25 @@
 use std::sync::Arc;
 
 use cosmian_kms_interfaces::HsmStore;
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
-    kmip_2_1::{
-        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-        kmip_data_structures::{KeyValue, KeyWrappingSpecification},
-        kmip_operations::{Destroy, Revoke},
-        kmip_types::{
-            CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, RecommendedCurve,
-            UniqueIdentifier, WrappingMethod,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
+        kmip_2_1::{
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_data_structures::{KeyValue, KeyWrappingSpecification},
+            kmip_operations::{Destroy, Revoke},
+            kmip_types::{
+                CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, RecommendedCurve,
+                UniqueIdentifier, WrappingMethod,
+            },
+            requests::{create_ec_key_pair_request, symmetric_key_create_request},
         },
-        requests::{create_ec_key_pair_request, symmetric_key_create_request},
     },
+    cosmian_kms_crypto::crypto::wrap::unwrap_key_block,
 };
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use time::OffsetDateTime;
 
 use crate::{
-    config::ServerParams,
     core::{
         KMS,
         certificate::validate_crl_url,
@@ -162,12 +163,15 @@ async fn characterization_revoke_state_for_each_reason_code() {
     for (code, expected_state) in cases {
         let uid = create_aes_key(&kms, &user, EMPTY_TAGS.as_slice()).await;
         assert_eq!(state_of(&kms, &uid).await, State::Active);
+        // A compromise occurrence date is only accepted with a compromise reason.
+        let compromised = expected_state == State::Compromised;
+        let date = compromised.then(compromise_date);
         let returned = revoke(
             &kms,
             &user,
             &uid,
             reason(code, Some("characterization")),
-            Some(compromise_date()),
+            date,
             false,
         )
         .await
@@ -180,10 +184,10 @@ async fn characterization_revoke_state_for_each_reason_code() {
                 state: expected_state,
                 external_reason: expected_reason.clone(),
                 embedded_reason: expected_reason,
-                external_compromise_date: Some(compromise_date()),
-                embedded_compromise_date: Some(compromise_date()),
-                external_deactivation_date: true,
-                embedded_deactivation_date: true,
+                external_compromise_date: date,
+                embedded_compromise_date: date,
+                external_deactivation_date: !compromised,
+                embedded_deactivation_date: !compromised,
             },
             "reason code {code:?}"
         );
@@ -270,7 +274,7 @@ async fn characterization_revoke_state_transitions_of_already_revoked_keys() {
     );
     assert_eq!(snap.external_compromise_date, Some(compromise_date()));
 
-    // Compromised keys are skipped: nothing revoked => Item_Not_Found.
+    // Compromised keys cannot be revoked again.
     let err = revoke(
         &kms,
         &user,
@@ -282,14 +286,16 @@ async fn characterization_revoke_state_transitions_of_already_revoked_keys() {
     .await
     .unwrap_err();
     assert!(
-        matches!(err, KmsError::Kmip21Error(ErrorReason::Item_Not_Found, _)),
+        matches!(
+            err,
+            KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, _)
+        ),
         "{err:?}"
     );
-    assert_eq!(err.to_string(), format!("Item_Not_Found: {uid}"));
 }
 
 #[tokio::test]
-async fn characterization_revoke_destroyed_key_succeeds_without_state_change() {
+async fn characterization_revoke_destroyed_key_with_compromise_becomes_destroyed_compromised() {
     let kms = test_kms().await.unwrap();
     let user = UserId::from("char_revoke_destroyed");
     let uid = create_aes_key(&kms, &user, EMPTY_TAGS.as_slice()).await;
@@ -314,8 +320,7 @@ async fn characterization_revoke_destroyed_key_succeeds_without_state_change() {
     )
     .await
     .unwrap();
-    let before = state_of(&kms, &uid).await;
-    assert_eq!(before, State::Destroyed);
+    assert_eq!(state_of(&kms, &uid).await, State::Destroyed);
     revoke(
         &kms,
         &user,
@@ -326,7 +331,7 @@ async fn characterization_revoke_destroyed_key_succeeds_without_state_change() {
     )
     .await
     .unwrap();
-    assert_eq!(state_of(&kms, &uid).await, before);
+    assert_eq!(state_of(&kms, &uid).await, State::Destroyed_Compromised);
 }
 
 #[tokio::test]
@@ -346,7 +351,7 @@ async fn characterization_revoke_unknown_and_foreign_keys_are_not_found() {
     .unwrap_err();
     assert_eq!(
         err.to_string(),
-        "Item_Not_Found: characterization-unknown-uid"
+        "Object_Not_Found: characterization-unknown-uid"
     );
 
     let uid = create_aes_key(&kms, &owner, EMPTY_TAGS.as_slice()).await;
@@ -361,7 +366,7 @@ async fn characterization_revoke_unknown_and_foreign_keys_are_not_found() {
     .await
     .unwrap_err();
     assert!(
-        matches!(err, KmsError::Kmip21Error(ErrorReason::Item_Not_Found, _)),
+        matches!(err, KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)),
         "{err:?}"
     );
     assert_eq!(state_of(&kms, &uid).await, State::Active);
@@ -434,7 +439,7 @@ async fn characterization_revoke_private_key_with_cascade_revokes_public_key() {
             Some(reason(RevocationReasonCode::KeyCompromise, Some("cascade")))
         );
         assert_eq!(snap.external_compromise_date, Some(compromise_date()));
-        assert!(snap.external_deactivation_date);
+        assert!(!snap.external_deactivation_date);
     }
 }
 
@@ -716,7 +721,7 @@ async fn characterization_revoke_hsm_prefixed_uid_non_admin_is_not_found() {
     .unwrap_err();
     assert_eq!(
         err.to_string(),
-        "Item_Not_Found: hsm::0::characterization-key"
+        "Object_Not_Found: hsm::0::characterization-key"
     );
 }
 // ── permissions ──────────────────────────────────────────────────────────────
@@ -727,7 +732,7 @@ fn characterization_reject_protection_storage_masks() {
     let err = KMS::reject_protection_storage_masks(true).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "This KMIP server does not yet support place holder id"
+        "This KMIP server does not yet support protection masks"
     );
 }
 
@@ -980,7 +985,7 @@ async fn characterization_wrap_object_inactive_wrapping_key_is_rejected() {
 async fn unwrapped_cache_holds_wrapped_key(disable_unwrapped_cache: bool) -> bool {
     let mut conf = https_clap_config();
     conf.db.disable_unwrapped_cache = disable_unwrapped_cache;
-    let kms = KMS::instantiate(Arc::new(ServerParams::try_from(conf).unwrap()))
+    let kms = crate::tests::test_utils::test_kms_with_config(conf)
         .await
         .unwrap();
     let user = UserId::from("char_cache_params");
@@ -1247,11 +1252,9 @@ async fn characterization_prepare_kms_server_with_vault_auth_verifier_url() {
     let mut config = https_clap_config();
     config.vault.vault_api_enabled = true;
     config.vault.vault_auth_verifier_url = Some("http://127.0.0.1:1".to_owned());
-    let kms = Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(config).unwrap()))
-            .await
-            .unwrap(),
-    );
+    let kms = crate::tests::test_utils::test_kms_with_config(config)
+        .await
+        .unwrap();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let server = Box::pin(prepare_kms_server(kms, Some(listener)))
         .await

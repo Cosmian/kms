@@ -159,8 +159,7 @@ fn hsm_ca_certificate(
     std::fs::write(
         &extensions,
         "[v3_ca]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,crlSign\n",
-    )
-    .unwrap();
+    )?;
     let mut op = CertifyOp {
         subject_name: Some(subject.to_owned()),
         certificate_extensions: Some(extensions),
@@ -170,9 +169,13 @@ fn hsm_ca_certificate(
     if let Some((issuer_certificate_id, issuer_private_key_id)) = issuer {
         let csr_file = tmp_dir.path().join(format!("{}.csr", Uuid::new_v4()));
         generate_csr(conf, &private_key_id, subject, &csr_file)?;
-        let csr = X509Req::from_pem(&std::fs::read(&csr_file).unwrap()).unwrap();
-        assert!(csr.verify(csr.public_key().unwrap().as_ref()).unwrap());
-        csr_public_key = Some(csr.public_key().unwrap());
+        let ossl = |e: openssl::error::ErrorStack| CosmianError::Default(e.to_string());
+        let csr = X509Req::from_pem(&std::fs::read(&csr_file)?).map_err(ossl)?;
+        assert!(
+            csr.verify(csr.public_key().map_err(ossl)?.as_ref())
+                .map_err(ossl)?
+        );
+        csr_public_key = Some(csr.public_key().map_err(ossl)?);
         op.csr_file = Some(csr_file.to_string_lossy().into_owned());
         op.issuer_certificate_id = Some(issuer_certificate_id.to_owned());
         op.issuer_private_key_id = Some(issuer_private_key_id.to_owned());
@@ -185,14 +188,22 @@ fn hsm_ca_certificate(
     export_certificate(
         conf,
         &certificate_id,
-        pem_file.to_str().unwrap(),
+        pem_file
+            .to_str()
+            .ok_or_else(|| CosmianError::Default("non UTF-8 path".to_owned()))?,
         Some(CertificateExportFormat::Pem),
         None,
         true,
     )?;
-    let certificate = X509::from_pem(&std::fs::read(&pem_file).unwrap()).unwrap();
+    let certificate = X509::from_pem(&std::fs::read(&pem_file)?)
+        .map_err(|e| CosmianError::Default(e.to_string()))?;
     if let Some(csr_public_key) = csr_public_key {
-        assert!(certificate.public_key().unwrap().public_eq(&csr_public_key));
+        assert!(
+            certificate
+                .public_key()
+                .map_err(|e| CosmianError::Default(e.to_string()))?
+                .public_eq(&csr_public_key)
+        );
     }
     Ok((private_key_id, certificate_id, certificate))
 }
@@ -367,17 +378,15 @@ async fn test_generate_csr_key_pair_generation_errors() -> CosmianResult<()> {
     let base = ["--subject-name", "CN=x", "--output-file", out];
 
     // neither a key nor an algorithm
-    assert!(generate_csr_args(&conf, &base).is_err());
+    generate_csr_args(&conf, &base).unwrap_err();
     // `--sensitive` only applies to a generated key pair
-    assert!(
-        generate_csr_args(
-            &conf,
-            &[&base[..], &["--private-key-id", "x", "--sensitive"]].concat()
-        )
-        .is_err()
-    );
+    generate_csr_args(
+        &conf,
+        &[&base[..], &["--private-key-id", "x", "--sensitive"]].concat(),
+    )
+    .unwrap_err();
     // unknown algorithm
-    assert!(generate_csr_args(&conf, &[&base[..], &["--algorithm", "nope"]].concat()).is_err());
+    generate_csr_args(&conf, &[&base[..], &["--algorithm", "nope"]].concat()).unwrap_err();
     // an HSM key pair must be sensitive: refused before anything is created
     let err = generate_csr_args(
         &conf,

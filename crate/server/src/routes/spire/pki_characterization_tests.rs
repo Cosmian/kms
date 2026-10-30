@@ -24,10 +24,7 @@ use openssl::{
 use serde_json::{Value, json};
 
 use super::{parse_ttl_days, sign_intermediate};
-use crate::{
-    config::ServerParams, core::KMS, openssl_providers::init_openssl_providers_for_tests,
-    result::KResult, tests::test_utils::https_clap_config,
-};
+use crate::{core::KMS, result::KResult, tests::test_utils::https_clap_config};
 
 #[test]
 fn characterization_parse_ttl_days_table() {
@@ -93,12 +90,9 @@ fn csr_pem() -> String {
 /// KMS with a tagged RSA CA key pair owned by the default user, and a self-signed CA certificate
 /// linked to the public key.
 async fn kms_without_key() -> KResult<Arc<KMS>> {
-    init_openssl_providers_for_tests();
     let mut config = https_clap_config();
     config.vault.vault_pki_ca_key_label = LABEL.to_owned();
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?,
-    ))
+    crate::tests::test_utils::test_kms_with_config(config).await
 }
 
 async fn kms_with_ca(with_certificate: bool) -> KResult<Arc<KMS>> {
@@ -115,6 +109,8 @@ async fn kms_with_ca(with_certificate: bool) -> KResult<Arc<KMS>> {
             attribute_name: VENDOR_ATTR_X509_EXTENSION.to_owned(),
             attribute_value: VendorAttributeValue::ByteString(CA_EXT.to_vec()),
         }]),
+        // keys are created PreActive without an activation date, and only Active keys may sign
+        activation_date: Some(time::OffsetDateTime::now_utc()),
         ..Attributes::default()
     };
     if !with_certificate {

@@ -383,12 +383,9 @@ async fn revert_inner(kms: &KMS, user: &UserId, record: &UndoRecord) -> KResult<
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
-    clippy::expect_used,
     reason = "test assertions in fallible async tests"
 )]
 mod tests {
-    use std::sync::Arc;
-
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_attributes::Attribute,
@@ -399,13 +396,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{config::ServerParams, error::KmsError, tests::test_utils::https_clap_config};
-
-    async fn test_kms() -> KResult<Arc<KMS>> {
-        Ok(Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        ))
-    }
+    use crate::{error::KmsError, tests::test_utils::test_kms};
 
     async fn create_key(kms: &KMS, owner: &UserId) -> KResult<String> {
         let request = symmetric_key_create_request(

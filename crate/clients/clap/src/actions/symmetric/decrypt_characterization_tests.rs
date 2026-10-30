@@ -64,7 +64,7 @@ async fn new_kek(client: cosmian_kms_client::KmsClient) -> String {
 async fn characterization_client_side_decrypt_with_file_chunk_boundaries_aes_gcm() {
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
-    let kek = new_kek(client.clone()).await;
+    let kek = Box::pin(new_kek(client.clone())).await;
     for len in [0, 1, 15, 16, 17, 18, 19, 33, 34, 35, 36, 37, 100, 1000] {
         let out = round_trip(&kek, client.clone(), DataEncryptionAlgorithm::AesGcm, len).await;
         assert_eq!(out.len(), len);
@@ -76,7 +76,7 @@ async fn characterization_client_side_decrypt_with_file_chunk_boundaries_aes_gcm
 async fn characterization_client_side_decrypt_with_file_chunk_boundaries_chacha() {
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
-    let kek = new_kek(client.clone()).await;
+    let kek = Box::pin(new_kek(client.clone())).await;
     for len in [0, 1, 17, 18, 19, 35, 36, 37, 1000] {
         let out = round_trip(
             &kek,
@@ -132,7 +132,7 @@ async fn decrypt_file(
 async fn characterization_client_side_decrypt_with_file_tampered_tag() {
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
-    let kek = new_kek(client.clone()).await;
+    let kek = Box::pin(new_kek(client.clone())).await;
     let dir = tempfile::tempdir().unwrap();
     let enc = encrypt_to_file(client.clone(), &kek, dir.path(), 40).await;
     let mut bytes = std::fs::read(&enc).unwrap();
@@ -152,7 +152,7 @@ async fn characterization_client_side_decrypt_with_file_tampered_tag() {
 async fn characterization_client_side_decrypt_with_file_missing_tag() {
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
-    let kek = new_kek(client.clone()).await;
+    let kek = Box::pin(new_kek(client.clone())).await;
     let dir = tempfile::tempdir().unwrap();
     let enc = encrypt_to_file(client.clone(), &kek, dir.path(), 0).await;
     let mut bytes = std::fs::read(&enc).unwrap();

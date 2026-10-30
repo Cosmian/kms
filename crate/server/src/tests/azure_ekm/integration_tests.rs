@@ -380,7 +380,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
     );
 
     let mut rng = KmsRng::new().seeded_csrng()?;
-    let plaintext_len = 1 + (rng.next_u32() as usize % 190); // OAEP with SHA-256 and 2048-bit key max
+    let plaintext_len = 1 + usize::try_from(rng.next_u32()).unwrap_or_default() % 190; // OAEP with SHA-256 and 2048-bit key max
     let mut valid_random_plaintext = vec![0_u8; plaintext_len];
     rng.fill_bytes(&mut valid_random_plaintext);
 

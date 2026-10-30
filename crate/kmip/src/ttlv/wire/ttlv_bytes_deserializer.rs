@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_enumeration() {
         let variant = KmipEnumerationVariant {
-            value: kmip_1_4::kmip_types::CryptographicAlgorithm::AES as u32,
+            value: 0x03, // kmip_1_4 CryptographicAlgorithm::AES
             name: "AES".into(),
         };
         let original = TTLV {
