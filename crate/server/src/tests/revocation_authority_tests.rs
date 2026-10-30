@@ -65,6 +65,7 @@ async fn certify(
     issuer: Option<(&str, &str)>,
 ) -> KResult<String> {
     let mut attributes = Attributes {
+        activation_date: Some(time::OffsetDateTime::now_utc() - time::Duration::seconds(1)),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(subject)?),

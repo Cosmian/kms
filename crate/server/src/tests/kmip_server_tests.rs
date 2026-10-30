@@ -466,8 +466,7 @@ async fn test_register_operation() -> KResult<()> {
 #[tokio::test]
 async fn test_register_initial_date_is_now() -> KResult<()> {
     cosmian_logger::log_init(None);
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let before = time::OffsetDateTime::now_utc() - time::Duration::minutes(1);
@@ -512,8 +511,7 @@ async fn test_register_initial_date_is_now() -> KResult<()> {
 #[tokio::test]
 async fn test_import_state_object_type_and_duplicate() -> KResult<()> {
     cosmian_logger::log_init(None);
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let key = || {
@@ -584,8 +582,7 @@ async fn test_import_state_object_type_and_duplicate() -> KResult<()> {
 #[tokio::test]
 async fn test_create_key_pair_per_key_curve() -> KResult<()> {
     cosmian_logger::log_init(None);
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("eyJhbGciOiJSUzI1Ni");
 
     let per_key = |curve| Attributes {

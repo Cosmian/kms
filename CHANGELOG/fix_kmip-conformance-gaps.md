@@ -43,8 +43,8 @@
 - Bulk Encrypt of several items no longer reuses a client-supplied IV for every item (`Invalid_Field`); IV Length is bounded to 1024 bits before allocation and a server-generated GCM IV is at least 96 bits (`Bad_Cryptographic_Parameters`).
 - Multi-part Sign and Signature Verify buffers are capped at 16 MiB per operation, 64 MiB per user and 256 MiB in total (`Server_Limit_Exceeded`); malformed Correlation Values are rejected before locking and expired state is freed outside the lock.
 - Cap the memory held by socket-server requests in flight with a process-wide 256 MiB budget, reserved before each body is allocated.
-- Re-key Key Pair requires the `Rekey` permission on the public key named by the private key's Public Key Link (`Object_Not_Found` otherwise), and Re-certify resolves the subject and issuer as the requester instead of the certificate owner (COSMIAN-2026-044, COSMIAN-2026-045).
-- Batch Undo snapshots and restores only objects the requester may change, and only when they are still as the item left it (COSMIAN-2026-046, pre-release).
+- Re-key Key Pair requires the `Rekey` permission on the public key named by the private key's Public Key Link (`Object_Not_Found` otherwise), and Re-certify resolves the subject and issuer as the requester instead of the certificate owner (COSMIAN-2026-052, COSMIAN-2026-053).
+- Batch Undo snapshots and restores only objects the requester may change, and only when they are still as the item left it (COSMIAN-2026-054, pre-release).
 - Set/Add/Modify/Delete Attribute of Usage Limits, Cryptographic Usage Mask, Activation/Deactivation Date, Link, Rotate Interval and Revocation Reason require ownership or an explicit grant of the edit operation; a `Get` grant is no longer enough. Delete Attribute cannot remove server-owned KMIP 1.x (`y-`) custom attributes.
 
 - Wrap checks the caller's permission on the wrapping key before its state, so a foreign key's lifecycle state is not revealed; the refusal is `Permission_Denied`.

@@ -1118,7 +1118,7 @@ async fn test_default_kmip_policy_applies_to_batched_request_messages() -> KResu
 /// only to a public key the caller may re-key; another user's public key is reported as
 /// not found and left untouched.
 ///
-/// Guards: COSMIAN-2026-044 (`ReKeyKeyPair` linked public key authorization)
+/// Guards: COSMIAN-2026-052 (`ReKeyKeyPair` linked public key authorization)
 #[tokio::test]
 async fn test_rekey_keypair_does_not_retire_another_users_linked_public_key() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -1362,7 +1362,7 @@ async fn test_delete_attribute_keeps_server_owned_vendor_attributes() -> KResult
 /// longer selects the newest object in the database, which could belong to another user,
 /// and the error does not reveal any identifier.
 ///
-/// Guards: COSMIAN-2026-047 (Get Attributes implicit selection of another user's object)
+/// Guards: COSMIAN-2026-055 (Get Attributes implicit selection of another user's object)
 #[tokio::test]
 async fn test_get_attributes_without_identifier_selects_nothing() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::GetAttributes;

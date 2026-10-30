@@ -1675,7 +1675,7 @@ async fn test_recertify_issues_new_serial_not_listed_in_crl() -> KResult<()> {
 /// sign with the owner's CA key: the issuer and subject are authorized as the requester,
 /// not as the certificate owner.
 ///
-/// Guards: COSMIAN-2026-045 (`ReCertify` issuer authorization)
+/// Guards: COSMIAN-2026-053 (`ReCertify` issuer authorization)
 #[tokio::test]
 async fn test_recertify_authorizes_issuer_as_requester() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
