@@ -12,12 +12,6 @@ All databases, except SQLite, can be used in a high-availability setup.
 The **SQLite** database can serve high loads and millions of objects, and is very suitable
 for scenarios that do not demand high availability.
 
-### Redis with Findex
-
-Redis-with-Findex provides application-level encryption over Redis, combining AES-256-GCM encrypted objects with
-encrypted Findex indexes. See the dedicated [Redis with Findex](./redis.md) page for a full description,
-encryption details, and configuration reference.
-
 ## Connection Workflow
 
 The following sequence diagram illustrates how the Eviden KMS connects to its backing database backend, initializes pools and schema verification, and processes client requests end-to-end:
@@ -74,7 +68,7 @@ This is the default configuration. To use SQLite, no additional configuration is
     --sqlite-path="./sqlite-data"
     ```
 
-#### PostgreSQL
+### PostgreSQL
 
 === "kms.toml"
 
@@ -92,28 +86,28 @@ This is the default configuration. To use SQLite, no additional configuration is
     ```
 
 !!!info "Setting up a PostgreSQL database"
-Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
-These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
+    Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance.
+    These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
 
-1. Connect to psql under user `postgres`
+    1. Connect to psql under user `postgres`
 
-    ```sh
-    sudo -u postgres psql  # or `psql -U postgres`
-    ```
+        ```sh
+        sudo -u postgres psql  # or `psql -U postgres`
+        ```
 
-2. Create user `kms_user` with password `kms_password`
+    2. Create user `kms_user` with password `kms_password`
 
-    ```psql
-    create user kms_user with encrypted password 'kms_password';
-    ```
+        ```psql
+        create user kms_user with encrypted password 'kms_password';
+        ```
 
-3. Create database `kms` under owner `kms_user`
+    3. Create database `kms` under owner `kms_user`
 
-    ```psql
-    create database kms owner=kms_user;
-    ```
+        ```psql
+        create database kms owner=kms_user;
+        ```
 
-##### PostgreSQL High-Availability (multi-host)
+#### PostgreSQL High-Availability (multi-host)
 
 The KMS supports **multi-host PostgreSQL connection strings** for high-availability deployments
 (streaming replication, Patroni, pgBouncer clusters, etc.). The `database-url` value is treated
@@ -155,7 +149,7 @@ Use the `target_session_attrs` query parameter to control which node the driver 
 The URL must start with `postgresql://` or `postgres://`; any other scheme is rejected at
 startup.
 
-##### Replication and standby writability
+#### Replication and standby writability
 
 !!! warning "A standby is read-only"
     In standard PostgreSQL streaming replication, the standby node operates in **hot standby
@@ -168,7 +162,7 @@ startup.
     Replication is entirely managed by the PostgreSQL infrastructure — the KMS does not
     configure, trigger, or monitor it.
 
-###### Recommended setup: use an HA manager
+##### Recommended setup: use an HA manager
 
 For automatic failover, deploy an HA manager such as [Patroni](https://patroni.readthedocs.io/),
 [pg_auto_failover](https://pg-auto-failover.readthedocs.io/), or
@@ -199,7 +193,7 @@ always connects to whichever node is currently the primary.
     Flexible Server read-write endpoint, GCP Cloud SQL HA endpoint) and use a single-host
     URL — failover then becomes completely transparent to the KMS.
 
-##### PostgreSQL failover retry
+#### PostgreSQL failover retry
 
 When a PostgreSQL primary fails over, the driver may return transient connection errors before
 the new primary is ready. The KMS automatically retries failed queries with **exponential
@@ -215,7 +209,7 @@ backoff** for the following PostgreSQL SQLSTATE codes:
 No additional configuration is required; the retry behaviour is enabled automatically for all
 PostgreSQL connections.
 
-#### MySQL, MariaDB, or Percona XtraDB Cluster
+### MySQL, MariaDB, or Percona XtraDB Cluster
 
 The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percona XtraDB Cluster.
 All use the same configuration with `database-type=mysql`.
@@ -243,37 +237,9 @@ All use the same configuration with `database-type=mysql`.
     --database-url=mysql://kms_user:kms_password@mysql-server:3306/kms
     ```
 
-!!!info "Using a certificate to authenticate to MySQL or MariaDB"
+For certificate authentication, see [MySQL / MariaDB TLS / mTLS](#mysql-mariadb-tls-mtls).
 
-        Use a certificate to authenticate to MySQL or MariaDB with the `mysql-user-cert-file` option to
-        specify the certificate file name.
-
-        **Example context**: say the certificate is called `cert.p12`
-        and is in a directory called `/certificate` on the host disk.
-
-=== "Docker"
-
-    ```sh
-    docker run --rm -p 9998:9998 \
-        --name kms ghcr.io/cosmian/kms:latest \
-        -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
-        --database-type=mysql \
-        --database-url=mysql://mysql_server:3306/kms \
-        --mysql-user-cert-file=cert.p12
-    ```
-
-=== "kms.toml"
-
-    ```toml
-    [db]
-    database_type = "mysql"
-    database_url = "mysql://mysql_server:3306/kms"
-    # Note: if client certificate authentication is required for MySQL,
-    # configure it via command-line option `--mysql-user-cert-file` for now.
-    # A dedicated TOML key may not be available in this version.
-    ```
-
-#### Redis with Findex
+### Redis with Findex
 
 For Redis-with-Findex configuration, see the dedicated [Redis with Findex](./redis.md#configuration) page.
 
@@ -426,7 +392,7 @@ Both dash (`ssl-mode`) and underscore (`ssl_mode`) variants are accepted.
 The KMS server can be configured to clear the database on restart automatically.
 
 !!! warning "Warning: this operation is irreversible"
-The cleanup operation will delete all objects and keys stored in the database.
+    The cleanup operation will delete all objects and keys stored in the database.
 
 === "kms.toml"
 
@@ -446,7 +412,7 @@ The cleanup operation will delete all objects and keys stored in the database.
 Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
 written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
 
-At first, the table `context` is responsible for storing the software run's version and the database's state.
+At first, the table `parameters` is responsible for storing the software run's version and the database's state.
 The state can be one of the following:
 
 - `ready`: the database is ready to be used
@@ -458,7 +424,7 @@ On startup, the server checks if the software version is greater than the last v
 - If yes:
 
     - it looks for all upgrades to apply in order from the last version run to this version;
-    - if there is any to run, it sets an upgrading flag on the db state field in the context table;
+    - if there is any to run, it sets an upgrading flag on the db state field in the `parameters` table;
     - it runs all the upgrades in order.
     - it sets the flag from upgrading to ready;
 

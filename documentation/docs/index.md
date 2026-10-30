@@ -34,14 +34,9 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
 ## Integrations
 
 - **Cloud integrations**:
-    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
+    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md) and [Azure EKM](./integrations/cloud_providers/azure/ekm.md)
     - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
-    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
-    - ...
-    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
-    - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
-    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
-    - ...
+    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md), [AWS XKS](./integrations/cloud_providers/aws/xks.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
 - **Workplace security**:
     - [Google Workspace Client Side Encryption (CSE)](./integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)
@@ -50,8 +45,11 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
     - [MongoDB](./integrations/databases/mongodb.md)
     - [Mysql Enterprise](./integrations/databases/mysql.md)
     - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
-    - [PostgreSQL](./integrations/databases/percona.md)
-        - and more
+    - [PostgreSQL (Percona)](./integrations/databases/percona.md)
+    - [EDB Postgres Advanced Server TDE](./integrations/databases/edb_postgres_tde.md)
+    - [SAP ASE TDE](./integrations/databases/sap_ase_tde.md)
+    - [IBM Db2 LUW TDE](./integrations/databases/ibm_db2_luw_tde.md)
+    - [InterSystems IRIS](./integrations/databases/intersystems_iris.md)
 - **Disk encryption**:
     - [Veracrypt](./integrations/disk_encryption/veracrypt.md)
     - [LUKS](./integrations/disk_encryption/luks.md)
