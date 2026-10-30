@@ -18,7 +18,7 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, FindOptions, InterfaceError, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
@@ -281,6 +281,122 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     assert_eq!(obj_attrs.state, Some(State::Deactivated));
 
     db.delete(&uid_3).await?;
+
+    let uid_4 = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid_4.clone()),
+        &UserId::from(owner),
+        &symmetric_key_3,
+        symmetric_key_3.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+    db.atomic(
+        &UserId::from(owner),
+        &[AtomicOperation::CompareAndSwapObject {
+            uid: uid_4.clone(),
+            expected_object: Box::new(symmetric_key_3.clone()),
+            object: Box::new(symmetric_key_1.clone()),
+            attributes: symmetric_key_1.attributes()?.clone(),
+            tags: None,
+        }],
+    )
+    .await?;
+    assert_eq!(
+        db.retrieve(&uid_4)
+            .await?
+            .expect("uid_4 should be in the db")
+            .state(),
+        State::PreActive
+    );
+
+    db.update_state(&uid_4, State::Destroyed).await?;
+    let uid_5 = Uuid::new_v4().to_string();
+    let rejected_batch = db
+        .atomic(
+            &UserId::from(owner),
+            &[
+                AtomicOperation::Create((
+                    uid_5.clone(),
+                    UserId::from(owner),
+                    symmetric_key_1.clone(),
+                    symmetric_key_1.attributes()?.clone(),
+                    HashSet::new(),
+                )),
+                AtomicOperation::CompareAndSwapObject {
+                    uid: uid_4.clone(),
+                    expected_object: Box::new(symmetric_key_3.clone()),
+                    object: Box::new(symmetric_key_1.clone()),
+                    attributes: symmetric_key_1.attributes()?.clone(),
+                    tags: None,
+                },
+            ],
+        )
+        .await;
+    assert!(matches!(
+        rejected_batch.expect_err("a destroyed object must reject the atomic update"),
+        InterfaceError::Conflict(_)
+    ));
+    assert!(db.retrieve(&uid_5).await?.is_none());
+
+    let uid_6 = Uuid::new_v4().to_string();
+    let version_uid_1 = Uuid::new_v4().to_string();
+    let version_uid_2 = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid_6.clone()),
+        &UserId::from(owner),
+        &symmetric_key_3,
+        symmetric_key_3.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+    let batch_1 = [
+        AtomicOperation::CompareAndSwapObject {
+            uid: uid_6.clone(),
+            expected_object: Box::new(symmetric_key_3.clone()),
+            object: Box::new(symmetric_key_1.clone()),
+            attributes: symmetric_key_1.attributes()?.clone(),
+            tags: None,
+        },
+        AtomicOperation::Create((
+            version_uid_1.clone(),
+            UserId::from(owner),
+            symmetric_key_1.clone(),
+            symmetric_key_1.attributes()?.clone(),
+            HashSet::new(),
+        )),
+    ];
+    let batch_2 = [
+        AtomicOperation::CompareAndSwapObject {
+            uid: uid_6.clone(),
+            expected_object: Box::new(symmetric_key_3.clone()),
+            object: Box::new(symmetric_key_2.clone()),
+            attributes: symmetric_key_2.attributes()?.clone(),
+            tags: None,
+        },
+        AtomicOperation::Create((
+            version_uid_2.clone(),
+            UserId::from(owner),
+            symmetric_key_2.clone(),
+            symmetric_key_2.attributes()?.clone(),
+            HashSet::new(),
+        )),
+    ];
+    let user = UserId::from(owner);
+    let (result_1, result_2) =
+        tokio::join!(db.atomic(&user, &batch_1), db.atomic(&user, &batch_2),);
+    assert!(
+        matches!(
+            (&result_1, &result_2),
+            (Ok(_), Err(InterfaceError::Conflict(_))) | (Err(InterfaceError::Conflict(_)), Ok(_))
+        ),
+        "concurrent stale writes must yield one success and one conflict: {result_1:?}, {result_2:?}"
+    );
+    assert_ne!(
+        db.retrieve(&version_uid_1).await?.is_some(),
+        db.retrieve(&version_uid_2).await?.is_some(),
+        "the losing batch must not create its version object"
+    );
 
     Ok(())
 }

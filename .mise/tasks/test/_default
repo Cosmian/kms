@@ -176,6 +176,10 @@ gate_run "spire" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docke
 gate_run "spire-kmip" "$(first_reason "$(reason_non_fips_only)" "$(reason_needs_docker)" "$(reason_needs_cmd go)")" \
   bash "${TASK_DIR}/spire-kmip" --variant "${VARIANT}" --link "${LINK}"
 
+# ── OpenBao CLI against the KMS KV store (Docker only) ──
+gate_run "openbao" "$(first_reason "$(reason_needs_docker)")" \
+  bash "${TASK_DIR}/openbao" --variant "${VARIANT}" --link "${LINK}"
+
 # ── Kubernetes group (needs kubectl/helm/minikube/openssl + a reachable cluster) ─
 K8S_REASON="$(first_reason \
   "$(reason_needs_cmd kubectl)" \

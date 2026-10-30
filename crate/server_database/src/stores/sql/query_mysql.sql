@@ -110,6 +110,13 @@ SET object=?,
     wrapping_key_id=?
 WHERE id = ?;
 
+-- name: update-object-if-matches
+UPDATE objects
+SET object=?,
+    attributes=?,
+    wrapping_key_id=?
+WHERE id = ? AND owner = ? AND object = ? AND state <> ? AND state <> ?;
+
 -- name: update-object-with-state
 UPDATE objects
 SET state=?

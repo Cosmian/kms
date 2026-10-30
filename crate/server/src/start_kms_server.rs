@@ -74,6 +74,10 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
+        kv::{
+            get_secret, hard_delete_path, mount_preflight, put_secret, read_or_list_metadata,
+            soft_delete_secret,
+        },
         ms_dke, ocsp, root_redirect, scep,
         spire::{
             auth_proxy::proxy_auth_request,
@@ -553,6 +557,17 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background KV TTL-expiry cron thread and retain shutdown signal.
+    let kv_ttl_shutdown_tx =
+        if kms_server.params.kv_enabled && kms_server.params.kv_ttl_check_interval_secs > 0 {
+            Some(cron::spawn_kv_ttl_cron(
+                kms_server.clone(),
+                kms_server.params.kv_ttl_check_interval_secs,
+            ))
+        } else {
+            None
+        };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -589,6 +604,10 @@ pub async fn start_kms_server(
     }
     // Signal the CRL refresh cron thread to stop
     if let Some(tx) = crl_refresh_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the KV TTL-expiry cron thread to stop
+    if let Some(tx) = kv_ttl_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -1168,6 +1187,9 @@ pub async fn prepare_kms_server(
     // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    // Should we enable the Vault KV v2-compatible secret store?
+    let enable_kv = kms_server.params.kv_enabled;
+
     // Should we enable the AWS XKS Service?
     let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
     if enable_aws_xks {
@@ -1490,6 +1512,64 @@ pub async fn prepare_kms_server(
                 .service(ms_dke::get_key)
                 .service(ms_dke::decrypt);
             app = app.service(ms_dke_scope);
+        }
+
+        if enable_kv {
+            // The Vault KV v2-compatible secret store. Accepts native KMS auth and, when
+            // `vault_api_enabled = true`, an `X-Vault-Token` header so that Vault/`bao`
+            // clients (OpenBao) authenticate once.
+            //
+            // The same routes are mounted on `/<kv_mount>` (native clients, kept for backward
+            // compatibility) and on `/v1/<kv_mount>` (what `vault`/`bao` always send), plus the
+            // KV v2 detection the CLI performs first on `/v1/sys/internal/ui/mounts`. The mount
+            // name is validated against the other scopes in `ServerParams::try_from`.
+            let kv_mount = kms_server_for_http.params.kv_mount.clone();
+            for (kv_scope_path, is_mount_preflight) in [
+                (format!("/{kv_mount}"), false),
+                (format!("/v1/{kv_mount}"), false),
+                ("/v1/sys/internal/ui/mounts".to_owned(), true),
+            ] {
+                let kv_scope = web::scope(&kv_scope_path)
+                    // The Vault Go client does not always send `Content-Type: application/json`.
+                    .app_data(JsonConfig::default().content_type_required(false))
+                    .wrap(ensure_auth_middleware(
+                        kms_server_for_http.clone(),
+                        use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                    ))
+                    .wrap(Condition::new(
+                        use_api_token_auth,
+                        api_token_middleware(kms_server_for_http.clone()),
+                    ))
+                    .wrap(Condition::new(
+                        use_jwt_auth,
+                        jwt_auth_middleware(jwt_configurations.clone()),
+                    ))
+                    .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+                    // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+                    // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+                    .wrap(Condition::new(
+                        use_vault_token_auth,
+                        vault_token_optional_middleware(
+                            spire_cache.clone(),
+                            spire_auth_verifier_url.clone(),
+                            vault_http_client.clone(),
+                            spire_default_username.clone(),
+                        ),
+                    ))
+                    .wrap(Cors::permissive())
+                    .configure(|cfg| {
+                        if is_mount_preflight {
+                            cfg.service(mount_preflight);
+                        } else {
+                            cfg.service(put_secret)
+                                .service(get_secret)
+                                .service(soft_delete_secret)
+                                .service(read_or_list_metadata)
+                                .service(hard_delete_path);
+                        }
+                    });
+                app = app.service(kv_scope);
+            }
         }
 
         if enable_aws_xks {

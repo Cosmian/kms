@@ -76,6 +76,10 @@ SELECT objects.state, objects.attributes FROM objects WHERE objects.id=$1;
 -- name: update-object-with-object
 UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3 WHERE id=$4;
 
+-- name: update-object-if-matches
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3
+WHERE id=$4 AND owner=$5 AND object=$6 AND state<>$7 AND state<>$8;
+
 -- name: update-object-with-state
 UPDATE objects SET state=$1 WHERE id=$2;
 

@@ -31,6 +31,7 @@ pub mod health;
 pub(crate) mod jose;
 pub(crate) mod jwks;
 pub mod kmip;
+pub(crate) mod kv;
 pub mod ms_dke;
 pub(crate) mod ocsp;
 pub mod root_redirect;

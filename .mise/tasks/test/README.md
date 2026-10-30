@@ -712,6 +712,59 @@ sequenceDiagram
 
 ---
 
+### `test:openbao`
+
+**Description:** The real OpenBao CLI (`bao kv`, container image `ghcr.io/openbao/openbao`) against the KMS Vault KV v2-compatible secret store. Runs in both FIPS and non-FIPS variants and needs only Docker and no submodule. The KMS validates `X-Vault-Token` against a throw-away OpenBao dev server (two `userpass` logins, `alice` and `bob`, each mapped to its own entity) reached through [`bao_lookup_proxy.py`](../../scripts/test/bao_lookup_proxy.py), which maps the KMS `/auth/token/lookup-self` call to OpenBao's `/v1` path.
+
+By default the KMS uses SQLite; CI also runs the scenario on PostgreSQL and MySQL through `test:openbao-psql` and `test:openbao-mysql` (thin wrappers that set `OPENBAO_DATABASE_URL`, with the `postgres` / `mysql` compose service already running). Set `OPENBAO_DATABASE_URL` (`postgresql://…` or `mysql://…`, e.g. `postgresql://kms:kms@127.0.0.1:5432/kms` after `docker compose up -d postgres`) to replay the whole scenario on that backend; the scenario also checks the 219-character path limit.
+
+The CLI always prefixes requests with `/v1/`, writes with `PUT` and first calls `GET /v1/sys/internal/ui/mounts/<path>` to detect KV v2; the KMS serves the KV routes on both `/<kv_mount>` and `/v1/<kv_mount>` for that reason. The scenario ([`test_openbao_kv.sh`](../../scripts/test/test_openbao_kv.sh)) covers put/get, versioning (`-version=1`), nested `list`, metadata, soft delete (including retained older versions), hard delete (including older versions and path recreation), and the `options.ttl` sweep (`kv_ttl_check_interval_secs = 1`). Unit tests verify that users without grants cannot write, read metadata, delete, or discover paths through `list`; the CLI scenario also checks, against the authenticated KMS, that eight concurrent writes yield only 200 or 409 with one version per success, that an invalid token is rejected and that `bob` gets 403 on read, write and hard delete of `alice`'s secret.
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:openbao"]
+        KMS7["Cosmian KMS<br/>kv_enabled"]
+    end
+
+    subgraph Docker["Docker"]
+        Bao["OpenBao CLI<br/>bao kv"]
+    end
+
+    Task --> KMS7
+    Bao --> |"PUT, GET on /v1/kv"| KMS7
+```
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Test as test:openbao script
+    participant KMS as KMS (kv_enabled)
+    participant Bao as bao CLI container
+
+    Test->>KMS: start KMS with the kv section
+    Test->>Bao: bao kv put, get, list, delete
+    Bao->>KMS: GET /v1/sys/internal/ui/mounts (KV v2 detection)
+    KMS-->>Bao: type kv, options version 2
+    Bao->>KMS: PUT, GET /v1/kv/data and /v1/kv/metadata
+    KMS-->>Bao: versioned secrets
+    Test->>KMS: write with options.ttl, wait for sweep
+    KMS-->>Test: 404 after expiry
+```
+
+### `test:openbao-kmip`
+
+**Description:** OpenBao auto-unseal through the KMS binary KMIP listener: the reverse direction of `test:openbao`, with OpenBao as a KMIP consumer. Runs in both variants and needs only Docker. The task generates a throw-away CA, a KMS server certificate and an OpenBao client certificate (`CN=openbao-seal`), starts the KMS with mTLS HTTPS and `[socket_server]` (KMIP over TCP/TLS), then creates and activates an AES-256 wrapping key as the OpenBao identity through `POST /kmip/2_1`. OpenBao (image `ghcr.io/openbao/openbao`, override with `BAO_IMAGE`) is configured with `seal "kmip"` (`endpoint`, `kms_key_id`, `client_cert`, `client_key`, `ca_cert`, `encrypt_alg = "AES_GCM"`).
+
+The scenario checks that `bao operator init` completes with seal type `kmip` (no software seal fallback), that OpenBao is unsealed, and that after a container restart it unseals itself again. [`check_kmip_seal_audit.py`](../../scripts/test/check_kmip_seal_audit.py) then reads the KMS log and asserts that KMIP `Encrypt` and `Decrypt` were served for the `openbao-seal` client certificate identity only, and that the raw requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode.
+
+To run it by hand: `mise run test:openbao-kmip --variant non-fips`. The KMS must listen with `[socket_server]` and `clients_ca_cert_file` set, and OpenBao must trust the CA that signed the KMS certificate (`server_name` must match a SAN of that certificate).
+
+---
+
 ## 7. PKI & Revocation
 
 **Tasks:** `test:ocsp`, `test:pki-revocation`
