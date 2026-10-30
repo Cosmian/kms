@@ -8,8 +8,8 @@
 use actix_web::{App, test as actix_test, web::Data};
 
 #[cfg(not(windows))]
-use crate::config::ClapConfig;
-use crate::{config::ServerParams, routes::access::get_crypto_officer_status};
+use crate::config::{ClapConfig, ServerParams};
+use crate::routes::access::get_crypto_officer_status;
 
 #[cfg(not(windows))]
 const PRINT_DEFAULT: &str = "--print-default-config";
