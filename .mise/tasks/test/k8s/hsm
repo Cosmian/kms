@@ -7,6 +7,7 @@
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "--image-tag <tag>" env="KMS_IMAGE_TAG" help="KMS image tag (default: chart appVersion)"
+#USAGE flag "--local-image <image>" env="KMS_LOCAL_IMAGE" help="Deploy <repository>:<tag> from the local Docker daemon (e.g. the image built by the packaging pipeline): it is loaded into Minikube and used with pullPolicy Never (incompatible with --image-tag)"
 #
 # The Helm values, the client-image Dockerfile and the PersistentVolumeClaim are extracted from the
 # "Kubernetes (Helm chart)" section of documentation/docs/hsm_support/<model>.md, so this test fails
@@ -22,11 +23,12 @@
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
 # shellcheck source=.mise/lib/k8s.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 MODEL="${usage_model:?--model is required}"
-VARIANT="${usage_variant:-fips}"
+LOCAL_IMAGE="${usage_local_image:-}"
 CHART_DIR="${MISE_CONFIG_ROOT}/charts/cosmian-kms"
 DOC="${MISE_CONFIG_ROOT}/documentation/docs/hsm_support/${MODEL}.md"
 IMAGE_TAG="${usage_image_tag:-$(awk '/^appVersion:/ {gsub(/["'\'']/, "", $2); print $2}' "${CHART_DIR}/Chart.yaml")}"
@@ -45,6 +47,24 @@ if [ "$VARIANT" = "fips" ]; then
   IMAGE_REPOSITORY="ghcr.io/cosmian/kms-fips"
 else
   IMAGE_REPOSITORY="ghcr.io/cosmian/kms"
+fi
+
+IMAGE_PULL_POLICY="IfNotPresent"
+if [ -n "$LOCAL_IMAGE" ]; then
+  [ -z "${usage_image_tag:-}" ] || print_error "--local-image cannot be combined with --image-tag or KMS_IMAGE_TAG"
+  IMAGE_TAG="${LOCAL_IMAGE##*:}"
+  IMAGE_REPOSITORY="${LOCAL_IMAGE%:*}"
+  [[ "$LOCAL_IMAGE" == *:* && "$IMAGE_TAG" != */* ]] ||
+    print_error "--local-image must be <repository>:<tag>, got: ${LOCAL_IMAGE}"
+  require_cmd docker
+  # Same approach as test:k8s:kms-image: a tarball loads reliably whatever the Minikube registry setup.
+  TMP_TAR=$(mktemp /tmp/k8s-hsm-image-XXXXXX.tar)
+  if ! docker save "$LOCAL_IMAGE" >"$TMP_TAR" || ! minikube image load "$TMP_TAR"; then
+    rm -f "$TMP_TAR"
+    print_error "Could not load ${LOCAL_IMAGE} into Minikube"
+  fi
+  rm -f "$TMP_TAR"
+  IMAGE_PULL_POLICY="Never"
 fi
 
 if [ -f "${HOME}/.cosmian/${MODEL}.sh" ]; then
@@ -91,7 +111,7 @@ _ckms() {
 }
 
 _decrypt_and_check() {
-  _ckms sym decrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+  _ckms sym decrypt --key-id "$KEY_ID" --data-encryption-algorithm "$ALGORITHM" \
     -o "${WS}/dec.txt" "${WS}/enc.bin" >/dev/null
   [ "$(_pod_sh "cat ${WS}/dec.txt")" = "$PLAINTEXT" ] ||
     print_error "Decrypted data differs from the plaintext"
@@ -217,7 +237,8 @@ rm -f "${TMP_DIR}/Dockerfile"
 
 print_status "Installing the chart with the documented values"
 helm install "$RELEASE" "$CHART_DIR" -n "$NS" -f "${TMP_DIR}/values.yaml" \
-  --set image.repository="$IMAGE_REPOSITORY" --wait --timeout 5m >/dev/null
+  --set image.repository="$IMAGE_REPOSITORY" --set image.tag="$IMAGE_TAG" \
+  --set image.pullPolicy="$IMAGE_PULL_POLICY" --wait --timeout 5m >/dev/null
 print_success "KMS pod ready"
 
 # ── 4. HSM key round trip through the KMS pod ────────────────────────────────
@@ -231,10 +252,21 @@ KEY_ID="hsm::${SLOT}::k8s_e2e_$(date +%s)"
 PLAINTEXT="Kubernetes HSM E2E ${MODEL} ${VARIANT} $(date -u +%FT%TZ)"
 _ckms sym keys create --algorithm aes --number-of-bits 256 "$KEY_ID" >/dev/null
 _pod_sh "printf '%s' '${PLAINTEXT}' > ${WS}/plain.txt"
-_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+ALGORITHM="aes-gcm"
+if [ "$VARIANT" = "fips" ]; then
+  # These vendor clients do not return an HSM-generated GCM IV; keep the FIPS gate closed.
+  if gcm_error=$(_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm aes-gcm \
+    -o "${WS}/enc.bin" "${WS}/plain.txt" 2>&1); then
+    print_error "FIPS AES-GCM unexpectedly succeeded; revalidate this vendor client's IV capabilities"
+  fi
+  [[ "$gcm_error" == *"AES-GCM encryption needs an IV generated inside the HSM"* ]] ||
+    print_error "FIPS AES-GCM failed for an unexpected reason: ${gcm_error}"
+  ALGORITHM="aes-cbc"
+fi
+_ckms sym encrypt --key-id "$KEY_ID" --data-encryption-algorithm "$ALGORITHM" \
   -o "${WS}/enc.bin" "${WS}/plain.txt" >/dev/null
 _decrypt_and_check
-print_success "${KEY_ID}: AES-GCM encryption and decryption through the KMS pod"
+print_success "${KEY_ID}: ${ALGORITHM} encryption and decryption through the KMS pod"
 
 # ── 5. Crypt2pay: the HSM key survives a pod restart (objects directory on the PVC) ─
 if [ "$MODEL" = "crypt2pay" ]; then

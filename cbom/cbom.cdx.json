@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:132c1a0a-ca9e-4ec2-bc5f-96e078ab45a8",
+  "serialNumber": "urn:uuid:4c8ae0e8-c169-4ce0-a11e-5d1446e57d76",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-01T10:08:43Z",
+    "timestamp": "2026-10-30T09:16:16Z",
     "tools": [
       {
         "type": "application",
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "kms-server",
       "name": "cosmian-kms",
-      "version": "5.28.0",
+      "version": "5.29.0",
       "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
       "externalReferences": [
         {
@@ -2508,6 +2508,742 @@
           "value": "true"
         }
       ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-chacha20",
+      "name": "ChaCha20",
+      "description": "KMIP Encrypt/Decrypt, unauthenticated stream cipher (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "stream-cipher",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encrypt",
+            "decrypt"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-x448",
+      "name": "X448",
+      "description": "X448 KMIP key type and key-pair generation (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "key-agree",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "generate"
+          ],
+          "classicalSecurityLevel": 224,
+          "nistQuantumSecurityLevel": 0,
+          "parameterSetIdentifier": "448"
+        },
+        "oid": "1.3.101.111"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-kem-1024",
+      "name": "ML-KEM-1024",
+      "description": "Post-quantum KEM (NIST FIPS 203 Level 5) via the OpenSSL ML-KEM provider (crate/crypto pqc module; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "1568"
+        },
+        "oid": "2.16.840.1.101.3.4.4.3"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hybrid-kem-x25519-mlkem768",
+      "name": "X25519MLKEM768 Hybrid KEM",
+      "description": "Native OpenSSL hybrid KEM X25519 + ML-KEM-768; KMIP Encrypt/Decrypt (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "256"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-hybrid-kem-x448-mlkem1024",
+      "name": "X448MLKEM1024 Hybrid KEM",
+      "description": "Native OpenSSL hybrid KEM X448 + ML-KEM-1024; KMIP Encrypt/Decrypt (non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "encapsulate",
+            "decapsulate"
+          ],
+          "classicalSecurityLevel": 224,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "448"
+        }
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-dsa-44",
+      "name": "ML-DSA-44",
+      "description": "KMIP Create Key Pair, Sign and Signature Verify (FIPS 204; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 2,
+          "parameterSetIdentifier": "ML-DSA-44"
+        },
+        "oid": "2.16.840.1.101.3.4.3.17"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-dsa-65",
+      "name": "ML-DSA-65",
+      "description": "KMIP Create Key Pair, Sign and Signature Verify (FIPS 204; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "ML-DSA-65"
+        },
+        "oid": "2.16.840.1.101.3.4.3.18"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-dsa-87",
+      "name": "ML-DSA-87",
+      "description": "KMIP Create Key Pair, Sign and Signature Verify (FIPS 204; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "ML-DSA-87"
+        },
+        "oid": "2.16.840.1.101.3.4.3.19"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-sha2-128s",
+      "name": "SLH-DSA-SHA2-128s",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "SLH-DSA-SHA2-128s"
+        },
+        "oid": "2.16.840.1.101.3.4.3.20"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-sha2-128f",
+      "name": "SLH-DSA-SHA2-128f",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "SLH-DSA-SHA2-128f"
+        },
+        "oid": "2.16.840.1.101.3.4.3.21"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-sha2-192s",
+      "name": "SLH-DSA-SHA2-192s",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "SLH-DSA-SHA2-192s"
+        },
+        "oid": "2.16.840.1.101.3.4.3.22"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-sha2-192f",
+      "name": "SLH-DSA-SHA2-192f",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "SLH-DSA-SHA2-192f"
+        },
+        "oid": "2.16.840.1.101.3.4.3.23"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-sha2-256s",
+      "name": "SLH-DSA-SHA2-256s",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "SLH-DSA-SHA2-256s"
+        },
+        "oid": "2.16.840.1.101.3.4.3.24"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-sha2-256f",
+      "name": "SLH-DSA-SHA2-256f",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "SLH-DSA-SHA2-256f"
+        },
+        "oid": "2.16.840.1.101.3.4.3.25"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-shake-128s",
+      "name": "SLH-DSA-SHAKE-128s",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "SLH-DSA-SHAKE-128s"
+        },
+        "oid": "2.16.840.1.101.3.4.3.26"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-shake-128f",
+      "name": "SLH-DSA-SHAKE-128f",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 1,
+          "parameterSetIdentifier": "SLH-DSA-SHAKE-128f"
+        },
+        "oid": "2.16.840.1.101.3.4.3.27"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-shake-192s",
+      "name": "SLH-DSA-SHAKE-192s",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "SLH-DSA-SHAKE-192s"
+        },
+        "oid": "2.16.840.1.101.3.4.3.28"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-shake-192f",
+      "name": "SLH-DSA-SHAKE-192f",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3,
+          "parameterSetIdentifier": "SLH-DSA-SHAKE-192f"
+        },
+        "oid": "2.16.840.1.101.3.4.3.29"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-shake-256s",
+      "name": "SLH-DSA-SHAKE-256s",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "SLH-DSA-SHAKE-256s"
+        },
+        "oid": "2.16.840.1.101.3.4.3.30"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-slh-dsa-shake-256f",
+      "name": "SLH-DSA-SHAKE-256f",
+      "description": "KMIP Create Key Pair (FIPS 205; non-FIPS only)",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "executionEnvironment": "software-plain-ram",
+          "implementationLevel": "library",
+          "certificationLevel": [],
+          "cryptoFunctions": [
+            "sign",
+            "verify"
+          ],
+          "classicalSecurityLevel": 256,
+          "nistQuantumSecurityLevel": 5,
+          "parameterSetIdentifier": "SLH-DSA-SHAKE-256f"
+        },
+        "oid": "2.16.840.1.101.3.4.3.31"
+      },
+      "properties": [
+        {
+          "name": "fips140-3:approved",
+          "value": "false"
+        },
+        {
+          "name": "cosmian:non-fips-feature-required",
+          "value": "true"
+        },
+        {
+          "name": "cosmian:found-in-source",
+          "value": "true"
+        }
+      ]
     }
   ],
   "dependencies": [
@@ -2589,7 +3325,27 @@
         "algo-sha3-384",
         "algo-sha3-512",
         "algo-shake-128",
-        "algo-shake-256"
+        "algo-shake-256",
+        "algo-chacha20",
+        "algo-x448",
+        "algo-ml-kem-1024",
+        "algo-hybrid-kem-x25519-mlkem768",
+        "algo-hybrid-kem-x448-mlkem1024",
+        "algo-ml-dsa-44",
+        "algo-ml-dsa-65",
+        "algo-ml-dsa-87",
+        "algo-slh-dsa-sha2-128s",
+        "algo-slh-dsa-sha2-128f",
+        "algo-slh-dsa-sha2-192s",
+        "algo-slh-dsa-sha2-192f",
+        "algo-slh-dsa-sha2-256s",
+        "algo-slh-dsa-sha2-256f",
+        "algo-slh-dsa-shake-128s",
+        "algo-slh-dsa-shake-128f",
+        "algo-slh-dsa-shake-192s",
+        "algo-slh-dsa-shake-192f",
+        "algo-slh-dsa-shake-256s",
+        "algo-slh-dsa-shake-256f"
       ]
     },
     {
@@ -2972,6 +3728,126 @@
     },
     {
       "ref": "algo-shake-256",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-chacha20",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-x448",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ml-kem-1024",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-hybrid-kem-x25519-mlkem768",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-hybrid-kem-x448-mlkem1024",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ml-dsa-44",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ml-dsa-65",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-ml-dsa-87",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-sha2-128s",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-sha2-128f",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-sha2-192s",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-sha2-192f",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-sha2-256s",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-sha2-256f",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-shake-128s",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-shake-128f",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-shake-192s",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-shake-192f",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-shake-256s",
+      "dependsOn": [
+        "lib-openssl"
+      ]
+    },
+    {
+      "ref": "algo-slh-dsa-shake-256f",
       "dependsOn": [
         "lib-openssl"
       ]

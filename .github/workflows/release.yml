@@ -473,6 +473,7 @@ jobs:
           fi
 
       - name: Merge release branch into develop
+        shell: bash
         run: |
           RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
           TAG="${{ inputs.new_version }}"
@@ -490,9 +491,9 @@ jobs:
           if [ "$DEVELOP_VERSION" = "$TAG" ]; then
             echo "develop is already at $TAG — merge already done in a previous run, skipping."
           else
-            # --no-ff keeps the merge commit visible in develop history.
-            git merge --no-ff "origin/$RELEASE_BRANCH" \
-              -m "build: merge $RELEASE_BRANCH into develop"
+            # develop may not contain the helper yet; use the release branch copy.
+            git show "origin/$RELEASE_BRANCH:.mise/scripts/release/merge_into_develop.sh" \
+              | bash -s -- "origin/$RELEASE_BRANCH"
             git push origin develop
             echo "Merged '$RELEASE_BRANCH' into 'develop'."
           fi
