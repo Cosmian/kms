@@ -168,6 +168,14 @@ pub(crate) async fn recursively_revoke_key(
             count += 1;
             continue;
         }
+        // Opaque Objects have no Activate operation, so they stay Pre-Active after Register
+        // and must still be revocable.
+        let current_state =
+            if object_type == ObjectType::OpaqueObject && current_state == State::PreActive {
+                State::Active
+            } else {
+                current_state
+            };
         let Some(target_state) = revocation_target_state(&revocation_reason, current_state) else {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
