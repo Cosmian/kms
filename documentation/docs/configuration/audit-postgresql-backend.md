@@ -42,7 +42,7 @@ below).
 For a hardened deployment, a database administrator can provision both tables separately and grant
 the KMS role only `SELECT` and `INSERT` on `kms_audit_events`, plus `SELECT`, `INSERT`, and `UPDATE` on
 `kms_audit_control`, with no DDL rights; see [the schema reference](./database/tables.md#postgresql-audit-database)
-and [the exact DDL](https://github.com/Cosmian/kms/blob/5.29.0/crate/server_database/src/stores/audit/audit.sql).
+and [the exact DDL](https://github.com/Cosmian/kms/blob/develop/crate/server_database/src/stores/audit/audit.sql).
 The KMS then skips schema creation and only checks that every required column is present and that
 the four append-only triggers (`kms_audit_no_update`, `kms_audit_no_delete`,
 `kms_audit_no_truncate`, `kms_audit_no_insert_sealed`) exist and are enabled; it refuses to start

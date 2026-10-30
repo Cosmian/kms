@@ -188,7 +188,7 @@ These relationships are managed by the application layer (`crate/server_database
 
 Used only by the [PostgreSQL audit backend](../audit-postgresql-backend.md)
 (`--audit-postgres-url`), in a database distinct from the object store. Its schema is defined in
-[`audit.sql`](https://github.com/Cosmian/kms/blob/5.29.0/crate/server_database/src/stores/audit/audit.sql).
+[`audit.sql`](https://github.com/Cosmian/kms/blob/develop/crate/server_database/src/stores/audit/audit.sql).
 
 ### `kms_audit_events`
 
