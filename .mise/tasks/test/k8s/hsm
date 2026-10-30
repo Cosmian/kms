@@ -7,7 +7,7 @@
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "--image-tag <tag>" env="KMS_IMAGE_TAG" help="KMS image tag (default: chart appVersion)"
-#USAGE flag "--build-image" help="Build this checkout's KMS image with Nix and load it into Minikube (Linux only; incompatible with --image-tag)"
+#USAGE flag "--local-image <image>" env="KMS_LOCAL_IMAGE" help="Deploy <repository>:<tag> from the local Docker daemon (e.g. the image built by the packaging pipeline): it is loaded into Minikube and used with pullPolicy Never (incompatible with --image-tag)"
 #
 # The Helm values, the client-image Dockerfile and the PersistentVolumeClaim are extracted from the
 # "Kubernetes (Helm chart)" section of documentation/docs/hsm_support/<model>.md, so this test fails
@@ -28,7 +28,7 @@ kms_init_env "${usage_variant:-fips}" "static"
 source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 MODEL="${usage_model:?--model is required}"
-BUILD_IMAGE="${usage_build_image:-false}"
+LOCAL_IMAGE="${usage_local_image:-}"
 CHART_DIR="${MISE_CONFIG_ROOT}/charts/cosmian-kms"
 DOC="${MISE_CONFIG_ROOT}/documentation/docs/hsm_support/${MODEL}.md"
 IMAGE_TAG="${usage_image_tag:-$(awk '/^appVersion:/ {gsub(/["'\'']/, "", $2); print $2}' "${CHART_DIR}/Chart.yaml")}"
@@ -50,14 +50,20 @@ else
 fi
 
 IMAGE_PULL_POLICY="IfNotPresent"
-if [ "$BUILD_IMAGE" = "true" ]; then
-  [ -z "${usage_image_tag:-}" ] || print_error "--build-image cannot be combined with --image-tag or KMS_IMAGE_TAG"
-  require_cmd mise
-  # Re-evaluate the checkout instead of reusing a result symlink from an older revision.
-  FORCE_REBUILD=true mise run build:docker --variant "$VARIANT"
-  IMAGE_REPOSITORY="cosmian-kms"
-  IMAGE_TAG="$(bash "${MISE_CONFIG_ROOT}/.mise/scripts/release/get_version.sh")-${VARIANT}"
-  minikube image load "${MISE_CONFIG_ROOT}/result-docker-${VARIANT}-static"
+if [ -n "$LOCAL_IMAGE" ]; then
+  [ -z "${usage_image_tag:-}" ] || print_error "--local-image cannot be combined with --image-tag or KMS_IMAGE_TAG"
+  IMAGE_TAG="${LOCAL_IMAGE##*:}"
+  IMAGE_REPOSITORY="${LOCAL_IMAGE%:*}"
+  [[ "$LOCAL_IMAGE" == *:* && "$IMAGE_TAG" != */* ]] ||
+    print_error "--local-image must be <repository>:<tag>, got: ${LOCAL_IMAGE}"
+  require_cmd docker
+  # Same approach as test:k8s:kms-image: a tarball loads reliably whatever the Minikube registry setup.
+  TMP_TAR=$(mktemp /tmp/k8s-hsm-image-XXXXXX.tar)
+  if ! docker save "$LOCAL_IMAGE" >"$TMP_TAR" || ! minikube image load "$TMP_TAR"; then
+    rm -f "$TMP_TAR"
+    print_error "Could not load ${LOCAL_IMAGE} into Minikube"
+  fi
+  rm -f "$TMP_TAR"
   IMAGE_PULL_POLICY="Never"
 fi
 

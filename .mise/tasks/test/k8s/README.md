@@ -270,7 +270,7 @@ stop working.
    the host's `/etc/proteccio` or `/etc/c2p` (with the read-only/trace adjustments the guide
    requires), and installs the chart with the documented values.
 2. By default, `--variant fips` uses `ghcr.io/cosmian/kms-fips` (with the documented `command` override for Proteccio) and asserts `/version` reports a FIPS OpenSSL; `--variant non-fips` uses `ghcr.io/cosmian/kms` and drops the `command:` line. `--image-tag` (or `KMS_IMAGE_TAG`) selects a published tag; the default is the chart's `appVersion`.
-   With `--build-image`, the task instead builds the selected variant from the current checkout using `build:docker`, loads its tarball into Minikube, and sets `image.pullPolicy=Never`. This requires a Linux Nix builder and cannot be combined with `--image-tag` or `KMS_IMAGE_TAG`.
+   With `--local-image <repository>:<tag>` (or `KMS_LOCAL_IMAGE`), the task instead loads that image from the local Docker daemon into Minikube and sets `image.pullPolicy=Never`, so no image is built or pulled by the task. It cannot be combined with `--image-tag` or `KMS_IMAGE_TAG`.
 3. Creates an `hsm::<slot>::…` AES key and verifies encryption and decryption through `ckms` in the KMS pod: AES-GCM for non-FIPS, AES-CBC for FIPS. The FIPS test also verifies that AES-GCM is rejected because these vendor clients supply no HSM-generated IV. AES-CBC is only a deployment round-trip check, not a recommendation for unauthenticated application encryption. The key is destroyed, including on failure.
 4. Crypt2pay only: deletes the pod and decrypts again with the same HSM key (objects directory on
    the PVC).
@@ -281,17 +281,17 @@ stop working.
 the task starts and stops the tunnel). Locally, `~/.cosmian/<model>.sh` is sourced when present.
 Not part of `test:k8s` (it needs a live HSM).
 
-**In CI:** extra steps of the `hsm-upstream` job in `test_all.yml`, after `test:hsm-<model>`, so they share its secrets and its per-HSM concurrency group (the HSMs refuse concurrent CI runs). Both variants use `--build-image` so tag tests do not depend on release images being published yet. Upstream repository only.
+**In CI:** the `test-k8s-hsm` job of `packaging-docker.yml`, after the Docker images are built and pushed by `nix-docker-image`: it pulls the amd64 FIPS and non-FIPS images and runs the task with `--local-image`, so nothing is built twice. It shares the per-HSM concurrency group of the `hsm-upstream` job of `test_all.yml` (the HSMs refuse concurrent CI runs). It runs wherever `packaging-docker.yml` runs (tags, schedule, manual dispatch), not on pull requests, and only in the upstream repository.
 
 ```bash
 mise run test:k8s:hsm --model proteccio --variant fips
 mise run test:k8s:hsm --model crypt2pay --variant non-fips
 
-# Test this checkout rather than a published image (Linux + Nix):
-mise run test:k8s:hsm --model proteccio --variant fips --build-image
+# Test an image already present in the local Docker daemon:
+mise run test:k8s:hsm --model proteccio --variant fips --local-image ghcr.io/cosmian/kms-fips:<tag>
 ```
 
-Image-preparation regression tests run without a cluster or HSM:
+Image-loading regression tests run without a cluster or HSM:
 
 ```bash
 python3 .mise/scripts/test/test_k8s_hsm_images.py
