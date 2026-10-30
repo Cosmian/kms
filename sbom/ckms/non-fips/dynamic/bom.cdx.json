@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:c1f52613-02cb-45f4-81b4-6bee445fd4f1",
+  "serialNumber": "urn:uuid:8c3590fc-6d16-4616-8594-1305178ceb7e",
   "metadata": {
-    "timestamp": "2026-10-01T12:42:22.900667+00:00",
+    "timestamp": "2026-10-30T01:41:41.727234+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,19 +24,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/w41jmn3ji7rcrrgk9pj1343davdc65fx-cosmian-kms-cli-dynamic-5.28.0.drv",
+      "bom-ref": "/nix/store/hfbsk024dn01ypmns3n7a2657i55rhix-cosmian-kms-cli-dynamic-5.29.0.drv",
       "name": "cosmian-kms-cli-dynamic",
-      "version": "5.28.0",
-      "purl": "pkg:nix/cosmian-kms-cli-dynamic@5.28.0",
-      "cpe": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.28.0:*:*:*:*:*:*:*",
+      "version": "5.29.0",
+      "purl": "pkg:nix/cosmian-kms-cli-dynamic@5.29.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.29.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/iccbbfipj6hw95vh2qr3dqg42p5ivzj8-cosmian-kms-cli-dynamic-5.28.0"
+          "value": "/nix/store/9vqxdg0skh855xiilda942bq4j44lhw7-cosmian-kms-cli-dynamic-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/w41jmn3ji7rcrrgk9pj1343davdc65fx-cosmian-kms-cli-dynamic-5.28.0.drv"
+          "value": "/nix/store/hfbsk024dn01ypmns3n7a2657i55rhix-cosmian-kms-cli-dynamic-5.29.0.drv"
         }
       ]
     }
@@ -137,10 +137,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-http@3.13.6",
+      "bom-ref": "pkg:cargo/actix-http@3.19.0",
       "name": "actix-http",
-      "version": "3.13.6",
-      "purl": "pkg:cargo/actix-http@3.13.6",
+      "version": "3.19.0",
+      "purl": "pkg:cargo/actix-http@3.19.0",
       "description": "HTTP types and services for the Actix ecosystem",
       "licenses": [
         {
@@ -164,7 +164,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:actix:actix-http:3.13.6:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix:actix-http:3.19.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -261,10 +261,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-rt@2.11.0",
+      "bom-ref": "pkg:cargo/actix-rt@2.15.0",
       "name": "actix-rt",
-      "version": "2.11.0",
-      "purl": "pkg:cargo/actix-rt@2.11.0",
+      "version": "2.15.0",
+      "purl": "pkg:cargo/actix-rt@2.15.0",
       "description": "Tokio-based single-threaded async runtime for the Actix ecosystem",
       "licenses": [
         {
@@ -288,14 +288,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:actix-rt:actix-rt:2.11.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix-rt:actix-rt:2.15.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-server@2.6.0",
+      "bom-ref": "pkg:cargo/actix-server@2.10.0",
       "name": "actix-server",
-      "version": "2.6.0",
-      "purl": "pkg:cargo/actix-server@2.6.0",
+      "version": "2.10.0",
+      "purl": "pkg:cargo/actix-server@2.10.0",
       "description": "General purpose TCP server built for the Actix ecosystem",
       "licenses": [
         {
@@ -310,7 +310,7 @@
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/actix/actix-net/tree/master/actix-server"
+          "url": "https://github.com/actix/actix-net/tree/main/actix-server"
         }
       ],
       "properties": [
@@ -319,7 +319,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:actix-server:actix-server:2.6.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix-server:actix-server:2.10.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -385,10 +385,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-tls@3.5.0",
+      "bom-ref": "pkg:cargo/actix-tls@3.6.1",
       "name": "actix-tls",
-      "version": "3.5.0",
-      "purl": "pkg:cargo/actix-tls@3.5.0",
+      "version": "3.6.1",
+      "purl": "pkg:cargo/actix-tls@3.6.1",
       "description": "TLS acceptor and connector services for Actix ecosystem",
       "licenses": [
         {
@@ -412,7 +412,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:actix-tls:actix-tls:3.5.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix-tls:actix-tls:3.6.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -447,10 +447,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-web@4.14.0",
+      "bom-ref": "pkg:cargo/actix-web@4.17.0",
       "name": "actix-web",
-      "version": "4.14.0",
-      "purl": "pkg:cargo/actix-web@4.14.0",
+      "version": "4.17.0",
+      "purl": "pkg:cargo/actix-web@4.17.0",
       "description": "Actix Web is a powerful, pragmatic, and extremely fast web framework for Rust",
       "licenses": [
         {
@@ -474,14 +474,14 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:actix:actix-web:4.14.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix:actix-web:4.17.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-web-codegen@4.3.0",
+      "bom-ref": "pkg:cargo/actix-web-codegen@4.4.0",
       "name": "actix-web-codegen",
-      "version": "4.3.0",
-      "purl": "pkg:cargo/actix-web-codegen@4.3.0",
+      "version": "4.4.0",
+      "purl": "pkg:cargo/actix-web-codegen@4.4.0",
       "description": "Routing and runtime macros for Actix Web",
       "licenses": [
         {
@@ -505,7 +505,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:actix-web-codegen:actix-web-codegen:4.3.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix-web-codegen:actix-web-codegen:4.4.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -692,6 +692,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/aes-kw@0.2.1",
+      "name": "aes-kw",
+      "version": "0.2.1",
+      "purl": "pkg:cargo/aes-kw@0.2.1",
+      "description": "NIST 800-38F AES Key Wrap (KW) and Key Wrap with Padding (KWP) modes",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/key-wraps/tree/aes-kw"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:aes-kw:aes-kw:0.2.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/aes-kw@0.3.1",
       "name": "aes-kw",
       "version": "0.3.1",
@@ -875,6 +906,34 @@
         }
       ],
       "cpe": "cpe:2.3:a:anes:anes:0.1.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/annotate-snippets@0.12.16",
+      "name": "annotate-snippets",
+      "version": "0.12.16",
+      "purl": "pkg:cargo/annotate-snippets@0.12.16",
+      "description": "Format diagnostic reports, including highlighting snippets of text",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-lang/annotate-snippets-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:annotate-snippets:annotate-snippets:0.12.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -1080,6 +1139,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/arcstr@1.2.0",
+      "name": "arcstr",
+      "version": "1.2.0",
+      "purl": "pkg:cargo/arcstr@1.2.0",
+      "description": "A better reference-counted string type, with zero-cost (allocation-free) support for string literals, and reference coun",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT OR Zlib"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Thom Chiovoloni"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/thomcc/arcstr"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:arcstr:arcstr:1.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/argon2@0.5.3",
       "name": "argon2",
       "version": "0.5.3",
@@ -1107,6 +1197,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:argon2_project:argon2:0.5.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/arraydeque@0.5.1",
+      "name": "arraydeque",
+      "version": "0.5.1",
+      "purl": "pkg:cargo/arraydeque@0.5.1",
+      "description": "A ring buffer with a fixed capacity, which can be stored on the stack.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "andylokandy"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/andylokandy/arraydeque"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:arraydeque:arraydeque:0.5.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -1296,10 +1417,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/async-recursion@1.1.1",
+      "bom-ref": "pkg:cargo/async-recursion@1.2.0",
       "name": "async-recursion",
-      "version": "1.1.1",
-      "purl": "pkg:cargo/async-recursion@1.1.1",
+      "version": "1.2.0",
+      "purl": "pkg:cargo/async-recursion@1.2.0",
       "description": "Recursion for async functions",
       "licenses": [
         {
@@ -1323,7 +1444,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:async-recursion:async-recursion:1.1.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:async-recursion:async-recursion:1.2.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -1389,10 +1510,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/async-trait@0.1.91",
+      "bom-ref": "pkg:cargo/async-trait@0.1.92",
       "name": "async-trait",
-      "version": "0.1.91",
-      "purl": "pkg:cargo/async-trait@0.1.91",
+      "version": "0.1.92",
+      "purl": "pkg:cargo/async-trait@0.1.92",
       "description": "Type erasure for async trait methods",
       "licenses": [
         {
@@ -1416,7 +1537,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:async-trait:async-trait:0.1.91:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:async-trait:async-trait:0.1.92:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -1776,6 +1897,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/base16ct@1.0.0",
+      "name": "base16ct",
+      "version": "1.0.0",
+      "purl": "pkg:cargo/base16ct@1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:base16ct:base16ct:1.0.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/base64@0.20.0",
       "name": "base64",
       "version": "0.20.0",
@@ -1869,6 +2020,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/base64@0.23.1",
+      "name": "base64",
+      "version": "0.23.1",
+      "purl": "pkg:cargo/base64@0.23.1",
+      "description": "encodes and decodes base64 as bytes or utf8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Marshall Pierce"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/marshallpierce/rust-base64"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:base64:base64:0.23.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/base64ct@1.8.3",
       "name": "base64ct",
       "version": "1.8.3",
@@ -1899,10 +2081,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/bit-set@0.8.0",
+      "bom-ref": "pkg:cargo/bit-set@0.11.1",
       "name": "bit-set",
-      "version": "0.8.0",
-      "purl": "pkg:cargo/bit-set@0.8.0",
+      "version": "0.11.1",
+      "purl": "pkg:cargo/bit-set@0.11.1",
       "description": "A set of bits",
       "licenses": [
         {
@@ -1917,7 +2099,7 @@
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/contain-rs/bit-set"
+          "url": "https://github.com/contain-rs/bit-vec"
         }
       ],
       "properties": [
@@ -1926,14 +2108,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:bit-set:bit-set:0.8.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:bit-set:bit-set:0.11.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/bit-vec@0.8.0",
+      "bom-ref": "pkg:cargo/bit-vec@0.9.1",
       "name": "bit-vec",
-      "version": "0.8.0",
-      "purl": "pkg:cargo/bit-vec@0.8.0",
+      "version": "0.9.1",
+      "purl": "pkg:cargo/bit-vec@0.9.1",
       "description": "A vector of bits",
       "licenses": [
         {
@@ -1957,14 +2139,138 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:bit-vec:bit-vec:0.8.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:bit-vec:bit-vec:0.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/bitflags@2.13.1",
+      "bom-ref": "pkg:cargo/bit-vec@0.10.1",
+      "name": "bit-vec",
+      "version": "0.10.1",
+      "purl": "pkg:cargo/bit-vec@0.10.1",
+      "description": "A vector of bits",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Alexis Beingessner"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/contain-rs/bit-vec"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:bit-vec:bit-vec:0.10.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitfields@1.0.3",
+      "name": "bitfields",
+      "version": "1.0.3",
+      "purl": "pkg:cargo/bitfields@1.0.3",
+      "description": "Macro for generating flexible bitfields. Useful for low-level code (embedded or emulators).",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Gregory Gaines"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/gregorygaines/bitfields-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:bitfields:bitfields:1.0.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitfields-impl@1.0.3",
+      "name": "bitfields-impl",
+      "version": "1.0.3",
+      "purl": "pkg:cargo/bitfields-impl@1.0.3",
+      "description": "Macro for generating flexible bitfields. Useful for low-level code (embedded or emulators).",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Gregory Gaines"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/gregorygaines/bitfields-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:bitfields-impl:bitfields-impl:1.0.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitflags@1.3.2",
       "name": "bitflags",
-      "version": "2.13.1",
-      "purl": "pkg:cargo/bitflags@2.13.1",
+      "version": "1.3.2",
+      "purl": "pkg:cargo/bitflags@1.3.2",
+      "description": "A macro to generate structures which behave like bitflags.\\n",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "The Rust Project Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bitflags/bitflags"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:bitflags:bitflags:1.3.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitflags@2.13.2",
+      "name": "bitflags",
+      "version": "2.13.2",
+      "purl": "pkg:cargo/bitflags@2.13.2",
       "licenses": [
         {
           "license": {
@@ -1987,7 +2293,35 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:bitflags:bitflags:2.13.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:bitflags:bitflags:2.13.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitvec@1.1.1",
+      "name": "bitvec",
+      "version": "1.1.1",
+      "purl": "pkg:cargo/bitvec@1.1.1",
+      "description": "Addresses memory by bits, for packed collections and bitfields",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bitvecto-rs/bitvec"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-vendor-product"
+        }
+      ],
+      "cpe": "cpe:2.3:a:bitvec_project:bitvec:1.1.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -2084,6 +2418,128 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/block-padding@0.3.3",
+      "name": "block-padding",
+      "version": "0.3.3",
+      "purl": "pkg:cargo/block-padding@0.3.3",
+      "description": "Padding and unpadding of messages divided into blocks.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/utils"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:block-padding:block-padding:0.3.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/blowfish@0.9.1",
+      "name": "blowfish",
+      "version": "0.9.1",
+      "purl": "pkg:cargo/blowfish@0.9.1",
+      "description": "Blowfish block cipher",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-ciphers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:blowfish:blowfish:0.9.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/borsh@1.8.1",
+      "name": "borsh",
+      "version": "1.8.1",
+      "purl": "pkg:cargo/borsh@1.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Near Inc"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/near/borsh-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:borsh:borsh:1.8.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/borsh-derive@1.8.1",
+      "name": "borsh-derive",
+      "version": "1.8.1",
+      "purl": "pkg:cargo/borsh-derive@1.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Near Inc"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/near/borsh-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:borsh-derive:borsh-derive:1.8.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/bstr@1.13.0",
       "name": "bstr",
       "version": "1.13.0",
@@ -2143,6 +2599,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:btoi:btoi:0.5.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/buffer-redux@1.1.0",
+      "name": "buffer-redux",
+      "version": "1.1.0",
+      "purl": "pkg:cargo/buffer-redux@1.1.0",
+      "description": "Drop-in replacements for buffered I/O in `std::io` with extra features.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "dignifiedquire, Austin Bonander"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dignifiedquire/buffer-redux"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:buffer-redux:buffer-redux:1.1.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -2301,6 +2788,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/camellia@0.1.0",
+      "name": "camellia",
+      "version": "0.1.0",
+      "purl": "pkg:cargo/camellia@0.1.0",
+      "description": "Camellia block cipher",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-ciphers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:camellia:camellia:0.1.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/cast@0.3.0",
       "name": "cast",
       "version": "0.3.0",
@@ -2332,10 +2850,11 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/cc@1.4.0",
-      "name": "cc",
-      "version": "1.4.0",
-      "purl": "pkg:cargo/cc@1.4.0",
+      "bom-ref": "pkg:cargo/cast5@0.11.1",
+      "name": "cast5",
+      "version": "0.11.1",
+      "purl": "pkg:cargo/cast5@0.11.1",
+      "description": "CAST5 block cipher",
       "licenses": [
         {
           "license": {
@@ -2344,8 +2863,35 @@
         }
       ],
       "supplier": {
-        "name": "Alex Crichton"
+        "name": "RustCrypto Developers"
       },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-ciphers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:cast5:cast5:0.11.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cc@1.8.0",
+      "name": "cc",
+      "version": "1.8.0",
+      "purl": "pkg:cargo/cc@1.8.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
       "externalReferences": [
         {
           "type": "vcs",
@@ -2358,7 +2904,38 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:cc:cc:1.4.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:cc:cc:1.8.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cfb-mode@0.8.2",
+      "name": "cfb-mode",
+      "version": "0.8.2",
+      "purl": "pkg:cargo/cfb-mode@0.8.2",
+      "description": "Cipher Feedback (CFB) block cipher mode of operation",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-modes"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:cfb-mode:cfb-mode:0.8.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -2696,10 +3273,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/clap@4.6.5",
+      "bom-ref": "pkg:cargo/clap@4.6.7",
       "name": "clap",
-      "version": "4.6.5",
-      "purl": "pkg:cargo/clap@4.6.5",
+      "version": "4.6.7",
+      "purl": "pkg:cargo/clap@4.6.7",
       "description": "A simple to use, efficient, and full-featured Command Line Argument Parser",
       "licenses": [
         {
@@ -2720,14 +3297,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:clap:clap:4.6.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:clap:clap:4.6.7:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/clap-config-fallback@0.1.12",
+      "bom-ref": "pkg:cargo/clap-config-fallback@0.1.13",
       "name": "clap-config-fallback",
-      "version": "0.1.12",
-      "purl": "pkg:cargo/clap-config-fallback@0.1.12",
+      "version": "0.1.13",
+      "purl": "pkg:cargo/clap-config-fallback@0.1.13",
       "description": "Add config file fallback to clap while preserving parsing, validation and error handling",
       "licenses": [
         {
@@ -2751,14 +3328,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:clap-config-fallback:clap-config-fallback:0.1.12:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:clap-config-fallback:clap-config-fallback:0.1.13:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/clap-config-fallback-derive@0.1.12",
+      "bom-ref": "pkg:cargo/clap-config-fallback-derive@0.1.13",
       "name": "clap-config-fallback-derive",
-      "version": "0.1.12",
-      "purl": "pkg:cargo/clap-config-fallback-derive@0.1.12",
+      "version": "0.1.13",
+      "purl": "pkg:cargo/clap-config-fallback-derive@0.1.13",
       "description": "Macro implementation of #[derive(ConfigParser)]",
       "licenses": [
         {
@@ -2782,14 +3359,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:clap-config-fallback-derive:clap-config-fallback-derive:0.1.12:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:clap-config-fallback-derive:clap-config-fallback-derive:0.1.13:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/clap_builder@4.6.5",
+      "bom-ref": "pkg:cargo/clap_builder@4.6.7",
       "name": "clap_builder",
-      "version": "4.6.5",
-      "purl": "pkg:cargo/clap_builder@4.6.5",
+      "version": "4.6.7",
+      "purl": "pkg:cargo/clap_builder@4.6.7",
       "description": "A simple to use, efficient, and full-featured Command Line Argument Parser",
       "licenses": [
         {
@@ -2810,14 +3387,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:clap_builder:clap_builder:4.6.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:clap_builder:clap_builder:4.6.7:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/clap_derive@4.6.4",
+      "bom-ref": "pkg:cargo/clap_derive@4.6.7",
       "name": "clap_derive",
-      "version": "4.6.4",
-      "purl": "pkg:cargo/clap_derive@4.6.4",
+      "version": "4.6.7",
+      "purl": "pkg:cargo/clap_derive@4.6.7",
       "description": "Parse command line argument by defining a struct, derive crate.",
       "licenses": [
         {
@@ -2838,7 +3415,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:clap_derive:clap_derive:4.6.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:clap_derive:clap_derive:4.6.7:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -2867,6 +3444,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:clap_lex:clap_lex:1.1.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cmac@0.7.2",
+      "name": "cmac",
+      "version": "0.7.2",
+      "purl": "pkg:cargo/cmac@0.7.2",
+      "description": "Generic implementation of Cipher-based Message Authentication Code",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/MACs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:cmac:cmac:0.7.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -2958,10 +3566,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/combine@4.6.7",
+      "bom-ref": "pkg:cargo/combine@4.6.9",
       "name": "combine",
-      "version": "4.6.7",
-      "purl": "pkg:cargo/combine@4.6.7",
+      "version": "4.6.9",
+      "purl": "pkg:cargo/combine@4.6.9",
       "description": "Fast parser combinators on arbitrary streams with zero-copy support.",
       "licenses": [
         {
@@ -2985,7 +3593,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:combine:combine:4.6.7:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:combine:combine:4.6.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -3388,6 +3996,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/core_detect@1.0.0",
+      "name": "core_detect",
+      "version": "1.0.0",
+      "purl": "pkg:cargo/core_detect@1.0.0",
+      "description": "A `no_std` version of the `std::is_x86_feature_detected!` macro.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Thom Chiovoloni"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/thomcc/core_detect"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:core_detect:core_detect:1.0.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/cpubits@0.1.1",
       "name": "cpubits",
       "version": "0.1.1",
@@ -3475,6 +4114,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:cpufeatures:cpufeatures:0.3.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crc24@0.1.6",
+      "name": "crc24",
+      "version": "0.1.6",
+      "purl": "pkg:cargo/crc24@0.1.6",
+      "description": "CRC-24 implementation (IETF RFC2440-compatible)",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Sebastian Gesemann"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/sellibitze/crc24-rs.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:crc24:crc24:0.1.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -3744,6 +4414,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/crypto-bigint@0.7.6",
+      "name": "crypto-bigint",
+      "version": "0.7.6",
+      "purl": "pkg:cargo/crypto-bigint@0.7.6",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/crypto-bigint"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:crypto-bigint:crypto-bigint:0.7.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/crypto-common@0.1.7",
       "name": "crypto-common",
       "version": "0.1.7",
@@ -3990,10 +4690,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ctutils@0.4.2",
+      "bom-ref": "pkg:cargo/ctutils@0.4.5",
       "name": "ctutils",
-      "version": "0.4.2",
-      "purl": "pkg:cargo/ctutils@0.4.2",
+      "version": "0.4.5",
+      "purl": "pkg:cargo/ctutils@0.4.5",
       "licenses": [
         {
           "license": {
@@ -4016,7 +4716,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:ctutils:ctutils:0.4.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:ctutils:ctutils:0.4.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -4076,6 +4776,33 @@
         }
       ],
       "cpe": "cpe:2.3:a:curve25519-dalek-derive:curve25519-dalek-derive:0.1.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cx448@0.1.1",
+      "name": "cx448",
+      "version": "0.1.1",
+      "purl": "pkg:cargo/cx448@0.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dignifiedquire/cx448"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:cx448:cx448:0.1.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -4139,6 +4866,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/darling@0.23.0",
+      "name": "darling",
+      "version": "0.23.0",
+      "purl": "pkg:cargo/darling@0.23.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Ted Driggs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/darling"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:darling:darling:0.23.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/darling_core@0.20.11",
       "name": "darling_core",
       "version": "0.20.11",
@@ -4199,6 +4956,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/darling_core@0.23.0",
+      "name": "darling_core",
+      "version": "0.23.0",
+      "purl": "pkg:cargo/darling_core@0.23.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Ted Driggs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/darling"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:darling_core:darling_core:0.23.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/darling_macro@0.20.11",
       "name": "darling_macro",
       "version": "0.20.11",
@@ -4256,6 +5043,36 @@
         }
       ],
       "cpe": "cpe:2.3:a:darling_macro:darling_macro:0.21.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/darling_macro@0.23.0",
+      "name": "darling_macro",
+      "version": "0.23.0",
+      "purl": "pkg:cargo/darling_macro@0.23.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Ted Driggs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/TedDriggs/darling"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:darling_macro:darling_macro:0.23.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -4321,10 +5138,41 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/deadpool@0.12.3",
+      "bom-ref": "pkg:cargo/dbl@0.3.2",
+      "name": "dbl",
+      "version": "0.3.2",
+      "purl": "pkg:cargo/dbl@0.3.2",
+      "description": "Double operation in Galois Field (GF)",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/utils"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:dbl:dbl:0.3.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/deadpool@0.13.1",
       "name": "deadpool",
-      "version": "0.12.3",
-      "purl": "pkg:cargo/deadpool@0.12.3",
+      "version": "0.13.1",
+      "purl": "pkg:cargo/deadpool@0.13.1",
       "description": "Dead simple async pool",
       "licenses": [
         {
@@ -4339,7 +5187,7 @@
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/bikeshedder/deadpool"
+          "url": "https://github.com/deadpool-rs/deadpool"
         }
       ],
       "properties": [
@@ -4348,14 +5196,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:deadpool:deadpool:0.12.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:deadpool:deadpool:0.13.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/deadpool-postgres@0.14.1",
+      "bom-ref": "pkg:cargo/deadpool-postgres@0.14.2",
       "name": "deadpool-postgres",
-      "version": "0.14.1",
-      "purl": "pkg:cargo/deadpool-postgres@0.14.1",
+      "version": "0.14.2",
+      "purl": "pkg:cargo/deadpool-postgres@0.14.2",
       "description": "Dead simple async pool for tokio-postgres",
       "licenses": [
         {
@@ -4370,7 +5218,7 @@
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/bikeshedder/deadpool"
+          "url": "https://github.com/deadpool-rs/deadpool"
         }
       ],
       "properties": [
@@ -4379,15 +5227,15 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:deadpool-postgres:deadpool-postgres:0.14.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:deadpool-postgres:deadpool-postgres:0.14.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/deadpool-runtime@0.1.4",
+      "bom-ref": "pkg:cargo/deadpool-runtime@0.3.1",
       "name": "deadpool-runtime",
-      "version": "0.1.4",
-      "purl": "pkg:cargo/deadpool-runtime@0.1.4",
-      "description": "Dead simple async pool utitities for sync managers",
+      "version": "0.3.1",
+      "purl": "pkg:cargo/deadpool-runtime@0.3.1",
+      "description": "Dead simple async pool utilities for async runtimes",
       "licenses": [
         {
           "license": {
@@ -4401,7 +5249,7 @@
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/bikeshedder/deadpool"
+          "url": "https://github.com/deadpool-rs/deadpool"
         }
       ],
       "properties": [
@@ -4410,7 +5258,100 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:deadpool-runtime:deadpool-runtime:0.1.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:deadpool-runtime:deadpool-runtime:0.3.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/defmt@1.1.1",
+      "name": "defmt",
+      "version": "1.1.1",
+      "purl": "pkg:cargo/defmt@1.1.1",
+      "description": "A highly efficient logging framework that targets resource-constrained devices, like microcontrollers",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "The Knurling-rs developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/knurling-rs/defmt"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:defmt:defmt:1.1.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/defmt-macros@1.1.1",
+      "name": "defmt-macros",
+      "version": "1.1.1",
+      "purl": "pkg:cargo/defmt-macros@1.1.1",
+      "description": "defmt macros",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "The Knurling-rs developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/knurling-rs/defmt"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:defmt-macros:defmt-macros:1.1.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/defmt-parser@1.0.0",
+      "name": "defmt-parser",
+      "version": "1.0.0",
+      "purl": "pkg:cargo/defmt-parser@1.0.0",
+      "description": "Parsing library for defmt format strings",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "The Knurling-rs developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/knurling-rs/defmt"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:defmt-parser:defmt-parser:1.0.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -4441,6 +5382,36 @@
         }
       ],
       "cpe": "cpe:2.3:a:der:der:0.7.10:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/der@0.8.2",
+      "name": "der",
+      "version": "0.8.2",
+      "purl": "pkg:cargo/der@0.8.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:der:der:0.8.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -4723,6 +5694,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/des@0.8.1",
+      "name": "des",
+      "version": "0.8.1",
+      "purl": "pkg:cargo/des@0.8.1",
+      "description": "DES and Triple DES (3DES, TDES) block ciphers implementation",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-ciphers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:des:des:0.8.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/dialoguer@0.11.0",
       "name": "dialoguer",
       "version": "0.11.0",
@@ -5001,6 +6003,33 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/dsa@0.6.3",
+      "name": "dsa",
+      "version": "0.6.3",
+      "purl": "pkg:cargo/dsa@0.6.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/signatures/tree/master/dsa"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:dsa:dsa:0.6.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/dunce@1.0.5",
       "name": "dunce",
       "version": "1.0.5",
@@ -5063,6 +6092,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/eax@0.5.0",
+      "name": "eax",
+      "version": "0.5.0",
+      "purl": "pkg:cargo/eax@0.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/AEADs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:eax:eax:0.5.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/ecdsa@0.16.9",
       "name": "ecdsa",
       "version": "0.16.9",
@@ -5090,6 +6149,36 @@
         }
       ],
       "cpe": "cpe:2.3:a:tlsfuzzer:ecdsa:0.16.9:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ecdsa@0.17.0",
+      "name": "ecdsa",
+      "version": "0.17.0",
+      "purl": "pkg:cargo/ecdsa@0.17.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/signatures"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-exact"
+        }
+      ],
+      "cpe": "cpe:2.3:a:tlsfuzzer:ecdsa:0.17.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -5242,6 +6331,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/elliptic-curve@0.14.1",
+      "name": "elliptic-curve",
+      "version": "0.14.1",
+      "purl": "pkg:cargo/elliptic-curve@0.14.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/traits"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:elliptic-curve:elliptic-curve:0.14.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/encode_unicode@1.0.0",
       "name": "encode_unicode",
       "version": "1.0.0",
@@ -5300,6 +6419,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:encoding_rs:encoding_rs:0.8.35:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/encoding_rs_io@0.1.8",
+      "name": "encoding_rs_io",
+      "version": "0.1.8",
+      "purl": "pkg:cargo/encoding_rs_io@0.1.8",
+      "description": "Streaming transcoding for encoding_rs",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Andrew Gallant"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/BurntSushi/encoding_rs_io"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:encoding_rs_io:encoding_rs_io:0.1.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -5418,10 +6568,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/etcetera@0.8.0",
+      "bom-ref": "pkg:cargo/etcetera@0.11.0",
       "name": "etcetera",
-      "version": "0.8.0",
-      "purl": "pkg:cargo/etcetera@0.8.0",
+      "version": "0.11.0",
+      "purl": "pkg:cargo/etcetera@0.11.0",
       "description": "An unopinionated library for obtaining configuration, data, cache, & other directories",
       "licenses": [
         {
@@ -5442,7 +6592,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:etcetera:etcetera:0.8.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:etcetera:etcetera:0.11.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -5663,6 +6813,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/ff@0.14.0",
+      "name": "ff",
+      "version": "0.14.0",
+      "purl": "pkg:cargo/ff@0.14.0",
+      "description": "Library for building and interfacing with finite fields",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Sean Bowe, Jack Grigg"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/zkcrypto/ff"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ff:ff:0.14.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/fiat-crypto@0.2.9",
       "name": "fiat-crypto",
       "version": "0.2.9",
@@ -5725,10 +6906,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/find-msvc-tools@0.1.9",
+      "bom-ref": "pkg:cargo/find-msvc-tools@0.1.14",
       "name": "find-msvc-tools",
-      "version": "0.1.9",
-      "purl": "pkg:cargo/find-msvc-tools@0.1.9",
+      "version": "0.1.14",
+      "purl": "pkg:cargo/find-msvc-tools@0.1.14",
       "description": "Find windows-specific tools, read MSVC versions from the registry and from COM interfaces",
       "licenses": [
         {
@@ -5749,7 +6930,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:find-msvc-tools:find-msvc-tools:0.1.9:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:find-msvc-tools:find-msvc-tools:0.1.14:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -6155,10 +7336,41 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures@0.3.33",
+      "bom-ref": "pkg:cargo/funty@2.0.0",
+      "name": "funty",
+      "version": "2.0.0",
+      "purl": "pkg:cargo/funty@2.0.0",
+      "description": "Trait generalization over the primitive types",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "myrrlyn"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/myrrlyn/funty"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:funty:funty:2.0.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/futures@0.3.34",
       "name": "futures",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6178,14 +7390,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures:futures:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures:futures:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-channel@0.3.33",
+      "bom-ref": "pkg:cargo/futures-channel@0.3.34",
       "name": "futures-channel",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-channel@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-channel@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6205,14 +7417,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-channel:futures-channel:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-channel:futures-channel:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-core@0.3.33",
+      "bom-ref": "pkg:cargo/futures-core@0.3.34",
       "name": "futures-core",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-core@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-core@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6232,14 +7444,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-core:futures-core:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-core:futures-core:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-executor@0.3.33",
+      "bom-ref": "pkg:cargo/futures-executor@0.3.34",
       "name": "futures-executor",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-executor@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-executor@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6259,14 +7471,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-executor:futures-executor:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-executor:futures-executor:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-io@0.3.33",
+      "bom-ref": "pkg:cargo/futures-io@0.3.34",
       "name": "futures-io",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-io@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-io@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6286,14 +7498,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-io:futures-io:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-io:futures-io:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-macro@0.3.33",
+      "bom-ref": "pkg:cargo/futures-macro@0.3.34",
       "name": "futures-macro",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-macro@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-macro@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6313,14 +7525,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-macro:futures-macro:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-macro:futures-macro:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-sink@0.3.33",
+      "bom-ref": "pkg:cargo/futures-sink@0.3.34",
       "name": "futures-sink",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-sink@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-sink@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6340,14 +7552,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-sink:futures-sink:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-sink:futures-sink:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-task@0.3.33",
+      "bom-ref": "pkg:cargo/futures-task@0.3.34",
       "name": "futures-task",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-task@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-task@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6367,7 +7579,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:rust-lang:futures-task:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rust-lang:futures-task:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -6401,10 +7613,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/futures-util@0.3.33",
+      "bom-ref": "pkg:cargo/futures-util@0.3.34",
       "name": "futures-util",
-      "version": "0.3.33",
-      "purl": "pkg:cargo/futures-util@0.3.33",
+      "version": "0.3.34",
+      "purl": "pkg:cargo/futures-util@0.3.34",
       "licenses": [
         {
           "license": {
@@ -6424,7 +7636,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:futures-util:futures-util:0.3.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:futures-util:futures-util:0.3.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -6706,6 +7918,68 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/granit-parser@0.0.7",
+      "name": "granit-parser",
+      "version": "0.0.7",
+      "purl": "pkg:cargo/granit-parser@0.0.7",
+      "description": "A YAML parser with comment and style support, written in pure Rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Ethiraric, David Aguilar, Yuheng Chen, Bourumir Wyngs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bourumir-wyngs/granit-parser"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:granit-parser:granit-parser:0.0.7:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/granit-parser@1.3.0",
+      "name": "granit-parser",
+      "version": "1.3.0",
+      "purl": "pkg:cargo/granit-parser@1.3.0",
+      "description": "A YAML parser with comment and style support, written in pure Rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Ethiraric, David Aguilar, Yuheng Chen, Bourumir Wyngs"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bourumir-wyngs/granit-parser"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:granit-parser:granit-parser:1.3.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/group@0.13.0",
       "name": "group",
       "version": "0.13.0",
@@ -6737,34 +8011,34 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/h2@0.3.27",
-      "name": "h2",
-      "version": "0.3.27",
-      "purl": "pkg:cargo/h2@0.3.27",
-      "description": "An HTTP/2 client and server",
+      "bom-ref": "pkg:cargo/group@0.14.0",
+      "name": "group",
+      "version": "0.14.0",
+      "purl": "pkg:cargo/group@0.14.0",
+      "description": "Elliptic curve group traits and utilities",
       "licenses": [
         {
           "license": {
-            "id": "MIT"
+            "id": "MIT/Apache-2.0"
           }
         }
       ],
       "supplier": {
-        "name": "Carl Lerche, Sean McArthur"
+        "name": "Sean Bowe, Jack Grigg"
       },
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/hyperium/h2"
+          "url": "https://github.com/zkcrypto/group"
         }
       ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
-          "value": "ambiguous"
+          "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:h2:h2:0.3.27:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:group:group:0.14.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -7013,68 +8287,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/headers@0.4.1",
-      "name": "headers",
-      "version": "0.4.1",
-      "purl": "pkg:cargo/headers@0.4.1",
-      "description": "typed HTTP headers",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Sean McArthur"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/hyperium/headers"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:headers:headers:0.4.1:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/headers-core@0.3.0",
-      "name": "headers-core",
-      "version": "0.3.0",
-      "purl": "pkg:cargo/headers-core@0.3.0",
-      "description": "typed HTTP headers core trait",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Sean McArthur"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/hyperium/headers"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:headers-core:headers-core:0.3.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/heck@0.5.0",
       "name": "heck",
       "version": "0.5.0",
@@ -7100,37 +8312,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:heck:heck:0.5.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/hermit-abi@0.5.2",
-      "name": "hermit-abi",
-      "version": "0.5.2",
-      "purl": "pkg:cargo/hermit-abi@0.5.2",
-      "description": "Hermit system calls definitions.",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Stefan Lankes"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/hermit-os/hermit-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:hermit-abi:hermit-abi:0.5.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -7258,37 +8439,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/home@0.5.12",
-      "name": "home",
-      "version": "0.5.12",
-      "purl": "pkg:cargo/home@0.5.12",
-      "description": "Shared definitions of home directories.",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Brian Anderson"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/rust-lang/cargo"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "ambiguous"
-        }
-      ],
-      "cpe": "cpe:2.3:a:home:home:0.5.12:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/hostname@0.4.2",
       "name": "hostname",
       "version": "0.4.2",
@@ -7407,10 +8557,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/http-body-util@0.1.4",
+      "bom-ref": "pkg:cargo/http-body-util@0.1.5",
       "name": "http-body-util",
-      "version": "0.1.4",
-      "purl": "pkg:cargo/http-body-util@0.1.4",
+      "version": "0.1.5",
+      "purl": "pkg:cargo/http-body-util@0.1.5",
       "licenses": [
         {
           "license": {
@@ -7433,7 +8583,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:http-body-util:http-body-util:0.1.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:http-body-util:http-body-util:0.1.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -7618,10 +8768,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/hyper@1.11.0",
+      "bom-ref": "pkg:cargo/hyper@1.12.0",
       "name": "hyper",
-      "version": "1.11.0",
-      "purl": "pkg:cargo/hyper@1.11.0",
+      "version": "1.12.0",
+      "purl": "pkg:cargo/hyper@1.12.0",
       "description": "A protective and efficient HTTP library for all.",
       "licenses": [
         {
@@ -7645,38 +8795,7 @@
           "value": "ambiguous"
         }
       ],
-      "cpe": "cpe:2.3:a:hyper:hyper:1.11.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/hyper-http-proxy@1.1.1",
-      "name": "hyper-http-proxy",
-      "version": "1.1.1",
-      "purl": "pkg:cargo/hyper-http-proxy@1.1.1",
-      "description": "A proxy connector for Hyper-based applications",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "MetalBear Tech LTD"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/metalbear-co/hyper-http-proxy"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:hyper-http-proxy:hyper-http-proxy:1.1.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:hyper:hyper:1.12.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -7801,10 +8920,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/hyper-util@0.1.20",
+      "bom-ref": "pkg:cargo/hyper-util@0.1.21",
       "name": "hyper-util",
-      "version": "0.1.20",
-      "purl": "pkg:cargo/hyper-util@0.1.20",
+      "version": "0.1.21",
+      "purl": "pkg:cargo/hyper-util@0.1.21",
       "description": "hyper utilities",
       "licenses": [
         {
@@ -7828,7 +8947,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:hyper-util:hyper-util:0.1.20:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:hyper-util:hyper-util:0.1.21:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -8111,6 +9230,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/idea@0.5.1",
+      "name": "idea",
+      "version": "0.5.1",
+      "purl": "pkg:cargo/idea@0.5.1",
+      "description": "IDEA block cipher",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-ciphers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:idea:idea:0.5.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/ident_case@1.0.1",
       "name": "ident_case",
       "version": "1.0.1",
@@ -8201,37 +9351,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:idna_adapter:idna_adapter:1.2.2:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/impl-more@0.1.9",
-      "name": "impl-more",
-      "version": "0.1.9",
-      "purl": "pkg:cargo/impl-more@0.1.9",
-      "description": "Concise, declarative trait implementation macros",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Rob Ede"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/robjtede/impl-more"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:impl-more:impl-more:0.1.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -8384,10 +9503,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ipnet@2.12.0",
+      "bom-ref": "pkg:cargo/ipnet@2.12.2",
       "name": "ipnet",
-      "version": "2.12.0",
-      "purl": "pkg:cargo/ipnet@2.12.0",
+      "version": "2.12.2",
+      "purl": "pkg:cargo/ipnet@2.12.2",
       "description": "Provides types and useful methods for working with IPv4 and IPv6 network addresses, commonly called IP prefixes. The new",
       "licenses": [
         {
@@ -8411,7 +9530,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:ipnet:ipnet:2.12.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:ipnet:ipnet:2.12.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -8567,6 +9686,219 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/jiff@0.2.38",
+      "name": "jiff",
+      "version": "0.2.38",
+      "purl": "pkg:cargo/jiff@0.2.38",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Andrew Gallant"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/BurntSushi/jiff"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jiff:jiff:0.2.38:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jiff-core@0.1.1",
+      "name": "jiff-core",
+      "version": "0.1.1",
+      "purl": "pkg:cargo/jiff-core@0.1.1",
+      "description": "Low level datetime primitives for the Jiff library.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Andrew Gallant"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/BurntSushi/jiff"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jiff-core:jiff-core:0.1.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jiff-static@0.2.38",
+      "name": "jiff-static",
+      "version": "0.2.38",
+      "purl": "pkg:cargo/jiff-static@0.2.38",
+      "description": "Create static TimeZone values for Jiff (useful in core-only environments).",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Andrew Gallant"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/BurntSushi/jiff"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jiff-static:jiff-static:0.2.38:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jni@0.22.4",
+      "name": "jni",
+      "version": "0.22.4",
+      "purl": "pkg:cargo/jni@0.22.4",
+      "description": "Rust bindings to the JNI",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "jni team"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/jni-rs/jni-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jni:jni:0.22.4:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jni-macros@0.22.4",
+      "name": "jni-macros",
+      "version": "0.22.4",
+      "purl": "pkg:cargo/jni-macros@0.22.4",
+      "description": "Procedural macros for the jni crate",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/jni-rs/jni-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jni-macros:jni-macros:0.22.4:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jni-sys@0.4.1",
+      "name": "jni-sys",
+      "version": "0.4.1",
+      "purl": "pkg:cargo/jni-sys@0.4.1",
+      "description": "Rust definitions corresponding to jni.h",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Steven Fackler, Robert Bragg"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/jni-rs/jni-sys"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jni-sys:jni-sys:0.4.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jni-sys-macros@0.4.1",
+      "name": "jni-sys-macros",
+      "version": "0.4.1",
+      "purl": "pkg:cargo/jni-sys-macros@0.4.1",
+      "description": "Macros for jni-sys crate",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Robert Bragg"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/jni-rs/jni-sys"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jni-sys-macros:jni-sys-macros:0.4.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/jobserver@0.1.35",
       "name": "jobserver",
       "version": "0.1.35",
@@ -8658,10 +9990,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/jsonpath-rust@0.7.5",
+      "bom-ref": "pkg:cargo/jsonpath-rust@1.0.11",
       "name": "jsonpath-rust",
-      "version": "0.7.5",
-      "purl": "pkg:cargo/jsonpath-rust@0.7.5",
+      "version": "1.0.11",
+      "purl": "pkg:cargo/jsonpath-rust@1.0.11",
       "description": "The library provides the basic functionality to find the set of the data according to the filtering query.",
       "licenses": [
         {
@@ -8685,7 +10017,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:jsonpath-rust:jsonpath-rust:0.7.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:jsonpath-rust:jsonpath-rust:1.0.11:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -8781,10 +10113,40 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/k8s-openapi@0.24.0",
+      "bom-ref": "pkg:cargo/k256@0.14.0",
+      "name": "k256",
+      "version": "0.14.0",
+      "purl": "pkg:cargo/k256@0.14.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/elliptic-curves"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:k256:k256:0.14.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/k8s-openapi@0.28.0",
       "name": "k8s-openapi",
-      "version": "0.24.0",
-      "purl": "pkg:cargo/k8s-openapi@0.24.0",
+      "version": "0.28.0",
+      "purl": "pkg:cargo/k8s-openapi@0.28.0",
       "description": "Bindings for the Kubernetes client API",
       "licenses": [
         {
@@ -8808,7 +10170,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:k8s-openapi:k8s-openapi:0.24.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:k8s-openapi:k8s-openapi:0.28.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -8904,10 +10266,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/kube@0.99.0",
+      "bom-ref": "pkg:cargo/kube@4.2.0",
       "name": "kube",
-      "version": "0.99.0",
-      "purl": "pkg:cargo/kube@0.99.0",
+      "version": "4.2.0",
+      "purl": "pkg:cargo/kube@4.2.0",
       "description": "Kubernetes client and async controller runtime",
       "licenses": [
         {
@@ -8931,14 +10293,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:kube:kube:0.99.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:kube:kube:4.2.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/kube-client@0.99.0",
+      "bom-ref": "pkg:cargo/kube-client@4.2.0",
       "name": "kube-client",
-      "version": "0.99.0",
-      "purl": "pkg:cargo/kube-client@0.99.0",
+      "version": "4.2.0",
+      "purl": "pkg:cargo/kube-client@4.2.0",
       "description": "Kubernetes client",
       "licenses": [
         {
@@ -8962,14 +10324,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:kube-client:kube-client:0.99.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:kube-client:kube-client:4.2.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/kube-core@0.99.0",
+      "bom-ref": "pkg:cargo/kube-core@4.2.0",
       "name": "kube-core",
-      "version": "0.99.0",
-      "purl": "pkg:cargo/kube-core@0.99.0",
+      "version": "4.2.0",
+      "purl": "pkg:cargo/kube-core@4.2.0",
       "description": "Kube shared types, traits and client-less behavior",
       "licenses": [
         {
@@ -8993,14 +10355,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:kube-core:kube-core:0.99.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:kube-core:kube-core:4.2.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/kube-derive@0.99.0",
+      "bom-ref": "pkg:cargo/kube-derive@4.2.0",
       "name": "kube-derive",
-      "version": "0.99.0",
-      "purl": "pkg:cargo/kube-derive@0.99.0",
+      "version": "4.2.0",
+      "purl": "pkg:cargo/kube-derive@4.2.0",
       "description": "Custom derives for the kube kubernetes crates",
       "licenses": [
         {
@@ -9024,14 +10386,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:kube-derive:kube-derive:0.99.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:kube-derive:kube-derive:4.2.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/kube-runtime@0.99.0",
+      "bom-ref": "pkg:cargo/kube-runtime@4.2.0",
       "name": "kube-runtime",
-      "version": "0.99.0",
-      "purl": "pkg:cargo/kube-runtime@0.99.0",
+      "version": "4.2.0",
+      "purl": "pkg:cargo/kube-runtime@4.2.0",
       "description": "Kubernetes controller runtime",
       "licenses": [
         {
@@ -9055,7 +10417,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:kube-runtime:kube-runtime:0.99.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:kube-runtime:kube-runtime:4.2.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -9090,10 +10452,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/lazy_static@1.5.0",
+      "bom-ref": "pkg:cargo/lazy_static@1.5.1",
       "name": "lazy_static",
-      "version": "1.5.0",
-      "purl": "pkg:cargo/lazy_static@1.5.0",
+      "version": "1.5.1",
+      "purl": "pkg:cargo/lazy_static@1.5.1",
       "description": "A macro for declaring lazily evaluated statics in Rust.",
       "licenses": [
         {
@@ -9117,7 +10479,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:lazy_static:lazy_static:1.5.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:lazy_static:lazy_static:1.5.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -9151,10 +10513,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/libc@0.2.189",
+      "bom-ref": "pkg:cargo/libc@0.2.191",
       "name": "libc",
-      "version": "0.2.189",
-      "purl": "pkg:cargo/libc@0.2.189",
+      "version": "0.2.191",
+      "purl": "pkg:cargo/libc@0.2.191",
       "description": "Raw FFI bindings to platform libraries like libc.",
       "licenses": [
         {
@@ -9175,7 +10537,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:gnu:libc:0.2.189:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:gnu:libc:0.2.191:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -9303,10 +10665,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/libz-sys@1.1.29",
+      "bom-ref": "pkg:cargo/libz-sys@1.1.31",
       "name": "libz-sys",
-      "version": "1.1.29",
-      "purl": "pkg:cargo/libz-sys@1.1.29",
+      "version": "1.1.31",
+      "purl": "pkg:cargo/libz-sys@1.1.31",
       "description": "Low-level bindings to the system libz library (also known as zlib).",
       "licenses": [
         {
@@ -9330,7 +10692,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:libz-sys:libz-sys:1.1.29:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:libz-sys:libz-sys:1.1.31:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -9550,10 +10912,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/log@0.4.33",
+      "bom-ref": "pkg:cargo/log@0.4.34",
       "name": "log",
-      "version": "0.4.33",
-      "purl": "pkg:cargo/log@0.4.33",
+      "version": "0.4.34",
+      "purl": "pkg:cargo/log@0.4.34",
       "licenses": [
         {
           "license": {
@@ -9576,14 +10938,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:log:log:0.4.33:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:log:log:0.4.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/lru@0.18.2",
+      "bom-ref": "pkg:cargo/lru@0.18.5",
       "name": "lru",
-      "version": "0.18.2",
-      "purl": "pkg:cargo/lru@0.18.2",
+      "version": "0.18.5",
+      "purl": "pkg:cargo/lru@0.18.5",
       "description": "A LRU cache implementation",
       "licenses": [
         {
@@ -9607,7 +10969,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:lru_project:lru:0.18.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:lru_project:lru:0.18.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -9731,6 +11093,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:matchit:matchit:0.8.4:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/md-5@0.10.6",
+      "name": "md-5",
+      "version": "0.10.6",
+      "purl": "pkg:cargo/md-5@0.10.6",
+      "description": "MD5 hash function",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/hashes"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:md-5:md-5:0.10.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10068,10 +11461,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/moka@0.12.15",
+      "bom-ref": "pkg:cargo/moka@0.12.16",
       "name": "moka",
-      "version": "0.12.15",
-      "purl": "pkg:cargo/moka@0.12.15",
+      "version": "0.12.16",
+      "purl": "pkg:cargo/moka@0.12.16",
       "description": "A fast and concurrent cache library inspired by Java Caffeine",
       "licenses": [
         {
@@ -10092,7 +11485,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:moka:moka:0.12.15:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:moka:moka:0.12.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10189,6 +11582,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/nohash-hasher@0.2.0",
+      "name": "nohash-hasher",
+      "version": "0.2.0",
+      "purl": "pkg:cargo/nohash-hasher@0.2.0",
+      "description": "An implementation of `std::hash::Hasher` which does not hash at all.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Parity Technologies"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/paritytech/nohash-hasher"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:nohash-hasher:nohash-hasher:0.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/nom@7.1.3",
       "name": "nom",
       "version": "7.1.3",
@@ -10217,6 +11641,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:nom:nom:7.1.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/nom@8.0.0",
+      "name": "nom",
+      "version": "8.0.0",
+      "purl": "pkg:cargo/nom@8.0.0",
+      "description": "A byte-oriented, zero-copy, parser combinators library",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "contact@geoffroycouprie.com"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-bakery/nom"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:nom:nom:8.0.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10344,6 +11799,34 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/num-bigint@0.5.1",
+      "name": "num-bigint",
+      "version": "0.5.1",
+      "purl": "pkg:cargo/num-bigint@0.5.1",
+      "description": "Big integer implementation for Rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rust-num/num-bigint"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:num-bigint:num-bigint:0.5.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/num-bigint-dig@0.8.6",
       "name": "num-bigint-dig",
       "version": "0.8.6",
@@ -10372,6 +11855,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:num-bigint-dig:num-bigint-dig:0.8.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num-bigint-dig@0.9.1",
+      "name": "num-bigint-dig",
+      "version": "0.9.1",
+      "purl": "pkg:cargo/num-bigint-dig@0.9.1",
+      "description": "Big integer implementation for Rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "dignifiedquire, The Rust Project Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dignifiedquire/num-bigint"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:num-bigint-dig:num-bigint-dig:0.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10498,25 +12012,25 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/num_cpus@1.17.0",
-      "name": "num_cpus",
-      "version": "1.17.0",
-      "purl": "pkg:cargo/num_cpus@1.17.0",
-      "description": "Get the number of CPUs on a machine.",
+      "bom-ref": "pkg:cargo/num_enum@0.7.6",
+      "name": "num_enum",
+      "version": "0.7.6",
+      "purl": "pkg:cargo/num_enum@0.7.6",
+      "description": "Procedural macros to make inter-operation between primitives and enums easier.",
       "licenses": [
         {
           "license": {
-            "id": "MIT OR Apache-2.0"
+            "id": "BSD-3-Clause OR MIT OR Apache-2.0"
           }
         }
       ],
       "supplier": {
-        "name": "Sean McArthur"
+        "name": "Daniel Wagner-Hall, Daniel Henry-Mantilla, Vincent Esche"
       },
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/seanmonstar/num_cpus"
+          "url": "https://github.com/illicitonion/num_enum"
         }
       ],
       "properties": [
@@ -10525,7 +12039,38 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:num_cpus:num_cpus:1.17.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:num_enum:num_enum:0.7.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num_enum_derive@0.7.6",
+      "name": "num_enum_derive",
+      "version": "0.7.6",
+      "purl": "pkg:cargo/num_enum_derive@0.7.6",
+      "description": "Internal implementation details for ::num_enum (Procedural macros to make inter-operation between primitives and enums e",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause OR MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Daniel Wagner-Hall, Daniel Henry-Mantilla, Vincent Esche"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/illicitonion/num_enum"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:num_enum_derive:num_enum_derive:0.7.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10644,6 +12189,36 @@
         }
       ],
       "cpe": "cpe:2.3:a:objc2-system-configuration:objc2-system-configuration:0.3.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ocb3@0.1.0",
+      "name": "ocb3",
+      "version": "0.1.0",
+      "purl": "pkg:cargo/ocb3@0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/AEADs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ocb3:ocb3:0.1.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -11231,6 +12806,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/p521@0.13.3",
+      "name": "p521",
+      "version": "0.13.3",
+      "purl": "pkg:cargo/p521@0.13.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/elliptic-curves/tree/master/p521"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:p521:p521:0.13.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/parking@2.2.1",
       "name": "parking",
       "version": "2.2.1",
@@ -11382,6 +12987,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:pem:pem:3.0.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pem@4.0.0",
+      "name": "pem",
+      "version": "4.0.0",
+      "purl": "pkg:cargo/pem@4.0.0",
+      "description": "Parse and encode PEM-encoded data.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Jonathan Creekmore"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/jcreekmore/pem-rs.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:pem:pem:4.0.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -11567,6 +13203,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:pest_meta:pest_meta:2.8.8:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pgp@0.21.0",
+      "name": "pgp",
+      "version": "0.21.0",
+      "purl": "pkg:cargo/pgp@0.21.0",
+      "description": "OpenPGP implementation in Rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "dignifiedquire"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rpgp/rpgp"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:pgp:pgp:0.21.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -11804,6 +13471,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/pkcs8@0.11.0",
+      "name": "pkcs8",
+      "version": "0.11.0",
+      "purl": "pkg:cargo/pkcs8@0.11.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:pkcs8:pkcs8:0.11.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/pkg-config@0.3.33",
       "name": "pkg-config",
       "version": "0.3.33",
@@ -11919,6 +13616,33 @@
         }
       ],
       "cpe": "cpe:2.3:a:portable-atomic:portable-atomic:1.14.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/portable-atomic-util@0.2.8",
+      "name": "portable-atomic-util",
+      "version": "0.2.8",
+      "purl": "pkg:cargo/portable-atomic-util@0.2.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/taiki-e/portable-atomic-util"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:portable-atomic-util:portable-atomic-util:0.2.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -12194,6 +13918,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/primefield@0.14.0",
+      "name": "primefield",
+      "version": "0.14.0",
+      "purl": "pkg:cargo/primefield@0.14.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/elliptic-curves"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:primefield:primefield:0.14.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/primeorder@0.13.6",
       "name": "primeorder",
       "version": "0.13.6",
@@ -12221,6 +13975,66 @@
         }
       ],
       "cpe": "cpe:2.3:a:primeorder:primeorder:0.13.6:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/primeorder@0.14.0",
+      "name": "primeorder",
+      "version": "0.14.0",
+      "purl": "pkg:cargo/primeorder@0.14.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/elliptic-curves"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:primeorder:primeorder:0.14.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/proc-macro-crate@3.5.0",
+      "name": "proc-macro-crate",
+      "version": "3.5.0",
+      "purl": "pkg:cargo/proc-macro-crate@3.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Bastian Köcher"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bkchr/proc-macro-crate"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:proc-macro-crate:proc-macro-crate:3.5.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -12255,10 +14069,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/proptest@1.11.0",
+      "bom-ref": "pkg:cargo/proptest@1.12.0",
       "name": "proptest",
-      "version": "1.11.0",
-      "purl": "pkg:cargo/proptest@1.11.0",
+      "version": "1.12.0",
+      "purl": "pkg:cargo/proptest@1.12.0",
       "licenses": [
         {
           "license": {
@@ -12281,7 +14095,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:proptest:proptest:1.11.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:proptest:proptest:1.12.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -12595,10 +14409,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/quick-xml@0.41.0",
+      "bom-ref": "pkg:cargo/quick-xml@0.42.0",
       "name": "quick-xml",
-      "version": "0.41.0",
-      "purl": "pkg:cargo/quick-xml@0.41.0",
+      "version": "0.42.0",
+      "purl": "pkg:cargo/quick-xml@0.42.0",
       "description": "High performance xml reader and writer",
       "licenses": [
         {
@@ -12619,7 +14433,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:quick-xml:quick-xml:0.41.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:quick-xml:quick-xml:0.42.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -12794,6 +14608,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/radium@0.7.0",
+      "name": "radium",
+      "version": "0.7.0",
+      "purl": "pkg:cargo/radium@0.7.0",
+      "description": "Portable interfaces for maybe-atomic types",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Nika Layzell, myrrlyn"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bitvecto-rs/radium"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:radium:radium:0.7.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/rand@0.8.7",
       "name": "rand",
       "version": "0.8.7",
@@ -12854,10 +14699,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rand@0.10.2",
+      "bom-ref": "pkg:cargo/rand@0.10.3",
       "name": "rand",
-      "version": "0.10.2",
-      "purl": "pkg:cargo/rand@0.10.2",
+      "version": "0.10.3",
+      "purl": "pkg:cargo/rand@0.10.3",
       "licenses": [
         {
           "license": {
@@ -12877,10 +14722,10 @@
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
-          "value": "verified-exact"
+          "value": "ambiguous"
         }
       ],
-      "cpe": "cpe:2.3:a:rust-random:rand:0.10.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rand:rand:0.10.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13127,10 +14972,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rand_xorshift@0.4.0",
+      "bom-ref": "pkg:cargo/rand_xorshift@0.5.0",
       "name": "rand_xorshift",
-      "version": "0.4.0",
-      "purl": "pkg:cargo/rand_xorshift@0.4.0",
+      "version": "0.5.0",
+      "purl": "pkg:cargo/rand_xorshift@0.5.0",
       "licenses": [
         {
           "license": {
@@ -13153,7 +14998,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:rand_xorshift:rand_xorshift:0.4.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rand_xorshift:rand_xorshift:0.5.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13219,10 +15064,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rcgen@0.13.2",
+      "bom-ref": "pkg:cargo/rcgen@0.14.10",
       "name": "rcgen",
-      "version": "0.13.2",
-      "purl": "pkg:cargo/rcgen@0.13.2",
+      "version": "0.14.10",
+      "purl": "pkg:cargo/rcgen@0.14.10",
       "description": "Rust X.509 certificate generator",
       "licenses": [
         {
@@ -13243,7 +15088,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:rcgen:rcgen:0.13.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rcgen:rcgen:0.14.10:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13275,6 +15120,34 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/redis@1.7.1",
+      "name": "redis",
+      "version": "1.7.1",
+      "purl": "pkg:cargo/redis@1.7.1",
+      "description": "Redis driver for Rust.",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/redis-rs/redis-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "ambiguous"
+        }
+      ],
+      "cpe": "cpe:2.3:a:redis:redis:1.7.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/redox_syscall@0.5.18",
       "name": "redox_syscall",
       "version": "0.5.18",
@@ -13303,6 +15176,68 @@
         }
       ],
       "cpe": "cpe:2.3:a:redox_syscall:redox_syscall:0.5.18:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ref-cast@1.0.27",
+      "name": "ref-cast",
+      "version": "1.0.27",
+      "purl": "pkg:cargo/ref-cast@1.0.27",
+      "description": "Safely cast &T to &U where the struct U contains a single field of type T.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "David Tolnay"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/ref-cast"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ref-cast:ref-cast:1.0.27:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ref-cast-impl@1.0.27",
+      "name": "ref-cast-impl",
+      "version": "1.0.27",
+      "purl": "pkg:cargo/ref-cast-impl@1.0.27",
+      "description": "Derive implementation for ref_cast::RefCast.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "David Tolnay"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/ref-cast"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ref-cast-impl:ref-cast-impl:1.0.27:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13428,6 +15363,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/replace_with@0.1.8",
+      "name": "replace_with",
+      "version": "0.1.8",
+      "purl": "pkg:cargo/replace_with@0.1.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Alec Mocatta"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/alecmocatta/replace_with"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:replace_with:replace_with:0.1.8:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/reqwest@0.12.28",
       "name": "reqwest",
       "version": "0.12.28",
@@ -13520,6 +15485,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/rfc6979@0.6.0",
+      "name": "rfc6979",
+      "version": "0.6.0",
+      "purl": "pkg:cargo/rfc6979@0.6.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/signatures"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:rfc6979:rfc6979:0.6.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/ring@0.17.14",
       "name": "ring",
       "version": "0.17.14",
@@ -13545,6 +15540,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:ring:ring:0.17.14:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ripemd@0.1.3",
+      "name": "ripemd",
+      "version": "0.1.3",
+      "purl": "pkg:cargo/ripemd@0.1.3",
+      "description": "Pure Rust implementation of the RIPEMD hash functions",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/hashes"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ripemd:ripemd:0.1.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13762,10 +15788,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls@0.23.45",
+      "bom-ref": "pkg:cargo/rustls@0.23.46",
       "name": "rustls",
-      "version": "0.23.45",
-      "purl": "pkg:cargo/rustls@0.23.45",
+      "version": "0.23.46",
+      "purl": "pkg:cargo/rustls@0.23.46",
       "description": "Rustls is a modern TLS library written in Rust.",
       "licenses": [
         {
@@ -13786,7 +15812,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:rustls_project:rustls:0.23.45:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rustls_project:rustls:0.23.46:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13846,10 +15872,66 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls-webpki@0.103.15",
+      "bom-ref": "pkg:cargo/rustls-platform-verifier@0.7.1",
+      "name": "rustls-platform-verifier",
+      "version": "0.7.1",
+      "purl": "pkg:cargo/rustls-platform-verifier@0.7.1",
+      "description": "rustls-platform-verifier supports verifying TLS certificates in rustls with the operating system verifier",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rustls/rustls-platform-verifier"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:rustls-platform-verifier:rustls-platform-verifier:0.7.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustls-platform-verifier-android@0.2.0",
+      "name": "rustls-platform-verifier-android",
+      "version": "0.2.0",
+      "purl": "pkg:cargo/rustls-platform-verifier-android@0.2.0",
+      "description": "The internal JVM support component of the rustls-platform-verifier crate. You shouldn't depend on this directly.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rustls/rustls-platform-verifier"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:rustls-platform-verifier-android:rustls-platform-verifier-android:0.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustls-webpki@0.103.16",
       "name": "rustls-webpki",
-      "version": "0.103.15",
-      "purl": "pkg:cargo/rustls-webpki@0.103.15",
+      "version": "0.103.16",
+      "purl": "pkg:cargo/rustls-webpki@0.103.16",
       "description": "Web PKI X.509 Certificate Verification.",
       "licenses": [
         {
@@ -13870,7 +15952,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:rustls-webpki:rustls-webpki:0.103.15:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rustls-webpki:rustls-webpki:0.103.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14090,10 +16172,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/schemars@0.8.22",
+      "bom-ref": "pkg:cargo/schemars@1.2.3",
       "name": "schemars",
-      "version": "0.8.22",
-      "purl": "pkg:cargo/schemars@0.8.22",
+      "version": "1.2.3",
+      "purl": "pkg:cargo/schemars@1.2.3",
       "description": "Generate JSON Schemas from Rust code",
       "licenses": [
         {
@@ -14117,14 +16199,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:schemars:schemars:0.8.22:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:schemars:schemars:1.2.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/schemars_derive@0.8.22",
+      "bom-ref": "pkg:cargo/schemars_derive@1.2.3",
       "name": "schemars_derive",
-      "version": "0.8.22",
-      "purl": "pkg:cargo/schemars_derive@0.8.22",
+      "version": "1.2.3",
+      "purl": "pkg:cargo/schemars_derive@1.2.3",
       "description": "Macros for #[derive(JsonSchema)], for use with schemars",
       "licenses": [
         {
@@ -14148,7 +16230,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:schemars_derive:schemars_derive:0.8.22:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:schemars_derive:schemars_derive:1.2.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14336,6 +16418,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/sec1@0.8.1",
+      "name": "sec1",
+      "version": "0.8.1",
+      "purl": "pkg:cargo/sec1@0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:sec1:sec1:0.8.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/secrecy@0.10.3",
       "name": "secrecy",
       "version": "0.10.3",
@@ -14490,6 +16602,62 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/serde-saphyr@0.0.29",
+      "name": "serde-saphyr",
+      "version": "0.0.29",
+      "purl": "pkg:cargo/serde-saphyr@0.0.29",
+      "description": "YAML (de)serializer for Serde, emphasizing panic-free parsing, fast builds and good error reporting. Supports properties",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bourumir-wyngs/serde-saphyr"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:serde-saphyr:serde-saphyr:0.0.29:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde-saphyr@1.3.0",
+      "name": "serde-saphyr",
+      "version": "1.3.0",
+      "purl": "pkg:cargo/serde-saphyr@1.3.0",
+      "description": "YAML (de)serializer for Serde, emphasizing panic-free parsing, fast builds and good error reporting. Supports properties",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/bourumir-wyngs/serde-saphyr"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:serde-saphyr:serde-saphyr:1.3.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/serde-value@0.7.0",
       "name": "serde-value",
       "version": "0.7.0",
@@ -14614,10 +16782,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/serde_derive_internals@0.29.1",
+      "bom-ref": "pkg:cargo/serde_derive_internals@0.30.0",
       "name": "serde_derive_internals",
-      "version": "0.29.1",
-      "purl": "pkg:cargo/serde_derive_internals@0.29.1",
+      "version": "0.30.0",
+      "purl": "pkg:cargo/serde_derive_internals@0.30.0",
       "description": "AST representation used by Serde derive macros. Unstable.",
       "licenses": [
         {
@@ -14641,7 +16809,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:serde_derive_internals:serde_derive_internals:0.29.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:serde_derive_internals:serde_derive_internals:0.30.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14676,10 +16844,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/serde_json@1.0.151",
+      "bom-ref": "pkg:cargo/serde_json@1.0.154",
       "name": "serde_json",
-      "version": "1.0.151",
-      "purl": "pkg:cargo/serde_json@1.0.151",
+      "version": "1.0.154",
+      "purl": "pkg:cargo/serde_json@1.0.154",
       "description": "A JSON serialization file format",
       "licenses": [
         {
@@ -14688,9 +16856,6 @@
           }
         }
       ],
-      "supplier": {
-        "name": "Erick Tryzelaar, David Tolnay"
-      },
       "externalReferences": [
         {
           "type": "vcs",
@@ -14703,7 +16868,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:serde_json:serde_json:1.0.151:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:serde_json:serde_json:1.0.154:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14825,25 +16990,24 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/serde_yaml@0.9.34+deprecated",
-      "name": "serde_yaml",
-      "version": "0.9.34+deprecated",
-      "purl": "pkg:cargo/serde_yaml@0.9.34+deprecated",
-      "description": "YAML data format for Serde",
+      "bom-ref": "pkg:cargo/serdect@0.2.0",
+      "name": "serdect",
+      "version": "0.2.0",
+      "purl": "pkg:cargo/serdect@0.2.0",
       "licenses": [
         {
           "license": {
-            "id": "MIT OR Apache-2.0"
+            "id": "Apache-2.0 OR MIT"
           }
         }
       ],
       "supplier": {
-        "name": "David Tolnay"
+        "name": "RustCrypto Developers"
       },
       "externalReferences": [
         {
           "type": "vcs",
-          "url": "https://github.com/dtolnay/serde-yaml"
+          "url": "https://github.com/RustCrypto/formats/tree/master/serdect"
         }
       ],
       "properties": [
@@ -14852,7 +17016,67 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:serde_yaml:serde_yaml:0.9.34_deprecated:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:serdect:serdect:0.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serdect@0.3.0",
+      "name": "serdect",
+      "version": "0.3.0",
+      "purl": "pkg:cargo/serdect@0.3.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:serdect:serdect:0.3.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serdect@0.4.3",
+      "name": "serdect",
+      "version": "0.4.3",
+      "purl": "pkg:cargo/serdect@0.4.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:serdect:serdect:0.4.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14946,6 +17170,37 @@
         }
       ],
       "cpe": "cpe:2.3:a:sha1:sha1:0.10.7:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/sha1-checked@0.10.0",
+      "name": "sha1-checked",
+      "version": "0.10.0",
+      "purl": "pkg:cargo/sha1-checked@0.10.0",
+      "description": "SHA-1 hash function with collision detection",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/hashes"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:sha1-checked:sha1-checked:0.10.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -15224,6 +17479,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/signature@3.0.0",
+      "name": "signature",
+      "version": "3.0.0",
+      "purl": "pkg:cargo/signature@3.0.0",
+      "description": "Traits for cryptographic signature algorithms (e.g. ECDSA, Ed25519)",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/traits"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:signature:signature:3.0.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/simd-adler32@0.3.10",
       "name": "simd-adler32",
       "version": "0.3.10",
@@ -15252,6 +17538,68 @@
         }
       ],
       "cpe": "cpe:2.3:a:simd-adler32:simd-adler32:0.3.10:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/simd_cesu8@1.2.0",
+      "name": "simd_cesu8",
+      "version": "1.2.0",
+      "purl": "pkg:cargo/simd_cesu8@1.2.0",
+      "description": "An extremely fast, SIMD accelerated, encoding and decoding library for CESU-8 and Modified UTF-8.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Sean C. Roach"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/seancroach/simd_cesu8"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:simd_cesu8:simd_cesu8:1.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/simdutf8@0.1.5",
+      "name": "simdutf8",
+      "version": "0.1.5",
+      "purl": "pkg:cargo/simdutf8@0.1.5",
+      "description": "SIMD-accelerated UTF-8 validation.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Hans Kratz"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rusticstuff/simdutf8"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:simdutf8:simdutf8:0.1.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -15376,6 +17724,68 @@
         }
       ],
       "cpe": "cpe:2.3:a:servo:smallvec:1.15.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/snafu@0.9.2",
+      "name": "snafu",
+      "version": "0.9.2",
+      "purl": "pkg:cargo/snafu@0.9.2",
+      "description": "An ergonomic error handling library",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Jake Goulding"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/shepmaster/snafu"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:snafu:snafu:0.9.2:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/snafu-derive@0.9.2",
+      "name": "snafu-derive",
+      "version": "0.9.2",
+      "purl": "pkg:cargo/snafu-derive@0.9.2",
+      "description": "An ergonomic error handling library",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Jake Goulding"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/shepmaster/snafu"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:snafu-derive:snafu-derive:0.9.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -15559,6 +17969,36 @@
         }
       ],
       "cpe": "cpe:2.3:a:spki:spki:0.7.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/spki@0.8.1",
+      "name": "spki",
+      "version": "0.8.1",
+      "purl": "pkg:cargo/spki@0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/formats"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:spki:spki:0.8.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -16025,6 +18465,37 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/tap@1.0.1",
+      "name": "tap",
+      "version": "1.0.1",
+      "purl": "pkg:cargo/tap@1.0.1",
+      "description": "Generic extensions for tapping values in Rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Elliott Linder, myrrlyn"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/myrrlyn/tap"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-vendor-product"
+        }
+      ],
+      "cpe": "cpe:2.3:a:jenkins:tap:1.0.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/tempfile@3.27.0",
       "name": "tempfile",
       "version": "3.27.0",
@@ -16115,10 +18586,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/thiserror@2.0.19",
+      "bom-ref": "pkg:cargo/thiserror@2.0.21",
       "name": "thiserror",
-      "version": "2.0.19",
-      "purl": "pkg:cargo/thiserror@2.0.19",
+      "version": "2.0.21",
+      "purl": "pkg:cargo/thiserror@2.0.21",
       "description": "derive(Error)",
       "licenses": [
         {
@@ -16142,7 +18613,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:thiserror:thiserror:2.0.19:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:thiserror:thiserror:2.0.21:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -16177,10 +18648,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/thiserror-impl@2.0.19",
+      "bom-ref": "pkg:cargo/thiserror-impl@2.0.21",
       "name": "thiserror-impl",
-      "version": "2.0.19",
-      "purl": "pkg:cargo/thiserror-impl@2.0.19",
+      "version": "2.0.21",
+      "purl": "pkg:cargo/thiserror-impl@2.0.21",
       "description": "Implementation detail of the `thiserror` crate",
       "licenses": [
         {
@@ -16204,7 +18675,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:thiserror-impl:thiserror-impl:2.0.19:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:thiserror-impl:thiserror-impl:2.0.21:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -16239,10 +18710,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/time@0.3.54",
+      "bom-ref": "pkg:cargo/time@0.3.55",
       "name": "time",
-      "version": "0.3.54",
-      "purl": "pkg:cargo/time@0.3.54",
+      "version": "0.3.55",
+      "purl": "pkg:cargo/time@0.3.55",
       "description": "Date and time library. Fully interoperable with the standard library. Mostly compatible with #![no_std].",
       "licenses": [
         {
@@ -16266,7 +18737,7 @@
           "value": "ambiguous"
         }
       ],
-      "cpe": "cpe:2.3:a:time:time:0.3.54:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:time:time:0.3.55:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -16486,10 +18957,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/tokio@1.53.1",
+      "bom-ref": "pkg:cargo/tokio@1.53.3",
       "name": "tokio",
-      "version": "1.53.1",
-      "purl": "pkg:cargo/tokio@1.53.1",
+      "version": "1.53.3",
+      "purl": "pkg:cargo/tokio@1.53.3",
       "licenses": [
         {
           "license": {
@@ -16509,10 +18980,10 @@
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
-          "value": "verified-exact"
+          "value": "ambiguous"
         }
       ],
-      "cpe": "cpe:2.3:a:tokio:tokio:1.53.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:tokio:tokio:1.53.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -16726,10 +19197,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/tokio-tungstenite@0.26.2",
+      "bom-ref": "pkg:cargo/tokio-tungstenite@0.29.0",
       "name": "tokio-tungstenite",
-      "version": "0.26.2",
-      "purl": "pkg:cargo/tokio-tungstenite@0.26.2",
+      "version": "0.29.0",
+      "purl": "pkg:cargo/tokio-tungstenite@0.29.0",
       "description": "Tokio binding for Tungstenite, the Lightweight stream-based WebSocket implementation",
       "licenses": [
         {
@@ -16753,7 +19224,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:tokio-tungstenite:tokio-tungstenite:0.26.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:tokio-tungstenite:tokio-tungstenite:0.29.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -16977,6 +19448,34 @@
         }
       ],
       "cpe": "cpe:2.3:a:toml_edit:toml_edit:0.22.27:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/toml_edit@0.25.15+spec-1.1.0",
+      "name": "toml_edit",
+      "version": "0.25.15+spec-1.1.0",
+      "purl": "pkg:cargo/toml_edit@0.25.15+spec-1.1.0",
+      "description": "Yet another format-preserving TOML parser.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/toml-rs/toml"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:toml_edit:toml_edit:0.25.15_spec-1.1.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -17603,10 +20102,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/tungstenite@0.26.2",
+      "bom-ref": "pkg:cargo/tungstenite@0.29.0",
       "name": "tungstenite",
-      "version": "0.26.2",
-      "purl": "pkg:cargo/tungstenite@0.26.2",
+      "version": "0.29.0",
+      "purl": "pkg:cargo/tungstenite@0.29.0",
       "description": "Lightweight stream-based WebSocket implementation",
       "licenses": [
         {
@@ -17630,7 +20129,38 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:snapview:tungstenite:0.26.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:snapview:tungstenite:0.29.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/twofish@0.7.1",
+      "name": "twofish",
+      "version": "0.7.1",
+      "purl": "pkg:cargo/twofish@0.7.1",
+      "description": "Twofish block cipher",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/block-ciphers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:twofish:twofish:0.7.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18055,37 +20585,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/unsafe-libyaml@0.2.11",
-      "name": "unsafe-libyaml",
-      "version": "0.2.11",
-      "purl": "pkg:cargo/unsafe-libyaml@0.2.11",
-      "description": "libyaml transpiled to rust by c2rust",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "David Tolnay"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/dtolnay/unsafe-libyaml"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:unsafe-libyaml:unsafe-libyaml:0.2.11:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/untrusted@0.9.0",
       "name": "untrusted",
       "version": "0.9.0",
@@ -18145,37 +20644,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:url:url:2.5.8:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/utf-8@0.7.6",
-      "name": "utf-8",
-      "version": "0.7.6",
-      "purl": "pkg:cargo/utf-8@0.7.6",
-      "description": "Incremental, zero-copy UTF-8 decoding with error handling",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Simon Sapin"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/SimonSapin/rust-utf8"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:utf-8:utf-8:0.7.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18241,10 +20709,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/uuid@1.11.1",
+      "bom-ref": "pkg:cargo/uuid@1.28.0",
       "name": "uuid",
-      "version": "1.11.1",
-      "purl": "pkg:cargo/uuid@1.11.1",
+      "version": "1.28.0",
+      "purl": "pkg:cargo/uuid@1.28.0",
       "description": "A library to generate and parse UUIDs.",
       "licenses": [
         {
@@ -18268,7 +20736,7 @@
           "value": "ambiguous"
         }
       ],
-      "cpe": "cpe:2.3:a:uuid:uuid:1.11.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:uuid:uuid:1.28.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18453,10 +20921,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/want@0.3.1",
+      "bom-ref": "pkg:cargo/want@0.3.2",
       "name": "want",
-      "version": "0.3.1",
-      "purl": "pkg:cargo/want@0.3.1",
+      "version": "0.3.2",
+      "purl": "pkg:cargo/want@0.3.2",
       "description": "Detect when another Future wants a result.",
       "licenses": [
         {
@@ -18480,7 +20948,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:want:want:0.3.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:want:want:0.3.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18901,10 +21369,38 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/webpki-roots@1.0.9",
+      "bom-ref": "pkg:cargo/webpki-root-certs@1.0.10",
+      "name": "webpki-root-certs",
+      "version": "1.0.10",
+      "purl": "pkg:cargo/webpki-root-certs@1.0.10",
+      "description": "Mozilla trusted certificate authorities in self-signed X.509 format for use with crates other than webpki",
+      "licenses": [
+        {
+          "license": {
+            "id": "CDLA-Permissive-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/rustls/webpki-roots"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:webpki-root-certs:webpki-root-certs:1.0.10:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/webpki-roots@1.0.10",
       "name": "webpki-roots",
-      "version": "1.0.9",
-      "purl": "pkg:cargo/webpki-roots@1.0.9",
+      "version": "1.0.10",
+      "purl": "pkg:cargo/webpki-roots@1.0.10",
       "description": "Mozilla's CA root certificates for use with webpki",
       "licenses": [
         {
@@ -18925,7 +21421,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:webpki-roots:webpki-roots:1.0.9:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:webpki-roots:webpki-roots:1.0.10:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -19308,37 +21804,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/windows-sys@0.48.0",
-      "name": "windows-sys",
-      "version": "0.48.0",
-      "purl": "pkg:cargo/windows-sys@0.48.0",
-      "description": "Rust for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-sys:windows-sys:0.48.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/windows-sys@0.52.0",
       "name": "windows-sys",
       "version": "0.52.0",
@@ -19429,37 +21894,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/windows-targets@0.48.5",
-      "name": "windows-targets",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows-targets@0.48.5",
-      "description": "Import libs for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-targets:windows-targets:0.48.5:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/windows-targets@0.52.6",
       "name": "windows-targets",
       "version": "0.52.6",
@@ -19488,37 +21922,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:windows-targets:windows-targets:0.52.6:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows_aarch64_gnullvm@0.48.5",
-      "name": "windows_aarch64_gnullvm",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_aarch64_gnullvm@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_aarch64_gnullvm:windows_aarch64_gnullvm:0.48.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -19553,37 +21956,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/windows_aarch64_msvc@0.48.5",
-      "name": "windows_aarch64_msvc",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_aarch64_msvc@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_aarch64_msvc:windows_aarch64_msvc:0.48.5:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/windows_aarch64_msvc@0.52.6",
       "name": "windows_aarch64_msvc",
       "version": "0.52.6",
@@ -19612,37 +21984,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:windows_aarch64_msvc:windows_aarch64_msvc:0.52.6:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows_i686_gnu@0.48.5",
-      "name": "windows_i686_gnu",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_i686_gnu@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_i686_gnu:windows_i686_gnu:0.48.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -19708,37 +22049,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/windows_i686_msvc@0.48.5",
-      "name": "windows_i686_msvc",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_i686_msvc@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_i686_msvc:windows_i686_msvc:0.48.5:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/windows_i686_msvc@0.52.6",
       "name": "windows_i686_msvc",
       "version": "0.52.6",
@@ -19767,37 +22077,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:windows_i686_msvc:windows_i686_msvc:0.52.6:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows_x86_64_gnu@0.48.5",
-      "name": "windows_x86_64_gnu",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_x86_64_gnu@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_x86_64_gnu:windows_x86_64_gnu:0.48.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -19832,37 +22111,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/windows_x86_64_gnullvm@0.48.5",
-      "name": "windows_x86_64_gnullvm",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_x86_64_gnullvm@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_x86_64_gnullvm:windows_x86_64_gnullvm:0.48.5:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/windows_x86_64_gnullvm@0.52.6",
       "name": "windows_x86_64_gnullvm",
       "version": "0.52.6",
@@ -19891,37 +22139,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:windows_x86_64_gnullvm:windows_x86_64_gnullvm:0.52.6:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows_x86_64_msvc@0.48.5",
-      "name": "windows_x86_64_msvc",
-      "version": "0.48.5",
-      "purl": "pkg:cargo/windows_x86_64_msvc@0.48.5",
-      "description": "Import lib for Windows",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT OR Apache-2.0"
-          }
-        }
-      ],
-      "supplier": {
-        "name": "Microsoft"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows_x86_64_msvc:windows_x86_64_msvc:0.48.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20012,10 +22229,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/winresource@0.1.31",
+      "bom-ref": "pkg:cargo/winresource@0.1.34",
       "name": "winresource",
-      "version": "0.1.31",
-      "purl": "pkg:cargo/winresource@0.1.31",
+      "version": "0.1.34",
+      "purl": "pkg:cargo/winresource@0.1.34",
       "description": "Create and set windows icons and metadata for executables",
       "licenses": [
         {
@@ -20039,7 +22256,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:winresource:winresource:0.1.31:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:winresource:winresource:0.1.34:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20073,6 +22290,36 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/wnaf@0.14.1",
+      "name": "wnaf",
+      "version": "0.14.1",
+      "purl": "pkg:cargo/wnaf@0.14.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/elliptic-curves"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:wnaf:wnaf:0.14.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/writeable@0.6.3",
       "name": "writeable",
       "version": "0.6.3",
@@ -20101,6 +22348,68 @@
         }
       ],
       "cpe": "cpe:2.3:a:writeable:writeable:0.6.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wyz@0.5.1",
+      "name": "wyz",
+      "version": "0.5.1",
+      "purl": "pkg:cargo/wyz@0.5.1",
+      "description": "myrrlyn’s utility collection",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "myrrlyn"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/myrrlyn/wyz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:wyz:wyz:0.5.1:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/x25519-dalek@2.0.1",
+      "name": "x25519-dalek",
+      "version": "2.0.1",
+      "purl": "pkg:cargo/x25519-dalek@2.0.1",
+      "description": "X25519 elliptic curve Diffie-Hellman key exchange in pure-Rust, using curve25519-dalek.",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Isis Lovecruft, DebugSteven, Henry de Valence"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/dalek-cryptography/curve25519-dalek/tree/main/x25519-dalek"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:x25519-dalek:x25519-dalek:2.0.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20227,10 +22536,41 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/yasna@0.5.2",
+      "bom-ref": "pkg:cargo/xxhash-rust@0.8.19",
+      "name": "xxhash-rust",
+      "version": "0.8.19",
+      "purl": "pkg:cargo/xxhash-rust@0.8.19",
+      "description": "Implementation of xxhash",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSL-1.0"
+          }
+        }
+      ],
+      "supplier": {
+        "name": "Douman"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/DoumanAsh/xxhash-rust"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:xxhash-rust:xxhash-rust:0.8.19:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/yasna@0.6.0",
       "name": "yasna",
-      "version": "0.5.2",
-      "purl": "pkg:cargo/yasna@0.5.2",
+      "version": "0.6.0",
+      "purl": "pkg:cargo/yasna@0.6.0",
       "description": "ASN.1 library for Rust",
       "licenses": [
         {
@@ -20254,7 +22594,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:yasna:yasna:0.5.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:yasna:yasna:0.6.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20443,10 +22783,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/zeroize@1.9.0",
+      "bom-ref": "pkg:cargo/zeroize@1.9.1",
       "name": "zeroize",
-      "version": "1.9.0",
-      "purl": "pkg:cargo/zeroize@1.9.0",
+      "version": "1.9.1",
+      "purl": "pkg:cargo/zeroize@1.9.1",
       "licenses": [
         {
           "license": {
@@ -20469,7 +22809,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:zeroize:zeroize:1.9.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:zeroize:zeroize:1.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20594,6 +22934,34 @@
         }
       ],
       "cpe": "cpe:2.3:a:zerovec-derive:zerovec-derive:0.11.3:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zlib-rs@0.6.8",
+      "name": "zlib-rs",
+      "version": "0.6.8",
+      "purl": "pkg:cargo/zlib-rs@0.6.8",
+      "description": "A memory-safe zlib implementation written in rust",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/trifectatechfoundation/zlib-rs"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:zlib-rs:zlib-rs:0.6.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -21230,17 +23598,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/esbuild@0.28.1",
+      "bom-ref": "pkg:npm/esbuild@0.28.2",
       "name": "esbuild",
-      "version": "0.28.1",
-      "purl": "pkg:npm/esbuild@0.28.1",
+      "version": "0.28.2",
+      "purl": "pkg:npm/esbuild@0.28.2",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:esbuild:esbuild:0.28.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:esbuild:esbuild:0.28.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -21591,20 +23959,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:fdir:fdir:6.5.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/fdir@6.5.0(picomatch@4.0.4)",
-      "name": "fdir",
-      "version": "6.5.0(picomatch@4.0.4)",
-      "purl": "pkg:npm/fdir@6.5.0(picomatch@4.0.4)",
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:fdir:fdir:6.5.0_picomatch_4.0.4:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -22896,17 +25250,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/postcss@8.5.25",
+      "bom-ref": "pkg:npm/postcss@8.5.31",
       "name": "postcss",
-      "version": "8.5.25",
-      "purl": "pkg:npm/postcss@8.5.25",
+      "version": "8.5.31",
+      "purl": "pkg:npm/postcss@8.5.31",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
-          "value": "verified-exact"
+          "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:postcss:postcss:8.5.25:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:postcss:postcss:8.5.31:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24156,17 +26510,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/rollup@4.62.0",
+      "bom-ref": "pkg:npm/rollup@4.64.12",
       "name": "rollup",
-      "version": "4.62.0",
-      "purl": "pkg:npm/rollup@4.62.0",
+      "version": "4.64.12",
+      "purl": "pkg:npm/rollup@4.64.12",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:rollupjs:rollup:4.62.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rollupjs:rollup:4.64.12:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24324,31 +26678,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/smol-toml@1.8.0",
+      "bom-ref": "pkg:npm/smol-toml@1.9.1",
       "name": "smol-toml",
-      "version": "1.8.0",
-      "purl": "pkg:npm/smol-toml@1.8.0",
+      "version": "1.9.1",
+      "purl": "pkg:npm/smol-toml@1.9.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:smol-toml:smol-toml:1.8.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:smol-toml:smol-toml:1.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/source-map-js@1.2.1",
+      "bom-ref": "pkg:npm/source-map-js@1.2.2",
       "name": "source-map-js",
-      "version": "1.2.1",
-      "purl": "pkg:npm/source-map-js@1.2.1",
+      "version": "1.2.2",
+      "purl": "pkg:npm/source-map-js@1.2.2",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:source-map-js:source-map-js:1.2.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:source-map-js:source-map-js:1.2.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24814,31 +27168,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vite@7.3.5",
+      "bom-ref": "pkg:npm/vite@7.3.7",
       "name": "vite",
-      "version": "7.3.5",
-      "purl": "pkg:npm/vite@7.3.5",
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "verified-exact"
-        }
-      ],
-      "cpe": "cpe:2.3:a:vitejs:vite:7.3.5:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/vite@7.3.5(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3)",
-      "name": "vite",
-      "version": "7.3.5(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3)",
-      "purl": "pkg:npm/vite@7.3.5(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3)",
+      "version": "7.3.7",
+      "purl": "pkg:npm/vite@7.3.7",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitejs:vite:7.3.5__types_node_25.3.0__jiti_2.6.1__lightningcss_1.31.1__yaml_2.8.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitejs:vite:7.3.7:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/vite@7.3.7(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3)",
+      "name": "vite",
+      "version": "7.3.7(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3)",
+      "purl": "pkg:npm/vite@7.3.7(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3)",
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-vendor-product"
+        }
+      ],
+      "cpe": "cpe:2.3:a:vitejs:vite:7.3.7__types_node_25.3.0__jiti_2.6.1__lightningcss_1.31.1__yaml_2.8.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24856,17 +27210,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vitest@5.0.0(@types/node@25.3.0)(jsdom@26.1.0)(vite@7.3.5(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3))",
+      "bom-ref": "pkg:npm/vitest@5.0.0(@types/node@25.3.0)(jsdom@26.1.0)(vite@7.3.7(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3))",
       "name": "vitest",
-      "version": "5.0.0(@types/node@25.3.0)(jsdom@26.1.0)(vite@7.3.5(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3))",
-      "purl": "pkg:npm/vitest@5.0.0(@types/node@25.3.0)(jsdom@26.1.0)(vite@7.3.5(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3))",
+      "version": "5.0.0(@types/node@25.3.0)(jsdom@26.1.0)(vite@7.3.7(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3))",
+      "purl": "pkg:npm/vitest@5.0.0(@types/node@25.3.0)(jsdom@26.1.0)(vite@7.3.7(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1)(yaml@2.8.3))",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.0.0__types_node_25.3.0__jsdom_26.1.0__vite_7.3.5__types_node_25.3.0__jiti_2.6.1__lightningcss_1.31.1__yaml_2.8.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.0.0__types_node_25.3.0__jsdom_26.1.0__vite_7.3.7__types_node_25.3.0__jiti_2.6.1__lightningcss_1.31.1__yaml_2.8.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25081,7 +27435,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/w41jmn3ji7rcrrgk9pj1343davdc65fx-cosmian-kms-cli-dynamic-5.28.0.drv"
+      "ref": "/nix/store/hfbsk024dn01ypmns3n7a2657i55rhix-cosmian-kms-cli-dynamic-5.29.0.drv"
     }
   ],
   "vulnerabilities": []
