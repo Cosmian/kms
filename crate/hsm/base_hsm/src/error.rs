@@ -10,6 +10,10 @@ pub enum HError {
     #[error("{0}")]
     Default(String),
 
+    /// An initialized PKCS#11 operation could not be finalized; discard its session.
+    #[error("{0}")]
+    OperationCleanup(String),
+
     #[error("Error loading the library: {0}")]
     LibLoading(#[from] libloading::Error),
 

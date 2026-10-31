@@ -9,21 +9,25 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
+# This task sources credentials and passes PINs through environment assignments.
+set +x
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 export WITH_HSM=1
-ensure_nix_shell
+ensure_nix_shell "${VARIANT}"
+
+C2P_VPN_DIR=""
+C2P_SHIM_DIR=""
 
 cleanup() {
-  if [[ -f /tmp/crypt2pay-openvpn.pid ]]; then
-    sudo kill "$(cat /tmp/crypt2pay-openvpn.pid)" 2>/dev/null || true
-    sudo rm -f /tmp/crypt2pay-openvpn.pid
-  fi
-  if [[ -f /tmp/crypt2pay-openvpn.conf ]]; then
-    sudo rm -f /tmp/crypt2pay-openvpn.conf
+  if [[ -n "${C2P_VPN_DIR:-}" ]]; then
+    if [[ -f "${C2P_VPN_DIR}/openvpn.pid" ]]; then
+      sudo kill -- "$(sudo cat "${C2P_VPN_DIR}/openvpn.pid")" 2>/dev/null || true
+    fi
+    rm -rf -- "${C2P_VPN_DIR:?}"
   fi
   if [[ -n "${C2P_SHIM_DIR:-}" ]]; then
     rm -rf -- "${C2P_SHIM_DIR:?}"
@@ -41,6 +45,11 @@ if [[ -f "${HOME}/.cosmian/crypt2pay.sh" ]]; then
   # shellcheck source=/dev/null
   source "${HOME}/.cosmian/crypt2pay.sh"
 fi
+
+# Keep root-created VPN state in a private directory owned by this test run.
+C2P_VPN_DIR="$(mktemp -d)"
+export CRYPT2PAY_OPENVPN_PID_FILE="${C2P_VPN_DIR}/openvpn.pid"
+export CRYPT2PAY_OPENVPN_CONF_FILE="${C2P_VPN_DIR}/openvpn.conf"
 
 # Prepare Crypt2Pay HSM libraries: downloads, extracts, and installs to /lib/.
 bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_crypt2pay.sh"
