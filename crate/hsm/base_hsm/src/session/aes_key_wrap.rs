@@ -10,7 +10,12 @@ use pkcs11_sys::{
 };
 use zeroize::Zeroizing;
 
-use crate::{HResult, base_hsm::AesKeyWrapMechanism, hsm_call, session::Session};
+use crate::{
+    HResult,
+    base_hsm::AesKeyWrapMechanism,
+    hsm_call,
+    session::{Session, session_impl::checked_output_length},
+};
 
 fn ulong_attribute(type_: CK_ULONG, value: &CK_ULONG) -> HResult<CK_ATTRIBUTE> {
     Ok(CK_ATTRIBUTE {
@@ -108,7 +113,7 @@ impl Session {
                 wrapped.as_mut_ptr(),
                 &raw mut wrapped_len
             );
-            wrapped.truncate(usize::try_from(wrapped_len)?);
+            wrapped.truncate(checked_output_length(wrapped_len, wrapped.len())?);
             Ok(wrapped)
         })();
         let destroyed = self.destroy_object(tmp);
@@ -158,12 +163,13 @@ impl Session {
             }];
             self.call_get_attributes(tmp, &mut value_template)?
                 .ok_or_else(|| crate::HError::Default("unwrapped object vanished".to_owned()))?;
-            let mut value =
-                Zeroizing::new(vec![0_u8; usize::try_from(value_template[0].ulValueLen)?]);
+            let length = checked_output_length(value_template[0].ulValueLen, wrapped.len())?;
+            let mut value = Zeroizing::new(vec![0_u8; length]);
             value_template[0].pValue = value.as_mut_ptr().cast::<std::ffi::c_void>();
             self.call_get_attributes(tmp, &mut value_template)?
                 .ok_or_else(|| crate::HError::Default("unwrapped object vanished".to_owned()))?;
-            value.truncate(usize::try_from(value_template[0].ulValueLen)?);
+            let length = checked_output_length(value_template[0].ulValueLen, value.len())?;
+            value.truncate(length);
             Ok(value)
         })();
         let destroyed = self.destroy_object(tmp);

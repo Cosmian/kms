@@ -9,6 +9,8 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
+# Keep HSM PINs out of inherited shell tracing.
+set +x
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
