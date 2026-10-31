@@ -14,22 +14,21 @@ fn assert_fips_startup_result<E: std::fmt::Display>(
     result: Result<crate::TestsContext, E>,
     simulator: bool,
 ) {
-    match (result, simulator) {
-        (Ok(_), true) => {
-            panic!("Crypt2Pay simulator unexpectedly started with an AES-GCM KEK in FIPS")
-        }
-        (Err(error), true) => assert!(
+    if simulator {
+        assert!(
+            result.is_err(),
+            "Crypt2Pay simulator unexpectedly started with an AES-GCM KEK in FIPS"
+        );
+    }
+
+    match result {
+        Ok(context) => assert!(context.server_port > 0),
+        Err(error) => assert!(
             error
                 .to_string()
                 .contains("AES-GCM encryption needs an IV generated inside the HSM"),
-            "unexpected FIPS simulator startup error: {error}"
-        ),
-        (Ok(context), false) => assert!(context.server_port > 0),
-        (Err(error), false) => assert!(
-            error
-                .to_string()
-                .contains("AES-GCM encryption needs an IV generated inside the HSM"),
-            "unexpected FIPS HSM startup error: {error}"
+            "unexpected FIPS {} startup error: {error}",
+            if simulator { "simulator" } else { "HSM" }
         ),
     }
 }

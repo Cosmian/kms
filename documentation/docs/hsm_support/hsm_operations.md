@@ -651,7 +651,7 @@ Eviden KMS retains the classic Cryptoki (PKCS#11) **v2.40** path for HSM operati
 !!! info Optional PKCS#11 v3.0 message encryption
     For AES-GCM with an HSM key-encryption key, a FIPS build attempts the PKCS#11 v3.0 message-based API when the complete function family is available. If the message operation fails, the KMS retries with classic PKCS#11 AES-GCM. Startup fails only if both attempts fail; the classic path must still obtain an IV generated inside the HSM. Non-FIPS builds can use the classic caller-IV path where the HSM capability permits it.
 
-The loaded library's message-operation capability is determined from the relevant function pointers. Separately, `C_GetInterfaceList` can report the PKCS#11 v3.0 interfaces exposed by the library; that diagnostic probe does not change the classic function resolution. See [ADR-2026-09-03](../../adr/2026-09-03-pkcs11-v3-scope-decision-ffi-foundation.md) for the function-resolution scope.
+The loaded library's message-operation capability is determined from the relevant function pointers. Separately, `C_GetInterfaceList` can report the PKCS#11 v3.0 interfaces exposed by the library; that diagnostic probe does not change the classic function resolution.
 
 ### Supported operations and mechanisms
 
