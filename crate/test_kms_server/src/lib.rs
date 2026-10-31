@@ -63,6 +63,8 @@ mod db_hsm_tests;
 
 #[cfg(test)]
 mod auth_verifier_tests;
+#[cfg(test)]
+mod hsm_startup_tests;
 
 #[cfg(test)]
 mod openapi_validation;

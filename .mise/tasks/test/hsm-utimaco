@@ -38,4 +38,11 @@ HSM_USER_PASSWORD="12345678" cargo test \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_utimaco_all --ignored --exact
 
+# Verify KMS startup with a Utimaco-backed KEK in both configured variants.
+HSM_USER_PASSWORD="12345678" cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_utimaco
+
 print_success "Utimaco HSM tests completed"

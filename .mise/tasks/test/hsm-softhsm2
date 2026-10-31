@@ -81,6 +81,29 @@ env \
 
 print_status "HSM vector tests completed"
 
+# ── Run KMS startup with an HSM-backed KEK ───────────────────────────────────
+print_header "Running SoftHSM2 KMS startup with HSM KEK"
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="$LIB_PATH" \
+  DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_MODEL="softhsm2" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+  ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+  ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+  ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+  ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+  cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_softhsm2
+print_status "SoftHSM2 KMS startup with HSM KEK completed"
+
 # ── Run cosmian_pkcs11 HSM-KEK conformance tests ────────────────────────────
 # Mandatory PKCS#11 signing tests (EdDSA Ed25519, ECDSA P-256, ECDSA
 # secp256k1), an RSA-PSS sign test, and an end-to-end C_Verify round-trip
