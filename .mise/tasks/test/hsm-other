@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+#MISE description="Run KMS against hsm_model=other PKCS#11 backends (v2 and v3, caller-IV policy per build)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" static
+setup_test_logging
+export WITH_HSM=1
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "hsm_model=other KMS startup scenarios (${VARIANT_NAME})"
+
+# `hsm_model = "other"` is a generic PKCS#11 backend: the KMS build and profile decide who
+# generates the AES-GCM IV. The shim models that per variant:
+#   FIPS      the module generates every IV; a caller-supplied IV is refused;
+#   non-FIPS  the KMS chooses the IV and the module accepts it.
+# Both variants exercise the classic path, and the v3 library additionally proves the
+# message-API attempt falls back to classic GCM.
+require_cmd cc
+POLICY=()
+[ "${VARIANT}" = "non-fips" ] && POLICY=(-DACCEPT_CALLER_IV)
+SHIM_DIR="$(mktemp -d)"
+trap 'rm -rf -- "${SHIM_DIR:?}"' EXIT
+SHIM_SRC="${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_fips_iv_shim.c"
+cc -shared -fPIC -O2 -Wno-cast-function-type-mismatch \
+  "${POLICY[@]}" -o "${SHIM_DIR}/shim-v2.so" "${SHIM_SRC}"
+cc -shared -fPIC -O2 -DV3_MESSAGE -Wno-cast-function-type-mismatch \
+  "${POLICY[@]}" -o "${SHIM_DIR}/shim-v3.so" "${SHIM_SRC}"
+
+for mode in v2 v3; do
+  print_header "Scenario PKCS#11 ${mode}"
+  # Each scenario gets its own token: the KEK and master key of one run must not leak into the other.
+  softhsm2_setup "${SHIM_DIR}/${mode}/tokens" "${SHIM_DIR}/${mode}/softhsm2.conf"
+  softhsm2_init_standard_tokens "hsm_other_${mode}"
+  LIB_PATH="$(softhsm2_lib_search_path)"
+  MARKER="${SHIM_DIR}/${mode}/calls.txt"
+  env PATH="$PATH" \
+    LD_LIBRARY_PATH="${LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    OTHER_HSM_PKCS11_LIB="${SHIM_DIR}/shim-${mode}.so" \
+    HSM_MODEL=other \
+    HSM_SLOT_ID="${SOFTHSM2_HSM_SLOT_ID}" \
+    HSM_USER_PASSWORD="${HSM_USER_PASSWORD}" \
+    FIPS_IV_SHIM_MARKER="${MARKER}" \
+    KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+    cargo test \
+    -p test_kms_server \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_other
+  grep -q '^classic-encrypt-init$' "${MARKER}" ||
+    print_error "PKCS#11 ${mode}: the classic encryption path never ran"
+  if [ "${mode}" = "v3" ]; then
+    grep -q '^message-encrypt-init$' "${MARKER}" ||
+      print_error "PKCS#11 v3: the message API was never attempted, so its fallback was not exercised"
+  elif grep -q '^message-encrypt-init$' "${MARKER}"; then
+    print_error "PKCS#11 v2: this library must not expose message functions"
+  fi
+  print_status "PKCS#11 ${mode}: KMS booted with an HSM-backed KEK"
+done
+
+print_success "hsm_model=other startup scenarios completed (${VARIANT_NAME})"

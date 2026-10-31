@@ -315,6 +315,7 @@ jobs:
           - crypt2pay-simulator
           - softhsm2
           - kryoptic
+          - other
         features: [fips, non-fips]
         exclude:
           # Kryoptic HSM backend always built in non-fips
@@ -332,17 +333,20 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # The `other` backend is a PKCS#11 shim without benchmarking profiles.
       - name: Bench (PKCS#11 load, HSM-delegated)
+        if: matrix.hsm-type != 'other'
         run: |
           mise run bench:pkcs11 --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
 
       - name: Bench (HSM-delegated)
+        if: matrix.hsm-type != 'other'
         run: |
           mise run bench:hsm --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
 
       # The comprehensive provider suite and pkcs11-check require non-FIPS.
       - name: Test (PKCS#11 v3 conformance via pkcs11-tool and pkcs11-check)
-        if: matrix.features == 'non-fips'
+        if: matrix.features == 'non-fips' && matrix.hsm-type != 'other'
         run: |
           mise run test:hsm-pkcs11-tool --variant non-fips --marker smoke
 
