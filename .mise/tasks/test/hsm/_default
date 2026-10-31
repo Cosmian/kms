@@ -9,4 +9,4 @@
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
-run_test_leaves "$(dirname "$0")" azure-cloud-hsm-build crypt2pay crypt2pay-simulator kryoptic proteccio softhsm2 utimaco
+run_test_leaves "$(dirname "$0")" azure-cloud-hsm-build crypt2pay crypt2pay-simulator kryoptic other proteccio softhsm2 utimaco
