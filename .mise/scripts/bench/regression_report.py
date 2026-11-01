@@ -146,19 +146,20 @@ def main() -> int:
 
     regress = 0
     noise = 0
-    invalid = 0
+    collapsed = 0
 
     def section(title: str, header: str, rows: list[tuple[str, str]]) -> None:
-        """rows: (status, markdown row); status is OK / REGRESSION / noise / COLLAPSE.
+        """rows: (status, markdown row); status is OK / REGRESSION / noise / COLLAPSE / RECOVERED.
 
-        Lists regressions and collapsed points, or every row with --all."""
-        nonlocal regress, noise, invalid
+        Lists regressions and collapsed points (RECOVERED is informational), or every row with --all.
+        """
+        nonlocal regress, noise, collapsed
         bad = sum(1 for s, _ in rows if s == 'REGRESSION')
         noisy = sum(1 for s, _ in rows if s == 'noise')
         broken = sum(1 for s, _ in rows if s == 'COLLAPSE')
         regress += bad
         noise += noisy
-        invalid += broken
+        collapsed += broken
         shown = [r for s, r in rows if a.all or s in ('REGRESSION', 'COLLAPSE')]
         lines.extend(
             [
@@ -166,7 +167,7 @@ def main() -> int:
                 '',
                 f"{len(rows)} compared 1 to 1, **{bad} regression(s)**, {noisy} above threshold but within noise"
                 + (
-                    f", **{broken} COLLAPSE** (a side below {MIN_RPS:g} req/s: unexplained throughput collapse, investigate)."
+                    f", **{broken} COLLAPSE** (new throughput below {MIN_RPS:g} req/s: unexplained collapse, investigate)."
                     if broken
                     else '.'
                 ),
@@ -184,9 +185,10 @@ def main() -> int:
         d_tp, d_p95 = pct(o['throughput_rps'], n['throughput_rps']), pct(
             o['p95_ms'], n['p95_ms']
         )
-        invalid_point = min(o['throughput_rps'], n['throughput_rps']) < MIN_RPS
-        if invalid_point:
+        if n['throughput_rps'] < MIN_RPS:
             status = 'COLLAPSE'
+        elif o['throughput_rps'] < MIN_RPS:
+            status = 'RECOVERED'
         else:
             status = 'REGRESSION' if max(-d_tp, d_p95) > th else 'OK'
         rows.append(
@@ -261,7 +263,7 @@ def main() -> int:
     if a.output:
         with open(a.output, 'w', encoding='utf-8') as f:
             f.write(report)
-    return 1 if a.fail and (regress or invalid or nothing_matched or strict) else 0
+    return 1 if a.fail and (regress or collapsed or nothing_matched or strict) else 0
 
 
 if __name__ == '__main__':
