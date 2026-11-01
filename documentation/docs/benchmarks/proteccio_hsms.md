@@ -35,4 +35,4 @@ Values were read on 2026-10-13 with `nethsmstatus` and the client configuration 
 | --- | --- |
 | RSA 2048 | Supported |
 | ECDSA P-256 | Supported |
-| Ed25519 / Ed448 | Rejected with `CKR_UNKNOWN` (`0x70`) |
+| Ed25519 / Ed448 | Rejected with `CKR_MECHANISM_INVALID` (`0x70`) |

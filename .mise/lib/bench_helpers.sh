@@ -336,9 +336,11 @@ _bench_cleanup() {
   local pid_file
   for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
     [ -f "${pid_file}" ] || continue
-    sudo kill "$(cat "${pid_file}")" 2>/dev/null || true
+    sudo kill -- "$(sudo cat "${pid_file}")" 2>/dev/null || true
     sudo rm -f "${pid_file}"
   done
+  # Private per-run directory holding the Crypt2Pay VPN pid and configuration files.
+  [ -n "${BENCH_VPN_DIR:-}" ] && rm -rf -- "${BENCH_VPN_DIR:?}"
   rm -rf "${TMP_DIR:-}"
 }
 
@@ -606,7 +608,11 @@ bench_prepare_hsm() {
         (cd "${sim_dir}" && bash "${scripts_dir}/prepare_crypt2pay_simulator.sh")
         rm -rf "${sim_dir}"
       else
-        BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+        # The pid file is root-owned and 0600; the private directory avoids a stale shared /tmp conf.
+        BENCH_VPN_DIR="$(mktemp -d)"
+        export CRYPT2PAY_OPENVPN_PID_FILE="${BENCH_VPN_DIR}/openvpn.pid"
+        export CRYPT2PAY_OPENVPN_CONF_FILE="${BENCH_VPN_DIR}/openvpn.conf"
+        BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE}")
         bash "${scripts_dir}/prepare_crypt2pay.sh"
       fi
       ;;

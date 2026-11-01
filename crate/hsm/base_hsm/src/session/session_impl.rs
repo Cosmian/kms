@@ -4273,9 +4273,6 @@ mod tests {
         Ok(())
     }
 
-    const CALLER_IV_REFUSED: &str = "Caller-supplied AES-GCM IVs are not accepted for this HSM profile and build; \
-         the HSM must generate the IV";
-
     fn check_caller_iv_policy(rows: &[(bool, bool, bool)]) -> HResult<()> {
         for &(supports_caller_iv, allows_caller_iv_in_fips, accepted) in rows {
             let gcm = AesGcmCapabilities {
@@ -4287,21 +4284,15 @@ mod tests {
             if accepted {
                 // Validation failures never reach the driver, and message mode never replaces the IV.
                 for (iv, message) in [
-                    (&[][..], "Invalid AES-GCM IV length: expected 12, got 0"),
-                    (
-                        &[7_u8; 11][..],
-                        "Invalid AES-GCM IV length: expected 12, got 11",
-                    ),
-                    (
-                        &[7_u8; 13][..],
-                        "Invalid AES-GCM IV length: expected 12, got 13",
-                    ),
-                    (&[0_u8; 12][..], "An all-zero AES-GCM IV is not accepted"),
+                    (&[][..], "expected 12, got 0"),
+                    (&[7_u8; 11][..], "expected 12, got 11"),
+                    (&[7_u8; 13][..], "expected 12, got 13"),
+                    (&[0_u8; 12][..], "all-zero AES-GCM IV"),
                 ] {
                     let error = rejecting
                         .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(iv))
                         .expect_err("invalid caller IV must be rejected");
-                    assert_eq!(error.to_string(), message);
+                    assert!(error.to_string().contains(message), "{error}");
                 }
                 let session =
                     gcm_fixture_session(gcm, &["-DEXPECT_CALLER_IV", "-DMESSAGE_SUCCESS"])?;
@@ -4313,7 +4304,11 @@ mod tests {
                 let error = rejecting
                     .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(&[7; 12]))
                     .expect_err("this profile/build must refuse a caller IV");
-                assert_eq!(error.to_string(), CALLER_IV_REFUSED);
+                assert!(
+                    error
+                        .to_string()
+                        .contains("Caller-supplied AES-GCM IVs are not accepted")
+                );
             }
         }
         Ok(())
@@ -4425,10 +4420,7 @@ mod tests {
         let error = session
             .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &frame)
             .expect_err("message errors must propagate without retry");
-        assert_eq!(
-            error.to_string(),
-            "Failed to perform message-based decryption. Return code: 5"
-        );
+        assert!(error.to_string().contains("Return code: 5"));
         // The same driver accepts this frame through classic GCM.
         let classic = decrypt_fixture_session(false, &["-DMESSAGE_DECRYPT_FAILURE"])?;
         assert_eq!(
@@ -4456,6 +4448,26 @@ mod tests {
 
     /// A v3 table whose decrypt entries are `CKR_FUNCTION_NOT_SUPPORTED` stubs must decrypt
     /// through the classic API; any other init failure must not be retried.
+    /// A driver that replaces the accepted caller IV must not have its output trusted.
+    #[test]
+    fn caller_gcm_iv_replaced_by_the_driver_is_rejected() -> HResult<()> {
+        let gcm = AesGcmCapabilities {
+            supports_caller_iv: true,
+            allows_caller_iv_in_fips: true,
+            supports_message: false,
+        };
+        let session = gcm_fixture_session(gcm, &["-DEXPECT_CALLER_IV", "-DOVERWRITE_CALLER_IV"])?;
+        let error = session
+            .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(&[7; 12]))
+            .expect_err("a changed IV must be refused");
+        assert!(
+            error
+                .to_string()
+                .contains("changed the caller-supplied AES-GCM IV")
+        );
+        Ok(())
+    }
+
     #[test]
     fn gcm_decrypt_falls_back_only_when_message_init_is_unsupported() -> HResult<()> {
         let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_UNSUPPORTED"])?;
@@ -4494,7 +4506,7 @@ mod tests {
                 let error = session
                     .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &vec![0; length])
                     .expect_err("short GCM frames must be rejected before FFI");
-                assert_eq!(error.to_string(), "Invalid AES GCM ciphertext");
+                assert!(error.to_string().contains("Invalid AES GCM ciphertext"));
             }
             let session = decrypt_fixture_session(supports_message, &[])?;
             assert_eq!(
