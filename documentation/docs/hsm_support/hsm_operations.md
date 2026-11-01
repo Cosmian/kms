@@ -206,7 +206,7 @@ while minimizing HSM calls through expiring caching.
 The AES modes need an AES key encryption key and `rsa-oaep` an RSA one. The startup check below
 applies to HSM AES keys only.
 
-For AES-GCM with an HSM key, this KMS's FIPS build requires the HSM to generate the IV so IV generation remains inside the HSM's cryptographic boundary, consistent with FIPS 140-3 Implementation Guidance C.H. If the PKCS#11 v3.0 message API fails, the KMS retries with classic PKCS#11 AES-GCM. Startup fails only if the v3 attempt and classic fallback both fail. AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
+For AES-GCM with an HSM key, this KMS's FIPS build requires the HSM to generate the IV so IV generation remains inside the HSM's cryptographic boundary, consistent with FIPS 140-3 Implementation Guidance C.H. If the PKCS#11 v3.0 message API fails, the KMS retries with classic PKCS#11 AES-GCM; decryption does the same when the library refuses message-decrypt init as unsupported. Profiles without `supports_message` (for example Crypt2Pay, Luna, GCP Cloud HSM and SoftHSM2) never try the message API and depend only on the classic path; in the FIPS build, startup fails if that path does not return an HSM-generated IV (see the matrix below). AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
 
 ```toml
 key_encryption_key = "hsm::4::master_kek"
@@ -220,6 +220,57 @@ this KMS version are created with both attributes enabled, so any of them can se
 wrapping key. Keys created by earlier KMS versions lack them: on a slot that offers AES key wrap,
 the server sets both attributes once and clears them again if wrapping still fails, then stops with an
 error. Keys already wrapped with another algorithm are still unwrapped.
+
+#### AES-GCM IVs, PKCS#11 versions and HSM FIPS mode
+
+Who generates the AES-GCM IV is decided by the **KMS build** and the HSM **capability profile**, never by
+the PKCS#11 version the library announces. For an HSM AES key and no caller-supplied IV, the KMS tries, in
+order:
+
+1. **PKCS#11 v3.0 message API** (the HSM generates the IV), when the profile has `supports_message` and the
+   library offers all five message-encrypt functions. The KMS looks each function up as an exported symbol
+   first, then in the v3.0 interface table, so a v2.40 library that exports these names (even as stubs
+   answering `CKR_FUNCTION_NOT_SUPPORTED`) is treated as v3-capable. If the call fails, the KMS continues
+   with step 2 or 3 (before 5.29.1 it aborted startup).
+2. **Classic `CKM_AES_GCM`, KMS-chosen random IV**: non-FIPS build with a profile that has
+   `supports_caller_iv`; FIPS build only for development-token profiles (`allows_caller_iv_in_fips`, SoftHSM2
+   and Kryoptic).
+3. **Classic `CKM_AES_GCM`, HSM-generated IV** (every other case, in particular the FIPS build): the KMS
+   passes a zeroed IV buffer and the HSM must write the IV it generated back into it. An IV left at zero is
+   refused, never used.
+
+A caller-supplied 12-byte IV (KMIP or CLI) never uses the message API and is accepted only where step 2 is
+allowed. Decryption reads the IV from the stored value and uses the message API when available, falling back
+to classic AES-GCM when its initialization is refused as unsupported (other errors, including authentication
+failures, are not retried).
+
+| KMS build | HSM library | HSM in FIPS mode | Result |
+| --- | --- | --- | --- |
+| FIPS | message API works | any | works, HSM-generated IV |
+| FIPS | no usable message API, classic returns the IV | any | works, HSM-generated IV |
+| FIPS | no usable message API, classic returns no IV | any | startup refused: `needs an IV generated inside the HSM`; use `aes-key-wrap-padding`, `aes-key-wrap` or `rsa-oaep` |
+| non-FIPS | message API works | any | works, HSM-generated IV |
+| non-FIPS | no usable message API | no | works, KMS-chosen IV |
+| non-FIPS | no usable message API | yes | the HSM refuses the KMS-chosen IV (for example `CKR_ACTION_PROHIBITED`, 27); use the FIPS build or a key-wrap algorithm |
+
+The HSM's FIPS mode does not change what the KMS sends, only whether the HSM accepts it. HSM
+key-wrap support is HSM-dependent: validate the chosen algorithm on your HSM. AES-KW/KWP of a KMS key goes
+through `C_WrapKey` on an ephemeral imported key, which some HSMs refuse with `CKR_KEY_HANDLE_INVALID`
+(observed on Crypt2Pay: only HSM-generated keys can be wrapped). On such an HSM use an RSA key encryption
+key with `rsa-oaep`.
+
+To diagnose a failed startup, read the server error:
+
+- `Failed to initialize message-based encryption. Return code: 84` (`CKR_FUNCTION_NOT_SUPPORTED`) or `112`
+  (`CKR_MECHANISM_INVALID`): the library exports message functions it does not implement. Upgrade to 5.29.1
+  or later.
+- `needs an IV generated inside the HSM … provided none`: step 3 failed; change the wrapping algorithm.
+- `CKR_ACTION_PROHIBITED` (27) from `C_Encrypt`: step 2 against an HSM in FIPS mode.
+
+List the exports of the library the server actually loads with
+`nm -D --defined-only <lib> | grep -E 'C_(Message|EncryptMessage|DecryptMessage|GetInterface)'`.
+`ckms pkcs11 capabilities` does not diagnose this: it checks Cosmian's own PKCS#11 provider against a
+running KMS, not the HSM driver the server loads.
 
 ## Using the wrapped KMS key
 
@@ -649,7 +700,7 @@ The signature is available at "/tmp/secret.sig"
 Eviden KMS retains the classic Cryptoki (PKCS#11) **v2.40** path for HSM operations. Its standard functions use stable C symbols, so a v2.40-compliant library remains supported. Optional v3.0 function families are resolved best-effort; a missing v3.0 entry point does not prevent the library from loading.
 
 !!! info Optional PKCS#11 v3.0 message encryption
-    For AES-GCM with an HSM key-encryption key, a FIPS build attempts the PKCS#11 v3.0 message-based API when the complete function family is available. If the message operation fails, the KMS retries with classic PKCS#11 AES-GCM. Startup fails only if both attempts fail; the classic path must still obtain an IV generated inside the HSM. Non-FIPS builds can use the classic caller-IV path where the HSM capability permits it.
+    For AES-GCM with an HSM key-encryption key, every build attempts the PKCS#11 v3.0 message-based API when the HSM profile enables it (`supports_message`) and the complete function family is available. If the message operation fails, the KMS retries with classic PKCS#11 AES-GCM. Profiles without `supports_message` never attempt it. Startup then fails if the classic path cannot be used: in a FIPS build it must obtain an IV generated inside the HSM, and a non-FIPS build sends its own IV only where the profile permits it. See *AES-GCM IVs, PKCS#11 versions and HSM FIPS mode*.
 
 The loaded library's message-operation capability is determined from the relevant function pointers. Separately, `C_GetInterfaceList` can report the PKCS#11 v3.0 interfaces exposed by the library; that diagnostic probe does not change the classic function resolution.
 
@@ -771,7 +822,7 @@ v2.40 and v3.0 specifications** (Cryptoki mechanisms table, `PKCS11-Curr-v2.40` 
 | Function | Ver. | KMS server: parameters | `cosmian_pkcs11` | Notes |
 |---|---|---|---|---|
 | `C_MessageEncryptInit`<br>`C_EncryptMessage`<br>`C_MessageEncryptFinal` | v3.0 | ⚠️ AES-GCM with HSM-generated 96-bit IV and fixed 128-bit tag; used for HSM AES-GCM KEK encryption, with classic AES-GCM fallback on failure | ❌ | provider: the v3.0 function family is listed but stubbed |
-| `C_MessageDecryptInit`<br>`C_DecryptMessage`<br>`C_MessageDecryptFinal` | v3.0 | ⚠️ AES-GCM with detached IV/tag; selected for HSM AES-GCM decryption when the full function family is available; errors are returned without classic retry | ❌ | provider: the v3.0 function family is listed but stubbed |
+| `C_MessageDecryptInit`<br>`C_DecryptMessage`<br>`C_MessageDecryptFinal` | v3.0 | ⚠️ AES-GCM with detached IV/tag; selected for HSM AES-GCM decryption when the full function family is available; falls back to classic AES-GCM only when init is refused as unsupported, other errors are returned without retry | ❌ | provider: the v3.0 function family is listed but stubbed |
 
 #### Session, object and interface management (v3.0 additions)
 
@@ -805,8 +856,9 @@ These optional v3.0 operations are capability-gated. For HSM AES-GCM encryption,
 #### Validating v3.0 mechanisms: the Kryoptic test token
 
 No vendor HSM currently supported by Eviden KMS (SoftHSM2, Utimaco, Proteccio, Crypt2Pay,
-SmartCard HSM, AWS CloudHSM, Azure Cloud HSM) implements PKCS#11 v3.0, so none of them can exercise the mechanisms above —
-SoftHSM2's own v3 probe test only confirms the "not supported" degrade path.
+SmartCard HSM, AWS CloudHSM, Azure Cloud HSM) was validated here against the v3.0-only mechanisms above —
+SoftHSM2's own v3 probe test only confirms the "not supported" degrade path. Some of these profiles enable
+the v3.0 AES-GCM message API and fall back to classic AES-GCM when the library refuses it.
 
 The v3.0 code paths are validated against
 [`kryoptic`](https://github.com/latchset/kryoptic) — a Rust PKCS#11 v3.0 software token

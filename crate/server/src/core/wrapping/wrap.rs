@@ -225,7 +225,8 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
         return Err(KmsError::ServerError(format!(
             "key_encryption_key {kek}: AES-GCM wrapping failed on this HSM: {e1}. Set \
              key_encryption_key_wrapping_algorithm = \"aes-key-wrap-padding\" (NIST SP \
-             800-38F) or \"aes-key-wrap\""
+             800-38F) or \"aes-key-wrap\" if this HSM can wrap imported keys, or use an RSA \
+             key encryption key with \"rsa-oaep\""
         )));
     }
     if let Err(e2) = oracle.set_key_wrap(kek, true).await {
