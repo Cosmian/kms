@@ -11,6 +11,9 @@
  * With -DACCEPT_CALLER_IV the caller's own IV is used as-is, modelling a non-FIPS module;
  * the zero-buffer/HSM-generation rule then does not apply.
  *
+ * With -DMESSAGE_INIT_NOT_SUPPORTED (and -DV3_MESSAGE) C_MessageEncryptInit returns
+ * CKR_FUNCTION_NOT_SUPPORTED instead of CKR_MECHANISM_INVALID.
+ *
  * Build without flags for PKCS#11 v2.40 behaviour. Build with -DV3_MESSAGE to also export a
  * PKCS#11 v3.0 interface whose message-encryption family always fails (a v3 library whose
  * message AES-GCM is unsupported). The message-decryption family stays absent, so KMS
@@ -142,10 +145,25 @@ static CK_RV message_encrypt_init(CK_SESSION_HANDLE session, CkMechanism *mechan
   (void)mechanism;
   (void)key;
   mark("message-encrypt-init");
+#ifdef MESSAGE_INIT_NOT_SUPPORTED
+  return CKR_FUNCTION_NOT_SUPPORTED; /* a v3 table whose message entries are all stubs */
+#else
   return CKR_MECHANISM_INVALID;
+#endif
 }
 
 static CK_RV unsupported(void) { return CKR_FUNCTION_NOT_SUPPORTED; }
+
+#ifdef MESSAGE_INIT_NOT_SUPPORTED
+static CK_RV message_decrypt_init(CK_SESSION_HANDLE session, CkMechanism *mechanism,
+                                  CK_OBJECT_HANDLE key) {
+  (void)session;
+  (void)mechanism;
+  (void)key;
+  mark("message-decrypt-init");
+  return CKR_FUNCTION_NOT_SUPPORTED;
+}
+#endif
 
 static CkInterface g_interface;
 
@@ -185,6 +203,14 @@ __attribute__((constructor)) static void shim_constructor(void) {
   g_mine.C_EncryptMessageBegin = (CkGenericFn)unsupported;
   g_mine.C_EncryptMessageNext = (CkGenericFn)unsupported;
   g_mine.C_MessageEncryptFinal = (CkGenericFn)unsupported;
+#ifdef MESSAGE_INIT_NOT_SUPPORTED
+  /* the decrypt family is stubbed too, so the KMS sees a complete v3 message surface */
+  g_mine.C_MessageDecryptInit = (CkGenericFn)message_decrypt_init;
+  g_mine.C_DecryptMessage = (CkGenericFn)unsupported;
+  g_mine.C_DecryptMessageBegin = (CkGenericFn)unsupported;
+  g_mine.C_DecryptMessageNext = (CkGenericFn)unsupported;
+  g_mine.C_MessageDecryptFinal = (CkGenericFn)unsupported;
+#endif
   g_interface.pInterfaceName = (CK_UTF8CHAR_PTR)"PKCS 11";
   g_interface.pFunctionList = &g_mine;
   g_interface.flags = 0;

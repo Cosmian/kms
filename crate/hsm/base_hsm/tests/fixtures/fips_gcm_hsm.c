@@ -29,6 +29,7 @@
 #include "pkcs11_fixture.h"
 
 #define CKM_AES_GCM 4231UL
+#define CKR_FUNCTION_NOT_SUPPORTED 84UL
 #define CKR_GENERAL_ERROR 5UL
 #define CKR_ENCRYPTED_DATA_INVALID 64UL
 #define CKR_ENCRYPTED_DATA_LEN_RANGE 65UL
@@ -315,6 +316,12 @@ static CK_RV message_decrypt_init(CK_SESSION_HANDLE hSession, CkMechanism *pMech
   (void)hSession;
   (void)hKey;
 #ifdef REJECT_DRIVER_OPERATIONS
+  return CKR_GENERAL_ERROR;
+#endif
+#ifdef MESSAGE_DECRYPT_INIT_UNSUPPORTED
+  return CKR_FUNCTION_NOT_SUPPORTED;
+#endif
+#ifdef MESSAGE_DECRYPT_INIT_FAILURE
   return CKR_GENERAL_ERROR;
 #endif
   if (g_message_decrypt_active) { return CKR_OPERATION_ACTIVE; }

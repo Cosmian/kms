@@ -24,7 +24,10 @@ use pkcs11_sys::{
 };
 use zeroize::Zeroizing;
 
-use crate::{HError, HResult, session::Session};
+use crate::{
+    HError, HResult,
+    session::{Session, message_context::is_message_unsupported_rv},
+};
 
 const AES_GCM_MESSAGE_IV_LENGTH: usize = 12;
 const AES_GCM_MESSAGE_TAG_LENGTH: usize = 16;
@@ -283,9 +286,13 @@ impl Session {
                 .ok_or_else(|| HError::Default("C_MessageDecryptInit unavailable".to_owned()))?;
             let rv = init(self.session_handle(), &raw mut mechanism, key_handle);
             if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to initialize message-based decryption. Return code: {rv}"
-                )));
+                let message =
+                    format!("Failed to initialize message-based decryption. Return code: {rv}");
+                return Err(if is_message_unsupported_rv(rv) {
+                    HError::MessageUnsupported(message)
+                } else {
+                    HError::Default(message)
+                });
             }
 
             let decrypt = self
