@@ -120,7 +120,7 @@ async fn test_startup_with_hsm_kek_crypt2pay_simulator() {
 /// `hsm_model = "other"` with a library that refuses caller AES-GCM IVs: the KMS must boot
 /// with an HSM-backed KEK by letting the module generate the IV itself.
 #[tokio::test]
-#[ignore = "Requires a PKCS#11 library refusing caller GCM IVs — invoked by mise run test:hsm-fips-caller-iv"]
+#[ignore = "Requires a PKCS#11 library refusing caller GCM IVs — invoked by mise run test:hsm-other"]
 async fn test_startup_with_hsm_kek_other() {
     test_hsm_kek_startup("other").await;
 }

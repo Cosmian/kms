@@ -24,33 +24,110 @@ use crate::{
     pkcs11_v3::{self, CkInterface, InterfaceDescriptor},
 };
 
-/// Symbolic name of a PKCS#11 return value, for error messages.
+/// Symbolic name of a PKCS#11 return value, for error messages. Covers every standard
+/// `CKR_*` code of the `pkcs11-sys` bindings; vendor-defined codes (>= `CKR_VENDOR_DEFINED`)
+/// and anything else report as `CKR_UNKNOWN`.
 #[must_use]
 pub const fn pkcs11_return_code_name(rv: pkcs11_sys::CK_RV) -> &'static str {
     match rv {
-        0x0000_0000 => "CKR_OK",
-        0x0000_0002 => "CKR_HOST_MEMORY",
-        0x0000_0003 => "CKR_SLOT_ID_INVALID",
-        0x0000_0005 => "CKR_GENERAL_ERROR",
-        0x0000_0006 => "CKR_FUNCTION_FAILED",
-        0x0000_0007 => "CKR_ARGUMENTS_BAD",
-        0x0000_000a => "CKR_CANT_LOCK",
-        0x0000_0030 => "CKR_DEVICE_ERROR",
-        0x0000_0013 => "CKR_ATTRIBUTE_VALUE_INVALID",
-        0x0000_001b => "CKR_ACTION_PROHIBITED",
-        0x0000_0031 => "CKR_DEVICE_MEMORY (HSM storage full)",
-        0x0000_0062 => "CKR_KEY_SIZE_RANGE",
-        0x0000_00d1 => "CKR_TEMPLATE_INCONSISTENT",
-        0x0000_0100 => "CKR_USER_ALREADY_LOGGED_IN",
-        0x0000_0032 => "CKR_DEVICE_REMOVED",
-        0x0000_0054 => "CKR_FUNCTION_NOT_SUPPORTED",
-        0x0000_00e0 => "CKR_TOKEN_NOT_PRESENT",
-        0x0000_00e1 => "CKR_TOKEN_NOT_RECOGNIZED",
-        0x0000_00e2 => "CKR_TOKEN_WRITE_PROTECTED",
-        0x0000_00a0 => "CKR_PIN_INCORRECT",
-        0x0000_0101 => "CKR_USER_NOT_LOGGED_IN",
-        0x0000_0190 => "CKR_CRYPTOKI_NOT_INITIALIZED",
-        0x0000_0191 => "CKR_CRYPTOKI_ALREADY_INITIALIZED",
+        pkcs11_sys::CKR_OK => "CKR_OK",
+        pkcs11_sys::CKR_CANCEL => "CKR_CANCEL",
+        pkcs11_sys::CKR_HOST_MEMORY => "CKR_HOST_MEMORY",
+        pkcs11_sys::CKR_SLOT_ID_INVALID => "CKR_SLOT_ID_INVALID",
+        pkcs11_sys::CKR_GENERAL_ERROR => "CKR_GENERAL_ERROR",
+        pkcs11_sys::CKR_FUNCTION_FAILED => "CKR_FUNCTION_FAILED",
+        pkcs11_sys::CKR_ARGUMENTS_BAD => "CKR_ARGUMENTS_BAD",
+        pkcs11_sys::CKR_NO_EVENT => "CKR_NO_EVENT",
+        pkcs11_sys::CKR_NEED_TO_CREATE_THREADS => "CKR_NEED_TO_CREATE_THREADS",
+        pkcs11_sys::CKR_CANT_LOCK => "CKR_CANT_LOCK",
+        pkcs11_sys::CKR_ATTRIBUTE_READ_ONLY => "CKR_ATTRIBUTE_READ_ONLY",
+        pkcs11_sys::CKR_ATTRIBUTE_SENSITIVE => "CKR_ATTRIBUTE_SENSITIVE",
+        pkcs11_sys::CKR_ATTRIBUTE_TYPE_INVALID => "CKR_ATTRIBUTE_TYPE_INVALID",
+        pkcs11_sys::CKR_ATTRIBUTE_VALUE_INVALID => "CKR_ATTRIBUTE_VALUE_INVALID",
+        pkcs11_sys::CKR_ACTION_PROHIBITED => "CKR_ACTION_PROHIBITED",
+        pkcs11_sys::CKR_DATA_INVALID => "CKR_DATA_INVALID",
+        pkcs11_sys::CKR_DATA_LEN_RANGE => "CKR_DATA_LEN_RANGE",
+        pkcs11_sys::CKR_DEVICE_ERROR => "CKR_DEVICE_ERROR",
+        pkcs11_sys::CKR_DEVICE_MEMORY => "CKR_DEVICE_MEMORY (HSM storage full)",
+        pkcs11_sys::CKR_DEVICE_REMOVED => "CKR_DEVICE_REMOVED",
+        pkcs11_sys::CKR_ENCRYPTED_DATA_INVALID => "CKR_ENCRYPTED_DATA_INVALID",
+        pkcs11_sys::CKR_ENCRYPTED_DATA_LEN_RANGE => "CKR_ENCRYPTED_DATA_LEN_RANGE",
+        pkcs11_sys::CKR_AEAD_DECRYPT_FAILED => "CKR_AEAD_DECRYPT_FAILED",
+        pkcs11_sys::CKR_FUNCTION_CANCELED => "CKR_FUNCTION_CANCELED",
+        pkcs11_sys::CKR_FUNCTION_NOT_PARALLEL => "CKR_FUNCTION_NOT_PARALLEL",
+        pkcs11_sys::CKR_FUNCTION_NOT_SUPPORTED => "CKR_FUNCTION_NOT_SUPPORTED",
+        pkcs11_sys::CKR_KEY_HANDLE_INVALID => "CKR_KEY_HANDLE_INVALID",
+        pkcs11_sys::CKR_KEY_SIZE_RANGE => "CKR_KEY_SIZE_RANGE",
+        pkcs11_sys::CKR_KEY_TYPE_INCONSISTENT => "CKR_KEY_TYPE_INCONSISTENT",
+        pkcs11_sys::CKR_KEY_NOT_NEEDED => "CKR_KEY_NOT_NEEDED",
+        pkcs11_sys::CKR_KEY_CHANGED => "CKR_KEY_CHANGED",
+        pkcs11_sys::CKR_KEY_NEEDED => "CKR_KEY_NEEDED",
+        pkcs11_sys::CKR_KEY_INDIGESTIBLE => "CKR_KEY_INDIGESTIBLE",
+        pkcs11_sys::CKR_KEY_FUNCTION_NOT_PERMITTED => "CKR_KEY_FUNCTION_NOT_PERMITTED",
+        pkcs11_sys::CKR_KEY_NOT_WRAPPABLE => "CKR_KEY_NOT_WRAPPABLE",
+        pkcs11_sys::CKR_KEY_UNEXTRACTABLE => "CKR_KEY_UNEXTRACTABLE",
+        pkcs11_sys::CKR_MECHANISM_INVALID => "CKR_MECHANISM_INVALID",
+        pkcs11_sys::CKR_MECHANISM_PARAM_INVALID => "CKR_MECHANISM_PARAM_INVALID",
+        pkcs11_sys::CKR_OBJECT_HANDLE_INVALID => "CKR_OBJECT_HANDLE_INVALID",
+        pkcs11_sys::CKR_OPERATION_ACTIVE => "CKR_OPERATION_ACTIVE",
+        pkcs11_sys::CKR_OPERATION_NOT_INITIALIZED => "CKR_OPERATION_NOT_INITIALIZED",
+        pkcs11_sys::CKR_PIN_INCORRECT => "CKR_PIN_INCORRECT",
+        pkcs11_sys::CKR_PIN_INVALID => "CKR_PIN_INVALID",
+        pkcs11_sys::CKR_PIN_LEN_RANGE => "CKR_PIN_LEN_RANGE",
+        pkcs11_sys::CKR_PIN_EXPIRED => "CKR_PIN_EXPIRED",
+        pkcs11_sys::CKR_PIN_LOCKED => "CKR_PIN_LOCKED",
+        pkcs11_sys::CKR_SESSION_CLOSED => "CKR_SESSION_CLOSED",
+        pkcs11_sys::CKR_SESSION_COUNT => "CKR_SESSION_COUNT",
+        pkcs11_sys::CKR_SESSION_HANDLE_INVALID => "CKR_SESSION_HANDLE_INVALID",
+        pkcs11_sys::CKR_SESSION_PARALLEL_NOT_SUPPORTED => "CKR_SESSION_PARALLEL_NOT_SUPPORTED",
+        pkcs11_sys::CKR_SESSION_READ_ONLY => "CKR_SESSION_READ_ONLY",
+        pkcs11_sys::CKR_SESSION_EXISTS => "CKR_SESSION_EXISTS",
+        pkcs11_sys::CKR_SESSION_READ_ONLY_EXISTS => "CKR_SESSION_READ_ONLY_EXISTS",
+        pkcs11_sys::CKR_SESSION_READ_WRITE_SO_EXISTS => "CKR_SESSION_READ_WRITE_SO_EXISTS",
+        pkcs11_sys::CKR_SIGNATURE_INVALID => "CKR_SIGNATURE_INVALID",
+        pkcs11_sys::CKR_SIGNATURE_LEN_RANGE => "CKR_SIGNATURE_LEN_RANGE",
+        pkcs11_sys::CKR_TEMPLATE_INCOMPLETE => "CKR_TEMPLATE_INCOMPLETE",
+        pkcs11_sys::CKR_TEMPLATE_INCONSISTENT => "CKR_TEMPLATE_INCONSISTENT",
+        pkcs11_sys::CKR_TOKEN_NOT_PRESENT => "CKR_TOKEN_NOT_PRESENT",
+        pkcs11_sys::CKR_TOKEN_NOT_RECOGNIZED => "CKR_TOKEN_NOT_RECOGNIZED",
+        pkcs11_sys::CKR_TOKEN_WRITE_PROTECTED => "CKR_TOKEN_WRITE_PROTECTED",
+        pkcs11_sys::CKR_UNWRAPPING_KEY_HANDLE_INVALID => "CKR_UNWRAPPING_KEY_HANDLE_INVALID",
+        pkcs11_sys::CKR_UNWRAPPING_KEY_SIZE_RANGE => "CKR_UNWRAPPING_KEY_SIZE_RANGE",
+        pkcs11_sys::CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT => "CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT",
+        pkcs11_sys::CKR_USER_ALREADY_LOGGED_IN => "CKR_USER_ALREADY_LOGGED_IN",
+        pkcs11_sys::CKR_USER_NOT_LOGGED_IN => "CKR_USER_NOT_LOGGED_IN",
+        pkcs11_sys::CKR_USER_PIN_NOT_INITIALIZED => "CKR_USER_PIN_NOT_INITIALIZED",
+        pkcs11_sys::CKR_USER_TYPE_INVALID => "CKR_USER_TYPE_INVALID",
+        pkcs11_sys::CKR_USER_ANOTHER_ALREADY_LOGGED_IN => "CKR_USER_ANOTHER_ALREADY_LOGGED_IN",
+        pkcs11_sys::CKR_USER_TOO_MANY_TYPES => "CKR_USER_TOO_MANY_TYPES",
+        pkcs11_sys::CKR_WRAPPED_KEY_INVALID => "CKR_WRAPPED_KEY_INVALID",
+        pkcs11_sys::CKR_WRAPPED_KEY_LEN_RANGE => "CKR_WRAPPED_KEY_LEN_RANGE",
+        pkcs11_sys::CKR_WRAPPING_KEY_HANDLE_INVALID => "CKR_WRAPPING_KEY_HANDLE_INVALID",
+        pkcs11_sys::CKR_WRAPPING_KEY_SIZE_RANGE => "CKR_WRAPPING_KEY_SIZE_RANGE",
+        pkcs11_sys::CKR_WRAPPING_KEY_TYPE_INCONSISTENT => "CKR_WRAPPING_KEY_TYPE_INCONSISTENT",
+        pkcs11_sys::CKR_RANDOM_SEED_NOT_SUPPORTED => "CKR_RANDOM_SEED_NOT_SUPPORTED",
+        pkcs11_sys::CKR_RANDOM_NO_RNG => "CKR_RANDOM_NO_RNG",
+        pkcs11_sys::CKR_DOMAIN_PARAMS_INVALID => "CKR_DOMAIN_PARAMS_INVALID",
+        pkcs11_sys::CKR_CURVE_NOT_SUPPORTED => "CKR_CURVE_NOT_SUPPORTED",
+        pkcs11_sys::CKR_BUFFER_TOO_SMALL => "CKR_BUFFER_TOO_SMALL",
+        pkcs11_sys::CKR_SAVED_STATE_INVALID => "CKR_SAVED_STATE_INVALID",
+        pkcs11_sys::CKR_INFORMATION_SENSITIVE => "CKR_INFORMATION_SENSITIVE",
+        pkcs11_sys::CKR_STATE_UNSAVEABLE => "CKR_STATE_UNSAVEABLE",
+        pkcs11_sys::CKR_CRYPTOKI_NOT_INITIALIZED => "CKR_CRYPTOKI_NOT_INITIALIZED",
+        pkcs11_sys::CKR_CRYPTOKI_ALREADY_INITIALIZED => "CKR_CRYPTOKI_ALREADY_INITIALIZED",
+        pkcs11_sys::CKR_MUTEX_BAD => "CKR_MUTEX_BAD",
+        pkcs11_sys::CKR_MUTEX_NOT_LOCKED => "CKR_MUTEX_NOT_LOCKED",
+        pkcs11_sys::CKR_NEW_PIN_MODE => "CKR_NEW_PIN_MODE",
+        pkcs11_sys::CKR_NEXT_OTP => "CKR_NEXT_OTP",
+        pkcs11_sys::CKR_EXCEEDED_MAX_ITERATIONS => "CKR_EXCEEDED_MAX_ITERATIONS",
+        pkcs11_sys::CKR_FIPS_SELF_TEST_FAILED => "CKR_FIPS_SELF_TEST_FAILED",
+        pkcs11_sys::CKR_LIBRARY_LOAD_FAILED => "CKR_LIBRARY_LOAD_FAILED",
+        pkcs11_sys::CKR_PIN_TOO_WEAK => "CKR_PIN_TOO_WEAK",
+        pkcs11_sys::CKR_PUBLIC_KEY_INVALID => "CKR_PUBLIC_KEY_INVALID",
+        pkcs11_sys::CKR_FUNCTION_REJECTED => "CKR_FUNCTION_REJECTED",
+        pkcs11_sys::CKR_TOKEN_RESOURCE_EXCEEDED => "CKR_TOKEN_RESOURCE_EXCEEDED",
+        pkcs11_sys::CKR_OPERATION_CANCEL_FAILED => "CKR_OPERATION_CANCEL_FAILED",
+        pkcs11_sys::CKR_KEY_EXHAUSTED => "CKR_KEY_EXHAUSTED",
         _ => "CKR_UNKNOWN",
     }
 }
@@ -1220,5 +1297,20 @@ mod ck_info_bytes_tests {
         for (byte, is_field) in bytes.iter().zip(covered) {
             assert!(is_field || *byte == 0, "padding byte not zeroed");
         }
+    }
+}
+
+#[cfg(test)]
+mod return_code_name_tests {
+    use super::pkcs11_return_code_name;
+
+    /// Codes seen from real HSMs must be named, not reported as `CKR_UNKNOWN`.
+    #[test]
+    fn names_the_return_codes_hsms_report() {
+        assert_eq!(pkcs11_return_code_name(0x60), "CKR_KEY_HANDLE_INVALID");
+        assert_eq!(pkcs11_return_code_name(0x1b), "CKR_ACTION_PROHIBITED");
+        assert_eq!(pkcs11_return_code_name(0x70), "CKR_MECHANISM_INVALID");
+        assert_eq!(pkcs11_return_code_name(0x54), "CKR_FUNCTION_NOT_SUPPORTED");
+        assert_eq!(pkcs11_return_code_name(0x8000_0001), "CKR_UNKNOWN");
     }
 }

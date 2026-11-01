@@ -104,7 +104,8 @@ impl Session {
             let mut wrapped_len = CK_ULONG::try_from(wrapped.len())?;
             hsm_call!(
                 self.hsm(),
-                "Failed to wrap key",
+                "Failed to wrap key (C_WrapKey on an imported ephemeral key: some HSMs only wrap \
+                 HSM-resident keys and answer CKR_KEY_HANDLE_INVALID)",
                 C_WrapKey,
                 self.session_handle(),
                 &raw mut mechanism,

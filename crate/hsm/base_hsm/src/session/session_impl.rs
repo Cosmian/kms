@@ -930,8 +930,10 @@ impl Session {
             return Err(HError::Default(format!(
                 "AES-GCM encryption needs an IV generated inside the HSM \
                  (FIPS 140-3 IG C.H), and this HSM provided none ({NO_GENERATED_GCM_IV}). Use \
-                 AES key wrap instead: key_encryption_key_wrapping_algorithm \
-                 = \"aes-key-wrap-padding\" (NIST SP 800-38F)"
+                 a wrapping algorithm without IV that this HSM supports: \
+                 key_encryption_key_wrapping_algorithm = \"aes-key-wrap-padding\" (NIST SP \
+                 800-38F) or \"aes-key-wrap\" for an AES key encryption key (some HSMs cannot \
+                 wrap imported keys this way), or \"rsa-oaep\" with an RSA one"
             )));
         }
         Ok(content)
@@ -1718,8 +1720,7 @@ impl Session {
         hsm_call!(
             self.hsm,
             format!(
-                "Failed to allocate encrypted data length. Data to encrypt is likely too big: {} \
-                 bytes. Error code",
+                "C_Encrypt failed while querying the encrypted data length for {} input bytes",
                 data.len()
             ),
             C_Encrypt,
@@ -4386,14 +4387,10 @@ mod tests {
         let error = session
             .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)
             .expect_err("an all-zero generated IV must not be returned");
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "AES-GCM encryption needs an IV generated inside the HSM \
-                 (FIPS 140-3 IG C.H), and this HSM provided none ({NO_GENERATED_GCM_IV}). Use \
-                 AES key wrap instead: key_encryption_key_wrapping_algorithm \
-                 = \"aes-key-wrap-padding\" (NIST SP 800-38F)"
-            )
+        assert!(
+            error
+                .to_string()
+                .contains("AES-GCM encryption needs an IV generated inside the HSM")
         );
         Ok(())
     }
