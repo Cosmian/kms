@@ -270,9 +270,9 @@ To diagnose a failed startup, read the server error:
 
 List the exports of the library the server actually loads with
 `nm -D --defined-only <lib> | grep -E 'C_(Message|EncryptMessage|DecryptMessage|GetInterface)'`.
-To test an HSM's AES-GCM IV behaviour without the KMS, build and run the standalone probe
-`.mise/scripts/test/pkcs11_gcm_iv_probe.c` (`cc -O2 -o pkcs11_gcm_iv_probe pkcs11_gcm_iv_probe.c -ldl`, then
-`PKCS11_PIN=<pin> ./pkcs11_gcm_iv_probe <library.so> <slot-id>`). It replays the KMS calls (zeroed IV buffer with
+To test an HSM's AES-GCM IV behaviour without the KMS, run the standalone probe `.mise/scripts/test/pkcs11_gcm_iv_probe.py`
+(`PKCS11_PIN=<pin> python3 pkcs11_gcm_iv_probe.py <library.so> <slot-id>`; a C twin, `pkcs11_gcm_iv_probe.c`, is
+provided for hosts without Python) on the library the server loads. It replays the KMS calls (zeroed IV buffer with
 and without the length query, caller-chosen IV, NULL IV), reports whether the HSM returns a generated IV, and lists the
 exported v3.0 message symbols; it only creates a temporary session key.
 `ckms pkcs11 capabilities` does not diagnose this: it checks Cosmian's own PKCS#11 provider against a

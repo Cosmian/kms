@@ -61,19 +61,31 @@ for mode in v2 v3 v3-stubs; do
     --lib \
     -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_other
   if [ "${mode}" = "v2" ]; then
-    # The standalone probe given to HSM vendors must report what this shim does.
+    # The standalone probes given to HSM vendors (C and Python) must both report what this shim does.
     cc -O2 -o "${SHIM_DIR}/probe" "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_gcm_iv_probe.c" -ldl
-    PROBE_OUT="$(env LD_LIBRARY_PATH="${LIB_PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-      SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" PKCS11_PIN="${HSM_USER_PASSWORD}" \
-      "${SHIM_DIR}/probe" "${SHIM_DIR}/shim-v2.so" "${SOFTHSM2_HSM_SLOT_ID}")"
-    printf '%s\n' "${PROBE_OUT}"
-    if [ "${VARIANT}" = "non-fips" ]; then
-      printf '%s\n' "${PROBE_OUT}" | grep -q 'a caller-chosen IV is accepted' ||
-        print_error "pkcs11_gcm_iv_probe: the non-FIPS shim must accept a caller-chosen IV"
-    else
-      printf '%s\n' "${PROBE_OUT}" | grep -q 'the HSM generated and returned an IV' ||
-        print_error "pkcs11_gcm_iv_probe: the FIPS shim must return an HSM-generated IV"
-    fi
+    require_cmd python3
+    for probe_kind in c python; do
+      if [ "${probe_kind}" = "c" ]; then
+        PROBE_CMD=("${SHIM_DIR}/probe")
+      else
+        PROBE_CMD=(python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_gcm_iv_probe.py")
+      fi
+      PROBE_OUT="$(env LD_LIBRARY_PATH="${LIB_PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+        SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" PKCS11_PIN="${HSM_USER_PASSWORD}" \
+        "${PROBE_CMD[@]}" "${SHIM_DIR}/shim-v2.so" "${SOFTHSM2_HSM_SLOT_ID}")" ||
+        print_error "pkcs11_gcm_iv_probe (${probe_kind}) failed"
+      printf '%s\n' "${PROBE_OUT}"
+      # Every expected verdict line must be present: a missing one fails the task.
+      if [ "${VARIANT}" = "non-fips" ]; then
+        EXPECTED=('a caller-chosen IV is accepted' 'did NOT write a generated IV')
+      else
+        EXPECTED=('the HSM generated and returned an IV' 'CKR_MECHANISM_PARAM_INVALID')
+      fi
+      for expected in "${EXPECTED[@]}"; do
+        printf '%s\n' "${PROBE_OUT}" | grep -q "${expected}" ||
+          print_error "pkcs11_gcm_iv_probe (${probe_kind}): missing verdict '${expected}'"
+      done
+    done
   fi
   grep -q '^classic-encrypt-init$' "${MARKER}" ||
     print_error "PKCS#11 ${mode}: the classic encryption path never ran"
