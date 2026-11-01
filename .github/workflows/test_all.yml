@@ -333,6 +333,12 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+      # Secret-handling regression test of the nix-shell re-entry helper (no HSM involved).
+      - name: Test (nix_helpers re-entry)
+        if: matrix.hsm-type == 'other' && matrix.features == 'non-fips'
+        run: |
+          mise run test:nix-helpers
+
       # The `other` backend is a PKCS#11 shim without benchmarking profiles.
       - name: Bench (PKCS#11 load, HSM-delegated)
         if: matrix.hsm-type != 'other'
