@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Performance regression report between two benchmarks published on package.cosmian.com"
+#USAGE arg "<base_version>" help="Baseline version (e.g. 5.28.0)"
+#USAGE arg "<new_version>" help="Version to check for regressions (e.g. 5.29.0)"
+#USAGE arg "[threshold]" default="5" help="Regression threshold in percent (throughput drop / latency or time increase)"
+#USAGE flag "-d --dir <d>" env="BENCH_COMPARE_DIR" default="ckms_bench" help="Published report directory under benchmarks/ (e.g. ckms_bench, ckms_bench_pkcs11)"
+#USAGE flag "-o --output <f>" env="BENCH_COMPARE_OUTPUT" default="" help="Report file (default: target/bench_compare/<base>_vs_<new>.md)"
+#USAGE flag "--all" help="Show every compared benchmark, not only the regressions"
+#USAGE flag "--fail" help="Exit non-zero when a regression or an encryption/signature gap is found"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+BASE="${usage_base_version:?base_version required}"
+NEW="${usage_new_version:?new_version required}"
+OUT="${usage_output:-}"
+[ -z "${OUT}" ] && OUT="${MISE_CONFIG_ROOT}/target/bench_compare/${BASE}_vs_${NEW}.md"
+mkdir -p "$(dirname "${OUT}")"
+
+print_header "Benchmark regression report ${BASE} -> ${NEW}"
+FLAGS=()
+[ "${usage_fail:-}" = "true" ] && FLAGS+=(--fail)
+[ "${usage_all:-}" = "true" ] && FLAGS+=(--all)
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/bench/regression_report.py" "${BASE}" "${NEW}" \
+  --dir "${usage_dir:-ckms_bench}" --threshold "${usage_threshold:-5}" --output "${OUT}" \
+  ${FLAGS[@]+"${FLAGS[@]}"}
+echo "Report written to ${OUT}"
