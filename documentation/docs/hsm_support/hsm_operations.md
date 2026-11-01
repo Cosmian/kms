@@ -206,7 +206,7 @@ while minimizing HSM calls through expiring caching.
 The AES modes need an AES key encryption key and `rsa-oaep` an RSA one. The startup check below
 applies to HSM AES keys only.
 
-For AES-GCM with an HSM key, this KMS's FIPS build requires the HSM to generate the IV so IV generation remains inside the HSM's cryptographic boundary, consistent with FIPS 140-3 Implementation Guidance C.H. If the PKCS#11 v3.0 message API fails, the KMS retries with classic PKCS#11 AES-GCM; decryption does the same when the library refuses message-decrypt init as unsupported. Profiles without `supports_message` (for example Crypt2Pay, Luna, GCP Cloud HSM and SoftHSM2) never try the message API and depend only on the classic path; in the FIPS build, startup fails if that path does not return an HSM-generated IV (see the matrix below). AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
+For AES-GCM with an HSM key, this KMS's FIPS build requires the HSM to generate the IV so IV generation remains inside the HSM's cryptographic boundary, consistent with FIPS 140-3 Implementation Guidance C.H. If the PKCS#11 v3.0 message API fails, the KMS retries with classic PKCS#11 AES-GCM; decryption does the same when the library refuses message-decrypt init as unsupported. Profiles without `supports_message` (for example Crypt2Pay, Luna, GCP Cloud HSM and SoftHSM2) never try the message API and depend only on the classic path; startup fails if that path needs an HSM-generated IV and the HSM returns none: always in the FIPS build, and in a non-FIPS build for profiles without `supports_caller_iv` (see the matrix below). AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
 
 ```toml
 key_encryption_key = "hsm::4::master_kek"
@@ -231,7 +231,7 @@ order:
    library offers all five message-encrypt functions. The KMS looks each function up as an exported symbol
    first, then in the v3.0 interface table, so a v2.40 library that exports these names (even as stubs
    answering `CKR_FUNCTION_NOT_SUPPORTED`) is treated as v3-capable. If the call fails, the KMS continues
-   with step 2 or 3 (before 5.29.1 it aborted startup).
+   with step 2 or 3 (versions without this fallback abort startup).
 2. **Classic `CKM_AES_GCM`, KMS-chosen random IV**: non-FIPS build with a profile that has
    `supports_caller_iv`; FIPS build only for development-token profiles (`allows_caller_iv_in_fips`, SoftHSM2
    and Kryoptic).
@@ -247,11 +247,12 @@ failures, are not retried).
 | KMS build | HSM library | HSM in FIPS mode | Result |
 | --- | --- | --- | --- |
 | FIPS | message API works | any | works, HSM-generated IV |
-| FIPS | no usable message API, classic returns the IV | any | works, HSM-generated IV |
+| FIPS | no usable message API, classic returns the IV | any | works, HSM-generated IV (SoftHSM2 and Kryoptic development tokens: KMS-chosen IV) |
 | FIPS | no usable message API, classic returns no IV | any | startup refused: `needs an IV generated inside the HSM`; use `aes-key-wrap-padding`, `aes-key-wrap` or `rsa-oaep` |
 | non-FIPS | message API works | any | works, HSM-generated IV |
-| non-FIPS | no usable message API | no | works, KMS-chosen IV |
-| non-FIPS | no usable message API | yes | the HSM refuses the KMS-chosen IV (for example `CKR_ACTION_PROHIBITED`, 27); use the FIPS build or a key-wrap algorithm |
+| non-FIPS | no usable message API, profile with `supports_caller_iv` | no | works, KMS-chosen IV |
+| non-FIPS | no usable message API, profile with `supports_caller_iv` | yes | the HSM refuses the KMS-chosen IV (for example `CKR_ACTION_PROHIBITED`, 27); use the FIPS build or a key-wrap algorithm |
+| non-FIPS | no usable message API, profile without `supports_caller_iv` (GCP, AWS CloudHSM and Azure Cloud HSM profiles) | any | same as the FIPS build: HSM-generated IV, or startup refused |
 
 The HSM's FIPS mode does not change what the KMS sends, only whether the HSM accepts it. HSM
 key-wrap support is HSM-dependent: validate the chosen algorithm on your HSM. AES-KW/KWP of a KMS key goes
@@ -262,8 +263,8 @@ key with `rsa-oaep`.
 To diagnose a failed startup, read the server error:
 
 - `Failed to initialize message-based encryption. Return code: 84` (`CKR_FUNCTION_NOT_SUPPORTED`) or `112`
-  (`CKR_MECHANISM_INVALID`): the library exports message functions it does not implement. Upgrade to 5.29.1
-  or later.
+  (`CKR_MECHANISM_INVALID`): the library exports message functions it does not implement. Upgrade to a version
+  that includes the message-API fallback.
 - `needs an IV generated inside the HSM … provided none`: step 3 failed; change the wrapping algorithm.
 - `CKR_ACTION_PROHIBITED` (27) from `C_Encrypt`: step 2 against an HSM in FIPS mode.
 
@@ -851,7 +852,7 @@ v3.0-only **mechanisms**, always attempted best-effort and never assumed present
   typed `CKK_GENERIC_SECRET`.
 - **Message-based AEAD** (`C_MessageEncryptInit`/`C_EncryptMessage`/...) for AES-GCM.
 
-These optional v3.0 operations are capability-gated. For HSM AES-GCM encryption, a failed message operation is followed by the classic PKCS#11 AES-GCM path; this is required for HSM AES-GCM KEK wrapping. HSM AES-GCM decryption selects the message API when its complete function family is available and currently returns message-operation errors without retrying via the classic API. EdDSA and HKDF remain implemented at the `base_hsm` layer but are not exposed as direct KMIP operations; they are tracked in the dedicated follow-up ([#1182](https://github.com/Cosmian/kms/issues/1182)).
+These optional v3.0 operations are capability-gated. For HSM AES-GCM encryption, a failed message operation is followed by the classic PKCS#11 AES-GCM path; this is required for HSM AES-GCM KEK wrapping. HSM AES-GCM decryption selects the message API when its complete function family is available and falls back to classic AES-GCM only when message-decrypt initialization is refused as unsupported; other errors, including authentication failures, are returned without retry. EdDSA and HKDF remain implemented at the `base_hsm` layer but are not exposed as direct KMIP operations; they are tracked in the dedicated follow-up ([#1182](https://github.com/Cosmian/kms/issues/1182)).
 
 #### Validating v3.0 mechanisms: the Kryoptic test token
 

@@ -6,6 +6,9 @@
  * EXPECT_CALLER_IV: classic encryption requires a nonzero IV and preserves it;
  *   otherwise it requires zero input and writes 0xA1+i into the 12-byte IV.
  * IGNORE_IV_BUFFER: suppress classic generated-IV writeback.
+ * OVERWRITE_CALLER_IV: with EXPECT_CALLER_IV, replace the accepted IV by 0xA1+i afterwards.
+ * MESSAGE_DECRYPT_INIT_UNSUPPORTED / MESSAGE_DECRYPT_INIT_FAILURE: message decrypt init
+ *   returns CKR_FUNCTION_NOT_SUPPORTED / CKR_GENERAL_ERROR.
  * MESSAGE_SUCCESS: message encryption succeeds with IV 0xB0+i; otherwise its
  *   message call returns CKR_GENERAL_ERROR, requiring Final before fallback.
  * NO_MESSAGE_ENCRYPT / NO_MESSAGE_DECRYPT: omit the corresponding whole family.
@@ -252,7 +255,7 @@ static CK_RV encrypt(CK_SESSION_HANDLE hSession, CK_BYTE *pData, CK_ULONG ulData
     *pulEncryptedDataLen = out_len;
     return CKR_BUFFER_TOO_SMALL;
   }
-#if !defined(EXPECT_CALLER_IV) && !defined(IGNORE_IV_BUFFER)
+#if (!defined(EXPECT_CALLER_IV) && !defined(IGNORE_IV_BUFFER)) || defined(OVERWRITE_CALLER_IV)
   for (i = 0; i < GCM_IV_LEN; i++) {
     g_params->pIv[i] = (CK_BYTE)(0xA1UL + i);
   }

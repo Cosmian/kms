@@ -39,6 +39,7 @@ fn require_hsm_env(expected_model: &str) {
     assert!(env::var_os("HSM_USER_PASSWORD").is_some());
 }
 async fn test_hsm_kek_startup(expected_model: &str) {
+    crate::init_test_logging();
     require_hsm_env(expected_model);
     let context = start_default_test_kms_server_with_hsm_and_kek().await;
     assert!(
@@ -50,6 +51,7 @@ async fn test_hsm_kek_startup(expected_model: &str) {
 #[tokio::test]
 #[ignore = "Requires Utimaco — invoked by mise run test:hsm:utimaco"]
 async fn test_startup_with_hsm_kek_utimaco() {
+    crate::init_test_logging();
     let context = start_default_test_kms_server_with_utimaco_and_kek().await;
     assert!(
         context.server_port > 0,

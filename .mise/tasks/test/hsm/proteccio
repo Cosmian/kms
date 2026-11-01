@@ -73,7 +73,9 @@ if [ "${VARIANT}" = "fips" ]; then
   image_version="${package_id##*@}"
   target_dir="$(cd "$(get_cargo_target_dir)" && pwd)"
 
-  docker run --rm --network host \
+  # The PIN is passed by name only (`--env HSM_USER_PASSWORD`) so it never appears in the docker argv.
+  HSM_USER_PASSWORD="${PROTECCIO_PASSWORD:?PROTECCIO_PASSWORD must be set}" \
+    docker run --rm --network host \
     --volume /nix/store:/nix/store:ro \
     --volume "${MISE_CONFIG_ROOT}:${MISE_CONFIG_ROOT}:ro" \
     --volume "${target_dir}:${target_dir}:ro" \
@@ -81,7 +83,7 @@ if [ "${VARIANT}" = "fips" ]; then
     --volume /lib/libnethsm.so:/lib/libnethsm.so:ro \
     --env PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
     --env HSM_MODEL=proteccio \
-    --env HSM_USER_PASSWORD="${PROTECCIO_PASSWORD:?PROTECCIO_PASSWORD must be set}" \
+    --env HSM_USER_PASSWORD \
     --env HSM_SLOT_ID="${PROTECCIO_SLOT:?PROTECCIO_SLOT must be set}" \
     --entrypoint env \
     "ghcr.io/cosmian/kms-fips:${image_version}" \

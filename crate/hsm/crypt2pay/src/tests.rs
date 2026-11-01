@@ -134,16 +134,15 @@ fn test_hsm_crypt2pay_low_level_test() -> HResult<()> {
     shared::low_level_init_test(&cfg()?)
 }
 
-/// Prove real-C2P wrapped export yields usable AES bytes, without requiring clear `CKA_VALUE`.
+/// Real-C2P wrapped export: in FIPS the HSM must generate the GCM IV, so the export either
+/// succeeds or is refused because the HSM returned no IV; anything else is a failure.
 #[cfg(not(feature = "non-fips"))]
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and a real Crypt2pay HSM"]
 fn test_hsm_crypt2pay_exportable_aes_key() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     match shared::export_aes_key_bytes(&slot) {
-        Ok(()) => Err(HError::Default(
-            "Crypt2Pay exported AES key using caller-generated GCM IV in FIPS mode".to_owned(),
-        )),
+        Ok(()) => Ok(()),
         Err(error) if error.to_string().contains("did not generate an AES-GCM IV") => Ok(()),
         Err(error) => Err(error),
     }

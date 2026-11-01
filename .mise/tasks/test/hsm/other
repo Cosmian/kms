@@ -31,12 +31,12 @@ SHIM_DIR="$(mktemp -d)"
 trap 'rm -rf -- "${SHIM_DIR:?}"' EXIT
 SHIM_SRC="${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_fips_iv_shim.c"
 cc -shared -fPIC -O2 -Wno-cast-function-type-mismatch \
-  "${POLICY[@]}" -o "${SHIM_DIR}/shim-v2.so" "${SHIM_SRC}"
+  ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v2.so" "${SHIM_SRC}"
 cc -shared -fPIC -O2 -DV3_MESSAGE -Wno-cast-function-type-mismatch \
-  "${POLICY[@]}" -o "${SHIM_DIR}/shim-v3.so" "${SHIM_SRC}"
+  ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v3.so" "${SHIM_SRC}"
 # v3 table whose message entries are stubs answering CKR_FUNCTION_NOT_SUPPORTED
 cc -shared -fPIC -O2 -DV3_MESSAGE -DMESSAGE_INIT_NOT_SUPPORTED -Wno-cast-function-type-mismatch \
-  "${POLICY[@]}" -o "${SHIM_DIR}/shim-v3-stubs.so" "${SHIM_SRC}"
+  ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v3-stubs.so" "${SHIM_SRC}"
 
 for mode in v2 v3 v3-stubs; do
   print_header "Scenario PKCS#11 ${mode}"
