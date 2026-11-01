@@ -21,6 +21,19 @@ All five accept `--criterion` to also run single-operation Criterion
 micro-benchmarks alongside the concurrency sweep, and `--sanity` for a quick
 smoke test. See `mise run bench:<task> --help` for the full flag list of each.
 
+## Regression report between two published versions
+
+`mise run bench:compare <base_version> <new_version> [threshold]` (e.g. `bench:compare 5.28.0 5.29.0 5`) downloads the
+benchmarks published on package.cosmian.com for both versions and compares them 1 to 1: every load-test point
+(encryption, signature, ...: throughput and p95) and every Criterion median. By default only the regressions are
+listed, plus points whose throughput collapsed below 10 req/s (with the counts of what was compared); `--all` lists every compared point with its OK/REGRESSION/noise status.
+It writes a markdown report to `target/bench_compare/<base>_vs_<new>.md`. `threshold` is a percentage (default 5).
+A Criterion slowdown beyond the threshold counts as a regression only when the confidence intervals do not overlap,
+otherwise it is marked `noise`. Benchmarks present in only one version are listed; a gap in an encryption or signature
+algorithm is flagged. `--dir <report dir>` (default `ckms_bench`), `--fail` (non-zero exit on regression or
+encryption/signature gap). It warns when the two runs' environments (CPU, variant, load parameters) differ: only
+compare runs from the same benchmark machine.
+
 ## Where a new report goes in the docs nav
 
 The generators write only `documentation/docs/benchmarks/<dir>/`; they never edit the navigation.
