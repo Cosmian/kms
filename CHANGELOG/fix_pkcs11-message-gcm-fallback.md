@@ -19,7 +19,7 @@
 
 ### HSM
 - Cover the complete GCM capability/IV-policy matrix, message fallback and precedence, stored-IV decryption, authentication failures, framing boundaries, and key-wrap misrouting; verify software-token variants and non-FIPS Proteccio/Crypt2Pay round trips and KMS startup.
-- Add `.mise/scripts/test/pkcs11_gcm_iv_probe.c`, a standalone probe that replays the KMS AES-GCM IV calls against any PKCS#11 library (HSM-generated, caller-chosen and NULL IV) and lists its exported v3.0 message symbols; `test:hsm-other` checks it against the FIPS and non-FIPS shims.
+- Add `.mise/scripts/test/pkcs11_gcm_iv_probe.py` (and a C twin), a standalone probe that replays the KMS AES-GCM IV calls against any PKCS#11 library (HSM-generated, caller-chosen and NULL IV) and lists its exported v3.0 message symbols; `test:hsm-other` checks it against the FIPS and non-FIPS shims.
 - Add `mise run test:nix-helpers` (nix-shell re-entry must not leak credentials into process arguments), run by the `hsm` CI job.
 - Add `mise run test:hsm-other` (CI matrix entry `other` in the `hsm` job, FIPS and non-FIPS, picked up by the existing `test:hsm-<type>` step): a PKCS#11 shim over SoftHSM2 boots the KMS with an HSM-backed KEK for a v2 library (classic only) and two v3 libraries whose message API refuses the operation (`CKR_MECHANISM_INVALID`, or `CKR_FUNCTION_NOT_SUPPORTED` stubs; message API attempted, then classic fallback), refusing caller AES-GCM IVs in FIPS and accepting them in non-FIPS.
 
