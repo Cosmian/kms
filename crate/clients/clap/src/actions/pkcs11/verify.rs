@@ -978,29 +978,27 @@ mod tests {
 
     use super::{function_list_3_0_if_v3, v2_only_function_list_3_0};
 
-    // SAFETY (both helpers): the PKCS#11 function lists are a `CK_VERSION` followed by
-    // optional function pointers, all valid when zeroed.
-    #[expect(unsafe_code)]
-    fn zeroed_v2(major: u8, minor: u8) -> CK_FUNCTION_LIST {
-        let mut list: CK_FUNCTION_LIST = unsafe { std::mem::zeroed() };
-        list.version = CK_VERSION { major, minor };
-        list
+    fn v2_list(major: u8, minor: u8) -> CK_FUNCTION_LIST {
+        CK_FUNCTION_LIST {
+            version: CK_VERSION { major, minor },
+            ..Default::default()
+        }
     }
 
-    #[expect(unsafe_code)]
-    fn zeroed_v3() -> CK_FUNCTION_LIST_3_0 {
-        let mut list: CK_FUNCTION_LIST_3_0 = unsafe { std::mem::zeroed() };
-        list.version = CK_VERSION { major: 3, minor: 0 };
-        list
+    fn ptr_of<T>(value: &T) -> *const c_void {
+        std::ptr::from_ref(value).cast()
     }
 
     /// A v2.40 table must never be read as the longer v3.0 table.
     #[test]
     fn v2_function_list_is_not_cast_to_v3() {
-        let v2 = zeroed_v2(2, 40);
-        // SAFETY: points to a live, zero-initialised function list.
+        let v2 = v2_list(2, 40);
+        // SAFETY: points to a live function list.
         assert!(unsafe { function_list_3_0_if_v3(ptr_of(&v2)) }.is_none());
-        let v3 = zeroed_v3();
+        let v3 = CK_FUNCTION_LIST_3_0 {
+            version: CK_VERSION { major: 3, minor: 0 },
+            ..Default::default()
+        };
         // SAFETY: as above.
         assert!(unsafe { function_list_3_0_if_v3(ptr_of(&v3)) }.is_some());
     }
@@ -1011,15 +1009,17 @@ mod tests {
         unsafe extern "C" fn initialize(_: *mut c_void) -> pkcs11_sys::CK_RV {
             0
         }
-        let mut v2 = zeroed_v2(2, 40);
+        let mut v2 = v2_list(2, 40);
         v2.C_Initialize = Some(initialize);
         let table = v2_only_function_list_3_0(&v2);
-        assert!(table.C_Initialize.is_some());
-        assert!(table.C_MessageEncryptInit.is_none());
-        assert!(table.C_GetInterface.is_none());
-    }
-
-    fn ptr_of<T>(value: &T) -> *const c_void {
-        std::ptr::from_ref(value).cast()
+        // Copy the fields out: they may live in a packed struct on some targets.
+        let (initialize, message_encrypt_init, get_interface) = (
+            table.C_Initialize,
+            table.C_MessageEncryptInit,
+            table.C_GetInterface,
+        );
+        assert!(initialize.is_some());
+        assert!(message_encrypt_init.is_none());
+        assert!(get_interface.is_none());
     }
 }
