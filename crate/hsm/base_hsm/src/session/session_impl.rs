@@ -1009,11 +1009,20 @@ impl Session {
             // The v3 message API generates its own IV, so it cannot honor a caller IV.
             return self.encrypt_aes_gcm_caller_iv(key_handle, plaintext, iv);
         }
-        if self.hsm_capabilities().aes.gcm.supports_message && self.hsm().supports_message_encrypt()
+        if self.hsm_capabilities().aes.gcm.supports_message
+            && self.hsm().supports_message_encrypt()
+            && !self.message_aead_unsupported(false, CKM_AES_GCM)
         {
             match self.encrypt_message_aes_gcm(key_handle, &[], plaintext) {
                 Ok(content) => return Ok(content),
                 Err(error @ HError::OperationCleanup(_)) => return Err(error),
+                // Refused at init: remember it so later calls go straight to classic GCM.
+                Err(HError::MessageUnsupported(reason)) => {
+                    self.mark_message_aead_unsupported(false, CKM_AES_GCM);
+                    debug!(
+                        "PKCS#11 v3 message AES-GCM unsupported; using classic AES-GCM: {reason}"
+                    );
+                }
                 Err(message_error) => debug!(
                     "PKCS#11 v3 message AES-GCM failed; trying classic AES-GCM: {message_error}"
                 ),
@@ -1227,13 +1236,16 @@ impl Session {
             return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
         }
         let (iv, encrypted) = ciphertext.split_at(AES_GCM_IV_LENGTH);
-        if self.hsm_capabilities().aes.gcm.supports_message && self.hsm().supports_message_decrypt()
+        if self.hsm_capabilities().aes.gcm.supports_message
+            && self.hsm().supports_message_decrypt()
+            && !self.message_aead_unsupported(true, CKM_AES_GCM)
         {
             let (encrypted, tag) = encrypted.split_at(encrypted.len() - AES_GCM_AUTH_TAG_LENGTH);
             match self.decrypt_message_aes_gcm(key_handle, &[], iv, tag, encrypted) {
                 // Refused at init, before any data was processed: classic GCM decrypts the
                 // same `iv || ciphertext || tag` layout (a v3 table of unsupported stubs).
                 Err(HError::MessageUnsupported(reason)) => {
+                    self.mark_message_aead_unsupported(true, CKM_AES_GCM);
                     debug!(
                         "PKCS#11 v3 message AES-GCM decrypt unsupported; using classic: {reason}"
                     );
@@ -4461,8 +4473,6 @@ mod tests {
         Ok(())
     }
 
-    /// A v3 table whose decrypt entries are `CKR_FUNCTION_NOT_SUPPORTED` stubs must decrypt
-    /// through the classic API; any other init failure must not be retried.
     /// A driver that replaces the accepted caller IV must not have its output trusted.
     #[test]
     fn caller_gcm_iv_replaced_by_the_driver_is_rejected() -> HResult<()> {
@@ -4483,6 +4493,33 @@ mod tests {
         Ok(())
     }
 
+    /// A refusal of the message API as unsupported is remembered per slot, so later calls use
+    /// classic GCM directly; other failures are never remembered.
+    #[test]
+    fn message_gcm_unsupported_is_remembered_only_for_unsupported_refusals() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_ENCRYPT_INIT_UNSUPPORTED"])?;
+        assert!(!session.message_aead_unsupported(false, CKM_AES_GCM));
+        session.encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)?;
+        assert!(session.message_aead_unsupported(false, CKM_AES_GCM));
+        assert!(!session.message_aead_unsupported(true, CKM_AES_GCM));
+
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_UNSUPPORTED"])?;
+        session.decrypt(
+            1,
+            HsmEncryptionAlgorithm::AesGcm,
+            &fixture_gcm_frame(b"hello"),
+        )?;
+        assert!(session.message_aead_unsupported(true, CKM_AES_GCM));
+
+        // A transient failure (not "unsupported") must not disable the message API.
+        let session = decrypt_fixture_session(true, &[])?;
+        session.encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)?;
+        assert!(!session.message_aead_unsupported(false, CKM_AES_GCM));
+        Ok(())
+    }
+
+    /// A v3 table whose decrypt entries are `CKR_FUNCTION_NOT_SUPPORTED` stubs must decrypt
+    /// through the classic API; any other init failure must not be retried.
     #[test]
     fn gcm_decrypt_falls_back_only_when_message_init_is_unsupported() -> HResult<()> {
         let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_UNSUPPORTED"])?;

@@ -7,6 +7,7 @@
  *   otherwise it requires zero input and writes 0xA1+i into the 12-byte IV.
  * IGNORE_IV_BUFFER: suppress classic generated-IV writeback.
  * OVERWRITE_CALLER_IV: with EXPECT_CALLER_IV, replace the accepted IV by 0xA1+i afterwards.
+ * MESSAGE_ENCRYPT_INIT_UNSUPPORTED: message encrypt init returns CKR_FUNCTION_NOT_SUPPORTED.
  * MESSAGE_DECRYPT_INIT_UNSUPPORTED / MESSAGE_DECRYPT_INIT_FAILURE: message decrypt init
  *   returns CKR_FUNCTION_NOT_SUPPORTED / CKR_GENERAL_ERROR.
  * MESSAGE_SUCCESS: message encryption succeeds with IV 0xB0+i; otherwise its
@@ -148,6 +149,9 @@ static CK_RV message_encrypt_init(CK_SESSION_HANDLE hSession, CkMechanism *pMech
   (void)hKey;
 #ifdef REJECT_DRIVER_OPERATIONS
   return CKR_GENERAL_ERROR;
+#endif
+#ifdef MESSAGE_ENCRYPT_INIT_UNSUPPORTED
+  return CKR_FUNCTION_NOT_SUPPORTED;
 #endif
   if (g_message_active) { return CKR_OPERATION_ACTIVE; }
   rv = validate_message_mechanism(pMechanism);
