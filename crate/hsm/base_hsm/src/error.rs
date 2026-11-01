@@ -14,6 +14,11 @@ pub enum HError {
     #[error("{0}")]
     OperationCleanup(String),
 
+    /// A message-API init was refused as unsupported before any data was processed, so the
+    /// classic API can safely be tried instead.
+    #[error("{0}")]
+    MessageUnsupported(String),
+
     #[error("Error loading the library: {0}")]
     LibLoading(#[from] libloading::Error),
 

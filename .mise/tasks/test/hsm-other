@@ -31,8 +31,11 @@ cc -shared -fPIC -O2 -Wno-cast-function-type-mismatch \
   "${POLICY[@]}" -o "${SHIM_DIR}/shim-v2.so" "${SHIM_SRC}"
 cc -shared -fPIC -O2 -DV3_MESSAGE -Wno-cast-function-type-mismatch \
   "${POLICY[@]}" -o "${SHIM_DIR}/shim-v3.so" "${SHIM_SRC}"
+# v3 table whose message entries are stubs answering CKR_FUNCTION_NOT_SUPPORTED
+cc -shared -fPIC -O2 -DV3_MESSAGE -DMESSAGE_INIT_NOT_SUPPORTED -Wno-cast-function-type-mismatch \
+  "${POLICY[@]}" -o "${SHIM_DIR}/shim-v3-stubs.so" "${SHIM_SRC}"
 
-for mode in v2 v3; do
+for mode in v2 v3 v3-stubs; do
   print_header "Scenario PKCS#11 ${mode}"
   # Each scenario gets its own token: the KEK and master key of one run must not leak into the other.
   softhsm2_setup "${SHIM_DIR}/${mode}/tokens" "${SHIM_DIR}/${mode}/softhsm2.conf"
@@ -56,11 +59,15 @@ for mode in v2 v3; do
     -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_other
   grep -q '^classic-encrypt-init$' "${MARKER}" ||
     print_error "PKCS#11 ${mode}: the classic encryption path never ran"
-  if [ "${mode}" = "v3" ]; then
+  if [ "${mode}" != "v2" ]; then
     grep -q '^message-encrypt-init$' "${MARKER}" ||
-      print_error "PKCS#11 v3: the message API was never attempted, so its fallback was not exercised"
+      print_error "PKCS#11 ${mode}: the message API was never attempted, so its fallback was not exercised"
   elif grep -q '^message-encrypt-init$' "${MARKER}"; then
     print_error "PKCS#11 v2: this library must not expose message functions"
+  fi
+  if [ "${mode}" = "v3-stubs" ]; then
+    grep -q '^message-decrypt-init$' "${MARKER}" ||
+      print_error "PKCS#11 v3-stubs: the message decrypt API was never attempted, so its fallback was not exercised"
   fi
   print_status "PKCS#11 ${mode}: KMS booted with an HSM-backed KEK"
 done

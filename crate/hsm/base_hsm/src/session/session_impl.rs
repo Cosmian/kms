@@ -1234,7 +1234,16 @@ impl Session {
         if self.hsm_capabilities().aes.gcm.supports_message && self.hsm().supports_message_decrypt()
         {
             let (encrypted, tag) = encrypted.split_at(encrypted.len() - AES_GCM_AUTH_TAG_LENGTH);
-            return self.decrypt_message_aes_gcm(key_handle, &[], iv, tag, encrypted);
+            match self.decrypt_message_aes_gcm(key_handle, &[], iv, tag, encrypted) {
+                // Refused at init, before any data was processed: classic GCM decrypts the
+                // same `iv || ciphertext || tag` layout (a v3 table of unsupported stubs).
+                Err(HError::MessageUnsupported(reason)) => {
+                    debug!(
+                        "PKCS#11 v3 message AES-GCM decrypt unsupported; using classic: {reason}"
+                    );
+                }
+                result => return result,
+            }
         }
         self.decrypt_aes_gcm_classic(key_handle, iv, encrypted)
     }
@@ -4445,6 +4454,37 @@ mod tests {
                 .expect_err("unauthenticated plaintext must not be returned");
             assert!(error.to_string().contains("Return code: 64"));
         }
+        Ok(())
+    }
+
+    /// A v3 table whose decrypt entries are `CKR_FUNCTION_NOT_SUPPORTED` stubs must decrypt
+    /// through the classic API; any other init failure must not be retried.
+    #[test]
+    fn gcm_decrypt_falls_back_only_when_message_init_is_unsupported() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_UNSUPPORTED"])?;
+        assert_eq!(
+            session
+                .decrypt(
+                    1,
+                    HsmEncryptionAlgorithm::AesGcm,
+                    &fixture_gcm_frame(b"hello")
+                )?
+                .as_slice(),
+            b"hello"
+        );
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_FAILURE"])?;
+        let error = session
+            .decrypt(
+                1,
+                HsmEncryptionAlgorithm::AesGcm,
+                &fixture_gcm_frame(b"hello"),
+            )
+            .expect_err("a hard init failure must not be masked by a classic retry");
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to initialize message-based decryption")
+        );
         Ok(())
     }
 
