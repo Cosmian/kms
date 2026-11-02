@@ -139,9 +139,7 @@ impl SqlitePool {
                 conn.call(
                     |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         c.execute_batch(
-                            // WAL mode: readers and the single writer never block each other.
-                            "PRAGMA journal_mode=WAL;\
-                             PRAGMA synchronous=NORMAL;\
+                            "PRAGMA synchronous=NORMAL;\
                              PRAGMA busy_timeout=5000;\
                              PRAGMA cache_size=-65536;\
                              PRAGMA mmap_size=268435456;\
@@ -1100,6 +1098,13 @@ impl Migrate for SqlitePool {
     }
 
     async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(|c| c.execute_batch("PRAGMA journal_mode=WAL;"))
+                .await
+                .map_err(DbError::from)
+        })
+        .await?;
         self.create_schema(clear_database).await?;
         self.ensure_wrapping_key_schema().await?;
         self.ensure_activation_schema().await?;
