@@ -1244,7 +1244,7 @@ const ISOLATED_REDIS_DB: u8 = 15;
 /// and a `ready` state; re-opening it is accepted, while a database whose recorded
 /// state is not `ready` (or that has no markers) is refused as legacy.
 pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
-    use crate::stores::migrate::{DbState, Migrate as _};
+    use crate::stores::migrate::{DbParameters as _, DbState};
 
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let mut rng = KmsRng::new().seeded_csrng()?;
@@ -1256,7 +1256,7 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
 
     let db = RedisWithFindex::instantiate(&redis_url, master_key.clone(), true).await?;
     assert_eq!(
-        db.get_current_db_version().await?.as_deref(),
+        db.get_db_version().await?.as_deref(),
         Some(env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(db.get_db_state().await?, Some(DbState::Ready));
@@ -1276,9 +1276,9 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
     );
 
     // Version marker round-trip.
-    reopened.set_current_db_version("0.0.1-test").await?;
+    reopened.set_db_version("0.0.1-test").await?;
     assert_eq!(
-        reopened.get_current_db_version().await?.as_deref(),
+        reopened.get_db_version().await?.as_deref(),
         Some("0.0.1-test")
     );
 

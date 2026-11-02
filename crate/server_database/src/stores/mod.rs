@@ -1,5 +1,6 @@
 mod audit;
-mod migrate;
+/// Shared startup migration contracts, including the scenario-test target versions.
+pub(crate) mod migrate;
 #[cfg(feature = "non-fips")]
 mod redis;
 mod sql;

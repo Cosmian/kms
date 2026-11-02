@@ -38,6 +38,7 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
+mod sqlite_migration_tests;
 mod tagging_tests;
 
 #[cfg(feature = "non-fips")]
@@ -308,7 +309,7 @@ async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
 
     // Create the schema, then drop the pool
     drop(SqlitePool::instantiate(&db_file, true, None).await?);
-    // Seed a legacy certificate (`_cert` tag only) and clear the completion marker
+    // Rewind the version as well as the marker: version boundaries select eligible steps.
     {
         let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
         conn.execute(
@@ -325,6 +326,11 @@ async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
         conn.execute(
             "DELETE FROM parameters WHERE name = ?1",
             [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
+        )
+        .map_err(db_err)?;
+        conn.execute(
+            "UPDATE parameters SET value = '5.28.0' WHERE name = 'db_version'",
+            [],
         )
         .map_err(db_err)?;
     }

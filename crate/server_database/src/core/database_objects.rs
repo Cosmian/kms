@@ -48,7 +48,6 @@ fn reject_reserved_uid(uid: &str) -> DbResult<()> {
 /// - `unregister_object_store`: Unregister the default objects store or a store for a given prefix.
 /// - `get_object_store`: Retrieves the appropriate object store based on the prefix of the `uid`.
 /// - `filename`: Returns the filename of the database or `None` if not supported.
-/// - `migrate`: Migrates all the databases to the latest version.
 /// - `create`: Creates a new object in the database.
 /// - `retrieve_objects`: Retrieves objects from the database based on `uid` or tags.
 /// - `retrieve_object`: Retrieves a single object from the database.

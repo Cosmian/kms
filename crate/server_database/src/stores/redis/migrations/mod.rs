@@ -1,66 +1,34 @@
-//! This module previously contained code to migrate legacy Redis/Findex data.
-//! Legacy migrations depending on `cloudproof_findex` and `redis_for_migrations` have been removed.
+//! Redis migration metadata; startup retains its existing behavior until the runner is wired.
 
 use async_trait::async_trait;
 
 use crate::{
     DbError,
     error::DbResult,
-    stores::{
-        RedisWithFindex,
-        migrate::{DbState, Migrate},
-    },
+    stores::{RedisWithFindex, migrate::DbParameters},
 };
 
-impl RedisWithFindex {
-    /// Return the state of the database ("ready" or "upgrading"), if recorded.
-    pub(crate) async fn get_db_state(&self) -> DbResult<Option<DbState>> {
-        let state_str: Option<String> = redis::cmd("GET")
-            .arg("db_state")
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to get DB state: {e}")))?;
-
-        match state_str {
-            Some(state) => Ok(Some(serde_json::from_str(&state)?)),
-            None => Ok(None),
-        }
-    }
-
-    /// Return the version recorded when the database was initialized, if any.
-    /// Used at startup to refuse legacy databases that carry no version marker.
-    pub(crate) async fn get_current_db_version(&self) -> DbResult<Option<String>> {
-        let version: Option<String> = redis::cmd("GET")
-            .arg("db_version")
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to get DB version: {e}")))?;
-
-        Ok(version)
-    }
-}
-
 #[async_trait(?Send)]
-impl Migrate for RedisWithFindex {
-    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
-        let state_json = serde_json::to_string(&state)?;
-        redis::cmd("SET")
-            .arg("db_state")
-            .arg(state_json)
-            .query_async::<()>(&mut self.mgr.clone())
+impl DbParameters for RedisWithFindex {
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+        redis::cmd("GET")
+            .arg(name)
+            .query_async(&mut self.mgr.clone())
             .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to set DB state: {e}")))?;
-
-        Ok(())
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to get database parameter '{name}': {e}"))
+            })
     }
 
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
         redis::cmd("SET")
-            .arg("db_version")
-            .arg(version)
+            .arg(name)
+            .arg(value)
             .query_async::<()>(&mut self.mgr.clone())
             .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to set DB version: {e}")))?;
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to set database parameter '{name}': {e}"))
+            })?;
 
         Ok(())
     }
