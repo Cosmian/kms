@@ -52,7 +52,7 @@ Environment variables for test backends:
 When adding a migration step:
 
 1. Add its `MigrationStep` variant, `version()` and `marker()`, then append it to `MIGRATION_STEPS` in strictly ascending version order. The running package version must include the last registered step.
-2. Implement the new match arm in every backend's `apply_step`: SQLite, PostgreSQL, MySQL and Redis. SQLite is wired first; the other backends adopt these arms with their runner implementations.
+2. Implement the new match arm in every backend's `apply_step`: SQLite, PostgreSQL, MySQL and Redis. SQLite, PostgreSQL and MySQL are wired; Redis adopts the arms in PR 3. Backend-specific steps keep a no-op arm on the other backends.
 3. Extend the migration scenarios and released fixtures. Verify both step-by-step and direct upgrades, data preservation, marker skips, interrupted runs and concurrent startup.
 
 ## Documentation
