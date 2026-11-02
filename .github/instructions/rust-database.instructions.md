@@ -47,7 +47,7 @@ Environment variables for test backends:
 - Data transformations between KMS versions **MUST** be registered as a `MigrationStep` in `crate/server_database/src/stores/migrate.rs`, never as another inline startup backfill.
 - Additive, idempotent DDL belongs in `ensure_schema`. DDL that converts existing data is a data transformation and must be versioned.
 - The runner owns completion-marker reads and writes, version checkpoints and migration state. Backend `apply_step` implementations perform only the idempotent data transformation.
-- Startup must acquire the backend lock and perform the read-only newer-version check before any DDL. Hold it through the final `ready` stamp and use a drop guard to release it on both success and errors. Never delete SQLite's sidecar lock file.
+- Startup must acquire the backend lock and perform the read-only newer-version check before any application-schema DDL. Backend lock-infrastructure initialization may precede the check when required to acquire the lock. Hold the lock through the final `ready` stamp and use a drop guard to release it on both success and errors. Never delete SQLite's sidecar lock file.
 
 When adding a migration step:
 
