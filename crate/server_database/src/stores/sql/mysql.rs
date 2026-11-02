@@ -50,12 +50,25 @@ use crate::{
 // Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
 const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
 
+fn validate_client_identity_parameters(
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<()> {
+    if identity_path.is_none() && identity_password.is_some() {
+        return Err(DbError::DatabaseError(
+            "ssl-client-identity-password requires ssl-client-identity".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(feature = "non-fips")]
 fn configure_client_identity(
     mut ssl_opts: SslOpts,
     identity_path: Option<&str>,
     identity_password: Option<&str>,
 ) -> DbResult<SslOpts> {
+    validate_client_identity_parameters(identity_path, identity_password)?;
     if let Some(path) = identity_path {
         let mut identity = ClientIdentity::new(PathBuf::from(path).into());
         if let Some(password) = identity_password {
@@ -72,6 +85,7 @@ fn configure_client_identity(
     identity_path: Option<&str>,
     identity_password: Option<&str>,
 ) -> DbResult<SslOpts> {
+    validate_client_identity_parameters(identity_path, identity_password)?;
     if identity_path.is_some() || identity_password.is_some() {
         return Err(DbError::DatabaseError(
             "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure \
@@ -2140,5 +2154,16 @@ mod tests {
             .release()
             .await
             .expect_err("releasing a vanished lock must be an error, not a panic");
+    }
+
+    #[test]
+    fn client_identity_password_requires_identity() -> DbResult<()> {
+        validate_client_identity_parameters(None, None)?;
+        if validate_client_identity_parameters(None, Some("password")).is_ok() {
+            return Err(DbError::DatabaseError(
+                "A client-identity password without an identity must be rejected".to_owned(),
+            ));
+        }
+        Ok(())
     }
 }
