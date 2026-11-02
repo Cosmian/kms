@@ -106,7 +106,7 @@ fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
     let interfaces = hsm.hsm_lib().list_pkcs11_v3_interfaces()?;
     assert_eq!(supports_interfaces, interfaces.is_some());
     if let Some(interfaces) = interfaces {
-        assert!(!interfaces.is_empty());
+        assert_ne!(interfaces.len(), 0);
         assert!(
             interfaces
                 .iter()
