@@ -133,6 +133,7 @@ serde = { workspace = true }
 serde_ignored = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+ssh-key = { workspace = true }
 luna_pkcs11_loader = { workspace = true }
 smartcardhsm_pkcs11_loader = { workspace = true }
 softhsm2_pkcs11_loader = { workspace = true }

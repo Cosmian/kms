@@ -37,6 +37,7 @@ pub(crate) mod ocsp;
 pub mod root_redirect;
 pub(crate) mod scep;
 pub(crate) mod spire;
+pub(crate) mod ssh;
 pub mod swagger;
 #[cfg(feature = "non-fips")]
 pub(crate) mod tokenize;

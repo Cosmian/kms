@@ -253,6 +253,7 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | ------------------- | -------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
 | FortiGate / FortiOS | External KMS via KMIP 1.0–1.4 ([docs](./documentation/docs/integrations/fortigate.md))                         | 1.0          | ✅      |
 | OpenSSH             | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                        | —            | ✅      |
+| SSH certificates    | KMS-managed SSH CA and external secret rotation ([docs](./documentation/docs/integrations/ssh_certificates_and_secret_rotation.md)) | — | ✅ |
 | S/MIME              | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                          | —            | ✅      |
 | GnuPG / OpenPGP     | OpenPGP keys (`PGPKey`): create, import, export, encrypt, decrypt, sign, verify; non-FIPS only ([docs](./documentation/docs/integrations/gnupg/openpgp.md)) | 2.1 | ✅      |
 | GnuPG smartcard     | KMS RSA keys as a GnuPG smartcard via gnupg-pkcs11-scd ([docs](./documentation/docs/integrations/gnupg/smartcard.md)) | —            | ✅      |

@@ -35,6 +35,10 @@ tags:
     description: Server information and HSM status
   - name: Certificates
     description: X.509 certificate lifecycle — CRL generation, OCSP status (RFC 6960)
+  - name: SSH Certificates
+    description: Short-lived OpenSSH user certificates signed by a KMS-managed software or HSM key
+  - name: Secrets
+    description: Authenticated secret-generation utilities
   - name: Enrollment
     description: |
       Automated certificate enrollment for IoT and MDM-managed devices — EST (RFC 7030) and
@@ -3082,6 +3086,210 @@ paths:
           description: Unsupported operation or unreadable `pkiMessage`
         '404':
           description: SCEP disabled (`scep_enabled = false`, the default)
+
+  /v1/ssh/config/ca:
+    put:
+      tags: [SSH Certificates]
+      summary: Configure the SSH certificate authority
+      description: Requires an active Crypto Officer and an existing KMS private key with Sign permission. The CA private key is never submitted or returned.
+      operationId: configureSshCa
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ca_key_uid]
+              properties:
+                ca_key_uid:
+                  type: string
+                  description: UID of the existing software-backed or HSM-backed private key.
+      responses:
+        '204':
+          description: SSH CA configured
+        '401':
+          description: Authentication required
+        '403':
+          description: Active Crypto Officer or Sign permission required
+        '422':
+          description: Key is not an active, supported signing key
+
+  /v1/ssh/public_key:
+    get:
+      tags: [SSH Certificates]
+      summary: Get the configured SSH CA public key
+      description: Public information; no authentication is required. The result is OpenSSH public-key text for configuring SSH hosts to trust this CA.
+      operationId: getSshCaPublicKey
+      security: []
+      responses:
+        '200':
+          description: Configured CA public key
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...
+        '404':
+          description: SSH CA is not configured
+
+  /v1/ssh/roles/{name}:
+    put:
+      tags: [SSH Certificates]
+      summary: Create or replace an SSH signing role
+      description: Requires an active Crypto Officer. Principals are exact login names; wildcard principals are not accepted.
+      operationId: putSshRole
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9_.-]{1,64}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [allowed_principals, default_ttl, max_ttl]
+              properties:
+                allowed_principals:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  uniqueItems: true
+                  items:
+                    type: string
+                    maxLength: 128
+                default_ttl:
+                  type: string
+                  description: Duration such as 15m or 1h; used when a request omits ttl.
+                max_ttl:
+                  type: string
+                  description: Maximum permitted certificate lifetime, such as 1h.
+      responses:
+        '204':
+          description: SSH role saved
+        '401':
+          description: Authentication required
+        '403':
+          description: Active Crypto Officer required
+        '422':
+          description: Invalid principals, durations, or TTL relationship
+
+  /v1/ssh/sign/{role}:
+    post:
+      tags: [SSH Certificates]
+      summary: Issue a short-lived SSH user certificate
+      description: Requires KMS Sign authorization for the configured CA key and a role policy that allows every requested principal. HSM keys are signed
+        through the HSM oracle without export or software fallback.
+      operationId: signSshCertificate
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [public_key, valid_principals]
+              properties:
+                public_key:
+                  type: string
+                  description: OpenSSH public-key text; private-key material is never accepted.
+                valid_principals:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  uniqueItems: true
+                  items:
+                    type: string
+                    maxLength: 128
+                ttl:
+                  type: string
+                  description: Optional duration such as 15m; defaults to the role's default_ttl.
+      responses:
+        '200':
+          description: Signed OpenSSH user certificate
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [signed_key, serial_number]
+                    properties:
+                      signed_key:
+                        type: string
+                        description: OpenSSH certificate text.
+                      serial_number:
+                        type: string
+                        description: Unsigned decimal certificate serial number.
+        '401':
+          description: Authentication required
+        '403':
+          description: Caller lacks Sign authorization or a requested principal is disallowed
+        '404':
+          description: SSH CA or role is not configured
+        '422':
+          description: Invalid public key or TTL, or TTL exceeds max_ttl
+
+  /v1/secrets/password:
+    post:
+      tags: [Secrets]
+      summary: Generate a random password
+      description: Requires the KMS Create permission. Returns a fresh 32-character alphanumeric value; it is not stored or logged by this endpoint.
+      operationId: generateSecretPassword
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          description: Generated password
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [password]
+                    properties:
+                      password:
+                        type: string
+                        minLength: 32
+                        maxLength: 32
+                        pattern: ^[A-Za-z0-9]{32}$
+        '401':
+          description: Authentication required
+        '403':
+          description: KMS Create permission required
 
   /v1/crypto/encrypt:
     post:

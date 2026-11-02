@@ -88,7 +88,7 @@ use crate::{
                 sign_with_transit_key_put,
             },
         },
-        swagger,
+        ssh, swagger,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -1998,6 +1998,10 @@ pub async fn prepare_kms_server(
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(ssh::configure_ca)
+            .service(ssh::put_role)
+            .service(ssh::sign)
+            .service(ssh::generate_password)
             .service(crl::get_crl)
             .service(csr::post_csr)
             .service(access::get_crypto_officer_status)
@@ -2009,6 +2013,7 @@ pub async fn prepare_kms_server(
                     .route(web::head().to(cli_archive_exists)),
             );
 
+        app = app.service(ssh::get_public_key);
         app.service(default_scope)
     })
     .keep_alive(actix_web::http::KeepAlive::Timeout(
