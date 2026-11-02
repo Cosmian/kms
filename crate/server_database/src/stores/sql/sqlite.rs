@@ -1127,6 +1127,13 @@ impl Migrate for SqlitePool {
     }
 
     async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        let enable_wal_sql = get_sqlite_query!("enable-wal");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(move |c| c.execute_batch(enable_wal_sql))
+                .await
+        })
+        .await?;
         self.create_schema(clear_database).await?;
         self.ensure_wrapping_key_schema().await?;
         self.ensure_activation_schema().await?;

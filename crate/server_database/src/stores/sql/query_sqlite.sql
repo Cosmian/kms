@@ -93,7 +93,10 @@ SELECT 1 FROM objects WHERE id=$1 LIMIT 1;
 -- Note: the loader ends a query at the first line ending in `;`, so each multi-statement
 -- query below is kept on a single line.
 -- name: connection-pragmas
-PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA cache_size=-65536; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY;
+PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA cache_size=-65536; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY;
+
+-- name: enable-wal
+PRAGMA journal_mode=WAL;
 
 -- Refresh planner statistics; analysis_limit bounds ANALYZE to a sample.
 -- name: optimize-planner
