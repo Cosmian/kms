@@ -113,12 +113,9 @@ fixture_ckms() {
 # docker-proxy accepts TCP before the server listens, so readiness is an actual KMS call.
 start_kms() {
   docker run --detach --name "${KMS_NAME}" --network "${NETWORK}" "$@" >/dev/null
-  for _ in $(seq 1 60); do
-    if fixture_ckms server version >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 1
-  done
+  if wait_for_command 60 fixture_ckms server version >/dev/null 2>&1; then
+    return 0
+  fi
   docker logs "${KMS_NAME}" >&2
   print_error "The KMS server did not start."
 }
@@ -159,12 +156,9 @@ start_db() {
       --env MYSQL_PASSWORD="${DB_PASSWORD}" --env MYSQL_ROOT_PASSWORD="${DB_PASSWORD}" \
       --env MYSQL_DATABASE=kms "${MYSQL_IMAGE}" >/dev/null
   fi
-  for _ in $(seq 1 120); do
-    if db_client "${backend}" ready >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 1
-  done
+  if wait_for_command 120 db_client "${backend}" ready >/dev/null 2>&1; then
+    return 0
+  fi
   docker logs "${DB_NAME}" >&2
   print_error "The ${backend} fixture database did not start."
 }
@@ -581,6 +575,7 @@ generate_fixture() {
 
 docker network create "${NETWORK}" >/dev/null
 selected=false
+generated=false
 for backend in "${BACKENDS[@]}"; do
   for image in "${IMAGES[@]}"; do
     version="${image#*:}"
@@ -598,7 +593,10 @@ for backend in "${BACKENDS[@]}"; do
       continue
     fi
     generate_fixture "${backend}" "${image}" "${version}"
+    generated=true
   done
 done
 [ "${selected}" = true ] || print_error "Unknown fixture version: ${SELECTED_VERSION}"
+[ "${generated}" = true ] ||
+  print_error "Version ${SELECTED_VERSION} is not available for ${BACKENDS[*]}"
 print_success "Released ${BACKENDS[*]} migration fixtures generated and verified."
