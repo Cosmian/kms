@@ -276,8 +276,10 @@ async fn apply_pending_steps(
 #[cfg(test)]
 mod tests {
     use std::{
-        cell::Cell,
+        cell::{Cell, RefCell},
+        collections::HashMap,
         fs::{File, TryLockError},
+        rc::Rc,
         time::Instant,
     };
 
@@ -286,6 +288,146 @@ mod tests {
 
     use super::*;
     use crate::db_ensure;
+
+    #[derive(Default)]
+    struct InMemoryMigrationBackend {
+        parameters: RefCell<HashMap<String, String>>,
+        fail_step: Cell<Option<MigrationStep>>,
+        attempted: RefCell<Vec<MigrationStep>>,
+        locked: Rc<Cell<bool>>,
+    }
+
+    struct InMemoryMigrationLock(Rc<Cell<bool>>);
+
+    impl Drop for InMemoryMigrationLock {
+        fn drop(&mut self) {
+            self.0.set(false);
+        }
+    }
+
+    #[async_trait(?Send)]
+    impl DbParameters for InMemoryMigrationBackend {
+        async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+            Ok(self.parameters.borrow().get(name).cloned())
+        }
+
+        async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
+            self.parameters
+                .borrow_mut()
+                .insert(name.to_owned(), value.to_owned());
+            Ok(())
+        }
+    }
+
+    #[async_trait(?Send)]
+    impl Migrate for InMemoryMigrationBackend {
+        type MigrationLock = InMemoryMigrationLock;
+
+        const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+
+        async fn has_data(&self) -> DbResult<bool> {
+            Ok(true)
+        }
+
+        async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
+            db_ensure!(!self.locked.replace(true), "Test migration lock is held");
+            Ok(InMemoryMigrationLock(Rc::clone(&self.locked)))
+        }
+
+        async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+            db_ensure!(!clear_database, "Unexpected test database clear");
+            Ok(())
+        }
+
+        async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
+            self.attempted.borrow_mut().push(step);
+            db_ensure!(
+                self.fail_step.get() != Some(step),
+                "Injected migration failure: {step:?}"
+            );
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_migration_step_failure_preserves_checkpoint_and_resumes() -> DbResult<()> {
+        let database = InMemoryMigrationBackend::default();
+        database.set_db_version("5.20.0").await?;
+        database.set_db_state(DbState::Ready).await?;
+        database
+            .fail_step
+            .set(Some(MigrationStep::CertificateSerialTagBackfill));
+
+        let error = database
+            .bootstrap(false, "5.29.0")
+            .await
+            .err()
+            .ok_or_else(|| db_error!("The selected migration step must fail"))?;
+        db_ensure!(
+            error
+                .to_string()
+                .contains("Injected migration failure: CertificateSerialTagBackfill"),
+            "Unexpected migration failure: {error}"
+        );
+        db_ensure!(
+            database
+                .get_parameter(WRAPPING_KEY_BACKFILL_PARAM)
+                .await?
+                .as_deref()
+                == Some("true"),
+            "The completed first step must be marked"
+        );
+        db_ensure!(
+            database
+                .get_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+                .await?
+                .is_none(),
+            "A failed step must not be marked complete"
+        );
+        db_ensure!(
+            database.get_db_version().await?.as_deref() == Some("5.25.0"),
+            "The failed step must leave the previous version checkpoint"
+        );
+        db_ensure!(
+            database.get_db_state().await? == Some(DbState::Upgrading),
+            "The failed migration must remain upgrading"
+        );
+        let lock = database.acquire_migration_lock().await?;
+        drop(lock);
+
+        database.fail_step.set(None);
+        let applied = database.bootstrap(false, "5.29.0").await?;
+        db_ensure!(
+            applied == [MigrationStep::CertificateSerialTagBackfill],
+            "Resume must apply only the previously failed step: {applied:?}"
+        );
+        db_ensure!(
+            database.attempted.borrow().as_slice()
+                == [
+                    MigrationStep::WrappingKeyIdBackfill,
+                    MigrationStep::CertificateSerialTagBackfill,
+                    MigrationStep::CertificateSerialTagBackfill,
+                ],
+            "The completed step must not be re-applied"
+        );
+        db_ensure!(
+            database
+                .get_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+                .await?
+                .as_deref()
+                == Some("true"),
+            "The resumed step must be marked complete"
+        );
+        db_ensure!(
+            database.get_db_version().await?.as_deref() == Some("5.29.0"),
+            "The resumed migration must stamp the target version"
+        );
+        db_ensure!(
+            database.get_db_state().await? == Some(DbState::Ready),
+            "The resumed migration must finish ready"
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_db_state_serialization_is_stable() {
