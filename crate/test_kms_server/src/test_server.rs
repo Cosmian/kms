@@ -346,15 +346,13 @@ fn acquire_shared_test_db_clear_lock(config: &mut ClapConfig) -> Option<DbClearL
     // Best-effort clean-up of an orphaned lock from a process that crashed
     // before removing it: if it is older than the wait timeout, nobody
     // could still legitimately be holding it.
-    if let Ok(metadata) = fs::metadata(&lock_path) {
-        if let Ok(age) = metadata
+    if let Ok(metadata) = fs::metadata(&lock_path)
+        && let Ok(age) = metadata
             .modified()
             .and_then(|m| m.elapsed().map_err(std::io::Error::other))
-        {
-            if age > WAIT_TIMEOUT {
-                drop(fs::remove_file(&lock_path));
-            }
-        }
+        && age > WAIT_TIMEOUT
+    {
+        drop(fs::remove_file(&lock_path));
     }
 
     if let Ok(_lock_file) = fs::OpenOptions::new()

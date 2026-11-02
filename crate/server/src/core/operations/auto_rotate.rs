@@ -181,14 +181,13 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
             // `set_rotation_metadata_from` zeroes `rotate_interval` to prevent
             // accidental double-rotation on manual rekeys; the scheduler is
             // responsible for re-arming its own replacements.
-            if let Some(interval) = old_interval {
-                if let Err(e) =
+            if let Some(interval) = old_interval
+                && let Err(e) =
                     rearm_rotation_policy(kms, ObjectHandle::from(new_uid), interval).await
-                {
-                    warn!(
-                        "[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}"
-                    );
-                }
+            {
+                warn!(
+                    "[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}"
+                );
             }
         }
         Err(e) => {

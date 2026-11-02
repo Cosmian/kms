@@ -78,10 +78,10 @@ fn write_command(
         if let Some(short) = arg.get_short() {
             write!(out, " [-{short}]")?;
         }
-        if let Some(n) = arg.get_value_names() {
-            if let Some(n) = n.first() {
-                write!(out, " <{n}>")?;
-            }
+        if let Some(n) = arg.get_value_names()
+            && let Some(n) = n.first()
+        {
+            write!(out, " <{n}>")?;
         }
         write!(out, "`")?;
         if let Some(help) = arg.get_help() {

@@ -117,11 +117,11 @@ impl PrepareRequest {
                     if !reason_is_invalid_message {
                         continue;
                     }
-                    if let Some(msg) = &inner.result_message {
-                        if msg.to_ascii_lowercase().contains("missing-iv") {
-                            self.expected_response_is_missing_iv_error = true;
-                            return true;
-                        }
+                    if let Some(msg) = &inner.result_message
+                        && msg.to_ascii_lowercase().contains("missing-iv")
+                    {
+                        self.expected_response_is_missing_iv_error = true;
+                        return true;
                     }
                 }
                 // KMIP 1.4 expected response detection
@@ -139,11 +139,11 @@ impl PrepareRequest {
                     if !reason_is_invalid_message {
                         continue;
                     }
-                    if let Some(msg) = &inner.result_message {
-                        if msg.to_ascii_lowercase().contains("missing-iv") {
-                            self.expected_response_is_missing_iv_error = true;
-                            return true;
-                        }
+                    if let Some(msg) = &inner.result_message
+                        && msg.to_ascii_lowercase().contains("missing-iv")
+                    {
+                        self.expected_response_is_missing_iv_error = true;
+                        return true;
                     }
                 }
             }
@@ -190,17 +190,17 @@ impl PrepareRequest {
         for bi in &self.request.batch_item {
             match bi {
                 RequestMessageBatchItemVersioned::V21(inner) => {
-                    if let Operation::Encrypt(enc) = &inner.request_payload {
-                        if let Some(aad) = &enc.authenticated_encryption_additional_data {
-                            *pending_aad = Some(aad.clone());
-                        }
+                    if let Operation::Encrypt(enc) = &inner.request_payload
+                        && let Some(aad) = &enc.authenticated_encryption_additional_data
+                    {
+                        *pending_aad = Some(aad.clone());
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    if let Op14::Encrypt(enc) = &inner.request_payload {
-                        if let Some(aad) = &enc.authenticated_encryption_additional_data {
-                            *pending_aad = Some(aad.clone());
-                        }
+                    if let Op14::Encrypt(enc) = &inner.request_payload
+                        && let Some(aad) = &enc.authenticated_encryption_additional_data
+                    {
+                        *pending_aad = Some(aad.clone());
                     }
                 }
             }
@@ -393,11 +393,9 @@ impl PrepareRequest {
                 RequestMessageBatchItemVersioned::V21(inner) => {
                     if let Operation::MACVerify(mv) = &mut inner.request_payload {
                         let needs_mac = mv.mac_data.is_empty();
-                        if needs_mac {
-                            if let Some(mac) = last_mac {
-                                mv.mac_data = mac.clone();
-                                injected = true;
-                            }
+                        if needs_mac && let Some(mac) = last_mac {
+                            mv.mac_data = mac.clone();
+                            injected = true;
                         }
                     }
                 }
@@ -406,11 +404,9 @@ impl PrepareRequest {
                         let placeholder = b"$MAC_DATA";
                         let needs_mac =
                             mv.mac_data.is_empty() || mv.mac_data.as_slice() == placeholder;
-                        if needs_mac {
-                            if let Some(mac) = last_mac {
-                                mv.mac_data = mac.clone();
-                                injected = true;
-                            }
+                        if needs_mac && let Some(mac) = last_mac {
+                            mv.mac_data = mac.clone();
+                            injected = true;
                         }
                     }
                 }
@@ -459,30 +455,30 @@ impl PrepareRequest {
             match bi {
                 RequestMessageBatchItemVersioned::V21(inner) => match &mut inner.request_payload {
                     Operation::Get(g) => {
-                        if g.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if g.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &g.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::GetAttributes(g) => {
-                        if g.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if g.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &g.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::GetAttributeList(g) => {
-                        if g.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if g.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &g.unique_identifier {
                             *last_uid = Some(s.clone());
@@ -490,52 +486,51 @@ impl PrepareRequest {
                     }
                     Operation::AddAttribute(a) => {
                         if matches!(a.unique_identifier, UniqueIdentifier::TextString(ref s) if s.is_empty())
+                            && let Some(uid) = last_uid.clone()
                         {
-                            if let Some(uid) = last_uid.clone() {
-                                a.unique_identifier = UniqueIdentifier::TextString(uid);
-                            }
+                            a.unique_identifier = UniqueIdentifier::TextString(uid);
                         }
-                        if let UniqueIdentifier::TextString(s) = &a.unique_identifier {
-                            if !s.is_empty() {
-                                *last_uid = Some(s.clone());
-                            }
+                        if let UniqueIdentifier::TextString(s) = &a.unique_identifier
+                            && !s.is_empty()
+                        {
+                            *last_uid = Some(s.clone());
                         }
                     }
                     Operation::ModifyAttribute(m) => {
-                        if m.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                m.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if m.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            m.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &m.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::Export(e) => {
-                        if e.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                e.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if e.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            e.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &e.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::Encrypt(enc) => {
-                        if enc.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                enc.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if enc.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            enc.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &enc.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::Decrypt(dec) => {
-                        if dec.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                dec.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if dec.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            dec.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &dec.unique_identifier {
                             *last_uid = Some(s.clone());
@@ -551,10 +546,10 @@ impl PrepareRequest {
                             // Update last seen
                             *last_uid = Some(s.clone());
                             // Mirror fallback: ensure last_uid points to private key if we accidentally captured a public key variant
-                            if let Some(first) = last_uid.clone() {
-                                if s == &format!("{first}_pk") {
-                                    *s = first;
-                                }
+                            if let Some(first) = last_uid.clone()
+                                && s == &format!("{first}_pk")
+                            {
+                                *s = first;
                             }
                         }
                     }
@@ -564,80 +559,80 @@ impl PrepareRequest {
                     use Op14;
                     match &mut inner.request_payload {
                         Op14::Get(g) => {
-                            if g.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    g.unique_identifier = Some(uid);
-                                }
+                            if g.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                g.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &g.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::GetAttributes(g) => {
-                            if g.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    g.unique_identifier = Some(uid);
-                                }
+                            if g.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                g.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &g.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::GetAttributeList(g) => {
-                            if g.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    g.unique_identifier = Some(uid);
-                                }
+                            if g.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                g.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &g.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::AddAttribute(a) => {
-                            if a.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    a.unique_identifier = uid;
-                                }
+                            if a.unique_identifier.is_empty()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                a.unique_identifier = uid;
                             }
                             if !a.unique_identifier.is_empty() {
                                 *last_uid = Some(a.unique_identifier.clone());
                             }
                         }
                         Op14::ModifyAttribute(m) => {
-                            if m.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    m.unique_identifier = Some(uid);
-                                }
+                            if m.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                m.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &m.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::Export(e) => {
-                            if e.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    e.unique_identifier = uid;
-                                }
+                            if e.unique_identifier.is_empty()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                e.unique_identifier = uid;
                             }
                             if !e.unique_identifier.is_empty() {
                                 *last_uid = Some(e.unique_identifier.clone());
                             }
                         }
                         Op14::Encrypt(enc) => {
-                            if enc.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    enc.unique_identifier = uid;
-                                }
+                            if enc.unique_identifier.is_empty()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                enc.unique_identifier = uid;
                             }
                             if !enc.unique_identifier.is_empty() {
                                 *last_uid = Some(enc.unique_identifier.clone());
                             }
                         }
                         Op14::Decrypt(dec) => {
-                            if dec.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    dec.unique_identifier = uid;
-                                }
+                            if dec.unique_identifier.is_empty()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                dec.unique_identifier = uid;
                             }
                             if !dec.unique_identifier.is_empty() {
                                 *last_uid = Some(dec.unique_identifier.clone());
@@ -649,10 +644,10 @@ impl PrepareRequest {
                         Op14::Revoke(r) => {
                             if let Some(s) = &mut r.unique_identifier {
                                 *last_uid = Some(s.clone());
-                                if let Some(first) = last_uid.clone() {
-                                    if s == &format!("{first}_pk") {
-                                        *s = first;
-                                    }
+                                if let Some(first) = last_uid.clone()
+                                    && s == &format!("{first}_pk")
+                                {
+                                    *s = first;
                                 }
                             }
                         }
@@ -820,12 +815,11 @@ fn fallback_substitute_with_last_uid(
         return;
     };
     let maybe_fix_uid = |uid: &mut UniqueIdentifier| {
-        if let UniqueIdentifier::TextString(s) = uid {
-            if let Some(idx) = parse_uid_placeholder_index(test_name, s) {
-                if !uid_map.contains_key(&idx) {
-                    *s = last.to_string();
-                }
-            }
+        if let UniqueIdentifier::TextString(s) = uid
+            && let Some(idx) = parse_uid_placeholder_index(test_name, s)
+            && !uid_map.contains_key(&idx)
+        {
+            *s = last.to_string();
         }
     };
 
@@ -925,10 +919,10 @@ fn fallback_substitute_with_last_uid_v14(
         return;
     };
     let maybe_fix_uid = |uid: &mut String| {
-        if let Some(idx) = parse_uid_placeholder_index(test_name, uid) {
-            if !uid_map.contains_key(&idx) {
-                *uid = last.to_string();
-            }
+        if let Some(idx) = parse_uid_placeholder_index(test_name, uid)
+            && !uid_map.contains_key(&idx)
+        {
+            *uid = last.to_string();
         }
     };
 
@@ -1102,12 +1096,11 @@ fn substitute_linked_uid_in_request(
     uid_map: &HashMap<usize, String>,
 ) {
     use cosmian_kmip::kmip_2_1::kmip_types::LinkedObjectIdentifier as L;
-    if let L::TextString(s) = uid {
-        if let Some(index) = parse_uid_placeholder_index(test_name, s) {
-            if let Some(real) = uid_map.get(&index) {
-                *s = real.clone();
-            }
-        }
+    if let L::TextString(s) = uid
+        && let Some(index) = parse_uid_placeholder_index(test_name, s)
+        && let Some(real) = uid_map.get(&index)
+    {
+        *s = real.clone();
     }
 }
 
@@ -1121,12 +1114,11 @@ fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usiz
 }
 
 fn substitute_uid(test_name: &str, uid: &mut UniqueIdentifier, uid_map: &HashMap<usize, String>) {
-    if let UniqueIdentifier::TextString(s) = uid {
-        if let Some(index) = parse_uid_placeholder_index(test_name, s) {
-            if let Some(real) = uid_map.get(&index) {
-                *s = real.clone();
-            }
-        }
+    if let UniqueIdentifier::TextString(s) = uid
+        && let Some(index) = parse_uid_placeholder_index(test_name, s)
+        && let Some(real) = uid_map.get(&index)
+    {
+        *s = real.clone();
     }
 }
 

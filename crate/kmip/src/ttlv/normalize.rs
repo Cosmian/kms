@@ -9,16 +9,14 @@ use crate::ttlv::{
 // Collapse an Adjacently tagged structure with a tag and a content into a single TTLV element.
 // See kmip_ttlv_serializer.rs for the documentation example of _t/_c collapse.
 pub(crate) fn collapse_adjacently_tagged_structure(ttlv: &mut TTLV) {
-    if let TTLValue::Structure(items) = &mut ttlv.value {
-        if items.len() == 2 {
-            if let Some(v) = items
-                .iter()
-                .find(|i| i.tag == "_c")
-                .map(|c| c.value.clone())
-            {
-                ttlv.value = v;
-            }
-        }
+    if let TTLValue::Structure(items) = &mut ttlv.value
+        && items.len() == 2
+        && let Some(v) = items
+            .iter()
+            .find(|i| i.tag == "_c")
+            .map(|c| c.value.clone())
+    {
+        ttlv.value = v;
     }
 }
 
@@ -114,16 +112,16 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                 }
 
                 // 2) Interval as single Integer child
-                if pending_replacement.is_none() && ttlv.tag == "Interval" && items_mut.len() == 1 {
-                    if let Some(TTLV {
+                if pending_replacement.is_none()
+                    && ttlv.tag == "Interval"
+                    && items_mut.len() == 1
+                    && let Some(TTLV {
                         value: TTLValue::Integer(v),
                         ..
                     }) = items_mut.first()
-                    {
-                        if let Ok(u) = u32::try_from(*v) {
-                            pending_replacement = Some(TTLValue::Interval(u));
-                        }
-                    }
+                    && let Ok(u) = u32::try_from(*v)
+                {
+                    pending_replacement = Some(TTLValue::Interval(u));
                 }
 
                 // 2b) AttributeValue unwrap
@@ -148,17 +146,16 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                         // (e.g. RevocationReason with a single RevocationReasonCode
                         // child) must keep their structural wrapper so the
                         // deserializer can reconstruct the original type.
-                        if let Some(first) = items_mut.first() {
-                            if TYPE_TAGS.contains(&&*first.tag) {
-                                pending_replacement = Some(first.value.clone());
-                            }
+                        if let Some(first) = items_mut.first()
+                            && TYPE_TAGS.contains(&&*first.tag)
+                        {
+                            pending_replacement = Some(first.value.clone());
                         }
                     } else if let Some(idx) =
                         items_mut.iter().position(|c| TYPE_TAGS.contains(&&*c.tag))
+                        && let Some(el) = items_mut.get(idx)
                     {
-                        if let Some(el) = items_mut.get(idx) {
-                            pending_replacement = Some(el.value.clone());
-                        }
+                        pending_replacement = Some(el.value.clone());
                     }
                 }
 
@@ -223,8 +220,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                         && map.contains_key("OffsetSign")
                         && map.contains_key("OffsetHour")
                         && map.contains_key("OffsetMinute")
-                    {
-                        if let (
+                        && let (
                             Some(year),
                             Some(day),
                             Some(hour),
@@ -242,47 +238,40 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                             map.get("OffsetSign"),
                             map.get("OffsetHour"),
                             map.get("OffsetMinute"),
+                        )
+                        && *day > 0
+                        && *day <= 366
+                        && *hour >= 0
+                        && *hour < 24
+                        && *minute >= 0
+                        && *minute < 60
+                        && *second >= 0
+                        && *second < 61
+                        && let Ok(jan1) =
+                            time::Date::from_calendar_date(*year, time::Month::January, 1)
+                        && let Some(date) =
+                            jan1.checked_add(time::Duration::days(i64::from(*day - 1)))
+                    {
+                        let mut oh = *offset_hour;
+                        let mut om = *offset_minute;
+                        if *offset_sign < 0 {
+                            oh = -oh;
+                            om = -om;
+                        }
+                        if let (Ok(offset), Ok(tm)) = (
+                            time::UtcOffset::from_hms(
+                                i8::try_from(oh).unwrap_or(0),
+                                i8::try_from(om).unwrap_or(0),
+                                0,
+                            ),
+                            time::Time::from_hms(
+                                u8::try_from(*hour).unwrap_or(0),
+                                u8::try_from(*minute).unwrap_or(0),
+                                u8::try_from(*second).unwrap_or(0),
+                            ),
                         ) {
-                            if *day > 0
-                                && *day <= 366
-                                && *hour >= 0
-                                && *hour < 24
-                                && *minute >= 0
-                                && *minute < 60
-                                && *second >= 0
-                                && *second < 61
-                            {
-                                if let Ok(jan1) =
-                                    time::Date::from_calendar_date(*year, time::Month::January, 1)
-                                {
-                                    if let Some(date) =
-                                        jan1.checked_add(time::Duration::days(i64::from(*day - 1)))
-                                    {
-                                        let mut oh = *offset_hour;
-                                        let mut om = *offset_minute;
-                                        if *offset_sign < 0 {
-                                            oh = -oh;
-                                            om = -om;
-                                        }
-                                        if let (Ok(offset), Ok(tm)) = (
-                                            time::UtcOffset::from_hms(
-                                                i8::try_from(oh).unwrap_or(0),
-                                                i8::try_from(om).unwrap_or(0),
-                                                0,
-                                            ),
-                                            time::Time::from_hms(
-                                                u8::try_from(*hour).unwrap_or(0),
-                                                u8::try_from(*minute).unwrap_or(0),
-                                                u8::try_from(*second).unwrap_or(0),
-                                            ),
-                                        ) {
-                                            pending_replacement = Some(TTLValue::DateTime(
-                                                date.with_time(tm).assume_offset(offset),
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
+                            pending_replacement =
+                                Some(TTLValue::DateTime(date.with_time(tm).assume_offset(offset)));
                         }
                     }
                 }
@@ -377,42 +366,37 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                     }
                                 }
                                 let day = remaining;
-                                if (1..=31).contains(&day) {
-                                    if let Ok(month_enum) =
+                                if (1..=31).contains(&day)
+                                    && let Ok(month_enum) =
                                         time::Month::try_from(u8::try_from(month).unwrap_or(1))
-                                    {
-                                        if let Ok(date) = time::Date::from_calendar_date(
-                                            year,
-                                            month_enum,
-                                            u8::try_from(day).unwrap_or(1),
-                                        ) {
-                                            let frac_ns: u32 =
-                                                u32::try_from(fractional_or_reserved.max(0))
-                                                    .unwrap_or(0)
-                                                    .min(999_999_999);
-                                            if let Ok(time_) = time::Time::from_hms_nano(
-                                                u8::try_from(hour).unwrap_or(0),
-                                                u8::try_from(minute).unwrap_or(0),
-                                                u8::try_from(second).unwrap_or(0),
-                                                frac_ns,
-                                            ) {
-                                                let off_s = off_s_or_res;
-                                                let total_offset = if off_s.abs() <= 59 {
-                                                    off_h * 3600 + off_m * 60 + off_s
-                                                } else {
-                                                    off_h * 3600 + off_m * 60
-                                                };
-                                                if let Ok(offset) =
-                                                    time::UtcOffset::from_whole_seconds(
-                                                        total_offset,
-                                                    )
-                                                {
-                                                    pending_replacement = Some(TTLValue::DateTime(
-                                                        date.with_time(time_).assume_offset(offset),
-                                                    ));
-                                                    break;
-                                                }
-                                            }
+                                    && let Ok(date) = time::Date::from_calendar_date(
+                                        year,
+                                        month_enum,
+                                        u8::try_from(day).unwrap_or(1),
+                                    )
+                                {
+                                    let frac_ns: u32 = u32::try_from(fractional_or_reserved.max(0))
+                                        .unwrap_or(0)
+                                        .min(999_999_999);
+                                    if let Ok(time_) = time::Time::from_hms_nano(
+                                        u8::try_from(hour).unwrap_or(0),
+                                        u8::try_from(minute).unwrap_or(0),
+                                        u8::try_from(second).unwrap_or(0),
+                                        frac_ns,
+                                    ) {
+                                        let off_s = off_s_or_res;
+                                        let total_offset = if off_s.abs() <= 59 {
+                                            off_h * 3600 + off_m * 60 + off_s
+                                        } else {
+                                            off_h * 3600 + off_m * 60
+                                        };
+                                        if let Ok(offset) =
+                                            time::UtcOffset::from_whole_seconds(total_offset)
+                                        {
+                                            pending_replacement = Some(TTLValue::DateTime(
+                                                date.with_time(time_).assume_offset(offset),
+                                            ));
+                                            break;
                                         }
                                     }
                                 }
@@ -430,21 +414,20 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                 }
 
                 // DateTimeExtended under DateTime parent
-                if pending_replacement.is_none() && ttlv.tag == "DateTime" && items_mut.len() == 1 {
-                    if let Some(child) = items_mut.first() {
-                        if child.tag == "DateTime" {
-                            match child.value {
-                                TTLValue::LongInteger(v) => {
-                                    pending_replacement =
-                                        Some(TTLValue::DateTimeExtended(i128::from(v)));
-                                }
-                                TTLValue::Integer(v) => {
-                                    pending_replacement =
-                                        Some(TTLValue::DateTimeExtended(i128::from(v)));
-                                }
-                                _ => {}
-                            }
+                if pending_replacement.is_none()
+                    && ttlv.tag == "DateTime"
+                    && items_mut.len() == 1
+                    && let Some(child) = items_mut.first()
+                    && child.tag == "DateTime"
+                {
+                    match child.value {
+                        TTLValue::LongInteger(v) => {
+                            pending_replacement = Some(TTLValue::DateTimeExtended(i128::from(v)));
                         }
+                        TTLValue::Integer(v) => {
+                            pending_replacement = Some(TTLValue::DateTimeExtended(i128::from(v)));
+                        }
+                        _ => {}
                     }
                 }
 
@@ -519,48 +502,46 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                         if let Some(inner) = items_mut.iter().find_map(|e| match &e.value {
                             TTLValue::Structure(inner) => Some(inner),
                             _ => None,
-                        }) {
-                            if !inner.is_empty()
-                                && inner.iter().all(|e| {
-                                    e.tag == parent_tag
-                                        && matches!(
-                                            e.value,
-                                            TTLValue::Integer(_) | TTLValue::LongInteger(_)
-                                        )
-                                })
-                            {
-                                let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
-                                for e in inner {
-                                    match e.value {
-                                        TTLValue::Integer(v) => {
-                                            if let Ok(u) = u32::try_from(v) {
-                                                digits.push(u);
-                                            } else {
-                                                return None;
-                                            }
-                                        }
-                                        TTLValue::LongInteger(v) => {
-                                            if let Ok(u) = u32::try_from(v) {
-                                                digits.push(u);
-                                            } else {
-                                                return None;
-                                            }
-                                        }
-                                        _ => {
+                        }) && !inner.is_empty()
+                            && inner.iter().all(|e| {
+                                e.tag == parent_tag
+                                    && matches!(
+                                        e.value,
+                                        TTLValue::Integer(_) | TTLValue::LongInteger(_)
+                                    )
+                            })
+                        {
+                            let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
+                            for e in inner {
+                                match e.value {
+                                    TTLValue::Integer(v) => {
+                                        if let Ok(u) = u32::try_from(v) {
+                                            digits.push(u);
+                                        } else {
                                             return None;
                                         }
                                     }
+                                    TTLValue::LongInteger(v) => {
+                                        if let Ok(u) = u32::try_from(v) {
+                                            digits.push(u);
+                                        } else {
+                                            return None;
+                                        }
+                                    }
+                                    _ => {
+                                        return None;
+                                    }
                                 }
-                                let sign = match sign_val.cmp(&0) {
-                                    std::cmp::Ordering::Less => -1,
-                                    std::cmp::Ordering::Equal => 0,
-                                    std::cmp::Ordering::Greater => 1,
-                                };
-                                if let Ok(kbi) =
-                                    kmip_big_int::KmipBigInt::from_u32_digits(sign, &digits)
-                                {
-                                    return Some(TTLValue::BigInteger(kbi));
-                                }
+                            }
+                            let sign = match sign_val.cmp(&0) {
+                                std::cmp::Ordering::Less => -1,
+                                std::cmp::Ordering::Equal => 0,
+                                std::cmp::Ordering::Greater => 1,
+                            };
+                            if let Ok(kbi) =
+                                kmip_big_int::KmipBigInt::from_u32_digits(sign, &digits)
+                            {
+                                return Some(TTLValue::BigInteger(kbi));
                             }
                         }
                         None
@@ -574,153 +555,136 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                             if let (Some(sign_el), Some(inner_el)) = (
                                 items_mut.iter().find(|e| e.tag == "Sign"),
                                 items_mut.iter().find(|e| e.tag == "BigInteger"),
-                            ) {
-                                if let (TTLValue::Integer(sign_val), TTLValue::Structure(inner)) =
-                                    (&sign_el.value, &inner_el.value)
+                            ) && let (TTLValue::Integer(sign_val), TTLValue::Structure(inner)) =
+                                (&sign_el.value, &inner_el.value)
+                            {
+                                if !inner.is_empty()
+                                    && inner.iter().all(|e| {
+                                        e.tag == "BigInteger"
+                                            && matches!(
+                                                e.value,
+                                                TTLValue::Integer(_) | TTLValue::LongInteger(_)
+                                            )
+                                    })
                                 {
-                                    if !inner.is_empty()
-                                        && inner.iter().all(|e| {
-                                            e.tag == "BigInteger"
-                                                && matches!(
-                                                    e.value,
-                                                    TTLValue::Integer(_) | TTLValue::LongInteger(_)
-                                                )
-                                        })
-                                    {
-                                        let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
-                                        let mut all_ok = true;
-                                        for e in inner {
-                                            match e.value {
-                                                TTLValue::Integer(v) => {
-                                                    if let Ok(u) = u32::try_from(v) {
-                                                        digits.push(u);
-                                                    } else {
-                                                        all_ok = false;
-                                                        break;
-                                                    }
+                                    let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
+                                    let mut all_ok = true;
+                                    for e in inner {
+                                        match e.value {
+                                            TTLValue::Integer(v) => {
+                                                if let Ok(u) = u32::try_from(v) {
+                                                    digits.push(u);
+                                                } else {
+                                                    all_ok = false;
+                                                    break;
                                                 }
-                                                TTLValue::LongInteger(v) => {
-                                                    if let Ok(u) = u32::try_from(v) {
-                                                        digits.push(u);
-                                                    } else {
-                                                        all_ok = false;
-                                                        break;
-                                                    }
+                                            }
+                                            TTLValue::LongInteger(v) => {
+                                                if let Ok(u) = u32::try_from(v) {
+                                                    digits.push(u);
+                                                } else {
+                                                    all_ok = false;
+                                                    break;
                                                 }
-                                                _ => {}
                                             }
-                                        }
-                                        if all_ok {
-                                            let sign = match sign_val.cmp(&0) {
-                                                std::cmp::Ordering::Less => -1,
-                                                std::cmp::Ordering::Equal => 0,
-                                                std::cmp::Ordering::Greater => 1,
-                                            };
-                                            if let Ok(kbi) =
-                                                kmip_big_int::KmipBigInt::from_u32_digits(
-                                                    sign, &digits,
-                                                )
-                                            {
-                                                pending_replacement =
-                                                    Some(TTLValue::BigInteger(kbi));
-                                            }
-                                        }
-                                    } else if inner.len() == 1 {
-                                        if let Some(single) = inner.first() {
-                                            if let TTLValue::BigInteger(ref kbi_inner) =
-                                                single.value
-                                            {
-                                                let mut big =
-                                                    num_bigint_dig::BigInt::from(kbi_inner.clone());
-                                                big = match sign_val.cmp(&0) {
-                                                    std::cmp::Ordering::Less => -big,
-                                                    std::cmp::Ordering::Equal => {
-                                                        num_bigint_dig::BigInt::from(0)
-                                                    }
-                                                    std::cmp::Ordering::Greater => big,
-                                                };
-                                                pending_replacement = Some(TTLValue::BigInteger(
-                                                    super::KmipBigInt::from(big),
-                                                ));
-                                            }
+                                            _ => {}
                                         }
                                     }
+                                    if all_ok {
+                                        let sign = match sign_val.cmp(&0) {
+                                            std::cmp::Ordering::Less => -1,
+                                            std::cmp::Ordering::Equal => 0,
+                                            std::cmp::Ordering::Greater => 1,
+                                        };
+                                        if let Ok(kbi) =
+                                            kmip_big_int::KmipBigInt::from_u32_digits(sign, &digits)
+                                        {
+                                            pending_replacement = Some(TTLValue::BigInteger(kbi));
+                                        }
+                                    }
+                                } else if inner.len() == 1
+                                    && let Some(single) = inner.first()
+                                    && let TTLValue::BigInteger(ref kbi_inner) = single.value
+                                {
+                                    let mut big = num_bigint_dig::BigInt::from(kbi_inner.clone());
+                                    big = match sign_val.cmp(&0) {
+                                        std::cmp::Ordering::Less => -big,
+                                        std::cmp::Ordering::Equal => {
+                                            num_bigint_dig::BigInt::from(0)
+                                        }
+                                        std::cmp::Ordering::Greater => big,
+                                    };
+                                    pending_replacement =
+                                        Some(TTLValue::BigInteger(super::KmipBigInt::from(big)));
                                 }
                             }
-                            if pending_replacement.is_none() {
-                                if let Some(sign_idx) = items_mut
+                            if pending_replacement.is_none()
+                                && let Some(sign_idx) = items_mut
                                     .iter()
                                     .position(|e| matches!(e.value, TTLValue::Integer(_)))
+                            {
+                                let sign_val = match items_mut.get(sign_idx) {
+                                    Some(TTLV {
+                                        value: TTLValue::Integer(v),
+                                        ..
+                                    }) => *v,
+                                    _ => 1,
+                                };
+                                if let Some(kbi_inner) =
+                                    items_mut.iter().find_map(|e| match &e.value {
+                                        TTLValue::BigInteger(bi) => Some(bi.clone()),
+                                        _ => None,
+                                    })
                                 {
-                                    let sign_val = match items_mut.get(sign_idx) {
-                                        Some(TTLV {
-                                            value: TTLValue::Integer(v),
-                                            ..
-                                        }) => *v,
-                                        _ => 1,
+                                    let big_mag = num_bigint_dig::BigInt::from(kbi_inner).abs();
+                                    let new_big = match sign_val.cmp(&0) {
+                                        std::cmp::Ordering::Less => -big_mag,
+                                        std::cmp::Ordering::Equal => {
+                                            num_bigint_dig::BigInt::from(0)
+                                        }
+                                        std::cmp::Ordering::Greater => big_mag,
                                     };
-                                    if let Some(kbi_inner) =
-                                        items_mut.iter().find_map(|e| match &e.value {
-                                            TTLValue::BigInteger(bi) => Some(bi.clone()),
-                                            _ => None,
-                                        })
-                                    {
-                                        let big_mag = num_bigint_dig::BigInt::from(kbi_inner).abs();
-                                        let new_big = match sign_val.cmp(&0) {
-                                            std::cmp::Ordering::Less => -big_mag,
-                                            std::cmp::Ordering::Equal => {
-                                                num_bigint_dig::BigInt::from(0)
-                                            }
-                                            std::cmp::Ordering::Greater => big_mag,
-                                        };
-                                        pending_replacement = Some(TTLValue::BigInteger(
-                                            super::KmipBigInt::from(new_big),
-                                        ));
-                                    } else if let Some(inner) =
-                                        items_mut.iter().find_map(|e| match &e.value {
-                                            TTLValue::Structure(inner) => Some(inner),
-                                            _ => None,
-                                        })
-                                    {
-                                        if !inner.is_empty()
-                                            && inner.iter().all(|e| {
-                                                matches!(
-                                                    e.value,
-                                                    TTLValue::Integer(_) | TTLValue::LongInteger(_)
-                                                )
-                                            })
-                                        {
-                                            let mut digits: Vec<u32> =
-                                                Vec::with_capacity(inner.len());
-                                            for e in inner {
-                                                match e.value {
-                                                    TTLValue::Integer(v) => {
-                                                        if let Ok(u) = u32::try_from(v) {
-                                                            digits.push(u);
-                                                        }
-                                                    }
-                                                    TTLValue::LongInteger(v) => {
-                                                        if let Ok(u) = u32::try_from(v) {
-                                                            digits.push(u);
-                                                        }
-                                                    }
-                                                    _ => {}
+                                    pending_replacement = Some(TTLValue::BigInteger(
+                                        super::KmipBigInt::from(new_big),
+                                    ));
+                                } else if let Some(inner) =
+                                    items_mut.iter().find_map(|e| match &e.value {
+                                        TTLValue::Structure(inner) => Some(inner),
+                                        _ => None,
+                                    })
+                                    && !inner.is_empty()
+                                    && inner.iter().all(|e| {
+                                        matches!(
+                                            e.value,
+                                            TTLValue::Integer(_) | TTLValue::LongInteger(_)
+                                        )
+                                    })
+                                {
+                                    let mut digits: Vec<u32> = Vec::with_capacity(inner.len());
+                                    for e in inner {
+                                        match e.value {
+                                            TTLValue::Integer(v) => {
+                                                if let Ok(u) = u32::try_from(v) {
+                                                    digits.push(u);
                                                 }
                                             }
-                                            let sign = match sign_val.cmp(&0) {
-                                                std::cmp::Ordering::Less => -1,
-                                                std::cmp::Ordering::Equal => 0,
-                                                std::cmp::Ordering::Greater => 1,
-                                            };
-                                            if let Ok(kbi) =
-                                                kmip_big_int::KmipBigInt::from_u32_digits(
-                                                    sign, &digits,
-                                                )
-                                            {
-                                                pending_replacement =
-                                                    Some(TTLValue::BigInteger(kbi));
+                                            TTLValue::LongInteger(v) => {
+                                                if let Ok(u) = u32::try_from(v) {
+                                                    digits.push(u);
+                                                }
                                             }
+                                            _ => {}
                                         }
+                                    }
+                                    let sign = match sign_val.cmp(&0) {
+                                        std::cmp::Ordering::Less => -1,
+                                        std::cmp::Ordering::Equal => 0,
+                                        std::cmp::Ordering::Greater => 1,
+                                    };
+                                    if let Ok(kbi) =
+                                        kmip_big_int::KmipBigInt::from_u32_digits(sign, &digits)
+                                    {
+                                        pending_replacement = Some(TTLValue::BigInteger(kbi));
                                     }
                                 }
                             }
@@ -749,10 +713,10 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                             if let Some(val) = try_collapse_digits_run(&ttlv.tag, 1) {
                                 pending_replacement = Some(val);
                             }
-                            if pending_replacement.is_none() {
-                                if let Some(val) = try_collapse_sign_and_child_big(&ttlv.tag) {
-                                    pending_replacement = Some(val);
-                                }
+                            if pending_replacement.is_none()
+                                && let Some(val) = try_collapse_sign_and_child_big(&ttlv.tag)
+                            {
+                                pending_replacement = Some(val);
                             }
                         }
                     }
@@ -770,10 +734,10 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
 
                     if pending_replacement.is_none() {
                         const TEST_BIGINT_TAGS: &[&str] = &["BigIntNeg", "BigIntPos"];
-                        if TEST_BIGINT_TAGS.contains(&&*ttlv.tag) {
-                            if let Some(val) = try_collapse_sign_and_child_big(&ttlv.tag) {
-                                pending_replacement = Some(val);
-                            }
+                        if TEST_BIGINT_TAGS.contains(&&*ttlv.tag)
+                            && let Some(val) = try_collapse_sign_and_child_big(&ttlv.tag)
+                        {
+                            pending_replacement = Some(val);
                         }
                     }
 
@@ -790,10 +754,10 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                                 TTLValue::Integer(v) => !(0..=255).contains(&v),
                                 _ => false,
                             });
-                            if any_long || any_non_byte {
-                                if let Some(val) = try_collapse_digits_run(&ttlv.tag, 1) {
-                                    pending_replacement = Some(val);
-                                }
+                            if (any_long || any_non_byte)
+                                && let Some(val) = try_collapse_digits_run(&ttlv.tag, 1)
+                            {
+                                pending_replacement = Some(val);
                             }
                         }
                     }
@@ -955,46 +919,46 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                     let Some(child) = items_mut.first() else {
                         return;
                     };
-                    if BYTE_LIKE_TAGS.contains(&&*ttlv.tag) {
-                        if let Some(bytes) = bytes_from(child) {
-                            pending_replacement = Some(TTLValue::ByteString(bytes));
-                        }
+                    if BYTE_LIKE_TAGS.contains(&&*ttlv.tag)
+                        && let Some(bytes) = bytes_from(child)
+                    {
+                        pending_replacement = Some(TTLValue::ByteString(bytes));
                     }
                     if pending_replacement.is_none()
                         && BYTE_LIKE_TAGS.contains(&&*ttlv.tag)
                         && child.tag == ttlv.tag
+                        && let Some(bytes) = bytes_from(child)
                     {
-                        if let Some(bytes) = bytes_from(child) {
-                            pending_replacement = Some(TTLValue::ByteString(bytes));
-                        }
+                        pending_replacement = Some(TTLValue::ByteString(bytes));
                     }
                     let is_type_wrapper = ttlv.tag == child.tag && ttlv.tag != "[ARRAY]";
                     if pending_replacement.is_none() && is_type_wrapper {
-                        if ttlv.tag == child.tag && ttlv.tag == "ByteString" {
-                            if let TTLValue::Structure(ref inner) = child.value {
-                                let mut as_bytes: Option<Vec<u8>> =
-                                    Some(Vec::with_capacity(inner.len()));
-                                for e in inner {
-                                    match e.value {
-                                        TTLValue::Integer(v) if (0..=255).contains(&v) => {
-                                            if let Some(ref mut b) = as_bytes {
-                                                if let Ok(x) = u8::try_from(v) {
-                                                    b.push(x);
-                                                } else {
-                                                    as_bytes = None;
-                                                    break;
-                                                }
+                        if ttlv.tag == child.tag
+                            && ttlv.tag == "ByteString"
+                            && let TTLValue::Structure(ref inner) = child.value
+                        {
+                            let mut as_bytes: Option<Vec<u8>> =
+                                Some(Vec::with_capacity(inner.len()));
+                            for e in inner {
+                                match e.value {
+                                    TTLValue::Integer(v) if (0..=255).contains(&v) => {
+                                        if let Some(ref mut b) = as_bytes {
+                                            if let Ok(x) = u8::try_from(v) {
+                                                b.push(x);
+                                            } else {
+                                                as_bytes = None;
+                                                break;
                                             }
                                         }
-                                        _ => {
-                                            as_bytes = None;
-                                            break;
-                                        }
+                                    }
+                                    _ => {
+                                        as_bytes = None;
+                                        break;
                                     }
                                 }
-                                if let Some(bytes) = as_bytes {
-                                    pending_replacement = Some(TTLValue::ByteString(bytes));
-                                }
+                            }
+                            if let Some(bytes) = as_bytes {
+                                pending_replacement = Some(TTLValue::ByteString(bytes));
                             }
                         }
                         if pending_replacement.is_none() {
@@ -1029,29 +993,28 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
             }
         }
         TTLValue::Integer(_) => {
-            if ttlv.tag == "Interval" {
-                if let TTLValue::Integer(v) = ttlv.value {
-                    if let Ok(u) = u32::try_from(v) {
-                        ttlv.value = TTLValue::Interval(u);
-                    }
-                }
+            if ttlv.tag == "Interval"
+                && let TTLValue::Integer(v) = ttlv.value
+                && let Ok(u) = u32::try_from(v)
+            {
+                ttlv.value = TTLValue::Interval(u);
             }
-            if ttlv.tag == "DateTime" {
-                if let TTLValue::Integer(v) = ttlv.value {
-                    ttlv.value = TTLValue::DateTimeExtended(i128::from(v));
-                }
+            if ttlv.tag == "DateTime"
+                && let TTLValue::Integer(v) = ttlv.value
+            {
+                ttlv.value = TTLValue::DateTimeExtended(i128::from(v));
             }
         }
         TTLValue::LongInteger(_) => {
-            if ttlv.tag == "DateTimeExtended" {
-                if let TTLValue::LongInteger(v) = ttlv.value {
-                    ttlv.value = TTLValue::DateTimeExtended(i128::from(v));
-                }
+            if ttlv.tag == "DateTimeExtended"
+                && let TTLValue::LongInteger(v) = ttlv.value
+            {
+                ttlv.value = TTLValue::DateTimeExtended(i128::from(v));
             }
-            if ttlv.tag == "DateTime" {
-                if let TTLValue::LongInteger(v) = ttlv.value {
-                    ttlv.value = TTLValue::DateTimeExtended(i128::from(v));
-                }
+            if ttlv.tag == "DateTime"
+                && let TTLValue::LongInteger(v) = ttlv.value
+            {
+                ttlv.value = TTLValue::DateTimeExtended(i128::from(v));
             }
         }
         _ => {}

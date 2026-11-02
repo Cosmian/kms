@@ -74,13 +74,14 @@ pub(crate) async fn create_key_pair(
         .as_ref()
         .or(request.common_attributes.as_ref())
         .and_then(|attrs| attrs.rotate_name.clone());
-    if let Some(ref rotate_name) = sk_rotate_name {
-        if !ObjectHandle::from(&sk_uid).is_hsm() && rotate_name.as_str() != sk_uid {
-            return Err(KmsError::InvalidRequest(format!(
-                "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
+    if let Some(ref rotate_name) = sk_rotate_name
+        && !ObjectHandle::from(&sk_uid).is_hsm()
+        && rotate_name.as_str() != sk_uid
+    {
+        return Err(KmsError::InvalidRequest(format!(
+            "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
                  ('{sk_uid}') — set the private key ID to the keyset name at creation time"
-            )));
-        }
+        )));
     }
     // Capture requested ActivationDate values BEFORE moving the request into key generation
     // Private key: prefer private_key_attributes.activation_date then fallback to common_attributes.activation_date

@@ -665,10 +665,10 @@ impl From<Locate> for kmip_2_1::kmip_operations::Locate {
             .into_iter()
             .map(Into::into)
             .collect();
-        if let Some(ta) = locate.template_attribute {
-            if let Some(ta_attrs) = ta.attribute {
-                all_attrs.extend(ta_attrs.into_iter().map(Into::into));
-            }
+        if let Some(ta) = locate.template_attribute
+            && let Some(ta_attrs) = ta.attribute
+        {
+            all_attrs.extend(ta_attrs.into_iter().map(Into::into));
         }
         let attributes: Attributes = all_attrs.into();
         Self {

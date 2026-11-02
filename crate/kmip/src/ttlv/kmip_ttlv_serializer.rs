@@ -739,14 +739,13 @@ impl SerializeStruct for &mut TtlvSerializer {
                 TtlvError::custom("unexpected end of struct fields: no parent".to_owned())
             })?
         };
-        if key == "Object" {
-            if let TTLValue::Structure(ref mut v) = current_element.value {
-                if v.len() == 1 {
-                    current_element = v.pop().ok_or_else(|| {
-                        TtlvError::custom("unexpected end of struct fields: no child".to_owned())
-                    })?;
-                }
-            }
+        if key == "Object"
+            && let TTLValue::Structure(ref mut v) = current_element.value
+            && v.len() == 1
+        {
+            current_element = v.pop().ok_or_else(|| {
+                TtlvError::custom("unexpected end of struct fields: no child".to_owned())
+            })?;
         }
         let struct_elements = self.current_mut_structure()?;
         if let TTLValue::Structure(ref v) = current_element.value {

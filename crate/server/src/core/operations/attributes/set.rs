@@ -82,20 +82,20 @@ pub(crate) async fn set_attribute(
     // For HSM keys: rotate_name must be the key's full base UID (hsm::slot::key_id without
     // any @N suffix).  The slot ID in the UID guarantees uniqueness across HSM slots,
     // preventing keyset name collisions when multiple slots host keys with the same name.
-    if ObjectHandle::from(owm.id()).is_hsm() {
-        if let Attribute::RotateName(name) = &request.new_attribute {
-            let expected = hsm_base_uid(owm.id()).ok_or_else(|| {
-                KmsError::InvalidRequest(format!(
-                    "SetAttribute: cannot derive base UID from HSM key '{}'",
-                    owm.id()
-                ))
-            })?;
-            if name.as_str() != expected {
-                return Err(KmsError::InvalidRequest(format!(
-                    "SetAttribute: for HSM keys, rotate_name must be the key's base UID \
+    if ObjectHandle::from(owm.id()).is_hsm()
+        && let Attribute::RotateName(name) = &request.new_attribute
+    {
+        let expected = hsm_base_uid(owm.id()).ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "SetAttribute: cannot derive base UID from HSM key '{}'",
+                owm.id()
+            ))
+        })?;
+        if name.as_str() != expected {
+            return Err(KmsError::InvalidRequest(format!(
+                "SetAttribute: for HSM keys, rotate_name must be the key's base UID \
                      ('{expected}'), not '{name}'"
-                )));
-            }
+            )));
         }
     }
 

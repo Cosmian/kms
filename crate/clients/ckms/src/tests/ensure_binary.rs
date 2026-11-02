@@ -127,15 +127,13 @@ fn build_ckms_binary() {
 
     // If an orphaned lock file exists from a crashed or killed process, check
     // its age and clear it if it exceeds the timeout.
-    if let Ok(metadata) = fs::metadata(&lock_path) {
-        if let Ok(age) = metadata
+    if let Ok(metadata) = fs::metadata(&lock_path)
+        && let Ok(age) = metadata
             .modified()
             .and_then(|m| m.elapsed().map_err(std::io::Error::other))
-        {
-            if age > wait_timeout {
-                drop(fs::remove_file(&lock_path));
-            }
-        }
+        && age > wait_timeout
+    {
+        drop(fs::remove_file(&lock_path));
     }
 
     match OpenOptions::new()

@@ -135,16 +135,16 @@ impl CsiDriverProvider for CsiProviderService {
             check_pinned_version(spec, &version).map_err(Status::from)?;
 
             // Warn when rotation is detected so operators can monitor logs.
-            if let Some(prev_version) = current_versions.get(&spec.kms_uid) {
-                if prev_version != &version {
-                    warn!(
-                        kms_uid = %spec.kms_uid,
-                        object_name = %spec.object_name,
-                        prev_version,
-                        new_version = %version,
-                        "secret version changed — rotation triggered"
-                    );
-                }
+            if let Some(prev_version) = current_versions.get(&spec.kms_uid)
+                && prev_version != &version
+            {
+                warn!(
+                    kms_uid = %spec.kms_uid,
+                    object_name = %spec.object_name,
+                    prev_version,
+                    new_version = %version,
+                    "secret version changed — rotation triggered"
+                );
             }
 
             info!(

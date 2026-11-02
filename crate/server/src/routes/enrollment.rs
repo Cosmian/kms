@@ -613,14 +613,13 @@ fn csr_san_set(csr: &X509Req) -> KResult<Vec<Vec<u8>>> {
     let (_, parsed) = X509CertificationRequest::from_der(&der)
         .map_err(|e| KmsError::InvalidRequest(format!("invalid CSR: {e}")))?;
     for attr in parsed.certification_request_info.iter_attributes() {
-        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute() {
-            if let Some(ext) = requested
+        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute()
+            && let Some(ext) = requested
                 .extensions
                 .iter()
                 .find(|e| nid_of(&e.oid.to_id_string()) == Nid::SUBJECT_ALT_NAME)
-            {
-                return san_entries(ext.value);
-            }
+        {
+            return san_entries(ext.value);
         }
     }
     Ok(Vec::new())

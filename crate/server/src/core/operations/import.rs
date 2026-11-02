@@ -88,16 +88,14 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
     // When replace_existing is requested with an explicit UID, verify the caller owns the
     // target object. Without this check, any user with Create rights could overwrite another
     // user's object. The ownership check must happen before any processing or cache mutation.
-    if request.replace_existing.unwrap_or(false) {
-        if let Some(uid_str) = request.unique_identifier.as_str().filter(|s| !s.is_empty()) {
-            if let Some(existing) = kms.database.retrieve_object_arc(uid_str).await? {
-                if existing.owner() != user {
-                    kms_bail!(KmsError::Unauthorized(format!(
-                        "User '{user}' does not own object '{uid_str}' and cannot replace it"
-                    )));
-                }
-            }
-        }
+    if request.replace_existing.unwrap_or(false)
+        && let Some(uid_str) = request.unique_identifier.as_str().filter(|s| !s.is_empty())
+        && let Some(existing) = kms.database.retrieve_object_arc(uid_str).await?
+        && existing.owner() != user
+    {
+        kms_bail!(KmsError::Unauthorized(format!(
+            "User '{user}' does not own object '{uid_str}' and cannot replace it"
+        )));
     }
 
     let mut request = request;
@@ -105,37 +103,36 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
 
     // For Active certificates, check CRL revocation status.
     // If revoked, transition directly to Compromised instead of Active.
-    if desired_state == State::Active && request.object.object_type() == ObjectType::Certificate {
-        if let Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+    if desired_state == State::Active
+        && request.object.object_type() == ObjectType::Certificate
+        && let Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
             certificate_value,
             ..
         }) = &request.object
+        && let Ok(cert) = X509::from_der(certificate_value)
+    {
+        match verify_crls(
+            vec![cert],
+            kms.params.proxy_params.as_ref(),
+            kms.params.kms_public_url.as_deref(),
+        )
+        .await
         {
-            if let Ok(cert) = X509::from_der(certificate_value) {
-                match verify_crls(
-                    vec![cert],
-                    kms.params.proxy_params.as_ref(),
-                    kms.params.kms_public_url.as_deref(),
-                )
-                .await
-                {
-                    Err(KmsError::Certificate(_)) => {
-                        debug!(
-                            "Import: certificate is revoked per CRL check, \
+            Err(KmsError::Certificate(_)) => {
+                debug!(
+                    "Import: certificate is revoked per CRL check, \
                              setting state to Compromised"
-                        );
-                        desired_state = State::Compromised;
-                    }
-                    Err(e) => {
-                        // Network or other transient errors: log and proceed with Active
-                        warn!(
-                            "Import: CRL check could not be completed ({e}), \
-                             proceeding with {desired_state:?} state"
-                        );
-                    }
-                    Ok(_) => {}
-                }
+                );
+                desired_state = State::Compromised;
             }
+            Err(e) => {
+                // Network or other transient errors: log and proceed with Active
+                warn!(
+                    "Import: CRL check could not be completed ({e}), \
+                             proceeding with {desired_state:?} state"
+                );
+            }
+            Ok(_) => {}
         }
     }
 
@@ -182,14 +179,13 @@ pub(super) fn recover_tags(
         return without_system_tags(tags);
     }
     // try extracting the tags from the object attributes
-    if let Ok(key_block) = object.key_block() {
-        if let Some(KeyValue::Structure {
+    if let Ok(key_block) = object.key_block()
+        && let Some(KeyValue::Structure {
             attributes: Some(attributes),
             ..
         }) = key_block.key_value.as_ref()
-        {
-            return attributes.get_tags(vendor_id);
-        }
+    {
+        return attributes.get_tags(vendor_id);
     }
     HashSet::new()
 }
@@ -251,10 +247,10 @@ pub(super) async fn process_symmetric_key(
     // Preserve the originally registered KeyFormatType for later Get semantics if not already set
     // This allows the server to return the same plaintext representation (e.g., TransparentSymmetricKey)
     // on a Get without an explicit key_format_type request, matching KMIP XML vectors like BL-M-3-21.
-    if attributes.key_format_type.is_none() {
-        if let Ok(kb) = object.key_block() {
-            attributes.key_format_type = Some(kb.key_format_type);
-        }
+    if attributes.key_format_type.is_none()
+        && let Ok(kb) = object.key_block()
+    {
+        attributes.key_format_type = Some(kb.key_format_type);
     }
 
     // Ensure InitialDate is always set when importing a symmetric key
@@ -271,13 +267,12 @@ pub(super) async fn process_symmetric_key(
     }
 
     // Replace updated attributes in the object structure.
-    if let Ok(key_block) = object.key_block_mut() {
-        if let Some(KeyValue::Structure {
+    if let Ok(key_block) = object.key_block_mut()
+        && let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
-        {
-            *attrs = Some(attributes.clone());
-        }
+    {
+        *attrs = Some(attributes.clone());
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -479,13 +474,12 @@ pub(super) async fn process_public_key(
     }
 
     // Replace updated attributes in the object structure.
-    if let Ok(key_block) = object.key_block_mut() {
-        if let Some(KeyValue::Structure {
+    if let Ok(key_block) = object.key_block_mut()
+        && let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
-        {
-            *attrs = Some(attributes.clone());
-        }
+    {
+        *attrs = Some(attributes.clone());
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -633,13 +627,12 @@ pub(super) async fn process_private_key(
     attributes.initialize_never_extractable();
 
     // Replace updated attributes in the object structure if the object is not wrapped.
-    if let Ok(key_block) = object.key_block_mut() {
-        if let Some(KeyValue::Structure {
+    if let Ok(key_block) = object.key_block_mut()
+        && let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
-        {
-            *attrs = Some(attributes.clone());
-        }
+    {
+        *attrs = Some(attributes.clone());
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -677,10 +670,10 @@ fn single_operation(
 ) -> AtomicOperation {
     // Sync the Object::Attributes with input Attributes only when they differ
     let mut object = object;
-    if let Ok(object_attributes) = object.attributes_mut() {
-        if object_attributes != &attributes {
-            object_attributes.clone_from(&attributes);
-        }
+    if let Ok(object_attributes) = object.attributes_mut()
+        && object_attributes != &attributes
+    {
+        object_attributes.clone_from(&attributes);
     }
     // Use the state from attributes, defaulting to PreActive if not set
     let state = attributes.state.unwrap_or(State::PreActive);
@@ -1095,13 +1088,12 @@ pub(super) async fn process_secret_data(
     }
 
     // Replace updated attributes in the object structure.
-    if let Ok(key_block) = object.key_block_mut() {
-        if let Some(KeyValue::Structure {
+    if let Ok(key_block) = object.key_block_mut()
+        && let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
-        {
-            *attrs = Some(attributes.clone());
-        }
+    {
+        *attrs = Some(attributes.clone());
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -1169,13 +1161,12 @@ pub(super) async fn process_pgp_key(
     }
     attributes.initialize_never_extractable();
 
-    if let Ok(key_block) = object.key_block_mut() {
-        if let Some(KeyValue::Structure {
+    if let Ok(key_block) = object.key_block_mut()
+        && let Some(KeyValue::Structure {
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
-        {
-            *attrs = Some(attributes.clone());
-        }
+    {
+        *attrs = Some(attributes.clone());
     }
 
     Box::pin(wrap_and_cache(

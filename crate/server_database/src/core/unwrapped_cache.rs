@@ -115,11 +115,11 @@ impl UnwrappedCache {
     /// If the object fingerprint is different, the cache is invalidated and the
     /// value is removed.
     pub async fn validate_cache(&self, uid: &str, object: &Object) -> DbResult<()> {
-        if let Some(cached_object) = self.inner.get(uid).await {
-            if cached_object.fingerprint() != self.fingerprint(object)? {
-                trace!("Invalidating the cache for {}", uid);
-                self.inner.invalidate(uid).await;
-            }
+        if let Some(cached_object) = self.inner.get(uid).await
+            && cached_object.fingerprint() != self.fingerprint(object)?
+        {
+            trace!("Invalidating the cache for {}", uid);
+            self.inner.invalidate(uid).await;
         }
         Ok(())
     }

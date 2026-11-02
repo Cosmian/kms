@@ -274,10 +274,10 @@ fn infer_hmac_hashing_algorithm(
     key_block: &KeyBlock,
     attrs: &Attributes,
 ) -> KResult<HashingAlgorithm> {
-    if let Some(ca) = key_block.cryptographic_algorithm {
-        if let Ok(ha) = hmac_algorithm_to_hashing(ca) {
-            return Ok(ha);
-        }
+    if let Some(ca) = key_block.cryptographic_algorithm
+        && let Ok(ha) = hmac_algorithm_to_hashing(ca)
+    {
+        return Ok(ha);
     }
     let cp = attrs
         .cryptographic_parameters

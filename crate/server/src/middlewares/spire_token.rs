@@ -90,10 +90,10 @@ impl SpireTokenCache {
     }
 
     pub(super) fn lookup(&self, hash: &[u8; 32]) -> Option<SpireAuthenticatedUser> {
-        if let Some(entry) = self.inner.get(hash) {
-            if entry.expires_at > Instant::now() {
-                return Some(entry.user.clone());
-            }
+        if let Some(entry) = self.inner.get(hash)
+            && entry.expires_at > Instant::now()
+        {
+            return Some(entry.user.clone());
         }
         // Expired — remove
         self.inner.remove(hash);

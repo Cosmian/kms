@@ -156,10 +156,10 @@ impl Database {
             .filter(|k| !k.is_empty())
             .filter(|k| uid.starts_with(&format!("{k}::")))
             .max_by_key(|k| k.len());
-        if let Some(prefix) = best {
-            if let Some(store) = map.get(prefix) {
-                return Ok(store.clone());
-            }
+        if let Some(prefix) = best
+            && let Some(store) = map.get(prefix)
+        {
+            return Ok(store.clone());
         }
         // If the UID carries an HSM prefix (starts with "hsm::") but no HSM store
         // is registered, refuse to route it to the default SQL store.  Silently
@@ -316,13 +316,12 @@ impl Database {
                 return Ok(Some(cached_owm));
             }
             let db = self.get_object_store(uid).await?;
-            if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
-                if cached_owm.state() == current_state
-                    && cached_owm.attributes().sensitive == current_attrs.sensitive
-                {
-                    self.object_cache.touch_validated(uid).await;
-                    return Ok(Some(cached_owm));
-                }
+            if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await?
+                && cached_owm.state() == current_state
+                && cached_owm.attributes().sensitive == current_attrs.sensitive
+            {
+                self.object_cache.touch_validated(uid).await;
+                return Ok(Some(cached_owm));
             }
             self.object_cache.invalidate(uid).await;
         }
@@ -578,14 +577,12 @@ impl Database {
                 .await?;
 
             for (uid, obj_state, _attrs) in candidates {
-                if let Some(owm) = self.retrieve_object_arc(&uid).await? {
-                    if let cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(cert) =
+                if let Some(owm) = self.retrieve_object_arc(&uid).await?
+                    && let cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(cert) =
                         owm.object()
-                    {
-                        if cert.certificate_value.as_slice() == der_bytes {
-                            return Ok(Some((uid, obj_state)));
-                        }
-                    }
+                    && cert.certificate_value.as_slice() == der_bytes
+                {
+                    return Ok(Some((uid, obj_state)));
                 }
             }
         }

@@ -32,10 +32,10 @@ fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usiz
             },
             Some,
         );
-    if let Some(index) = idx_opt {
-        if let Some(real) = uid_map.get(&index) {
-            *uid = real.clone();
-        }
+    if let Some(index) = idx_opt
+        && let Some(real) = uid_map.get(&index)
+    {
+        *uid = real.clone();
     }
 }
 
@@ -741,14 +741,11 @@ fn substitute_short_unique_identifier_from_actual(
             Some(Operation::GetAttributesResponse(exp_ga)),
             Some(Operation::GetAttributesResponse(act_ga)),
         ) = (&mut exp_inner.response_payload, &act_inner.response_payload)
+            && let Some(exp_short) = &mut exp_ga.attributes.short_unique_identifier
+            && exp_short.starts_with("$SHORT_UNIQUE_IDENTIFIER_")
+            && let Some(act_short) = &act_ga.attributes.short_unique_identifier
         {
-            if let Some(exp_short) = &mut exp_ga.attributes.short_unique_identifier {
-                if exp_short.starts_with("$SHORT_UNIQUE_IDENTIFIER_") {
-                    if let Some(act_short) = &act_ga.attributes.short_unique_identifier {
-                        *exp_short = act_short.clone();
-                    }
-                }
-            }
+            *exp_short = act_short.clone();
         }
     }
 }
@@ -878,15 +875,15 @@ fn substitute_locate_response_from_actual(
 
 // Insert the real UID into the map if it's new; log mapping with namespaced placeholder
 fn log_insert(test_name: &str, uid_map: &mut HashMap<usize, String>, uid: &UniqueIdentifier) {
-    if let Some(idx) = store_next_uid(uid_map, uid) {
-        if let UniqueIdentifier::TextString(s) = uid {
-            trace!(
-                "[{}] mapped {} -> {}",
-                test_name,
-                format!("{}-uid-{}", test_name, idx),
-                s
-            );
-        }
+    if let Some(idx) = store_next_uid(uid_map, uid)
+        && let UniqueIdentifier::TextString(s) = uid
+    {
+        trace!(
+            "[{}] mapped {} -> {}",
+            test_name,
+            format!("{}-uid-{}", test_name, idx),
+            s
+        );
     }
 }
 
@@ -948,10 +945,10 @@ fn substitute_uid(test_name: &str, uid: &mut UniqueIdentifier, uid_map: &HashMap
             },
             |rest| rest.parse::<usize>().ok(),
         );
-    if let Some(idx) = idx_opt {
-        if let Some(real) = uid_map.get(&idx) {
-            *s = real.clone();
-        }
+    if let Some(idx) = idx_opt
+        && let Some(real) = uid_map.get(&idx)
+    {
+        *s = real.clone();
     }
 }
 
@@ -983,9 +980,9 @@ fn substitute_linked_uid(
             },
             |rest| rest.parse::<usize>().ok(),
         );
-    if let Some(idx) = idx_opt {
-        if let Some(real) = uid_map.get(&idx) {
-            *s = real.clone();
-        }
+    if let Some(idx) = idx_opt
+        && let Some(real) = uid_map.get(&idx)
+    {
+        *s = real.clone();
     }
 }

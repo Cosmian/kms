@@ -405,13 +405,12 @@ impl Session {
                             data_objects
                                 .into_iter()
                                 .filter_map(|(object, handle)| {
-                                    if let Object::DataObject(data) = &*object {
-                                        if label_filter
+                                    if let Object::DataObject(data) = &*object
+                                        && label_filter
                                             .as_ref()
                                             .is_none_or(|l| data.remote_id() == *l)
-                                        {
-                                            return Some((data.remote_id().to_owned(), handle));
-                                        }
+                                    {
+                                        return Some((data.remote_id().to_owned(), handle));
                                     }
                                     None
                                 })
@@ -648,20 +647,18 @@ impl Session {
     ) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
         let expected_type = Self::class_to_object_type(search_class)?;
         // 1. Exact id match with the correct class.
-        if let Some((object, handle)) = store.get_using_id(id) {
-            if object.object_type() == expected_type {
-                return Some((object, handle));
-            }
+        if let Some((object, handle)) = store.get_using_id(id)
+            && object.object_type() == expected_type
+        {
+            return Some((object, handle));
         }
         // 2. Private-key search using the paired public key's CKA_ID.
-        if expected_type == ObjectType::PrivateKey {
-            if let Some(base) = id.strip_suffix(PUBLIC_KEY_ID_SUFFIX) {
-                if let Some((object, handle)) = store.get_using_id(base) {
-                    if object.object_type() == ObjectType::PrivateKey {
-                        return Some((object, handle));
-                    }
-                }
-            }
+        if expected_type == ObjectType::PrivateKey
+            && let Some(base) = id.strip_suffix(PUBLIC_KEY_ID_SUFFIX)
+            && let Some((object, handle)) = store.get_using_id(base)
+            && object.object_type() == ObjectType::PrivateKey
+        {
+            return Some((object, handle));
         }
         None
     }

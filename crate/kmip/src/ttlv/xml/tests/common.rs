@@ -53,10 +53,10 @@ pub(super) fn parse_all_xml_vectors_with_skip(
         if path.extension().and_then(|s| s.to_str()) != Some("xml") {
             continue;
         }
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if skip_files.contains(&name) {
-                continue;
-            }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && skip_files.contains(&name)
+        {
+            continue;
         }
         match KmipXmlDoc::new_with_file(&path) {
             Ok(doc) => {

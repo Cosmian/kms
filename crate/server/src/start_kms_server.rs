@@ -137,11 +137,10 @@ pub async fn handle_google_cse_rsa_keypair(
             &UserId::from(server_params.default_username.as_str()),
         )
         .await
+        && resp.attributes.object_type == Some(ObjectType::PrivateKey)
     {
-        if resp.attributes.object_type == Some(ObjectType::PrivateKey) {
-            info!("RSA Keypair for Google CSE already exists (pre-check).");
-            return Ok(());
-        }
+        info!("RSA Keypair for Google CSE already exists (pre-check).");
+        return Ok(());
     }
 
     let response =

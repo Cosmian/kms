@@ -282,10 +282,10 @@ impl ExportAuditAction {
                 ))
             })?;
 
-            if let Some(ts) = since {
-                if event.timestamp < ts {
-                    continue;
-                }
+            if let Some(ts) = since
+                && event.timestamp < ts
+            {
+                continue;
             }
 
             let output_line = match self.format {
@@ -344,10 +344,10 @@ impl ExportAuditAction {
                     }
                     for event in &page {
                         after_id = event.id;
-                        if let Some(ts) = since {
-                            if event.timestamp < ts {
-                                continue;
-                            }
+                        if let Some(ts) = since
+                            && event.timestamp < ts
+                        {
+                            continue;
                         }
                         let output_line = match self.format {
                             ExportFormat::Json => serde_json::to_string(&PostgresExportEvent {

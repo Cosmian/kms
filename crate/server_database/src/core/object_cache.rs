@@ -124,10 +124,10 @@ impl ObjectCache {
     /// Call this whenever a fresh DB copy of the object is available (e.g.
     /// after a forced re-fetch) to detect out-of-band mutations.
     pub async fn validate_cache(&self, uid: &str, current_object: &Object) -> DbResult<()> {
-        if let Some(entry) = self.inner.get(uid).await {
-            if entry.fingerprint != self.fingerprinter.fingerprint(current_object)? {
-                self.inner.invalidate(uid).await;
-            }
+        if let Some(entry) = self.inner.get(uid).await
+            && entry.fingerprint != self.fingerprinter.fingerprint(current_object)?
+        {
+            self.inner.invalidate(uid).await;
         }
         Ok(())
     }

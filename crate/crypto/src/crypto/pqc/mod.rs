@@ -156,34 +156,34 @@ fn pqc_keygen_seeded(
 
         // If FIPS provider was explicitly requested via propquery ("fips=yes"),
         // verify that the operation was approved by checking the FIPS indicator.
-        if let Some(pq) = propquery {
-            if requests_fips_provider(pq.as_bytes()) {
-                let mut indicator: std::ffi::c_int = 0;
-                let get_params = [
-                    openssl_sys::OSSL_PARAM {
-                        key: c"fips-indicator".as_ptr(),
-                        data_type: 1, // OSSL_PARAM_INTEGER
-                        data: (&raw mut indicator).cast::<std::ffi::c_void>(),
-                        data_size: std::mem::size_of::<std::ffi::c_int>(),
-                        return_size: usize::MAX,
-                    },
-                    openssl_sys::OSSL_PARAM {
-                        key: ptr::null(),
-                        data_type: 0,
-                        data: ptr::null_mut(),
-                        data_size: 0,
-                        return_size: 0,
-                    },
-                ];
-                if !fips_indicator_approved(
-                    EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()),
-                    indicator,
-                ) {
-                    openssl_sys::EVP_PKEY_free(raw_pkey);
-                    return Err(CryptoError::Default(format!(
-                        "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
-                    )));
-                }
+        if let Some(pq) = propquery
+            && requests_fips_provider(pq.as_bytes())
+        {
+            let mut indicator: std::ffi::c_int = 0;
+            let get_params = [
+                openssl_sys::OSSL_PARAM {
+                    key: c"fips-indicator".as_ptr(),
+                    data_type: 1, // OSSL_PARAM_INTEGER
+                    data: (&raw mut indicator).cast::<std::ffi::c_void>(),
+                    data_size: std::mem::size_of::<std::ffi::c_int>(),
+                    return_size: usize::MAX,
+                },
+                openssl_sys::OSSL_PARAM {
+                    key: ptr::null(),
+                    data_type: 0,
+                    data: ptr::null_mut(),
+                    data_size: 0,
+                    return_size: 0,
+                },
+            ];
+            if !fips_indicator_approved(
+                EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()),
+                indicator,
+            ) {
+                openssl_sys::EVP_PKEY_free(raw_pkey);
+                return Err(CryptoError::Default(format!(
+                    "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
+                )));
             }
         }
 

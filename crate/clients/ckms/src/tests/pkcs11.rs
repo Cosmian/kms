@@ -360,10 +360,10 @@ fn assert_mechanism_names_covered(stdout: &str, expected_names: usize) {
         .map_or(stdout.len(), |offset| section_start + offset);
     let mut names: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for line in stdout[section_start..section_end].lines() {
-        if let Some(rest) = line.split(' ').nth(1) {
-            if rest.starts_with("CKM_") {
-                names.insert(rest);
-            }
+        if let Some(rest) = line.split(' ').nth(1)
+            && rest.starts_with("CKM_")
+        {
+            names.insert(rest);
         }
     }
     assert_eq!(

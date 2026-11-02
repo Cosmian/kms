@@ -217,14 +217,12 @@ pub(crate) async fn message(
         }
 
         // Record Activate successes for potential UNDO side-effect revert
-        if response_message_batch_item.result_status == ResultStatusEnumeration::Success {
-            if let Some(Operation::ActivateResponse(ar)) =
+        if response_message_batch_item.result_status == ResultStatusEnumeration::Success
+            && let Some(Operation::ActivateResponse(ar)) =
                 &response_message_batch_item.response_payload
-            {
-                if let UniqueIdentifier::TextString(uid) = &ar.unique_identifier {
-                    undo_activate_uids.push(uid.clone());
-                }
-            }
+            && let UniqueIdentifier::TextString(uid) = &ar.unique_identifier
+        {
+            undo_activate_uids.push(uid.clone());
         }
 
         // Record successes (before potential undo handling)
@@ -614,10 +612,9 @@ fn fill_from_id_placeholder(
         None | Some(v21types::UniqueIdentifier::Enumeration(
             UniqueIdentifierEnumeration::IDPlaceholder
         ))
-    ) {
-        if let Some(uid) = id_placeholder {
-            *unique_identifier = Some(uid.clone());
-        }
+    ) && let Some(uid) = id_placeholder
+    {
+        *unique_identifier = Some(uid.clone());
     }
 }
 
@@ -676,21 +673,20 @@ fn expand_kmip2_get_attributes_request(op: &mut Operation, kmip_version: KmipFla
     if !matches!(kmip_version, KmipFlavor::Kmip2) {
         return;
     }
-    if let Operation::GetAttributes(ga) = op {
-        if ga
+    if let Operation::GetAttributes(ga) = op
+        && ga
             .attribute_reference
             .as_ref()
             .is_none_or(std::vec::Vec::is_empty)
-        {
-            use v21types::{AttributeReference, Tag};
-            let mut refs: Vec<AttributeReference> = Vec::new();
-            for tag in Tag::iter() {
-                if tag != Tag::Tag {
-                    refs.push(AttributeReference::Standard(tag));
-                }
+    {
+        use v21types::{AttributeReference, Tag};
+        let mut refs: Vec<AttributeReference> = Vec::new();
+        for tag in Tag::iter() {
+            if tag != Tag::Tag {
+                refs.push(AttributeReference::Standard(tag));
             }
-            ga.attribute_reference = Some(refs);
         }
+        ga.attribute_reference = Some(refs);
     }
 }
 
@@ -700,19 +696,19 @@ fn enforce_max_response_size_for_query(
 ) -> KResult<Option<(ResultStatusEnumeration, ErrorReason, String)>> {
     // For QueryResponse, enforce MaximumResponseSize from header if set.
     // Use serialized JSON payload length as a pragmatic proxy for response size.
-    if let Ok(Operation::QueryResponse(resp)) = response_operation {
-        if let Some(max_total) = remaining_max_response_size {
-            let mut counter = ByteCounter(0);
-            if serde_json::to_writer(&mut counter, resp).is_ok() {
-                let payload_len = i32::try_from(counter.0)?;
-                let approx_total = payload_len.saturating_add(128);
-                if approx_total > max_total {
-                    return Ok(Some((
-                        ResultStatusEnumeration::OperationFailed,
-                        ErrorReason::Response_Too_Large,
-                        "TOO_LARGE".to_owned(),
-                    )));
-                }
+    if let Ok(Operation::QueryResponse(resp)) = response_operation
+        && let Some(max_total) = remaining_max_response_size
+    {
+        let mut counter = ByteCounter(0);
+        if serde_json::to_writer(&mut counter, resp).is_ok() {
+            let payload_len = i32::try_from(counter.0)?;
+            let approx_total = payload_len.saturating_add(128);
+            if approx_total > max_total {
+                return Ok(Some((
+                    ResultStatusEnumeration::OperationFailed,
+                    ErrorReason::Response_Too_Large,
+                    "TOO_LARGE".to_owned(),
+                )));
             }
         }
     }
@@ -827,12 +823,12 @@ fn mark_successes_undone(
                 bi.result_reason = None;
                 bi.result_message = None;
             }
-        } else if let ResponseMessageBatchItemVersioned::V14(bi) = item {
-            if bi.result_status == ResultStatusEnumeration::Success {
-                bi.result_status = ResultStatusEnumeration::OperationUndone;
-                bi.result_reason = None;
-                bi.result_message = None;
-            }
+        } else if let ResponseMessageBatchItemVersioned::V14(bi) = item
+            && bi.result_status == ResultStatusEnumeration::Success
+        {
+            bi.result_status = ResultStatusEnumeration::OperationUndone;
+            bi.result_reason = None;
+            bi.result_message = None;
         }
     }
     Ok(())

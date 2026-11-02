@@ -258,19 +258,18 @@ fn determine_openssl_target() -> String {
 }
 
 fn num_parallel_jobs() -> usize {
-    if let Ok(v) = env::var("NUM_JOBS") {
-        if let Ok(n) = v.parse::<usize>() {
-            return n.max(1);
-        }
+    if let Ok(v) = env::var("NUM_JOBS")
+        && let Ok(n) = v.parse::<usize>()
+    {
+        return n.max(1);
     }
     #[cfg(target_os = "linux")]
     {
-        if let Ok(output) = Command::new("nproc").output() {
-            if let Ok(s) = std::str::from_utf8(&output.stdout) {
-                if let Ok(n) = s.trim().parse::<usize>() {
-                    return n.max(1);
-                }
-            }
+        if let Ok(output) = Command::new("nproc").output()
+            && let Ok(s) = std::str::from_utf8(&output.stdout)
+            && let Ok(n) = s.trim().parse::<usize>()
+        {
+            return n.max(1);
         }
     }
     2
@@ -424,12 +423,12 @@ fn build_and_install_openssl(
         if enable_legacy {
             if !cnf.contains("[provider_sect]") {
                 cnf.push_str("\n[provider_sect]\ndefault = default_sect\nlegacy = legacy_sect\n\n[default_sect]\nactivate = 1\n\n[legacy_sect]\nactivate = 1\n");
-            } else if !cnf.contains("legacy = legacy_sect") {
-                if let Some(pos) = cnf.find("[provider_sect]") {
-                    let insert_pos = cnf[pos..].find('\n').map_or(cnf.len(), |p| pos + p + 1);
-                    cnf.insert_str(insert_pos, "legacy = legacy_sect\n");
-                    cnf.push_str("\n[legacy_sect]\nactivate = 1\n");
-                }
+            } else if !cnf.contains("legacy = legacy_sect")
+                && let Some(pos) = cnf.find("[provider_sect]")
+            {
+                let insert_pos = cnf[pos..].find('\n').map_or(cnf.len(), |p| pos + p + 1);
+                cnf.insert_str(insert_pos, "legacy = legacy_sect\n");
+                cnf.push_str("\n[legacy_sect]\nactivate = 1\n");
             }
         }
         let _ = fs::write(&openssl_cnf, cnf);

@@ -537,10 +537,10 @@ impl ObjectsStore for HsmStore {
                 };
                 let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
                 trace!("Found: {uid}");
-                if let Some(ref wanted_id) = key_id_filter {
-                    if !uid.eq(wanted_id) {
-                        continue;
-                    }
+                if let Some(ref wanted_id) = key_id_filter
+                    && !uid.eq(wanted_id)
+                {
+                    continue;
                 }
                 // Populate basic attributes from HSM metadata so callers
                 // (Locate, /access/owned) can display key info without a
@@ -641,10 +641,10 @@ impl ObjectsStore for HsmStore {
                     continue;
                 }
                 // Optional generation filter
-                if let Some(gen_filter) = generation {
-                    if meta.rotate_generation != Some(gen_filter) {
-                        continue;
-                    }
+                if let Some(gen_filter) = generation
+                    && meta.rotate_generation != Some(gen_filter)
+                {
+                    continue;
                 }
                 // Optional latest filter — removed: caller selects max generation instead
                 let Ok(object_string) = std::str::from_utf8(&object_id) else {
@@ -1380,12 +1380,12 @@ fn check_basic_compatibility(
     state: Option<State>,
 ) -> InterfaceResult<()> {
     // HSM keys are always active.
-    if let Some(s) = state {
-        if s != State::Active {
-            return Err(InterfaceError::Default(format!(
-                "Unsupported state for HSMs: expected Active, got {s:?}"
-            )));
-        }
+    if let Some(s) = state
+        && s != State::Active
+    {
+        return Err(InterfaceError::Default(format!(
+            "Unsupported state for HSMs: expected Active, got {s:?}"
+        )));
     }
 
     if researched_attributes.link.is_some() {
@@ -1418,12 +1418,12 @@ fn check_basic_compatibility(
         ));
     }
 
-    if let Some(critical) = researched_attributes.critical {
-        if critical {
-            return Err(InterfaceError::Default(
-                "Unsupported attribute for HSMs: critical = true".to_owned(),
-            ));
-        }
+    if let Some(critical) = researched_attributes.critical
+        && critical
+    {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: critical = true".to_owned(),
+        ));
     }
 
     if researched_attributes.description.is_some() {

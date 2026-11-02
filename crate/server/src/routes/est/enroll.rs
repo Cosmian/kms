@@ -270,11 +270,11 @@ pub(crate) async fn enroll_for_peer(
             None => false,
         };
         if issued_by_est_ca {
-            if let Some(ca_cert) = chain.first() {
-                if let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await {
-                    warn!("EST simpleenroll rejected: {e}");
-                    return Ok(plain_response(StatusCode::FORBIDDEN, CERTIFICATE_REFUSED));
-                }
+            if let Some(ca_cert) = chain.first()
+                && let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await
+            {
+                warn!("EST simpleenroll rejected: {e}");
+                return Ok(plain_response(StatusCode::FORBIDDEN, CERTIFICATE_REFUSED));
             }
             if !csr_matches_certificate_identity(csr, peer)? {
                 return Ok(plain_response(

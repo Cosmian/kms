@@ -48,12 +48,12 @@ pub(crate) async fn destroy_operation(
     // Issue #763: for HSM keys, validate the key type via a PKCS#11 roundtrip
     // before committing to destroy. This prevents accidentally destroying an AES
     // key with `rsa keys destroy` (or vice versa) when both share the same label.
-    if let Some(expected_type) = &request.expected_object_type {
-        if let ObjectHandle::Hsm { prefix, .. } = object_handle {
-            let oracles = kms.crypto_oracles.read().await;
-            if let Some(oracle) = oracles.get(prefix) {
-                guard_hsm_key_type(object_handle, expected_type, oracle.as_ref()).await?;
-            }
+    if let Some(expected_type) = &request.expected_object_type
+        && let ObjectHandle::Hsm { prefix, .. } = object_handle
+    {
+        let oracles = kms.crypto_oracles.read().await;
+        if let Some(oracle) = oracles.get(prefix) {
+            guard_hsm_key_type(object_handle, expected_type, oracle.as_ref()).await?;
         }
     }
 
@@ -260,27 +260,25 @@ pub(crate) async fn recursively_destroy_object(
                     .await?;
                 }
                 // When cascading, destroy any linked public key
-                if cascade {
-                    if let Some(public_key_id) = owm
+                if cascade
+                    && let Some(public_key_id) = owm
                         .object()
                         .attributes()
                         .unwrap_or_else(|_| owm.attributes())
                         .get_link(LinkType::PublicKeyLink)
                         .map(|l| l.to_string())
-                    {
-                        if !ids_to_skip.contains(&public_key_id) {
-                            recursively_destroy_object(
-                                &UniqueIdentifier::TextString(public_key_id),
-                                remove,
-                                cascade,
-                                kms,
-                                user,
-                                ids_to_skip.clone(),
-                            )
-                            .await?;
-                            kms.record_cascading_metrics("Destroy", op_start, user);
-                        }
-                    }
+                    && !ids_to_skip.contains(&public_key_id)
+                {
+                    recursively_destroy_object(
+                        &UniqueIdentifier::TextString(public_key_id),
+                        remove,
+                        cascade,
+                        kms,
+                        user,
+                        ids_to_skip.clone(),
+                    )
+                    .await?;
+                    kms.record_cascading_metrics("Destroy", op_start, user);
                 }
 
                 // destroy the private key
@@ -298,54 +296,51 @@ pub(crate) async fn recursively_destroy_object(
             ObjectType::PublicKey => {
                 ids_to_skip.insert(owm.id().to_owned());
                 // For CoverCrypt, if the linked private key is a master secret key, destroy the user decryption keys
-                if cascade {
-                    if let Some(private_key_id) = owm
+                if cascade
+                    && let Some(private_key_id) = owm
                         .object()
                         .attributes()
                         .unwrap_or_else(|_| owm.attributes())
                         .get_link(LinkType::PrivateKeyLink)
                         .map(|l| l.to_string())
+                {
+                    #[cfg(feature = "non-fips")]
+                    if let Ok(Some(private_owm)) =
+                        kms.database.retrieve_object(&private_key_id).await
+                        && let Ok(kb) = private_owm.object().key_block()
+                        && kb.key_format_type == KeyFormatType::CoverCryptSecretKey
                     {
-                        #[cfg(feature = "non-fips")]
-                        if let Ok(Some(private_owm)) =
-                            kms.database.retrieve_object(&private_key_id).await
+                        destroy_user_decryption_keys(
+                            &private_key_id,
+                            remove,
+                            true, // always cascade when destroying a `Covercrypt` master private key
+                            kms,
+                            user,
+                            ids_to_skip.clone(),
+                        )
+                        .await?;
+                    }
+                    // Try to destroy the linked private key, but don't fail if it's not allowed
+                    // This allows destroying a PreActive public key even if its linked private key is Active
+                    if !ids_to_skip.contains(&private_key_id) {
+                        let private_key_id_clone = private_key_id.clone();
+                        if let Err(e) = recursively_destroy_object(
+                            &UniqueIdentifier::TextString(private_key_id),
+                            remove,
+                            cascade,
+                            kms,
+                            user,
+                            ids_to_skip.clone(),
+                        )
+                        .await
                         {
-                            if let Ok(kb) = private_owm.object().key_block() {
-                                if kb.key_format_type == KeyFormatType::CoverCryptSecretKey {
-                                    destroy_user_decryption_keys(
-                                        &private_key_id,
-                                        remove,
-                                        true, // always cascade when destroying a `Covercrypt` master private key
-                                        kms,
-                                        user,
-                                        ids_to_skip.clone(),
-                                    )
-                                    .await?;
-                                }
-                            }
+                            // Log the error but continue with public key destruction
+                            trace!(
+                                "[destroy] Failed to destroy linked private key {}: {:?}. Continuing with public key destruction.",
+                                private_key_id_clone, e
+                            );
                         }
-                        // Try to destroy the linked private key, but don't fail if it's not allowed
-                        // This allows destroying a PreActive public key even if its linked private key is Active
-                        if !ids_to_skip.contains(&private_key_id) {
-                            let private_key_id_clone = private_key_id.clone();
-                            if let Err(e) = recursively_destroy_object(
-                                &UniqueIdentifier::TextString(private_key_id),
-                                remove,
-                                cascade,
-                                kms,
-                                user,
-                                ids_to_skip.clone(),
-                            )
-                            .await
-                            {
-                                // Log the error but continue with public key destruction
-                                trace!(
-                                    "[destroy] Failed to destroy linked private key {}: {:?}. Continuing with public key destruction.",
-                                    private_key_id_clone, e
-                                );
-                            }
-                            kms.record_cascading_metrics("Destroy", op_start, user);
-                        }
+                        kms.record_cascading_metrics("Destroy", op_start, user);
                     }
                 }
                 // Destroy the public key

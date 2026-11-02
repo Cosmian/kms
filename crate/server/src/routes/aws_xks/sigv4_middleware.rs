@@ -311,12 +311,11 @@ fn extract_sigv4_request_timestamp<B>(request: &http::Request<B>) -> Result<Date
         })?);
     }
 
-    if let Some(query) = request.uri().query() {
-        if let Some((_, value)) =
+    if let Some(query) = request.uri().query()
+        && let Some((_, value)) =
             form_urlencoded::parse(query.as_bytes()).find(|(name, _)| name == "X-Amz-Date")
-        {
-            return parse_sigv4_header_timestamp(value.as_ref());
-        }
+    {
+        return parse_sigv4_header_timestamp(value.as_ref());
     }
 
     Err(authentication_failed_error(

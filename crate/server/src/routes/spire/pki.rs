@@ -291,13 +291,13 @@ pub(crate) async fn sign_intermediate(
     );
 
     // G4: forward TTL as requested_validity_days if provided
-    if let Some(ttl_str) = &body.ttl {
-        if let Some(days) = parse_ttl_days(ttl_str) {
-            certify_attrs.set_requested_validity_days(kms.vendor_id(), days);
-            debug!(
-                "vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')"
-            );
-        }
+    if let Some(ttl_str) = &body.ttl
+        && let Some(days) = parse_ttl_days(ttl_str)
+    {
+        certify_attrs.set_requested_validity_days(kms.vendor_id(), days);
+        debug!(
+            "vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')"
+        );
     }
 
     let certify_req = Certify {

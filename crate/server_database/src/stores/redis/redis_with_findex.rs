@@ -587,10 +587,10 @@ impl RedisWithFindex {
             }
             AtomicOperation::Delete(uid) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
-                if let Some(old) = entry.current.take() {
-                    if is_live(old.state) {
-                        attempt.add_live(-1, is_key_type(old.object_type));
-                    }
+                if let Some(old) = entry.current.take()
+                    && is_live(old.state)
+                {
+                    attempt.add_live(-1, is_key_type(old.object_type));
                 }
             }
         }
@@ -653,12 +653,12 @@ impl RedisWithFindex {
         let user = require_user(user)?;
         let entry = self.touch(&mut attempt.uids, uid).await?;
         let old_obj = entry.current.take();
-        if let Some(old) = &old_obj {
-            if old.owner != user.as_str() {
-                return Err(DbError::Unauthorized(format!(
-                    "User '{user}' does not own object '{uid}' and cannot overwrite it"
-                )));
-            }
+        if let Some(old) = &old_obj
+            && old.owner != user.as_str()
+        {
+            return Err(DbError::Unauthorized(format!(
+                "User '{user}' does not own object '{uid}' and cannot overwrite it"
+            )));
         }
         let old_live = old_obj.as_ref().map(|o| i64::from(is_live(o.state)));
         let old_key_live = old_obj
@@ -1169,10 +1169,10 @@ impl ObjectsStore for RedisWithFindex {
                 }
                 if let Some(attrs) = researched_attributes {
                     // Filter by object_type if specified.
-                    if let Some(required_type) = attrs.object_type {
-                        if obj.object_type != required_type {
-                            return false;
-                        }
+                    if let Some(required_type) = attrs.object_type
+                        && obj.object_type != required_type
+                    {
+                        return false;
                     }
 
                     // Filter by tags if specified.
@@ -1193,22 +1193,21 @@ impl ObjectsStore for RedisWithFindex {
                     // Use the dedicated `attributes` field (covers Certificate objects
                     // which have no key block and would return an error from
                     // `obj.object.attributes()`).
-                    if let Some(required_links) = &attrs.link {
-                        if !required_links.is_empty() {
-                            let obj_links = obj
-                                .attributes
-                                .as_ref()
-                                .and_then(|a| a.link.as_deref())
-                                .unwrap_or(&[]);
-                            for req in required_links {
-                                let found = obj_links.iter().any(|l| {
-                                    l.link_type == req.link_type
-                                        && l.linked_object_identifier
-                                            == req.linked_object_identifier
-                                });
-                                if !found {
-                                    return false;
-                                }
+                    if let Some(required_links) = &attrs.link
+                        && !required_links.is_empty()
+                    {
+                        let obj_links = obj
+                            .attributes
+                            .as_ref()
+                            .and_then(|a| a.link.as_deref())
+                            .unwrap_or(&[]);
+                        for req in required_links {
+                            let found = obj_links.iter().any(|l| {
+                                l.link_type == req.link_type
+                                    && l.linked_object_identifier == req.linked_object_identifier
+                            });
+                            if !found {
+                                return false;
                             }
                         }
                     }
@@ -1263,10 +1262,10 @@ impl ObjectsStore for RedisWithFindex {
             }
             let attrs = dbo.attributes.unwrap_or_default();
             // Filter by generation if requested
-            if let Some(expected_gen) = generation {
-                if attrs.rotate_generation != Some(expected_gen) {
-                    continue;
-                }
+            if let Some(expected_gen) = generation
+                && attrs.rotate_generation != Some(expected_gen)
+            {
+                continue;
             }
             results.push((uid, attrs));
         }

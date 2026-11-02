@@ -48,10 +48,10 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
         keywords.insert(Keyword::from(object_group.as_bytes()));
     }
     // Index Application Specific Information as a single structure to allow Locate by it
-    if let Some(asi) = &attributes.application_specific_information {
-        if let Ok(bytes) = serde_json::to_vec(asi) {
-            keywords.insert(Keyword::from(bytes.as_slice()));
-        }
+    if let Some(asi) = &attributes.application_specific_information
+        && let Ok(bytes) = serde_json::to_vec(asi)
+    {
+        keywords.insert(Keyword::from(bytes.as_slice()));
     }
     if let Some(links) = &attributes.link {
         for link in links {

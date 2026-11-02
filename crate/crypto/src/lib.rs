@@ -21,13 +21,12 @@ fn initialize_openssl_env_from_build() {
     let modules_is_set = std::env::var_os("OPENSSL_MODULES").is_some();
     let _ = conf_is_set; // reserved for future use; avoid overriding OPENSSL_CONF here
 
-    if !modules_is_set {
-        if let Some(mods) = option_env!("OPENSSL_MODULES") {
-            if !mods.is_empty() {
-                unsafe {
-                    std::env::set_var("OPENSSL_MODULES", mods);
-                }
-            }
+    if !modules_is_set
+        && let Some(mods) = option_env!("OPENSSL_MODULES")
+        && !mods.is_empty()
+    {
+        unsafe {
+            std::env::set_var("OPENSSL_MODULES", mods);
         }
     }
 

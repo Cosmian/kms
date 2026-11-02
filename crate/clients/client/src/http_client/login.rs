@@ -523,12 +523,12 @@ pub async fn auth_verifier_login(
         // Split at the first ';' to isolate the name=value pair, then split
         // at the first '=' to separate name from value.
         let name_value = raw.split(';').next().unwrap_or(raw);
-        if let Some((name, value)) = name_value.split_once('=') {
-            if name.trim() == AUTH_VERIFIER_SESSION_COOKIE {
-                return Ok(AuthVerifierLoginStep::Authenticated(
-                    value.trim().to_owned(),
-                ));
-            }
+        if let Some((name, value)) = name_value.split_once('=')
+            && name.trim() == AUTH_VERIFIER_SESSION_COOKIE
+        {
+            return Ok(AuthVerifierLoginStep::Authenticated(
+                value.trim().to_owned(),
+            ));
         }
     }
 

@@ -238,10 +238,10 @@ unsafe fn add_revoked_entry(
 
         // Add reason code extension (RFC 5280 §5.3.1) — non-critical, SHOULD be present
         // Omit if reason is Unspecified (conforming to RFC 5280 §5.3.1 recommendation).
-        if let Some(reason) = entry.reason_code {
-            if reason != CrlReasonCode::Unspecified {
-                add_reason_code_extension(revoked, reason)?;
-            }
+        if let Some(reason) = entry.reason_code
+            && reason != CrlReasonCode::Unspecified
+        {
+            add_reason_code_extension(revoked, reason)?;
         }
 
         // Add invalidity date extension (RFC 5280 §5.3.2) — non-critical

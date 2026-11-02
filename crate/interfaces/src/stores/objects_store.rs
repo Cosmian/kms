@@ -405,10 +405,10 @@ pub trait ObjectsStore {
                 // Retrieve the full object to access DER bytes.
                 if let Some(owm) = self.retrieve(&uid).await? {
                     let serial = extract_serial_hex_from_object(owm.object());
-                    if let Some(s) = serial {
-                        if s.eq_ignore_ascii_case(serial_hex) {
-                            return Ok(Some((uid, obj_state)));
-                        }
+                    if let Some(s) = serial
+                        && s.eq_ignore_ascii_case(serial_hex)
+                    {
+                        return Ok(Some((uid, obj_state)));
                     }
                 }
             }

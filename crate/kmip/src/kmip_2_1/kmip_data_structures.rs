@@ -489,14 +489,14 @@ impl KeyBlock {
         let Some(KeyValue::Structure { attributes, .. }) = &self.key_value else {
             let mut error_msg =
                 "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned();
-            if let Some(wrapping_data) = &self.key_wrapping_data {
-                if let Some(encryption_key_info) = &wrapping_data.encryption_key_information {
-                    let _ = write!(
-                        error_msg,
-                        " (wrapped with key: {})",
-                        encryption_key_info.unique_identifier
-                    );
-                }
+            if let Some(wrapping_data) = &self.key_wrapping_data
+                && let Some(encryption_key_info) = &wrapping_data.encryption_key_information
+            {
+                let _ = write!(
+                    error_msg,
+                    " (wrapped with key: {})",
+                    encryption_key_info.unique_identifier
+                );
             }
             return Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Attribute_Value,
@@ -515,14 +515,14 @@ impl KeyBlock {
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
         let mut error_msg =
             "The Object Key Value is wrapped. Attributes cannot be recovered".to_owned();
-        if let Some(wrapping_data) = &self.key_wrapping_data {
-            if let Some(encryption_key_info) = &wrapping_data.encryption_key_information {
-                let _ = write!(
-                    error_msg,
-                    " (wrapped with key: {})",
-                    encryption_key_info.unique_identifier
-                );
-            }
+        if let Some(wrapping_data) = &self.key_wrapping_data
+            && let Some(encryption_key_info) = &wrapping_data.encryption_key_information
+        {
+            let _ = write!(
+                error_msg,
+                " (wrapped with key: {})",
+                encryption_key_info.unique_identifier
+            );
         }
         let Some(KeyValue::Structure { attributes, .. }) = &mut self.key_value else {
             return Err(KmipError::InvalidKmip21Value(
@@ -719,10 +719,10 @@ impl Serialize for KeyValueSerializer {
                         key_material: key_material.clone(),
                     },
                 )?;
-                if let Some(attributes) = attributes {
-                    if attributes != &Attributes::default() {
-                        st.serialize_field("Attributes", attributes)?;
-                    }
+                if let Some(attributes) = attributes
+                    && attributes != &Attributes::default()
+                {
+                    st.serialize_field("Attributes", attributes)?;
                 }
                 st.end()
             }

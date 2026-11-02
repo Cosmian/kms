@@ -35,15 +35,15 @@ fn mask_db_url_password(url: &str) -> String {
     }
     // Slow path: multi-host PostgreSQL URL — scan manually
     // Pattern: scheme://[user[:pass]@]... → replace :pass@ with :****@
-    if let Some(at_pos) = url.rfind('@') {
-        if let Some(scheme_end) = url.find("://") {
-            let creds = &url[scheme_end + 3..at_pos];
-            if let Some(colon_pos) = creds.find(':') {
-                let user = &creds[..colon_pos];
-                let scheme = &url[..scheme_end];
-                let rest = &url[at_pos + 1..];
-                return format!("{scheme}://{user}:****@{rest}");
-            }
+    if let Some(at_pos) = url.rfind('@')
+        && let Some(scheme_end) = url.find("://")
+    {
+        let creds = &url[scheme_end + 3..at_pos];
+        if let Some(colon_pos) = creds.find(':') {
+            let user = &creds[..colon_pos];
+            let scheme = &url[..scheme_end];
+            let rest = &url[at_pos + 1..];
+            return format!("{scheme}://{user}:****@{rest}");
         }
     }
     url.to_owned()

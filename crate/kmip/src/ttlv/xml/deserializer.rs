@@ -290,10 +290,10 @@ impl TTLVXMLDeserializer {
                         Self::dedup_single_instance_attributes(&mut ttlv);
                         return Ok(ttlv);
                     }
-                    if let Some(parent) = stack.last_mut() {
-                        if let TTLValue::Structure(children) = &mut parent.value {
-                            children.push(ttlv);
-                        }
+                    if let Some(parent) = stack.last_mut()
+                        && let TTLValue::Structure(children) = &mut parent.value
+                    {
+                        children.push(ttlv);
                     }
                 }
                 Ok(Event::End(e)) => {

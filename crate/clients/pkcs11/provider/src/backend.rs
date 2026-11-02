@@ -324,10 +324,10 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in disk_ids {
-            if seen.insert(id.clone()) {
-                if let Some(private_key) = self.create_private_key_from_id(&id) {
-                    private_keys.push(private_key);
-                }
+            if seen.insert(id.clone())
+                && let Some(private_key) = self.create_private_key_from_id(&id)
+            {
+                private_keys.push(private_key);
             }
         }
 
@@ -338,10 +338,10 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in ssh_ids {
-            if seen.insert(id.clone()) {
-                if let Some(private_key) = self.create_private_key_from_id(&id) {
-                    private_keys.push(private_key);
-                }
+            if seen.insert(id.clone())
+                && let Some(private_key) = self.create_private_key_from_id(&id)
+            {
+                private_keys.push(private_key);
             }
         }
 
@@ -354,10 +354,10 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in gnupg_ids {
-            if seen.insert(id.clone()) {
-                if let Some(private_key) = self.create_private_key_from_id(&id) {
-                    private_keys.push(private_key);
-                }
+            if seen.insert(id.clone())
+                && let Some(private_key) = self.create_private_key_from_id(&id)
+            {
+                private_keys.push(private_key);
             }
         }
 
@@ -496,13 +496,11 @@ impl Backend for CliBackend {
             let kms_ids =
                 locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])?;
             for id in kms_ids {
-                if seen_ids.insert(id.clone()) {
-                    if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
-                        if let Some(object) = Self::create_object_from_attributes(&id, &attributes)
-                        {
-                            objects.push(Arc::new(object));
-                        }
-                    }
+                if seen_ids.insert(id.clone())
+                    && let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id)
+                    && let Some(object) = Self::create_object_from_attributes(&id, &attributes)
+                {
+                    objects.push(Arc::new(object));
                 }
             }
         }
