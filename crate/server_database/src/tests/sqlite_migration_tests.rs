@@ -16,7 +16,7 @@ use crate::{
     stores::{
         SqlitePool,
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState, Migrate,
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState, MIGRATION_STEPS, Migrate,
             MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
             WRAPPING_KEY_BACKFILL_PARAM,
         },
@@ -578,7 +578,7 @@ async fn test_sqlite_migration_below_baseline() -> DbResult<()> {
     let original = preserved_data(&path)?;
     seed_parameters(&path, &[("db_version", "5.14.0")])?;
     let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
+    expect_steps(&applied, &MIGRATION_STEPS)?;
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;

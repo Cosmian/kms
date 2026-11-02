@@ -38,6 +38,7 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
+mod sql_migration_tests;
 mod sqlite_migration_tests;
 mod tagging_tests;
 
@@ -558,5 +559,6 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     count_non_destroyed_keys_test(&get_mysql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
+    Box::pin(sql_migration_tests::mysql_migration_scenarios()).await?;
     Ok(())
 }
