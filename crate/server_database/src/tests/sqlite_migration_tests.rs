@@ -20,7 +20,7 @@ use crate::{
     stores::{
         SqlitePool,
         migrate::{
-            DbParameters, DbState, Migrate,
+            DbParameters, DbState, MIGRATION_STEPS, Migrate,
             MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
         },
     },
@@ -421,13 +421,23 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
 async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
     const MIGRATION_PARAMETERS: &str = "SELECT name, value FROM parameters \
          WHERE name NOT IN ('db_version', 'db_state') ORDER BY name";
-    let fixtures: [(&str, &[MigrationStep]); 3] = [
-        ("5.24.0", &BOTH_STEPS),
-        ("5.28.0", &[CertificateSerialTagBackfill]),
-        ("5.29.0", &[]),
+    // The last row recorded below the baseline: every step is offered, and the PostgreSQL-only
+    // `AttributesJsonb` conversion must complete as a no-op on SQLite.
+    let fixtures: [(&str, Option<&str>, &[MigrationStep]); 4] = [
+        ("5.24.0", None, &BOTH_STEPS),
+        ("5.28.0", None, &[CertificateSerialTagBackfill]),
+        ("5.29.0", None, &[]),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
     ];
-    for (version, expected) in fixtures {
-        let (_directory, path) = copy_fixture(version)?;
+    for (fixture, recorded, expected) in fixtures {
+        let version = recorded.map_or_else(
+            || fixture.to_owned(),
+            |recorded| format!("{fixture} recorded as {recorded}"),
+        );
+        let (_directory, path) = copy_fixture(fixture)?;
+        if let Some(recorded) = recorded {
+            seed_parameters(&path, &[("db_version", recorded)])?;
+        }
         let original = preserved_data(&path)?;
         // Only a database already at the target has the final schema to snapshot before opening.
         let before = if expected.is_empty() {

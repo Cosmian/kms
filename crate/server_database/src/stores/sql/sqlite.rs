@@ -1270,6 +1270,7 @@ impl Migrate for SqlitePool {
 
     async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
         match step {
+            MigrationStep::AttributesJsonb => Ok(()),
             MigrationStep::WrappingKeyIdBackfill => self.backfill_wrapping_key_id().await,
             MigrationStep::CertificateSerialTagBackfill => {
                 self.backfill_certificate_serial_tags().await
