@@ -866,9 +866,9 @@ mod tests {
         DbMetricsRecorder, MainDbKind, MainDbParams, database_objects::reject_reserved_uid,
     };
 
-    async fn test_db() -> Database {
+    async fn test_db() -> (Database, TempDir) {
         let tmp = TempDir::new().expect("Failed to create temp dir");
-        Database::instantiate(
+        let db = Database::instantiate(
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
@@ -882,7 +882,8 @@ mod tests {
             None,
         )
         .await
-        .expect("Failed to instantiate in-memory database")
+        .expect("Failed to instantiate test database");
+        (db, tmp)
     }
 
     /// Direct unit coverage of the reserved-uid check (issue #909).
@@ -911,7 +912,7 @@ mod tests {
     /// internal sentinel used to store the global `Create` right.
     #[tokio::test]
     async fn test_create_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -935,7 +936,7 @@ mod tests {
     /// `Database::atomic` must refuse a `Create` operation targeting the reserved uid `"*"`.
     #[tokio::test]
     async fn test_atomic_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -958,7 +959,7 @@ mod tests {
     /// `Database::atomic` with `AtomicOperation::Upsert` must refuse the reserved uid `"*"` (GHSA-pvw2-jxwc-95xq).
     #[tokio::test]
     async fn test_atomic_upsert_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -1017,7 +1018,7 @@ mod tests {
     /// store (`None`) leaves no store for unprefixed UIDs.
     #[tokio::test]
     async fn test_unregister_object_store() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let default_store = db
             .get_object_store("plain-uid")
             .await
@@ -1251,7 +1252,7 @@ mod tests {
     async fn test_find_certificate_state_by_der_finds_known_certificate() {
         use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
 
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let der = cert_der_with_serial(&[0x11, 0x22, 0x33, 0x44]);
         let cert_object = Object::Certificate(Certificate {
@@ -1285,7 +1286,7 @@ mod tests {
     async fn test_find_certificate_state_by_der_returns_none_for_unknown_certificate() {
         use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
 
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let known_der = cert_der_with_serial(&[0x55, 0x66, 0x77, 0x88]);
         let cert_object = Object::Certificate(Certificate {
