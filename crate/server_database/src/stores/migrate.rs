@@ -193,12 +193,19 @@ pub(crate) trait Migrate: DbParameters {
                 self.set_db_state(DbState::Ready).await?;
                 return Ok(Vec::new());
             }
-            None => Self::UNVERSIONED_BASELINE.ok_or_else(|| {
-                db_error!(
-                    "Unversioned populated Redis/Findex database: pre-5.12.0 data is unsupported; \
-                     export and re-import."
-                )
-            })?,
+            None => {
+                let baseline = Self::UNVERSIONED_BASELINE.ok_or_else(|| {
+                    db_error!(
+                        "Unversioned populated Redis/Findex database: pre-5.12.0 data is unsupported; \
+                         export and re-import."
+                    )
+                })?;
+                tracing::info!(
+                    baseline,
+                    "Unversioned database with data; assuming the migration baseline"
+                );
+                baseline
+            }
         };
         let mut recorded_version = recorded.parse::<Version>()?;
         if recorded_version > target_version {
