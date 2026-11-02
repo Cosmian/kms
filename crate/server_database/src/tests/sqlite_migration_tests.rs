@@ -382,6 +382,38 @@ async fn test_sqlite_migration_5_28_fixture() -> DbResult<()> {
 }
 
 #[tokio::test]
+async fn test_sqlite_migration_5_29_fixture() -> DbResult<()> {
+    let (_directory, path) = copy_fixture("5.29.0")?;
+    let original = preserved_data(&path)?;
+    let [objects, tags, access, _] = complete_data(&path)?;
+    let parameters = query_rows(
+        &path,
+        "SELECT name, value FROM parameters WHERE name NOT IN ('db_version', 'db_state') ORDER BY name",
+    )?;
+    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
+    expect_steps(&applied, &[])?;
+    assert_ready(&pool, TARGET).await?;
+    assert_markers(&pool, &BOTH_STEPS).await?;
+    assert_wrapped_key_found(&pool).await?;
+    assert_serial_tag(&pool, true).await?;
+    assert_fixture_preserved(&pool, &path, &original).await?;
+    let [after_objects, after_tags, after_access, _] = complete_data(&path)?;
+    db_ensure!(
+        objects == after_objects && tags == after_tags && access == after_access,
+        "Opening a 5.29.0 fixture changed object, tag, or permission data"
+    );
+    db_ensure!(
+        parameters
+            == query_rows(
+                &path,
+                "SELECT name, value FROM parameters WHERE name NOT IN ('db_version', 'db_state') ORDER BY name",
+            )?,
+        "Opening a 5.29.0 fixture changed existing migration parameters"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_sqlite_migration_markers_already_set() -> DbResult<()> {
     let (_directory, path) = copy_fixture("5.20.0")?;
     let original = preserved_data(&path)?;

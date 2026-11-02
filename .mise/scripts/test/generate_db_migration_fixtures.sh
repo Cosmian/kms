@@ -8,6 +8,8 @@ REPO_ROOT="$(get_repo_root)"
 require_cmd docker
 require_cmd python3
 docker_ready || print_error "Docker must be running to generate migration fixtures."
+[ "$#" -le 1 ] || print_error "Usage: $0 [VERSION]"
+SELECTED_VERSION="${1:-}"
 
 # Resolve pins with: docker pull ghcr.io/cosmian/kms:<version>
 # The Digest line identifies the immutable release manifest.
@@ -15,6 +17,7 @@ readonly IMAGES=(
   "ghcr.io/cosmian/kms:5.20.0@sha256:a74dc266e85a75e038ab75243afe64c2d5f65a0219a5561eb99d2b7febc47e80"
   "ghcr.io/cosmian/kms:5.24.0@sha256:a8c2b6577ce366c534fb29e388b8b7b473fc8a4445fa2ab6f32c8da13004e50a"
   "ghcr.io/cosmian/kms:5.28.0@sha256:7b60fd4484930969906caa5722b727054ff96d49339ce81e3c64ca9e4278540e"
+  "ghcr.io/cosmian/kms:5.29.0@sha256:a5592576c17854868c8abe6536b0ab89c49f31eb978c2778d2ee471330e083c8"
 )
 WORK_DIR="$(mktemp -d -t kms-db-migration-fixtures-XXXXXX)"
 CONTAINER_ID=""
@@ -70,14 +73,18 @@ with sqlite3.connect(destination) as connection:
         raise RuntimeError(f"Missing fixture objects: {expected - objects.keys()}")
     if objects["mig_revoked"] != "Deactivated":
         raise RuntimeError("The revoked fixture key must be deactivated")
-    if ("wrapping_key_id" in columns) != (version == "5.28.0"):
+    if ("wrapping_key_id" in columns) != (version in {"5.28.0", "5.29.0"}):
         raise RuntimeError(f"Unexpected wrapping_key_id column for {version}")
     if parameters.get("wrapping_key_id_backfilled") != (
-        "true" if version == "5.28.0" else None
+        "true" if version in {"5.28.0", "5.29.0"} else None
     ):
         raise RuntimeError(f"Unexpected wrapping backfill marker for {version}")
-    if "db_version" in parameters or "certificate_serial_tag_backfilled" in parameters:
-        raise RuntimeError(f"Unexpected version or serial-tag marker for {version}")
+    if "db_version" in parameters:
+        raise RuntimeError(f"Unexpected database version for {version}")
+    if parameters.get("certificate_serial_tag_backfilled") != (
+        "true" if version == "5.29.0" else None
+    ):
+        raise RuntimeError(f"Unexpected serial-tag marker for {version}")
     tagged = {row[0] for row in connection.execute("SELECT id FROM tags WHERE tag='mig'")}
     if tagged != objects.keys():
         raise RuntimeError("Every fixture object must carry the mig tag")
@@ -86,10 +93,11 @@ with sqlite3.connect(destination) as connection:
     ).fetchone()
     if grant is None or set(json.loads(grant[0])) != {"get", "encrypt", "decrypt"}:
         raise RuntimeError("Missing or incorrect mig_user grant")
-    if connection.execute(
-        "SELECT 1 FROM tags WHERE id='mig_cert' AND tag LIKE '_serial=%'"
-    ).fetchone():
-        raise RuntimeError("The fixture certificate must predate serial tags")
+    serial_tags = connection.execute(
+        "SELECT count(*) FROM tags WHERE id='mig_cert' AND tag GLOB '_serial=*'"
+    ).fetchone()[0]
+    if serial_tags != (1 if version == "5.29.0" else 0):
+        raise RuntimeError(f"Unexpected certificate serial tag count for {version}")
     if connection.execute("PRAGMA integrity_check").fetchone() != ("ok",):
         raise RuntimeError(f"Invalid SQLite fixture for {version}")
     print(f"{version}: verified {len(objects)} objects, unversioned SQLite fixture")
@@ -122,9 +130,15 @@ generate_fixture() {
   write_fixture "${data_dir}/kms.db" "${output_dir}/kms.db" "${version}"
 }
 
+selected=false
 for image in "${IMAGES[@]}"; do
   version="${image#*:}"
   version="${version%%@*}"
+  if [ -n "${SELECTED_VERSION}" ] && [ "${version}" != "${SELECTED_VERSION}" ]; then
+    continue
+  fi
+  selected=true
   generate_fixture "${image}" "${version}"
 done
+[ "${selected}" = true ] || print_error "Unknown fixture version: ${SELECTED_VERSION}"
 print_success "Released SQLite migration fixtures generated and verified."
