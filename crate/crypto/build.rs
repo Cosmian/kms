@@ -257,12 +257,11 @@ fn num_parallel_jobs() -> usize {
     }
     #[cfg(target_os = "linux")]
     {
-        if let Ok(output) = Command::new("nproc").output() {
-            if let Ok(s) = std::str::from_utf8(&output.stdout) {
-                if let Ok(n) = s.trim().parse::<usize>() {
-                    return n.max(1);
-                }
-            }
+        if let Ok(output) = Command::new("nproc").output()
+            && let Ok(s) = std::str::from_utf8(&output.stdout)
+            && let Ok(n) = s.trim().parse::<usize>()
+        {
+            return n.max(1);
         }
     }
     2
