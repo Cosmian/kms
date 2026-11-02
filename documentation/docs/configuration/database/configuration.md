@@ -409,29 +409,75 @@ The KMS server can be configured to clear the database on restart automatically.
 
 ## Database migration
 
-Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
-written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
+The startup migration runner currently supports **SQLite**. PostgreSQL, MySQL and Redis runner wiring follows in the next PRs; their existing startup behavior is unchanged by this change. The decision table below defines the shared runner contract, with SQLite implemented first.
 
-At first, the table `parameters` is responsible for storing the software run's version and the database's state.
-The state can be one of the following:
+Transparent migration is supported for databases created by KMS **5.20.0 or later**. An unversioned, populated SQL database is treated as `5.20.0`. Older recorded SQL versions trigger a warning and an attempt to run all registered steps, subject to their completion markers. Pre-5.0.0 databases and pre-5.12.0 Redis/Findex databases require export and re-import.
 
-- `ready`: the database is ready to be used
-- `upgrading`: the database is being upgraded
+The runner stores `db_version`, `db_state` and completion markers in the SQL [parameters table](tables.md#parameters); Redis uses plain keys. `db_version` records the version the runner last migrated to, not the database creation version. `db_state` is persisted as a JSON string: `"ready"` or `"upgrading"`.
 
-On startup, the server checks if the software version is greater than the last version run:
+On SQLite, the server acquires a migration lock and checks the recorded version **before any schema DDL**. A newer database or an invalid version refuses startup. Idempotent schema additions run next; data transformations run only when their release boundary satisfies `recorded < step <= target`. Release comparison uses numeric `MAJOR.MINOR.PATCH`, ignoring any `-…` or `+…` suffix. The target is the running KMS package version.
 
-- if no, it simply starts;
-- If yes:
+```mermaid
+flowchart TD
+    Start["KMS server starts"] --> Connect["Connect to database"]
+    Connect --> Lock["Acquire migration lock<br/>SQLite: sidecar file"]
+    Lock -- "held by another instance" --> Wait["Wait 500 ms and retry<br/>give up after 31 min"]
+    Wait --> Lock
+    Lock -- "acquired" --> ReadVersion["Read db_version without DDL"]
+    ReadVersion -- "invalid version" --> Invalid["Refuse to start"]
+    ReadVersion --> Compare{"Recorded version newer<br/>and no clear request?"}
+    Compare -- "yes" --> Refuse["Refuse before DDL<br/>Upgrade the KMS server"]
+    Compare -- "no" --> Schema["Ensure idempotent schema<br/>Clear object data if requested"]
+    Schema --> Clear{"Clear requested?"}
+    Clear -- "yes" --> Stamp["Write db_version = target<br/>db_state = ready"]
+    Clear -- "no" --> Recorded{"Version recorded?"}
+    Recorded -- "no" --> Data{"Database holds objects?"}
+    Data -- "no" --> Stamp
+    Data -- "yes, SQL" --> Baseline["Treat as 5.20.0"]
+    Data -- "yes, Redis" --> Legacy["Refuse unsupported legacy data<br/>Export and re-import"]
+    Recorded -- "yes" --> UseRecorded["Use recorded version<br/>below 5.20.0: warn, all steps pending"]
+    Baseline --> Steps
+    UseRecorded --> Steps["Pending steps in ascending order<br/>Set upgrading once<br/>Skip completed markers or apply and mark<br/>Checkpoint db_version after each step"]
+    Steps --> Stamp
+    Stamp --> Unlock["Release migration lock"]
+    Unlock --> Serve["Bind HTTP and serve requests"]
+```
 
-    - it looks for all upgrades to apply in order from the last version run to this version;
-    - if there is any to run, it sets an upgrading flag on the db state field in the `parameters` table;
-    - it runs all the upgrades in order.
-    - it sets the flag from upgrading to ready;
+| Recorded `db_version` | Holds objects | Backend | Runner action |
+|---|---|---|---|
+| none | no | all | Stamp target version and `ready`; no data step |
+| none | yes | SQL | Treat as `5.20.0`, apply pending steps unless their markers are `true`, then stamp target and `ready` |
+| none | yes | Redis | Refuse unsupported pre-5.12.0 Findex data; export and re-import |
+| below `5.20.0` | any | all | Warn that transparent migration is supported from `5.20.0`; offer all steps up to target, with marker checks |
+| `5.20.0 <= v < target` | any | all | Apply steps with `v < step <= target`, ascending; stamp target and `ready` |
+| equal to target | any | all | No step; force `ready` |
+| newer than target | any | all | Refuse before schema DDL |
+| any, with `db_state = upgrading` | any | all | Log the interrupted run and resume eligible steps |
+| valid version or none, with `--clear-database` | wiped | all | Wipe object data under the lock, stamp target and `ready`; no data step |
 
-On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
-calls fail.
+Version refusals take precedence over interrupted-run recovery. `--clear-database` overrides the newer-version refusal, but an invalid version is still an error.
 
-Upgrades resist being interrupted in the middle and resumed from the start if that happens.
+SQLite currently registers two data steps:
+
+- `5.25.0`: derive `objects.wrapping_key_id` from stored objects; completion marker `wrapping_key_id_backfilled`.
+- `5.29.0`: add `_serial=<HEX>` lookup tags to existing certificates; completion marker `certificate_serial_tag_backfilled`.
+
+The runner reads a step's marker before applying it, writes `true` after it succeeds, then advances the version checkpoint. Each data transformation is idempotent, so an interrupted run can resume even if it committed data before writing its marker. Version selection still applies: removing a marker alone does not rerun a step when the database is already at the target version.
+
+A newer database is refused with this message:
+
+```text
+Database version X is newer than this KMS server version Y: refusing to start. Upgrade the KMS server to X or later.
+```
+
+### SQLite lock and multiple instances
+
+The lock file is the database filename followed by `.migration.lock`: for the server, `<sqlite-path>/kms.db.migration.lock`. It is an OS file lock, not a check for the file's presence. The sidecar remains after the lock is released; **do not delete it**. Each startup retries every 500 ms for at most 31 minutes. A timeout reports the held lock filename. Closing the handle releases the lock, including on startup errors.
+
+The lock covers the version check, schema initialization, every data step and the final `ready` stamp. Other starting instances wait, then observe the completed version and apply no steps. No waiting instance binds its HTTP listener before its own bootstrap completes. Shared storage must support file locking, and instances must use the same database and sidecar.
+
+!!! warning "Rolling upgrades do not stop older instances"
+    The lock serializes startup only. It cannot stop older binaries that are already serving requests and writing to the database. Stop those instances before upgrading when writes must be quiesced; the migration state is not checked on every request.
 
 ### MySQL schema update (5.13.0)
 
