@@ -17,8 +17,8 @@
 
 ## CI
 
-- `packaging-docker.yml`: new `scan-docker-image` job (`mise run test:docker-scan`) scans each published image with
-  Syft and Grype, plus `Cargo.lock` and `ui/pnpm-lock.yaml`, and fails on fixable High or Critical findings. The SBOMs
-  and Grype reports are uploaded as `image-scan-*` artifacts.
+- `packaging-docker.yml`: the `nix-docker-image` job runs `mise run test:docker-scan` after `Test Docker image`. It
+  scans the image with Syft and Grype, plus `Cargo.lock` and `ui/pnpm-lock.yaml`, and fails on fixable High or
+  Critical findings. The SBOMs and Grype reports are uploaded as `image-scan-*` artifacts.
 - `dependabot.yml`: add the `npm` ecosystem for `/ui` so that version updates bump the parent of a transitive
   dependency that security updates cannot fix.
