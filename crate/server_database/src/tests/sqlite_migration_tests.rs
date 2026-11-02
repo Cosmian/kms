@@ -406,6 +406,13 @@ async fn test_sqlite_migration_newer_database_leaves_schema_untouched() -> DbRes
     let original = preserved_data(&path)?;
     seed_parameters(&path, &[("db_version", "99.0.0")])?;
     let schema = query_rows(&path, "SELECT * FROM sqlite_master ORDER BY type, name")?;
+    let original_file = fs::read(&path)?;
+    let wal = path.with_file_name("kms.db-wal");
+    let shm = path.with_file_name("kms.db-shm");
+    db_ensure!(
+        !wal.try_exists()? && !shm.try_exists()?,
+        "The original fixture must not have WAL sidecars"
+    );
     let error = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET)
         .await
         .err()
@@ -415,6 +422,14 @@ async fn test_sqlite_migration_newer_database_leaves_schema_untouched() -> DbRes
             == "Database Error: Database version 99.0.0 is newer than this KMS server version \
          5.29.0: refusing to start. Upgrade the KMS server to 99.0.0 or later.",
         "Unexpected newer-version error: {error}"
+    );
+    db_ensure!(
+        fs::read(&path)? == original_file,
+        "Refusal changed the database file"
+    );
+    db_ensure!(
+        !wal.try_exists()? && !shm.try_exists()?,
+        "Refusal created WAL sidecars"
     );
     db_ensure!(
         schema == query_rows(&path, "SELECT * FROM sqlite_master ORDER BY type, name")?,
