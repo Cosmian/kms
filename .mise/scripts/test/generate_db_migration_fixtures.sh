@@ -7,6 +7,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 REPO_ROOT="$(get_repo_root)"
 require_cmd docker
 require_cmd python3
+require_cmd curl
 docker_ready || print_error "Docker must be running to generate migration fixtures."
 [ "$#" -le 1 ] || print_error "Usage: $0 [VERSION]"
 SELECTED_VERSION="${1:-}"
@@ -51,6 +52,25 @@ populate_fixture() {
   fixture_ckms certificates certify --generate-key-pair --algorithm rsa2048 \
     --certificate-id mig_cert --subject-name "CN=Migration fixture" --tag mig
   fixture_ckms access-rights grant --object-uid mig_kek mig_user get encrypt decrypt
+}
+
+# Docker can accept TCP connections before the KMS endpoint is ready.
+wait_for_fixture_ready() {
+  local port="$1" deadline=$((SECONDS + 60)) status=""
+  while ((SECONDS < deadline)); do
+    if status="$(run_isolated curl -sS --max-time 2 -o /dev/null -w '%{http_code}' \
+      -X POST -H 'Content-Type: application/json' -d '{}' \
+      "http://127.0.0.1:${port}/kmip/2_1" 2>/dev/null)" && [ "${status}" = 422 ]; then
+      return 0
+    fi
+    if [ "$(docker inspect --format '{{.State.Running}}' "${CONTAINER_ID}")" != true ]; then
+      print_warning "Fixture container exited before its KMIP endpoint was ready."
+      return 1
+    fi
+    sleep 1
+  done
+  print_warning "Fixture KMIP endpoint did not return HTTP 422 (last status: ${status:-000})."
+  return 1
 }
 
 write_fixture() {
@@ -117,7 +137,7 @@ generate_fixture() {
     --database-type sqlite --sqlite-path /data)"
   address="$(docker port "${CONTAINER_ID}" 9998/tcp)"
   port="${address##*:}"
-  if ! wait_for_port 127.0.0.1 "${port}" 60; then
+  if ! wait_for_fixture_ready "${port}"; then
     docker logs "${CONTAINER_ID}" >&2
     print_error "Release ${version} did not start."
   fi
