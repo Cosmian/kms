@@ -166,6 +166,15 @@ let
     sha256 = "sha256-2Cxxgpz1+cRgKZJFi12/9LG3aIBN66f2RvFs34Oj/A0=";
   }) { config.allowUnfree = true; };
 
+  # Image vulnerability scanners (Syft SBOM + Grype), hash-pinned through pkgsDocker.
+  image-scan-tools = pkgsDocker.buildEnv {
+    name = "image-scan-tools";
+    paths = [
+      pkgsDocker.syft
+      pkgsDocker.grype
+    ];
+  };
+
   # Create rustPlatform: on Linux use pkgs234.makeRustPlatform (glibc 2.34),
   # but with modern Rust toolchain
   rustPlatform190 =
@@ -511,6 +520,7 @@ rec {
   inherit
     docker-image-fips
     docker-image-non-fips
+    image-scan-tools
     ;
 
   # Kubernetes in-cluster Docker images

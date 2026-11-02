@@ -289,6 +289,80 @@ jobs:
           done
           exit 1
 
+  # ── Vulnerability scan of the published KMS images (Syft SBOM + Grype) ──
+  # Fails on any fixable High/Critical finding in the image, Cargo.lock or ui/pnpm-lock.yaml.
+  # Separate from the build job: that one holds `packages: write` and the cosign `id-token`,
+  # where third-party tools must not run. A scan failure does not un-publish the image.
+  scan-docker-image:
+    name: scan-docker-${{ matrix.features }}-${{ matrix.runner }}
+    needs: nix-docker-image
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Derive architecture from runner
+        id: arch
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.runner }}" == *arm* ]]; then
+            echo "arch=arm64" >> "$GITHUB_OUTPUT"
+            echo "suffix=-arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "arch=amd64" >> "$GITHUB_OUTPUT"
+            echo "suffix=-amd64" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to GHCR
+        uses: ./.github/actions/docker-login-ghcr
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tag
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: |
+            ${{ matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms' }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Pull arch-specific image
+        run: |
+          set -euo pipefail
+          ARCH_TAG="$(echo "${{ steps.meta.outputs.tags }}" | head -n1)${{ steps.arch.outputs.suffix }}"
+          docker pull "${ARCH_TAG}"
+          echo "DOCKER_IMAGE_NAME=${ARCH_TAG}" >> "$GITHUB_ENV"
+
+      - name: Scan image with Syft and Grype
+        run: mise run test:docker-scan --variant ${{ matrix.features }}
+
+      - name: Upload SBOM and vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: image-scan-${{ matrix.features }}-${{ steps.arch.outputs.arch }}
+          path: target/image-scan/${{ matrix.features }}/
+          if-no-files-found: warn
+
   # ── Kubernetes pod smoke-test for the KMS server image ───────────────────
   # Runs on both amd64 and arm64.  Tests both fips and non-fips variants.
   # Catches regressions where required /etc files (passwd, group,

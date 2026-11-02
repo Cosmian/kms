@@ -242,6 +242,7 @@ The `packaging-docker.yml` workflow tests the following combinations:
 |-----|------|----------|-------|-------|
 | `nix-docker-image` (build + `test:docker`) | ✅ | ✅ | ✅ | ✅ |
 | `test-k8s-kms-pod` (`test:k8s:kms-image`) | ✅ | ✅ | ✅ | ✅ |
+| `scan-docker-image` (`test:docker-scan`, Syft + Grype, fails on fixable High/Critical) | ✅ | ✅ | ✅ | ✅ |
 | `k8s-operator-image` (build + `test:k8s:operator-image`) | n/a | n/a | ✅ | ✅ |
 | `k8s-csi-provider-image` (build + `test:k8s:csi-provider-image`) | n/a | n/a | ✅ | ✅ |
 | `nix-docker-manifest` (multi-arch manifest) | ✅ | ✅ | n/a | n/a |
