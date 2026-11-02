@@ -99,12 +99,9 @@ Test-NetConnection -ComputerName localhost -Port 9998
 ```powershell
 # Creates directories and grants ACLs to the SQL Server service account
 scripts\Initialize-EkmEnvironment.ps1
-
-# Creates the Authenticode code-signing certificate (if not already present)
-scripts\New-EkmCertificate.ps1
 ```
 
-These are one-time operations per machine.
+This is a one-time operation per machine.
 
 ---
 
@@ -132,7 +129,21 @@ copy the KMS CA certificate so TLS verification succeeds.
 
 ---
 
-## 5. Deploy the DLL
+## 5. Enable EKM in SQL Server
+
+Connect to SQL Server (e.g. via SSMS or sqlcmd) and run:
+
+```sql
+EXEC sp_configure 'show advanced options', 1;
+RECONFIGURE;
+
+EXEC sp_configure 'EKM provider enabled', 1;
+RECONFIGURE;
+```
+
+---
+
+## 6. Deploy the DLL
 
 ```powershell
 # Must be run as Administrator
@@ -152,20 +163,6 @@ To deploy to a named instance or skip the service restart:
 ```powershell
 scripts\Deploy-EkmDll.ps1 -SqlServiceName "MSSQL`$MyInstance"
 scripts\Deploy-EkmDll.ps1 -SkipServiceRestart   # register only
-```
-
----
-
-## 6. Enable EKM in SQL Server
-
-Connect to SQL Server (e.g. via SSMS or sqlcmd) and run:
-
-```sql
-EXEC sp_configure 'show advanced options', 1;
-RECONFIGURE;
-
-EXEC sp_configure 'EKM provider enabled', 1;
-RECONFIGURE;
 ```
 
 ---

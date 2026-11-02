@@ -134,7 +134,7 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.28.0"
+version = "5.29.0"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
@@ -191,30 +191,30 @@ opt-level = 0
 
 [workspace.dependencies]
 # Workspace crates
-aws_cloudhsm_pkcs11_loader = { path = "crate/hsm/aws_cloudhsm", version = "5.28.0" }
-azure_cloud_hsm_pkcs11_loader = { path = "crate/hsm/azure_cloud_hsm", version = "5.28.0" }
-ckms = { path = "crate/clients/ckms", version = "5.28.0" }
-cosmian_kmip = { path = "crate/kmip", version = "5.28.0" }
-cosmian_kms_access = { path = "crate/access", version = "5.28.0" }
-cosmian_kms_base_hsm = { path = "crate/hsm/base_hsm", version = "5.28.0" }
-cosmian_kms_cli_actions = { path = "crate/clients/clap", version = "5.28.0" }
-cosmian_kms_client = { path = "crate/clients/client", version = "5.28.0" }
-cosmian_kms_client_utils = { path = "crate/clients/client_utils", version = "5.28.0" }
-cosmian_kms_crypto = { path = "crate/crypto", version = "5.28.0" }
-cosmian_kms_interfaces = { path = "crate/interfaces", version = "5.28.0" }
-cosmian_kms_server = { path = "crate/server", version = "5.28.0" }
-cosmian_kms_server_database = { path = "crate/server_database", version = "5.28.0" }
-cosmian_pkcs11_module = { path = "crate/clients/pkcs11/module", version = "5.28.0" }
-crypt2pay_pkcs11_loader = { path = "crate/hsm/crypt2pay", version = "5.28.0" }
-gcp_cloud_hsm_pkcs11_loader = { path = "crate/hsm/gcp_cloud_hsm", version = "5.28.0" }
-kmip-derive = { path = "crate/kmip-derive", version = "5.28.0" }
-kryoptic_pkcs11_loader = { path = "crate/hsm/kryoptic", version = "5.28.0" }
-luna_pkcs11_loader = { path = "crate/hsm/luna", version = "5.28.0" }
-proteccio_pkcs11_loader = { path = "crate/hsm/proteccio", version = "5.28.0" }
-smartcardhsm_pkcs11_loader = { path = "crate/hsm/smartcardhsm", version = "5.28.0" }
-softhsm2_pkcs11_loader = { path = "crate/hsm/softhsm2", version = "5.28.0" }
-test_kms_server = { path = "crate/test_kms_server", version = "5.28.0" }
-utimaco_pkcs11_loader = { path = "crate/hsm/utimaco", version = "5.28.0" }
+aws_cloudhsm_pkcs11_loader = { path = "crate/hsm/aws_cloudhsm", version = "5.29.0" }
+azure_cloud_hsm_pkcs11_loader = { path = "crate/hsm/azure_cloud_hsm", version = "5.29.0" }
+ckms = { path = "crate/clients/ckms", version = "5.29.0" }
+cosmian_kmip = { path = "crate/kmip", version = "5.29.0" }
+cosmian_kms_access = { path = "crate/access", version = "5.29.0" }
+cosmian_kms_base_hsm = { path = "crate/hsm/base_hsm", version = "5.29.0" }
+cosmian_kms_cli_actions = { path = "crate/clients/clap", version = "5.29.0" }
+cosmian_kms_client = { path = "crate/clients/client", version = "5.29.0" }
+cosmian_kms_client_utils = { path = "crate/clients/client_utils", version = "5.29.0" }
+cosmian_kms_crypto = { path = "crate/crypto", version = "5.29.0" }
+cosmian_kms_interfaces = { path = "crate/interfaces", version = "5.29.0" }
+cosmian_kms_server = { path = "crate/server", version = "5.29.0" }
+cosmian_kms_server_database = { path = "crate/server_database", version = "5.29.0" }
+cosmian_pkcs11_module = { path = "crate/clients/pkcs11/module", version = "5.29.0" }
+crypt2pay_pkcs11_loader = { path = "crate/hsm/crypt2pay", version = "5.29.0" }
+gcp_cloud_hsm_pkcs11_loader = { path = "crate/hsm/gcp_cloud_hsm", version = "5.29.0" }
+kmip-derive = { path = "crate/kmip-derive", version = "5.29.0" }
+kryoptic_pkcs11_loader = { path = "crate/hsm/kryoptic", version = "5.29.0" }
+luna_pkcs11_loader = { path = "crate/hsm/luna", version = "5.29.0" }
+proteccio_pkcs11_loader = { path = "crate/hsm/proteccio", version = "5.29.0" }
+smartcardhsm_pkcs11_loader = { path = "crate/hsm/smartcardhsm", version = "5.29.0" }
+softhsm2_pkcs11_loader = { path = "crate/hsm/softhsm2", version = "5.29.0" }
+test_kms_server = { path = "crate/test_kms_server", version = "5.29.0" }
+utimaco_pkcs11_loader = { path = "crate/hsm/utimaco", version = "5.29.0" }
 
 # Cosmian crates
 cosmian_config_utils = "0.7"

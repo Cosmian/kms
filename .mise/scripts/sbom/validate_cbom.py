@@ -7,11 +7,11 @@ Performs two complementary validation passes:
 
   1. Structural  — checks required fields, valid enum values, PURL format,
                    UUID serial number, ISO-8601 timestamp, bom-ref uniqueness.
-                   Runs offline, no external dependencies beyond jsonschema.
+                   Runs offline, without extra dependencies.
 
-  2. Schema      — validates against the official CycloneDX 1.6 JSON Schema
-                   downloaded from cyclonedx.org and cached locally under
-                   .cache/cyclonedx/. Falls back gracefully when offline.
+  2. Schema      — validates against the official CycloneDX 1.6 JSON Schema,
+                   committed under schema/ so this pass never depends on the network.
+                   Requires the jsonschema package (pip install jsonschema).
 
 Exit code 0 = valid.  Exit code 1 = one or more errors found.
 
@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import re
 import sys
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -43,6 +42,8 @@ VALID_PRIMITIVES = {
     'xof',
     'combiner',
     'pke',
+    'drbg',
+    'mac',
     'other',
     'unknown',
 }
@@ -52,13 +53,11 @@ VALID_CRYPTO_FUNCTIONS = {
     'keygen',
     'encrypt',
     'decrypt',
-    'sign',
-    'verify',
     'digest',
     'tag',
     'keyderive',
-    'wrap',
-    'unwrap',
+    'sign',
+    'verify',
     'encapsulate',
     'decapsulate',
     'other',
@@ -91,26 +90,22 @@ VALID_COMPONENT_TYPES = {
 
 VALID_MODES = {
     'cbc',
-    'ccm',
-    'cfb',
-    'ctr',
     'ecb',
+    'ccm',
     'gcm',
+    'cfb',
     'ofb',
-    'siv',
-    'xts',
-    'kw',
-    'kwp',
+    'ctr',
     'other',
     'unknown',
 }
 
 VALID_PADDINGS = {
-    'oaep',
+    'pkcs5',
+    'pkcs7',
     'pkcs1v15',
-    'pss',
+    'oaep',
     'raw',
-    'none',
     'other',
     'unknown',
 }
@@ -124,24 +119,35 @@ VALID_EXECUTION_ENVS = {
     'unknown',
 }
 
-VALID_IMPL_LEVELS = {
-    'algorithmic',
-    'partial',
-    'primitive',
-    'library',
-    'hardwareComponent',
-    'softwareComponent',
-    'firmware',
+VALID_CERTIFICATION_LEVELS = {
+    'none',
+    *(f"fips140-{version}-l{level}" for version in (1, 2, 3) for level in (1, 2, 3, 4)),
+    *(f"cc-eal{n}{plus}" for n in range(1, 8) for plus in ('', '+')),
     'other',
     'unknown',
 }
 
-# CycloneDX 1.6 JSON schema — downloaded once and cached
-SCHEMA_URL = 'https://cyclonedx.org/schema/bom-1.6.schema.json'
-CACHE_DIR = (
-    Path(__file__).resolve().parent.parent.parent.parent / '.cache' / 'cyclonedx'
-)
-SCHEMA_CACHE = CACHE_DIR / 'bom-1.6.schema.json'
+# Keys CycloneDX 1.6 allows in algorithmProperties; anything else fails the official schema.
+ALLOWED_ALGORITHM_PROPERTIES = {
+    'primitive',
+    'parameterSetIdentifier',
+    'curve',
+    'executionEnvironment',
+    'implementationPlatform',
+    'certificationLevel',
+    'mode',
+    'padding',
+    'cryptoFunctions',
+    'classicalSecurityLevel',
+    'nistQuantumSecurityLevel',
+}
+
+# CycloneDX 1.6 JSON schema (Apache-2.0), committed as a pinned copy of
+# https://cyclonedx.org/schema/bom-1.6.schema.json. It has no external $ref. Byte-identical
+# to the download except for one trailing newline added by the end-of-file hook.
+# Recompute: shasum -a 256 .mise/scripts/sbom/schema/bom-1.6.schema.json
+# Expected:  bf8177eee4e8979f2ef15dd131f0ef55eaa2168382b5f888ff8a6d1c7e4d09b3
+SCHEMA_PATH = Path(__file__).resolve().parent / 'schema' / 'bom-1.6.schema.json'
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -350,11 +356,11 @@ def _validate_crypto_asset(comp: dict[str, Any], loc: str, errors: list[str]) ->
                 f"{exec_env!r} is not valid"
             )
 
-        impl_level = ap.get('implementationLevel')
-        if impl_level and impl_level not in VALID_IMPL_LEVELS:
+        unexpected = sorted(set(ap) - ALLOWED_ALGORITHM_PROPERTIES)
+        if unexpected:
             errors.append(
-                f"{loc}: algorithmProperties.implementationLevel "
-                f"{impl_level!r} is not valid"
+                f"{loc}: algorithmProperties has keys not allowed by CycloneDX 1.6: "
+                f"{unexpected}"
             )
 
         crypto_fns = ap.get('cryptoFunctions', [])
@@ -375,6 +381,13 @@ def _validate_crypto_asset(comp: dict[str, Any], loc: str, errors: list[str]) ->
             errors.append(
                 f"{loc}: algorithmProperties.certificationLevel must be an array"
             )
+        else:
+            for level in cert_levels:
+                if level not in VALID_CERTIFICATION_LEVELS:
+                    errors.append(
+                        f"{loc}: unknown certificationLevel {level!r}; "
+                        f"valid: {sorted(VALID_CERTIFICATION_LEVELS)}"
+                    )
 
         classical_sec = ap.get('classicalSecurityLevel')
         if classical_sec is not None and not isinstance(classical_sec, int):
@@ -391,60 +404,28 @@ def _validate_crypto_asset(comp: dict[str, Any], loc: str, errors: list[str]) ->
                 )
 
 
-# ── Pass 2: JSON schema validation (online, cached) ───────────────────────────
-
-
-def _fetch_schema() -> dict[str, Any] | None:
-    """Return the CycloneDX 1.6 JSON schema, downloading and caching it if needed."""
-    if SCHEMA_CACHE.exists():
-        try:
-            return json.loads(SCHEMA_CACHE.read_text(encoding='utf-8'))
-        except Exception:
-            pass
-
-    try:
-        print(
-            f"  Downloading CycloneDX 1.6 schema from {SCHEMA_URL} …", file=sys.stderr
-        )
-        with urllib.request.urlopen(SCHEMA_URL, timeout=10) as resp:
-            data = resp.read().decode('utf-8')
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        SCHEMA_CACHE.write_text(data, encoding='utf-8')
-        return json.loads(data)
-    except Exception as exc:
-        print(
-            f"  Warning: could not fetch schema ({exc}) — skipping JSON-schema pass.",
-            file=sys.stderr,
-        )
-        return None
+# ── Pass 2: JSON schema validation ────────────────────────────────────────────
 
 
 def validate_schema(cbom: dict[str, Any]) -> list[str]:
-    """Validate against the official CycloneDX 1.6 JSON schema (best-effort)."""
-    try:
-        import jsonschema  # noqa: F401 — checked at call site
-    except ImportError:
-        return []
+    """Validate against the official CycloneDX 1.6 JSON schema.
 
-    schema = _fetch_schema()
-    if schema is None:
-        return []
-
-    errors: list[str] = []
+    Never skipped: a missing jsonschema package is reported as an error, not as a pass.
+    """
     try:
         import jsonschema
+    except ImportError:
+        return [
+            'The jsonschema package is required for this pass: pip install jsonschema'
+        ]
 
-        validator = jsonschema.Draft7Validator(schema)
-        for err in sorted(validator.iter_errors(cbom), key=lambda e: list(e.path)):
-            path = ' > '.join(str(p) for p in err.path) if err.path else '(root)'
-            errors.append(f"Schema [{path}]: {err.message}")
-    except Exception as exc:
-        print(
-            f"  Warning: JSON schema validation raised an exception: {exc}",
-            file=sys.stderr,
-        )
-
-    return errors
+    schema = json.loads(SCHEMA_PATH.read_text(encoding='utf-8'))
+    validator = jsonschema.Draft7Validator(schema)
+    return [
+        f"Schema [{' > '.join(str(p) for p in err.path) if err.path else '(root)'}]: "
+        f"{err.message}"
+        for err in sorted(validator.iter_errors(cbom), key=lambda e: list(e.path))
+    ]
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -479,7 +460,7 @@ def main() -> None:
             f"    ✓ {ca} cryptographic-asset components, {lib} library components — OK"
         )
 
-    # Pass 2: JSON schema (best-effort, requires network on first run)
+    # Pass 2: JSON schema
     print('  [2/2] CycloneDX 1.6 JSON schema validation …')
     schema_errors = validate_schema(cbom)
     all_errors.extend(schema_errors)
@@ -489,7 +470,7 @@ def main() -> None:
         if len(schema_errors) > 20:
             print(f"    … {len(schema_errors) - 20} more schema errors")
     else:
-        print('    ✓ Schema validation passed (or schema unavailable)')
+        print('    ✓ Schema validation passed')
 
     if all_errors:
         print(

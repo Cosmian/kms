@@ -65,6 +65,10 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
+      # bench:hsm / bench:pkcs11 re-exec inside nix-shell (not preinstalled on the benchmark runner).
+      - uses: ./.github/actions/setup-nix
+        if: inputs.server_version == ''
+
       - name: Install system dependencies
         run: |
           if command -v apt-get >/dev/null 2>&1; then
@@ -80,7 +84,10 @@ jobs:
           [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
           mise run bench:load "${ARGS[@]}"
 
+      # The steps below always benchmark the checked-out code (no --server-version support), so
+      # running them for a released version would publish checkout numbers under that version.
       - name: Run HSM-backed KEK benchmark (bench:hsm)
+        if: inputs.server_version == ''
         run: |
           mise run bench:hsm \
             --variant "${{ inputs.variant }}" \
@@ -88,6 +95,7 @@ jobs:
             --criterion
 
       - name: Run HSM-delegated crypto benchmark (bench:hsm --delegated)
+        if: inputs.server_version == ''
         run: |
           mise run bench:hsm --delegated \
             --variant "${{ inputs.variant }}" \
@@ -95,6 +103,7 @@ jobs:
             --criterion
 
       - name: Run PKCS#11 benchmark (bench:pkcs11)
+        if: inputs.server_version == ''
         run: |
           # bench:pkcs11's --mode choices are a different, narrower set than the other
           # three tasks (no "sign-verify"/"batch"). Fall back to "all" when the shared
@@ -113,6 +122,7 @@ jobs:
             --criterion
 
       - name: Run HSM-delegated PKCS#11 benchmark (bench:pkcs11 --delegated)
+        if: inputs.server_version == ''
         run: |
           # Same PKCS11_MODE fallback logic for the delegated step
           PKCS11_MODE_DELEGATED="${{ inputs.bench_mode }}"

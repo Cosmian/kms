@@ -37,20 +37,20 @@ For example:
 
 ```sh
 # Debian package
-gpg --verify cosmian-kms-server-non-fips-static-openssl_5.28.0_amd64.deb.asc \
-             cosmian-kms-server-non-fips-static-openssl_5.28.0_amd64.deb
+gpg --verify cosmian-kms-server-non-fips-static-openssl_5.29.0_amd64.deb.asc \
+             cosmian-kms-server-non-fips-static-openssl_5.29.0_amd64.deb
 
 # RPM package
-gpg --verify cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.rpm.asc \
-             cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.rpm
+gpg --verify cosmian-kms-server-non-fips-static-openssl_5.29.0_x86_64.rpm.asc \
+             cosmian-kms-server-non-fips-static-openssl_5.29.0_x86_64.rpm
 
 # APK package (Alpine Linux)
-gpg --verify cosmian-kms-server-non-fips_5.28.0-r0_x86_64.apk.asc \
-             cosmian-kms-server-non-fips_5.28.0-r0_x86_64.apk
+gpg --verify cosmian-kms-server-non-fips_5.29.0-r0_x86_64.apk.asc \
+             cosmian-kms-server-non-fips_5.29.0-r0_x86_64.apk
 
 # DMG package
-gpg --verify cosmian-kms-server-non-fips-static-openssl-5.28.0_arm64.dmg.asc \
-             cosmian-kms-server-non-fips-static-openssl-5.28.0_arm64.dmg
+gpg --verify cosmian-kms-server-non-fips-static-openssl-5.29.0_arm64.dmg.asc \
+             cosmian-kms-server-non-fips-static-openssl-5.29.0_arm64.dmg
 ```
 
 A successful verification prints:
@@ -110,16 +110,16 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     ```sh
     sudo apt update && sudo apt install -y wget
     # Standard build (non-FIPS, static OpenSSL)
-    wget https://package.cosmian.com/kms/5.28.0/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.28.0_amd64.deb
-    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.28.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.29.0/deb/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.29.0_amd64.deb
+    sudo apt install ./cosmian-kms-server-non-fips-static-openssl_5.29.0_amd64.deb
     sudo cosmian_kms --version
     ```
 
     Or install the FIPS build:
 
     ```sh
-    wget https://package.cosmian.com/kms/5.28.0/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.28.0_amd64.deb
-    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.28.0_amd64.deb
+    wget https://package.cosmian.com/kms/5.29.0/deb/amd64/fips/static/cosmian-kms-server-fips-static-openssl_5.29.0_amd64.deb
+    sudo apt install ./cosmian-kms-server-fips-static-openssl_5.29.0_amd64.deb
     sudo cosmian_kms --version
     ```
 
@@ -139,8 +139,8 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
     ```sh
     sudo dnf update && sudo dnf install -y wget
-    wget https://package.cosmian.com/kms/5.28.0/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.rpm
-    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.rpm
+    wget https://package.cosmian.com/kms/5.29.0/rpm/amd64/non-fips/static/cosmian-kms-server-non-fips-static-openssl_5.29.0_x86_64.rpm
+    sudo dnf install ./cosmian-kms-server-non-fips-static-openssl_5.29.0_x86_64.rpm
     sudo cosmian_kms --version
     ```
 
@@ -169,10 +169,10 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     ```sh
     apk add --no-cache gnupg wget
     gpg --import cosmian-kms-public.asc
-    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk
-    wget https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk.asc
-    gpg --verify cosmian-kms-server-fips_5.28.0-r0_x86_64.apk.asc cosmian-kms-server-fips_5.28.0-r0_x86_64.apk \
-      && apk add --allow-untrusted ./cosmian-kms-server-fips_5.28.0-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.29.0/apk/amd64/fips/cosmian-kms-server-fips_5.29.0-r0_x86_64.apk
+    wget https://package.cosmian.com/kms/5.29.0/apk/amd64/fips/cosmian-kms-server-fips_5.29.0-r0_x86_64.apk.asc
+    gpg --verify cosmian-kms-server-fips_5.29.0-r0_x86_64.apk.asc cosmian-kms-server-fips_5.29.0-r0_x86_64.apk \
+      && apk add --allow-untrusted ./cosmian-kms-server-fips_5.29.0-r0_x86_64.apk
     rc-update add cosmian_kms default
     rc-service cosmian_kms start
     ```
@@ -199,8 +199,8 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     ```dockerfile
     FROM alpine:3.21
     COPY cosmian-kms-public.asc /tmp/cosmian-kms-public.asc
-    ADD https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk /tmp/kms.apk
-    ADD https://package.cosmian.com/kms/5.28.0/apk/amd64/fips/cosmian-kms-server-fips_5.28.0-r0_x86_64.apk.asc /tmp/kms.apk.asc
+    ADD https://package.cosmian.com/kms/5.29.0/apk/amd64/fips/cosmian-kms-server-fips_5.29.0-r0_x86_64.apk /tmp/kms.apk
+    ADD https://package.cosmian.com/kms/5.29.0/apk/amd64/fips/cosmian-kms-server-fips_5.29.0-r0_x86_64.apk.asc /tmp/kms.apk.asc
     RUN apk add --no-cache ca-certificates gnupg \
         && gpg --batch --import /tmp/cosmian-kms-public.asc \
         && gpg --batch --verify /tmp/kms.apk.asc /tmp/kms.apk \
@@ -229,12 +229,12 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     - Apple Silicon (ARM64):
 
         ```sh
-        open "https://package.cosmian.com/kms/5.28.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.28.0_arm64.dmg"
+        open "https://package.cosmian.com/kms/5.29.0/dmg/arm64/non-fips/static/cosmian-kms-server-non-fips-static-openssl-5.29.0_arm64.dmg"
         ```
 
     Then drag-and-drop the app to Applications or follow the DMG instructions.
 
-    Note: The 5.28.0 DMG is provided for Apple Silicon (ARM64).
+    Note: The 5.29.0 DMG is provided for Apple Silicon (ARM64).
 
     After installation, run:
 
@@ -255,18 +255,18 @@ Available dynamic packages for Debian-based distributions:
 
 ```sh
 # Non-FIPS dynamic (OpenSSL linked dynamically)
-wget https://package.cosmian.com/kms/5.28.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.28.0_amd64.deb
+wget https://package.cosmian.com/kms/5.29.0/deb/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.29.0_amd64.deb
 # FIPS dynamic
-wget https://package.cosmian.com/kms/5.28.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.28.0_amd64.deb
+wget https://package.cosmian.com/kms/5.29.0/deb/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.29.0_amd64.deb
 ```
 
 Available dynamic packages for Rocky Linux:
 
 ```sh
 # Non-FIPS dynamic
-wget https://package.cosmian.com/kms/5.28.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.28.0_x86_64.rpm
+wget https://package.cosmian.com/kms/5.29.0/rpm/amd64/non-fips/dynamic/cosmian-kms-server-non-fips-dynamic-openssl_5.29.0_x86_64.rpm
 # FIPS dynamic
-wget https://package.cosmian.com/kms/5.28.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.28.0_x86_64.rpm
+wget https://package.cosmian.com/kms/5.29.0/rpm/amd64/fips/dynamic/cosmian-kms-server-fips-dynamic-openssl_5.29.0_x86_64.rpm
 ```
 
 To use custom OpenSSL with dynamic builds, install or place the desired OpenSSL
@@ -277,7 +277,7 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     On Windows, download the NSIS installer:
 
     ```sh
-    https://package.cosmian.com/kms/5.28.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.28.0_x86_64.exe
+    https://package.cosmian.com/kms/5.29.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.29.0_x86_64.exe
     ```
 
     Run the installer to install Eviden KMS Server. The installer will:

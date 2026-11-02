@@ -379,6 +379,114 @@ jobs:
           echo "=== kms-image-test logs ==="
           kubectl logs -n kms-image-test -l "app.kubernetes.io/instance=kms-image-test" --tail=80 2>/dev/null || true
 
+  # ── Kubernetes deployment with a live hardware HSM ───────────────────────
+  # Deploys the images built above (FIPS and non-FIPS) with the documented Helm values
+  # (documentation/docs/hsm_support/<model>.md), so they are not built a second time. The vendor
+  # libraries are x86_64 only, hence amd64. The HSMs refuse concurrent CI runs, hence the same
+  # per-HSM concurrency group as the `hsm-upstream` job of test_all.yml. Upstream repository only.
+
+  test-k8s-hsm:
+    name: k8s-hsm-${{ matrix.hsm-type }}
+    needs: nix-docker-image
+    if: >-
+      github.repository == 'Cosmian/kms' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    concurrency:
+      group: ${{ format('hsm-{0}', matrix.hsm-type) }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        hsm-type: [proteccio, crypt2pay]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Login to GHCR
+        uses: ./.github/actions/docker-login-ghcr
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute FIPS image tag
+        id: meta_fips
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/cosmian/kms-fips
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Compute non-FIPS image tag
+        id: meta_non_fips
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/cosmian/kms
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Pull the images built by nix-docker-image
+        id: images
+        env:
+          FIPS_TAGS: ${{ steps.meta_fips.outputs.tags }}
+          NON_FIPS_TAGS: ${{ steps.meta_non_fips.outputs.tags }}
+        run: |
+          set -euo pipefail
+          fips="$(echo "$FIPS_TAGS" | head -n1)-amd64"
+          non_fips="$(echo "$NON_FIPS_TAGS" | head -n1)-amd64"
+          docker pull "$fips"
+          docker pull "$non_fips"
+          echo "fips=$fips" >> "$GITHUB_OUTPUT"
+          echo "non_fips=$non_fips" >> "$GITHUB_OUTPUT"
+
+      - name: Install OpenVPN
+        if: matrix.hsm-type == 'crypt2pay'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openvpn
+
+      # Installs the vendor client library and configuration on the host; the task copies them
+      # into the Kubernetes Secrets and the client image. Crypt2pay is reached through OpenVPN.
+      - name: Prepare the HSM client
+        env:
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+        run: bash ".github/reusable_scripts/prepare_${{ matrix.hsm-type }}.sh"
+
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Test Kubernetes deployment (FIPS and non-FIPS images)
+        env:
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+          FIPS_IMAGE: ${{ steps.images.outputs.fips }}
+          NON_FIPS_IMAGE: ${{ steps.images.outputs.non_fips }}
+        run: |
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant fips --local-image "$FIPS_IMAGE"
+          mise run test:k8s:hsm --model ${{ matrix.hsm-type }} --variant non-fips --local-image "$NON_FIPS_IMAGE"
+
   # ── Kubernetes Operator Docker image ──────────────────────────────────────
 
   k8s-operator-image:

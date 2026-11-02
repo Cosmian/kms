@@ -1,6 +1,6 @@
 # idx  ttlv-json/5.28.0  label
-0  74020.74  "hsm-aes-256/create"
-1  215892.21  "hsm-ec-p256/create"
-2  209818.80  "hsm-ed25519/create"
-3  216121.71  "hsm-ed448/create"
-4  284529.27  "hsm-rsa-2048/create"
+0  71696.17  "hsm-aes-256/create"
+1  204795.54  "hsm-ec-p256/create"
+2  206159.08  "hsm-ed25519/create"
+3  209920.75  "hsm-ed448/create"
+4  261414.14  "hsm-rsa-2048/create"
