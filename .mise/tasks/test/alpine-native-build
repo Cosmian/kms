@@ -33,7 +33,7 @@ kms_init_env "${usage_variant:-fips}" "static"
 # portability, at the cost of not matching the project's exact OpenSSL
 # version/FIPS-module pin (it links whatever `apk add openssl-dev` provides
 # for the standalone openssl-sys dependency; crate/crypto/build.rs still
-# builds its *own* pinned 3.6.2 — with the FIPS module when --variant=fips —
+# builds its *own* pinned 3.6.5 — with the FIPS module when --variant=fips —
 # from source natively, exactly as it would on any other native Linux host).
 # ---------------------------------------------------------------------------
 

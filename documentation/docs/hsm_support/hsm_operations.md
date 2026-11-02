@@ -845,7 +845,7 @@ and locates the SoftHSM2 library). The mise task exports the resulting cdylib pa
 `kryoptic`'s own `standard` feature (EdDSA, HKDF, etc.) requires OpenSSL >= 3.2.0, which is
 newer than the system OpenSSL on some CI runners/dev machines (e.g. Ubuntu 22.04/24.04 ship
 3.0.x). Rather than depend on whatever OpenSSL happens to be installed, `kryoptic_build_cdylib`
-first builds this workspace's own OpenSSL 3.6.2 (`crate/crypto/build.rs`, if not already built)
+first builds this workspace's own OpenSSL 3.6.5 (`crate/crypto/build.rs`, if not already built)
 and points `kryoptic`'s pkg-config-based OpenSSL discovery at it via `PKG_CONFIG_PATH` — so the
 token always builds against the exact same, known-good OpenSSL version this workspace already
 uses, on every machine.

@@ -52,7 +52,7 @@ _kryoptic_cdylib_filename() {
 }
 
 # Builds this workspace's own OpenSSL (see crate/crypto/build.rs, pinned to
-# 3.6.2) if not already built, and points `kryoptic`'s OpenSSL discovery at it
+# 3.6.5) if not already built, and points `kryoptic`'s OpenSSL discovery at it
 # via `PKG_CONFIG_PATH`, instead of letting it silently pick up whatever
 # OpenSSL happens to be installed system-wide.
 #
@@ -62,7 +62,7 @@ _kryoptic_cdylib_filename() {
 # hard-requires OpenSSL >= 3.2.0. Ubuntu 22.04/24.04 CI runners (and some
 # local dev machines) ship an older system OpenSSL (e.g. 3.0.x), which fails
 # this check with "OpenSSL 3.2.0 or later is required" even though this exact
-# workspace already builds a conformant OpenSSL 3.6.2 for its own crates.
+# workspace already builds a conformant OpenSSL 3.6.5 for its own crates.
 # Uniformizing on that same build removes the dependency on the ambient
 # system OpenSSL version entirely, making this suite reproducible across
 # local machines and CI.
@@ -84,7 +84,7 @@ _kryoptic_ensure_repo_openssl() {
   repo_root="$(get_repo_root "${MISE_CONFIG_ROOT:-.}")"
   target_dir="${CARGO_TARGET_DIR:-${repo_root}/target}"
 
-  print_status "Building this workspace's non-FIPS OpenSSL 3.6.2 (cargo build -p cosmian_kms_crypto \
+  print_status "Building this workspace's non-FIPS OpenSSL 3.6.5 (cargo build -p cosmian_kms_crypto \
 --features non-fips), if not already built"
   (cd "$repo_root" && cargo build -p cosmian_kms_crypto --features non-fips)
 

@@ -238,7 +238,7 @@ echo "==> Building libcosmian_pkcs11.so for linux/amd64…"
 PKCS11_TARGET_DIR="${REPO_ROOT}/target/pkcs11-linux-amd64"
 # Prevent a stale/incomplete OpenSSL prefix from forcing dynamic linkage into
 # the PKCS#11 module loaded inside the ASE dataserver.
-rm -rf "${REPO_ROOT}/target/openssl-non-fips-3.6.2-linux-x86_64"
+rm -rf "${REPO_ROOT}/target/openssl-non-fips-3.6.5-linux-x86_64"
 rm -rf "${PKCS11_TARGET_DIR}"
 RUST_VERSION=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${REPO_ROOT}/rust-toolchain.toml" | head -1)
 docker run --rm --platform linux/amd64 \

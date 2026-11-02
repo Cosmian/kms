@@ -17,9 +17,9 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 # other than this CI cross-check build.
 # ---------------------------------------------------------------------------
 
-OPENSSL_VERSION="3.6.2"
+OPENSSL_VERSION="3.6.5"
 OPENSSL_URL="https://package.cosmian.com/openssl/openssl-${OPENSSL_VERSION}.tar.gz"
-OPENSSL_SHA256="aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f"
+OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
 
 require_cmd curl
 require_cmd perl

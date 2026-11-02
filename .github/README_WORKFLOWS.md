@@ -469,7 +469,7 @@ All CI jobs invoke it as `mise run [task] --variant [fips|non-fips]`.
 | Option | Values | Default | Description |
 |---|---|---|---|
 | `-v`, `--variant` | `fips` \| `non-fips` | `fips` | Cryptographic variant |
-| `-l`, `--link` | `static` \| `dynamic` | `static` | OpenSSL linkage (`static` = 3.6.2 bundled, `dynamic` = system) |
+| `-l`, `--link` | `static` \| `dynamic` | `static` | OpenSSL linkage (`static` = 3.6.5 bundled, `dynamic` = system) |
 
 #### Commands
 
@@ -529,14 +529,14 @@ Environment variables accepted for test configuration:
 **`sbom`** — Generate a Software Bill of Materials:
 
 ```bash
-nix.sh sbom [--target <openssl_3_1_2|openssl_3_6_2|server|ckms>]
+nix.sh sbom [--target <openssl_3_1_2|openssl_3_6_5|server|ckms>]
             [--variant fips|non-fips] [--link static|dynamic]
             [--retrieve [--branch <branch|tag>]]
 ```
 
 | Option | Description |
 |---|---|
-| `--target` | `openssl_3_1_2`, `openssl_3_6_2`, `server`, or `ckms` (default: all) |
+| `--target` | `openssl_3_1_2`, `openssl_3_6_5`, `server`, or `ckms` (default: all) |
 | `--variant` / `--link` | Filter to a specific variant/link (only with `--target server\|ckms`) |
 | `--retrieve` | Download SBOMs from `package.cosmian.com` instead of generating locally |
 | `--branch` | Remote branch or tag to retrieve from (e.g. `5.16.2` or `last_build/develop`) |

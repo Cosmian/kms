@@ -187,7 +187,7 @@ fn ecdsa_sign_rfc6979_openssl(
 ///
 /// `openssl::pkey_ctx::NonceType` is gated on `ossl320`, which is off whenever `openssl-sys`
 /// is built against older headers (e.g. system 3.0.x) while the final binary links the
-/// 3.6.2 libcrypto from `build.rs`. The raw `OSSL_PARAM` call only needs `ossl300`.
+/// 3.6.5 libcrypto from `build.rs`. The raw `OSSL_PARAM` call only needs `ossl300`.
 /// Returns `false` when the linked libcrypto does not honour the parameter (OpenSSL < 3.2
 /// silently ignores unknown parameters), so the caller never mistakes a random-nonce
 /// signature for an RFC 6979 one and falls back to the default OpenSSL signer instead.
@@ -482,7 +482,7 @@ mod tests {
         let ec_key = openssl::ec::EcKey::private_key_from_pem(pem.as_bytes()).unwrap();
         let pkey = PKey::from_ec_key(ec_key).unwrap();
 
-        // The linked libcrypto (3.6.2) must honour `nonce-type`; otherwise `ecdsa_sign`
+        // The linked libcrypto (3.6.5) must honour `nonce-type`; otherwise `ecdsa_sign`
         // would silently take the slow pure-Rust fallback.
         let mut ctx = PkeyCtx::new(&pkey).unwrap();
         ctx.sign_init().unwrap();
