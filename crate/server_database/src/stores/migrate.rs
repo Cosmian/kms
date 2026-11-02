@@ -13,6 +13,9 @@ use crate::{
     error::{DbError, DbResult},
 };
 
+/// Completion marker for the `PostgreSQL` `objects.attributes` conversion from `json` to `jsonb`.
+pub(crate) const ATTRIBUTES_JSONB_PARAM: &str = "attributes_jsonb_converted";
+
 /// Completion marker for the one-time scan deriving wrapping-key IDs from stored objects.
 pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled";
 
@@ -27,6 +30,9 @@ const SUPPORTED_BASELINE: Version = Version(5, 20, 0);
 /// Data transformations whose markers and version checkpoints are owned by the runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MigrationStep {
+    /// `PostgreSQL` converts `objects.attributes` from `json` to `jsonb`; other backends have
+    /// nothing to convert.
+    AttributesJsonb,
     /// Make pre-existing wrapped objects discoverable through `find_wrapped_by`.
     WrappingKeyIdBackfill,
     /// Add serial lookup tags to certificates created before that tag existed.
@@ -34,7 +40,8 @@ pub(crate) enum MigrationStep {
 }
 
 /// Strictly ascending release boundaries; adding a step also requires backend and scenario tests.
-pub(crate) const MIGRATION_STEPS: [MigrationStep; 2] = [
+pub(crate) const MIGRATION_STEPS: [MigrationStep; 3] = [
+    MigrationStep::AttributesJsonb,
     MigrationStep::WrappingKeyIdBackfill,
     MigrationStep::CertificateSerialTagBackfill,
 ];
@@ -42,6 +49,7 @@ pub(crate) const MIGRATION_STEPS: [MigrationStep; 2] = [
 impl MigrationStep {
     pub(crate) const fn version(self) -> &'static str {
         match self {
+            Self::AttributesJsonb => "5.15.0",
             Self::WrappingKeyIdBackfill => "5.25.0",
             Self::CertificateSerialTagBackfill => "5.29.0",
         }
@@ -49,6 +57,7 @@ impl MigrationStep {
 
     pub(crate) const fn marker(self) -> &'static str {
         match self {
+            Self::AttributesJsonb => ATTRIBUTES_JSONB_PARAM,
             Self::WrappingKeyIdBackfill => WRAPPING_KEY_BACKFILL_PARAM,
             Self::CertificateSerialTagBackfill => CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,
         }
