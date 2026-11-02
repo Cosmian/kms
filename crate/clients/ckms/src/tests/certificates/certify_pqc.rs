@@ -165,7 +165,7 @@ fn certify_ml_kem_ca_issued(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Prove the KMS server correctly serves HTTPS with an ML-DSA-44 TLS certificate
-/// and that `ckms` (using OpenSSL 3.6.2) can natively perform KMIP operations
+/// and that `ckms` (using OpenSSL 3.6.5) can natively perform KMIP operations
 /// over the PQC TLS connection — no special client needed.
 #[tokio::test]
 async fn test_server_with_pqc_tls_cert() -> CosmianResult<()> {
