@@ -48,6 +48,38 @@ use crate::{
 // Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
 const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
 
+#[cfg(feature = "non-fips")]
+fn configure_client_identity(
+    mut ssl_opts: SslOpts,
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<SslOpts> {
+    if let Some(path) = identity_path {
+        let mut identity = ClientIdentity::new(PathBuf::from(path).into());
+        if let Some(password) = identity_password {
+            identity = identity.with_password(password.to_owned());
+        }
+        ssl_opts = ssl_opts.with_client_identity(Some(identity));
+    }
+    Ok(ssl_opts)
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn configure_client_identity(
+    ssl_opts: SslOpts,
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<SslOpts> {
+    if identity_path.is_some() || identity_password.is_some() {
+        return Err(DbError::DatabaseError(
+            "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure \
+             MySQL without client identity."
+                .to_owned(),
+        ));
+    }
+    Ok(ssl_opts)
+}
+
 fn is_mysql_deadlock(msg: &str) -> bool {
     // Match common forms from MySQL/MariaDB drivers and servers
     // Examples:
@@ -193,43 +225,17 @@ impl MySqlPool {
                         }
                     }
 
-                    #[cfg(feature = "non-fips")]
-                    {
-                        if let Some(p12_path) = query_params
+                    ssl_opts = configure_client_identity(
+                        ssl_opts,
+                        query_params
                             .get("ssl-client-identity")
                             .or_else(|| query_params.get("ssl_client_identity"))
-                        {
-                            let password = query_params
-                                .get("ssl-client-identity-password")
-                                .or_else(|| query_params.get("ssl_client_identity_password"))
-                                .map(std::string::ToString::to_string);
-
-                            let mut identity =
-                                ClientIdentity::new(PathBuf::from(p12_path.as_ref()).into());
-                            if let Some(pass) = password {
-                                identity = identity.with_password(pass);
-                            }
-                            ssl_opts = ssl_opts.with_client_identity(Some(identity));
-                        }
-                    }
-                    #[cfg(not(feature = "non-fips"))]
-                    {
-                        if query_params
-                            .get("ssl-client-identity")
-                            .or_else(|| query_params.get("ssl_client_identity"))
-                            .is_some()
-                            || query_params
-                                .get("ssl-client-identity-password")
-                                .or_else(|| query_params.get("ssl_client_identity_password"))
-                                .is_some()
-                        {
-                            return Err(DbError::DatabaseError(
-                                "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS \
-                                 mode or configure MySQL without client identity."
-                                    .to_owned(),
-                            ));
-                        }
-                    }
+                            .map(AsRef::as_ref),
+                        query_params
+                            .get("ssl-client-identity-password")
+                            .or_else(|| query_params.get("ssl_client_identity_password"))
+                            .map(AsRef::as_ref),
+                    )?;
 
                     opts = mysql_async::OptsBuilder::from_opts(opts)
                         .ssl_opts(Some(ssl_opts))
