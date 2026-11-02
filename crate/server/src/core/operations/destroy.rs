@@ -258,14 +258,14 @@ pub(crate) async fn recursively_destroy_object(
                         && kb.key_format_type == KeyFormatType::CoverCryptSecretKey
                     {
                         destroy_user_decryption_keys(
-                                        &private_key_id,
-                                        remove,
-                                        true, // always cascade when destroying a `Covercrypt` master private key
-                                        kms,
-                                        user,
-                                        ids_to_skip.clone(),
-                                    )
-                                    .await?;
+                            &private_key_id,
+                            remove,
+                            true, // always cascade when destroying a `Covercrypt` master private key
+                            kms,
+                            user,
+                            ids_to_skip.clone(),
+                        )
+                        .await?;
                     }
                     // Try to destroy the linked private key, but don't fail if it's not allowed
                     // This allows destroying a PreActive public key even if its linked private key is Active

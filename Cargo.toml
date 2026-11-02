@@ -141,7 +141,7 @@ large_stack_arrays = "deny"
 [workspace.package]
 version = "5.29.0"
 edition = "2024"
-rust-version = "1.95.0"
+rust-version = "1.93.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
