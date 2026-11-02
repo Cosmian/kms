@@ -41,8 +41,8 @@ use crate::{
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState,
+            WRAPPING_KEY_BACKFILL_PARAM, certificate_serial_tag,
         },
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
@@ -316,13 +316,13 @@ impl RedisWithFindex {
         if count == 0 {
             debug!("Empty Redis database detected. Initializing a new database instance.");
             redis_with_findex
-                .set_current_db_version(env!("CARGO_PKG_VERSION"))
+                .set_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
             redis_with_findex.set_db_state(DbState::Ready).await?;
         } else {
             // Existing database detected. Accept databases that have our version/state markers;
             // refuse truly legacy databases (no markers or non-ready state) since migrations were removed.
-            let db_version = redis_with_findex.get_current_db_version().await?;
+            let db_version = redis_with_findex.get_db_version().await?;
             let db_state = redis_with_findex.get_db_state().await?;
 
             match (db_version, db_state) {

@@ -29,8 +29,8 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState,
+            WRAPPING_KEY_BACKFILL_PARAM, certificate_serial_tag,
         },
         pgsql_queries,
         sql::{
@@ -592,8 +592,7 @@ impl PgPool {
             // self-deadlock the following `pg_get_client` calls.
             drop(client);
             let tmp = Self { pool: pool.clone() };
-            tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
+            tmp.set_db_version(env!("CARGO_PKG_VERSION")).await?;
             tmp.set_db_state(DbState::Ready).await?;
         }
         Ok(Self { pool })
@@ -1309,23 +1308,22 @@ impl ObjectsStore for PgPool {
 }
 
 #[async_trait(?Send)]
-impl Migrate for PgPool {
-    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+impl DbParameters for PgPool {
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
         let client = pg_get_client(&self.pool).await?;
-        let sql = get_pgsql_query!("upsert-parameter");
-        let state_json = serde_json::to_string(&state)?;
-        client
-            .execute(sql, &[&"db_state", &state_json])
+        let row = client
+            .query_opt(get_pgsql_query!("select-parameter"), &[&name])
             .await
             .map_err(DbError::from)?;
-        Ok(())
+        row.map(|row| row.try_get(0).map_err(DbError::from))
+            .transpose()
     }
 
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
         let client = pg_get_client(&self.pool).await?;
         let sql = get_pgsql_query!("upsert-parameter");
         client
-            .execute(sql, &[&"db_version", &version])
+            .execute(sql, &[&name, &value])
             .await
             .map_err(DbError::from)?;
         Ok(())
