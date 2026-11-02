@@ -19,7 +19,6 @@ use cosmian_kms_interfaces::{
     ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
-use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
 use tokio_rusqlite::Connection;
@@ -44,7 +43,6 @@ use crate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
             wait_for_migration_lock,
         },
-        sql::database::SqlDatabase,
     },
 };
 static SQLITE_CONVERTED_QUERIES: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
@@ -430,12 +428,6 @@ impl SqlitePool {
             .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
             .await
             .map_err(DbError::from)
-    }
-}
-
-impl SqlDatabase for SqlitePool {
-    fn get_loader(&self) -> &Loader {
-        &PGSQL_QUERIES
     }
 }
 
