@@ -61,6 +61,7 @@ mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
+mod ssh_ca;
 mod sub_ca;
 mod symmetric_dek;
 pub(crate) mod test_helpers;
@@ -144,6 +145,9 @@ async fn test_hsm_all() {
     info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
     Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
 
+    info!("HSM: ssh_ca (OpenSSH certificates signed by a non-extractable CA key)");
+    Box::pin(ssh_ca::test_hsm_ssh_ca()).await.unwrap();
+
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 
@@ -167,6 +171,14 @@ async fn test_hsm_jose() {
     Box::pin(jose_decrypt::test_jose_hsm_decryption())
         .await
         .unwrap();
+}
+
+/// SSH CA flow against the HSM, standalone.
+#[tokio::test]
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_ssh_ca() {
+    log_init(option_env!("RUST_LOG"));
+    Box::pin(ssh_ca::test_hsm_ssh_ca()).await.unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {

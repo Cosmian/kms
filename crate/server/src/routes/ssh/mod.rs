@@ -1,4 +1,4 @@
-mod certificate;
+pub(crate) mod certificate;
 mod storage;
 mod types;
 

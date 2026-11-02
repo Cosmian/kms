@@ -162,6 +162,8 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 | `test:spire` | non-fips | SPIRE + Mistral client full integration |
 | `test:spire-pki` | non-fips | KMS PKI capability validation |
 | `test:openbao` | fips | OpenBao `bao kv` CLI against the KMS KV v2-compatible store |
+| `test:ssh-certificates` | fips | KMS-issued SSH certificates accepted then refused by a real `sshd` |
+| `test:secret-rotation` | fips | PostgreSQL password rotation published to the KV store, with recovery |
 
 ### PKCS#11 & disk encryption
 

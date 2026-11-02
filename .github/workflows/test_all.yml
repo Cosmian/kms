@@ -48,6 +48,8 @@ jobs:
           - openbao-psql
           - openbao-mysql
           - openbao-kmip
+          - ssh-certificates
+          - secret-rotation
           - kmip-go
           - cef
           - monitoring

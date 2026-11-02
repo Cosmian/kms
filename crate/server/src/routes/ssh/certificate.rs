@@ -365,17 +365,19 @@ fn encode_signature(
     signature: &[u8],
 ) -> KResult<Vec<u8>> {
     let name = algorithm.ssh_name(ca)?;
-    let data = match algorithm {
+    let data = if matches!(
+        algorithm,
         SshSignatureAlgorithm::EcdsaSha256
-        | SshSignatureAlgorithm::EcdsaSha384
-        | SshSignatureAlgorithm::EcdsaSha512 => {
-            let parsed = EcdsaSig::from_der(signature)?;
-            let mut encoded = Vec::new();
-            put_mpint(&mut encoded, &parsed.r().to_vec())?;
-            put_mpint(&mut encoded, &parsed.s().to_vec())?;
-            encoded
-        }
-        _ => signature.to_vec(),
+            | SshSignatureAlgorithm::EcdsaSha384
+            | SshSignatureAlgorithm::EcdsaSha512
+    ) {
+        let parsed = EcdsaSig::from_der(signature)?;
+        let mut encoded = Vec::new();
+        put_mpint(&mut encoded, &parsed.r().to_vec())?;
+        put_mpint(&mut encoded, &parsed.s().to_vec())?;
+        encoded
+    } else {
+        signature.to_vec()
     };
     let mut encoded = Vec::new();
     put_string(&mut encoded, name.as_bytes())?;

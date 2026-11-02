@@ -763,6 +763,18 @@ The scenario checks that `bao operator init` completes with seal type `kmip` (no
 
 To run it by hand: `mise run test:openbao-kmip --variant non-fips`. The KMS must listen with `[socket_server]` and `clients_ca_cert_file` set, and OpenBao must trust the CA that signed the KMS certificate (`server_name` must match a SAN of that certificate).
 
+### `test:ssh-certificates`
+
+**Description:** KMS-issued OpenSSH user certificates checked by a real, unprivileged `sshd` (`TrustedUserCAKeys`). Runs in both variants; needs `sshd` and `ssh-keygen` on the host. The script ([`test_ssh_certificates.sh`](../../scripts/test/test_ssh_certificates.sh)) creates an ECDSA P-256 CA and then an RSA-3072 CA with `ckms`, configures the CA and a role, and issues a 6-second certificate.
+
+It asserts that `ssh-keygen -L` parses the certificate and that its signing key is the published CA key; that `sshd` accepts it before expiry, refuses a principal different from the login and refuses it after expiry; and that a principal outside the role (401), a TTL above the role maximum (422) and an RSA-1024 subject key (422) are rejected. The HSM-resident CA path is covered by `tests::hsm::ssh_ca` in `test:hsm-softhsm2`.
+
+### `test:secret-rotation`
+
+**Description:** PostgreSQL role password rotation published to the KV store. Needs Docker (`postgres:16-alpine` and the OpenBao image used as token verifier, as in `test:openbao`). The script ([`test_secret_rotation.sh`](../../scripts/test/test_secret_rotation.sh)) generates a password with `POST /v1/secrets/password`, changes the role password, and writes it to KV.
+
+It asserts that the new password works, the old one is refused, and a KV consumer reads the new value. In a second scenario the KV write is refused (invalid token): the pending value is kept, the rotation is not reported complete, and publishing the same value again succeeds.
+
 ---
 
 ## 7. PKI & Revocation

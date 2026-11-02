@@ -149,6 +149,19 @@ If the PostgreSQL update itself fails, do not publish the pending value; confirm
 
 This pattern demonstrates recovery from a failed KV publication; it is not an atomic transaction across PostgreSQL and KMS. Adapt the database update and retry/alerting logic to the deployment, and ensure the process can securely retain the pending value across the expected recovery window.
 
+## What the operator configures
+
+- The CA key, in the KMS or on an HSM (`Sign` granted only to trusted callers), and the CA configuration and roles, done by a Crypto Officer.
+- On each SSH host: `TrustedUserCAKeys` pointing to the public key from `GET /v1/ssh/public_key`, and the principals allowed for each account.
+- For rotation: the database update, the KV token and the secure retention of the pending value; the KMS only generates the password.
+- Log hygiene: the KMS does not log generated passwords or private keys; keep it that way in the scripts that call the API.
+
+## Automated checks
+
+- `mise run test:ssh-certificates` starts a real `sshd` trusting the KMS CA (ECDSA P-256 and RSA-3072) and checks that a certificate is accepted before expiry and refused after, and that unauthorized principals, an excessive TTL and weak subject keys are rejected.
+- `mise run test:secret-rotation` rotates a PostgreSQL password, checks that the new one works and the old one fails, that a KV consumer reads the new value, and that a failed KV write can be retried.
+- `tests::hsm::ssh_ca` (run by `mise run test:hsm-softhsm2`) checks certificates signed by a non-extractable HSM CA key.
+
 ## Limits
 
 - SSH CA configuration and role changes require an active Crypto Officer.
