@@ -158,6 +158,14 @@ let
     else
       pkgs;
 
+  # nixos-26.05 for the Docker image runtime (curl, wget, bash, glibc, CA bundle…) and the
+  # image scanners: kept apart from `pkgs` so server/CLI builds and dev tooling are unaffected.
+  # To update: nix hash to-sri --type sha256 $(nix-prefetch-url --unpack https://package.cosmian.com/nixpkgs/<commit>.tar.gz)
+  pkgsDocker = import (builtins.fetchTarball {
+    url = "https://package.cosmian.com/nixpkgs/9bb52223f4f6a0cc606fd0852d8784f896c137d5.tar.gz";
+    sha256 = "sha256-2Cxxgpz1+cRgKZJFi12/9LG3aIBN66f2RvFs34Oj/A0=";
+  }) { config.allowUnfree = true; };
+
   # Create rustPlatform: on Linux use pkgs234.makeRustPlatform (glibc 2.34),
   # but with modern Rust toolchain
   rustPlatform190 =
@@ -367,7 +375,7 @@ let
   };
 
   # Docker images using dockerTools (minimal images)
-  docker-image-fips = pkgs.callPackage ./nix/docker.nix {
+  docker-image-fips = pkgsDocker.callPackage ./nix/docker.nix {
     kmsServer = kms-server-fips-static-openssl;
     pkcs11LibDrv = kms-cli-fips-static-openssl;
     variant = "fips";
@@ -375,7 +383,7 @@ let
     opensslDrv = openssl312;
   };
 
-  docker-image-non-fips = pkgs.callPackage ./nix/docker.nix {
+  docker-image-non-fips = pkgsDocker.callPackage ./nix/docker.nix {
     kmsServer = kms-server-non-fips-static-openssl;
     pkcs11LibDrv = kms-cli-non-fips-static-openssl;
     variant = "non-fips";
