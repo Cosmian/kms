@@ -8,7 +8,8 @@
 #   Colors & printing:  RED GREEN YELLOW BLUE NC, print_header/status/warning/error/success/info
 #   Environment:        kms_init_env, get_repo_root, require_cmd, has_cmd, has_env_vars,
 #                       docker_ready, ensure_macos_sdk_env, ensure_macos_frameworks_ldflags,
-#                       setup_test_logging, run_isolated, wait_for_port, compute_sha256
+#                       setup_test_logging, run_isolated, wait_for_command, wait_for_port,
+#                       compute_sha256
 #   Test helpers:       build_test_deps, run_db_tests, check_and_test_db
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
@@ -264,6 +265,19 @@ wait_for_port() {
     fi
     now=$(date +%s)
     [ $((now - start)) -ge "$timeout" ] && return 1
+    sleep 1
+  done
+}
+
+# Retry a command once per second until it succeeds or the timeout expires.
+wait_for_command() {
+  local timeout="$1"
+  shift
+  local start now
+  start=$(date +%s)
+  while ! "$@"; do
+    now=$(date +%s)
+    [ $((now - start)) -ge "${timeout}" ] && return 1
     sleep 1
   done
 }
