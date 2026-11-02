@@ -161,15 +161,12 @@ impl MigrationFixture for PostgresFixture {
         let messages = postgres_client(&self.url).await?.simple_query(sql).await?;
         let mut rows = Vec::new();
         for message in messages {
-            match message {
-                SimpleQueryMessage::Row(row) => {
-                    rows.push(
-                        (0..row.len())
-                            .map(|column| row.get(column).map(str::to_owned))
-                            .collect(),
-                    );
-                }
-                SimpleQueryMessage::CommandComplete(_) | _ => {}
+            if let SimpleQueryMessage::Row(row) = message {
+                rows.push(
+                    (0..row.len())
+                        .map(|column| row.get(column).map(str::to_owned))
+                        .collect(),
+                );
             }
         }
         Ok(rows)
