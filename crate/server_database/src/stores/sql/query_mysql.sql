@@ -20,6 +20,33 @@ DELETE
 FROM parameters
 WHERE name = ?;
 
+-- name: has-table-parameters
+SELECT 1
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'parameters';
+
+-- Startup migrations hold row 1 FOR UPDATE NOWAIT in a transaction on a dedicated connection.
+-- name: create-table-migration-lock
+CREATE TABLE IF NOT EXISTS kms_migration_lock
+(
+    id TINYINT NOT NULL PRIMARY KEY
+);
+
+-- name: has-migration-lock-row
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1;
+
+-- name: insert-migration-lock-row
+INSERT IGNORE INTO kms_migration_lock (id)
+VALUES (1);
+
+-- name: select-migration-lock
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1 FOR UPDATE NOWAIT;
+
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
@@ -239,6 +266,9 @@ FROM objects
 LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
 WHERE (objects.owner = ? OR read_access.userid = ?)
   AND objects.wrapping_key_id = ?;
+
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
 
 -- name: select-objects-null-wrapping-key
 SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;

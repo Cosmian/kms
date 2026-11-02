@@ -17,6 +17,13 @@ SELECT value FROM parameters WHERE name=$1;
 -- name: delete-parameter
 DELETE FROM parameters WHERE name=$1;
 
+-- name: has-table-parameters
+SELECT to_regclass('parameters') IS NOT NULL;
+
+-- 1263358785 is ASCII "KMSA" (audit schema bootstrap uses slot 1); slot 2 serializes startup migrations.
+-- name: select-migration-advisory-lock
+SELECT pg_try_advisory_lock(1263358785, 2);
+
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects (
@@ -37,6 +44,15 @@ ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);
 
 -- name: add-column-version
 ALTER TABLE objects ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
+
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
+
+-- name: is-attributes-jsonb
+SELECT atttypid = 'jsonb'::regtype FROM pg_attribute WHERE attrelid = 'objects'::regclass AND attname = 'attributes';
+
+-- name: alter-attributes-jsonb
+ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (

@@ -29,8 +29,8 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState,
-            WRAPPING_KEY_BACKFILL_PARAM, certificate_serial_tag,
+            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
+            wait_for_migration_lock,
         },
         pgsql_queries,
         sql::{
@@ -377,12 +377,35 @@ pub(crate) struct PgPool {
     pool: Pool,
 }
 
+/// Dropping the detached client ends its session, which releases the advisory lock.
+pub(crate) struct PgMigrationLock {
+    _client: deadpool_postgres::ClientWrapper,
+}
+
 impl PgPool {
+    /// Do not expose connections until schema initialization and migrations have completed.
     pub(crate) async fn instantiate(
         connection_url: &str,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
+        Self::instantiate_at_version(
+            connection_url,
+            clear_database,
+            max_connections,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        .map(|(pool, _)| pool)
+    }
+
+    /// Explicit targets and applied steps make intermediate upgrades observable in scenario tests.
+    pub(crate) async fn instantiate_at_version(
+        connection_url: &str,
+        clear_database: bool,
+        max_connections: Option<u32>,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         let (url, tls) = prepare_pg_connection(connection_url)?;
 
         let mut cfg = PgConfig::new();
@@ -417,185 +440,97 @@ impl PgPool {
             .create_pool(None, tls)
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
 
-        let mut client = pool.get().await.map_err(DbError::from)?;
-        // Bootstrap schema if needed: create tables if they don't exist
-        let tmp_loader = Self { pool: pool.clone() };
-        for name in [
-            "create-table-parameters",
-            "create-table-objects",
-            "create-table-read_access",
-            "create-table-tags",
-            "create-table-crypto_officer_activations",
-            "create-table-crls",
-        ] {
-            let sql = tmp_loader.get_query(name)?;
-            client.batch_execute(sql).await.map_err(DbError::from)?;
-        }
-        // Ensure attributes column is jsonb (and convert if needed)
-        client
-            .batch_execute(tmp_loader.get_query("alter-column-attributes-jsonb")?)
-            .await
-            .map_err(DbError::from)?;
-        // Add wrapping_key_id column if not present (idempotent).
-        client
-            .batch_execute(tmp_loader.get_query("add-column-wrapping-key-id")?)
-            .await
-            .map_err(DbError::from)?;
-        // Optimistic-locking version counter (idempotent).
-        client
-            .batch_execute(tmp_loader.get_query("add-column-version")?)
-            .await
-            .map_err(DbError::from)?;
-        // Add activated_by column to crypto_officer_activations (idempotent).
-        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
-        client
-            .batch_execute(tmp_loader.get_query("add-column-co-activated-by")?)
-            .await
-            .map_err(DbError::from)?;
-        // Unique partial index: at most one active activation record per user.
-        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
-        client
-            .batch_execute(tmp_loader.get_query("create-unique-index-co-activations-active")?)
-            .await
-            .map_err(DbError::from)?;
-        // Create the read-path indexes (idempotent). PostgreSQL supports
-        // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
-        // They are built synchronously: on a large existing table, the first start
-        // after an upgrade blocks writes to `objects` while each new index builds.
-        for name in [
-            "create-index-objects-owner",
-            "create-index-objects-state",
-            "create-index-read_access-userid",
-            "create-index-objects-wrapping-key-id",
-            "create-index-tags-tag-id",
-            "create-index-objects-rotate-lookup",
-            "create-index-objects-rotate-auto",
-            "create-index-objects-type-state",
-        ] {
-            let sql = tmp_loader.get_query(name)?;
-            client.batch_execute(sql).await.map_err(DbError::from)?;
-        }
-        // One-time `wrapping_key_id` backfill for pre-existing objects, gated by a
-        // completion marker so the O(N) scan runs at most once per database. The
-        // scan, updates and marker share a transaction: an interrupted run leaves
-        // the marker unset and re-executes cleanly on the next boot.
-        let backfill_done = client
-            .query_opt(
-                get_pgsql_query!("select-parameter"),
-                &[&WRAPPING_KEY_BACKFILL_PARAM],
-            )
-            .await
-            .map_err(DbError::from)?
-            .map(|row| row.get::<usize, String>(0))
-            == Some("true".to_owned());
-        if !backfill_done {
-            let tx = client.transaction().await.map_err(DbError::from)?;
-            let update_stmt = tx
-                .prepare(get_pgsql_query!("update-wrapping-key-id"))
-                .await
-                .map_err(DbError::from)?;
-            let null_rows = tx
-                .query(get_pgsql_query!("select-objects-null-wrapping-key"), &[])
-                .await
-                .map_err(DbError::from)?;
-            for row in &null_rows {
-                let id: String = row.get(0);
-                let object_json: String = row.get(1);
-                match serde_json::from_str::<Object>(&object_json) {
-                    Ok(obj) => {
-                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                            tx.execute(&update_stmt, &[&wrapping_uid, &id])
-                                .await
-                                .map_err(DbError::from)?;
-                        }
-                    }
-                    Err(e) => tracing::warn!(
-                        uid = %id,
-                        error = %e,
-                        "wrapping_key_id backfill: skipping object that failed to deserialize"
-                    ),
-                }
-            }
-            tx.execute(
-                get_pgsql_query!("upsert-parameter"),
-                &[&WRAPPING_KEY_BACKFILL_PARAM, &"true"],
-            )
-            .await
-            .map_err(DbError::from)?;
-            tx.commit().await.map_err(DbError::from)?;
-        }
-        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
-        // existed, gated by a completion marker (same transactional shape as above).
-        let serial_backfill_done = client
-            .query_opt(
-                get_pgsql_query!("select-parameter"),
-                &[&CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-            )
-            .await
-            .map_err(DbError::from)?
-            .map(|row| row.get::<usize, String>(0))
-            == Some("true".to_owned());
-        if !serial_backfill_done {
-            let tx = client.transaction().await.map_err(DbError::from)?;
-            let missing_rows = tx
-                .query(
-                    get_pgsql_query!("select-certificates-missing-serial-tag"),
-                    &[],
-                )
-                .await
-                .map_err(DbError::from)?;
-            let insert_tag_stmt = tx
-                .prepare(get_pgsql_query!("insert-tags-if-absent"))
-                .await
-                .map_err(DbError::from)?;
-            for row in &missing_rows {
-                let id: String = row.get(0);
-                let object_json: String = row.get(1);
-                match serde_json::from_str::<Object>(&object_json) {
-                    Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&id, &obj) {
-                            tx.execute(&insert_tag_stmt, &[&id, &tag])
-                                .await
-                                .map_err(DbError::from)?;
-                        }
-                    }
-                    Err(e) => tracing::warn!(
-                        uid = %id,
-                        error = %e,
-                        "serial tag backfill: skipping object that failed to deserialize"
-                    ),
-                }
-            }
-            tx.execute(
-                get_pgsql_query!("upsert-parameter"),
-                &[&CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, &"true"],
-            )
-            .await
-            .map_err(DbError::from)?;
-            tx.commit().await.map_err(DbError::from)?;
-        }
+        let pool = Self { pool };
+        let applied = pool.bootstrap(clear_database, target).await?;
+        Ok((pool, applied))
+    }
 
-        // Optionally clear any existing data (useful for tests)
-        if clear_database {
-            for name in [
-                // Remove dependent rows first to avoid potential constraints if present
-                "clean-table-read_access",
-                "clean-table-tags",
-                "clean-table-objects",
-                "clean-table-crls",
-            ] {
-                let sql = tmp_loader.get_query(name)?;
-                client.batch_execute(sql).await.map_err(DbError::from)?;
-            }
-            // Release the connection before requesting another one below — with a
-            // pool sized to a single connection, holding `client` here would
-            // self-deadlock the following `pg_get_client` calls.
-            drop(client);
-            let tmp = Self { pool: pool.clone() };
-            tmp.set_db_version(env!("CARGO_PKG_VERSION")).await?;
-            tmp.set_db_state(DbState::Ready).await?;
+    /// Re-running the conversion on a `jsonb` column rebuilds every expression index on
+    /// `attributes` under an exclusive lock, so only a `json` column is converted.
+    async fn convert_attributes_to_jsonb(&self) -> DbResult<()> {
+        let client = pg_get_client(&self.pool).await?;
+        let is_jsonb: bool = client
+            .query_one(get_pgsql_query!("is-attributes-jsonb"), &[])
+            .await
+            .map_err(DbError::from)?
+            .try_get(0)
+            .map_err(DbError::from)?;
+        if !is_jsonb {
+            client
+                .batch_execute(get_pgsql_query!("alter-attributes-jsonb"))
+                .await
+                .map_err(DbError::from)?;
         }
-        Ok(Self { pool })
+        Ok(())
+    }
+
+    /// The scan and updates share a transaction, so an interrupted run leaves no partial backfill.
+    async fn backfill_wrapping_key_id(&self) -> DbResult<()> {
+        let mut client = pg_get_client(&self.pool).await?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        let update_stmt = tx
+            .prepare(get_pgsql_query!("update-wrapping-key-id"))
+            .await
+            .map_err(DbError::from)?;
+        let null_rows = tx
+            .query(get_pgsql_query!("select-objects-null-wrapping-key"), &[])
+            .await
+            .map_err(DbError::from)?;
+        for row in &null_rows {
+            let id: String = row.try_get(0).map_err(DbError::from)?;
+            let object_json: String = row.try_get(1).map_err(DbError::from)?;
+            match serde_json::from_str::<Object>(&object_json) {
+                Ok(obj) => {
+                    if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                        tx.execute(&update_stmt, &[&wrapping_uid, &id])
+                            .await
+                            .map_err(DbError::from)?;
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    uid = %id,
+                    error = %e,
+                    "wrapping_key_id backfill: skipping object that failed to deserialize"
+                ),
+            }
+        }
+        tx.commit().await.map_err(DbError::from)
+    }
+
+    /// Same transactional shape as the wrapping-key backfill.
+    async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let mut client = pg_get_client(&self.pool).await?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        let missing_rows = tx
+            .query(
+                get_pgsql_query!("select-certificates-missing-serial-tag"),
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?;
+        let insert_tag_stmt = tx
+            .prepare(get_pgsql_query!("insert-tags-if-absent"))
+            .await
+            .map_err(DbError::from)?;
+        for row in &missing_rows {
+            let id: String = row.try_get(0).map_err(DbError::from)?;
+            let object_json: String = row.try_get(1).map_err(DbError::from)?;
+            match serde_json::from_str::<Object>(&object_json) {
+                Ok(obj) => {
+                    if let Some(tag) = certificate_serial_tag(&id, &obj) {
+                        tx.execute(&insert_tag_stmt, &[&id, &tag])
+                            .await
+                            .map_err(DbError::from)?;
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    uid = %id,
+                    error = %e,
+                    "serial tag backfill: skipping object that failed to deserialize"
+                ),
+            }
+        }
+        tx.commit().await.map_err(DbError::from)
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
@@ -1311,6 +1246,15 @@ impl ObjectsStore for PgPool {
 impl DbParameters for PgPool {
     async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
         let client = pg_get_client(&self.pool).await?;
+        let parameters_exist: bool = client
+            .query_one(get_pgsql_query!("has-table-parameters"), &[])
+            .await
+            .map_err(DbError::from)?
+            .try_get(0)
+            .map_err(DbError::from)?;
+        if !parameters_exist {
+            return Ok(None);
+        }
         let row = client
             .query_opt(get_pgsql_query!("select-parameter"), &[&name])
             .await
@@ -1327,6 +1271,120 @@ impl DbParameters for PgPool {
             .await
             .map_err(DbError::from)?;
         Ok(())
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for PgPool {
+    type MigrationLock = PgMigrationLock;
+
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+
+    async fn has_data(&self) -> DbResult<bool> {
+        let client = pg_get_client(&self.pool).await?;
+        Ok(client
+            .query_opt(get_pgsql_query!("has-objects"), &[])
+            .await
+            .map_err(DbError::from)?
+            .is_some())
+    }
+
+    async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
+        // Detached, so the pool slot is freed while the session (and the lock) lives on.
+        let client = deadpool_postgres::Object::take(pg_get_client(&self.pool).await?);
+        let lock_query = get_pgsql_query!("select-migration-advisory-lock");
+        wait_for_migration_lock(
+            "PostgreSQL advisory lock (1263358785, 2)",
+            MIGRATION_LOCK_TIMEOUT,
+            async || {
+                client
+                    .query_one(lock_query, &[])
+                    .await
+                    .and_then(|row| row.try_get(0))
+                    .map_err(DbError::from)
+            },
+        )
+        .await?;
+        Ok(PgMigrationLock { _client: client })
+    }
+
+    async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        let client = pg_get_client(&self.pool).await?;
+        // Bootstrap schema if needed: create tables if they don't exist
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+            "create-table-crypto_officer_activations",
+            "create-table-crls",
+        ] {
+            let sql = self.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Add wrapping_key_id column if not present (idempotent).
+        client
+            .batch_execute(self.get_query("add-column-wrapping-key-id")?)
+            .await
+            .map_err(DbError::from)?;
+        // Optimistic-locking version counter (idempotent).
+        client
+            .batch_execute(self.get_query("add-column-version")?)
+            .await
+            .map_err(DbError::from)?;
+        // Add activated_by column to crypto_officer_activations (idempotent).
+        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
+        client
+            .batch_execute(self.get_query("add-column-co-activated-by")?)
+            .await
+            .map_err(DbError::from)?;
+        // Unique partial index: at most one active activation record per user.
+        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
+        client
+            .batch_execute(self.get_query("create-unique-index-co-activations-active")?)
+            .await
+            .map_err(DbError::from)?;
+        // Create the read-path indexes (idempotent). PostgreSQL supports
+        // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        // They are built synchronously: on a large existing table, the first start
+        // after an upgrade blocks writes to `objects` while each new index builds.
+        for name in [
+            "create-index-objects-owner",
+            "create-index-objects-state",
+            "create-index-read_access-userid",
+            "create-index-objects-wrapping-key-id",
+            "create-index-tags-tag-id",
+            "create-index-objects-rotate-lookup",
+            "create-index-objects-rotate-auto",
+            "create-index-objects-type-state",
+        ] {
+            let sql = self.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Optionally clear any existing data (useful for tests)
+        if clear_database {
+            for name in [
+                // Remove dependent rows first to avoid potential constraints if present
+                "clean-table-read_access",
+                "clean-table-tags",
+                "clean-table-objects",
+                "clean-table-crls",
+            ] {
+                let sql = self.get_query(name)?;
+                client.batch_execute(sql).await.map_err(DbError::from)?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
+        match step {
+            MigrationStep::AttributesJsonb => self.convert_attributes_to_jsonb().await,
+            MigrationStep::WrappingKeyIdBackfill => self.backfill_wrapping_key_id().await,
+            MigrationStep::CertificateSerialTagBackfill => {
+                self.backfill_certificate_serial_tags().await
+            }
+        }
     }
 }
 
