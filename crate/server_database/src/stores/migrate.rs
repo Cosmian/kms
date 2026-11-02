@@ -1,23 +1,117 @@
+use std::{str::FromStr, time::Duration};
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip_2_1::{
     extra::tagging::SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, kmip_objects::Object,
 };
+use cosmian_logger::reexport::tracing;
 use serde::{Deserialize, Serialize};
 
-use crate::{core::extract_serial_hex_from_object, error::DbResult};
+use crate::{
+    core::extract_serial_hex_from_object,
+    db_error,
+    error::{DbError, DbResult},
+};
 
-/// Name of the `parameters` row that records whether the one-time
-/// `wrapping_key_id` backfill has completed for this database.
-///
-/// The backfill scans and deserializes every object whose `wrapping_key_id`
-/// column is `NULL`. Without this marker the scan would re-run on every server
-/// startup (unwrapped objects legitimately keep a `NULL` value forever), so the
-/// marker gates it to run at most once per database.
+/// Completion marker for the one-time scan deriving wrapping-key IDs from stored objects.
 pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled";
 
-/// Name of the `parameters` row that records whether the one-time `_serial=<HEX>` tag
-/// backfill for certificates stored before that tag existed has completed.
+/// Completion marker for the one-time certificate `_serial=<HEX>` tag backfill.
 pub(crate) const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
+
+/// Maximum time a starting instance waits for another instance's migration lock.
+pub(crate) const MIGRATION_LOCK_TIMEOUT: Duration = Duration::from_mins(31);
+const MIGRATION_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const SUPPORTED_BASELINE: Version = Version(5, 20, 0);
+
+/// Data transformations whose markers and version checkpoints are owned by the runner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MigrationStep {
+    /// Make pre-existing wrapped objects discoverable through `find_wrapped_by`.
+    WrappingKeyIdBackfill,
+    /// Add serial lookup tags to certificates created before that tag existed.
+    CertificateSerialTagBackfill,
+}
+
+/// Strictly ascending release boundaries; adding a step also requires backend and scenario tests.
+pub(crate) const MIGRATION_STEPS: [MigrationStep; 2] = [
+    MigrationStep::WrappingKeyIdBackfill,
+    MigrationStep::CertificateSerialTagBackfill,
+];
+
+impl MigrationStep {
+    pub(crate) const fn version(self) -> &'static str {
+        match self {
+            Self::WrappingKeyIdBackfill => "5.25.0",
+            Self::CertificateSerialTagBackfill => "5.29.0",
+        }
+    }
+
+    pub(crate) const fn marker(self) -> &'static str {
+        match self {
+            Self::WrappingKeyIdBackfill => WRAPPING_KEY_BACKFILL_PARAM,
+            Self::CertificateSerialTagBackfill => CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Version(u32, u32, u32);
+
+impl FromStr for Version {
+    type Err = DbError;
+
+    fn from_str(value: &str) -> DbResult<Self> {
+        let invalid = || {
+            db_error!("Invalid database migration version '{value}': expected MAJOR.MINOR.PATCH")
+        };
+        let core = value.split(['-', '+']).next().ok_or_else(invalid)?;
+        let mut components = core.split('.');
+        let mut component = || {
+            components
+                .next()
+                .filter(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+                .ok_or_else(invalid)?
+                .parse::<u32>()
+                .map_err(|error| db_error!("Invalid database migration version '{value}': {error}"))
+        };
+        let version = Self(component()?, component()?, component()?);
+        if components.next().is_some() {
+            return Err(invalid());
+        }
+        Ok(version)
+    }
+}
+
+fn newer_database_error(recorded: &str, target: &str) -> DbError {
+    db_error!(
+        "Database version {recorded} is newer than this KMS server version {target}: \
+         refusing to start. Upgrade the KMS server to {recorded} or later."
+    )
+}
+
+/// Poll without blocking the runtime; attempts may borrow a dedicated mutable backend connection.
+pub(crate) async fn wait_for_migration_lock(
+    lock_name: &str,
+    max_wait: Duration,
+    mut try_acquire: impl AsyncFnMut() -> DbResult<bool>,
+) -> DbResult<()> {
+    tokio::time::timeout(max_wait, async {
+        loop {
+            if try_acquire().await? {
+                return Ok(());
+            }
+            tokio::time::sleep(MIGRATION_LOCK_POLL_INTERVAL).await;
+        }
+    })
+    .await
+    .map_err(|error| {
+        db_error!(
+            "Timed out after {max_wait:?} waiting for database migration lock '{lock_name}': \
+             held by another KMS instance ({error})"
+        )
+    })?
+}
 
 /// `_serial=<HEX>` tag for a certificate object (same value as `set_certificate_serial_tag`),
 /// `None` for any other object or an unparsable certificate.
@@ -26,31 +120,173 @@ pub(crate) fn certificate_serial_tag(object: &Object) -> Option<String> {
         .map(|hex| format!("{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{hex}"))
 }
 
+/// Persisted as JSON strings (`"ready"` and `"upgrading"`) on every backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-/// The state of the database
 pub(crate) enum DbState {
     Ready,
     Upgrading,
 }
 
-/// Base trait for database migration functionality
+/// Backend metadata: SQL `parameters` rows or plain Redis keys, with stable serialization.
 #[async_trait(?Send)]
-pub(crate) trait Migrate {
-    /// Set the state of the database ("ready" or "upgrading").
-    async fn set_db_state(&self, state: DbState) -> DbResult<()>;
+pub(crate) trait DbParameters {
+    /// Unknown names are absent; startup readers must also handle an uncreated parameters table.
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>>;
 
-    /// Set the current version of the database.
-    /// Recorded when a database is first initialized so that later startups can recognize it.
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()>;
+    /// Store the text verbatim; the provided state setter owns JSON serialization.
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()>;
+
+    async fn get_db_version(&self) -> DbResult<Option<String>> {
+        self.get_parameter("db_version").await
+    }
+
+    async fn set_db_version(&self, version: &str) -> DbResult<()> {
+        self.set_parameter("db_version", version).await
+    }
+
+    async fn get_db_state(&self) -> DbResult<Option<DbState>> {
+        self.get_parameter("db_state")
+            .await?
+            .map(|state| serde_json::from_str(&state).map_err(DbError::from))
+            .transpose()
+    }
+
+    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+        self.set_parameter("db_state", &serde_json::to_string(&state)?)
+            .await
+    }
+}
+
+/// Startup-only migrations, serialized before any pool is exposed to request handlers.
+#[async_trait(?Send)]
+pub(crate) trait Migrate: DbParameters {
+    /// Owns the backend's lock or session until dropped, including error paths.
+    type MigrationLock;
+
+    /// A populated, unversioned database is refused when this is `None`.
+    const UNVERSIONED_BASELINE: Option<&'static str>;
+
+    /// Check for stored objects, not metadata or the migration lock itself.
+    async fn has_data(&self) -> DbResult<bool>;
+
+    /// Wait for a cross-instance lock and retain its dedicated resource until guard drop.
+    async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock>;
+
+    /// Idempotent schema DDL and the optional wipe, without data backfills.
+    async fn ensure_schema(&self, clear_database: bool) -> DbResult<()>;
+
+    /// Data changes only: implementations must be idempotent and must not manage markers.
+    async fn apply_step(&self, step: MigrationStep) -> DbResult<()>;
+
+    /// Requires an existing schema and a held migration lock; prefer `bootstrap` at startup.
+    async fn upgrade_to(&self, target: &str) -> DbResult<Vec<MigrationStep>> {
+        let target_version = target.parse::<Version>()?;
+        if self.get_db_state().await? == Some(DbState::Upgrading) {
+            tracing::warn!("Interrupted database migration detected; resuming");
+        }
+        let stored_version = self.get_db_version().await?;
+        let recorded = match stored_version.as_deref() {
+            Some(version) => version,
+            None if !self.has_data().await? => {
+                self.set_db_version(target).await?;
+                self.set_db_state(DbState::Ready).await?;
+                return Ok(Vec::new());
+            }
+            None => Self::UNVERSIONED_BASELINE.ok_or_else(|| {
+                db_error!(
+                    "Unversioned populated Redis/Findex database: pre-5.12.0 data is unsupported; \
+                     export and re-import."
+                )
+            })?,
+        };
+        let mut recorded_version = recorded.parse::<Version>()?;
+        if recorded_version > target_version {
+            return Err(newer_database_error(recorded, target));
+        }
+        if recorded_version < SUPPORTED_BASELINE {
+            tracing::warn!(
+                recorded,
+                "transparent migration supported from 5.20.0; attempting all registered steps"
+            );
+            recorded_version = Version(0, 0, 0);
+        }
+        let applied = apply_pending_steps(self, recorded_version, target_version).await?;
+        self.set_db_version(target).await?;
+        self.set_db_state(DbState::Ready).await?;
+        tracing::info!(
+            target,
+            applied_steps = applied.len(),
+            "Database migration completed"
+        );
+        Ok(applied)
+    }
+
+    /// Validate the recorded version before DDL, then keep the lock through the final ready stamp.
+    async fn bootstrap(&self, clear_database: bool, target: &str) -> DbResult<Vec<MigrationStep>> {
+        let _lock = self.acquire_migration_lock().await?;
+        let target_version = target.parse::<Version>()?;
+        if let Some(recorded) = self.get_db_version().await? {
+            let recorded_version = recorded.parse::<Version>()?;
+            if !clear_database && recorded_version > target_version {
+                return Err(newer_database_error(&recorded, target));
+            }
+        }
+        self.ensure_schema(clear_database).await?;
+        if clear_database {
+            self.set_db_version(target).await?;
+            self.set_db_state(DbState::Ready).await?;
+            return Ok(Vec::new());
+        }
+        self.upgrade_to(target).await
+    }
+}
+
+async fn apply_pending_steps(
+    database: &(impl Migrate + ?Sized),
+    recorded: Version,
+    target: Version,
+) -> DbResult<Vec<MigrationStep>> {
+    let mut applied = Vec::new();
+    let mut upgrading = false;
+    for step in MIGRATION_STEPS {
+        let version = step.version().parse::<Version>()?;
+        if !(recorded < version && version <= target) {
+            continue;
+        }
+        if !upgrading {
+            database.set_db_state(DbState::Upgrading).await?;
+            upgrading = true;
+        }
+        if database.get_parameter(step.marker()).await?.as_deref() != Some("true") {
+            tracing::info!(
+                ?step,
+                version = step.version(),
+                "Applying database migration step"
+            );
+            database.apply_step(step).await?;
+            database.set_parameter(step.marker(), "true").await?;
+            applied.push(step);
+        }
+        database.set_db_version(step.version()).await?;
+    }
+    Ok(applied)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DbState;
+    use std::{
+        cell::Cell,
+        fs::{File, TryLockError},
+        time::Instant,
+    };
 
-    /// The serialized form is persisted in the database `parameters` table / Redis;
-    /// it must stay stable (`"ready"`, `"upgrading"`) across versions.
+    use tempfile::TempDir;
+    use tokio::sync::Notify;
+
+    use super::*;
+    use crate::db_ensure;
+
     #[test]
     fn test_db_state_serialization_is_stable() {
         assert_eq!(
@@ -66,5 +302,184 @@ mod tests {
             Some(DbState::Upgrading)
         );
         assert_eq!(serde_json::from_str::<DbState>("\"bogus\"").ok(), None);
+    }
+
+    #[test]
+    fn test_migration_versions_parse_and_compare() -> DbResult<()> {
+        db_ensure!(
+            "5.20.0".parse::<Version>()? == Version(5, 20, 0),
+            "Version parse failed"
+        );
+        db_ensure!(
+            "5.9.9".parse::<Version>()? < "5.10.0".parse::<Version>()?,
+            "Minor versions must compare numerically"
+        );
+        db_ensure!(
+            "5.24.99".parse::<Version>()? < "5.25.0".parse::<Version>()?,
+            "Minor version must precede patch version"
+        );
+        db_ensure!(
+            "5.29.0".parse::<Version>()? < "6.0.0".parse::<Version>()?,
+            "Major version ordering failed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_migration_versions_strip_suffixes() -> DbResult<()> {
+        for version in ["5.29.0-rc.1", "5.29.0+build.2", "5.29.0-rc.1+build.2"] {
+            db_ensure!(
+                version.parse::<Version>()? == Version(5, 29, 0),
+                "Suffix was not stripped: {version}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_migration_versions_reject_invalid_input() -> DbResult<()> {
+        for version in [
+            "",
+            "5.20",
+            "5.20.0.1",
+            "5.-1.0",
+            "a.20.0",
+            "4294967296.0.0",
+            "5.20. 0",
+            "5.20.0oops",
+        ] {
+            let error = version
+                .parse::<Version>()
+                .err()
+                .ok_or_else(|| db_error!("Invalid version unexpectedly accepted: {version}"))?;
+            db_ensure!(
+                error
+                    .to_string()
+                    .contains("Invalid database migration version"),
+                "Unexpected parse error: {error}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_migration_steps_are_ordered_and_reachable() -> DbResult<()> {
+        for (previous, next) in MIGRATION_STEPS.iter().zip(MIGRATION_STEPS.iter().skip(1)) {
+            db_ensure!(
+                previous.version().parse::<Version>()? < next.version().parse::<Version>()?,
+                "Migration steps must be strictly ascending"
+            );
+            db_ensure!(
+                previous.marker() != next.marker(),
+                "Migration markers must differ"
+            );
+        }
+        let last = MIGRATION_STEPS
+            .last()
+            .ok_or_else(|| db_error!("Migration step registry must not be empty"))?;
+        db_ensure!(
+            last.version().parse::<Version>()? <= env!("CARGO_PKG_VERSION").parse::<Version>()?,
+            "The last migration exceeds the running package version"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_migration_lock_waits_for_release() -> DbResult<()> {
+        let directory = TempDir::new()?;
+        let path = directory.path().join("migration.lock");
+        let held = File::options().create_new(true).write(true).open(&path)?;
+        held.try_lock().map_err(std::io::Error::from)?;
+        let waiting = File::options().write(true).open(&path)?;
+        let attempted = Notify::new();
+        let attempts = Cell::new(0_usize);
+        let start = Instant::now();
+        let acquire =
+            wait_for_migration_lock("held-test-lock", Duration::from_secs(2), async || {
+                attempts.set(attempts.get().saturating_add(1));
+                match waiting.try_lock() {
+                    Ok(()) => Ok(true),
+                    Err(TryLockError::WouldBlock) => {
+                        attempted.notify_one();
+                        Ok(false)
+                    }
+                    Err(TryLockError::Error(error)) => Err(error.into()),
+                }
+            });
+        let release = async {
+            attempted.notified().await;
+            drop(held);
+        };
+        let (acquired, ()) = tokio::join!(acquire, release);
+        acquired?;
+        db_ensure!(
+            attempts.get() == 2,
+            "Expected one blocked attempt followed by success"
+        );
+        db_ensure!(
+            start.elapsed() >= MIGRATION_LOCK_POLL_INTERVAL,
+            "Lock wait did not respect the polling interval"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_migration_lock_wait_cap() -> DbResult<()> {
+        let directory = TempDir::new()?;
+        let path = directory.path().join("migration.lock");
+        let held = File::options().create_new(true).write(true).open(&path)?;
+        held.try_lock().map_err(std::io::Error::from)?;
+        let waiting = File::options().write(true).open(&path)?;
+        let error =
+            wait_for_migration_lock("held-test-lock", Duration::from_millis(20), async || {
+                match waiting.try_lock() {
+                    Ok(()) => Ok(true),
+                    Err(TryLockError::WouldBlock) => Ok(false),
+                    Err(TryLockError::Error(error)) => Err(error.into()),
+                }
+            })
+            .await
+            .err()
+            .ok_or_else(|| db_error!("A held migration lock must time out"))?;
+        db_ensure!(
+            error.to_string().contains("Timed out after 20ms"),
+            "Wrong lock-wait cap: {error}"
+        );
+        db_ensure!(
+            error.to_string().contains("held-test-lock"),
+            "Timeout did not identify the lock"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_migration_lock_attempt_can_borrow_mutable_resource() -> DbResult<()> {
+        let mut attempts = 0_u32;
+        wait_for_migration_lock("mutable-resource", Duration::from_secs(1), async || {
+            tokio::task::yield_now().await;
+            attempts = attempts.saturating_add(1);
+            Ok(true)
+        })
+        .await?;
+        db_ensure!(
+            attempts == 1,
+            "The mutable-resource attempt did not run exactly once"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_migration_lock_propagates_backend_errors() -> DbResult<()> {
+        let error = wait_for_migration_lock("failed-lock", Duration::from_secs(1), async || {
+            Err(db_error!("Backend lock acquisition failed"))
+        })
+        .await
+        .err()
+        .ok_or_else(|| db_error!("A backend lock error must fail startup"))?;
+        db_ensure!(
+            error.to_string() == "Database Error: Backend lock acquisition failed",
+            "Backend error was not propagated: {error}"
+        );
+        Ok(())
     }
 }
