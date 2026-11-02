@@ -777,7 +777,7 @@ mod tests {
         let msg = build_signed_pkimessage(&ca_cert, &ca_key, &[], &attrs).unwrap();
         let parsed = parse_signed_pkimessage(&msg).unwrap();
         assert_eq!(parsed.attrs, attrs);
-        assert!(parsed.content.is_empty());
+        assert_eq!(parsed.content.len(), 0);
     }
 
     #[test]

@@ -156,34 +156,34 @@ fn pqc_keygen_seeded(
 
         // If FIPS provider was explicitly requested via propquery ("fips=yes"),
         // verify that the operation was approved by checking the FIPS indicator.
-        if let Some(pq) = propquery {
-            if requests_fips_provider(pq.as_bytes()) {
-                let mut indicator: std::ffi::c_int = 0;
-                let get_params = [
-                    openssl_sys::OSSL_PARAM {
-                        key: c"fips-indicator".as_ptr(),
-                        data_type: 1, // OSSL_PARAM_INTEGER
-                        data: (&raw mut indicator).cast::<std::ffi::c_void>(),
-                        data_size: std::mem::size_of::<std::ffi::c_int>(),
-                        return_size: usize::MAX,
-                    },
-                    openssl_sys::OSSL_PARAM {
-                        key: ptr::null(),
-                        data_type: 0,
-                        data: ptr::null_mut(),
-                        data_size: 0,
-                        return_size: 0,
-                    },
-                ];
-                if !fips_indicator_approved(
-                    EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()),
-                    indicator,
-                ) {
-                    openssl_sys::EVP_PKEY_free(raw_pkey);
-                    return Err(CryptoError::Default(format!(
-                        "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
-                    )));
-                }
+        if let Some(pq) = propquery
+            && requests_fips_provider(pq.as_bytes())
+        {
+            let mut indicator: std::ffi::c_int = 0;
+            let get_params = [
+                openssl_sys::OSSL_PARAM {
+                    key: c"fips-indicator".as_ptr(),
+                    data_type: 1, // OSSL_PARAM_INTEGER
+                    data: (&raw mut indicator).cast::<std::ffi::c_void>(),
+                    data_size: std::mem::size_of::<std::ffi::c_int>(),
+                    return_size: usize::MAX,
+                },
+                openssl_sys::OSSL_PARAM {
+                    key: ptr::null(),
+                    data_type: 0,
+                    data: ptr::null_mut(),
+                    data_size: 0,
+                    return_size: 0,
+                },
+            ];
+            if !fips_indicator_approved(
+                EVP_PKEY_CTX_get_params(ctx, get_params.as_ptr()),
+                indicator,
+            ) {
+                openssl_sys::EVP_PKEY_free(raw_pkey);
+                return Err(CryptoError::Default(format!(
+                    "OpenSSL FIPS indicator check failed for {name:?}: key generation was not approved"
+                )));
             }
         }
 
@@ -932,7 +932,7 @@ mod tests {
         let (priv_slh, pub_slh, bits) =
             pqc_keygen("SLH-DSA-SHA2-128s", Some(&rng), None).expect("slh-dsa keygen");
         assert!(!priv_slh.is_empty());
-        assert!(!pub_slh.is_empty());
+        assert_ne!(pub_slh.len(), 0);
         assert!(bits > 0);
     }
 
@@ -944,13 +944,13 @@ mod tests {
         let (priv_kem, pub_kem, bits) = pqc_keygen("ML-KEM-768", None, Some("provider=default"))
             .expect("default propquery kem");
         assert!(!priv_kem.is_empty());
-        assert!(!pub_kem.is_empty());
+        assert_ne!(pub_kem.len(), 0);
         assert!(bits > 0);
 
         let (priv_dsa, pub_dsa, _) =
             pqc_keygen("ML-DSA-65", None, Some("provider=default")).expect("default propquery dsa");
         assert!(!priv_dsa.is_empty());
-        assert!(!pub_dsa.is_empty());
+        assert_ne!(pub_dsa.len(), 0);
     }
 
     #[test]
@@ -969,7 +969,7 @@ mod tests {
             pqc_keygen_raw("X25519MLKEM768", None, Some("provider=default"))
                 .expect("raw default propquery");
         assert!(!priv_raw.is_empty());
-        assert!(!pub_raw.is_empty());
+        assert_ne!(pub_raw.len(), 0);
         assert!(bits > 0);
 
         let result = pqc_keygen_raw("X25519MLKEM768", None, Some("nonexistent_property=yes"));

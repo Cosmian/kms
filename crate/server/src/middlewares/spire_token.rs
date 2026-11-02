@@ -90,10 +90,10 @@ impl SpireTokenCache {
     }
 
     pub(super) fn lookup(&self, hash: &[u8; 32]) -> Option<SpireAuthenticatedUser> {
-        if let Some(entry) = self.inner.get(hash) {
-            if entry.expires_at > Instant::now() {
-                return Some(entry.user.clone());
-            }
+        if let Some(entry) = self.inner.get(hash)
+            && entry.expires_at > Instant::now()
+        {
+            return Some(entry.user.clone());
         }
         // Expired — remove
         self.inner.remove(hash);
@@ -651,7 +651,7 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(user.entity, "spire:bob");
-        assert!(user.policies.is_empty());
+        assert_eq!(user.policies.len(), 0);
     }
 
     /// An auth-verifier rejection is an error, never an empty-policy user.

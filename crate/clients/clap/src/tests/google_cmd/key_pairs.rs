@@ -340,7 +340,7 @@ async fn create_pushes_to_gmail() {
     );
     let metadata = &body["privateKeyMetadata"][0]["kaclsKeyMetadata"];
     assert_eq!(metadata["kaclsUri"].as_str().unwrap(), kacls_url);
-    assert!(!metadata["kaclsData"].as_str().unwrap().is_empty());
+    assert_ne!(metadata["kaclsData"].as_str().unwrap(), "");
 }
 
 #[tokio::test]

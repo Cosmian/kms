@@ -63,7 +63,7 @@ const DEFAULT_LIMITS: Limits = Limits {
     tickets: 10_000,
     tickets_per_user: 64,
     default_lease: Duration::from_secs(3600),
-    max_lease: Duration::from_secs(86_400),
+    max_lease: Duration::from_hours(24),
 };
 
 struct Entry {

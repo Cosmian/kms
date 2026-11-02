@@ -1125,7 +1125,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
 
         // Parse the response with the openssl crate.
         let resp = OcspResponse::from_der(&resp_der).expect("OcspResponse::from_der");
@@ -1201,7 +1201,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
 
         let resp = OcspResponse::from_der(&resp_der).expect("parse");
         assert_eq!(resp.status(), openssl::ocsp::OcspResponseStatus::SUCCESSFUL);
@@ -1218,7 +1218,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
     }
 
     #[test]
@@ -1238,7 +1238,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
 
         // The response DER should contain the nonce bytes (0xAB × 32).
         let nonce_pattern = [0xAB_u8; 32];
@@ -1364,7 +1364,7 @@ mod tests {
 
         // A non-empty response DER implies thisUpdate and nextUpdate were set
         // (OCSP_basic_add1_status would fail otherwise).
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
         assert!(before <= after, "time must be monotone");
     }
 
@@ -1453,8 +1453,8 @@ mod tests {
         let queries = parse_ocsp_request(&req_der).expect("parse_ocsp_request");
         let query = queries.first().expect("one parsed query");
         assert_eq!(queries.len(), 1);
-        assert!(!query.issuer_name_hash.is_empty());
-        assert!(!query.issuer_key_hash.is_empty());
+        assert_ne!(query.issuer_name_hash.len(), 0);
+        assert_ne!(query.issuer_key_hash.len(), 0);
     }
 
     /// Build a request using an explicit digest for the `CertId` (bypassing

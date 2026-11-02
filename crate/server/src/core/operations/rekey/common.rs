@@ -584,10 +584,9 @@ pub(crate) fn setup_new_key(
     if matches!(
         object_type,
         ObjectType::SymmetricKey | ObjectType::PrivateKey | ObjectType::SecretData
-    ) {
-        if let Ok(key_attrs) = key_object.attributes_mut() {
-            key_attrs.initialize_never_extractable();
-        }
+    ) && let Ok(key_attrs) = key_object.attributes_mut()
+    {
+        key_attrs.initialize_never_extractable();
     }
 
     Ok(())

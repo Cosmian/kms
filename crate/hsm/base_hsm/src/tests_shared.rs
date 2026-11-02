@@ -1931,7 +1931,7 @@ where
         .hsm_lib()
         .list_pkcs11_v3_interfaces()?
         .ok_or_else(|| HError::Default("HSM must report v3 interfaces".to_owned()))?;
-    assert!(!interfaces.is_empty());
+    assert_ne!(interfaces.len(), 0, "HSM reported no v3 interfaces");
     assert!(
         interfaces
             .iter()

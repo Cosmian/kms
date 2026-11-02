@@ -286,29 +286,27 @@ pub async fn validate_cse_authentication_token(
     // Don't use the email claim within the authentication token for this comparison.
     // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
     // Post-validation audience membership check under Google Drive resources only
-    if let Some(resource_name) = &is_priv_unwrap {
-        if resource_name.to_lowercase().contains("/drive/") {
-            if let Some(cfg) = working_jwt_config {
-                if let Some(allowed_audiences) = &cfg.jwt_audience {
-                    let token_audiences = authentication_token.aud.clone().unwrap_or_default();
-                    let matches_any = token_audiences
-                        .iter()
-                        .any(|aud| allowed_audiences.iter().any(|a| a == aud));
-                    let expected = format!("{allowed_audiences:?}");
-                    let got = if token_audiences.is_empty() {
-                        "<empty>".to_owned()
-                    } else {
-                        format!("{token_audiences:?}")
-                    };
-                    kms_ensure!(
-                        matches_any,
-                        KmsError::Unauthorized(format!(
-                            "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
-                        ))
-                    );
-                }
-            }
-        }
+    if let Some(resource_name) = &is_priv_unwrap
+        && resource_name.to_lowercase().contains("/drive/")
+        && let Some(cfg) = working_jwt_config
+        && let Some(allowed_audiences) = &cfg.jwt_audience
+    {
+        let token_audiences = authentication_token.aud.clone().unwrap_or_default();
+        let matches_any = token_audiences
+            .iter()
+            .any(|aud| allowed_audiences.iter().any(|a| a == aud));
+        let expected = format!("{allowed_audiences:?}");
+        let got = if token_audiences.is_empty() {
+            "<empty>".to_owned()
+        } else {
+            format!("{token_audiences:?}")
+        };
+        kms_ensure!(
+            matches_any,
+            KmsError::Unauthorized(format!(
+                "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
+            ))
+        );
     }
 
     let authentication_email = if let Some(_resource_name) = is_priv_unwrap {
@@ -1307,7 +1305,7 @@ mod tests {
     async fn authentication_refresh_retry_still_fails() {
         let rsa = Rsa::generate(2048).unwrap();
         let jwks = build_jwks_manager_with_key("retry-kid", &rsa);
-        assert!(jwks.uris.is_empty());
+        assert_eq!(jwks.uris.len(), 0);
         jwks.refresh().await.unwrap();
         let cse_config = super::GoogleCseConfig {
             authentication: vec![JwtConfig {

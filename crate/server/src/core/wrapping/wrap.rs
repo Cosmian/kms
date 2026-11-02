@@ -461,14 +461,13 @@ async fn wrap_using_kms(
     // If unwrap produced a KeyValue::Structure without attributes, reattach attributes
     // from the ObjectWithMetadata (database) when available so lower-level crypto code
     // can read them via KMIP accessors without triggering attribute-missing errors.
-    if let Ok(kb) = wrapping_key_object.key_block_mut() {
-        if let Some(KeyValue::Structure { attributes, .. }) = &mut kb.key_value {
-            if attributes.is_none() {
-                // copy object-with-metadata attributes into the unwrapped key value
-                let attrs = wrapping_key.attributes().clone();
-                *attributes = Some(attrs);
-            }
-        }
+    if let Ok(kb) = wrapping_key_object.key_block_mut()
+        && let Some(KeyValue::Structure { attributes, .. }) = &mut kb.key_value
+        && attributes.is_none()
+    {
+        // copy object-with-metadata attributes into the unwrapped key value
+        let attrs = wrapping_key.attributes().clone();
+        *attributes = Some(attrs);
     }
 
     // Check usage mask for non Certificate objects (after potential unwrap)

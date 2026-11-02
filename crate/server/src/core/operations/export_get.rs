@@ -251,12 +251,11 @@ pub(crate) async fn export_get(
             // KMIP Fresh semantics: once the private key material has been returned unwrapped,
             // Fresh should flip to false. Persist this so a subsequent GetAttributes shows false
             // (BL-M-13-21 step 5).
-            if owm.attributes().fresh == Some(true) {
-                if let Ok(kb) = owm.object().key_block() {
-                    if kb.key_wrapping_data.is_none() {
-                        persist_fresh_false(kms, user, &mut owm, original_object.take()).await?;
-                    }
-                }
+            if owm.attributes().fresh == Some(true)
+                && let Ok(kb) = owm.object().key_block()
+                && kb.key_wrapping_data.is_none()
+            {
+                persist_fresh_false(kms, user, &mut owm, original_object.take()).await?;
             }
         }
         ObjectType::PublicKey => {
@@ -1062,35 +1061,33 @@ async fn unwrap_if_requested(
     object_type: ObjectType,
 ) -> Result<(), KmsError> {
     let mut key_wrap_type = *key_wrap_type;
-    if key_wrap_type.is_none() {
-        if let Some(defaults) = &kms.params.default_unwrap_types {
-            if defaults.contains(&object_type) {
-                key_wrap_type = Some(KeyWrapType::NotWrapped);
-                debug!("Setting key_wrap_type to NotWrapped due to default_unwrap_types");
-            }
-        }
+    if key_wrap_type.is_none()
+        && let Some(defaults) = &kms.params.default_unwrap_types
+        && defaults.contains(&object_type)
+    {
+        key_wrap_type = Some(KeyWrapType::NotWrapped);
+        debug!("Setting key_wrap_type to NotWrapped due to default_unwrap_types");
     }
     debug!("Key wrap type: {:?}", key_wrap_type);
-    if let Some(key_wrap_type) = key_wrap_type {
-        if key_wrap_type == KeyWrapType::NotWrapped {
-            let mut object = Box::pin(kms.get_unwrapped(
-                object_with_metadata.id(),
-                object_with_metadata.object(),
-                user,
-            ))
-            .await?;
-            // If we have lost attributes on the unwrapped object, we need to restore them
-            if let Ok(key_block) = object.key_block_mut() {
-                if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_mut() {
-                    if attributes.is_none() {
-                        // if the attributes are None, we need to set them to the existing
-                        // attributes
-                        *attributes = Some(object_with_metadata.attributes().clone());
-                    }
-                }
-            }
-            object_with_metadata.set_object(object);
+    if let Some(key_wrap_type) = key_wrap_type
+        && key_wrap_type == KeyWrapType::NotWrapped
+    {
+        let mut object = Box::pin(kms.get_unwrapped(
+            object_with_metadata.id(),
+            object_with_metadata.object(),
+            user,
+        ))
+        .await?;
+        // If we have lost attributes on the unwrapped object, we need to restore them
+        if let Ok(key_block) = object.key_block_mut()
+            && let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_mut()
+            && attributes.is_none()
+        {
+            // if the attributes are None, we need to set them to the existing
+            // attributes
+            *attributes = Some(object_with_metadata.attributes().clone());
         }
+        object_with_metadata.set_object(object);
     }
     Ok(())
 }
@@ -1254,15 +1251,13 @@ async fn process_symmetric_key(
 
                 // If the unwrapped object lost attributes in the KeyValue::Structure, restore
                 // them from the object metadata so downstream attribute accessors succeed.
-                if let Ok(kb) = unwrapped.key_block_mut() {
-                    if let Some(KeyValue::Structure {
+                if let Ok(kb) = unwrapped.key_block_mut()
+                    && let Some(KeyValue::Structure {
                         attributes: attrs, ..
                     }) = kb.key_value.as_mut()
-                    {
-                        if attrs.is_none() {
-                            *attrs = Some(object_with_metadata.attributes().clone());
-                        }
-                    }
+                    && attrs.is_none()
+                {
+                    *attrs = Some(object_with_metadata.attributes().clone());
                 }
 
                 // Replace the object with the unwrapped representation and continue processing
@@ -1771,12 +1766,11 @@ async fn persist_fresh_false(
     })?;
     let mut obj = original.object().clone();
 
-    if let Ok(kb_mut) = obj.key_block_mut() {
-        if let Some(KeyValue::Structure { attributes, .. }) = kb_mut.key_value.as_mut() {
-            if let Some(inner) = attributes.as_mut() {
-                inner.fresh = Some(false);
-            }
-        }
+    if let Ok(kb_mut) = obj.key_block_mut()
+        && let Some(KeyValue::Structure { attributes, .. }) = kb_mut.key_value.as_mut()
+        && let Some(inner) = attributes.as_mut()
+    {
+        inner.fresh = Some(false);
     }
 
     kms.database
@@ -1793,12 +1787,11 @@ async fn persist_fresh_false(
 
     let attrs_mut = owm.attributes_mut();
     attrs_mut.fresh = Some(false);
-    if let Ok(kb_mut) = owm.object_mut().key_block_mut() {
-        if let Some(KeyValue::Structure { attributes, .. }) = kb_mut.key_value.as_mut() {
-            if let Some(inner) = attributes.as_mut() {
-                inner.fresh = Some(false);
-            }
-        }
+    if let Ok(kb_mut) = owm.object_mut().key_block_mut()
+        && let Some(KeyValue::Structure { attributes, .. }) = kb_mut.key_value.as_mut()
+        && let Some(inner) = attributes.as_mut()
+    {
+        inner.fresh = Some(false);
     }
 
     Ok(())

@@ -81,10 +81,10 @@ pub(super) fn parse_all_xml_vectors_with_skip(
         if path.extension().and_then(|s| s.to_str()) != Some("xml") {
             continue;
         }
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if skip_files.contains(&name) {
-                continue;
-            }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && skip_files.contains(&name)
+        {
+            continue;
         }
         let xml = match fs::read_to_string(&path) {
             Ok(xml) => xml,

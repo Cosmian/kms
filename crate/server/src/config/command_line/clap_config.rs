@@ -498,14 +498,14 @@ impl ClapConfig {
             } else if in_missing_section {
                 if !line.starts_with('#') && !line.trim().is_empty() {
                     // Key = value: prepend clap help if available.
-                    if let Some(key) = line.split('=').next().map(str::trim) {
-                        if let Some(help) = help_map.get(key) {
-                            for help_line in help.lines() {
-                                if help_line.is_empty() {
-                                    let _ = writeln!(output, "#");
-                                } else {
-                                    let _ = writeln!(output, "# {help_line}");
-                                }
+                    if let Some(key) = line.split('=').next().map(str::trim)
+                        && let Some(help) = help_map.get(key)
+                    {
+                        for help_line in help.lines() {
+                            if help_line.is_empty() {
+                                let _ = writeln!(output, "#");
+                            } else {
+                                let _ = writeln!(output, "# {help_line}");
                             }
                         }
                     }

@@ -48,5 +48,31 @@ pub(crate) static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
 });
 
 #[cfg(test)]
-#[path = "mod_characterization_tests.rs"]
-mod characterization_tests;
+mod characterization_tests {
+    //! Characterization tests pinning that the embedded SQL bundles parse and expose the queries.
+
+    use super::{MYSQL_QUERIES, PGSQL_QUERIES, SQLITE_QUERIES};
+
+    #[test]
+    fn characterization_embedded_sql_bundles_parse_and_expose_queries() {
+        for name in ["select-parameter", "has-row-objects"] {
+            assert_ne!(PGSQL_QUERIES.get(name).unwrap().trim().len(), 0);
+            assert_ne!(MYSQL_QUERIES.get(name).unwrap().trim().len(), 0);
+        }
+        assert_ne!(
+            SQLITE_QUERIES
+                .get("count-non-destroyed-keys")
+                .unwrap()
+                .trim()
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn characterization_embedded_sql_unknown_query_is_absent() {
+        assert!(PGSQL_QUERIES.get("no-such-query").is_none());
+        assert!(MYSQL_QUERIES.get("no-such-query").is_none());
+        assert!(SQLITE_QUERIES.get("no-such-query").is_none());
+    }
+}

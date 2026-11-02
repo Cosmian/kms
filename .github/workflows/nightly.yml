@@ -61,4 +61,4 @@ jobs:
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:
-      toolchain: 1.97.0
+      toolchain: 1.99.1

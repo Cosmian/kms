@@ -85,19 +85,19 @@ fn resolve_plaintext(request: &Value) -> Vec<u8> {
     if let Some(pt) = request.get("data_plaintext") {
         return pt.as_str().unwrap_or("").as_bytes().to_vec();
     }
-    if let Some(generator) = request.get("data_plaintext_generator") {
-        if generator.as_str() == Some("repeat_pattern") {
-            let pattern = request["pattern"].as_str().unwrap_or("A");
-            let target_bytes = usize::try_from(request["repeat_bytes"].as_u64().unwrap_or(256))
-                .expect("repeat_bytes fits usize");
-            return pattern
-                .as_bytes()
-                .iter()
-                .cycle()
-                .take(target_bytes)
-                .copied()
-                .collect();
-        }
+    if let Some(generator) = request.get("data_plaintext_generator")
+        && generator.as_str() == Some("repeat_pattern")
+    {
+        let pattern = request["pattern"].as_str().unwrap_or("A");
+        let target_bytes = usize::try_from(request["repeat_bytes"].as_u64().unwrap_or(256))
+            .expect("repeat_bytes fits usize");
+        return pattern
+            .as_bytes()
+            .iter()
+            .cycle()
+            .take(target_bytes)
+            .copied()
+            .collect();
     }
     b"default test payload".to_vec()
 }
@@ -842,14 +842,14 @@ where
     let mut kid_to_cleanup: Option<String> = None;
     let mut kid_public_provisioned: Option<String> = None;
 
-    if let Some(setup_key) = v.get("setup_key") {
-        if !setup_key.is_null() {
-            let (kid, kid_public) = provision_key(app, setup_key).await?;
-            // Inject kid into body where "$KID" / "$KID_PUBLIC" placeholders appear
-            inject_kid(&mut body, &kid, kid_public.as_deref());
-            kid_public_provisioned = kid_public;
-            kid_to_cleanup = Some(kid);
-        }
+    if let Some(setup_key) = v.get("setup_key")
+        && !setup_key.is_null()
+    {
+        let (kid, kid_public) = provision_key(app, setup_key).await?;
+        // Inject kid into body where "$KID" / "$KID_PUBLIC" placeholders appear
+        inject_kid(&mut body, &kid, kid_public.as_deref());
+        kid_public_provisioned = kid_public;
+        kid_to_cleanup = Some(kid);
     }
 
     // Optionally build a base64url-encoded protected header from a JSON template.
@@ -903,13 +903,13 @@ where
     // Optionally check the error code in the response body
     if let Some(expected_error) = v.get("expected_error").and_then(Value::as_str) {
         let resp_body = actix_test::read_body(resp).await;
-        if let Ok(parsed) = serde_json::from_slice::<Value>(&resp_body) {
-            if let Some(got_error) = parsed.get("error").and_then(Value::as_str) {
-                assert_eq!(
-                    got_error, expected_error,
-                    "Vector {filename}: expected error code '{expected_error}', got '{got_error}'"
-                );
-            }
+        if let Ok(parsed) = serde_json::from_slice::<Value>(&resp_body)
+            && let Some(got_error) = parsed.get("error").and_then(Value::as_str)
+        {
+            assert_eq!(
+                got_error, expected_error,
+                "Vector {filename}: expected error code '{expected_error}', got '{got_error}'"
+            );
         }
     }
 

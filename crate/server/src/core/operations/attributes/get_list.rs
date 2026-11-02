@@ -109,10 +109,10 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     // Standard attributes: TL-profile order first (XML profile vectors), then the rest.
     let mut tags: Vec<Tag> = Vec::new();
     for attribute in Vec::<Attribute>::from(attrs) {
-        if let Some(tag) = attribute.tag() {
-            if !tags.contains(&tag) {
-                tags.push(tag);
-            }
+        if let Some(tag) = attribute.tag()
+            && !tags.contains(&tag)
+        {
+            tags.push(tag);
         }
     }
     tags.sort_by_key(|tag| {

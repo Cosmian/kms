@@ -671,10 +671,10 @@ mod tests {
         };
         for sm in last.scope_metrics() {
             for metric in sm.metrics() {
-                if metric.name() == name {
-                    if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
-                        return sum.data_points().map(SumDataPoint::value).sum();
-                    }
+                if metric.name() == name
+                    && let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data()
+                {
+                    return sum.data_points().map(SumDataPoint::value).sum();
                 }
             }
         }
@@ -689,10 +689,10 @@ mod tests {
         };
         for sm in last.scope_metrics() {
             for metric in sm.metrics() {
-                if metric.name() == name {
-                    if let AggregatedMetrics::I64(MetricData::Sum(sum)) = metric.data() {
-                        return sum.data_points().map(SumDataPoint::value).sum();
-                    }
+                if metric.name() == name
+                    && let AggregatedMetrics::I64(MetricData::Sum(sum)) = metric.data()
+                {
+                    return sum.data_points().map(SumDataPoint::value).sum();
                 }
             }
         }
@@ -707,10 +707,10 @@ mod tests {
         };
         for sm in last.scope_metrics() {
             for metric in sm.metrics() {
-                if metric.name() == name {
-                    if let AggregatedMetrics::I64(MetricData::Gauge(g)) = metric.data() {
-                        return g.data_points().last().map_or(0, GaugeDataPoint::value);
-                    }
+                if metric.name() == name
+                    && let AggregatedMetrics::I64(MetricData::Gauge(g)) = metric.data()
+                {
+                    return g.data_points().last().map_or(0, GaugeDataPoint::value);
                 }
             }
         }
@@ -772,7 +772,7 @@ mod tests {
         assert_eq!(last_counter_u64(&exporter, "kms.kmip.operations.total"), 3);
 
         let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
-        assert!(!labels.is_empty());
+        assert_ne!(labels.len(), 0);
         assert!(
             labels.iter().all(|l| l != "user1" && l != "user2"),
             "raw username must never appear in the `user` metric label: {labels:?}"
@@ -828,7 +828,7 @@ mod tests {
         );
 
         let labels = user_labels(&exporter, "kms.permissions.granted.per_user.total");
-        assert!(!labels.is_empty());
+        assert_ne!(labels.len(), 0);
         assert!(
             labels.iter().all(|l| l != "user1" && l != "user2"),
             "raw username must never appear in the `user` metric label: {labels:?}"

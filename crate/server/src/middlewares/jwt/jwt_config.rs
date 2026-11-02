@@ -415,7 +415,7 @@ mod jwt_headers_tests {
                 .err()
                 .map_or_else(String::new, |error| error.to_string())
         };
-        assert!(check(r#"{"alg":"RS256"}"#).is_empty());
+        assert_eq!(check(r#"{"alg":"RS256"}"#), "");
         assert!(check(r#"{"alg":"RS256","crit":["exp"]}"#).contains("critical"));
         assert!(check(r#"{"alg":"RS256","cty":"JWT"}"#).contains("Nested"));
     }
@@ -425,7 +425,10 @@ mod jwt_headers_tests {
     fn nested_jwt_is_rejected() {
         assert!(rejection(r#"{"alg":"RS256","kid":"k1","cty":"jwt"}"#).contains("Nested"));
         // other content types are not nested JWTs
-        assert!(rejection(r#"{"alg":"RS256","kid":"k1","cty":"application/json"}"#).is_empty());
+        assert_eq!(
+            rejection(r#"{"alg":"RS256","kid":"k1","cty":"application/json"}"#),
+            ""
+        );
     }
 
     /// Embedded key material and unknown parameters do not affect validation.

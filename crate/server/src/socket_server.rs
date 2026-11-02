@@ -332,7 +332,7 @@ impl SocketServer {
                     }
                     // Reserve a slot atomically so the counter never exceeds the limit.
                     if active_connections
-                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                        .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
                             (n < MAX_SOCKET_CONNECTIONS).then_some(n + 1)
                         })
                         .is_err()

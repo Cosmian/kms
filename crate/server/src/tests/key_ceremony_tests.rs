@@ -2040,7 +2040,7 @@ async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
 
     // Reconstruct — source key is still alive (no ceremony destruction).
     let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
-    assert!(!reconstructed_uid.is_empty());
+    assert_ne!(reconstructed_uid.len(), 0);
 
     Ok(())
 }

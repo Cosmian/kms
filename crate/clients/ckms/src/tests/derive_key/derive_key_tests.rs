@@ -507,7 +507,7 @@ pub(crate) async fn test_derive_key_x25519() -> CosmianResult<()> {
         },
     )?;
 
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     // Unlike the symmetric path, asymmetric derivation honors the
     // client-supplied `--derived-key-id`.
     assert_eq!(derived_key_id, "test-derived-x25519-shared-secret");

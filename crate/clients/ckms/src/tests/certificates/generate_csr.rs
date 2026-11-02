@@ -331,7 +331,7 @@ async fn test_generate_csr_generating_the_key_pair() -> CosmianResult<()> {
             ],
         )?;
         let private_key_id = printed_value(&stdout, "Private key id:").to_owned();
-        assert!(!printed_value(&stdout, "Public key id:").is_empty());
+        assert_ne!(printed_value(&stdout, "Public key id:"), "");
         let csr = X509Req::from_pem(&std::fs::read(&csr_file).unwrap()).unwrap();
         assert!(csr.verify(csr.public_key().unwrap().as_ref()).unwrap());
         assert_eq!(

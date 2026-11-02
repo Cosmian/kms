@@ -270,10 +270,10 @@ impl Serialize for KeyValueSerializer {
                         key_material: key_material.clone(),
                     },
                 )?;
-                if let Some(attributes) = &attribute {
-                    if !attributes.is_empty() {
-                        st.serialize_field("Attribute", &attribute)?;
-                    }
+                if let Some(attributes) = &attribute
+                    && !attributes.is_empty()
+                {
+                    st.serialize_field("Attribute", &attribute)?;
                 }
                 st.end()
             }

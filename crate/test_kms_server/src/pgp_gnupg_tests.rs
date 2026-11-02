@@ -32,12 +32,12 @@ use crate::{init_test_logging, start_default_test_kms_server};
 static NEXT_PGP_IMPORT_UID: AtomicU64 = AtomicU64::new(0);
 
 fn gpg_bin() -> Option<String> {
-    if let Ok(output) = Command::new("which").arg("gpg").output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            if !path.is_empty() {
-                return Some(path);
-            }
+    if let Ok(output) = Command::new("which").arg("gpg").output()
+        && output.status.success()
+    {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if !path.is_empty() {
+            return Some(path);
         }
     }
     None
@@ -70,10 +70,10 @@ fn run_gpg(
     cmd.stderr(std::process::Stdio::piped());
 
     let mut child = cmd.spawn().expect("failed to spawn gpg");
-    if let Some(data) = stdin_data {
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(data).expect("failed to write to gpg stdin");
-        }
+    if let Some(data) = stdin_data
+        && let Some(mut stdin) = child.stdin.take()
+    {
+        stdin.write_all(data).expect("failed to write to gpg stdin");
     }
 
     let output = child.wait_with_output().expect("failed to wait on gpg");

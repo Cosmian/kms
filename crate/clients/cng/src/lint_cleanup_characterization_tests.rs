@@ -119,7 +119,7 @@ fn characterization_ksp_error_display() {
 fn characterization_non_windows_stubs() {
     assert!(!crate::is_ksp_registered());
     assert_eq!(crate::KSP_PROVIDER_NAME, "Cosmian KMS Key Storage Provider");
-    assert!(crate::KSP_PROVIDER_NAME_W.is_empty());
+    assert_eq!(crate::KSP_PROVIDER_NAME_W.len(), 0);
     assert_eq!(
         crate::register_ksp(std::path::Path::new("x.dll")).unwrap_err(),
         "KSP registration is only supported on Windows"

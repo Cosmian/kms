@@ -487,14 +487,14 @@ impl ServerParams {
                         .to_owned(),
                 ));
             }
-            if let Some(MainDbParams::Postgres(main_url, _)) = main_db_params {
-                if normalized_pg_authority(url) == normalized_pg_authority(main_url) {
-                    return Err(KmsError::InvalidRequest(
-                        "The audit database (--audit-postgres-url) must be a different \
+            if let Some(MainDbParams::Postgres(main_url, _)) = main_db_params
+                && normalized_pg_authority(url) == normalized_pg_authority(main_url)
+            {
+                return Err(KmsError::InvalidRequest(
+                    "The audit database (--audit-postgres-url) must be a different \
                          database than the main object-storage database (--database-url)."
-                            .to_owned(),
-                    ));
-                }
+                        .to_owned(),
+                ));
             }
 
             let instance_id = audit.postgres.audit_instance_id.clone().ok_or_else(|| {
@@ -941,10 +941,10 @@ impl ServerParams {
                 // configured, include the public URL automatically so that browsers
                 // accessing the KMS via its canonical address can reach the API without
                 // an explicit cors_allowed_origins configuration entry.
-                if let Some(ref url) = public_url_for_cors {
-                    if !origins.iter().any(|o| o == url) {
-                        origins.push(url.clone());
-                    }
+                if let Some(ref url) = public_url_for_cors
+                    && !origins.iter().any(|o| o == url)
+                {
+                    origins.push(url.clone());
                 }
                 origins
             }),
@@ -1507,10 +1507,10 @@ impl fmt::Debug for ServerParams {
                 );
         }
 
-        if let Some(ref auth_verifier) = self.auth_verifier_config {
-            if auth_verifier.is_enabled() {
-                debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
-            }
+        if let Some(ref auth_verifier) = self.auth_verifier_config
+            && auth_verifier.is_enabled()
+        {
+            debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
         }
 
         debug_struct.field(

@@ -291,13 +291,13 @@ pub fn parse_selected_attributes(
                 );
             }
             Tag::Name => {
-                if let Some(names) = attributes.name.as_ref() {
-                    if !names.is_empty() {
-                        results.insert(
-                            tag.to_string(),
-                            serde_json::to_value(names).unwrap_or_default(),
-                        );
-                    }
+                if let Some(names) = attributes.name.as_ref()
+                    && !names.is_empty()
+                {
+                    results.insert(
+                        tag.to_string(),
+                        serde_json::to_value(names).unwrap_or_default(),
+                    );
                 }
             }
             Tag::VendorExtension => {

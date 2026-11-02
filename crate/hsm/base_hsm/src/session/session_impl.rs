@@ -1007,16 +1007,16 @@ impl Session {
                     })?,
                     None => generate_random_nonce::<AES_CBC_IV_LENGTH>()?,
                 };
-                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size {
-                    if plaintext.len() > max_cbc_data_size {
-                        debug!("Performing multi round AES CBC encryption");
-                        return self.encrypt_aes_cbc_multi_round(
-                            key_handle,
-                            iv,
-                            plaintext,
-                            max_cbc_data_size,
-                        );
-                    }
+                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size
+                    && plaintext.len() > max_cbc_data_size
+                {
+                    debug!("Performing multi round AES CBC encryption");
+                    return self.encrypt_aes_cbc_multi_round(
+                        key_handle,
+                        iv,
+                        plaintext,
+                        max_cbc_data_size,
+                    );
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,
@@ -1193,18 +1193,18 @@ impl Session {
                     .ok_or_else(|| HError::Default("Failed to extract iv".to_owned()))?
                     .try_into()
                     .map_err(|e| HError::Default(format!("Invalid AES CBC IV: {e}")))?;
-                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size {
-                    if ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH) {
-                        debug!("Performing multi round AES CBC decryption");
-                        return self.decrypt_aes_cbc_multi_round(
-                            key_handle,
-                            &iv,
-                            ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
-                                HError::Default("Failed to extract ciphertext".to_owned())
-                            })?,
-                            max_cbc_data_size,
-                        );
-                    }
+                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size
+                    && ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH)
+                {
+                    debug!("Performing multi round AES CBC decryption");
+                    return self.decrypt_aes_cbc_multi_round(
+                        key_handle,
+                        &iv,
+                        ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
+                            HError::Default("Failed to extract ciphertext".to_owned())
+                        })?,
+                        max_cbc_data_size,
+                    );
                 }
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_AES_CBC,

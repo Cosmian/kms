@@ -137,12 +137,11 @@ async fn test_revoked_keys_not_active() -> KmsCliResult<()> {
 
         if let Ok(get_response) = client.get(get_req).await {
             // Check if the key's state is Active
-            if let Ok(attrs) = get_response.object.attributes() {
-                if let Some(key_state) = attrs.state {
-                    if key_state == State::Active {
-                        active_count += 1;
-                    }
-                }
+            if let Ok(attrs) = get_response.object.attributes()
+                && let Some(key_state) = attrs.state
+                && key_state == State::Active
+            {
+                active_count += 1;
             }
         }
     }

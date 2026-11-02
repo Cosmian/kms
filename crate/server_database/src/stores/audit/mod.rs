@@ -95,5 +95,16 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "mod_characterization_tests.rs"]
-mod characterization_tests;
+mod characterization_tests {
+    //! Characterization tests pinning that the embedded audit SQL bundle parses.
+
+    use super::AUDIT_QUERIES;
+
+    #[test]
+    fn characterization_audit_queries_parse_and_expose_queries() {
+        for name in ["create-table-audit-events", "insert-audit-event"] {
+            assert_ne!(AUDIT_QUERIES.get(name).unwrap().trim().len(), 0);
+        }
+        assert!(AUDIT_QUERIES.get("no-such-query").is_none());
+    }
+}

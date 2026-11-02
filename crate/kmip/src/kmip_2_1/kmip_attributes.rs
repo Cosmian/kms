@@ -1965,42 +1965,41 @@ impl Attributes {
         operation_name: &str,
     ) -> Result<(), KmipError> {
         for req_attrs in attrs_iter.into_iter().flatten() {
-            if let Some(algo) = req_attrs.cryptographic_algorithm {
-                if self.cryptographic_algorithm != Some(algo) {
-                    return Err(KmipError::InvalidKmip21Value(
-                        ErrorReason::Invalid_Field,
-                        format!(
-                            "{operation_name}: changing the cryptographic algorithm is not \
+            if let Some(algo) = req_attrs.cryptographic_algorithm
+                && self.cryptographic_algorithm != Some(algo)
+            {
+                return Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Field,
+                    format!(
+                        "{operation_name}: changing the cryptographic algorithm is not \
                              allowed. Use Create/CreateKeyPair for a different algorithm."
-                        ),
-                    ));
-                }
+                    ),
+                ));
             }
-            if let Some(ref cdp) = req_attrs.cryptographic_domain_parameters {
-                if let Some(ref existing_cdp) = self.cryptographic_domain_parameters {
-                    if cdp.recommended_curve.is_some()
-                        && cdp.recommended_curve != existing_cdp.recommended_curve
-                    {
-                        return Err(KmipError::InvalidKmip21Value(
-                            ErrorReason::Invalid_Field,
-                            format!(
-                                "{operation_name}: changing the recommended curve is not allowed. \
+            if let Some(ref cdp) = req_attrs.cryptographic_domain_parameters
+                && let Some(ref existing_cdp) = self.cryptographic_domain_parameters
+                && cdp.recommended_curve.is_some()
+                && cdp.recommended_curve != existing_cdp.recommended_curve
+            {
+                return Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Field,
+                    format!(
+                        "{operation_name}: changing the recommended curve is not allowed. \
                                  Use Create/CreateKeyPair for a different curve."
-                            ),
-                        ));
-                    }
-                }
+                    ),
+                ));
             }
-            if let Some(len) = req_attrs.cryptographic_length {
-                if self.cryptographic_length.is_some() && self.cryptographic_length != Some(len) {
-                    return Err(KmipError::InvalidKmip21Value(
-                        ErrorReason::Invalid_Field,
-                        format!(
-                            "{operation_name}: changing the cryptographic length is not allowed. \
+            if let Some(len) = req_attrs.cryptographic_length
+                && self.cryptographic_length.is_some()
+                && self.cryptographic_length != Some(len)
+            {
+                return Err(KmipError::InvalidKmip21Value(
+                    ErrorReason::Invalid_Field,
+                    format!(
+                        "{operation_name}: changing the cryptographic length is not allowed. \
                              Use Create/CreateKeyPair for a different key size."
-                        ),
-                    ));
-                }
+                    ),
+                ));
             }
         }
         Ok(())

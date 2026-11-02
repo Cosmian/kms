@@ -242,7 +242,7 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
         &kms,
     )
     .await?;
-    assert!(!enc.ciphertext.is_empty());
+    assert_ne!(enc.ciphertext.len(), 0);
     Ok(())
 }
 

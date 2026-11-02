@@ -98,7 +98,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
     let derive_response = kms.derive_key(derive_request, &owner).await?;
 
     // Verify the response
-    assert!(!derive_response.unique_identifier.to_string().is_empty());
+    assert_ne!(derive_response.unique_identifier.to_string().len(), 0);
 
     // Retrieve the derived key to verify it was created correctly
     let get_request = Get {
@@ -191,7 +191,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
         );
 
         let derive_response = kms.derive_key(derive_request, &owner).await?;
-        assert!(!derive_response.unique_identifier.to_string().is_empty());
+        assert_ne!(derive_response.unique_identifier.to_string().len(), 0);
 
         // Verify the derived key
         let get_request = Get {
@@ -257,7 +257,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
     let derive_response = kms.derive_key(derive_request, &owner).await?;
 
     // Verify the response
-    assert!(!derive_response.unique_identifier.to_string().is_empty());
+    assert_ne!(derive_response.unique_identifier.to_string().len(), 0);
 
     // Retrieve the derived key to verify it was created correctly
     let get_request = Get {
@@ -321,7 +321,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
 
     // Perform the derivation
     let derive_response = kms.derive_key(derive_request, &owner).await?;
-    assert!(!derive_response.unique_identifier.to_string().is_empty());
+    assert_ne!(derive_response.unique_identifier.to_string().len(), 0);
     Ok(())
 }
 

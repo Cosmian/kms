@@ -251,7 +251,7 @@ async fn decapsulate(kms: &Arc<KMS>, owner: &str, sk_uid: &str, enc: &[u8]) -> K
 
 async fn assert_roundtrip(kms: &Arc<KMS>, owner: &str, pk: &str, sk: &str) -> KResult<()> {
     let (secret, enc) = encapsulate(kms, owner, pk).await?;
-    assert!(!secret.is_empty());
+    assert_ne!(secret.len(), 0);
     assert_eq!(secret, decapsulate(kms, owner, sk, &enc).await?);
     Ok(())
 }

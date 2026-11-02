@@ -66,10 +66,10 @@ pub(crate) async fn proxy_auth_request(
     // and forwarding `Authorization` could allow the proxy to reach unintended
     // auth-verifier endpoints that accept bearer tokens.
     for header_name in &["X-Vault-Token", "Content-Type"] {
-        if let Some(val) = req.headers().get(*header_name) {
-            if let Ok(s) = val.to_str() {
-                rb = rb.header(*header_name, s);
-            }
+        if let Some(val) = req.headers().get(*header_name)
+            && let Ok(s) = val.to_str()
+        {
+            rb = rb.header(*header_name, s);
         }
     }
 

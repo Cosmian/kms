@@ -211,11 +211,11 @@ pub(crate) const MAX_ENROLLMENT_BODY: usize = 64 * 1024;
 
 /// Read a request body of at most [`MAX_ENROLLMENT_BODY`] bytes; the error is the response to
 /// send back.
-pub(crate) async fn read_limited_body(payload: Payload) -> Result<Bytes, HttpResponse> {
+pub(crate) async fn read_limited_body(payload: Payload) -> Result<Bytes, Box<HttpResponse>> {
     match payload.to_bytes_limited(MAX_ENROLLMENT_BODY).await {
         Ok(Ok(body)) => Ok(body),
-        Ok(Err(_)) => Err(HttpResponse::BadRequest().finish()),
-        Err(_) => Err(HttpResponse::PayloadTooLarge().finish()),
+        Ok(Err(_)) => Err(Box::new(HttpResponse::BadRequest().finish())),
+        Err(_) => Err(Box::new(HttpResponse::PayloadTooLarge().finish())),
     }
 }
 
@@ -617,14 +617,13 @@ fn csr_san_set(csr: &X509Req) -> KResult<Vec<Vec<u8>>> {
     let (_, parsed) = X509CertificationRequest::from_der(&der)
         .map_err(|e| KmsError::InvalidRequest(format!("invalid CSR: {e}")))?;
     for attr in parsed.certification_request_info.iter_attributes() {
-        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute() {
-            if let Some(ext) = requested
+        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute()
+            && let Some(ext) = requested
                 .extensions
                 .iter()
                 .find(|e| nid_of(&e.oid.to_id_string()) == Nid::SUBJECT_ALT_NAME)
-            {
-                return san_entries(ext.value);
-            }
+        {
+            return san_entries(ext.value);
         }
     }
     Ok(Vec::new())

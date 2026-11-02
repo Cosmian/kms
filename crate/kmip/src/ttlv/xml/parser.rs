@@ -83,16 +83,14 @@ fn reconstruct_tag(
 // Helper to backfill LocateResponse.located_items when omitted in XML
 fn backfill_locate_response(resp: &mut ResponseMessage) {
     for bi in &mut resp.batch_item {
-        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi {
-            if let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
+        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi
+            && let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
                 &mut inner.response_payload
-            {
-                if lr.located_items.is_none() {
-                    let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
-                    let cnt = i32::try_from(len).unwrap_or(i32::MAX);
-                    lr.located_items = Some(cnt);
-                }
-            }
+            && lr.located_items.is_none()
+        {
+            let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
+            let cnt = i32::try_from(len).unwrap_or(i32::MAX);
+            lr.located_items = Some(cnt);
         }
     }
 }

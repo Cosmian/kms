@@ -202,12 +202,12 @@ impl Stdout {
                 }
 
                 // Print the list of tags if present
-                if let Some(t) = &self.tags {
-                    if !t.is_empty() {
-                        println!("\tTags:");
-                        for tag in t {
-                            println!("\t\t- {tag}");
-                        }
+                if let Some(t) = &self.tags
+                    && !t.is_empty()
+                {
+                    println!("\tTags:");
+                    for tag in t {
+                        println!("\t\t- {tag}");
                     }
                 }
                 println!(); // consecutive calls feel cluttered and become hard to read

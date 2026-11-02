@@ -258,11 +258,18 @@ impl KMS {
     ///
     /// Only Covercrypt user decryption keys can be created using this function
     #[cfg(not(feature = "non-fips"))]
-    #[expect(
-        clippy::unused_async,
-        reason = "signature must match the non-fips async variant of this function"
-    )]
-    pub(crate) async fn create_private_key_and_tags(
+    pub(crate) fn create_private_key_and_tags(
+        &self,
+        create_request: &Create,
+        owner: &str,
+    ) -> impl Future<Output = KResult<(Option<String>, Object, HashSet<String>)>> {
+        // Keeps the awaitable signature of the non-fips variant without an `async` body.
+        std::future::ready(self.create_private_key_and_tags_sync(create_request, owner))
+    }
+
+    /// Synchronous body of the FIPS [`Self::create_private_key_and_tags`].
+    #[cfg(not(feature = "non-fips"))]
+    fn create_private_key_and_tags_sync(
         &self,
         create_request: &Create,
         _owner: &str,

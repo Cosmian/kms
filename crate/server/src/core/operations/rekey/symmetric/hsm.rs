@@ -161,10 +161,10 @@ impl KMS {
             // rotate_name is the full base UID (unique across slots); fall back to
             // full_base_uid for keys whose rotation policy has not been initialised.
             let keyset_id = old_attrs.rotate_name.as_deref().unwrap_or(&full_base_uid);
-            if let Some(latest_uid) = self.latest_hsm_keyset_uid(keyset_id, user).await {
-                if latest_uid != uid {
-                    return Box::pin(self.rekey_hsm_symmetric(&latest_uid, user)).await;
-                }
+            if let Some(latest_uid) = self.latest_hsm_keyset_uid(keyset_id, user).await
+                && latest_uid != uid
+            {
+                return Box::pin(self.rekey_hsm_symmetric(&latest_uid, user)).await;
             }
         }
 

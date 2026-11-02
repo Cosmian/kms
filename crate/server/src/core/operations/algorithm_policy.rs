@@ -337,12 +337,11 @@ fn validate_export(req: &Export, wl: &KmipWhitelists) -> KResult<()> {
     // Export may declare a Key Wrapping Specification with embedded CryptographicParameters.
     // Those parameters represent algorithm choices made by the caller and must be validated
     // against the configured allowlists.
-    if let Some(spec) = &req.key_wrapping_specification {
-        if let Some(eki) = &spec.encryption_key_information {
-            if let Some(cp) = &eki.cryptographic_parameters {
-                validate_cryptographic_parameters(&Some(cp.clone()), wl)?;
-            }
-        }
+    if let Some(spec) = &req.key_wrapping_specification
+        && let Some(eki) = &spec.encryption_key_information
+        && let Some(cp) = &eki.cryptographic_parameters
+    {
+        validate_cryptographic_parameters(&Some(cp.clone()), wl)?;
     }
     Ok(())
 }
@@ -582,15 +581,15 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     // - `Some(empty)`: deny all curves
     // - `Some(non-empty)`: restrict to listed curves
     let allowed = params.kmip_policy.allowlists.curves.as_deref();
-    if let Some(set) = allowed {
-        if set.is_empty() {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!(
-                    "{operation_tag}: ECIES is disabled by server policy (empty curve allowlist) (key={key_id})"
-                ),
-            );
-        }
+    if let Some(set) = allowed
+        && set.is_empty()
+    {
+        return deny(
+            ErrorReason::Constraint_Violation,
+            format!(
+                "{operation_tag}: ECIES is disabled by server policy (empty curve allowlist) (key={key_id})"
+            ),
+        );
     }
 
     let token = match pkey_id {
@@ -609,45 +608,41 @@ pub(crate) fn enforce_ecies_fixed_suite_for_pkey_id(
     // we allow EC only when the KMIP policy already constrained curves at key creation/import.
     // For X25519, we can enforce directly.
     if pkey_id == openssl::pkey::Id::X25519 {
-        if let Some(set) = allowed {
-            if !set.contains(&RecommendedCurve::CURVE25519) {
-                return deny(
-                    ErrorReason::Constraint_Violation,
-                    format!(
-                        "{operation_tag}: ECIES curve not allowed by policy: {token} (key={key_id})"
-                    ),
-                );
-            }
+        if let Some(set) = allowed
+            && !set.contains(&RecommendedCurve::CURVE25519)
+        {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!(
+                    "{operation_tag}: ECIES curve not allowed by policy: {token} (key={key_id})"
+                ),
+            );
         }
     } else if pkey_id == openssl::pkey::Id::EC {
         // Require at least one of the NIST curves. Actual curve is enforced earlier via KMIP attributes.
-        if let Some(set) = allowed {
-            if !set.contains(&RecommendedCurve::P256)
-                && !set.contains(&RecommendedCurve::P384)
-                && !set.contains(&RecommendedCurve::P521)
-            {
-                return deny(
-                    ErrorReason::Constraint_Violation,
-                    format!(
-                        "{operation_tag}: ECIES EC curves not allowed by policy (key={key_id})"
-                    ),
-                );
-            }
+        if let Some(set) = allowed
+            && !set.contains(&RecommendedCurve::P256)
+            && !set.contains(&RecommendedCurve::P384)
+            && !set.contains(&RecommendedCurve::P521)
+        {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!("{operation_tag}: ECIES EC curves not allowed by policy (key={key_id})"),
+            );
         }
     } else if pkey_id == openssl::pkey::Id::ED25519 {
         #[cfg(feature = "non-fips")]
         {
-            if let Some(set) = allowed {
-                if !set.contains(&RecommendedCurve::CURVEED25519)
-                    && !set.contains(&RecommendedCurve::CURVE25519)
-                {
-                    return deny(
-                        ErrorReason::Constraint_Violation,
-                        format!(
-                            "{operation_tag}: ECIES curve not allowed by policy: ED25519 (key={key_id})"
-                        ),
-                    );
-                }
+            if let Some(set) = allowed
+                && !set.contains(&RecommendedCurve::CURVEED25519)
+                && !set.contains(&RecommendedCurve::CURVE25519)
+            {
+                return deny(
+                    ErrorReason::Constraint_Violation,
+                    format!(
+                        "{operation_tag}: ECIES curve not allowed by policy: ED25519 (key={key_id})"
+                    ),
+                );
             }
         }
 
@@ -706,15 +701,15 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
     // - `Some(empty)`: deny all curves
     // - `Some(non-empty)`: restrict to listed curves
     let allowed_curves = params.kmip_policy.allowlists.curves.as_deref();
-    if let Some(set) = allowed_curves {
-        if set.is_empty() {
-            return deny(
-                ErrorReason::Constraint_Violation,
-                format!(
-                    "{operation_tag}: ECIES is disabled by server policy (empty curve allowlist) (key={key_id})"
-                ),
-            );
-        }
+    if let Some(set) = allowed_curves
+        && set.is_empty()
+    {
+        return deny(
+            ErrorReason::Constraint_Violation,
+            format!(
+                "{operation_tag}: ECIES is disabled by server policy (empty curve allowlist) (key={key_id})"
+            ),
+        );
     }
 
     let recommended_curve = attrs
@@ -724,15 +719,15 @@ pub(crate) fn enforce_ecies_fixed_suite_for_attributes(
 
     // If we know the curve, enforce the precise SHAKE requirement.
     if let Some(curve) = recommended_curve {
-        if let Some(set) = allowed_curves {
-            if !set.contains(&curve) {
-                return deny(
-                    ErrorReason::Constraint_Violation,
-                    format!(
-                        "{operation_tag}: ECIES curve not allowed by policy: {curve:?} (key={key_id})"
-                    ),
-                );
-            }
+        if let Some(set) = allowed_curves
+            && !set.contains(&curve)
+        {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!(
+                    "{operation_tag}: ECIES curve not allowed by policy: {curve:?} (key={key_id})"
+                ),
+            );
         }
 
         let required_shake = match curve {
@@ -811,10 +806,10 @@ fn validate_attributes(attrs: &Attributes, wl: &KmipWhitelists) -> KResult<()> {
 
     // Some KMIP requests provide a `CryptographicAlgorithm` inside the
     // `CryptographicParameters`.
-    if let Some(params) = &attrs.cryptographic_parameters {
-        if let Some(alg) = params.cryptographic_algorithm {
-            validate_algorithm(alg, wl.algorithms.as_ref())?;
-        }
+    if let Some(params) = &attrs.cryptographic_parameters
+        && let Some(alg) = params.cryptographic_algorithm
+    {
+        validate_algorithm(alg, wl.algorithms.as_ref())?;
     }
 
     // Validate sizes where present
@@ -1235,24 +1230,24 @@ fn validate_key_size_bits(
         )
     })?;
     if alg == CryptographicAlgorithm::AES {
-        if let Some(allowed) = wl.aes_key_sizes.as_ref() {
-            if !allowed.contains(&bits_u32) {
-                return deny(
-                    ErrorReason::Constraint_Violation,
-                    format!("AES key size not in allowed set: {bits}"),
-                );
-            }
+        if let Some(allowed) = wl.aes_key_sizes.as_ref()
+            && !allowed.contains(&bits_u32)
+        {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!("AES key size not in allowed set: {bits}"),
+            );
         }
         // No allowlist configured: accept any positive length at this layer.
         // (Any further algorithm-specific constraints should live here, not in config parsing.)
     } else if alg == CryptographicAlgorithm::RSA {
-        if let Some(allowed) = wl.rsa_key_sizes.as_ref() {
-            if !allowed.contains(&bits_u32) {
-                return deny(
-                    ErrorReason::Constraint_Violation,
-                    format!("RSA key size not in allowed set: {bits}"),
-                );
-            }
+        if let Some(allowed) = wl.rsa_key_sizes.as_ref()
+            && !allowed.contains(&bits_u32)
+        {
+            return deny(
+                ErrorReason::Constraint_Violation,
+                format!("RSA key size not in allowed set: {bits}"),
+            );
         }
         if bits_u32 < 2048 {
             return deny(

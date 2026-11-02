@@ -158,7 +158,7 @@ mod tests {
         assert!(store.get_using_handle(handle + 100).is_none());
         assert!(store.get_using_id("unknown").is_none());
         assert_eq!(store.get_using_type(&ObjectType::Profile).len(), 1);
-        assert!(store.get_using_type(&ObjectType::PrivateKey).is_empty());
+        assert_eq!(store.get_using_type(&ObjectType::PrivateKey).len(), 0);
     }
 
     #[test]
