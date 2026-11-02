@@ -19,7 +19,6 @@ use cosmian_kms_interfaces::{
     ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
-use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
 use uuid::Uuid;
@@ -42,9 +41,7 @@ use crate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
             wait_for_migration_lock,
         },
-        pgsql_queries,
-        sql::database::SqlDatabase,
-        sqlite_queries,
+        pgsql_queries, sqlite_queries,
     },
 };
 
@@ -490,12 +487,6 @@ impl SqlitePool {
         self.writer
             .call(move |c| c.query_row(sql, [], |_row| Ok(())))
             .await
-    }
-}
-
-impl SqlDatabase for SqlitePool {
-    fn get_loader(&self) -> DbResult<&'static Loader> {
-        pgsql_queries()
     }
 }
 
