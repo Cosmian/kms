@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Supply-chain checks on the Web UI npm dependencies (pnpm audit, OSV-Scanner, npm signatures)"
+#MISE description="Supply-chain checks on the Web UI npm dependencies (npm policy, OSV-Scanner, npm signatures)"
+#USAGE flag "--base <ref>" help="Fail only on advisories absent from the merge base with <ref> (PRs); without it, any advisory fails"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
@@ -12,8 +13,16 @@ print_header "npm supply-chain audit"
 REPO_ROOT="$(get_repo_root)"
 UI_DIR="${REPO_ROOT}/ui"
 
+BASE=""
+if [ -n "${usage_base:-}" ]; then
+  BASE="$(git -C "${REPO_ROOT}" merge-base "${usage_base}" HEAD)" ||
+    print_error "No merge base between '${usage_base}' and HEAD: fetch it first."
+  print_status "Comparing with ${usage_base} (merge base ${BASE:0:12})"
+fi
+
 ensure_pnpm
 require_cmd npm
+require_cmd python3
 
 resolve_osv_scanner() {
   if has_cmd osv-scanner; then
@@ -52,11 +61,39 @@ run_step() {
 }
 
 OSV_SCANNER="$(resolve_osv_scanner)"
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+
+# osv-scanner exits 1 when it finds advisories; anything higher is a scanner error.
+osv_report() {
+  local rc=0
+  run_isolated "${OSV_SCANNER}" scan source --lockfile "$1" --config "${UI_DIR}/osv-scanner.toml" \
+    --format json >"$2" || rc=$?
+  [ "${rc}" -le 1 ]
+}
+
+# Both lockfiles use this branch's osv-scanner.toml, so an ignore applies to both alike.
+osv_gate() {
+  local base_args=()
+  osv_report "${UI_DIR}/pnpm-lock.yaml" "${WORK_DIR}/head.json" || return 1
+  if [ -n "${BASE}" ]; then
+    : >"${WORK_DIR}/base.json"
+    if git -C "${REPO_ROOT}" cat-file -e "${BASE}:ui/pnpm-lock.yaml" 2>/dev/null; then
+      mkdir -p "${WORK_DIR}/base"
+      git -C "${REPO_ROOT}" show "${BASE}:ui/pnpm-lock.yaml" >"${WORK_DIR}/base/pnpm-lock.yaml" || return 1
+      osv_report "${WORK_DIR}/base/pnpm-lock.yaml" "${WORK_DIR}/base.json" || return 1
+    fi
+    base_args=(--base "${WORK_DIR}/base.json")
+  fi
+  python3 "${REPO_ROOT}/.mise/scripts/audit/osv_npm_gate.py" "${WORK_DIR}/head.json" ${base_args[@]+"${base_args[@]}"}
+}
 
 cd "${UI_DIR}"
-run_step "pnpm audit --prod" run_isolated pnpm audit --prod
+run_step "npm policy" python3 "${REPO_ROOT}/.mise/scripts/pre-commit/check_npm_policy.py" --warn-stale
 # Reads ui/osv-scanner.toml for documented, time-boxed ignores.
-run_step "osv-scanner" run_isolated "${OSV_SCANNER}" scan source --lockfile pnpm-lock.yaml
+run_step "osv-scanner" osv_gate
+# Same GitHub advisories as OSV, which decides; kept for the dependency paths it prints.
+run_isolated pnpm audit --prod || print_warning "pnpm audit --prod found advisories (informational: the osv-scanner step decides)"
 # npm audit signatures needs node_modules; --ignore-scripts keeps the install inert.
 run_step "pnpm install (no scripts)" run_isolated pnpm install --frozen-lockfile --ignore-scripts
 run_step "npm audit signatures" run_isolated npm audit signatures

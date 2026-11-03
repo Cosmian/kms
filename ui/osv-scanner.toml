@@ -1,1 +1,6 @@
 # Time-boxed ignores: [[IgnoredVulns]] with id, ignoreUntil and reason (see CONTRIBUTING.md).
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2027-01-02T00:00:00Z
+reason = "minimatch DoS needs an attacker-chosen pattern and optimizationLevel >= 2; no consumer sets it (default 1), and only eslint reads our own config globs. Fix is minimatch 11, which eslint does not support yet."

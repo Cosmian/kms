@@ -284,10 +284,10 @@ repos:
 
       - id: npm-audit
         name: npm audit, OSV-Scanner and registry signatures (ui)
-        entry: mise run audit:npm
+        entry: mise run audit:npm --base origin/develop
         language: system
         pass_filenames: false
-        files: ^ui/(package\.json|pnpm-lock\.yaml|osv-scanner\.toml)$
+        files: ^ui/(package\.json|pnpm-lock\.yaml|osv-scanner\.toml|\.npmrc)$
         stages: [pre-push]
 
   # ═══════════════════════════════════════════════════════════════════════

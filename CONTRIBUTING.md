@@ -183,13 +183,18 @@ For React/TypeScript/WASM conventions, see
     install when a dependency ships a script nobody reviewed. If it is not needed (the usual case: a native binary
     already arrives as an optional dependency), add the package to `pnpm.ignoredBuiltDependencies`.
     - `minimum-release-age=10080` makes pnpm refuse versions published less than 7 days ago when resolving.
+    To ship an urgent fix for an advisory that develop already has, add `minimum-release-age-exclude[]=<name>@<version>`
+    lines to `ui/.npmrc`, exact versions only (the fix and any new dependency it pulls in), under a comment citing the
+    advisory. `mise run audit:npm` warns once an exclusion is no longer needed.
     - `pnpm.overrides` (CVE pins) use `^` ranges, never `>=`.
     - Always install with `pnpm install --frozen-lockfile`; update dependencies with `pnpm add`/`pnpm update` and
     review the resulting `ui/pnpm-lock.yaml` change. Lockfile changes also require updating the Nix `ui.pnpm.*`
     hashes in `nix/expected-hashes/`.
-    - The `npm-dependency-audit` CI job runs `mise run audit:npm`: `pnpm audit --prod`, OSV-Scanner on
-    `ui/pnpm-lock.yaml` and `npm audit signatures`. Ignore an advisory only in `ui/osv-scanner.toml`, with a reason
-    and an `ignoreUntil` date.
+    - The `npm-dependency-audit` CI job runs `mise run audit:npm`: the npm policy check, OSV-Scanner on
+    `ui/pnpm-lock.yaml` and `npm audit signatures` (`pnpm audit --prod` is informational). On a pull request it runs
+    with `--base`: OSV-Scanner fails only on advisories the base branch does not already have, and always on a
+    malicious package (`MAL-*`). The daily scheduled run on develop fails on any advisory. Ignore an advisory only in
+    `ui/osv-scanner.toml`, with a reason and an `ignoreUntil` date.
     - The `ui`, `wasm` and `spire` CI test types run in the `test-nix-js` job, which receives no cloud or test
     secrets: never add one there.
     - The settings stay in `ui/.npmrc` rather than `pnpm-workspace.yaml` because the Nix build uses pnpm 9, which
